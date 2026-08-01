@@ -572,3 +572,456 @@ export const RevokeConsentBody = Type.Object({
   purpose: ConsentPurpose,
   reason: Type.Optional(Type.String({ maxLength: 1000 })),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────────
+//
+// The §4.1 read + write routes returned typed service views (`SafetyCheckInView`, `SafetySosAlertView`,
+// `SafetyIncidentView`, the two seam DTOs, the cursor pages) but published NO response contract, so the
+// generated client typed every body as `never`. These DTOs mirror the read/write service views 1:1 and are
+// pinned to them by the compile-time `Conforms` aliases at the foot of this section, so a view field added
+// or renamed breaks `bun run build` rather than silently drifting from the client. Enums are literal unions
+// (never `Type.String()` — the M30 "a wire enum published as a bare string is a silent lie" lesson). Every
+// id is a plain `string` on the wire (the `@wardenx/types` id aliases are unbranded), and every `| null`
+// service field is a `Type.Union([_, Type.Null()])` — NEVER `Type.Optional`, which would drop the key.
+import type {
+  SafetyDashboardSnapshot as _SafetyDashboardSnapshot,
+  SafetyPolicyEffectiveDto as _SafetyPolicyEffectiveDto,
+} from "@wardenx/types";
+import type { CursorPage as _CursorPage } from "./concurrency";
+import type {
+  ActiveSosView as _ActiveSosView,
+  SafetyCheckInView as _SafetyCheckInView,
+  SafetyConsentSurface as _SafetyConsentSurface,
+  SafetyConsentView as _SafetyConsentView,
+  SafetyHighRiskAreaView as _SafetyHighRiskAreaView,
+  SafetyIncidentView as _SafetyIncidentView,
+  SafetyMyDayView as _SafetyMyDayView,
+  SafetySosAlertView as _SafetySosAlertView,
+  SafetySubscriptionView as _SafetySubscriptionView,
+  SosLocationStreamPage as _SosLocationStreamPage,
+} from "./read-service";
+import type {
+  CancelSosResult as _CancelSosResult,
+  DeleteSubscriptionResult as _DeleteSubscriptionResult,
+  RaiseSosResult as _RaiseSosResult,
+  RecordCheckInResult as _RecordCheckInResult,
+} from "./write-service";
+
+const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
+const Str = Type.String();
+const IntNum = Type.Integer();
+const NumSchema = Type.Number();
+const Bool = Type.Boolean();
+
+// Full read-view vocabulary unions (the request schemas above pin the mutating subsets; reads carry more).
+/** `safety_sos_lifecycle_state` — the full §2.2.2 chain, incl. `emergency_terminus`. */
+export const SosLifecycleState = Type.Union([
+  Type.Literal("raised"),
+  Type.Literal("cancel_window_open"),
+  Type.Literal("acknowledging"),
+  Type.Literal("acknowledged"),
+  Type.Literal("escalation_tier_1"),
+  Type.Literal("escalation_tier_2"),
+  Type.Literal("escalation_tier_3"),
+  Type.Literal("emergency_terminus"),
+  Type.Literal("resolving"),
+  Type.Literal("resolved"),
+  Type.Literal("cancelled_in_window"),
+  Type.Literal("cancel_attempted_but_rejected"),
+  Type.Literal("incident_opened"),
+]);
+
+/** `safety_sos_cancel_status` — D5. */
+export const SosCancelStatus = Type.Union([
+  Type.Literal("not_cancelled"),
+  Type.Literal("cancelled_in_window"),
+  Type.Literal("cancel_attempted_but_rejected"),
+]);
+
+/** `safety_incident_state` — the full §2.2.3 set (read view carries `draft`/`submitted`, unlike transitions). */
+export const IncidentStateFull = Type.Union([
+  Type.Literal("draft"),
+  Type.Literal("submitted"),
+  Type.Literal("under_review"),
+  Type.Literal("returned_to_clinician"),
+  Type.Literal("closed_with_action_plan"),
+  Type.Literal("closed_no_action"),
+  Type.Literal("reopened"),
+]);
+
+/** `safety_overdue_badge`. */
+export const OverdueBadge = Type.Union([
+  Type.Literal("on_time"),
+  Type.Literal("reminder"),
+  Type.Literal("overdue"),
+  Type.Literal("escalated"),
+]);
+
+/** `safety_location_source`. */
+export const LocationSource = Type.Union([
+  Type.Literal("evv_check_in"),
+  Type.Literal("evv_check_out"),
+  Type.Literal("m20_check_in"),
+  Type.Literal("sos_active"),
+]);
+
+/** `safety_emergency_contact_consent_status`. */
+export const ConsentStatus = Type.Union([
+  Type.Literal("granted"),
+  Type.Literal("revoked"),
+  Type.Literal("expired"),
+]);
+
+/** `safety_coverage_gap_reason`. */
+export const CoverageGapReason = Type.Union([
+  Type.Literal("no_subscription"),
+  Type.Literal("all_subscriptions_deactivated"),
+  Type.Literal("vacation_forwards_unresolved"),
+]);
+
+/** `safety_subscription_model`. */
+export const SubscriptionModel = Type.Union([
+  Type.Literal("location_scoped"),
+  Type.Literal("provider_entity_scoped"),
+  Type.Literal("role_scoped"),
+  Type.Literal("explicit_only"),
+]);
+
+// rows 1-4: check-ins
+export const SafetyCheckInResponse = Type.Object({
+  id: Str,
+  scheduleId: Nullable(Str),
+  visitId: Nullable(Str),
+  postedByMembershipId: Str,
+  postedAt: Str,
+  kind: CheckInKind,
+  status: CheckInStatus,
+  concernNote: Nullable(Str),
+  coordinatesCaptured: Bool,
+  isPartOfSosBracket: Bool,
+  correctsCheckInId: Nullable(Str),
+  supersededAt: Nullable(Str),
+  supersededByCheckInId: Nullable(Str),
+  amendableUntil: Nullable(Str),
+});
+
+const WarningSchema = Type.Object({ code: Str, message: Str });
+
+export const RecordCheckInResponse = Type.Object({
+  checkIn: SafetyCheckInResponse,
+  scheduleClosed: Bool,
+  warningsSurfaced: Type.Array(WarningSchema),
+});
+
+const MyDayObligation = Type.Object({
+  scheduleId: Str,
+  visitId: Nullable(Str),
+  kind: CheckInKind,
+  expectedAt: Str,
+  windowMinutes: NumSchema,
+  state: CheckInState,
+  fulfilledByCheckInId: Nullable(Str),
+});
+
+export const SafetyMyDayResponse = Type.Object({
+  asOf: Str,
+  obligations: Type.Array(MyDayObligation),
+  recentCheckIns: Type.Array(SafetyCheckInResponse),
+});
+
+// rows 5-11: SOS
+export const RaiseSosResponse = Type.Object({
+  id: Str,
+  postedAt: Str,
+  cancelWindowExpiresAt: Str,
+  lifecycleState: SosLifecycleState,
+  acknowledgersDispatched: Nullable(NumSchema),
+  warningsSurfaced: Type.Array(WarningSchema),
+});
+
+export const CancelSosResponse = Type.Object({
+  id: Str,
+  cancelStatus: Type.Union([
+    Type.Literal("cancelled_in_window"),
+    Type.Literal("cancel_attempted_but_rejected"),
+  ]),
+  lifecycleState: SosLifecycleState,
+});
+
+const SosStateHistoryEntry = Type.Object({
+  fromState: Nullable(SosLifecycleState),
+  toState: SosLifecycleState,
+  transitionedAt: Str,
+  transitionedByMembershipId: Nullable(Str),
+});
+
+const SosAcknowledgmentEntry = Type.Object({
+  id: Str,
+  acknowledgedByMembershipId: Str,
+  acknowledgedAt: Str,
+  actionTaken: Str,
+  outcome: Nullable(Str),
+});
+
+export const SafetySosAlertResponse = Type.Object({
+  id: Str,
+  providerEntityId: Str,
+  postedByMembershipId: Str,
+  postedAt: Str,
+  lastKnownVisitId: Nullable(Str),
+  lifecycleState: SosLifecycleState,
+  cancelWindowExpiredAt: Str,
+  cancelStatus: SosCancelStatus,
+  cancelAttemptedAt: Nullable(Str),
+  acknowledgedAt: Nullable(Str),
+  acknowledgedByMembershipId: Nullable(Str),
+  resolvedAt: Nullable(Str),
+  resolvedByMembershipId: Nullable(Str),
+  outcome: Nullable(SosOutcome),
+  resolutionNarrative: Nullable(Str),
+  resolutionNarrativeAvailable: Bool,
+  linkedIncidentId: Nullable(Str),
+  coordinatesCaptured: Bool,
+  version: IntNum,
+  stateHistory: Type.Array(SosStateHistoryEntry),
+  acknowledgments: Type.Array(SosAcknowledgmentEntry),
+});
+
+const LocationStreamSample = Type.Object({
+  id: Str,
+  sampledAt: Str,
+  latitude: NumSchema,
+  longitude: NumSchema,
+  accuracyM: NumSchema,
+});
+
+export const SosLocationStreamResponse = Type.Object({
+  sosAlertId: Str,
+  samples: Type.Array(LocationStreamSample),
+  next_cursor: Nullable(Str),
+  has_more: Bool,
+  auditWarningBanner: Str,
+});
+
+const ActiveSosAlertEntry = Type.Object({
+  id: Str,
+  postedByMembershipId: Str,
+  postedByFirstName: Str,
+  postedAt: Str,
+  lifecycleState: SosLifecycleState,
+  minutesOpen: NumSchema,
+  acknowledgedAt: Nullable(Str),
+});
+
+export const ActiveSosResponse = Type.Object({
+  alerts: Type.Array(ActiveSosAlertEntry),
+  fetchedAt: Str,
+});
+
+// rows 12-17: incidents
+const IncidentStateHistoryEntry = Type.Object({
+  fromState: Nullable(IncidentStateFull),
+  toState: IncidentStateFull,
+  transitionedAt: Str,
+  transitionedByMembershipId: Nullable(Str),
+  reason: Nullable(Str),
+});
+
+export const SafetyIncidentResponse = Type.Object({
+  id: Str,
+  providerEntityId: Str,
+  affectedClinicianMembershipId: Str,
+  reportedByMembershipId: Str,
+  category: IncidentCategory,
+  severity: IncidentSeverity,
+  visitId: Nullable(Str),
+  patientId: Nullable(Str),
+  occurredAt: Str,
+  reportedAt: Str,
+  locationDescription: Nullable(Str),
+  narrative: Nullable(Str),
+  narrativeAvailable: Bool,
+  witnesses: Nullable(Str),
+  oshaReportable: Bool,
+  oshaReportableSignedOffByMembershipId: Nullable(Str),
+  oshaReportableSignedOffAt: Nullable(Str),
+  workersCompClaimInitiated: Bool,
+  workersCompClaimReference: Nullable(Str),
+  linkedSosAlertId: Nullable(Str),
+  lifecycleState: IncidentStateFull,
+  submittedAt: Nullable(Str),
+  reviewedByMembershipId: Nullable(Str),
+  reviewedAt: Nullable(Str),
+  actionPlan: Nullable(Str),
+  actionPlanAvailable: Bool,
+  closedAt: Nullable(Str),
+  reopenReason: Nullable(Str),
+  version: IntNum,
+  stateHistory: Type.Array(IncidentStateHistoryEntry),
+});
+
+export const SafetyIncidentPageResponse = Type.Object({
+  data: Type.Array(SafetyIncidentResponse),
+  next_cursor: Nullable(Str),
+  has_more: Bool,
+});
+
+// rows 18-19: policy
+export const SafetyPolicyEffectiveResponse = Type.Object({
+  organizationId: Str,
+  versionId: Str,
+  effectiveFrom: Str,
+  effectiveTo: Nullable(Str),
+  midVisitCadenceMinutes: NumSchema,
+  midVisitMinVisitDurationMinutes: NumSchema,
+  preVisitWindowMinutes: NumSchema,
+  postVisitWindowMinutes: NumSchema,
+  gentleReminderMinutes: NumSchema,
+  supervisorAlertMinutes: NumSchema,
+  escalationMinutes: NumSchema,
+  sosEquivalentMinutes: NumSchema,
+  sosCancelWindowSeconds: NumSchema,
+  sosCancelRequiresBiometric: Bool,
+  sosContinuousLocationEnabled: Bool,
+  sosContinuousLocationSampleSeconds: NumSchema,
+  sosContinuousLocationMaxDurationHours: NumSchema,
+  sosTier1SlaSeconds: NumSchema,
+  sosTier2SlaSeconds: NumSchema,
+  sosTier3SlaSeconds: NumSchema,
+  subscriptionModel: SubscriptionModel,
+  afterHoursStartHour: NumSchema,
+  afterHoursEndHour: NumSchema,
+  oshaReportableAutoFlagCategories: Type.Array(IncidentCategory),
+});
+
+// rows 20-22: subscriptions
+export const SafetySubscriptionResponse = Type.Object({
+  id: Str,
+  supervisorMembershipId: Str,
+  clinicianMembershipId: Nullable(Str),
+  locationId: Nullable(Str),
+  providerEntityId: Nullable(Str),
+  scopeKind: SubscriptionScopeKind,
+  alertKinds: Type.Array(AlertKind),
+  isVacationForwarding: Bool,
+  vacationForwardToMembershipId: Nullable(Str),
+  createdAt: Str,
+});
+
+export const SafetySubscriptionPageResponse = Type.Object({
+  data: Type.Array(SafetySubscriptionResponse),
+  next_cursor: Nullable(Str),
+  has_more: Bool,
+});
+
+const CoverageGapEntry = Type.Object({
+  clinicianMembershipId: Str,
+  reason: CoverageGapReason,
+});
+
+export const DeleteSubscriptionResponse = Type.Object({
+  id: Str,
+  deactivatedAt: Str,
+  coverageGapsCreated: Type.Array(CoverageGapEntry),
+});
+
+// rows 23-25: high-risk areas
+export const SafetyHighRiskAreaResponse = Type.Object({
+  id: Str,
+  riskCategory: HighRiskCategory,
+  advisoryMessage: Str,
+  polygon: PolygonRings,
+  policyForVisitsToArea: HighRiskAreaPolicy,
+  effectiveFrom: Str,
+  effectiveTo: Nullable(Str),
+  createdByMembershipId: Nullable(Str),
+});
+
+export const SafetyHighRiskAreaPageResponse = Type.Object({
+  data: Type.Array(SafetyHighRiskAreaResponse),
+  next_cursor: Nullable(Str),
+  has_more: Bool,
+});
+
+// row 26: the supervisor board
+const LastKnownLocationEntry = Type.Object({
+  source: LocationSource,
+  sampledAt: Str,
+  ageMinutes: NumSchema,
+});
+
+const ClinicianStatusEntry = Type.Object({
+  membershipId: Str,
+  displayName: Str,
+  currentVisitId: Nullable(Str),
+  currentPatientFirstName: Nullable(Str),
+  lastKnownLocation: Nullable(LastKnownLocationEntry),
+  lastCheckInAt: Nullable(Str),
+  lastCheckInStatus: Nullable(CheckInStatus),
+  nextExpectedCheckInAt: Nullable(Str),
+  overdueState: OverdueBadge,
+  activeSosAlert: Nullable(
+    Type.Object({ id: Str, raisedAt: Str, lifecycleState: SosLifecycleState }),
+  ),
+  inHighRiskArea: Nullable(
+    Type.Object({ areaId: Str, riskCategory: HighRiskCategory, advisoryMessage: Str }),
+  ),
+  gpsSpoofSuspected: Bool,
+});
+
+export const SafetyDashboardResponse = Type.Object({
+  clinicians: Type.Array(ClinicianStatusEntry),
+  activeSosCount: NumSchema,
+  overdueCount: NumSchema,
+  fetchedAt: Str,
+});
+
+// rows 27-29: the clinician's own consent surface
+export const SafetyConsentResponse = Type.Object({
+  purpose: ConsentPurpose,
+  status: ConsentStatus,
+  grantedAt: Str,
+  revokedAt: Nullable(Str),
+  expiresAt: Nullable(Str),
+  acknowledgmentTextSnapshot: Str,
+  contactOnFile: Bool,
+});
+
+export const SafetyConsentSurfaceResponse = Type.Object({
+  consents: Type.Array(SafetyConsentResponse),
+  asOf: Str,
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _CheckIn = Conforms<Static<typeof SafetyCheckInResponse>, _SafetyCheckInView>;
+type _RecordCheckIn = Conforms<Static<typeof RecordCheckInResponse>, _RecordCheckInResult>;
+type _MyDay = Conforms<Static<typeof SafetyMyDayResponse>, _SafetyMyDayView>;
+type _RaiseSos = Conforms<Static<typeof RaiseSosResponse>, _RaiseSosResult>;
+type _CancelSos = Conforms<Static<typeof CancelSosResponse>, _CancelSosResult>;
+type _SosAlert = Conforms<Static<typeof SafetySosAlertResponse>, _SafetySosAlertView>;
+type _LocStream = Conforms<Static<typeof SosLocationStreamResponse>, _SosLocationStreamPage>;
+type _ActiveSos = Conforms<Static<typeof ActiveSosResponse>, _ActiveSosView>;
+type _Incident = Conforms<Static<typeof SafetyIncidentResponse>, _SafetyIncidentView>;
+type _IncidentPage = Conforms<
+  Static<typeof SafetyIncidentPageResponse>,
+  _CursorPage<_SafetyIncidentView>
+>;
+type _Policy = Conforms<Static<typeof SafetyPolicyEffectiveResponse>, _SafetyPolicyEffectiveDto>;
+type _Subscription = Conforms<Static<typeof SafetySubscriptionResponse>, _SafetySubscriptionView>;
+type _SubscriptionPage = Conforms<
+  Static<typeof SafetySubscriptionPageResponse>,
+  _CursorPage<_SafetySubscriptionView>
+>;
+type _DeleteSub = Conforms<Static<typeof DeleteSubscriptionResponse>, _DeleteSubscriptionResult>;
+type _Area = Conforms<Static<typeof SafetyHighRiskAreaResponse>, _SafetyHighRiskAreaView>;
+type _AreaPage = Conforms<
+  Static<typeof SafetyHighRiskAreaPageResponse>,
+  _CursorPage<_SafetyHighRiskAreaView>
+>;
+type _Dashboard = Conforms<Static<typeof SafetyDashboardResponse>, _SafetyDashboardSnapshot>;
+type _Consent = Conforms<Static<typeof SafetyConsentResponse>, _SafetyConsentView>;
+type _ConsentSurface = Conforms<
+  Static<typeof SafetyConsentSurfaceResponse>,
+  _SafetyConsentSurface
+>;

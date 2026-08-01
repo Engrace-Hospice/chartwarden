@@ -13,6 +13,18 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  BaaRecordView as ServiceBaaRecordView,
+  FeatureFlagView as ServiceFeatureFlagView,
+  KeyRingMetadataView as ServiceKeyRingMetadataView,
+  OnboardingTemplateView as ServiceOnboardingTemplateView,
+  SignupIntentView as ServiceSignupIntentView,
+  SupportSessionEventView as ServiceSupportSessionEventView,
+  SupportSessionView as ServiceSupportSessionView,
+  TenantInvitationView as ServiceTenantInvitationView,
+  TenantOverview as ServiceTenantOverview,
+  TenantSummaryView as ServiceTenantSummaryView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -352,6 +364,117 @@ export const FeatureFlagViewSchema = Type.Object({
   updatedAt: Type.String({ format: "date-time" }),
 });
 export const FeatureFlagListResponseSchema = CursorPageOf(FeatureFlagViewSchema);
+
+// §5.2 — full tenant overview (account + latest status_event + key_ring meta + onboarding + BAA + counts).
+export const TenantOverviewViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  orgSlug: Type.String(),
+  legalBusinessName: Type.String(),
+  status: Type.String(),
+  planLabel: Type.String(),
+  createdAt: Type.String({ format: "date-time" }),
+  updatedAt: Type.String({ format: "date-time" }),
+  latestStatusEvent: Type.Union([
+    Type.Object({
+      id: Type.String(),
+      toStatus: Type.String(),
+      occurredAt: Type.String({ format: "date-time" }),
+      reason: Type.String(),
+    }),
+    Type.Null(),
+  ]),
+  keyRing: Type.Union([
+    Type.Object({
+      currentDekVersion: Type.String(),
+      dekLastRotatedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+      destroyedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    }),
+    Type.Null(),
+  ]),
+  onboarding: Type.Object({
+    totalTasks: Type.Integer(),
+    doneTasks: Type.Integer(),
+    currentStep: Type.Union([Type.String(), Type.Null()]),
+  }),
+  baa: Type.Union([
+    Type.Object({ status: Type.String(), expiresOn: Type.Union([Type.String(), Type.Null()]) }),
+    Type.Null(),
+  ]),
+  activeGrants: Type.Integer(),
+  activeSessions: Type.Integer(),
+});
+
+// §3.5 — metadata-only key-ring view (ciphertext is NEVER exposed; `tenant_key_ring_metadata_v`).
+export const KeyRingMetadataViewSchema = Type.Object({
+  id: Type.String(),
+  tenantAccountId: Type.String(),
+  currentDekVersion: Type.String(),
+  currentDekKekId: Type.String(),
+  priorDekVersionCount: Type.Integer(),
+  dekCreatedAt: Type.String({ format: "date-time" }),
+  dekLastRotatedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  destroyedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  destructionCertificateId: Type.Union([Type.String(), Type.Null()]),
+});
+
+// ── §4.2 command acknowledgements (the worker-enqueue + synchronous-command routes' typed results) ──────
+/** provision / shred / dek-rotate → `{ tenantAccountId, jobId }` (the enqueued §4.3 job id). */
+export const TenantJobAckSchema = Type.Object({
+  tenantAccountId: Type.String(),
+  jobId: Type.String(),
+});
+/** status-transition / offboard → `{ tenantAccountId, status }` (the resulting lifecycle status). */
+export const TenantStatusAckSchema = Type.Object({
+  tenantAccountId: Type.String(),
+  status: Type.String(),
+});
+/** DELETE tenant-invitation → `{ id, status: 'revoked' }`. */
+export const RevokeInvitationAckSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Literal("revoked"),
+});
+/** start support session → `{ sessionId, expiresAt }`. */
+export const StartSessionAckSchema = Type.Object({
+  sessionId: Type.String(),
+  expiresAt: Type.String({ format: "date-time" }),
+});
+/** elevate support session → `{ elevationExpiresAt }`. */
+export const ElevateSessionAckSchema = Type.Object({
+  elevationExpiresAt: Type.String({ format: "date-time" }),
+});
+/** close support session → `{ sessionId, closeReason }`. */
+export const CloseSessionAckSchema = Type.Object({
+  sessionId: Type.String(),
+  closeReason: Type.String(),
+});
+/** qualify signup intent → `{ intentId, intentStatus, jobId }` (enqueues the provision flow). */
+export const QualifyIntentAckSchema = Type.Object({
+  intentId: Type.String(),
+  intentStatus: Type.String(),
+  jobId: Type.String(),
+});
+/** reject signup intent → `{ intentId, intentStatus }`. */
+export const RejectIntentAckSchema = Type.Object({
+  intentId: Type.String(),
+  intentStatus: Type.String(),
+});
+
+// Compile-time pins: each read DTO structurally conforms to its `service.ts` view (drift = a type error).
+type Conforms<T extends V, V> = T;
+type _TenantSummary = Conforms<Static<typeof TenantSummaryViewSchema>, ServiceTenantSummaryView>;
+type _TenantOverview = Conforms<Static<typeof TenantOverviewViewSchema>, ServiceTenantOverview>;
+type _KeyRing = Conforms<Static<typeof KeyRingMetadataViewSchema>, ServiceKeyRingMetadataView>;
+type _Invitation = Conforms<Static<typeof TenantInvitationViewSchema>, ServiceTenantInvitationView>;
+type _Template = Conforms<Static<typeof OnboardingTemplateViewSchema>, ServiceOnboardingTemplateView>;
+type _Session = Conforms<Static<typeof SupportSessionViewSchema>, ServiceSupportSessionView>;
+type _SessionEvent = Conforms<
+  Static<typeof SupportSessionEventViewSchema>,
+  ServiceSupportSessionEventView
+>;
+type _Intent = Conforms<Static<typeof SignupIntentViewSchema>, ServiceSignupIntentView>;
+type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
+type _Flag = Conforms<Static<typeof FeatureFlagViewSchema>, ServiceFeatureFlagView>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope (M22 `parse`). */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

@@ -629,6 +629,762 @@ import {
   TransferOutSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
 import {
+  AuthContextResponseSchema as M2AuthContextResponseSchema,
+  CollaboratorConsumeRequestSchema as M2CollaboratorConsumeRequestSchema,
+  CollaboratorConsumeResponseSchema as M2CollaboratorConsumeResponseSchema,
+  CollaboratorInviteRequestSchema as M2CollaboratorInviteRequestSchema,
+  CollaboratorInviteResponseSchema as M2CollaboratorInviteResponseSchema,
+  InvitationAcceptedResponseSchema as M2InvitationAcceptedResponseSchema,
+  InvitationAcceptRequestSchema as M2InvitationAcceptRequestSchema,
+  InvitationCreatedResponseSchema as M2InvitationCreatedResponseSchema,
+  InvitationRescindedResponseSchema as M2InvitationRescindedResponseSchema,
+  MemberPatchRequestSchema as M2MemberPatchRequestSchema,
+  MemberRevokedResponseSchema as M2MemberRevokedResponseSchema,
+  MembershipListResponseSchema as M2MembershipListResponseSchema,
+  MembershipViewSchema as M2MembershipViewSchema,
+  MembersListQuerySchema as M2MembersListQuerySchema,
+  MembersListResponseSchema as M2MembersListResponseSchema,
+  OrgBindingResponseSchema as M2OrgBindingResponseSchema,
+  OrgInvitationCreateRequestSchema as M2OrgInvitationCreateRequestSchema,
+  SelectOrganizationRequestSchema as M2SelectOrganizationRequestSchema,
+  StepUpInitiateRequestSchema as M2StepUpInitiateRequestSchema,
+  StepUpInitiateResponseSchema as M2StepUpInitiateResponseSchema,
+  StepUpVerifyRequestSchema as M2StepUpVerifyRequestSchema,
+  StepUpVerifyResponseSchema as M2StepUpVerifyResponseSchema,
+  UserDeactivateRequestSchema as M2UserDeactivateRequestSchema,
+  UserDeactivatedResponseSchema as M2UserDeactivatedResponseSchema,
+} from "../../apps/backend/src/modules/02-identity/routes/identity-typebox";
+
+// M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
+// Every symbol M3-aliased. Response DTOs mirror ../authz-ports views (RoleView, MembershipRoleView,
+// BreakGlassView, EngagementView, EngagementSummary) + the @wardenx/auth permission mirror, each pinned
+// by a compile-time `Conforms` alias in the source file.
+import {
+  // request bodies
+  AssignRoleBody as M3AssignRoleBody,
+  CreateEngagementBody as M3CreateEngagementBody,
+  CreateRoleBody as M3CreateRoleBody,
+  EnrollAuditorBody as M3EnrollAuditorBody,
+  InvokeBreakGlassBody as M3InvokeBreakGlassBody,
+  UpdateEngagementBody as M3UpdateEngagementBody,
+  UpdateRoleBody as M3UpdateRoleBody,
+  // response DTOs
+  AuditorEnrolledResponseSchema as M3AuditorEnrolledResponseSchema,
+  BreakGlassInvokedResponseSchema as M3BreakGlassInvokedResponseSchema,
+  BreakGlassListResponseSchema as M3BreakGlassListResponseSchema,
+  BreakGlassStatusResponseSchema as M3BreakGlassStatusResponseSchema,
+  EngagementResponseSchema as M3EngagementResponseSchema,
+  EngagementSummaryResponseSchema as M3EngagementSummaryResponseSchema,
+  MePermissionsResponseSchema as M3MePermissionsResponseSchema,
+  MembershipRoleListResponseSchema as M3MembershipRoleListResponseSchema,
+  MembershipRoleResponseSchema as M3MembershipRoleResponseSchema,
+  PermissionsResponseSchema as M3PermissionsResponseSchema,
+  RoleDeletedResponseSchema as M3RoleDeletedResponseSchema,
+  RoleGrantRevokedResponseSchema as M3RoleGrantRevokedResponseSchema,
+  RoleListResponseSchema as M3RoleListResponseSchema,
+  RoleResponseSchema as M3RoleResponseSchema,
+} from "../../apps/backend/src/modules/03-authorization/routes/authz-typebox";
+
+import {
+  AccountingQuerySchema as M4EAccountingQuerySchema,
+  AccountingResponseSchema as M4EAccountingResponseSchema,
+  AuditEventSchema as M4EAuditEventSchema,
+  AuditEventsQuerySchema as M4EAuditEventsQuerySchema,
+  AuditEventsResponseSchema as M4EAuditEventsResponseSchema,
+  PatientAccessQuerySchema as M4EPatientAccessQuerySchema,
+  PatientAccessResponseSchema as M4EPatientAccessResponseSchema,
+} from "../../apps/backend/src/modules/04-audit/routes/audit-typebox";
+
+// M05 Patient & Demographics — OpenAPI enrichment imports. EVERY symbol is M5E-aliased because the
+// M5 patient schemas are ALREADY imported un-aliased in scripts/openapi/enrichments.ts; the M5E prefix
+// avoids a redeclaration collision when this block is merged in via a later Object.assign.
+import {
+  AddAddressResponseSchema as M5EAddAddressResponseSchema,
+  AddressBodySchema as M5EAddressBodySchema,
+  AdmitBodySchema as M5EAdmitBodySchema,
+  AdmitResultResponseSchema as M5EAdmitResultResponseSchema,
+  AmendmentBodySchema as M5EAmendmentBodySchema,
+  AmendmentResponseSchema as M5EAmendmentResponseSchema,
+  CensusMetricsResponseSchema as M5ECensusMetricsResponseSchema,
+  DenyBodySchema as M5EDenyBodySchema,
+  PatientAddressesResponseSchema as M5EPatientAddressesResponseSchema,
+  PatientCareTeamResponseSchema as M5EPatientCareTeamResponseSchema,
+  PatientDemographicsSchema as M5EPatientDemographicsSchema,
+  PatientIdentifiersResponseSchema as M5EPatientIdentifiersResponseSchema,
+  PatientListQuerySchema as M5EPatientListQuerySchema,
+  PatientListResponseSchema as M5EPatientListResponseSchema,
+  PatientPayersResponseSchema as M5EPatientPayersResponseSchema,
+  PatientPrivacyFlagsResponseSchema as M5EPatientPrivacyFlagsResponseSchema,
+  PatientSummarySchema as M5EPatientSummarySchema,
+} from "../../apps/backend/src/modules/05-patient/routes/patient-typebox";
+
+// M15 Discipline Care Plans — request schemas (§4.2) + response DTOs (§4.1 views, pinned by `Conforms`
+// in m15-typebox.ts). Every symbol M15-aliased. Merge into the existing top-of-file import in
+// scripts/openapi/enrichments.ts (this REPLACES the current M15 import block — it now also pulls the
+// response DTOs). The later `Object.assign` (m15-block.ts) wins over the earlier M15 entries.
+import {
+  // request bodies / list queries
+  AmendAssessmentBody as M15AmendAssessmentBody,
+  CreateAssessmentBody as M15CreateAssessmentBody,
+  CreateGoalBody as M15CreateGoalBody,
+  CreateHourEntryBody as M15CreateHourEntryBody,
+  CreateInterventionBody as M15CreateInterventionBody,
+  CreateSupervisoryVisitBody as M15CreateSupervisoryVisitBody,
+  CreateVolunteerAssignmentBody as M15CreateVolunteerAssignmentBody,
+  CreateVolunteerGateBody as M15CreateVolunteerGateBody,
+  FinalizeVersionBody as M15FinalizeVersionBody,
+  GateListQuerySchema as M15GateListQuerySchema,
+  HourRatioQuerySchema as M15HourRatioQuerySchema,
+  PlanListQuerySchema as M15PlanListQuerySchema,
+  RelevantElementsQuerySchema as M15RelevantElementsQuerySchema,
+  RevokeVolunteerGateBody as M15RevokeVolunteerGateBody,
+  RiskFactorQuerySchema as M15RiskFactorQuerySchema,
+  SignVersionBody as M15SignVersionBody,
+  SupervisoryCadenceQuerySchema as M15SupervisoryCadenceQuerySchema,
+  UpdateGoalBody as M15UpdateGoalBody,
+  UpdateInterventionBody as M15UpdateInterventionBody,
+  UpdateVolunteerAssignmentBody as M15UpdateVolunteerAssignmentBody,
+  UpdateVolunteerGateBody as M15UpdateVolunteerGateBody,
+  VersionListQuerySchema as M15VersionListQuerySchema,
+  VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
+  // response DTOs (§4.2)
+  AideSupervisoryVisitViewResponseSchema as M15AideSupervisoryVisitViewResponseSchema,
+  DisciplineAssessmentViewResponseSchema as M15DisciplineAssessmentViewResponseSchema,
+  DisciplineGoalViewResponseSchema as M15DisciplineGoalViewResponseSchema,
+  DisciplineInterventionViewResponseSchema as M15DisciplineInterventionViewResponseSchema,
+  DisciplinePlanDetailResponseSchema as M15DisciplinePlanDetailResponseSchema,
+  DisciplinePlanListPageResponseSchema as M15DisciplinePlanListPageResponseSchema,
+  DisciplinePlanSummaryResponseSchema as M15DisciplinePlanSummaryResponseSchema,
+  DisciplinePlanVersionDetailResponseSchema as M15DisciplinePlanVersionDetailResponseSchema,
+  DisciplinePlanVersionListPageResponseSchema as M15DisciplinePlanVersionListPageResponseSchema,
+  RelevantElementsPageResponseSchema as M15RelevantElementsPageResponseSchema,
+  SupervisoryCadencePageResponseSchema as M15SupervisoryCadencePageResponseSchema,
+  VolunteerAssignmentViewResponseSchema as M15VolunteerAssignmentViewResponseSchema,
+  VolunteerComplianceGateListPageResponseSchema as M15VolunteerComplianceGateListPageResponseSchema,
+  VolunteerComplianceGateViewResponseSchema as M15VolunteerComplianceGateViewResponseSchema,
+  VolunteerEffectiveStatusViewResponseSchema as M15VolunteerEffectiveStatusViewResponseSchema,
+  VolunteerHourEntryViewResponseSchema as M15VolunteerHourEntryViewResponseSchema,
+} from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
+
+// M16 Bereavement — enrichment imports. Request schemas (already imported in enrichments.ts under these
+// same M16* aliases — dedupe on merge) + the new §4.1 RESPONSE DTOs. Every symbol M16-aliased.
+import {
+  // ── request bodies + list queries (§4.2) ──
+  AssignCounselorBody as M16AssignCounselorBody,
+  AssignVolunteerBody as M16AssignVolunteerBody,
+  CancelOutreachBody as M16CancelOutreachBody,
+  CloseEarlyBody as M16CloseEarlyBody,
+  CompleteOutreachBody as M16CompleteOutreachBody,
+  ConfirmContactBody as M16ConfirmContactBody,
+  CosignCloseBody as M16CosignCloseBody,
+  CounselorDashboardQuerySchema as M16CounselorDashboardQuerySchema,
+  CreateContactBody as M16CreateContactBody,
+  FlagComplicatedGriefBody as M16FlagComplicatedGriefBody,
+  InitiateContactBody as M16InitiateContactBody,
+  LateAttemptBody as M16LateAttemptBody,
+  LogDirectContactBody as M16LogDirectContactBody,
+  MarkDeceasedBody as M16MarkDeceasedBody,
+  MarkUnreachableBody as M16MarkUnreachableBody,
+  OptOutBody as M16OptOutBody,
+  OutreachListQuerySchema as M16OutreachListQuerySchema,
+  OutreachOutcomeBody as M16OutreachOutcomeBody,
+  PausePlanBody as M16PausePlanBody,
+  PlanListQuerySchema as M16PlanListQuerySchema,
+  RecomputeRiskBody as M16RecomputeRiskBody,
+  ReferExternalBody as M16ReferExternalBody,
+  RegenerateScheduleBody as M16RegenerateScheduleBody,
+  RescindOptOutBody as M16RescindOptOutBody,
+  ResumePlanBody as M16ResumePlanBody,
+  RiskScoreListQuerySchema as M16RiskScoreListQuerySchema,
+  SeedRosterAndScheduleBody as M16SeedRosterAndScheduleBody,
+  StartOutreachBody as M16StartOutreachBody,
+  SupervisorDashboardQuerySchema as M16SupervisorDashboardQuerySchema,
+  UpdateContactBody as M16UpdateContactBody,
+  // ── §4.1 response DTOs (F0 enrichment; pinned to the read/write service views by Conforms) ──
+  BereavedContactRowViewResponseSchema as M16ContactRowResponse,
+  BereavementClosureViewResponseSchema as M16ClosureResponse,
+  BereavementContactLogViewResponseSchema as M16ContactLogResponse,
+  BereavementOutreachPageResponseSchema as M16OutreachPageResponse,
+  BereavementOutreachRowViewResponseSchema as M16OutreachRowResponse,
+  BereavementPlanDetailResponseSchema as M16PlanDetailResponse,
+  BereavementPlanPageResponseSchema as M16PlanPageResponse,
+  BereavementRiskScorePageResponseSchema as M16RiskScorePageResponse,
+  BereavementRiskScoreViewResponseSchema as M16RiskScoreResponse,
+  CounselorDashboardViewResponseSchema as M16CounselorDashboardResponse,
+  PlanActivationViewResponseSchema as M16PlanActivationResponse,
+  ScheduleRegenerationViewResponseSchema as M16ScheduleRegenResponse,
+  SupervisorDashboardViewResponseSchema as M16SupervisorDashboardResponse,
+} from "../../apps/backend/src/modules/16-bereavement/routes/m16-typebox";
+
+// M19 On-Call Triage — enrichment imports. Replaces the existing M19 import block in
+// scripts/openapi/enrichments.ts: it re-exports every §4.2 request schema PLUS the new §4.2 response DTOs
+// (pinned to the read/write-service views by `Conforms` in m19-typebox), every symbol M19-aliased.
+import {
+  // request bodies / queries (unchanged — same exported schemas the route handlers parse())
+  AbandonCallBody as M19AbandonCallBody,
+  AcknowledgeEscalationBody as M19AcknowledgeEscalationBody,
+  AnswerWriteResultResponse as M19AnswerWriteResultResponse,
+  ApplyProtocolBody as M19ApplyProtocolBody,
+  AwaitingCallbackBody as M19AwaitingCallbackBody,
+  CancelShiftBody as M19CancelShiftBody,
+  CorrectAnswerBody as M19CorrectAnswerBody,
+  CreateProtocolBody as M19CreateProtocolBody,
+  CreateShiftBody as M19CreateShiftBody,
+  CreateVendorBindingBody as M19CreateVendorBindingBody,
+  CurrentOnCallQuery as M19CurrentOnCallQuery,
+  CurrentOnCallResponse as M19CurrentOnCallResponse,
+  DocumentCallBody as M19DocumentCallBody,
+  EscalateBody as M19EscalateBody,
+  EscalationInboxItemResponse as M19EscalationInboxItemResponse,
+  EscalationInboxPageResponse as M19EscalationInboxPageResponse,
+  IdentifyPatientBody as M19IdentifyPatientBody,
+  ListEscalationsQuery as M19ListEscalationsQuery,
+  ListProtocolsQuery as M19ListProtocolsQuery,
+  ListShiftsQuery as M19ListShiftsQuery,
+  ListTriageCallsQuery as M19ListTriageCallsQuery,
+  OnCallShiftPageResponse as M19OnCallShiftPageResponse,
+  OnCallShiftViewResponse as M19OnCallShiftViewResponse,
+  OncallPolicyResponse as M19OncallPolicyResponse,
+  OpenTriageCallBody as M19OpenTriageCallBody,
+  OpenTriageCallResultResponse as M19OpenTriageCallResultResponse,
+  PaperReentryBody as M19PaperReentryBody,
+  PaperReentryWorklistResponse as M19PaperReentryWorklistResponse,
+  PatchOncallPolicyBody as M19PatchOncallPolicyBody,
+  PatchProtocolBody as M19PatchProtocolBody,
+  PatchProtocolQuestionBody as M19PatchProtocolQuestionBody,
+  PatchVendorBindingBody as M19PatchVendorBindingBody,
+  PolicyQuery as M19PolicyQuery,
+  PortalRecentPageResponse as M19PortalRecentPageResponse,
+  PortalRecentQuery as M19PortalRecentQuery,
+  ProtocolQuestionBody as M19ProtocolQuestionBody,
+  RecordAnswerBody as M19RecordAnswerBody,
+  ResolveEscalationBody as M19ResolveEscalationBody,
+  SelectDispositionBody as M19SelectDispositionBody,
+  ShiftTransitionBody as M19ShiftTransitionBody,
+  TriageCallListPageResponse as M19TriageCallListPageResponse,
+  TriageCallResponse as M19TriageCallResponse,
+  TriageProtocolPageResponse as M19TriageProtocolPageResponse,
+  TriageProtocolViewResponse as M19TriageProtocolViewResponse,
+  TriageTranscriptResponse as M19TriageTranscriptResponse,
+  VendorBindingListResponse as M19VendorBindingListResponse,
+  VendorBindingViewResponse as M19VendorBindingViewResponse,
+} from "../../apps/backend/src/modules/19-oncall/routes/m19-typebox";
+
+// M20 Field Safety — the §4.1 request bodies/queries the route handlers `parse(...)`/`parseQuery(...)`
+// plus the §4.2 response DTOs (pinned to the read/write service views by `Conforms`). All symbols
+// M20-aliased. Path is relative to scripts/openapi/enrichments.ts.
+import {
+  // request bodies
+  AcknowledgeSosBody as M20AcknowledgeSosBody,
+  AmendCheckInBody as M20AmendCheckInBody,
+  CancelSosBody as M20CancelSosBody,
+  CreateHighRiskAreaBody as M20CreateHighRiskAreaBody,
+  CreateIncidentBody as M20CreateIncidentBody,
+  CreateSubscriptionBody as M20CreateSubscriptionBody,
+  GrantConsentBody as M20GrantConsentBody,
+  OshaSignoffBody as M20OshaSignoffBody,
+  PatchHighRiskAreaBody as M20PatchHighRiskAreaBody,
+  PatchIncidentBody as M20PatchIncidentBody,
+  PatchPolicyBody as M20PatchPolicyBody,
+  RaiseSosBody as M20RaiseSosBody,
+  RecordCheckInBody as M20RecordCheckInBody,
+  ResolveSosBody as M20ResolveSosBody,
+  RevokeConsentBody as M20RevokeConsentBody,
+  SubmitIncidentBody as M20SubmitIncidentBody,
+  TransitionIncidentBody as M20TransitionIncidentBody,
+  // list queries
+  CheckInListQuery as M20CheckInListQuery,
+  ConsentQuery as M20ConsentQuery,
+  DashboardQuery as M20DashboardQuery,
+  HighRiskAreaListQuery as M20HighRiskAreaListQuery,
+  IncidentListQuery as M20IncidentListQuery,
+  LocationStreamQuery as M20LocationStreamQuery,
+  PolicyQuery as M20PolicyQuery,
+  SubscriptionListQuery as M20SubscriptionListQuery,
+  // response DTOs
+  ActiveSosResponse as M20ActiveSosResponse,
+  CancelSosResponse as M20CancelSosResponse,
+  DeleteSubscriptionResponse as M20DeleteSubscriptionResponse,
+  RaiseSosResponse as M20RaiseSosResponse,
+  RecordCheckInResponse as M20RecordCheckInResponse,
+  SafetyCheckInResponse as M20SafetyCheckInResponse,
+  SafetyConsentResponse as M20SafetyConsentResponse,
+  SafetyConsentSurfaceResponse as M20SafetyConsentSurfaceResponse,
+  SafetyDashboardResponse as M20SafetyDashboardResponse,
+  SafetyHighRiskAreaPageResponse as M20SafetyHighRiskAreaPageResponse,
+  SafetyHighRiskAreaResponse as M20SafetyHighRiskAreaResponse,
+  SafetyIncidentPageResponse as M20SafetyIncidentPageResponse,
+  SafetyIncidentResponse as M20SafetyIncidentResponse,
+  SafetyMyDayResponse as M20SafetyMyDayResponse,
+  SafetyPolicyEffectiveResponse as M20SafetyPolicyEffectiveResponse,
+  SafetySosAlertResponse as M20SafetySosAlertResponse,
+  SafetySubscriptionPageResponse as M20SafetySubscriptionPageResponse,
+  SafetySubscriptionResponse as M20SafetySubscriptionResponse,
+  SosLocationStreamResponse as M20SosLocationStreamResponse,
+} from "../../apps/backend/src/modules/20-field-safety/routes/m20-typebox";
+
+// M21 Supplies, DME & Comfort Kits — OpenAPI enrichment imports (paste into scripts/openapi/enrichments.ts).
+// All request schemas + the §4.2 response DTOs live in the module's TypeBox file; every symbol is M21-aliased.
+import {
+  // request bodies (§4.2)
+  AssignRetrieverBody as M21AssignRetrieverBody,
+  AssignVendorBody as M21AssignVendorBody,
+  CancelRequestBody as M21CancelRequestBody,
+  ComfortKitReturnDetailSchema as M21ComfortKitReturnDetailSchema,
+  ComfortKitReturnListResponseSchema as M21ComfortKitReturnListResponseSchema,
+  ComfortKitTemplateListResponseSchema as M21ComfortKitTemplateListResponseSchema,
+  ComfortKitTemplateViewSchema as M21ComfortKitTemplateViewSchema,
+  ConfirmReceivedBody as M21ConfirmReceivedBody,
+  CreateDispatchBody as M21CreateDispatchBody,
+  CreateReturnBody as M21CreateReturnBody,
+  CreateSupplyItemBody as M21CreateSupplyItemBody,
+  CreateSupplyRequestBody as M21CreateSupplyRequestBody,
+  CreateSupplyRequestResultSchema as M21CreateSupplyRequestResultSchema,
+  CreateTemplateBody as M21CreateTemplateBody,
+  DeclareUnreturnableBody as M21DeclareUnreturnableBody,
+  DeployAtPatientBody as M21DeployAtPatientBody,
+  DispatchDetailSchema as M21DispatchDetailSchema,
+  DispatchListResponseSchema as M21DispatchListResponseSchema,
+  ListDispatchesQuery as M21ListDispatchesQuery,
+  ListParStockQuery as M21ListParStockQuery,
+  ListReturnsQuery as M21ListReturnsQuery,
+  ListRoutingRulesQuery as M21ListRoutingRulesQuery,
+  ListSupplyItemsQuery as M21ListSupplyItemsQuery,
+  ListSupplyRequestsQuery as M21ListSupplyRequestsQuery,
+  ListTemplatesQuery as M21ListTemplatesQuery,
+  MarkDeliveredBody as M21MarkDeliveredBody,
+  MarkInTransitBody as M21MarkInTransitBody,
+  MarkOrderedBody as M21MarkOrderedBody,
+  ObserveParStockBody as M21ObserveParStockBody,
+  ParStockListResponseSchema as M21ParStockListResponseSchema,
+  ParStockViewSchema as M21ParStockViewSchema,
+  PerpetualLogViewSchema as M21PerpetualLogViewSchema,
+  ReconcileReturnBody as M21ReconcileReturnBody,
+  ReconcileReturnResultSchema as M21ReconcileReturnResultSchema,
+  RetireSupplyItemBody as M21RetireSupplyItemBody,
+  ReturnRequestBody as M21ReturnRequestBody,
+  SupersedeTemplateBody as M21SupersedeTemplateBody,
+  SupplyItemListResponseSchema as M21SupplyItemListResponseSchema,
+  SupplyItemViewSchema as M21SupplyItemViewSchema,
+  SupplyRequestDetailSchema as M21SupplyRequestDetailSchema,
+  SupplyRequestListResponseSchema as M21SupplyRequestListResponseSchema,
+  UpdateParStockBody as M21UpdateParStockBody,
+  UpsertRoutingRuleBody as M21UpsertRoutingRuleBody,
+  UpsertTenantSupplyItemBody as M21UpsertTenantSupplyItemBody,
+  VendorRoutingRuleListResponseSchema as M21VendorRoutingRuleListResponseSchema,
+  VendorRoutingRuleViewSchema as M21VendorRoutingRuleViewSchema,
+} from "../../apps/backend/src/modules/21-supplies/routes/m21-typebox";
+
+// M25 Remittance & Denials — OpenAPI enrichment imports (every symbol M25-aliased).
+// Append to scripts/openapi/enrichments.ts's import section.
+import {
+  // request bodies
+  AdjustmentOverrideRequestSchema as M25AdjustmentOverrideRequestSchema,
+  AppealAttachRequestSchema as M25AppealAttachRequestSchema,
+  AppealCreateRequestSchema as M25AppealCreateRequestSchema,
+  AppealDecideRequestSchema as M25AppealDecideRequestSchema,
+  AppealSubmitRequestSchema as M25AppealSubmitRequestSchema,
+  AppealWithdrawRequestSchema as M25AppealWithdrawRequestSchema,
+  DenialAssignRequestSchema as M25DenialAssignRequestSchema,
+  DenialCloseWriteOffRequestSchema as M25DenialCloseWriteOffRequestSchema,
+  DenialEscalateRequestSchema as M25DenialEscalateRequestSchema,
+  DenialReopenRequestSchema as M25DenialReopenRequestSchema,
+  DenialResolveRequestSchema as M25DenialResolveRequestSchema,
+  ManualMatchRequestSchema as M25ManualMatchRequestSchema,
+  TaxonomyOverlayPatchSchema as M25TaxonomyOverlayPatchSchema,
+  // list query
+  M25ListQuerySchema as M25ListQuerySchema,
+  // list/page responses
+  AppealSummaryPageSchema as M25AppealSummaryPageSchema,
+  DenialWorklistPageSchema as M25DenialWorklistPageSchema,
+  RemittanceAdviceSummaryPageSchema as M25RemittanceAdviceSummaryPageSchema,
+  RemittanceLineSummaryPageSchema as M25RemittanceLineSummaryPageSchema,
+  // detail responses
+  AppealDetailSchema as M25AppealDetailSchema,
+  DenialWorklistItemSchema as M25DenialWorklistItemSchema,
+  RemittanceAdviceSummarySchema as M25RemittanceAdviceSummarySchema,
+  RemittanceLineSummarySchema as M25RemittanceLineSummarySchema,
+  TaxonomyMergedViewSchema as M25TaxonomyMergedViewSchema,
+  // mutation / seam / ad-hoc responses
+  AdjustmentOverrideResponseSchema as M25AdjustmentOverrideResponseSchema,
+  DenialMetricsViewSchema as M25DenialMetricsViewSchema,
+  ManualMatchResponseSchema as M25ManualMatchResponseSchema,
+  PrLedgerItemsResponseSchema as M25PrLedgerItemsResponseSchema,
+  RemittanceAdviceReaderResponseSchema as M25RemittanceAdviceReaderResponseSchema,
+  ReplayQueuedResponseSchema as M25ReplayQueuedResponseSchema,
+  VersionedResultSchema as M25VersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+
+// M26 Cap Management — §4.2 request/response schemas. Bodies are the @wardenx/cap-management contracts;
+// responses mirror the read/write-service VIEW interfaces (the shapes the handlers actually return),
+// pinned by Conforms in m26-typebox.ts. Every symbol is M26-aliased.
+import {
+  // request bodies
+  AcknowledgeEventRequest as M26AcknowledgeEventRequest,
+  AmendConstantRequest as M26AmendConstantRequest,
+  FinalizeSettlementRequest as M26FinalizeSettlementRequest,
+  LockMethodologyRequest as M26LockMethodologyRequest,
+  OpenCapPeriodRequest as M26OpenCapPeriodRequest,
+  PsrImportRequest as M26PsrImportRequest,
+  PublishConstantRequest as M26PublishConstantRequest,
+  ReopenCapPeriodRequest as M26ReopenCapPeriodRequest,
+  ResolveVarianceRequest as M26ResolveVarianceRequest,
+  // response DTOs (service views)
+  CapAccrualLinePageResponse as M26AccrualLinePageResponse,
+  CapDashboardViewDto as M26DashboardViewDto,
+  CapInpatientAccrualViewDto as M26InpatientAccrualViewDto,
+  CapPatientAccrualViewDto as M26PatientAccrualViewDto,
+  CapPeriodViewDto as M26PeriodViewDto,
+  CapPeriodViewListResponse as M26PeriodViewListResponse,
+  CapPlatformConstantViewListResponse as M26PlatformConstantViewListResponse,
+  CapProjectionViewDto as M26ProjectionViewDto,
+  CapProjectionViewListResponse as M26ProjectionViewListResponse,
+  CapPsrImportQueuedResponse as M26PsrImportQueuedResponse,
+  CapPsrImportViewDto as M26PsrImportViewDto,
+  CapPsrVarianceViewListResponse as M26PsrVarianceViewListResponse,
+  CapPublishConstantAckResponse as M26PublishConstantAckResponse,
+  CapSettlementViewDto as M26SettlementViewDto,
+  CapThresholdEventViewListResponse as M26ThresholdEventViewListResponse,
+} from "../../apps/backend/src/modules/26-cap/routes/m26-typebox";
+
+// M27 Cost Report (Form CMS-1984-14; §4.1) — request bodies/queries + §4.2 response DTOs.
+// Paste into scripts/openapi/enrichments.ts (replaces/extends the existing partial M27 import block).
+import {
+  AddBadDebtBodySchema as M27AddBadDebtBodySchema,
+  AllocationAcceptedResponseSchema as M27AllocationAcceptedResponseSchema,
+  ApplyMappingBodySchema as M27ApplyMappingBodySchema,
+  ApproveForSubmitBodySchema as M27ApproveForSubmitBodySchema,
+  BadDebtRecordListResponseSchema as M27BadDebtRecordListResponseSchema,
+  BadDebtRecordResponseSchema as M27BadDebtRecordResponseSchema,
+  ComplianceWindowOrNullResponseSchema as M27ComplianceWindowOrNullResponseSchema,
+  ComplianceWindowResponseSchema as M27ComplianceWindowResponseSchema,
+  CostCenterMappingListResponseSchema as M27CostCenterMappingListResponseSchema,
+  CostReportDetailResponseSchema as M27CostReportDetailResponseSchema,
+  CostReportListQuerySchema as M27CostReportListQuerySchema,
+  CostReportPageResponseSchema as M27CostReportPageResponseSchema,
+  CreateCostReportBodySchema as M27CreateCostReportBodySchema,
+  CreateValidationRuleBodySchema as M27CreateValidationRuleBodySchema,
+  DeadlineExtensionBodySchema as M27DeadlineExtensionBodySchema,
+  EcrSubmissionListResponseSchema as M27EcrSubmissionListResponseSchema,
+  EcrSubmissionResponseSchema as M27EcrSubmissionResponseSchema,
+  ImportJobAcceptedResponseSchema as M27ImportJobAcceptedResponseSchema,
+  ManualTrialBalanceBodySchema as M27ManualTrialBalanceBodySchema,
+  ManualWageDataBodySchema as M27ManualWageDataBodySchema,
+  MappingPreviewResponseSchema as M27MappingPreviewResponseSchema,
+  OverrideValidationResultBodySchema as M27OverrideValidationResultBodySchema,
+  PatchCostReportBodySchema as M27PatchCostReportBodySchema,
+  PreviewMappingBodySchema as M27PreviewMappingBodySchema,
+  PutWorksheetBodySchema as M27PutWorksheetBodySchema,
+  RecordAcknowledgmentBodySchema as M27RecordAcknowledgmentBodySchema,
+  RefreshInputsAcceptedResponseSchema as M27RefreshInputsAcceptedResponseSchema,
+  ReopenBodySchema as M27ReopenBodySchema,
+  ResetMappingBodySchema as M27ResetMappingBodySchema,
+  SnapshotDetailResponseSchema as M27SnapshotDetailResponseSchema,
+  SnapshotSummaryListResponseSchema as M27SnapshotSummaryListResponseSchema,
+  StatisticDataOrNullResponseSchema as M27StatisticDataOrNullResponseSchema,
+  StatisticsRefreshAcceptedResponseSchema as M27StatisticsRefreshAcceptedResponseSchema,
+  SubmitBodySchema as M27SubmitBodySchema,
+  SubmitPastDeadlineBodySchema as M27SubmitPastDeadlineBodySchema,
+  TrialBalanceImportListResponseSchema as M27TrialBalanceImportListResponseSchema,
+  TrialBalanceImportResponseSchema as M27TrialBalanceImportResponseSchema,
+  UpdateBadDebtBodySchema as M27UpdateBadDebtBodySchema,
+  UpdateValidationRuleBodySchema as M27UpdateValidationRuleBodySchema,
+  ValidationJobAcceptedResponseSchema as M27ValidationJobAcceptedResponseSchema,
+  ValidationOverrideResponseSchema as M27ValidationOverrideResponseSchema,
+  ValidationRuleListResponseSchema as M27ValidationRuleListResponseSchema,
+  ValidationRuleResponseSchema as M27ValidationRuleResponseSchema,
+  ValidationRunDetailResponseSchema as M27ValidationRunDetailResponseSchema,
+  ValidationRunSummaryListResponseSchema as M27ValidationRunSummaryListResponseSchema,
+  WageDataImportListResponseSchema as M27WageDataImportListResponseSchema,
+  WageDataImportResponseSchema as M27WageDataImportResponseSchema,
+  WorksheetResponseSchema as M27WorksheetResponseSchema,
+} from "../../apps/backend/src/modules/27-cost-report/routes/cost-report-typebox";
+
+// M30 HQRP & Quality — imports for the 3 closing enrichment entries.
+//
+// The 3 previously-unenriched routes are all pure state-transition POSTs that carry NO request
+// body and NO query — the transition is keyed only on the :incidentId path param (submit/close) or
+// on nothing at all (risk-register refresh), and the service methods take (actor[, incidentId])
+// with no wire payload. There is therefore no body/query schema to reference and no new response
+// DTO to author, so these entries are `summary`-only and NO import is required.
+//
+// (Left intentionally import-free; kept as a placeholder so the enrich2 pair stays symmetric.)
+export {};
+
+// M33 Reporting & Dashboards — OpenAPI enrichment imports (paste into scripts/openapi/enrichments.ts).
+// NOTE: existing M33 imports already pull DashboardListQuerySchema/MvListQuerySchema (reporting-typebox)
+// and DrilldownEmitRequest/ScheduleListQuery (write-typebox). Extend those two import blocks with the
+// symbols below (kept M33-aliased here; the file's existing imports are un-aliased, so on paste either
+// alias-import a fresh block or merge names, avoiding duplicate identifiers).
+
+// ── from reporting-typebox.ts (READ + admin + metric-seam responses; request queries) ──────────────
+import {
+  BaseListQuerySchema as M33BaseListQuerySchema,
+  DashboardListQuerySchema as M33DashboardListQuerySchema,
+  DashboardListResponseSchema as M33DashboardListResponseSchema,
+  DashboardSummaryViewSchema as M33DashboardSummaryViewSchema,
+  DrilldownAuditListQuerySchema as M33DrilldownAuditListQuerySchema,
+  DrilldownAuditListResponseSchema as M33DrilldownAuditListResponseSchema,
+  MetricListQuerySchema as M33MetricListQuerySchema,
+  MetricSeamQuerySchema as M33MetricSeamQuerySchema,
+  MetricSeamViewSchema as M33MetricSeamViewSchema,
+  MvCommandAcceptedSchema as M33MvCommandAcceptedSchema,
+  MvListQuerySchema as M33MvListQuerySchema,
+  MvMetadataListResponseSchema as M33MvMetadataListResponseSchema,
+  ReplicaLagViewSchema as M33ReplicaLagViewSchema,
+  ReportBaseDetailViewSchema as M33ReportBaseDetailViewSchema,
+  ReportBaseListResponseSchema as M33ReportBaseListResponseSchema,
+  ReportMetricListResponseSchema as M33ReportMetricListResponseSchema,
+  TileFreshnessViewSchema as M33TileFreshnessViewSchema,
+  TileReadQuery as M33TileReadQuery,
+  TileReadResponse as M33TileReadResponse,
+} from "../../apps/backend/src/modules/33-reporting/routes/reporting-typebox";
+
+// ── from write-typebox.ts (MUTATING + export/drilldown request bodies + response DTOs) ─────────────
+import {
+  CreateDefinitionRequest as M33CreateDefinitionRequest,
+  CreateVersionRequest as M33CreateVersionRequest,
+  CreateViewRequest as M33CreateViewRequest,
+  DefinitionListQuery as M33DefinitionListQuery,
+  DefinitionListResponseSchema as M33DefinitionListResponseSchema,
+  DefinitionVersionListResponseSchema as M33DefinitionVersionListResponseSchema,
+  DefinitionVersionViewSchema as M33DefinitionVersionViewSchema,
+  DefinitionViewSchema as M33DefinitionViewSchema,
+  DeleteAllRunsResponseSchema as M33DeleteAllRunsResponseSchema,
+  DrilldownBulkExportRequest as M33DrilldownBulkExportRequest,
+  DrilldownEmitRequest as M33DrilldownEmitRequest,
+  DrilldownEmitResponseSchema as M33DrilldownEmitResponseSchema,
+  ExportAcceptedResponseSchema as M33ExportAcceptedResponseSchema,
+  ExportRequest as M33ExportRequest,
+  PublishVersionResponseSchema as M33PublishVersionResponseSchema,
+  ScheduleListQuery as M33ScheduleListQuery,
+  ScheduleListResponseSchema as M33ScheduleListResponseSchema,
+  ScheduleRunListQuery as M33ScheduleRunListQuery,
+  ScheduleRunListResponseSchema as M33ScheduleRunListResponseSchema,
+  ScheduleRunViewSchema as M33ScheduleRunViewSchema,
+  ScheduleViewSchema as M33ScheduleViewSchema,
+  ScheduledReportCreate as M33ScheduledReportCreate,
+  ShareViewRequest as M33ShareViewRequest,
+  ShareViewResponseSchema as M33ShareViewResponseSchema,
+  UpdateScheduleRequest as M33UpdateScheduleRequest,
+  UpdateViewRequest as M33UpdateViewRequest,
+  ViewListQuery as M33ViewListQuery,
+  ViewListResponseSchema as M33ViewListResponseSchema,
+  ViewViewSchema as M33ViewViewSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/write-typebox";
+
+// M34 SaaS Tenant Platform — OpenAPI enrichment imports (deficit → 0; all 48 routes across
+// routes/platform/*, routes/tenant/*, routes/public/*). Every symbol is M34-aliased to avoid
+// colliding with the pre-existing partial M34 import block (which this block supersedes — later
+// Object.assign wins). Response DTOs mirror the service views and are Conforms-pinned in the
+// respective *-typebox.ts files.
+
+// ── platform-ops surface (routes/platform/platform-typebox.ts) ──────────────────────────────────────
+import {
+  // bodies
+  CreateBaaRequest as M34CreateBaaRequest,
+  DekRotateRequest as M34DekRotateRequest,
+  IssueInvitationRequest as M34IssueInvitationRequest,
+  KillSwitchRequest as M34KillSwitchRequest,
+  OffboardTenantRequest as M34OffboardTenantRequest,
+  ProvisionTenantRequest as M34ProvisionTenantRequest,
+  QualifyIntentRequest as M34QualifyIntentRequest,
+  RejectIntentRequest as M34RejectIntentRequest,
+  ShredTenantRequest as M34ShredTenantRequest,
+  StartSessionRequest as M34StartSessionRequest,
+  StatusTransitionRequest as M34StatusTransitionRequest,
+  CloseSessionRequest as M34CloseSessionRequest,
+  UpdateBaaRequest as M34UpdateBaaRequest,
+  UpsertFeatureFlagRequest as M34UpsertFeatureFlagRequest,
+  UpsertOnboardingTemplateRequest as M34UpsertOnboardingTemplateRequest,
+  // queries
+  BaaRegisterListQuerySchema as M34BaaRegisterListQuerySchema,
+  FeatureFlagListQuerySchema as M34FeatureFlagListQuerySchema,
+  InvitationListQuerySchema as M34InvitationListQuerySchema,
+  OnboardingTemplateListQuerySchema as M34OnboardingTemplateListQuerySchema,
+  SessionEventListQuerySchema as M34SessionEventListQuerySchema,
+  SignupIntentListQuerySchema as M34SignupIntentListQuerySchema,
+  SupportSessionListQuerySchema as M34SupportSessionListQuerySchema,
+  TenantListQuerySchema as M34TenantListQuerySchema,
+  // responses
+  BaaRecordViewSchema as M34PlatformBaaRecordViewSchema,
+  BaaRegisterListResponseSchema as M34BaaRegisterListResponseSchema,
+  CloseSessionAckSchema as M34CloseSessionAckSchema,
+  ElevateSessionAckSchema as M34ElevateSessionAckSchema,
+  FeatureFlagListResponseSchema as M34FeatureFlagListResponseSchema,
+  FeatureFlagViewSchema as M34FeatureFlagViewSchema,
+  InvitationListResponseSchema as M34InvitationListResponseSchema,
+  KeyRingMetadataViewSchema as M34KeyRingMetadataViewSchema,
+  OnboardingTemplateListResponseSchema as M34OnboardingTemplateListResponseSchema,
+  OnboardingTemplateViewSchema as M34OnboardingTemplateViewSchema,
+  QualifyIntentAckSchema as M34QualifyIntentAckSchema,
+  RejectIntentAckSchema as M34RejectIntentAckSchema,
+  RevokeInvitationAckSchema as M34RevokeInvitationAckSchema,
+  SignupIntentListResponseSchema as M34SignupIntentListResponseSchema,
+  StartSessionAckSchema as M34StartSessionAckSchema,
+  SupportSessionEventListResponseSchema as M34SupportSessionEventListResponseSchema,
+  SupportSessionListResponseSchema as M34SupportSessionListResponseSchema,
+  TenantInvitationViewSchema as M34TenantInvitationViewSchema,
+  TenantJobAckSchema as M34TenantJobAckSchema,
+  TenantListResponseSchema as M34TenantListResponseSchema,
+  TenantOverviewViewSchema as M34TenantOverviewViewSchema,
+  TenantStatusAckSchema as M34TenantStatusAckSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
+
+// ── tenant-scoped surface (routes/tenant/tenant-typebox.ts) ─────────────────────────────────────────
+import {
+  // bodies
+  BaaAttestRequest as M34BaaAttestRequest,
+  DsarDenyRequest as M34DsarDenyRequest,
+  DsarExportRequest as M34DsarExportRequest,
+  DsarExtendRequest as M34DsarExtendRequest,
+  OnboardingBlockRequest as M34OnboardingBlockRequest,
+  OnboardingCompleteRequest as M34OnboardingCompleteRequest,
+  RevokeConsentGrantRequest as M34RevokeConsentGrantRequest,
+  SupportConsentGrantRequest as M34TenantSupportConsentGrantRequest,
+  TenantExportRequest as M34TenantExportRequest,
+  // queries
+  BaaListQuerySchema as M34BaaListQuerySchema,
+  DsarListQuerySchema as M34DsarListQuerySchema,
+  GrantListQuerySchema as M34GrantListQuerySchema,
+  OnboardingListQuerySchema as M34OnboardingListQuerySchema,
+  TenantExportListQuerySchema as M34TenantExportListQuerySchema,
+  // responses
+  BaaRecordListResponseSchema as M34BaaRecordListResponseSchema,
+  BaaRecordViewSchema as M34TenantBaaRecordViewSchema,
+  DownloadUrlViewSchema as M34DownloadUrlViewSchema,
+  DsarExportJobListResponseSchema as M34DsarExportJobListResponseSchema,
+  DsarExportJobViewSchema as M34DsarExportJobViewSchema,
+  OnboardingTaskListResponseSchema as M34OnboardingTaskListResponseSchema,
+  OnboardingTaskViewSchema as M34OnboardingTaskViewSchema,
+  SupportConsentGrantListResponseSchema as M34SupportConsentGrantListResponseSchema,
+  SupportConsentGrantViewSchema as M34SupportConsentGrantViewSchema,
+  TenantExportJobListResponseSchema as M34TenantExportJobListResponseSchema,
+  TenantExportJobViewSchema as M34TenantExportJobViewSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+// ── public self-serve surface (routes/typebox.ts) ───────────────────────────────────────────────────
+import {
+  AcceptInvitationAckSchema as M34AcceptInvitationAckSchema,
+  AcceptInvitationRequest as M34AcceptInvitationRequest,
+  PublicSignupIntentAckSchema as M34PublicSignupIntentAckSchema,
+  PublicSignupIntentRequest as M34PublicSignupIntentRequest,
+  VerifyEmailAckSchema as M34VerifyEmailAckSchema,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
+
+// ── M36 Secure Messaging & Alerts — request + response schema imports (all M36-aliased) ──
+import {
+  // request schemas (query / body) — reused as-is
+  AddMemberBodySchema as M36AddMemberBodySchema,
+  AlertRulePatchSchema as M36AlertRulePatchSchema,
+  AnnounceBodySchema as M36AnnounceBodySchema,
+  EditMessageBodySchema as M36EditMessageBodySchema,
+  ListMessagesQuerySchema as M36ListMessagesQuerySchema,
+  OpenDmBodySchema as M36OpenDmBodySchema,
+  PreferencesBodySchema as M36PreferencesBodySchema,
+  ReadBodySchema as M36ReadBodySchema,
+  RegisterEndpointBodySchema as M36RegisterEndpointBodySchema,
+  SendMessageBodySchema as M36SendMessageBodySchema,
+  VerifyEndpointBodySchema as M36VerifyEndpointBodySchema,
+  // §4.2 response DTOs (added this task, pinned by Conforms to the route-service views)
+  AlertInboxResponseSchema as M36AlertInboxResponseSchema,
+  AlertRuleListResponseSchema as M36AlertRuleListResponseSchema,
+  AlertRuleResponseSchema as M36AlertRuleResponseSchema,
+  ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
+  ChannelListResponseSchema as M36ChannelListResponseSchema,
+  DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
+  EditMessageResponseSchema as M36EditMessageResponseSchema,
+  MessageListResponseSchema as M36MessageListResponseSchema,
+  NotificationPreferencesResponseSchema as M36NotificationPreferencesResponseSchema,
+  OpenDmResponseSchema as M36OpenDmResponseSchema,
+  PutPreferencesResponseSchema as M36PutPreferencesResponseSchema,
+  SendMessageResponseSchema as M36SendMessageResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/messaging-typebox";
+
+// M38 Clinical Terminology Service — response DTOs (all M38-aliased).
+// Merge these named imports into scripts/openapi/enrichments.ts. NOTE: an existing import already
+// brings in `SearchQuerySchema as TerminologySearchQuerySchema` (line ~585) — keep that one; these
+// are the added response/echo schemas. Request query/param schemas are reused from source.
+import {
+  ConceptResponseSchema as M38ConceptResponseSchema,
+  DeprecationLookupResponseSchema as M38DeprecationLookupResponseSchema,
+  ExpandResponseSchema as M38ExpandResponseSchema,
+  ExtensionBodySchema as M38ExtensionBodySchema,
+  ExtensionCreatedResponseSchema as M38ExtensionCreatedResponseSchema,
+  IsMemberQuerySchema as M38IsMemberQuerySchema,
+  LookupQuerySchema as M38LookupQuerySchema,
+  MembershipResponseSchema as M38MembershipResponseSchema,
+  ValidateQuerySchema as M38ValidateQuerySchema,
+  ValidateResponseSchema as M38ValidateResponseSchema,
+  ExpandQuerySchema as M38ExpandQuerySchema,
+} from "../../apps/backend/src/modules/38-terminology/routes/terminology-typebox";
+
+// M39 Consent & Authorization Management — OpenAPI enrichment import.
+// Paste into scripts/openapi/enrichments.ts. Every symbol is M39-aliased. A LATER Object.assign block
+// (m39-block.ts) re-covers ALL 27 M39 routes, so it wins over the existing partial M39 entries.
+import {
+  // ── request bodies + queries (the module's own validators) ──
+  AddDpoaAgentBodySchema as M39AddDpoaAgentBody,
+  AddRecipientBodySchema as M39AddRecipientBody,
+  BereavementOutreachBodySchema as M39BereavementOutreachBody,
+  ConsentEvalAuditQuerySchema as M39ConsentEvalAuditQuery,
+  CreateDraftBodySchema as M39CreateDraftBody,
+  EvalAuditQuerySchema as M39EvalAuditByPatientQuery,
+  ExpiringConsentsQuerySchema as M39ExpiringConsentsQuery,
+  RemoveRecipientBodySchema as M39RemoveRecipientBody,
+  RenewBodySchema as M39RenewBody,
+  RevokeBodySchema as M39RevokeBody,
+  SupersedeBodySchema as M39SupersedeBody,
+  UpdateDpoaAgentBodySchema as M39UpdateDpoaAgentBody,
+  UpdateDraftBodySchema as M39UpdateDraftBody,
+  UpsertOverlayBodySchema as M39UpsertOverlayBody,
+  // ── response DTOs (mirror service.ts views, pinned by Conforms) ──
+  ActivePrimaryDpoaResponseSchema as M39ActivePrimaryDpoaResponse,
+  CascadeRetryResponseSchema as M39CascadeRetryResponse,
+  ConsentCatalogListResponseSchema as M39ConsentCatalogListResponse,
+  ConsentDpoaAgentListResponseSchema as M39ConsentDpoaAgentListResponse,
+  ConsentDpoaAgentResponseSchema as M39ConsentDpoaAgentResponse,
+  ConsentListResponseSchema as M39ConsentListResponse,
+  ConsentRecipientListResponseSchema as M39ConsentRecipientListResponse,
+  ConsentRecipientResponseSchema as M39ConsentRecipientResponse,
+  ConsentRecordResponseSchema as M39ConsentRecordResponse,
+  ConsentRenewalCycleListResponseSchema as M39ConsentRenewalCycleListResponse,
+  ConsentTypeOverlayResponseSchema as M39ConsentTypeOverlayResponse,
+  ConsentVersionChainResponseSchema as M39ConsentVersionChainResponse,
+  DelegatedAccessListResponseSchema as M39DelegatedAccessListResponse,
+  EvalAuditPageResponseSchema as M39EvalAuditPageResponse,
+  ExpiringConsentsResponseSchema as M39ExpiringConsentsResponse,
+  PostMortemEligibilityListResponseSchema as M39PostMortemEligibilityListResponse,
+  ReRenderReceiptResponseSchema as M39ReRenderReceiptResponse,
+} from "../../apps/backend/src/modules/39-consent/routes/consent-typebox";
+
+// M40 MDM response/request enrichment imports — every symbol M40-aliased to avoid colliding with
+// the existing local `MdmSearchResponseSchema` / `MdmResolvedSummarySchema` consts in enrichments.ts.
+// NOTE: `SearchQuerySchema as MdmSearchQuerySchema` is ALREADY imported near line 586 — reuse it,
+// do not re-import.
+import {
+  BaaBodySchema as M40BaaBodySchema,
+  GetOrCreateBodySchema as M40GetOrCreateBodySchema,
+  LicenseBodySchema as M40LicenseBodySchema,
+  MdmBaaCreatedResponseSchema as M40BaaCreatedResponseSchema,
+  MdmBaaListResponseSchema as M40BaaListResponseSchema,
+  MdmGetOrCreateResponseSchema as M40GetOrCreateResponseSchema,
+  MdmLicenseRecordedResponseSchema as M40LicenseRecordedResponseSchema,
+  MdmMergeApprovedResponseSchema as M40MergeApprovedResponseSchema,
+  MdmMergeRequestsResponseSchema as M40MergeRequestsResponseSchema,
+  MdmNppesLookupResponseSchema as M40NppesLookupResponseSchema,
+  MdmNppesSyncLogResponseSchema as M40NppesSyncLogResponseSchema,
+  MdmOverlayAppliedResponseSchema as M40OverlayAppliedResponseSchema,
+  MdmProvisionalPromotedResponseSchema as M40ProvisionalPromotedResponseSchema,
+  MdmRelationshipsResponseSchema as M40RelationshipsResponseSchema,
+  MdmResolvedResponseSchema as M40ResolvedResponseSchema,
+  MdmSearchResponseSchema as M40SearchResponseSchema,
+  NppesLookupBodySchema as M40NppesLookupBodySchema,
+  OverlayBodySchema as M40OverlayBodySchema,
+  RejectBodySchema as M40RejectBodySchema,
+} from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
+
+import {
   BootstrapCarePlanSchema as M7BootstrapCarePlanSchema,
   CreateVersionSchema as M7CreateVersionSchema,
   FinalizeVersionSchema as M7FinalizeVersionSchema,
@@ -4760,3 +5516,1970 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22CommitReviewRequest,
   },
 });
+
+// ═══ WAVE 2: remaining green-module enrichment ═══
+Object.assign(ROUTE_ENRICHMENTS, {
+  // M2 identity routes (routes/identity-routes.ts — §7.1–7.7). Bodies read manually via
+  // readString/readStringArray; DTOs mirror the routes' real shapes (MembershipView/OrgBinding pinned).
+  "GET /api/v1/auth/memberships": {
+    summary: "List the caller's memberships (pre-org, §7.2)",
+    response: M2MembershipListResponseSchema,
+  },
+  "GET /api/v1/auth/context": {
+    summary: "App-shell identity/role/permission projection (FB-T15)",
+    response: M2AuthContextResponseSchema,
+  },
+  "POST /api/v1/auth/select-organization": {
+    summary: "Bind the pre-org session to exactly one org (one-time, §7.2)",
+    body: M2SelectOrganizationRequestSchema,
+    response: M2OrgBindingResponseSchema,
+  },
+  "POST /api/v1/orgs/:id/invitations": {
+    summary: "Invite a user to an org (member.invite, §7.1)",
+    body: M2OrgInvitationCreateRequestSchema,
+    response: M2InvitationCreatedResponseSchema,
+  },
+  "POST /api/v1/invitations/accept": {
+    summary: "Consume an invite token → membership (§7.1)",
+    body: M2InvitationAcceptRequestSchema,
+    response: M2InvitationAcceptedResponseSchema,
+  },
+  "DELETE /api/v1/orgs/:id/invitations/:invId": {
+    summary: "Rescind a pending invite (member.invite)",
+    response: M2InvitationRescindedResponseSchema,
+  },
+  "GET /api/v1/orgs/:id/members": {
+    summary: "List an org's memberships + pending-invites KPI (member.manage, §7.5)",
+    query: M2MembersListQuerySchema,
+    response: M2MembersListResponseSchema,
+  },
+  "PATCH /api/v1/orgs/:id/members/:mId": {
+    summary: "Suspend/reinstate and/or re-scope a membership (member.manage, §7.5)",
+    body: M2MemberPatchRequestSchema,
+    response: M2MembershipViewSchema,
+  },
+  "DELETE /api/v1/orgs/:id/members/:mId": {
+    summary: "Revoke a membership + reap its sessions (member.manage, §7.5)",
+    response: M2MemberRevokedResponseSchema,
+  },
+  "POST /api/v1/users/:id/deactivate": {
+    summary: "Full offboard: disable credentials + reap all sessions (user.deactivate, §7.5)",
+    body: M2UserDeactivateRequestSchema,
+    response: M2UserDeactivatedResponseSchema,
+  },
+  "POST /api/v1/collaborators/invite": {
+    summary: "Mint a per-patient magic-link (caseload_membership ABAC, §7.6)",
+    body: M2CollaboratorInviteRequestSchema,
+    response: M2CollaboratorInviteResponseSchema,
+  },
+  "POST /api/v1/collaborators/consume": {
+    summary: "Consume the link → scoped external-collaborator session (§7.6)",
+    body: M2CollaboratorConsumeRequestSchema,
+    response: M2CollaboratorConsumeResponseSchema,
+  },
+  // M2 step-up routes (routes/session-step-up.ts — §4.4; only WebAuthn/TOTP qualify, SMS 400).
+  "POST /api/v1/sessions/step-up/initiate": {
+    summary: "Start an MFA step-up challenge (WebAuthn or TOTP, §4.4)",
+    body: M2StepUpInitiateRequestSchema,
+    response: M2StepUpInitiateResponseSchema,
+  },
+  "POST /api/v1/sessions/step-up": {
+    summary: "Verify a step-up challenge; paired-write freshness on success (§4.4.1, D8)",
+    body: M2StepUpVerifyRequestSchema,
+    response: M2StepUpVerifyResponseSchema,
+  },
+});
+
+// ── M3 Authorization (17 routes — role catalog + assignment, break-glass, auditor engagements) ──────
+// Full request + response contracts. Bodies reuse the boundary schemas; responses mirror the
+// ../authz-ports views (RoleView / MembershipRoleView / BreakGlassView / EngagementView /
+// EngagementSummary) + the @wardenx/auth permission mirror, each pinned by a `Conforms` alias.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // §6 role catalog + assignment
+  "GET /api/v1/permissions": {
+    summary: "The permission catalog (mirror rows, §6)",
+    response: M3PermissionsResponseSchema,
+  },
+  "GET /api/v1/roles": {
+    summary: "List role catalog for the org (templates + customized, §6)",
+    response: M3RoleListResponseSchema,
+  },
+  "POST /api/v1/roles": {
+    summary: "Clone/extend a platform template into an org-owned custom role (§7.6)",
+    body: M3CreateRoleBody,
+    response: M3RoleResponseSchema,
+  },
+  "PATCH /api/v1/roles/:id": {
+    summary: "Rename / enable / edit a role's permission set (§7.6)",
+    body: M3UpdateRoleBody,
+    response: M3RoleResponseSchema,
+  },
+  "DELETE /api/v1/roles/:id": {
+    summary: "Delete a custom role (system_locked → 409, §3.4.1)",
+    response: M3RoleDeletedResponseSchema,
+  },
+  "GET /api/v1/memberships/:id/roles": {
+    summary: "List a membership's role grants (§6)",
+    response: M3MembershipRoleListResponseSchema,
+  },
+  "POST /api/v1/memberships/:id/roles": {
+    summary: "Grant a role onto a membership (§6 anti-escalation applies)",
+    body: M3AssignRoleBody,
+    response: M3MembershipRoleResponseSchema,
+  },
+  "DELETE /api/v1/memberships/:id/roles/:rid": {
+    summary: "Revoke a role grant from a membership (§6)",
+    response: M3RoleGrantRevokedResponseSchema,
+  },
+  "GET /api/v1/me/permissions": {
+    summary: "The caller's effective permission keys (drives UI gating, §4.3)",
+    response: M3MePermissionsResponseSchema,
+  },
+
+  // §7.4 break-glass emergency access
+  "POST /api/v1/breakglass": {
+    summary: "Invoke break-glass emergency access (§7.4; reason ≥10 chars)",
+    body: M3InvokeBreakGlassBody,
+    response: M3BreakGlassInvokedResponseSchema,
+  },
+  "POST /api/v1/breakglass/:id/cosign": {
+    summary: "Co-sign a break-glass event → active (§7.4)",
+    response: M3BreakGlassStatusResponseSchema,
+  },
+  "POST /api/v1/breakglass/:id/revoke": {
+    summary: "Revoke an open break-glass event (§7.4)",
+    response: M3BreakGlassStatusResponseSchema,
+  },
+  "GET /api/v1/breakglass": {
+    summary: "List break-glass events for the org (§7.4)",
+    response: M3BreakGlassListResponseSchema,
+  },
+
+  // §7.5 auditor engagements
+  "POST /api/v1/engagements": {
+    summary: "Open an auditor engagement over a defined slice + window (§7.5)",
+    body: M3CreateEngagementBody,
+    response: M3EngagementResponseSchema,
+  },
+  "PATCH /api/v1/engagements/:id": {
+    summary: "Shorten an engagement window or cancel it (§7.5)",
+    body: M3UpdateEngagementBody,
+    response: M3EngagementResponseSchema,
+  },
+  "POST /api/v1/engagements/:id/auditors": {
+    summary: "Enroll an auditor — M2 mints the magic link out-of-band (D4)",
+    body: M3EnrollAuditorBody,
+    response: M3AuditorEnrolledResponseSchema,
+  },
+  "GET /api/v1/engagements/:id/summary": {
+    summary: "Post-engagement report — auditors enrolled + resources touched (§5.2)",
+    response: M3EngagementSummaryResponseSchema,
+  },
+});
+
+// M04 Audit & Compliance Log — full route enrichment (4 GET reads over the append-only
+// audit_event log). Response DTOs are pinned to the @wardenx/audit AuditQuery port via Conforms in
+// audit-typebox.ts. No mutating routes → no request bodies.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // §4.2 — Compliance / survey / incident event search (cursor-paginated).
+  "GET /api/v1/audit/events": {
+    summary: "Search audit events (cursor-paginated, §4.2/§4.3)",
+    query: M4EAuditEventsQuerySchema,
+    response: M4EAuditEventsResponseSchema,
+  },
+  // §4.2 — single-event detail (the before/after diff). Path param only, no query.
+  "GET /api/v1/audit/events/:id": {
+    summary: "Fetch one audit event by id — the before/after diff (§4.2)",
+    response: M4EAuditEventSchema,
+  },
+  // §10.2 — "who touched this chart": per-patient internal access history.
+  "GET /api/v1/audit/patients/:patientId/access": {
+    summary: "Per-patient internal access history — who touched this chart (§10.2)",
+    query: M4EPatientAccessQuerySchema,
+    response: M4EPatientAccessResponseSchema,
+  },
+  // §7.1 / §164.528 / 42 CFR §2.13 — patient accounting of disclosures (scope-gated).
+  "GET /api/v1/audit/patients/:patientId/accounting": {
+    summary: "Patient accounting of disclosures — §164.528 / 42 CFR §2.13, scope-gated (§7.1)",
+    query: M4EAccountingQuerySchema,
+    response: M4EAccountingResponseSchema,
+  },
+});
+
+// M05 Patient & Demographics — full route enrichment. Covers ALL 14 routes across
+// apps/backend/src/modules/05-patient/routes/patient-routes.ts so the module's unenriched-route deficit
+// drops to 0. This Object.assign runs AFTER the existing M5 block in enrichments.ts, so it SUPERSEDES it:
+// the previously-bare write routes gain response DTOs, and `POST /api/v1/amendments/:id/accept` — the one
+// route with NO entry — is now enriched. Response DTOs are pinned to the service read/return views by the
+// `Conforms` aliases in patient-typebox.ts.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // --- reads (§3.3–§3.5, §4.2) ---------------------------------------------------------------------
+  "GET /api/v1/patients": {
+    summary: "Patient census / list (cursor-paginated, §4.2)",
+    query: M5EPatientListQuerySchema,
+    response: M5EPatientListResponseSchema,
+  },
+  "GET /api/v1/patients/census-metrics": {
+    summary: "Census KPI metrics — active count + per-status breakdown (§4.2)",
+    response: M5ECensusMetricsResponseSchema,
+  },
+  "GET /api/v1/patients/:id": {
+    summary: "Fetch a patient by id (merge-redirect aware, §4.8)",
+    response: M5EPatientSummarySchema,
+  },
+  "GET /api/v1/patients/:id/demographics": {
+    summary: "Patient demographics tab — name parts + SOGI/race/ethnicity codes + language (§3.3)",
+    response: M5EPatientDemographicsSchema,
+  },
+  "GET /api/v1/patients/:id/identifiers": {
+    summary: "Patient identifiers — ssn/state_id masked to last4 (§3.3/§2.2)",
+    response: M5EPatientIdentifiersResponseSchema,
+  },
+  "GET /api/v1/patients/:id/addresses": {
+    summary: "Patient address history — D5 append-only; current + closed rows (§3.3)",
+    response: M5EPatientAddressesResponseSchema,
+  },
+  "GET /api/v1/patients/:id/payers": {
+    summary: "Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4)",
+    response: M5EPatientPayersResponseSchema,
+  },
+  "GET /api/v1/patients/:id/care-team": {
+    summary: "Patient care team — assignment roster + caregivers + emergency contacts (§3.4/§3.5)",
+    response: M5EPatientCareTeamResponseSchema,
+  },
+  "GET /api/v1/patients/:id/privacy-flags": {
+    summary:
+      "Patient privacy flags — active restrictions snapshot; SUD §7.6 fail-closed (§3.5/D10)",
+    response: M5EPatientPrivacyFlagsResponseSchema,
+  },
+
+  // --- writes (§7.1 admit / §7.4 address cascade / §7.7 right-to-amend) -----------------------------
+  "POST /api/v1/patients": {
+    summary: "Admit a patient (§7.1 duplicate-check; 201 created | soft_review, hard dup → 409)",
+    body: M5EAdmitBodySchema,
+    response: M5EAdmitResultResponseSchema,
+  },
+  "POST /api/v1/patients/:id/addresses": {
+    summary: "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
+    body: M5EAddressBodySchema,
+    response: M5EAddAddressResponseSchema,
+  },
+  "POST /api/v1/patients/:id/amendments": {
+    summary: "Open a record-amendment request (§7.7, 60-day SLA)",
+    body: M5EAmendmentBodySchema,
+    response: M5EAmendmentResponseSchema,
+  },
+  "POST /api/v1/amendments/:id/accept": {
+    summary: "Accept an amendment request (§7.7)",
+    response: M5EAmendmentResponseSchema,
+  },
+  "POST /api/v1/amendments/:id/deny": {
+    summary: "Deny an amendment request (denial reason required, §7.7)",
+    body: M5EDenyBodySchema,
+    response: M5EAmendmentResponseSchema,
+  },
+});
+
+// M15 Discipline Care Plans — FULL §4.1 surface (28 routes). Append after the last existing
+// `Object.assign(ROUTE_ENRICHMENTS, {...})`; later Object.assign wins, so this SUPERSEDES the earlier M15
+// entries and closes the 5-route response deficit (the two view reads + the version-detail read + the two
+// sign mutations that published no response contract). Org / acting-membership binding is server-side
+// (§8.6 S); Idempotency-Key (§F08) and If-Match (§2.5) ride headers, enforced by preHandlers, not bodies.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/discipline-plans": {
+    summary: "Discipline-plan worklist — cursor-paginated, filterable by patient/admission/kind/status (§4.1 #1)",
+    query: M15PlanListQuerySchema,
+    response: M15DisciplinePlanListPageResponseSchema,
+  },
+  "GET /api/v1/discipline-plans/:planId": {
+    summary: "The full plan — goals/interventions/assessments/supervisory visits/volunteer assignments, SQL-filtered per §7.8/§7.9 with the withheld categories on `redacted_categories` (§4.1 #2)",
+    response: M15DisciplinePlanDetailResponseSchema,
+  },
+  "GET /api/v1/discipline-plans/:planId/summary": {
+    summary: "The patient-shareable summary — both confidential categories always stripped (§7.9; §4.1 #3)",
+    response: M15DisciplinePlanSummaryResponseSchema,
+  },
+  "GET /api/v1/discipline-plans/:planId/versions": {
+    summary: "The plan's version chain, cursor-paginated by sequence (§4.1 #4)",
+    query: M15VersionListQuerySchema,
+    response: M15DisciplinePlanVersionListPageResponseSchema,
+  },
+  "GET /api/v1/discipline-plans/:planId/versions/:versionId": {
+    summary: "One version with its sealed state snapshot, frozen D11 quorum and collected signatures (§4.1 #5)",
+    response: M15DisciplinePlanVersionDetailResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions/:versionId/finalize": {
+    summary:
+      "Finalize a draft version — seals the state snapshot and freezes the D11 quorum, which a tenant may tighten but never loosen (§4.1 #6)",
+    body: M15FinalizeVersionBody,
+    response: M15DisciplinePlanVersionDetailResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/versions/:versionId/sign": {
+    summary:
+      "Sign one slot of the sealed quorum — step-up; the last signature flips the version to signed and triggers the plan-PDF render (§4.1 #7)",
+    body: M15SignVersionBody,
+    response: M15DisciplinePlanVersionDetailResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/goals": {
+    summary: "Author a discipline goal refining an IPOC problem (§4.1 #8)",
+    body: M15CreateGoalBody,
+    response: M15DisciplineGoalViewResponseSchema,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/goals/:goalId": {
+    summary:
+      "Edit a goal — a status event and/or the refinement fields; `originalText` is immutable (§2.3; §4.1 #9)",
+    body: M15UpdateGoalBody,
+    response: M15DisciplineGoalViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/interventions": {
+    summary: "Author a discipline intervention (§4.1 #10)",
+    body: M15CreateInterventionBody,
+    response: M15DisciplineInterventionViewResponseSchema,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/interventions/:interventionId": {
+    summary: "Edit an intervention — discontinue (reason required) / complete / refine (§4.1 #11)",
+    body: M15UpdateInterventionBody,
+    response: M15DisciplineInterventionViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments": {
+    summary:
+      "Capture a discipline assessment (draft); `data` is validated against the per-kind schema, and the SUD / family-violence flags drive every later read's SQL filter (§4.1 #12)",
+    body: M15CreateAssessmentBody,
+    response: M15DisciplineAssessmentViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments/:assessmentId/sign": {
+    summary:
+      "Sign a drafted assessment — step-up; closes the D10 initial-assessment clock when `isInitial` (§4.1 #13)",
+    response: M15DisciplineAssessmentViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/assessments/:assessmentId/amend": {
+    summary:
+      "Amend a signed assessment — append-only correction of record; the superseded row is retained (§4.1 #14)",
+    body: M15AmendAssessmentBody,
+    response: M15DisciplineAssessmentViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/aide-supervisory-visits": {
+    summary:
+      "Record an RN supervisory attestation (42 CFR §418.76(h)); a null sourceEncounterId is a phone-only contact and does NOT re-arm the 14-day clock (§4.1 #15)",
+    body: M15CreateSupervisoryVisitBody,
+    response: M15AideSupervisoryVisitViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/aide-supervisory-visits/:visitId/sign": {
+    summary: "Sign a recorded supervisory attestation — step-up (§4.1 #16)",
+    response: M15AideSupervisoryVisitViewResponseSchema,
+  },
+  "POST /api/v1/discipline-plans/:planId/volunteer-assignments": {
+    summary:
+      "Create a volunteer assignment — the 418.78 gate check runs unless a documented overrideReason is supplied (§8.6; §4.1 #17)",
+    body: M15CreateVolunteerAssignmentBody,
+    response: M15VolunteerAssignmentViewResponseSchema,
+  },
+  "PATCH /api/v1/discipline-plans/:planId/volunteer-assignments/:assignmentId": {
+    summary:
+      "Edit / acknowledge / inactivate / reactivate an assignment — reactivation is always manual (§7.5; §4.1 #18)",
+    body: M15UpdateVolunteerAssignmentBody,
+    response: M15VolunteerAssignmentViewResponseSchema,
+  },
+  "GET /api/v1/volunteer-compliance-gates": {
+    summary:
+      "Volunteer compliance-gate worklist — cursor-paginated; status is re-derived over the validity window as of now (§2.2.6; §4.1 #19)",
+    query: M15GateListQuerySchema,
+    response: M15VolunteerComplianceGateListPageResponseSchema,
+  },
+  "POST /api/v1/volunteer-compliance-gates": {
+    summary: "Record a 42 CFR §418.78(b)/(d) compliance gate for a volunteer (§4.1 #20)",
+    body: M15CreateVolunteerGateBody,
+    response: M15VolunteerComplianceGateViewResponseSchema,
+  },
+  "PATCH /api/v1/volunteer-compliance-gates/:gateId": {
+    summary: "Correct a recorded gate's validity window / evidence (§4.1 #21)",
+    body: M15UpdateVolunteerGateBody,
+    response: M15VolunteerComplianceGateViewResponseSchema,
+  },
+  "POST /api/v1/volunteer-compliance-gates/:gateId/revoke": {
+    summary: "Revoke a satisfied gate — reason required; cascades the volunteer to inactive (§4.1 #22)",
+    body: M15RevokeVolunteerGateBody,
+    response: M15VolunteerComplianceGateViewResponseSchema,
+  },
+  "GET /api/v1/volunteer-hour-ratio": {
+    summary:
+      "The 418.78(e) 5% ratio for one provider entity × fiscal year; an unbound cost basis returns `unavailable` with its reason, never a 0% breach (§7.6; §4.1 #23)",
+    query: M15HourRatioQuerySchema,
+    // summary-only: the service returns `unknown` — the ratio is a discriminated `available | unavailable`
+    // envelope whose unbound-M27-denominator branch (M15-F04) has no frozen view to mirror.
+  },
+  "POST /api/v1/volunteer-hour-entries": {
+    summary:
+      "Record an audited manual hour adjustment — the only ledger path that may carry negative minutes (§4.1 #24)",
+    body: M15CreateHourEntryBody,
+    response: M15VolunteerHourEntryViewResponseSchema,
+  },
+  "GET /internal/discipline-plans/relevant-elements": {
+    summary: "System-principal seam — discipline goals/interventions for a patient's plans (§4.1 #25)",
+    query: M15RelevantElementsQuerySchema,
+    response: M15RelevantElementsPageResponseSchema,
+  },
+  "GET /internal/discipline-plans/msw-risk-factors": {
+    summary: "System-principal seam — MSW psychosocial risk factors for an admission (M16; §4.1 #26)",
+    query: M15RiskFactorQuerySchema,
+    // summary-only: the service returns `CursorPage<unknown>` — the MSW risk-factor row shape is not yet a
+    // frozen view (it materializes from M16's ingestion), so there is nothing to mirror without fabrication.
+  },
+  "GET /internal/discipline-plans/volunteer-effective-status": {
+    summary:
+      "System-principal seam — a volunteer's effective 418.78 status; fail-CLOSED (an unreadable gate store answers not-active; §4.1 #27)",
+    query: M15VolunteerStatusQuerySchema,
+    response: M15VolunteerEffectiveStatusViewResponseSchema,
+  },
+  "GET /internal/discipline-plans/supervisory-cadence": {
+    summary: "System-principal seam — the supervisory-cadence worklist for a scope (M17/M14; §4.1 #28)",
+    query: M15SupervisoryCadenceQuerySchema,
+    response: M15SupervisoryCadencePageResponseSchema,
+  },
+});
+
+// M16 Bereavement — enrichment block for ALL 33 §4.1 routes (later Object.assign wins over the existing
+// M16 entries, so every route is re-listed here with its request contract AND its typed 2xx response). The
+// two previously-omitted reads (GET /plans/:planId, GET /plans/:planId/closure) are now covered → deficit 0.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── plans.routes.ts ──
+  "GET /api/v1/bereavement/plans": {
+    summary:
+      "Bereavement plan worklist — cursor-paginated; the counselor's own caseload by default, widened by the filters for an oversight role (§4.1 #1)",
+    query: M16PlanListQuerySchema,
+    response: M16PlanPageResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId": {
+    summary:
+      "Bereavement plan detail — the header with its rolled-up roster + risk; an off-caseload plan 404s (never 403) so the response can't reveal a patient died (§4.1 #2)",
+    response: M16PlanDetailResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/assign-counselor": {
+    summary: "Assign the bereavement counselor — eligible → initiating (§4.1 #3)",
+    body: M16AssignCounselorBody,
+    response: M16PlanDetailResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/assign-volunteer": {
+    summary:
+      "Assign a bereavement volunteer — the 42 CFR §418.78 gates resolve through Module 15's compliance seam, never the body (§4.1 #4)",
+    body: M16AssignVolunteerBody,
+    response: M16PlanDetailResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/seed-roster-and-schedule": {
+    summary:
+      "Seed the survivor roster from M5 and materialize the D4 platform-floor schedule — initiating → active (§4.1 #5)",
+    body: M16SeedRosterAndScheduleBody,
+    response: M16PlanActivationResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/pause": {
+    summary:
+      "Pause the plan — cancels every future-dated touchpoint; a recorded reason is mandatory, because a pause without one is a lapse (§4.1 #6)",
+    body: M16PausePlanBody,
+    response: M16PlanDetailResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/resume": {
+    summary:
+      "Resume the plan — regenerates the schedule FROM NOW; a touchpoint whose due date passed during the pause is not resurrected as a backdated obligation (§4.1 #7)",
+    body: M16ResumePlanBody,
+    response: M16PlanDetailResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/close-early": {
+    summary:
+      "D7 early close — step-up; ≥40-char narrative; lands the closure row awaiting the supervisor cosign (§4.1 #8)",
+    body: M16CloseEarlyBody,
+    response: M16ClosureResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/cosign-close": {
+    summary:
+      "The clinical-supervisor cosign that ratifies an early close — step-up; the cosigner is the server-assembled acting membership (§4.1 #9)",
+    body: M16CosignCloseBody,
+    response: M16ClosureResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/closure": {
+    summary:
+      "The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10)",
+    response: M16ClosureResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/outreach": {
+    summary: "The plan's touchpoints, scheduled and historical, cursor-paginated (§4.1 #19)",
+    query: M16OutreachListQuerySchema,
+    response: M16OutreachPageResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/regenerate-schedule": {
+    summary:
+      "Regenerate the FORWARD outreach book — whole plan or one survivor; never writes a backdated obligation (§4.1 #27)",
+    body: M16RegenerateScheduleBody,
+    response: M16ScheduleRegenResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/recompute-risk": {
+    summary:
+      "Recompute the deterministic D3/D17 risk score (Layer 2 narrative only when the platform's full-AI capability is on) — ALWAYS an append; the ledger refuses UPDATE (§4.1 #28)",
+    body: M16RecomputeRiskBody,
+    response: M16RiskScoreResponse,
+  },
+  "GET /api/v1/bereavement/plans/:planId/risk-scores": {
+    summary: "The append-only risk-score ledger — per-survivor and plan-level, newest first (§4.1 #29)",
+    query: M16RiskScoreListQuerySchema,
+    response: M16RiskScorePageResponse,
+  },
+  "POST /api/v1/bereavement/plans/:planId/initiate-contact": {
+    summary:
+      "The counselor's FIRST contact — D18-gated: an external-source plan awaiting its medical-director cosign is refused with the machine-readable gate reason, not a bare 403 (§4.1 #33)",
+    body: M16InitiateContactBody,
+    response: M16OutreachRowResponse,
+  },
+
+  // ── contacts.routes.ts ──
+  "POST /api/v1/bereavement/plans/:planId/contacts": {
+    summary: "Add a bereaved contact to an open plan — lands `proposed` (§4.1 #11)",
+    body: M16CreateContactBody,
+    response: M16ContactRowResponse,
+  },
+  "PATCH /api/v1/bereavement/contacts/:contactId": {
+    summary:
+      "Update a survivor's preferences / channels — `If-Match` required, because a blind overwrite could send a condolence letter to an address the family already corrected (§4.1 #12)",
+    body: M16UpdateContactBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/confirm": {
+    summary:
+      "Confirm a survivor — proposed → active; the M39 consent verdict is resolved server-side and fails CLOSED (§4.1 #13)",
+    body: M16ConfirmContactBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/opt-out": {
+    summary:
+      "Record a per-survivor opt-out (D9) — staff, or the survivor's own portal session; `m39_revocation_cascade` is never accepted from the wire (§4.1 #14)",
+    body: M16OptOutBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/rescind-opt-out": {
+    summary:
+      "Undo an opt-out — the D9 90-day window binds the self-service path; a counselor rescind must say why (§4.1 #15)",
+    body: M16RescindOptOutBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/mark-deceased": {
+    summary:
+      "Mark the survivor deceased — the lifecycle's only terminal state, so the verified date and its source are both required (§4.1 #16)",
+    body: M16MarkDeceasedBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/mark-unreachable": {
+    summary:
+      "Accept the nightly three-strikes proposal — the threshold is enforced by the lifecycle machine, so an early call is refused (§4.1 #17)",
+    body: M16MarkUnreachableBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/flag-complicated-grief": {
+    summary:
+      "§7.7 complicated-grief escalation — ends the program for this survivor and routes them to the named M40 resource, which is REQUIRED (§4.1 #18)",
+    body: M16FlagComplicatedGriefBody,
+    response: M16ContactRowResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/log-direct": {
+    summary:
+      "Log an ad-hoc contact with no scheduled outreach — the kind must be one the survivor allows, stricter than the schedule generator (§4.1 #26)",
+    body: M16LogDirectContactBody,
+    response: M16ContactLogResponse,
+  },
+  "POST /api/v1/bereavement/contacts/:contactId/refer-external": {
+    summary:
+      "Log an M40 external-resource referral WITHOUT ending the program — a different clinical fact from the §7.7 escalation (§4.1 #32)",
+    body: M16ReferExternalBody,
+    response: M16ContactLogResponse,
+  },
+
+  // ── outreach.routes.ts ──
+  "POST /api/v1/bereavement/outreach/:outreachId/start": {
+    summary: "Start a touchpoint — scheduled → in_progress (§4.1 #20)",
+    body: M16StartOutreachBody,
+    response: M16OutreachRowResponse,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/complete": {
+    summary:
+      "Complete a touchpoint, writing its contact log in the SAME transaction. D15: the in-person branch REQUIRES the M8 encounter and every other kind must NOT carry one (§4.1 #21)",
+    body: M16CompleteOutreachBody,
+    response: M16OutreachRowResponse,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/decline": {
+    summary:
+      "The survivor declined THIS touchpoint — not an opt-out: the forward schedule continues untouched (§4.1 #22)",
+    body: M16OutreachOutcomeBody,
+    response: M16OutreachRowResponse,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/no-response": {
+    summary: "No response after retries — feeds the three-strikes unreachable proposal (§4.1 #23)",
+    body: M16OutreachOutcomeBody,
+    response: M16OutreachRowResponse,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/cancel": {
+    summary: "Cancel a scheduled touchpoint — a reason is mandatory (§4.1 #24)",
+    body: M16CancelOutreachBody,
+    response: M16OutreachRowResponse,
+  },
+  "POST /api/v1/bereavement/outreach/:outreachId/late-attempt": {
+    summary:
+      "Re-open a missed touchpoint inside the 7-day late grace — audit-flagged, but NOT a compliance failure (§4.1 #25)",
+    body: M16LateAttemptBody,
+    response: M16OutreachRowResponse,
+  },
+
+  // ── dashboard.routes.ts ──
+  "GET /api/v1/bereavement/dashboard/counselor": {
+    summary:
+      "The caller's OWN bereavement caseload plus what is due in N days — the counselor id comes from the session, never a query param (§4.1 #30)",
+    query: M16CounselorDashboardQuerySchema,
+    response: M16CounselorDashboardResponse,
+  },
+  "GET /api/v1/bereavement/dashboard/supervisor": {
+    summary:
+      "Full-tenant bereavement rollups, optionally narrowed to one CCN / location — COUNTS, never rates (§4.1 #31)",
+    query: M16SupervisorDashboardQuerySchema,
+    response: M16SupervisorDashboardResponse,
+  },
+});
+
+// M19 On-Call Triage — full §4.1 route enrichment (all 38 routes), now carrying the §4.2 response DTOs.
+// Placed AFTER the existing M19 Object.assign so the later assignment wins per key; every route is
+// re-declared with its response so the deficit reaches 0 and `client:gen` stops typing bodies `never`.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── triage-call lifecycle (§4.1 rows 1-14 + §2.7 paper re-entry) ──
+  "POST /api/v1/triage-calls": {
+    summary:
+      "Open a triage call — `source` is pinned to `manual` and the covering shift is resolved server-side, because attributing a call to somebody else's coverage window would forge the CoP 418.100(c)(2) record (§4.1 #1)",
+    body: M19OpenTriageCallBody,
+    response: M19OpenTriageCallResultResponse,
+  },
+  "GET /api/v1/triage-calls": {
+    summary:
+      "The supervisor board / caseload list — cursor-paginated (offset is refused); `openOnly` is the six-state live set, which deliberately includes `documented_pending_encounter` (§4.1 #2)",
+    query: M19ListTriageCallsQuery,
+    response: M19TriageCallListPageResponse,
+  },
+  "GET /api/v1/triage-calls/:triageCallId": {
+    summary:
+      "The full call — the STAFF projection or the PHI-minimized VENDOR one depending on the session class (a different TYPE, not a filtered one) (§4.1 #3)",
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/identify-patient": {
+    summary:
+      "Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4)",
+    body: M19IdentifyPatientBody,
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/apply-protocol": {
+    summary:
+      "Pin the protocol (D4) and, when the catalog row demands it, write the D7 mandatory escalation in the SAME transaction; `aiOverrideReason` is required only above the §8.6 confidence floor (§4.1 #5)",
+    body: M19ApplyProtocolBody,
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/answers": {
+    summary:
+      "Append one answer — a DISCRIMINATED value union, so 'exactly one typed value' is a 422 at the boundary rather than a CHECK violation from the driver; `red_flag_hit` is absent because D5 makes it the server's (§4.1 #6)",
+    body: M19RecordAnswerBody,
+    response: M19AnswerWriteResultResponse,
+  },
+  "PATCH /api/v1/triage-calls/:triageCallId/answers/:answerId/correct": {
+    summary:
+      "Append a CORRECTION (§2.2.3 amend-by-append) — the original row is preserved, because a 'no' later corrected to 'yes' means the call HAD a red flag (§4.1 #7)",
+    body: M19CorrectAnswerBody,
+    response: M19AnswerWriteResultResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/complete-protocol": {
+    summary:
+      "Close the protocol walk — the machine's two §2.3 gates run: every required question answered, and no red-flag escalation still open (§4.1 #8)",
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/awaiting-callback": {
+    summary:
+      "Park the call on a callback; it stays in the open set so it keeps its place on the supervisor board while the SLA detector watches the clock (§4.1 #9)",
+    body: M19AwaitingCallbackBody,
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/resume": {
+    summary:
+      "Resume the same walk at the server's own cursor — no answer is discarded and none is re-asked (§4.1 #10)",
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/disposition": {
+    summary:
+      "Select the disposition (D6) over the PUBLISHED `TriageDispositionData` union — one route for both §2.2.1 edges into `documented_pending_encounter` (§4.1 #11)",
+    body: M19SelectDispositionBody,
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/document": {
+    summary:
+      "Invoke M8's `EncounterCreator` (D8). The call does NOT reach `documented` here — that transition belongs to the `m8.encounter.signed` consumer (§4.1 #12)",
+    body: M19DocumentCallBody,
+    response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/abandon": {
+    summary:
+      "The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13)",
+    body: M19AbandonCallBody,
+    response: M19TriageCallResponse,
+  },
+  "GET /api/v1/triage-calls/:triageCallId/transcript-decrypt": {
+    summary:
+      "Decrypt the transcript — distinct permission + M2 step-up + a per-access M4 audit row; the plaintext never rides the detail DTO (§8.7.2 / §4.1 #14)",
+    response: M19TriageTranscriptResponse,
+  },
+  "POST /api/v1/triage-calls/paper-reentry": {
+    summary:
+      "§2.7 BCP paper-origin re-entry — its own permission plus a step-up, because the back-dated `opened_at` is §8.3.2's way a coverage gap gets hidden; the instant is range-checked against the worklist row's outage window",
+    body: M19PaperReentryBody,
+    response: M19OpenTriageCallResultResponse,
+  },
+  "GET /api/v1/triage-calls/paper-reentry/worklist": {
+    summary:
+      "The DON's outstanding paper-re-entry worklist — outage-window scheduling metadata only (no patient, no caller, no clinical content) (§2.7)",
+    response: M19PaperReentryWorklistResponse,
+  },
+  // ── escalations (§4.1 rows 15-18) ──
+  "POST /api/v1/triage-calls/:triageCallId/escalations": {
+    summary:
+      "Raise an escalation on a call — gated by the CALL's predicate, not the escalation ones, because the actor raising the page is the clinician working the call (§4.1 #15)",
+    body: M19EscalateBody,
+    response: M19EscalationInboxItemResponse,
+  },
+  "GET /api/v1/escalations": {
+    summary:
+      "The escalation inbox, narrowed server-side to the actor's tier band; `openOnly` defaults TRUE because an inbox shows what is outstanding (§4.1 #16)",
+    query: M19ListEscalationsQuery,
+    response: M19EscalationInboxPageResponse,
+  },
+  "POST /api/v1/escalations/:escalationId/acknowledge": {
+    summary:
+      "Acknowledge — the write §7.2 waits on; until it lands the call may take no disposition but the hand-off (§4.1 #17)",
+    body: M19AcknowledgeEscalationBody,
+    response: M19EscalationInboxItemResponse,
+  },
+  "POST /api/v1/escalations/:escalationId/resolve": {
+    summary:
+      "Resolve with the escalated party's own account (≥ 30 chars) — the ONLY place a MANDATORY row can reach `resolved` (§2.2.4 / §4.1 #18)",
+    body: M19ResolveEscalationBody,
+    response: M19EscalationInboxItemResponse,
+  },
+  // ── shifts + policy (§4.1 rows 19-26) ──
+  "GET /api/v1/oncall/shifts": {
+    summary: "The on-call schedule, cursor-paginated (§4.1 #19)",
+    query: M19ListShiftsQuery,
+    response: M19OnCallShiftPageResponse,
+  },
+  "POST /api/v1/oncall/shifts": {
+    summary:
+      "Manual shift create — `policySnapshot` is NOT a body field: D7 pins it from the tenant policy at activation, and a caller-supplied snapshot would be a caller-supplied answer to 'which ladder was in effect that night' (§4.1 #20)",
+    body: M19CreateShiftBody,
+    response: M19OnCallShiftViewResponse,
+  },
+  "PATCH /api/v1/oncall/shifts/:shiftId/cancel": {
+    summary:
+      "Cancel with a reason. No outbox event: a shift that never activated was never in M36's `on_call` channel, so the hole it leaves is the coverage-gap watchdog's finding (§4.1 #21)",
+    body: M19CancelShiftBody,
+    response: M19OnCallShiftViewResponse,
+  },
+  "POST /api/v1/oncall/shifts/:shiftId/open": {
+    summary:
+      "Manual 'go on shift' — pins the D7 policy snapshot and emits the single canonical shift-open topic M36's synchronizer and M20's SOS path both subscribe to (§4.1 #22)",
+    body: M19ShiftTransitionBody,
+    response: M19OnCallShiftViewResponse,
+  },
+  "POST /api/v1/oncall/shifts/:shiftId/close": {
+    summary:
+      "Manual close — removes the departing actor from M36's channel; messages sent during their tenure stay attributed to them (§4.1 #23)",
+    body: M19ShiftTransitionBody,
+    response: M19OnCallShiftViewResponse,
+  },
+  "GET /api/v1/oncall/current": {
+    summary:
+      "Who is on call NOW, keyed PER ProviderEntity and never unioned — CoP 418.100(c)(2) is per-CCN, and `actors: []` for an entity is a REAL answer (a coverage gap), not an empty result (§4.1 #24)",
+    query: M19CurrentOnCallQuery,
+    response: M19CurrentOnCallResponse,
+  },
+  "GET /api/v1/oncall/policy": {
+    summary:
+      "The tenant on-call policy for one ProviderEntity. NOT auto-created on read: a default invented at read time would be pinned onto shifts as though the tenant had chosen it (§4.1 #25)",
+    query: M19PolicyQuery,
+    response: M19OncallPolicyResponse,
+  },
+  "PATCH /api/v1/oncall/policy": {
+    summary:
+      "Edit the policy (step-up) — a `hybrid`/`centralized` selection where the D3 flag is off is REFUSED rather than accepted-and-ignored, so a tenant can never believe a vendor is answering their nights (§4.1 #26)",
+    body: M19PatchOncallPolicyBody,
+    query: M19PolicyQuery,
+    response: M19OncallPolicyResponse,
+  },
+  // ── protocol catalog (§4.1 rows 27-32) ──
+  "GET /api/v1/triage-protocols": {
+    summary:
+      "The catalog — the org-less platform floor plus this tenant's own rows (D4), effective-dated by default (§4.1 #27)",
+    query: M19ListProtocolsQuery,
+    response: M19TriageProtocolPageResponse,
+  },
+  "GET /api/v1/triage-protocols/:protocolId": {
+    summary: "One protocol with its ordered questions — what the §5 stepper renders from (§4.1 #28)",
+    response: M19TriageProtocolViewResponse,
+  },
+  "POST /api/v1/triage-protocols": {
+    summary:
+      "Author a TENANT-CUSTOM protocol (step-up). `isSystemLocked` is absent: accepting and ignoring it would leave the DON believing they had authored a protected question (§4.1 #29)",
+    body: M19CreateProtocolBody,
+    response: M19TriageProtocolViewResponse,
+  },
+  "PATCH /api/v1/triage-protocols/:protocolId": {
+    summary:
+      "Edit a tenant protocol — a platform-floor row is refused with its key NAMED, because '0 rows updated' is not an answer a DON can act on (§4.1 #30)",
+    body: M19PatchProtocolBody,
+    response: M19TriageProtocolViewResponse,
+  },
+  "POST /api/v1/triage-protocols/:protocolId/questions": {
+    summary:
+      "Add a question — a tenant cannot write a child row against an org-less parent, so the attempt is refused with the protocol named rather than failing as a policy violation (§4.1 #31)",
+    body: M19ProtocolQuestionBody,
+    response: M19TriageProtocolViewResponse,
+  },
+  "PATCH /api/v1/triage-protocol-questions/:questionId": {
+    summary:
+      "Edit one question — a system-locked question is refused: it is the D5 red-flag predicate behind a platform-floor mandatory escalation, and editing it is the cheapest way to disable one (§4.1 #32)",
+    body: M19PatchProtocolQuestionBody,
+    response: M19TriageProtocolViewResponse,
+  },
+  // ── external vendor bindings (§4.1 rows 33-35) ──
+  "GET /api/v1/oncall/external-vendors": {
+    summary:
+      "The tenant's vendor bindings, each with whether its §8.5 adapter is actually loaded — NO secret is projected (ADR-0026) (§4.1 #33)",
+    response: M19VendorBindingListResponse,
+  },
+  "POST /api/v1/oncall/external-vendors": {
+    summary:
+      "Create a vendor binding (step-up). The BAA is a PRECONDITION, and there is deliberately NO secret field — ADR-0026 puts vendor credentials in the platform secret store, and the absence of the field is the control (§4.1 #34)",
+    body: M19CreateVendorBindingBody,
+    response: M19VendorBindingViewResponse,
+  },
+  "PATCH /api/v1/oncall/external-vendors/:vendorId": {
+    summary:
+      "BAA renewal updates only — the narrow request shape IS the rule: changing the adapter key or the minimization profile would silently re-point live PHI at a different contract (§4.1 #35)",
+    body: M19PatchVendorBindingBody,
+    response: M19VendorBindingViewResponse,
+  },
+  // ── portal projection (§4.1 row 36) ──
+  "GET /api/v1/portal/triage/recent": {
+    summary:
+      "The M31 portal projection — lay-language, caregiver-scoped, with the D11 advisory and the D13 vendor-handoff details excluded BY CONSTRUCTION rather than by filtering (§4.1 #36)",
+    query: M19PortalRecentQuery,
+    response: M19PortalRecentPageResponse,
+  },
+});
+
+// ── M20 Field Safety (30 routes: check-ins · SOS spine · incidents + D9 sign-off · policy/subscriptions/
+// high-risk-areas · dashboard + consent). Every route carries a typed response; the SOS press fans out
+// on a minimal body (coordinates OPTIONAL, M20-F16) and still returns its parsed RaiseSosResponse. ──
+Object.assign(ROUTE_ENRICHMENTS, {
+  // check-ins.routes.ts (rows 1-4)
+  "POST /api/v1/safety/check-ins": { summary: "Record a safety check-in (attestation; no If-Match, idempotency-keyed)", body: M20RecordCheckInBody, response: M20RecordCheckInResponse },
+  "GET /api/v1/safety/check-ins/:checkInId": { summary: "Read one check-in (self ∨ supervisor; 404 on deny)", response: M20SafetyCheckInResponse },
+  "PATCH /api/v1/safety/check-ins/:checkInId": { summary: "Amend within the 5-minute grace (supersedes, never mutates)", body: M20AmendCheckInBody, response: M20SafetyCheckInResponse },
+  "GET /api/v1/safety/check-ins/me/today": { summary: "The clinician's own day: obligations + posted check-ins", query: M20CheckInListQuery, response: M20SafetyMyDayResponse },
+
+  // sos.routes.ts (rows 5-11)
+  "POST /api/v1/safety/sos": { summary: "The SOS press (no idempotency key; coordinates optional, M20-F16)", body: M20RaiseSosBody, response: M20RaiseSosResponse },
+  "POST /api/v1/safety/sos/:sosAlertId/cancel": { summary: "D5 cancel (a rejected cancel is a 200, never a 4xx)", body: M20CancelSosBody, response: M20CancelSosResponse },
+  "POST /api/v1/safety/sos/:sosAlertId/acknowledge": { summary: "A responder acknowledges (ack row on the same tx)", body: M20AcknowledgeSosBody, response: M20SafetySosAlertResponse },
+  "POST /api/v1/safety/sos/:sosAlertId/resolve": { summary: "Resolve, or convert into an incident (dispatches on the flag)", body: M20ResolveSosBody, response: M20SafetySosAlertResponse },
+  "GET /api/v1/safety/sos/active": { summary: "The active-SOS board tile (registered before :sosAlertId)", response: M20ActiveSosResponse },
+  "GET /api/v1/safety/sos/:sosAlertId": { summary: "Alert detail with §2.2.2 ledger + §2.2.6 acknowledgments", response: M20SafetySosAlertResponse },
+  "GET /api/v1/safety/sos/:sosAlertId/location-stream": { summary: "The D6 coordinate stream (own permission + warn-audit; ≥40-char reason once closed)", query: M20LocationStreamQuery, response: M20SosLocationStreamResponse },
+
+  // incidents.routes.ts (rows 12-17)
+  "POST /api/v1/safety/incidents": { summary: "Open a draft incident (affectedClinicianMembershipId is the one caller-named membership)", body: M20CreateIncidentBody, response: M20SafetyIncidentResponse },
+  "GET /api/v1/safety/incidents": { summary: "The review queue (narrowed to own incidents without oversight)", query: M20IncidentListQuery, response: M20SafetyIncidentPageResponse },
+  "GET /api/v1/safety/incidents/:incidentId": { summary: "One incident (narrative is a cipher until a decipher is bound)", response: M20SafetyIncidentResponse },
+  "PATCH /api/v1/safety/incidents/:incidentId": { summary: "Edit a draft (the draft qualifier runs in the transaction)", body: M20PatchIncidentBody, response: M20SafetyIncidentResponse },
+  "POST /api/v1/safety/incidents/:incidentId/submit": { summary: "Submit for review (oshaReportable:true needs the signed-off pair)", body: M20SubmitIncidentBody, response: M20SafetyIncidentResponse },
+  "POST /api/v1/safety/incidents/:incidentId/state": { summary: "The supervisor state machine (§2.2.3; reopened re-enters review)", body: M20TransitionIncidentBody, response: M20SafetyIncidentResponse },
+  "POST /api/v1/safety/incidents/:incidentId/osha-signoff": { summary: "D9 OSHA-equivalent sign-off (step-up; state code + reporting-window clock)", body: M20OshaSignoffBody, response: M20SafetyIncidentResponse },
+
+  // admin.routes.ts (rows 18-25)
+  "GET /api/v1/safety/policy": { summary: "The effective policy (asOf is the §2.2.4 replay arm)", query: M20PolicyQuery, response: M20SafetyPolicyEffectiveResponse },
+  "PATCH /api/v1/safety/policy": { summary: "Edit the policy (step-up; editReason ≥30; a NEW version row)", body: M20PatchPolicyBody, response: M20SafetyPolicyEffectiveResponse },
+  "GET /api/v1/safety/supervisor-subscriptions": { summary: "Who watches whom (§2.2.5 / D8)", query: M20SubscriptionListQuery, response: M20SafetySubscriptionPageResponse },
+  "POST /api/v1/safety/supervisor-subscriptions": { summary: "Add a subscription (scope-selector pairing re-checked in service)", body: M20CreateSubscriptionBody, response: M20SafetySubscriptionResponse },
+  "DELETE /api/v1/safety/supervisor-subscriptions/:subscriptionId": { summary: "Deactivate (always succeeds; reports coverageGapsCreated)", response: M20DeleteSubscriptionResponse },
+  "GET /api/v1/safety/high-risk-areas": { summary: "The advisory polygons in force (includeExpired defaults false)", query: M20HighRiskAreaListQuery, response: M20SafetyHighRiskAreaPageResponse },
+  "POST /api/v1/safety/high-risk-areas": { summary: "Draw an advisory polygon (M20-F07: ring validity in app code, no PostGIS)", body: M20CreateHighRiskAreaBody, response: M20SafetyHighRiskAreaResponse },
+  "PATCH /api/v1/safety/high-risk-areas/:areaId": { summary: "Edit or retire an area (retire is effectiveTo, never a delete)", body: M20PatchHighRiskAreaBody, response: M20SafetyHighRiskAreaResponse },
+
+  // dashboard.routes.ts (rows 26-29)
+  "GET /api/v1/safety/dashboard": { summary: "The supervisor live-awareness board (no coordinate; own row without oversight)", query: M20DashboardQuery, response: M20SafetyDashboardResponse },
+  "GET /api/v1/safety/consent": { summary: "The clinician's own consent surface (membership from the session)", query: M20ConsentQuery, response: M20SafetyConsentSurfaceResponse },
+  "POST /api/v1/safety/consent/grant": { summary: "Grant one consent purpose (three are separately grantable, M20-F16)", body: M20GrantConsentBody, response: M20SafetyConsentResponse },
+  "POST /api/v1/safety/consent/revoke": { summary: "Revoke one purpose (writes revoked, never expired)", body: M20RevokeConsentBody, response: M20SafetyConsentResponse },
+});
+
+// ── M21 Supplies, DME & Comfort Kits (37 routes) ────────────────────────────────────────────────────
+Object.assign(ROUTE_ENRICHMENTS, {
+  // supply-requests.routes.ts — §4.1 rows 1–10 (the §2.2 fulfillment machine)
+  "POST /api/v1/supplies/supply-requests": { summary: "Create a supply / DME / comfort-kit request (freezes the D4 routing record; 201)", body: M21CreateSupplyRequestBody, response: M21CreateSupplyRequestResultSchema },
+  "GET /api/v1/supplies/supply-requests": { summary: "Supply-team worklist (cursor-paginated; openOnly default)", query: M21ListSupplyRequestsQuery, response: M21SupplyRequestListResponseSchema },
+  "GET /api/v1/supplies/supply-requests/:supplyRequestId": { summary: "Request detail (D13 delivery text + frozen D4 routing record)", response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/assign-vendor": { summary: "D4 vendor override (recorded on top of the ladder trace; If-Match)", body: M21AssignVendorBody, response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-ordered": { summary: "Vendor accepted (PO reference; If-Match)", body: M21MarkOrderedBody, response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-in-transit": { summary: "Record shipment identifiers (If-Match)", body: M21MarkInTransitBody, response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-delivered": { summary: "D7 courier attestation (deliveredBy stamped from session; If-Match)", body: M21MarkDeliveredBody, response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": { summary: "Caregiver/clinician confirms receipt (If-Match)", body: M21ConfirmReceivedBody, response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/cancel": { summary: "Cancel (service picks the immediate vs two-phase edge; If-Match)", body: M21CancelRequestBody, response: M21SupplyRequestDetailSchema },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/return": { summary: "Initiate an equipment return (the DME pickup path; If-Match)", body: M21ReturnRequestBody, response: M21SupplyRequestDetailSchema },
+
+  // catalog.routes.ts — §4.1 rows 11–19 (D11 SKU catalog + §2.3 kit templates)
+  "GET /api/v1/supplies/supply-items": { summary: "SKU catalog (platform rows UNION the tenant overlay)", query: M21ListSupplyItemsQuery, response: M21SupplyItemListResponseSchema },
+  "POST /api/v1/supplies/supply-items": { summary: "Create a canonical HCPCS-keyed SKU (PLATFORM-ONLY; 201)", body: M21CreateSupplyItemBody, response: M21SupplyItemViewSchema },
+  "GET /api/v1/supplies/supply-items/:id": { summary: "One SKU (platform or overlay; disjoint id space)", response: M21SupplyItemViewSchema },
+  "POST /api/v1/supplies/supply-items/:id/retire": { summary: "Retire a canonical SKU (effective-dating, PLATFORM-ONLY)", body: M21RetireSupplyItemBody, response: M21SupplyItemViewSchema },
+  "POST /api/v1/supplies/tenant-supply-items": { summary: "Create a tenant-local non-billable item (D11 overlay; 201)", body: M21UpsertTenantSupplyItemBody, response: M21SupplyItemViewSchema },
+  "PUT /api/v1/supplies/tenant-supply-items/:id": { summary: "Edit a tenant-local item", body: M21UpsertTenantSupplyItemBody, response: M21SupplyItemViewSchema },
+  "GET /api/v1/supplies/comfort-kit-templates": { summary: "Comfort-kit templates (D3 floor row included by default)", query: M21ListTemplatesQuery, response: M21ComfortKitTemplateListResponseSchema },
+  "POST /api/v1/supplies/comfort-kit-templates": { summary: "Author a tenant template (D3 four-medication floor validated first; 201)", body: M21CreateTemplateBody, response: M21ComfortKitTemplateViewSchema },
+  "PUT /api/v1/supplies/comfort-kit-templates/:templateId": { summary: "Supersede a template (INSERTS a new row via replaces_template_id)", body: M21SupersedeTemplateBody, response: M21ComfortKitTemplateViewSchema },
+
+  // comfort-kits.routes.ts — §4.1 rows 20–27 + the DEA §1304 perpetual log / retriever / unreturnable edges
+  "POST /api/v1/supplies/comfort-kit-dispatches": { summary: "Dispatch a comfort kit (§2.5 five refusals + DEA outbound log, one tx; step-up; 201)", body: M21CreateDispatchBody, response: M21DispatchDetailSchema },
+  "GET /api/v1/supplies/comfort-kit-dispatches": { summary: "Dispatch list (per patient / Location / IPU room)", query: M21ListDispatchesQuery, response: M21DispatchListResponseSchema },
+  "GET /api/v1/supplies/comfort-kit-dispatches/:dispatchId": { summary: "Dispatch detail with the full per-line DEA 1304 manifest", response: M21DispatchDetailSchema },
+  "POST /api/v1/supplies/comfort-kit-dispatches/:dispatchId/deploy-at-patient": { summary: "Mark the kit physically at the patient (event M13 builds deployments from; If-Match)", body: M21DeployAtPatientBody, response: M21DispatchDetailSchema },
+  "GET /api/v1/supplies/comfort-kit-dispatches/:dispatchId/perpetual-log": { summary: "§8.1 DEA 21 CFR §1304 perpetual log for one kit", response: M21PerpetualLogViewSchema },
+  "POST /api/v1/supplies/comfort-kit-returns": { summary: "Open a return obligation (refused before M13 acks the deployment; 201)", body: M21CreateReturnBody, response: M21ComfortKitReturnDetailSchema },
+  "GET /api/v1/supplies/comfort-kit-returns": { summary: "Reconciliation worklist (oldest due first; daysOverdue read-time)", query: M21ListReturnsQuery, response: M21ComfortKitReturnListResponseSchema },
+  "GET /api/v1/supplies/comfort-kit-returns/:returnId": { summary: "Return detail with per-line accounting + disposal record", response: M21ComfortKitReturnDetailSchema },
+  "POST /api/v1/supplies/comfort-kit-returns/:returnId/assign-retriever": { summary: "Assign the supply-team member who will physically retrieve (If-Match)", body: M21AssignRetrieverBody, response: M21ComfortKitReturnDetailSchema },
+  "POST /api/v1/supplies/comfort-kit-returns/:returnId/reconcile": { summary: "Reconcile (D8 discrepancy COMPUTED, never accepted; SoD predicate + step-up; If-Match)", body: M21ReconcileReturnBody, response: M21ReconcileReturnResultSchema },
+  "POST /api/v1/supplies/comfort-kit-returns/:returnId/declare-unreturnable": { summary: "§2.6 90-day assumption of loss (attested reason; step-up; If-Match)", body: M21DeclareUnreturnableBody, response: M21ComfortKitReturnDetailSchema },
+
+  // operations.routes.ts — §4.1 rows 28–34 (D4 vendor-routing ladder + D5 par-stock shelf)
+  "GET /api/v1/supplies/vendor-routing-rules": { summary: "The D4 routing ladder (most-specific first; platform floor + overlay)", query: M21ListRoutingRulesQuery, response: M21VendorRoutingRuleListResponseSchema },
+  "POST /api/v1/supplies/vendor-routing-rules": { summary: "Author a routing rule (platform scope refused; 201)", body: M21UpsertRoutingRuleBody, response: M21VendorRoutingRuleViewSchema },
+  "PUT /api/v1/supplies/vendor-routing-rules/:ruleId": { summary: "Edit a routing rule", body: M21UpsertRoutingRuleBody, response: M21VendorRoutingRuleViewSchema },
+  "DELETE /api/v1/supplies/vendor-routing-rules/:ruleId": { summary: "Retire a routing rule (is_active=false; NOT a delete — history must resolve)", response: M21VendorRoutingRuleViewSchema },
+  "GET /api/v1/supplies/par-stock": { summary: "Hub shelf with DERIVED severity band (ok/below_threshold/critical_low/depleted)", query: M21ListParStockQuery, response: M21ParStockListResponseSchema },
+  "PUT /api/v1/supplies/par-stock/:parStockId": { summary: "Edit par thresholds (ordering mirrored at boundary; If-Match)", body: M21UpdateParStockBody, response: M21ParStockViewSchema },
+  "POST /api/v1/supplies/par-stock/observe": { summary: "Record an on-hand count (SETS the shelf, never adjusts; §2.7 pure rule)", body: M21ObserveParStockBody, response: M21ParStockViewSchema },
+});
+
+// M25 Remittance & Denials — FULL enrichment (all 31 routes). Later Object.assign wins, so this
+// supersedes the earlier partial M25 block and drives the module's unenriched deficit to 0.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── remittance.routes.ts (§4.1 routes 1-8) ────────────────────────────────────────────────────
+  "GET /api/v1/remittance/advices": {
+    summary: "Remittance advices (835 headers, cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: M25RemittanceAdviceSummaryPageSchema,
+  },
+  "GET /api/v1/remittance/advices/:id": {
+    summary: "Remittance advice detail (835 header, §4.1)",
+    response: M25RemittanceAdviceSummarySchema,
+  },
+  "POST /api/v1/remittance/advices/:id/replay": {
+    summary: "Queue a remittance advice for re-parse/replay (§4.1)",
+    response: M25ReplayQueuedResponseSchema,
+  },
+  "GET /api/v1/remittance/lines": {
+    summary: "Remittance service lines (cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: M25RemittanceLineSummaryPageSchema,
+  },
+  "GET /api/v1/remittance/lines/:id": {
+    summary: "Remittance service line detail (§4.1)",
+    response: M25RemittanceLineSummarySchema,
+  },
+  "GET /api/v1/remittance/unmatched": {
+    summary: "Unmatched remittance lines awaiting manual match (cursor-paginated, §4.1)",
+    query: M25ListQuerySchema,
+    response: M25RemittanceLineSummaryPageSchema,
+  },
+  "POST /api/v1/remittance/lines/:id/manual-match": {
+    summary: "Manually match a remittance line to a claim (§4.1)",
+    body: M25ManualMatchRequestSchema,
+    response: M25ManualMatchResponseSchema,
+  },
+  "POST /api/v1/remittance/adjustments/:id/override": {
+    summary: "Override an adjustment's taxonomy classification (step-up, §4.1)",
+    body: M25AdjustmentOverrideRequestSchema,
+    response: M25AdjustmentOverrideResponseSchema,
+  },
+
+  // ── denials.routes.ts (§4.1 routes 9-18) ──────────────────────────────────────────────────────
+  "GET /api/v1/denials": {
+    summary: "Denial worklist (cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: M25DenialWorklistPageSchema,
+  },
+  "GET /api/v1/denials/:id": {
+    summary: "Denial case detail (§4.1)",
+    response: M25DenialWorklistItemSchema,
+  },
+  "PATCH /api/v1/denials/:id/assign": {
+    summary: "Assign a denial case to a membership (§4.1)",
+    body: M25DenialAssignRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "PATCH /api/v1/denials/:id/start": {
+    summary: "Start work on a denial case (→ in_progress, §4.1)",
+    response: M25VersionedResultSchema,
+  },
+  "PATCH /api/v1/denials/:id/escalate": {
+    summary: "Escalate a denial case (§4.1)",
+    body: M25DenialEscalateRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "PATCH /api/v1/denials/:id/resolve": {
+    summary: "Resolve a denial case (§4.1)",
+    body: M25DenialResolveRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/denials/:id/close": {
+    summary: "Close a resolved denial case (§4.1)",
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/denials/:id/close-write-off": {
+    summary: "Close a denial case as a write-off (step-up, §4.1)",
+    body: M25DenialCloseWriteOffRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/denials/:id/reopen": {
+    summary: "Reopen a closed denial case (§4.1)",
+    body: M25DenialReopenRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/denials/:id/appeals": {
+    summary: "Open an appeal against a denial case (§4.1)",
+    body: M25AppealCreateRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+
+  // ── appeals.routes.ts (§4.1 routes 19-26) ─────────────────────────────────────────────────────
+  "GET /api/v1/appeals": {
+    summary: "Appeal tracker (cursor-paginated, §4.12)",
+    query: M25ListQuerySchema,
+    response: M25AppealSummaryPageSchema,
+  },
+  "GET /api/v1/appeals/:id": {
+    summary: "Appeal case detail + event timeline (§4.1)",
+    response: M25AppealDetailSchema,
+  },
+  "PATCH /api/v1/appeals/:id/attach": {
+    summary: "Attach a supporting M22 document to an appeal (§4.1)",
+    body: M25AppealAttachRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/submit": {
+    summary: "Submit an appeal to the payer (within-deadline + step-up, §4.1)",
+    body: M25AppealSubmitRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "PATCH /api/v1/appeals/:id/ack": {
+    summary: "Record the payer's receipt acknowledgement of an appeal (§4.1)",
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/decide": {
+    summary: "Record the payer's appeal decision (typed outcome, §4.1)",
+    body: M25AppealDecideRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/withdraw": {
+    summary: "Withdraw a submitted appeal (§4.1)",
+    body: M25AppealWithdrawRequestSchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/appeals/:id/close": {
+    summary: "Close a decided/withdrawn appeal case (§4.1)",
+    response: M25VersionedResultSchema,
+  },
+
+  // ── taxonomy.routes.ts (§4.1 routes 27-28) ────────────────────────────────────────────────────
+  "GET /api/v1/taxonomy/carc/:code": {
+    summary: "Merged CARC/RARC taxonomy view — M38 floor + tenant overlay (§4.1)",
+    response: M25TaxonomyMergedViewSchema,
+  },
+  "PATCH /api/v1/taxonomy/overlays/:carc": {
+    summary: "Patch the tenant CARC taxonomy overlay (§4.1)",
+    body: M25TaxonomyOverlayPatchSchema,
+    response: M25VersionedResultSchema,
+  },
+
+  // ── internal.routes.ts (§4.1 routes 29-31, §17 system-principal seams) ─────────────────────────
+  "GET /api/v1/internal/remittance/reader": {
+    summary: "Internal RemittanceReader seam — advice by id (§17 system principal)",
+    response: M25RemittanceAdviceReaderResponseSchema,
+  },
+  "GET /api/v1/internal/denials/metrics": {
+    summary: "Internal DenialMetricsProvider seam — aging/open aggregates (§17 system principal)",
+    response: M25DenialMetricsViewSchema,
+  },
+  "GET /api/v1/internal/patient-responsibility": {
+    summary: "Internal PatientResponsibilityReader seam — PR ledger rows (§17 system principal)",
+    response: M25PrLedgerItemsResponseSchema,
+  },
+});
+
+// M26 Cap Management (§4.1) — full route coverage. A LATER Object.assign than the base M26 block, so
+// these entries WIN: every read that returned a bare §4.1 view interface now publishes its response DTO
+// (the 8-route deficit), and every write's response is re-pinned to the service VIEW it actually returns
+// (not the contracts.* DTO). Bodies are the §4.2 contract schemas the handlers `parse()`; org/actor
+// binding is server-side, so no body carries an org/user id. `close` parses no body (params only). The
+// three 204 mutations (acknowledge / amend / resolve) carry a body but no response. Queries are read via
+// qStr (no TypeBox query schema exists), so none are published.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── cap periods ──
+  "GET /api/v1/cap/periods": {
+    summary: "List cap periods for the calling tenant — status + methodology (§4.1)",
+    response: M26PeriodViewListResponse,
+  },
+  "POST /api/v1/cap/periods": {
+    summary: "Open a new cap period (snapshots the platform constant; emits m26.cap.year_opened; §4.1)",
+    body: M26OpenCapPeriodRequest,
+    response: M26PeriodViewDto,
+  },
+  "GET /api/v1/cap/periods/:periodId": {
+    summary: "Single cap period including methodology lock + status (§4.1)",
+    response: M26PeriodViewDto,
+  },
+  "PATCH /api/v1/cap/periods/:periodId/close": {
+    summary: "Close a cap period — active → in_settlement (cap_period_open ABAC; M26-F06; §4.1)",
+    response: M26PeriodViewDto,
+  },
+  "PATCH /api/v1/cap/periods/:periodId/reopen": {
+    summary: "Reopen a settled period — step-up required (cap_period_settled ABAC; D12; §4.1)",
+    body: M26ReopenCapPeriodRequest,
+    response: M26PeriodViewDto,
+  },
+  "POST /api/v1/cap/periods/:periodId/methodology": {
+    summary: "Lock the streamlined/proportional methodology — one-time, step-up required (D2/D12; §4.1)",
+    body: M26LockMethodologyRequest,
+    response: M26PeriodViewDto,
+  },
+  // ── projections ──
+  "GET /api/v1/cap/projections": {
+    summary: "Latest projection snapshots (agency + inpatient) for a period (§4.1)",
+    response: M26ProjectionViewListResponse,
+  },
+  "GET /api/v1/cap/projections/agency/:periodId": {
+    summary: "Agency-aggregate projection snapshot — utilization + band (§4.1)",
+    response: M26ProjectionViewDto,
+  },
+  "GET /api/v1/cap/projections/patient/:periodId/:patientId": {
+    summary: "Per-patient projection snapshot — contribution + band (§4.1)",
+    response: M26ProjectionViewDto,
+  },
+  "GET /api/v1/cap/projections/inpatient/:periodId": {
+    summary: "Inpatient (20%) cap utilization — GIP+IRC day count + band (§4.1)",
+    response: M26ProjectionViewDto,
+  },
+  "POST /api/v1/cap/projections/:periodId/recompute": {
+    summary: "Force an immediate projection recompute (cap_period_open ABAC; §4.1)",
+    response: M26ProjectionViewListResponse,
+  },
+  // ── accruals ──
+  "GET /api/v1/cap/accruals/patient/:periodId/:patientId": {
+    summary: "Per-patient accrual — paid + outstanding-billed cents, first election, last-paid-through (§4.1)",
+    response: M26PatientAccrualViewDto,
+  },
+  "GET /api/v1/cap/accruals/patient/:periodId/:patientId/lines": {
+    summary: "Per-patient accrual source lines — cursor-paginated (source kind/id, amount cents, service span; §4.1)",
+    response: M26AccrualLinePageResponse,
+  },
+  "GET /api/v1/cap/accruals/inpatient/:periodId": {
+    summary: "Inpatient accrual — GIP/IRC/total patient days + inpatient pct for the period (§4.1)",
+    response: M26InpatientAccrualViewDto,
+  },
+  // ── threshold events ──
+  "GET /api/v1/cap/threshold-events": {
+    summary: "Threshold-event queue — filter by period/scope/band and unacknowledged-only (§4.1)",
+    response: M26ThresholdEventViewListResponse,
+  },
+  "PATCH /api/v1/cap/threshold-events/:eventId/acknowledge": {
+    summary: "Acknowledge a threshold event — records actor + timestamp (does not clear the breach; 204; §4.1)",
+    body: M26AcknowledgeEventRequest,
+  },
+  // ── dashboard ──
+  "GET /api/v1/cap/dashboard": {
+    summary: "Cap-watch dashboard composite — period + agency/inpatient projection + recent events + open variances (§4.1)",
+    response: M26DashboardViewDto,
+  },
+  // ── PS&R ──
+  "POST /api/v1/cap/periods/:periodId/psr-imports": {
+    summary: "Upload a PS&R CSV — sha256-deduped, queued for reconciliation (202; §4.1)",
+    body: M26PsrImportRequest,
+    response: M26PsrImportQueuedResponse,
+  },
+  "GET /api/v1/cap/psr-imports/:importId": {
+    summary: "PS&R import status — MAC region, PSR period span, parse status/error, PSR totals (§4.1)",
+    response: M26PsrImportViewDto,
+  },
+  "GET /api/v1/cap/psr-imports/:importId/reconciliation": {
+    summary: "PS&R reconciliation lines — per-scope M26-accrual vs PSR amount + variance + status (§4.1)",
+    response: M26PsrVarianceViewListResponse,
+  },
+  "PATCH /api/v1/cap/psr-imports/:importId/reconciliation/:lineId/resolve": {
+    summary: "Resolve a variance line with a categorical reason + note (204; §4.1)",
+    body: M26ResolveVarianceRequest,
+  },
+  // ── settlement ──
+  "GET /api/v1/cap/settlements/:periodId": {
+    summary: "Settlement worksheet — final paid/cap/overage + owed direction (§4.1)",
+    response: M26SettlementViewDto,
+  },
+  "POST /api/v1/cap/settlements/:periodId/propose": {
+    summary: "Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; 201; §4.1)",
+    response: M26SettlementViewDto,
+  },
+  "PATCH /api/v1/cap/settlements/:periodId/finalize": {
+    summary: "Finalize settlement — step-up; in_settlement → settled (D12; M26-F06; §4.1)",
+    body: M26FinalizeSettlementRequest,
+    response: M26SettlementViewDto,
+  },
+  // ── platform constants ──
+  "GET /api/v1/platform/cap/constants": {
+    summary: "List CMS per-cap-year cap amounts — platform-admin (cap_platform_admin ABAC; D3; §4.1)",
+    response: M26PlatformConstantViewListResponse,
+  },
+  "POST /api/v1/platform/cap/constants": {
+    summary: "Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; 201; §4.1)",
+    body: M26PublishConstantRequest,
+    response: M26PublishConstantAckResponse,
+  },
+  "PATCH /api/v1/platform/cap/constants/:capYear": {
+    summary: "Amend a published cap amount before first tenant use — platform-admin (D3; 204; §4.1)",
+    body: M26AmendConstantRequest,
+  },
+});
+
+// ── M27 Cost Report (Form CMS-1984-14; §4.1 — all 45 routes, F0 response enrichment) ──────────────────
+// Later Object.assign wins: this supersedes the earlier partial M27 block (11 request-only entries) and
+// closes the deficit to 0 by pairing every route with its §4.2 response DTO. Money is INTEGER CENTS (D8);
+// M27 carries no PHI (D18). Reads/writes returning opaque jsonb (worksheet `data`, statistic breakdowns,
+// snapshot materialized payloads) publish the envelope with `Type.Unknown()` internals.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── cost-report lifecycle root ──
+  "GET /api/v1/cost-reports": { summary: "List cost reports by (ProviderEntity, fiscal year) + lifecycle state (cost_report.read; §4.1)", query: M27CostReportListQuerySchema, response: M27CostReportPageResponseSchema },
+  "POST /api/v1/cost-reports": { summary: "Create a cost report for a ProviderEntity + fiscal-year-end (cost_report.create; D1; §4.1)", body: M27CreateCostReportBodySchema, response: M27CostReportDetailResponseSchema },
+  "GET /api/v1/cost-reports/:id": { summary: "Read one cost report — summary + latest snapshot/validation/submission + compliance window (§4.1)", response: M27CostReportDetailResponseSchema },
+  "PATCH /api/v1/cost-reports/:id": { summary: "Edit cost-report metadata — bad-debt-claimed / wage source; version-checked (cost_report.edit; §4.1)", body: M27PatchCostReportBodySchema, response: M27CostReportDetailResponseSchema },
+  "POST /api/v1/cost-reports/:id/refresh-inputs": { summary: "Enqueue trial-balance + wage-data + statistics refresh (cost_report.edit; §4.8)", response: M27RefreshInputsAcceptedResponseSchema },
+  "POST /api/v1/cost-reports/:id/allocate": { summary: "Enqueue the step-down allocation recompute (cost_report.edit; §4.8)", response: M27AllocationAcceptedResponseSchema },
+  "POST /api/v1/cost-reports/:id/return-to-draft": { summary: "Return a validating/ready report to draft (cost_report.edit; §4.1)", response: M27CostReportDetailResponseSchema },
+  "POST /api/v1/cost-reports/:id/approve-for-submit": { summary: "Approve a cost report for submission — step-up (cost_report.approve_for_submit; D14; §4.1)", body: M27ApproveForSubmitBodySchema, response: M27CostReportDetailResponseSchema },
+  "POST /api/v1/cost-reports/:id/submit": { summary: "Submit — step-up + attestation; builds the content-hashed snapshot (cost_report.submit; D10/D14; §4.1)", body: M27SubmitBodySchema, response: M27CostReportDetailResponseSchema },
+  "POST /api/v1/cost-reports/:id/submit-past-deadline": { summary: "Submit past the effective deadline — documented reason + attestation (cost_report.submit; §4.1)", body: M27SubmitPastDeadlineBodySchema, response: M27CostReportDetailResponseSchema },
+  "POST /api/v1/cost-reports/:id/reopen": { summary: "Reopen a submitted cost report — elevated approval + documented reason (cost_report.reopen_submitted; D19; §4.1)", body: M27ReopenBodySchema, response: M27CostReportDetailResponseSchema },
+
+  // ── worksheets ──
+  "GET /api/v1/cost-reports/:id/worksheets/:code": { summary: "Read a worksheet's data jsonb (lazy — TypeBox default when unpopulated; cost_report.read; §4.2)", response: M27WorksheetResponseSchema },
+  "PUT /api/v1/cost-reports/:id/worksheets/:code": { summary: "Write a worksheet's TypeBox-validated data jsonb (cost_report.edit; §4.2)", body: M27PutWorksheetBodySchema, response: M27WorksheetResponseSchema },
+  "POST /api/v1/cost-reports/:id/worksheets/:code/compute": { summary: "Enqueue a single-worksheet recompute (cost_report.edit; §4.8)", response: M27AllocationAcceptedResponseSchema },
+
+  // ── cost-center mappings ──
+  "GET /api/v1/cost-reports/:id/cost-center-mappings": { summary: "List the effective Xero->CMS cost-center mappings (cost_report.read; §4.1)", response: M27CostCenterMappingListResponseSchema },
+  "POST /api/v1/cost-reports/:id/cost-center-mappings/preview": { summary: "Dry-run a mapping change — changed accounts + unmapped GL accounts, no write (cost_report.edit; §4.1)", body: M27PreviewMappingBodySchema, response: M27MappingPreviewResponseSchema },
+  "POST /api/v1/cost-reports/:id/cost-center-mappings/apply": { summary: "Apply tenant mapping overrides/extensions (cost_report.edit; §4.1)", body: M27ApplyMappingBodySchema, response: M27CostCenterMappingListResponseSchema },
+  "POST /api/v1/cost-reports/:id/cost-center-mappings/reset-to-platform-default": { summary: "Reset mappings to the platform default (optionally keep tenant overrides) (cost_report.edit; §4.1)", body: M27ResetMappingBodySchema, response: M27CostCenterMappingListResponseSchema },
+
+  // ── bad debt ──
+  "GET /api/v1/cost-reports/:id/bad-debt": { summary: "List Medicare bad-debt entries (cost_report.read; D7; §4.1)", response: M27BadDebtRecordListResponseSchema },
+  "POST /api/v1/cost-reports/:id/bad-debt": { summary: "Add a Medicare bad-debt entry — deductible/coinsurance (cost_report.edit_bad_debt; D7; §4.1)", body: M27AddBadDebtBodySchema, response: M27BadDebtRecordResponseSchema },
+  "PATCH /api/v1/cost-reports/:id/bad-debt/:recordId": { summary: "Edit a bad-debt entry (cost_report.edit_bad_debt; D7; §4.1)", body: M27UpdateBadDebtBodySchema, response: M27BadDebtRecordResponseSchema },
+  "DELETE /api/v1/cost-reports/:id/bad-debt/:recordId": { summary: "Soft-delete a bad-debt entry (returns the tombstoned record; cost_report.edit_bad_debt; §4.1)", response: M27BadDebtRecordResponseSchema },
+
+  // ── statistics ──
+  "GET /api/v1/cost-reports/:id/statistics": { summary: "Read the census/visit/FTE statistics block (null until refreshed; cost_report.read; §4.1)", response: M27StatisticDataOrNullResponseSchema },
+  "POST /api/v1/cost-reports/:id/statistics/refresh": { summary: "Enqueue a statistics recompute (cost_report.edit; §4.8)", response: M27StatisticsRefreshAcceptedResponseSchema },
+
+  // ── imports ──
+  "GET /api/v1/cost-reports/:id/imports/trial-balance": { summary: "List trial-balance import runs (cost_report.read; §4.1)", response: M27TrialBalanceImportListResponseSchema },
+  "POST /api/v1/cost-reports/:id/imports/trial-balance": { summary: "Trigger a Xero trial-balance pull (cost_report.edit; §4.8)", response: M27ImportJobAcceptedResponseSchema },
+  "POST /api/v1/cost-reports/:id/imports/trial-balance/manual": { summary: "Manual trial-balance upload — pre-normalized GL rows (cost_report.edit; §4.1)", body: M27ManualTrialBalanceBodySchema, response: M27TrialBalanceImportResponseSchema },
+  "GET /api/v1/cost-reports/:id/imports/wage-data": { summary: "List wage-data import runs (cost_report.read; §4.1)", response: M27WageDataImportListResponseSchema },
+  "POST /api/v1/cost-reports/:id/imports/wage-data": { summary: "Trigger a Gusto wage-data pull (cost_report.edit; §4.8)", response: M27ImportJobAcceptedResponseSchema },
+  "POST /api/v1/cost-reports/:id/imports/wage-data/manual": { summary: "Manual wage-data upload — pre-normalized wage rows (cost_report.edit; §4.1)", body: M27ManualWageDataBodySchema, response: M27WageDataImportResponseSchema },
+
+  // ── validations ──
+  "GET /api/v1/cost-reports/:id/validations": { summary: "List validation runs for a cost report (cost_report.read; §4.1)", response: M27ValidationRunSummaryListResponseSchema },
+  "GET /api/v1/cost-reports/:id/validations/:vid": { summary: "Read one validation run + its per-rule results and overrides (cost_report.read; §4.1)", response: M27ValidationRunDetailResponseSchema },
+  "POST /api/v1/cost-reports/:id/validate": { summary: "Enqueue a validation run against the effective rule set (cost_report.edit; §4.8)", response: M27ValidationJobAcceptedResponseSchema },
+  "POST /api/v1/cost-reports/:id/validations/:vid/overrides": { summary: "Override a validation result — elevated approval + reason + audit (cost_report.override_validation; §11.B)", body: M27OverrideValidationResultBodySchema, response: M27ValidationOverrideResponseSchema },
+
+  // ── ECR submissions ──
+  "GET /api/v1/cost-reports/:id/ecr-submissions": { summary: "List MCReF ECR submissions (cost_report.read; §4.1)", response: M27EcrSubmissionListResponseSchema },
+  "GET /api/v1/cost-reports/:id/ecr-submissions/:sid": { summary: "Read one ECR submission + MCReF acknowledgment/rejection (cost_report.read; §4.1)", response: M27EcrSubmissionResponseSchema },
+  "POST /api/v1/cost-reports/:id/ecr-submissions/:sid/acknowledgments": { summary: "Record the MCReF acknowledgment / rejection for a submission (cost_report.record_acknowledgment; §4.1)", body: M27RecordAcknowledgmentBodySchema, response: M27EcrSubmissionResponseSchema },
+
+  // ── snapshots ──
+  "GET /api/v1/cost-reports/:id/snapshots": { summary: "List content-hashed submission/reopen snapshots (cost_report.read; §4.1)", response: M27SnapshotSummaryListResponseSchema },
+  "GET /api/v1/cost-reports/:id/snapshots/:sid": { summary: "Read one snapshot + its materialized inputs/worksheet payload (audit-read-logged; cost_report.read; §4.1)", response: M27SnapshotDetailResponseSchema },
+
+  // ── compliance window ──
+  "GET /api/v1/cost-reports/:id/compliance-window": { summary: "Read the deadline/alert-tier compliance window (null when none; cost_report.read; §4.1)", response: M27ComplianceWindowOrNullResponseSchema },
+  "POST /api/v1/cost-reports/:id/deadline-extensions": { summary: "Record a MAC-granted deadline extension (cost_report.edit; §4.1)", body: M27DeadlineExtensionBodySchema, response: M27ComplianceWindowResponseSchema },
+
+  // ── validation-rule library ──
+  "GET /api/v1/cost-report-validation-rules": { summary: "List the effective validation-rule library — platform floor + tenant layer (cost_report.read; §11.B)", response: M27ValidationRuleListResponseSchema },
+  "POST /api/v1/cost-report-validation-rules": { summary: "Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B)", body: M27CreateValidationRuleBodySchema, response: M27ValidationRuleResponseSchema },
+  "PATCH /api/v1/cost-report-validation-rules/:id": { summary: "Edit a tenant validation rule (cost_report.manage_rules; §11.B)", body: M27UpdateValidationRuleBodySchema, response: M27ValidationRuleResponseSchema },
+  "POST /api/v1/cost-report-validation-rules/:id/disable": { summary: "Deprecate/disable a tenant validation rule (cost_report.manage_rules; §11.B)", response: M27ValidationRuleResponseSchema },
+});
+
+// M30 HQRP & Quality — closes the last 3 unenriched routes (deficit 3 → 0).
+//
+// All three are mutating POSTs with NO request body and NO query: the transition is server-derived
+// from the :incidentId path param (submit/close) or from nothing (risk-register MV refresh). No body
+// contract exists to publish, so each is `summary`-only — the same shape the module already uses for
+// its bodyless mutations. `Object.assign` (later wins) so these merge over any prior ROUTE_ENRICHMENTS.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/quality/incidents/:incidentId/submit": {
+    summary: "Submit an incident (draft → submitted)",
+  },
+  "POST /api/v1/quality/incidents/:incidentId/close": {
+    summary: "Close an incident (resolved → closed, follow-up complete)",
+  },
+  "POST /api/v1/quality/risk-register/refresh": {
+    summary: "Force a risk-register materialized-view refresh",
+  },
+});
+
+// ── M33 Reporting & Dashboards (42 routes) — full enrichment. Later Object.assign wins, so this block
+// supersedes the 4 earlier partial Track-B entries (dashboards / admin/mvs / schedules / drilldown-emit),
+// adding their response DTOs. CSV export (#32) + bulk drilldown export (#36) hijack the response and stream
+// chunked CSV — no JSON body — so they are summary-only. Everything else carries a request contract and/or
+// a response DTO pinned to the service view by `Conforms` (reporting-typebox READ views / write-typebox
+// mutating + export/drilldown views).
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── dashboards + tiles (#1–#4) ──
+  "GET /api/v1/reporting/dashboards": { summary: "List dashboards in the actor's org scope (cursor-paginated)", query: M33DashboardListQuerySchema, response: M33DashboardListResponseSchema },
+  "GET /api/v1/reporting/dashboards/:dashboardId": { summary: "Read one dashboard (share-scope visibility gate)", response: M33DashboardSummaryViewSchema },
+  "GET /api/v1/reporting/tiles/:tileKey": { summary: "Read a tile: compile+execute its spec (aggregate-only, D6)", query: M33TileReadQuery, response: M33TileReadResponse },
+  "GET /api/v1/reporting/tiles/:tileKey/freshness": { summary: "Tile freshness badge (data_freshness_seconds + as-of)", response: M33TileFreshnessViewSchema },
+
+  // ── report bases + metric catalog (#5–#7) ──
+  "GET /api/v1/reporting/bases": { summary: "List report bases (status-filtered, cursor-paginated)", query: M33BaseListQuerySchema, response: M33ReportBaseListResponseSchema },
+  "GET /api/v1/reporting/bases/:baseKey": { summary: "Read one report base (dimensions + measures + drilldown template)", response: M33ReportBaseDetailViewSchema },
+  "GET /api/v1/reporting/metrics": { summary: "List the platform metric catalog (status-filtered, cursor-paginated)", query: M33MetricListQuerySchema, response: M33ReportMetricListResponseSchema },
+
+  // ── report definitions + D9 immutable version chain (#8–#14) ──
+  "POST /api/v1/reporting/definitions": { summary: "Create a tenant definition + its initial draft (v1) spec (201)", body: M33CreateDefinitionRequest, response: M33DefinitionViewSchema },
+  "GET /api/v1/reporting/definitions": { summary: "List the org's definitions (status/authorship-filtered, cursor-paginated)", query: M33DefinitionListQuery, response: M33DefinitionListResponseSchema },
+  "GET /api/v1/reporting/definitions/:id": { summary: "Read one definition (latest-version pointer + lock)", response: M33DefinitionViewSchema },
+  "GET /api/v1/reporting/definitions/:id/versions": { summary: "List a definition's version chain (newest first, D9)", query: M33DefinitionListQuery, response: M33DefinitionVersionListResponseSchema },
+  "POST /api/v1/reporting/definitions/:id/versions": { summary: "Append a NEW immutable version (editing is never in-place, D9) (201)", body: M33CreateVersionRequest, response: M33DefinitionVersionViewSchema },
+  "POST /api/v1/reporting/definitions/:id/versions/:vid/publish": { summary: "Publish a version: promote to latest, supersede the prior (D9) (201)", response: M33PublishVersionResponseSchema },
+  "POST /api/v1/reporting/definitions/:id/archive": { summary: "Archive a definition (terminal; version chain retained) (201)", response: M33DefinitionViewSchema },
+
+  // ── saved views + sharing (#15–#21) ──
+  "GET /api/v1/reporting/views": { summary: "List views (scope=mine own / scope=org shared; cursor-paginated)", query: M33ViewListQuery, response: M33ViewListResponseSchema },
+  "POST /api/v1/reporting/views": { summary: "Create a saved view over a published definition version (201)", body: M33CreateViewRequest, response: M33ViewViewSchema },
+  "GET /api/v1/reporting/views/:id": { summary: "Read one view (§4.7.2 visibility ladder gates access)", response: M33ViewViewSchema },
+  "PATCH /api/v1/reporting/views/:id": { summary: "Edit a view (display / pinned filters / share scope)", body: M33UpdateViewRequest, response: M33ViewViewSchema },
+  "POST /api/v1/reporting/views/:id/share": { summary: "Set a view's share scope (D17; org needs report.share.org) (201)", body: M33ShareViewRequest, response: M33ShareViewResponseSchema },
+  "POST /api/v1/reporting/views/:id/set-org-default": { summary: "Set the single org-default view (Org Admin, D17) (201)", response: M33ViewViewSchema },
+  "POST /api/v1/reporting/views/:id/archive": { summary: "Archive a view (clears the org-default flag) (201)", response: M33ViewViewSchema },
+
+  // ── scheduled reports (#22–#31) ──
+  "GET /api/v1/reporting/schedules": { summary: "List schedules (status-filtered, cursor-paginated)", query: M33ScheduleListQuery, response: M33ScheduleListResponseSchema },
+  "POST /api/v1/reporting/schedules": { summary: "Create a schedule (§2.3 cron/recipient/pdf-row-limit rules) (201)", body: M33ScheduledReportCreate, response: M33ScheduleViewSchema },
+  "GET /api/v1/reporting/schedules/:id": { summary: "Read one schedule", response: M33ScheduleViewSchema },
+  "PATCH /api/v1/reporting/schedules/:id": { summary: "Edit a schedule (re-validates the §2.3 rules on changed fields)", body: M33UpdateScheduleRequest, response: M33ScheduleViewSchema },
+  "POST /api/v1/reporting/schedules/:id/pause": { summary: "Pause a schedule (clears next_run_at) (201)", response: M33ScheduleViewSchema },
+  "POST /api/v1/reporting/schedules/:id/resume": { summary: "Resume a paused schedule (recomputes next_run_at) (201)", response: M33ScheduleViewSchema },
+  "POST /api/v1/reporting/schedules/:id/cancel": { summary: "Cancel a schedule (terminal) (201)", response: M33ScheduleViewSchema },
+  "POST /api/v1/reporting/schedules/:id/delete_all_runs": { summary: "Bulk-delete the run history (step-up + org-admin, D11)", response: M33DeleteAllRunsResponseSchema },
+  "GET /api/v1/reporting/schedules/:id/runs": { summary: "Read a schedule's run ledger (newest first, cursor-paginated)", query: M33ScheduleRunListQuery, response: M33ScheduleRunListResponseSchema },
+  "GET /api/v1/reporting/schedules/runs/:runId": { summary: "Read one run (M22 document back-ref + failure telemetry)", response: M33ScheduleRunViewSchema },
+
+  // ── exports (#32–#34) ── (#32 CSV streams the response → summary-only)
+  "POST /api/v1/reporting/views/:id/export.csv": { summary: "Stream a saved view as CSV (direct replica stream; §4.8 250k cap → 413). Response is a chunked CSV stream, not JSON", body: M33ExportRequest },
+  "POST /api/v1/reporting/views/:id/export.pdf": { summary: "Request a PDF render (M22 handshake; ≤5000-row gate → 413) → 202", body: M33ExportRequest, response: M33ExportAcceptedResponseSchema },
+  "POST /api/v1/reporting/views/:id/export.xlsx": { summary: "Request an XLSX render (M22 handshake; no row gate) → 202", body: M33ExportRequest, response: M33ExportAcceptedResponseSchema },
+
+  // ── drilldown (#35–#36) ── (#36 bulk export streams the response → summary-only)
+  "POST /api/v1/reporting/drilldown/emit": { summary: "Resolve + consent-narrow a drilldown URL + write the audit row (W-R-05) (201)", body: M33DrilldownEmitRequest, response: M33DrilldownEmitResponseSchema },
+  "POST /api/v1/reporting/drilldown/bulk_export": { summary: "Compliance bulk drilldown export (step-up + device attestation, §12.4). Response is a chunked CSV stream, not JSON", body: M33DrilldownBulkExportRequest },
+
+  // ── platform / compliance admin (#37–#41) ──
+  "GET /api/v1/reporting/admin/mvs": { summary: "List the registered materialized views (refresh telemetry + status)", query: M33MvListQuerySchema, response: M33MvMetadataListResponseSchema },
+  "POST /api/v1/reporting/admin/mvs/:mvKey/refresh": { summary: "Refresh an MV (enqueues the on-primary worker) → 202", response: M33MvCommandAcceptedSchema },
+  "POST /api/v1/reporting/admin/mvs/:mvKey/suspend": { summary: "Suspend an MV (halt its refresh schedule) → 202", response: M33MvCommandAcceptedSchema },
+  "GET /api/v1/reporting/admin/lag": { summary: "Read the replica-lag posture (the D14 breaker + freshness)", response: M33ReplicaLagViewSchema },
+  "GET /api/v1/reporting/admin/audit/drilldowns": { summary: "Query the compliance drilldown-audit trail (query_filters_cipher denylisted)", query: M33DrilldownAuditListQuerySchema, response: M33DrilldownAuditListResponseSchema },
+
+  // ── internal MetricsProvider seam (#42) ──
+  "GET /api/v1/reporting/metrics_seam/dashboard/:metricKey": { summary: "Read a single dashboard metric at an as-of/window (backs the MetricsProvider seam)", query: M33MetricSeamQuerySchema, response: M33MetricSeamViewSchema },
+});
+
+// ── M34 SaaS Tenant Platform (48 routes — full request/response contracts; deficit → 0) ──────────────
+// Tenant-scoped (DSAR §164.524 / tenant-export / onboarding / support-consent / BAA), platform-ops
+// (tenant lifecycle / key-ring / support-sessions / onboarding-templates / feature-flags / invitations /
+// BAA register / signup-intent triage), and the public self-serve signup surface. Org/actor binding is
+// server-side, so no body carries an org/membership id. Empty request bodies (fulfill / start-task /
+// elevate / verify-email) are summary-only — no requestBody. This block supersedes the earlier partial
+// M34 entries (later Object.assign wins).
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── tenant-scoped BAA (§4.1) ──
+  "GET /api/v1/tenant/baa": {
+    summary: "Tenant's platform→tenant BAA history (cursor-paginated; D11)",
+    query: M34BaaListQuerySchema,
+    response: M34BaaRecordListResponseSchema,
+  },
+  "POST /api/v1/tenant/baa/:id/attest": {
+    summary: "Compliance-officer attestation of a BAA record (step-up)",
+    body: M34BaaAttestRequest,
+    response: M34TenantBaaRecordViewSchema,
+  },
+
+  // ── tenant-scoped DSAR export jobs (§164.524) ──
+  "POST /api/v1/tenant/dsar-export-jobs": {
+    summary: "Request a patient-scoped DSAR export (enqueues tenant.dsar_export; §164.524)",
+    body: M34DsarExportRequest,
+    response: M34DsarExportJobViewSchema,
+  },
+  "GET /api/v1/tenant/dsar-export-jobs": {
+    summary: "The tenant's DSAR export queue (filtered, cursor-paginated)",
+    query: M34DsarListQuerySchema,
+    response: M34DsarExportJobListResponseSchema,
+  },
+  "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
+    summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",
+    response: M34DsarExportJobViewSchema,
+  },
+  "POST /api/v1/tenant/dsar-export-jobs/:id/extend": {
+    summary: "One-time §164.524 30-day extension",
+    body: M34DsarExtendRequest,
+    response: M34DsarExportJobViewSchema,
+  },
+  "POST /api/v1/tenant/dsar-export-jobs/:id/deny": {
+    summary: "Deny a DSAR job with a permitted-denial reason (step-up)",
+    body: M34DsarDenyRequest,
+    response: M34DsarExportJobViewSchema,
+  },
+  "GET /api/v1/tenant/dsar-export-jobs/:id/download": {
+    summary: "Mint a 24h presigned DSAR bundle URL (SEC-052; rate-limited)",
+    response: M34DownloadUrlViewSchema,
+  },
+
+  // ── tenant-scoped full export jobs ──
+  "POST /api/v1/tenant/tenant-export-jobs": {
+    summary: "Request a tenant-wide export archive (enqueues tenant.export; step-up)",
+    body: M34TenantExportRequest,
+    response: M34TenantExportJobViewSchema,
+  },
+  "GET /api/v1/tenant/tenant-export-jobs": {
+    summary: "The tenant's export queue (filtered, cursor-paginated)",
+    query: M34TenantExportListQuerySchema,
+    response: M34TenantExportJobListResponseSchema,
+  },
+  "GET /api/v1/tenant/tenant-export-jobs/:id/download": {
+    summary: "Mint a 24h presigned tenant-export URL (SEC-052; step-up)",
+    response: M34DownloadUrlViewSchema,
+  },
+
+  // ── tenant-scoped onboarding ──
+  "GET /api/v1/tenant/onboarding": {
+    summary: "Tenant's onboarding state (D3; cursor-paginated)",
+    query: M34OnboardingListQuerySchema,
+    response: M34OnboardingTaskListResponseSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/start": {
+    summary: "Advance an onboarding task pending → in_progress",
+    response: M34OnboardingTaskViewSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/complete": {
+    summary: "Complete a task with evidence (precondition DSL → 422 if false)",
+    body: M34OnboardingCompleteRequest,
+    response: M34OnboardingTaskViewSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/block": {
+    summary: "Block a task with a reason (emits M36 alert)",
+    body: M34OnboardingBlockRequest,
+    response: M34OnboardingTaskViewSchema,
+  },
+
+  // ── tenant-scoped support-consent grants ──
+  "GET /api/v1/tenant/support-consent-grants": {
+    summary: "Tenant's support-access consent grants (cursor-paginated)",
+    query: M34GrantListQuerySchema,
+    response: M34SupportConsentGrantListResponseSchema,
+  },
+  "POST /api/v1/tenant/support-consent-grants": {
+    summary: "Issue a support-access consent grant (≤72h; compliance-officer; step-up)",
+    body: M34TenantSupportConsentGrantRequest,
+    response: M34SupportConsentGrantViewSchema,
+  },
+  "POST /api/v1/tenant/support-consent-grants/:id/revoke": {
+    summary: "Revoke a grant (cascades to any open support_session)",
+    body: M34RevokeConsentGrantRequest,
+    response: M34SupportConsentGrantViewSchema,
+  },
+
+  // ── platform-ops tenant lifecycle (§4.1) ──
+  "GET /api/v1/platform/tenants": {
+    summary: "Platform tenant inventory (cross-tenant; status/plan/search filters)",
+    query: M34TenantListQuerySchema,
+    response: M34TenantListResponseSchema,
+  },
+  "POST /api/v1/platform/tenants": {
+    summary: "Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up)",
+    body: M34ProvisionTenantRequest,
+    response: M34TenantJobAckSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug": {
+    summary: "Full tenant overview (account + status event + key-ring + onboarding + BAA; §5.2)",
+    response: M34TenantOverviewViewSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/status": {
+    summary: "Apply a lifecycle status transition (eleven-state machine; step-up)",
+    body: M34StatusTransitionRequest,
+    response: M34TenantStatusAckSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/offboard": {
+    summary: "Initiate offboarding cascade (step-up)",
+    body: M34OffboardTenantRequest,
+    response: M34TenantStatusAckSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/shred": {
+    summary: "Execute the cryptographic shred (enqueues tenant.shred; passkey-2min + co-signer)",
+    body: M34ShredTenantRequest,
+    response: M34TenantJobAckSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/dek-rotate": {
+    summary: "Request a DEK rotation (enqueues tenant.dek_rotate; step-up)",
+    body: M34DekRotateRequest,
+    response: M34TenantJobAckSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/key-ring": {
+    summary: "Read key-ring METADATA only (ciphertext never exposed; §3.5)",
+    response: M34KeyRingMetadataViewSchema,
+  },
+
+  // ── platform-ops support sessions (break-glass; F01/D8/D16) ──
+  "GET /api/v1/platform/support-sessions": {
+    summary: "Active + recent support sessions across tenants (cursor-paginated)",
+    query: M34SupportSessionListQuerySchema,
+    response: M34SupportSessionListResponseSchema,
+  },
+  "GET /api/v1/platform/support-sessions/:id/events": {
+    summary: "A session's event ledger — the surveyor trail (cursor-paginated; audited)",
+    query: M34SessionEventListQuerySchema,
+    response: M34SupportSessionEventListResponseSchema,
+  },
+  "POST /api/v1/platform/support-sessions": {
+    summary: "Start a session against a consent grant (distinct-actor + passkey-5min step-up)",
+    body: M34StartSessionRequest,
+    response: M34StartSessionAckSchema,
+  },
+  "POST /api/v1/platform/support-sessions/:id/elevate": {
+    summary: "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
+    response: M34ElevateSessionAckSchema,
+  },
+  "POST /api/v1/platform/support-sessions/:id/close": {
+    summary: "Close a session with reason='manual' (no step-up)",
+    body: M34CloseSessionRequest,
+    response: M34CloseSessionAckSchema,
+  },
+
+  // ── platform-ops onboarding-template catalog ──
+  "GET /api/v1/platform/onboarding-templates": {
+    summary: "Platform onboarding-template catalog (cursor-paginated)",
+    query: M34OnboardingTemplateListQuerySchema,
+    response: M34OnboardingTemplateListResponseSchema,
+  },
+  "POST /api/v1/platform/onboarding-templates": {
+    summary: "Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only)",
+    body: M34UpsertOnboardingTemplateRequest,
+    response: M34OnboardingTemplateViewSchema,
+  },
+
+  // ── platform-ops feature-flag admin (delegates to M1 FeatureFlagAdmin; D13) ──
+  "GET /api/v1/platform/feature-flags": {
+    summary: "Platform-global + per-tenant feature flags (cursor-paginated)",
+    query: M34FeatureFlagListQuerySchema,
+    response: M34FeatureFlagListResponseSchema,
+  },
+  "POST /api/v1/platform/feature-flags": {
+    summary: "Create/update a feature flag via the M1 admin seam (step-up)",
+    body: M34UpsertFeatureFlagRequest,
+    response: M34FeatureFlagViewSchema,
+  },
+  "POST /api/v1/platform/feature-flags/:flagKey/kill-switch": {
+    summary: "Toggle a flag's kill switch (emits M36 emergency alert; step-up)",
+    body: M34KillSwitchRequest,
+    response: M34FeatureFlagViewSchema,
+  },
+
+  // ── platform-ops tenant invitations ──
+  "GET /api/v1/platform/tenant-invitations": {
+    summary: "Platform → first-admin invitations across tenants (cursor-paginated)",
+    query: M34InvitationListQuerySchema,
+    response: M34InvitationListResponseSchema,
+  },
+  "POST /api/v1/platform/tenant-invitations": {
+    summary: "Issue a single-use first-admin invitation token (sent via M36; step-up)",
+    body: M34IssueInvitationRequest,
+    response: M34TenantInvitationViewSchema,
+  },
+  "DELETE /api/v1/platform/tenant-invitations/:id": {
+    summary: "Revoke a pending invitation",
+    response: M34RevokeInvitationAckSchema,
+  },
+
+  // ── platform-ops BAA register (§3.8/D11) ──
+  "GET /api/v1/platform/baa-register": {
+    summary: "Platform→tenant BAA register across tenants (cursor-paginated)",
+    query: M34BaaRegisterListQuerySchema,
+    response: M34BaaRegisterListResponseSchema,
+  },
+  "POST /api/v1/platform/baa-register": {
+    summary: "File a BAA record for a (tenant_account, addendum_version) — UNIQUE",
+    body: M34CreateBaaRequest,
+    response: M34PlatformBaaRecordViewSchema,
+  },
+  "PATCH /api/v1/platform/baa-register/:id": {
+    summary: "Update a BAA record (execution/termination/dates/contacts/document linkage)",
+    body: M34UpdateBaaRequest,
+    response: M34PlatformBaaRecordViewSchema,
+  },
+
+  // ── platform-ops signup-intent triage (F02/ADR-0010) ──
+  "GET /api/v1/platform/signup-intents": {
+    summary: "Signup-intent triage queue (status/source filters; cursor-paginated)",
+    query: M34SignupIntentListQuerySchema,
+    response: M34SignupIntentListResponseSchema,
+  },
+  "POST /api/v1/platform/signup-intents/:id/qualify": {
+    summary: "Qualify an intent (new → qualified; enqueues tenant.provision)",
+    body: M34QualifyIntentRequest,
+    response: M34QualifyIntentAckSchema,
+  },
+  "POST /api/v1/platform/signup-intents/:id/reject": {
+    summary: "Reject an intent (new → rejected) with a recorded rationale",
+    body: M34RejectIntentRequest,
+    response: M34RejectIntentAckSchema,
+  },
+
+  // ── public self-serve signup (§7.1 Phase-3; flag-gated 503 when OFF) ──
+  "POST /api/v1/public/signup-intents": {
+    summary: "Public self-serve signup intake (no session; source server-pinned; rate-limited)",
+    body: M34PublicSignupIntentRequest,
+    response: M34PublicSignupIntentAckSchema,
+  },
+  "POST /api/v1/public/signup-intents/:tokenHash/verify-email": {
+    summary: "Consume the single-use email-verification token (idempotent re-consume → 409)",
+    response: M34VerifyEmailAckSchema,
+  },
+  "POST /api/v1/public/tenant-invitations/:tokenHash/accept": {
+    summary: "Accept the platform → first-admin invitation (creates M2 user + first org_admin)",
+    body: M34AcceptInvitationRequest,
+    response: M34AcceptInvitationAckSchema,
+  },
+});
+
+// ── M36 Secure Messaging & Alerts (22 routes: 19 messaging/notification/alert + 3 vendor webhooks) ──
+// Webhook routes carry no session auth and no TypeBox body (Twilio/Postmark urlencoded vendor callback
+// read as a raw Record<string,string>) and return 204 → summary-only. The four other 204 mutations
+// (delete message / remove member / remove endpoint) are summary-only. `announce` reuses the
+// send-message response shape; verify-endpoint reuses the register-endpoint response shape.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // channels & messages (§4.2)
+  "GET /api/v1/messaging/channels": { summary: "List the channels the actor is a member of", response: M36ChannelListResponseSchema },
+  "GET /api/v1/messaging/channels/:id": { summary: "Channel detail + recent members (channel_visibility ABAC)", response: M36ChannelDetailResponseSchema },
+  "GET /api/v1/messaging/channels/:id/messages": { summary: "Paginated message history (bodies decrypted for entitled readers)", query: M36ListMessagesQuerySchema, response: M36MessageListResponseSchema },
+  "POST /api/v1/messaging/channels/:id/messages": { summary: "Post a message (201; CHANNEL_ARCHIVED 410)", body: M36SendMessageBodySchema, response: M36SendMessageResponseSchema },
+  "PATCH /api/v1/messaging/messages/:id": { summary: "Edit a message within the edit window (author-only)", body: M36EditMessageBodySchema, response: M36EditMessageResponseSchema },
+  "DELETE /api/v1/messaging/messages/:id": { summary: "Soft-delete a message (author-only; 204)" },
+  "POST /api/v1/messaging/messages/:id/read": { summary: "Mark message(s) read — single or up-through-id (204)", body: M36ReadBodySchema },
+  "POST /api/v1/messaging/dm": { summary: "Open or find a 1:1 DM channel (idempotent; 200/201)", body: M36OpenDmBodySchema, response: M36OpenDmResponseSchema },
+  "POST /api/v1/messaging/channels/:id/members": { summary: "Add a manual member (admin override on auto channels; 204)", body: M36AddMemberBodySchema },
+  "DELETE /api/v1/messaging/channels/:id/members/:userId": { summary: "Remove a channel member (204)" },
+  "POST /api/v1/messaging/announce": { summary: "Post to the tenant announcement channel (org_admin; 201)", body: M36AnnounceBodySchema, response: M36SendMessageResponseSchema },
+
+  // notification preferences & endpoints (§4.2; SELF-only)
+  "GET /api/v1/notifications/preferences": { summary: "Read the actor's notification preferences", response: M36NotificationPreferencesResponseSchema },
+  "PUT /api/v1/notifications/preferences": { summary: "Replace preferences (INVALID_ROUTING_MAP 422 / VACATION_FORWARD_* 409)", body: M36PreferencesBodySchema, response: M36PutPreferencesResponseSchema },
+  "POST /api/v1/notifications/endpoints": { summary: "Register a push/sms/email delivery endpoint (201)", body: M36RegisterEndpointBodySchema, response: M36DeliveryEndpointResponseSchema },
+  "POST /api/v1/notifications/endpoints/:id/verify": { summary: "Confirm an endpoint verification token", body: M36VerifyEndpointBodySchema, response: M36DeliveryEndpointResponseSchema },
+  "DELETE /api/v1/notifications/endpoints/:id": { summary: "Remove a delivery endpoint (204)" },
+
+  // alerts (§4.2)
+  "GET /api/v1/alerts/inbox": { summary: "The actor's recent alerts with delivery status", response: M36AlertInboxResponseSchema },
+  "GET /api/v1/alert-rules": { summary: "Tenant + inherited platform alert rules", response: M36AlertRuleListResponseSchema },
+  "PATCH /api/v1/alert-rules/:id": { summary: "Enable/disable/override a rule (SYSTEM_LOCKED 403; clones platform default)", body: M36AlertRulePatchSchema, response: M36AlertRuleResponseSchema },
+
+  // vendor delivery webhooks (§4.9) — signature-authed, raw urlencoded vendor body, 204 → summary-only
+  "POST /webhooks/twilio/sms-status": { summary: "Twilio SMS delivery-status callback (HMAC-verified; reconciles notification_delivery)" },
+  "POST /webhooks/twilio/voice-status": { summary: "Twilio Voice (SOS) delivery-status callback (HMAC-verified)" },
+  "POST /webhooks/postmark/event": { summary: "Postmark bounce/delivery event callback (IP allowlist + bearer)" },
+});
+
+// M38 Clinical Terminology Service — enrichment block for ALL M38 routes (§4.1–4.2).
+// Append as a trailing `Object.assign(ROUTE_ENRICHMENTS, { ... })` — later wins, so re-covering
+// `GET /:system/search` (already enriched upstream) is harmless. Paths are exact `METHOD /path`.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // Binary validate (hot path on claim lines / problem lists) — ValidateResult + echoed asOf.
+  "GET /api/v1/terminology/:system/validate": {
+    summary: "Version-aware validate a (system, code) at asOf (§4.2)",
+    query: M38ValidateQuerySchema,
+    response: M38ValidateResponseSchema,
+  },
+  // Search (exact/fuzzy/semantic) — re-covered here; matches the upstream entry.
+  "GET /api/v1/terminology/:system/search": {
+    summary: "Search concepts within a code system (§4.2)",
+    query: TerminologySearchQuerySchema,
+    response: TerminologySearchResponseSchema,
+  },
+  // Deprecation successor mapping.
+  "GET /api/v1/terminology/:system/:code/deprecation": {
+    summary: "Deprecation successor mapping for a code, or null (§4.2)",
+    response: M38DeprecationLookupResponseSchema,
+  },
+  // Lookup full concept (system-specific properties; per-system `properties` union is open).
+  "GET /api/v1/terminology/:system/:code": {
+    summary: "Lookup a full concept at asOf (§4.2)",
+    query: M38LookupQuerySchema,
+    response: M38ConceptResponseSchema,
+  },
+  // Value-set expansion at asOf (paginated; unioned with tenant extensions).
+  "GET /api/v1/terminology/value-sets/:id/expand": {
+    summary: "Expand a value set at asOf, with tenant extensions (§4.2)",
+    query: M38ExpandQuerySchema,
+    response: M38ExpandResponseSchema,
+  },
+  // (system, code, asOf) → membership with provenance.
+  "GET /api/v1/terminology/value-sets/:id/is-member": {
+    summary: "Membership of a (system, code) in a value set + provenance (§4.2)",
+    query: M38IsMemberQuerySchema,
+    response: M38MembershipResponseSchema,
+  },
+  // Tenant adds a (system, code) to a value set — the ONLY tenant write (§7.4/§7.6); 201.
+  "POST /api/v1/terminology/value-sets/:id/extensions": {
+    summary: "Add a (system, code) tenant extension to a value set (§4.2)",
+    body: M38ExtensionBodySchema,
+    response: M38ExtensionCreatedResponseSchema,
+  },
+  // Tenant removes an extension (soft-delete) — 204, no response body → summary-only.
+  "DELETE /api/v1/terminology/value-sets/:id/extensions/:extId": {
+    summary: "Remove a tenant value-set extension (soft-delete; 204, §4.2)",
+  },
+});
+
+// M39 Consent & Authorization Management — complete route enrichment (all 27 routes).
+// Paste AFTER the existing partial M39 block; a later Object.assign wins, so this supersedes it and
+// drives the module deficit to 0. Routes 25-27 (portal) do not exist yet (no portal session_class).
+Object.assign(ROUTE_ENRICHMENTS, {
+  // ── catalog + overlay (routes 1-2) ──
+  "GET /api/v1/consent-types": {
+    summary: "Consent-type catalog + applicable tenant overlay (§4.1 #1)",
+    response: M39ConsentCatalogListResponse,
+  },
+  "POST /api/v1/consent-types/overlay": {
+    summary: "Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6, step-up)",
+    body: M39UpsertOverlayBody,
+    response: M39ConsentTypeOverlayResponse,
+  },
+
+  // ── record reads (routes 3-5) ──
+  "GET /api/v1/patients/:patientId/consents": {
+    summary: "A patient's ACTIVE consents (§4.1 #3)",
+    response: M39ConsentListResponse,
+  },
+  "GET /api/v1/consents/:consentId": {
+    summary: "Read a full consent record (§4.1 #4)",
+    response: M39ConsentRecordResponse,
+  },
+  "GET /api/v1/consents/:consentId/version-chain": {
+    summary: "Both ancestor chains — supersession (D1) + renewal (D13)",
+    response: M39ConsentVersionChainResponse,
+  },
+
+  // ── record lifecycle (routes 6-10, 20) ──
+  "POST /api/v1/patients/:patientId/consents": {
+    summary: "Create a consent DRAFT for a patient (§4.1 #6)",
+    body: M39CreateDraftBody,
+    response: M39ConsentRecordResponse,
+  },
+  "PATCH /api/v1/consents/:consentId": {
+    summary: "Edit a consent draft — only `status='draft'` is editable (D1)",
+    body: M39UpdateDraftBody,
+    response: M39ConsentRecordResponse,
+  },
+  "POST /api/v1/consents/:consentId/sign": {
+    summary: "Sign a consent (step-up; emits m39.consent.signed)",
+    response: M39ConsentRecordResponse,
+  },
+  "POST /api/v1/consents/:consentId/supersede": {
+    summary: "Supersede an active consent with a new row (D1 append-only, step-up)",
+    body: M39SupersedeBody,
+    response: M39ConsentRecordResponse,
+  },
+  "POST /api/v1/consents/:consentId/revoke": {
+    summary: "Revoke a consent (§7.3 cascade; staff revocation needs evidence, step-up)",
+    body: M39RevokeBody,
+    response: M39ConsentRecordResponse,
+  },
+  "POST /api/v1/consents/:consentId/renew": {
+    summary: "Renew an expired/revoked consent (D13 renewal chain, step-up)",
+    body: M39RenewBody,
+    response: M39ConsentRecordResponse,
+  },
+
+  // ── recipients (routes 11-13) ──
+  "GET /api/v1/consents/:consentId/recipients": {
+    summary: "Named disclosure recipients on a consent, active + historical (D6)",
+    response: M39ConsentRecipientListResponse,
+  },
+  "POST /api/v1/consents/:consentId/recipients": {
+    summary: "Add a named disclosure recipient (D6, step-up)",
+    body: M39AddRecipientBody,
+    response: M39ConsentRecipientResponse,
+  },
+  "DELETE /api/v1/consents/:consentId/recipients/:recipientId": {
+    summary: "Remove a named recipient — flips removed_at, never deletes (D6, step-up)",
+    body: M39RemoveRecipientBody,
+    response: M39ConsentRecipientResponse,
+  },
+
+  // ── DPOA agents (routes 14-17) ──
+  "GET /api/v1/consents/:consentId/dpoa-agents": {
+    summary: "Named DPOA agents on a consent, active + historical (D5)",
+    response: M39ConsentDpoaAgentListResponse,
+  },
+  "POST /api/v1/consents/:consentId/dpoa-agents": {
+    summary: "Name a DPOA agent (D5, step-up)",
+    body: M39AddDpoaAgentBody,
+    response: M39ConsentDpoaAgentResponse,
+  },
+  "PATCH /api/v1/consents/:consentId/dpoa-agents/:agentId": {
+    summary: "Mutate a DPOA agent's scope / activation / term, or retire them (D5, step-up)",
+    body: M39UpdateDpoaAgentBody,
+    response: M39ConsentDpoaAgentResponse,
+  },
+  "GET /api/v1/patients/:patientId/dpoa/active-primary": {
+    summary: "The patient's ACTIVE primary DPOA agent, or null (M7/M11/M14 consumer, D5)",
+    response: M39ActivePrimaryDpoaResponse,
+  },
+
+  // ── expiry + renewal cycles (routes 18-19) ──
+  "GET /api/v1/patients/:patientId/expiring-consents": {
+    summary: "Consents inside the renewal window (cursor-paginated, §4.12)",
+    query: M39ExpiringConsentsQuery,
+    response: M39ExpiringConsentsResponse,
+  },
+  "GET /api/v1/consents/:consentId/renewal-cycle": {
+    summary: "Open + closed renewal cycles on a consent (D8)",
+    response: M39ConsentRenewalCycleListResponse,
+  },
+
+  // ── delegated access (route 21) ──
+  "GET /api/v1/patients/:patientId/delegated-access": {
+    summary: "The D10 delegated-access projection a portal/caregiver session resolves against",
+    response: M39DelegatedAccessListResponse,
+  },
+
+  // ── decision audit (routes 22-23) ──
+  "GET /api/v1/consents/:consentId/eval-audit": {
+    summary: "Per-consent decision audit (cursor-paginated, §4.12)",
+    query: M39ConsentEvalAuditQuery,
+    response: M39EvalAuditPageResponse,
+  },
+  "GET /api/v1/consents/eval-audit/by-patient": {
+    summary: "Patient-scoped consent-decision audit (cursor-paginated, §4.12)",
+    query: M39EvalAuditByPatientQuery,
+    response: M39EvalAuditPageResponse,
+  },
+
+  // ── admin + post-mortem (routes 24, 28-30) ──
+  "POST /api/v1/consents/:consentId/document/re-render": {
+    summary: "Re-emit m39.consent.signed so M22 re-renders the signed PDF (compliance-only, step-up)",
+    response: M39ReRenderReceiptResponse,
+  },
+  "GET /api/v1/consents/post-mortem-eligible/:patientId": {
+    summary: "Which of a patient's consents survive death vs terminate (M16 consumer, D13)",
+    response: M39PostMortemEligibilityListResponse,
+  },
+  "POST /api/v1/consents/bereavement-outreach": {
+    summary: "Capture post-mortem bereavement-outreach consent (D14, step-up)",
+    body: M39BereavementOutreachBody,
+    response: M39ConsentRecordResponse,
+  },
+  "POST /api/v1/consents/:consentId/cascade/retry": {
+    summary: "Re-fire a stuck revocation cascade — reports partial_failed honestly (D7, step-up)",
+    response: M39CascadeRetryResponse,
+  },
+});
+
+// M40 MDM (Track A — Master Data Management console) — full route enrichment.
+// Later Object.assign wins, so this re-covers `GET …/:kind/search` (already enriched upstream) and
+// adds the other 13 routes → deficit 0. `MdmSearchQuerySchema` is the existing upstream import.
+Object.assign(ROUTE_ENRICHMENTS, {
+  // Reads through the MdmEntityProvider seam (canonical + this-tenant overlay; merged excluded).
+  "GET /api/v1/mdm/:kind/search": {
+    summary: "Search a kind's canonical master-data set (§4.2)",
+    query: MdmSearchQuerySchema,
+    response: M40SearchResponseSchema,
+  },
+  "GET /api/v1/mdm/:kind/:id": {
+    summary: "Resolve one entity by kind — follows merged_into_id transparently (§4.2 / §7.2)",
+    response: M40ResolvedResponseSchema,
+  },
+  "POST /api/v1/mdm/:kind/get-or-create": {
+    summary: "Match by identifier; write a provisional if no canonical match (§4.2 / §7.1)",
+    body: M40GetOrCreateBodySchema,
+    response: M40GetOrCreateResponseSchema,
+  },
+  "PATCH /api/v1/mdm/:kind/:id/overlay": {
+    summary: "Upsert this tenant's overlay (Phase-1: physician only) (§4.2)",
+    body: M40OverlayBodySchema,
+    response: M40OverlayAppliedResponseSchema,
+  },
+  "GET /api/v1/mdm/:kind/:id/relationships": {
+    summary: "Canonical parent/children for the entity (no overlay join) (§4.2)",
+    response: M40RelationshipsResponseSchema,
+  },
+  // Tenant BAA register + manual license entry.
+  "GET /api/v1/mdm/baa": {
+    summary: "The tenant's BAA register across MDM entities (§4.2)",
+    response: M40BaaListResponseSchema,
+  },
+  "POST /api/v1/mdm/baa": {
+    summary: "Record/update a BAA execution + expiration (§4.2)",
+    body: M40BaaBodySchema,
+    response: M40BaaCreatedResponseSchema,
+  },
+  "POST /api/v1/mdm/license/manual": {
+    summary: "Enter/update a license + expiration — Phase-1 manual (§4.2)",
+    body: M40LicenseBodySchema,
+    response: M40LicenseRecordedResponseSchema,
+  },
+  // Platform-ops (keys never granted to a tenant role; approve additionally step-ups, §7.6).
+  "GET /api/v1/admin/mdm/merge-requests": {
+    summary: "Pending merge requests (platform-ops, §4.2)",
+    response: M40MergeRequestsResponseSchema,
+  },
+  "POST /api/v1/admin/mdm/merge-requests/:id/approve": {
+    summary: "Approve a merge — flips the duplicate to merged (step-up re-auth, §7.6)",
+    response: M40MergeApprovedResponseSchema,
+  },
+  "POST /api/v1/admin/mdm/merge-requests/:id/reject": {
+    summary: "Reject a pending merge with a reason — 204 no content (§4.2)",
+    body: M40RejectBodySchema,
+  },
+  "POST /api/v1/admin/mdm/provisional/:id/promote": {
+    summary: "Promote a provisional to canonical (§4.2)",
+    response: M40ProvisionalPromotedResponseSchema,
+  },
+  "POST /api/v1/admin/mdm/nppes/lookup": {
+    summary: "On-demand single-NPI NPPES sync (§4.2)",
+    body: M40NppesLookupBodySchema,
+    response: M40NppesLookupResponseSchema,
+  },
+  "GET /api/v1/admin/mdm/nppes/sync-log": {
+    summary: "Recent NPPES sync outcomes (§4.2)",
+    response: M40NppesSyncLogResponseSchema,
+  },
+});
+

@@ -449,3 +449,329 @@ export type RiskScoreListQuery = Static<typeof RiskScoreListQuerySchema>;
 export type CounselorDashboardQuery = Static<typeof CounselorDashboardQuerySchema>;
 export type SupervisorDashboardQuery = Static<typeof SupervisorDashboardQuerySchema>;
 export type LocalDateString = Static<typeof LocalDate>;
+
+// ── §4.1 RESPONSE DTOs (F0 enrichment) ────────────────────────────────────────────────────────────────
+// The §4.1 GET + write routes returned the typed §4.6 view shapes but published NO response contract, so
+// the generated client typed every body as `never`. These DTOs mirror the read/write service views 1:1 and
+// are pinned to them by the compile-time `Conforms` aliases below: a view field added or renamed breaks
+// `bun run build` rather than silently drifting from the client. Enums are literal unions (the wire-enum-as-
+// string rule); every branded id (`type X = string`) is a plain `Type.String()`. Ids that the service leaves
+// `null` are `Nullable(...)`; the D10/§7.13-withheld risk fields are `Type.Optional(...)` — ABSENT means
+// "not disclosed", never "no value".
+const Str = Type.String();
+const Int = Type.Integer();
+const Bool = Type.Boolean();
+const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
+
+/** `bereavement_plan_closure_reason` — the FULL nine-value enum (contrast `EarlyCloseReason`, the D7 subset). */
+const ClosureReason = Type.Union([
+  Type.Literal("thirteen_month_completion"),
+  Type.Literal("all_contacts_declined"),
+  Type.Literal("patient_opt_out_pre_death"),
+  Type.Literal("patient_opt_out_post_creation"),
+  Type.Literal("tenant_offboarding"),
+  Type.Literal("all_bereaved_deceased"),
+  Type.Literal("geographic_relocation"),
+  Type.Literal("family_legal_action"),
+  Type.Literal("other_early"),
+]);
+
+/** `bereavement_risk_score_kind`. */
+const RiskScoreKind = Type.Union([
+  Type.Literal("rule_deterministic"),
+  Type.Literal("llm_augmented"),
+]);
+
+/** `bereavement_data_completeness`. */
+const DataCompleteness = Type.Union([
+  Type.Literal("complete"),
+  Type.Literal("partial"),
+  Type.Literal("minimal"),
+]);
+
+/** `bereavement_confidence_band`. */
+const ConfidenceBand = Type.Union([
+  Type.Literal("HIGH"),
+  Type.Literal("MEDIUM"),
+  Type.Literal("LOW"),
+]);
+
+/** `bereavement_anniversary_mark`. */
+const AnniversaryMark = Type.Union([
+  Type.Literal("one_month"),
+  Type.Literal("three_month"),
+  Type.Literal("six_month"),
+  Type.Literal("nine_month_high_risk_only"),
+  Type.Literal("anniversary"),
+]);
+
+/** §7.13 — the two confidentiality categories a read can withhold (`disclosure.ts`). */
+const RedactedCategory = Type.Union([Type.Literal("sud"), Type.Literal("clinical_risk")]);
+
+/** The 17 §2.6 side-effect kinds a transition can declare (`lifecycle/effects.ts`). */
+const EffectKind = Type.Union([
+  Type.Literal("audit"),
+  Type.Literal("outbox"),
+  Type.Literal("alert"),
+  Type.Literal("set_timestamp"),
+  Type.Literal("set_assignment"),
+  Type.Literal("insert_closure"),
+  Type.Literal("insert_opt_out"),
+  Type.Literal("rescind_opt_out"),
+  Type.Literal("cancel_future_outreach"),
+  Type.Literal("regenerate_schedule"),
+  Type.Literal("generate_schedule"),
+  Type.Literal("seed_anniversary_reminders"),
+  Type.Literal("recompute_risk"),
+  Type.Literal("set_external_source_metadata"),
+  Type.Literal("set_legal_hold"),
+  Type.Literal("clear_legal_hold"),
+  Type.Literal("log_external_referral"),
+]);
+
+/** §7.11 closeout counts (`M16OutreachStats`). */
+const OutreachStatsSchema = Type.Object({
+  completedCount: Int,
+  missedCount: Int,
+  contactsActiveCount: Int,
+  contactsOptedOutCount: Int,
+});
+
+/** D16 external-source provenance (`BereavementExternalSourceMetadata`). */
+const ExternalSourceSchema = Type.Object({
+  sourceProposalId: Str,
+  sourceMessageId: Str,
+  sourceFacilityMdmId: Str,
+  sourceFacilityName: Str,
+  ackReceivedAt: Str,
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("cosigned")]),
+  cosignedAt: Type.Optional(Str),
+  medicalDirectorMembershipId: Type.Optional(Str),
+});
+
+const TierDistributionSchema = Type.Object({
+  low: Int,
+  moderate: Int,
+  high: Int,
+  complicated: Int,
+});
+
+/** Route 1 — one plan-worklist row. */
+export const BereavementPlanListItemResponseSchema = Type.Object({
+  planId: Str,
+  patientId: Str,
+  admissionId: Str,
+  status: PlanStatus,
+  deathDate: Str,
+  windowEndsAt: Str,
+  assignedCounselorUserId: Nullable(Str),
+  assignedVolunteerUserId: Nullable(Str),
+  currentRiskTier: Type.Optional(Nullable(RiskTier)),
+  contactsActiveCount: Int,
+  nextOutreachDueAt: Nullable(Str),
+  overdueOutreachCount: Int,
+  externalSourceCosignPending: Bool,
+  version: Int,
+  updatedAt: Str,
+});
+
+/** One survivor row on the plan detail / roster. */
+export const BereavedContactRowViewResponseSchema = Type.Object({
+  contactId: Str,
+  planId: Str,
+  status: ContactStatus,
+  displayName: Str,
+  relationshipCode: RelationshipCode,
+  preferredLanguageIso639: Str,
+  portalAccountId: Nullable(Str),
+  consentRecordId: Nullable(Str),
+  allowedOutreachKinds: Type.Array(OutreachKind),
+  volunteerVisibleOnly: Bool,
+  confirmedAt: Nullable(Str),
+  optedOutAt: Nullable(Str),
+  unreachableAt: Nullable(Str),
+  deceasedAt: Nullable(Str),
+  mayRescindOptOut: Bool,
+  currentRiskTier: Type.Optional(Nullable(RiskTier)),
+  version: Int,
+});
+
+/** Route 2 — the plan header with its rolled-up roster + risk. */
+export const BereavementPlanDetailResponseSchema = Type.Object({
+  planId: Str,
+  patientId: Str,
+  admissionId: Str,
+  providerEntityId: Str,
+  locationId: Nullable(Str),
+  status: PlanStatus,
+  deathDate: Str,
+  deathTime: Nullable(Str),
+  windowEndsAt: Str,
+  openedAt: Nullable(Str),
+  pausedAt: Nullable(Str),
+  pauseKind: Nullable(PauseKind),
+  closedAt: Nullable(Str),
+  assignedCounselorUserId: Nullable(Str),
+  assignedCounselorAssignedAt: Nullable(Str),
+  assignedVolunteerUserId: Nullable(Str),
+  assignedVolunteerAssignedAt: Nullable(Str),
+  externalSource: Nullable(ExternalSourceSchema),
+  firstContactAllowed: Bool,
+  firstContactGateReason: Nullable(Str),
+  contacts: Type.Array(BereavedContactRowViewResponseSchema),
+  stats: OutreachStatsSchema,
+  currentRiskTier: Type.Optional(Nullable(RiskTier)),
+  currentRiskComputedAt: Type.Optional(Nullable(Str)),
+  legalHoldId: Nullable(Str),
+  version: Int,
+  updatedAt: Str,
+  redactedCategories: Type.Array(RedactedCategory),
+});
+
+/** Route 10 — the §3.3.7 closure record. */
+export const BereavementClosureViewResponseSchema = Type.Object({
+  closureId: Str,
+  planId: Str,
+  reason: ClosureReason,
+  closeKind: Str,
+  closedAt: Str,
+  closedByUserId: Nullable(Str),
+  cosignedByUserId: Nullable(Str),
+  cosignedAt: Nullable(Str),
+  stats: OutreachStatsSchema,
+  bereavementSummaryDocumentId: Nullable(Str),
+});
+
+/** Routes 19 / 20–25 / 33 — one scheduled or historical touchpoint. */
+export const BereavementOutreachRowViewResponseSchema = Type.Object({
+  outreachId: Str,
+  planId: Str,
+  contactId: Str,
+  kind: OutreachKind,
+  status: OutreachStatus,
+  anniversaryMark: Nullable(AnniversaryMark),
+  dueAt: Str,
+  lateGraceUntil: Str,
+  startedAt: Nullable(Str),
+  completedAt: Nullable(Str),
+  cancelledAt: Nullable(Str),
+  assigneeUserId: Nullable(Str),
+  renderedDocumentId: Nullable(Str),
+  sourceEncounterId: Nullable(Str),
+  version: Int,
+});
+
+/** Routes 28 / 29 — one immutable row of the append-only score ledger. */
+export const BereavementRiskScoreViewResponseSchema = Type.Object({
+  scoreId: Str,
+  planId: Str,
+  contactId: Nullable(Str),
+  scoreKind: RiskScoreKind,
+  assessedAt: Str,
+  assessedByUserId: Nullable(Str),
+  tier: RiskTier,
+  deterministicTier: RiskTier,
+  ruleScore: Type.Number(),
+  dataCompleteness: DataCompleteness,
+  confidenceBand: ConfidenceBand,
+  factors: Type.Optional(Type.Record(Str, Type.Union([Bool, Type.Literal("unknown")]))),
+  pg13Score: Nullable(Type.Number()),
+  ipgrScore: Nullable(Type.Number()),
+  evidenceDegraded: Bool,
+  redactedCategories: Type.Array(RedactedCategory),
+});
+
+/** Routes 26 / 32 — the contact-log row an ad-hoc / referral write lands on. */
+export const BereavementContactLogViewResponseSchema = Type.Object({
+  contactLogId: Str,
+  planId: Str,
+  contactId: Str,
+  outreachId: Str,
+  kind: Str,
+  outcome: Str,
+  contactAt: Str,
+  artifactDocumentId: Nullable(Str),
+});
+
+/** Route 27 — what the regeneration materialized (never a bare 204). */
+export const ScheduleRegenerationViewResponseSchema = Type.Object({
+  planId: Str,
+  cancelledCount: Int,
+  generatedCount: Int,
+  outreach: Type.Array(BereavementOutreachRowViewResponseSchema),
+});
+
+/** Route 5 — the opened plan plus what opening it produced. */
+export const PlanActivationViewResponseSchema = Type.Object({
+  plan: BereavementPlanDetailResponseSchema,
+  contactsSeededCount: Int,
+  outreachScheduledCount: Int,
+  anniversaryRemindersCount: Int,
+  effects: Type.Array(EffectKind),
+});
+
+/** Route 30 — the counselor's own caseload + what is coming due. */
+export const CounselorDashboardViewResponseSchema = Type.Object({
+  counselorUserId: Str,
+  caseloadCount: Int,
+  dueWithinDays: Int,
+  dueSoon: Type.Array(BereavementOutreachRowViewResponseSchema),
+  overdue: Type.Array(BereavementOutreachRowViewResponseSchema),
+  tierDistribution: TierDistributionSchema,
+  externalSourceCosignPendingCount: Int,
+});
+
+/** Route 31 — the full-tenant rollups (COUNTS, never rates). */
+export const SupervisorDashboardViewResponseSchema = Type.Object({
+  planCountsByStatus: Type.Object({
+    eligible: Int,
+    initiating: Int,
+    active: Int,
+    paused: Int,
+    closed_completed: Int,
+    closed_declined: Int,
+    closed_early: Int,
+    closed_legal_hold_extended: Int,
+  }),
+  outreachCountsByStatus: Type.Object({
+    scheduled: Int,
+    in_progress: Int,
+    completed: Int,
+    declined: Int,
+    no_response: Int,
+    missed: Int,
+    cancelled: Int,
+  }),
+  copCounts: Type.Object({ numerator: Int, denominator: Int }),
+  tierDistribution: TierDistributionSchema,
+  closureCountsByReason: Type.Object({
+    thirteen_month_completion: Int,
+    all_contacts_declined: Int,
+    patient_opt_out_pre_death: Int,
+    patient_opt_out_post_creation: Int,
+    tenant_offboarding: Int,
+    all_bereaved_deceased: Int,
+    geographic_relocation: Int,
+    family_legal_action: Int,
+    other_early: Int,
+  }),
+  unassignedPlanCount: Int,
+  externalSourceCosignPendingCount: Int,
+});
+
+/** The §2.5 cursor page envelope (`concurrency.ts` `CursorPage<T>`). */
+const pageOf = <T extends TSchema>(item: T) =>
+  Type.Object({
+    data: Type.Array(item),
+    next_cursor: Nullable(Str),
+    has_more: Bool,
+    total_count: Type.Optional(Int),
+  });
+
+/** Route 1 — `CursorPage<BereavementPlanListItem>`. */
+export const BereavementPlanPageResponseSchema = pageOf(BereavementPlanListItemResponseSchema);
+/** Route 19 — `CursorPage<BereavementOutreachRowView>`. */
+export const BereavementOutreachPageResponseSchema = pageOf(BereavementOutreachRowViewResponseSchema);
+/** Route 29 — `CursorPage<BereavementRiskScoreView>`. */
+export const BereavementRiskScorePageResponseSchema = pageOf(BereavementRiskScoreViewResponseSchema);
+

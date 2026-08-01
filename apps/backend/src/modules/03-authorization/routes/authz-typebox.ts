@@ -22,7 +22,17 @@
 // route's own `deps.roles.get()` → 404 is the real guard. Every other id param is uuid-shaped.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import type { PermissionMirrorRow } from "@wardenx/auth";
 import { ValidationError } from "@wardenx/types";
+import type {
+  BreakGlassStatus,
+  BreakGlassView,
+  EngagementStatus,
+  EngagementSummary,
+  EngagementView,
+  MembershipRoleView,
+  RoleView,
+} from "../authz-ports";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -236,3 +246,129 @@ export type InvokeBreakGlassInput = Static<typeof InvokeBreakGlassBody>;
 export type CreateEngagementInput = Static<typeof CreateEngagementBody>;
 export type UpdateEngagementInput = Static<typeof UpdateEngagementBody>;
 export type EnrollAuditorInput = Static<typeof EnrollAuditorBody>;
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ───────────────────────────────────────────────────────────
+// The M3 read + mutation routes return typed views from `../authz-ports` (RoleView, MembershipRoleView,
+// BreakGlassView, EngagementView, EngagementSummary) plus the @wardenx/auth permission mirror, but the
+// published API carried NO response contract for any of them, so `client:gen` typed those bodies as
+// `never`. These DTOs mirror the views 1:1 and are pinned to them by the compile-time `Conforms` aliases
+// below — a view field renamed/added breaks `bun run build` rather than silently drifting from the client.
+// Enums are LITERAL UNIONS, never bare `Type.String()` (the M30 "a wire enum as a string is a silent lie"
+// lesson): `role.category` / `scope_level` / `engagement_type` / the break-glass + engagement status
+// vocabularies publish their real value sets.
+const BREAK_GLASS_STATUS = ["active", "cosign_pending", "revoked", "expired"] as const;
+const ENGAGEMENT_STATUS = ["scheduled", "active", "closed", "cancelled"] as const;
+
+/** One role row (a platform template or an org's own/customized role) — mirrors `RoleView`. */
+export const RoleResponseSchema = Type.Object({
+  roleId: Type.String(),
+  organizationId: Type.Union([Type.String(), Type.Null()]),
+  key: Type.String(),
+  name: Type.String(),
+  category: lit(ROLE_CATEGORY),
+  scopeLevel: lit(SCOPE_LEVEL),
+  systemDefault: Type.Boolean(),
+  systemLocked: Type.Boolean(),
+  enabled: Type.Boolean(),
+  customized: Type.Boolean(),
+  permissionKeys: Type.Array(Type.String()),
+});
+/** GET /api/v1/roles — the role catalog envelope. */
+export const RoleListResponseSchema = Type.Object({ roles: Type.Array(RoleResponseSchema) });
+/** DELETE /api/v1/roles/:id — the tombstone ack. */
+export const RoleDeletedResponseSchema = Type.Object({ deleted: Type.Literal(true) });
+
+/** One membership↔role grant — mirrors `MembershipRoleView`. */
+export const MembershipRoleResponseSchema = Type.Object({
+  grantId: Type.String(),
+  membershipId: Type.String(),
+  roleId: Type.String(),
+  roleKey: Type.String(),
+  scope: Type.Unknown(),
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+});
+/** GET /api/v1/memberships/:id/roles — the grants envelope. */
+export const MembershipRoleListResponseSchema = Type.Object({
+  roles: Type.Array(MembershipRoleResponseSchema),
+});
+/** DELETE /api/v1/memberships/:id/roles/:rid — the revoke ack. */
+export const RoleGrantRevokedResponseSchema = Type.Object({ revoked: Type.Literal(true) });
+
+/** GET /api/v1/me/permissions — the caller's effective permission keys (no service view; a key set). */
+export const MePermissionsResponseSchema = Type.Object({ permissions: Type.Array(Type.String()) });
+
+/** One permission catalog row — mirrors `@wardenx/auth` `PermissionMirrorRow`. */
+export const PermissionMirrorResponseSchema = Type.Object({
+  key: Type.String(),
+  resource: Type.String(),
+  action: Type.String(),
+  category: Type.String(),
+  defaultAbac: Type.String(),
+  description: Type.String(),
+});
+/** GET /api/v1/permissions — the permission-catalog envelope. */
+export const PermissionsResponseSchema = Type.Object({
+  permissions: Type.Array(PermissionMirrorResponseSchema),
+});
+
+/** One break-glass event (carries a target *reference*, not PHI) — mirrors `BreakGlassView`. */
+export const BreakGlassResponseSchema = Type.Object({
+  eventId: Type.String(),
+  organizationId: Type.String(),
+  actorUserId: Type.String(),
+  targetPatientId: Type.Union([Type.String(), Type.Null()]),
+  reason: Type.String(),
+  status: lit(BREAK_GLASS_STATUS),
+  cosignRequired: Type.Boolean(),
+  startedAt: Type.String(),
+  expiresAt: Type.String(),
+});
+/** GET /api/v1/breakglass — the events envelope. */
+export const BreakGlassListResponseSchema = Type.Object({
+  events: Type.Array(BreakGlassResponseSchema),
+});
+/** POST /api/v1/breakglass — the invoke ack (id + status + time-box). */
+export const BreakGlassInvokedResponseSchema = Type.Object({
+  breakGlassId: Type.String(),
+  status: lit(BREAK_GLASS_STATUS),
+  expiresAt: Type.String(),
+});
+/** POST /api/v1/breakglass/:id/{cosign,revoke} — the status-transition ack. */
+export const BreakGlassStatusResponseSchema = Type.Object({
+  breakGlassId: Type.String(),
+  status: lit(BREAK_GLASS_STATUS),
+});
+
+/** One auditor engagement — mirrors `EngagementView`. */
+export const EngagementResponseSchema = Type.Object({
+  engagementId: Type.String(),
+  organizationId: Type.String(),
+  engagementType: lit(ENGAGEMENT_TYPE),
+  auditorAgency: Type.String(),
+  scope: Type.Unknown(),
+  status: lit(ENGAGEMENT_STATUS),
+  startAt: Type.String(),
+  endAt: Type.String(),
+});
+/** GET /api/v1/engagements/:id/summary — the post-engagement report — mirrors `EngagementSummary`. */
+export const EngagementSummaryResponseSchema = Type.Object({
+  engagementId: Type.String(),
+  auditorsEnrolled: Type.Integer(),
+  resourcesTouched: Type.Integer(),
+});
+/** POST /api/v1/engagements/:id/auditors — the enrollment ack (token delivered out-of-band). */
+export const AuditorEnrolledResponseSchema = Type.Object({
+  engagementId: Type.String(),
+  status: Type.Literal("pending"),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _Role = Conforms<Static<typeof RoleResponseSchema>, RoleView>;
+type _MembershipRole = Conforms<Static<typeof MembershipRoleResponseSchema>, MembershipRoleView>;
+type _PermissionMirror = Conforms<Static<typeof PermissionMirrorResponseSchema>, PermissionMirrorRow>;
+type _BreakGlass = Conforms<Static<typeof BreakGlassResponseSchema>, BreakGlassView>;
+type _BreakGlassStatus = Conforms<Static<typeof BreakGlassResponseSchema>["status"], BreakGlassStatus>;
+type _Engagement = Conforms<Static<typeof EngagementResponseSchema>, EngagementView>;
+type _EngagementStatus = Conforms<Static<typeof EngagementResponseSchema>["status"], EngagementStatus>;
+type _EngagementSummary = Conforms<Static<typeof EngagementSummaryResponseSchema>, EngagementSummary>;

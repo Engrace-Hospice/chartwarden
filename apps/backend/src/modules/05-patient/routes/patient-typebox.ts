@@ -6,6 +6,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type { AdmitResult as ServiceAdmitResult, AmendmentView as ServiceAmendmentView } from "./service";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 if (!FormatRegistry.Has("date")) {
@@ -251,6 +252,55 @@ export const PatientPrivacyFlagsResponseSchema = Type.Object({
   sudRestricted: Type.Boolean(),
   sudDisclosable: Type.Boolean(),
 });
+
+// ── §4.2 WRITE-ROUTE RESPONSE DTOs (F0 enrichment) ──────────────────────────────────────────────────
+// The write routes (`POST /patients`, `.../addresses`, `.../amendments`, `amendments/:id/accept|deny`)
+// returned typed service shapes but published NO response contract, so `client:gen` typed those bodies as
+// `never`. These DTOs mirror the service return types 1:1 and are pinned by the compile-time `Conforms`
+// aliases below — a service view field renamed or a union arm added breaks `bun run build` rather than
+// silently drifting the generated client.
+
+// POST /api/v1/patients — the §7.1 admit outcome the route returns on 201 (`hard_block` is thrown as a
+// 409, never a success body, so the response union is `created | soft_review` only).
+export const AdmitResultResponseSchema = Type.Union([
+  Type.Object({
+    outcome: Type.Literal("created"),
+    patientId: Type.String(),
+  }),
+  Type.Object({
+    outcome: Type.Literal("soft_review"),
+    patientId: Type.String(),
+    matchReviewIds: Type.Array(Type.String()),
+  }),
+]);
+
+// POST /api/v1/patients/:id/addresses — the §7.4 append-address ack + the cascade event it emitted.
+export const AddAddressResponseSchema = Type.Object({
+  addressId: Type.String(),
+  cascadeEmitted: Type.Literal("m5.patient.address_changed"),
+});
+
+// POST /api/v1/patients/:id/amendments + amendments/:id/accept|deny — the §7.7 amendment record view.
+export const AmendmentResponseSchema = Type.Object({
+  id: Type.String(),
+  patientId: Type.String(),
+  status: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("accepted"),
+    Type.Literal("denied"),
+    Type.Literal("withdrawn"),
+  ]),
+  slaDueAt: Type.String(),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _AdmitResult = Conforms<Static<typeof AdmitResultResponseSchema>, ServiceAdmitResult>;
+type _AddAddress = Conforms<
+  Static<typeof AddAddressResponseSchema>,
+  { readonly addressId: string; readonly cascadeEmitted: "m5.patient.address_changed" }
+>;
+type _Amendment = Conforms<Static<typeof AmendmentResponseSchema>, ServiceAmendmentView>;
 
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});

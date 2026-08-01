@@ -176,3 +176,199 @@ export type UpdateScheduleRequestT = Static<typeof UpdateScheduleRequest>;
 
 /** Local re-export so a route file imports a single `parse` from this module if it prefers. */
 export type { TSchema };
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ──────────────────────────────────────────────────────────────
+// The MUTATING + export/drilldown routes returned typed service views (`DefinitionView` / `ViewView` /
+// `ScheduleView` / `ScheduleRunView` / `ExportAcceptedResult` / `DrilldownEmitResult`) but published NO
+// response contract, so the generated client typed every write/read body as `never`. These DTOs mirror the
+// service views 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a view field
+// added or renamed breaks `bun run build` rather than silently drifting from the client. (The READ-surface
+// DTOs — dashboards / bases / metrics / MV-admin / lag / drilldown-audit / metric-seam — live in
+// `./reporting-typebox`; this module owns only the mutating + export/drilldown responses.)
+import type {
+  DrilldownEmitResult as ServiceDrilldownEmitResult,
+  ExportAcceptedResult as ServiceExportAcceptedResult,
+} from "./export-drilldown-service";
+import type {
+  DefinitionVersionView as ServiceDefinitionVersionView,
+  DefinitionView as ServiceDefinitionView,
+  ReportSpec as ServiceReportSpec,
+  ScheduleRunView as ServiceScheduleRunView,
+  ScheduleView as ServiceScheduleView,
+  ShareView as ServiceShareView,
+  ViewView as ServiceViewView,
+} from "./write-service";
+
+/** The keyset/cursor page envelope every M33 list route paginates on (`./concurrency` `CursorPage`). */
+const CursorPageOf = <T extends TSchema>(item: T) =>
+  Type.Object({
+    items: Type.Array(item),
+    nextCursor: Type.Union([Type.String(), Type.Null()]),
+    hasMore: Type.Boolean(),
+  });
+
+const Nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
+
+// The jsonb-stored §4.2 builder spec a definition version carries (mirrors `ReportSpec`).
+const ReportSpecViewSchema = Type.Object({
+  dimensions: Type.Array(
+    Type.Object({ dimensionKey: Type.String(), alias: Type.Optional(Type.String()) }),
+  ),
+  measures: Type.Array(
+    Type.Object({ measureKey: Type.String(), alias: Type.Optional(Type.String()) }),
+  ),
+  filters: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+  sort: Type.Optional(
+    Type.Array(Type.Object({ by: Type.String(), direction: lit(["asc", "desc"] as const) })),
+  ),
+  rowLimit: Type.Optional(Type.Integer()),
+  chartHint: Type.Optional(Type.String()),
+});
+
+// ── report definitions (#8–#14) ──────────────────────────────────────────────────────────────────────
+export const DefinitionViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  authorship: lit(DEFINITION_AUTHORSHIP),
+  baseKey: Type.String(),
+  ownerMembershipId: Nullable(Type.String()),
+  displayName: Type.String(),
+  description: Nullable(Type.String()),
+  latestVersionId: Nullable(Type.String()),
+  versionSeq: Type.Integer(),
+  status: lit(DEFINITION_STATUS),
+  createdAt: Type.String({ format: "date-time" }),
+  archivedAt: Nullable(Type.String({ format: "date-time" })),
+});
+export const DefinitionListResponseSchema = CursorPageOf(DefinitionViewSchema);
+
+export const DefinitionVersionViewSchema = Type.Object({
+  id: Type.String(),
+  definitionId: Type.String(),
+  organizationId: Type.String(),
+  versionNumber: Type.Integer(),
+  spec: ReportSpecViewSchema,
+  status: lit(["draft", "published", "superseded"] as const),
+  publishedAt: Nullable(Type.String({ format: "date-time" })),
+  supersededAt: Nullable(Type.String({ format: "date-time" })),
+  createdAt: Type.String({ format: "date-time" }),
+});
+export const DefinitionVersionListResponseSchema = CursorPageOf(DefinitionVersionViewSchema);
+
+/** #13 publish — returns the promoted definition + the now-published version (D9). */
+export const PublishVersionResponseSchema = Type.Object({
+  definition: DefinitionViewSchema,
+  version: DefinitionVersionViewSchema,
+});
+
+// ── saved views + sharing (#15–#21) ──────────────────────────────────────────────────────────────────
+export const ViewViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  definitionVersionId: Type.String(),
+  ownerMembershipId: Type.String(),
+  displayName: Type.String(),
+  pinnedFilters: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+  shareScope: lit(SHARE_SCOPE),
+  shareRoleKeys: Nullable(Type.Array(Type.String())),
+  isOrgDefault: Type.Boolean(),
+  status: lit(["active", "archived"] as const),
+  createdAt: Type.String({ format: "date-time" }),
+});
+export const ViewListResponseSchema = CursorPageOf(ViewViewSchema);
+
+const ShareRowViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  reportViewId: Type.String(),
+  sharedWithMembershipId: Nullable(Type.String()),
+  sharedWithRoleKey: Nullable(Type.String()),
+  status: lit(["active", "revoked"] as const),
+  createdAt: Type.String({ format: "date-time" }),
+  revokedAt: Nullable(Type.String({ format: "date-time" })),
+});
+
+/** #19 share — returns the updated view + the share row (null unless a role/membership grant was written). */
+export const ShareViewResponseSchema = Type.Object({
+  view: ViewViewSchema,
+  share: Nullable(ShareRowViewSchema),
+});
+
+// ── scheduled reports (#22–#31) ───────────────────────────────────────────────────────────────────────
+export const ScheduleViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  reportViewId: Type.String(),
+  ownerMembershipId: Type.String(),
+  cronExpression: Type.String(),
+  tenantTimezone: Type.String(),
+  format: lit(["pdf", "xlsx", "csv"] as const),
+  recipientMembershipIds: Type.Array(Type.String()),
+  deliveryChannel: Type.Literal("in_app"),
+  nextRunAt: Nullable(Type.String({ format: "date-time" })),
+  status: lit(SCHEDULE_STATUS),
+  createdAt: Type.String({ format: "date-time" }),
+  cancelledAt: Nullable(Type.String({ format: "date-time" })),
+});
+export const ScheduleListResponseSchema = CursorPageOf(ScheduleViewSchema);
+
+export const ScheduleRunViewSchema = Type.Object({
+  id: Type.String(),
+  scheduleId: Type.String(),
+  organizationId: Type.String(),
+  scheduledFor: Type.String({ format: "date-time" }),
+  status: lit([
+    "queued",
+    "running",
+    "rendered_pending",
+    "rendered_complete",
+    "delivered",
+    "failed",
+  ] as const),
+  startedAt: Nullable(Type.String({ format: "date-time" })),
+  finishedAt: Nullable(Type.String({ format: "date-time" })),
+  documentId: Nullable(Type.String()),
+  failureReason: Nullable(Type.String()),
+  rowCount: Nullable(Type.Integer()),
+});
+export const ScheduleRunListResponseSchema = CursorPageOf(ScheduleRunViewSchema);
+
+/** #29 delete_all_runs — the bulk run-history cleanup count. */
+export const DeleteAllRunsResponseSchema = Type.Object({
+  scheduleId: Type.String(),
+  deleted: Type.Integer(),
+});
+
+// ── exports (#33/#34) + drilldown (#35) — JSON-bodied surfaces (CSV #32/#36 hijack the stream) ─────────
+export const ExportAcceptedResponseSchema = Type.Object({
+  exportId: Type.String(),
+  viewId: Type.String(),
+  format: lit(["pdf", "xlsx"] as const),
+  status: Type.Literal("render_requested"),
+});
+
+export const DrilldownEmitResponseSchema = Type.Object({
+  targetUrl: Type.String(),
+  drilldownTraceId: Type.String(),
+  isConsentNarrowed: Type.Boolean(),
+  consentNarrowingReason: Nullable(Type.String()),
+  outcome: lit(["emitted", "denied", "target_unavailable"] as const),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _ReportSpec = Conforms<Static<typeof ReportSpecViewSchema>, ServiceReportSpec>;
+type _DefinitionView = Conforms<Static<typeof DefinitionViewSchema>, ServiceDefinitionView>;
+type _DefinitionVersionView = Conforms<
+  Static<typeof DefinitionVersionViewSchema>,
+  ServiceDefinitionVersionView
+>;
+type _ViewView = Conforms<Static<typeof ViewViewSchema>, ServiceViewView>;
+type _ShareView = Conforms<Static<typeof ShareRowViewSchema>, ServiceShareView>;
+type _ScheduleView = Conforms<Static<typeof ScheduleViewSchema>, ServiceScheduleView>;
+type _ScheduleRunView = Conforms<Static<typeof ScheduleRunViewSchema>, ServiceScheduleRunView>;
+type _ExportAccepted = Conforms<
+  Static<typeof ExportAcceptedResponseSchema>,
+  ServiceExportAcceptedResult
+>;
+type _DrilldownEmit = Conforms<Static<typeof DrilldownEmitResponseSchema>, ServiceDrilldownEmitResult>;

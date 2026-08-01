@@ -1,49 +1,49 @@
 {
   "totals": {
     "routes": 995,
-    "enriched": 765,
-    "deficit": 230,
+    "enriched": 989,
+    "deficit": 6,
     "mutating": 574,
-    "mutatingNoBody": 129,
+    "mutatingNoBody": 68,
     "gets": 395,
-    "getsNoResponse": 196
+    "getsNoResponse": 46
   },
   "modules": [
     {
       "module": "02-identity",
       "routes": 14,
-      "enriched": 10,
-      "deficit": 4,
+      "enriched": 14,
+      "deficit": 0,
       "mutating": 9,
-      "mutatingNoBody": 3,
+      "mutatingNoBody": 0,
       "gets": 3,
       "getsNoResponse": 0
     },
     {
       "module": "03-authorization",
       "routes": 17,
-      "enriched": 9,
-      "deficit": 8,
+      "enriched": 17,
+      "deficit": 0,
       "mutating": 9,
       "mutatingNoBody": 2,
       "gets": 6,
-      "getsNoResponse": 4
+      "getsNoResponse": 0
     },
     {
       "module": "04-audit",
       "routes": 4,
-      "enriched": 1,
-      "deficit": 3,
+      "enriched": 4,
+      "deficit": 0,
       "mutating": 0,
       "mutatingNoBody": 0,
       "gets": 4,
-      "getsNoResponse": 3
+      "getsNoResponse": 0
     },
     {
       "module": "05-patient",
       "routes": 14,
-      "enriched": 13,
-      "deficit": 1,
+      "enriched": 14,
+      "deficit": 0,
       "mutating": 5,
       "mutatingNoBody": 1,
       "gets": 9,
@@ -142,22 +142,22 @@
     {
       "module": "15-discipline-care-plans",
       "routes": 28,
-      "enriched": 23,
-      "deficit": 5,
+      "enriched": 28,
+      "deficit": 0,
       "mutating": 17,
       "mutatingNoBody": 2,
       "gets": 11,
-      "getsNoResponse": 11
+      "getsNoResponse": 2
     },
     {
       "module": "16-bereavement",
       "routes": 33,
-      "enriched": 31,
-      "deficit": 2,
+      "enriched": 33,
+      "deficit": 0,
       "mutating": 26,
       "mutatingNoBody": 0,
       "gets": 7,
-      "getsNoResponse": 7
+      "getsNoResponse": 0
     },
     {
       "module": "17-scheduling",
@@ -182,32 +182,32 @@
     {
       "module": "19-oncall",
       "routes": 38,
-      "enriched": 31,
-      "deficit": 7,
+      "enriched": 38,
+      "deficit": 0,
       "mutating": 26,
       "mutatingNoBody": 2,
       "gets": 12,
-      "getsNoResponse": 12
+      "getsNoResponse": 0
     },
     {
       "module": "20-field-safety",
       "routes": 30,
-      "enriched": 25,
-      "deficit": 5,
+      "enriched": 30,
+      "deficit": 0,
       "mutating": 17,
       "mutatingNoBody": 0,
       "gets": 12,
-      "getsNoResponse": 12
+      "getsNoResponse": 0
     },
     {
       "module": "21-supplies",
       "routes": 37,
-      "enriched": 31,
-      "deficit": 6,
+      "enriched": 37,
+      "deficit": 0,
       "mutating": 24,
       "mutatingNoBody": 0,
       "gets": 12,
-      "getsNoResponse": 12
+      "getsNoResponse": 0
     },
     {
       "module": "22-documents",
@@ -242,38 +242,38 @@
     {
       "module": "25-remittance",
       "routes": 31,
-      "enriched": 18,
-      "deficit": 13,
+      "enriched": 31,
+      "deficit": 0,
       "mutating": 18,
       "mutatingNoBody": 5,
       "gets": 13,
-      "getsNoResponse": 8
+      "getsNoResponse": 0
     },
     {
       "module": "26-cap",
       "routes": 27,
-      "enriched": 19,
-      "deficit": 8,
+      "enriched": 27,
+      "deficit": 0,
       "mutating": 12,
-      "mutatingNoBody": 2,
+      "mutatingNoBody": 3,
       "gets": 15,
-      "getsNoResponse": 8
+      "getsNoResponse": 0
     },
     {
       "module": "27-cost-report",
       "routes": 45,
-      "enriched": 11,
-      "deficit": 34,
+      "enriched": 45,
+      "deficit": 0,
       "mutating": 28,
-      "mutatingNoBody": 18,
+      "mutatingNoBody": 9,
       "gets": 16,
-      "getsNoResponse": 16
+      "getsNoResponse": 0
     },
     {
       "module": "30-quality",
       "routes": 60,
-      "enriched": 57,
-      "deficit": 3,
+      "enriched": 60,
+      "deficit": 0,
       "mutating": 36,
       "mutatingNoBody": 3,
       "gets": 24,
@@ -292,62 +292,62 @@
     {
       "module": "33-reporting",
       "routes": 42,
-      "enriched": 4,
-      "deficit": 38,
+      "enriched": 42,
+      "deficit": 0,
       "mutating": 22,
-      "mutatingNoBody": 21,
+      "mutatingNoBody": 10,
       "gets": 20,
-      "getsNoResponse": 20
+      "getsNoResponse": 0
     },
     {
       "module": "34-saas-tenant-platform",
       "routes": 48,
-      "enriched": 9,
-      "deficit": 39,
+      "enriched": 48,
+      "deficit": 0,
       "mutating": 30,
-      "mutatingNoBody": 27,
+      "mutatingNoBody": 4,
       "gets": 17,
-      "getsNoResponse": 17
+      "getsNoResponse": 0
     },
     {
       "module": "36-messaging",
       "routes": 22,
-      "enriched": 4,
-      "deficit": 18,
+      "enriched": 22,
+      "deficit": 0,
       "mutating": 13,
-      "mutatingNoBody": 12,
+      "mutatingNoBody": 3,
       "gets": 6,
-      "getsNoResponse": 3
+      "getsNoResponse": 0
     },
     {
       "module": "38-terminology",
       "routes": 8,
-      "enriched": 1,
-      "deficit": 7,
+      "enriched": 8,
+      "deficit": 0,
       "mutating": 1,
-      "mutatingNoBody": 1,
+      "mutatingNoBody": 0,
       "gets": 6,
-      "getsNoResponse": 5
+      "getsNoResponse": 0
     },
     {
       "module": "39-consent",
       "routes": 27,
-      "enriched": 17,
-      "deficit": 10,
+      "enriched": 27,
+      "deficit": 0,
       "mutating": 13,
       "mutatingNoBody": 3,
       "gets": 13,
-      "getsNoResponse": 9
+      "getsNoResponse": 0
     },
     {
       "module": "40-mdm",
       "routes": 14,
-      "enriched": 1,
-      "deficit": 13,
+      "enriched": 14,
+      "deficit": 0,
       "mutating": 8,
-      "mutatingNoBody": 8,
+      "mutatingNoBody": 2,
       "gets": 6,
-      "getsNoResponse": 5
+      "getsNoResponse": 0
     },
     {
       "module": "bootstrap",

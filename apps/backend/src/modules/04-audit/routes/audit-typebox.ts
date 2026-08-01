@@ -146,6 +146,32 @@ export type AuditEventsQuery = Static<typeof AuditEventsQuerySchema>;
 export type PatientAccessQuery = Static<typeof PatientAccessQuerySchema>;
 export type AccountingQuery = Static<typeof AccountingQuerySchema>;
 
+// ── §4.3 RESPONSE DTO pins (M4E enrichment) ────────────────────────────────────────────────────
+// The four audit read routes already publish view-shaped response schemas above, but nothing tied
+// them to the `@wardenx/audit` `AuditQuery` port they actually return (this module has no local
+// `service.ts` — the read views live in the port package). These compile-time `Conforms` aliases
+// pin each published schema to the service view it mirrors, so a port field added/renamed breaks
+// `bun run build` rather than silently drifting the generated client.
+import type {
+  AccountingReport as ServiceAccountingReport,
+  AuditEventRecord as ServiceAuditEventRecord,
+  Page as ServicePage,
+  PatientAccessEntry as ServicePatientAccessEntry,
+} from "@wardenx/audit";
+
+/** `T` (what the schema publishes) must be assignable to `V` (what the port returns). */
+type Conforms<T extends V, V> = T;
+type _AuditEvent = Conforms<Static<typeof AuditEventSchema>, ServiceAuditEventRecord>;
+type _AuditEventsPage = Conforms<
+  Static<typeof AuditEventsResponseSchema>,
+  ServicePage<ServiceAuditEventRecord>
+>;
+type _PatientAccessPage = Conforms<
+  Static<typeof PatientAccessResponseSchema>,
+  ServicePage<ServicePatientAccessEntry>
+>;
+type _Accounting = Conforms<Static<typeof AccountingResponseSchema>, ServiceAccountingReport>;
+
 /**
  * Validate `raw` against `schema`, coercing query-string scalars first (`limit=50` → 50), and
  * return the typed value. Throws M1's `VALIDATION_FAILED` envelope (flat field list) on a miss,

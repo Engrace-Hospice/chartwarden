@@ -16,6 +16,34 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type { CursorPage } from "./concurrency";
+import type {
+  BadDebtRecordView,
+  ComplianceWindowView,
+  CostCenterMappingView,
+  CostReportDetailView,
+  CostReportSummaryView,
+  EcrSubmissionView,
+  MappingPreviewView,
+  SnapshotDetailView,
+  SnapshotSummaryView,
+  StatisticDataView,
+  TrialBalanceImportView,
+  ValidationOverrideView,
+  ValidationResultView,
+  ValidationRuleView,
+  ValidationRunDetailView,
+  ValidationRunSummaryView,
+  WageDataImportView,
+  WorksheetView,
+} from "./read-service";
+import type {
+  AllocationAcceptedView,
+  ImportJobAcceptedView,
+  RefreshInputsAcceptedView,
+  StatisticsRefreshAcceptedView,
+  ValidationJobAcceptedView,
+} from "./write-service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -205,6 +233,326 @@ export const UpdateValidationRuleBodySchema = Type.Object({
   macJurisdictionScope: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
   predicateSpec: Type.Optional(Type.Unknown()),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The §4.1 read + mutating routes returned typed view shapes (read-service.ts / write-service.ts) but
+// published NO response contract, so the generated client typed every body as `never`. These DTOs mirror
+// the service views 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a view
+// field added or renamed breaks `bun run build` rather than silently drifting from the client. Enum fields
+// are literal unions mirroring the FROZEN pgEnum value lists; opaque audit-denylisted jsonb (`data`,
+// `materializedInputs`, statistic breakdowns, validation `details`) is `Type.Unknown()`/open record — the
+// route only guarantees the envelope, never the internal shape (schema wins on conflict).
+const nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
+
+const MAPPING_SOURCE_ALL = ["platform_default", "tenant_override", "tenant_extended"] as const;
+const SNAPSHOT_REASON = ["submit", "reopen", "mac_revision_request", "admin_audit"] as const;
+const ALERT_TIER = ["none", "t4_months", "t4_5_months", "t4_75_months", "past_deadline"] as const;
+const VALIDATION_OUTCOME = ["pass", "fail", "warn", "skip"] as const;
+const VALIDATION_RUN_STATUS = ["in_progress", "complete", "failed_to_run"] as const;
+const RULE_STATUS = ["active", "deprecated", "draft_suggestion"] as const;
+const ECR_STATUS = ["generating", "generated", "uploaded", "accepted", "rejected"] as const;
+const IMPORT_STATUS = ["pending", "complete", "failed"] as const;
+const IMPORT_SOURCE = ["xero", "manual_csv", "gusto"] as const;
+
+export const ValidationRunSummaryResponseSchema = Type.Object({
+  validationId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  status: lit(VALIDATION_RUN_STATUS),
+  ruleSetVersion: Type.Integer(),
+  passedCount: Type.Integer(),
+  failedCount: Type.Integer(),
+  warningCount: Type.Integer(),
+  overriddenCount: Type.Integer(),
+  skippedCount: Type.Integer(),
+  runStartedAt: Type.String(),
+  runCompletedAt: nullable(Type.String()),
+});
+
+export const ValidationOverrideResponseSchema = Type.Object({
+  overrideId: Type.String(),
+  organizationId: Type.String(),
+  validationResultId: Type.String(),
+  overriddenByMembershipId: Type.String(),
+  reason: Type.String(),
+  overriddenAt: Type.String(),
+});
+
+export const ValidationResultResponseSchema = Type.Object({
+  resultId: Type.String(),
+  validationId: Type.String(),
+  ruleId: Type.String(),
+  outcome: lit(VALIDATION_OUTCOME),
+  details: Type.Record(Type.String(), Type.Unknown()),
+  overridden: Type.Boolean(),
+  override: nullable(ValidationOverrideResponseSchema),
+  recordedAt: Type.String(),
+});
+
+export const ValidationRunDetailResponseSchema = Type.Object({
+  validationId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  status: lit(VALIDATION_RUN_STATUS),
+  ruleSetVersion: Type.Integer(),
+  passedCount: Type.Integer(),
+  failedCount: Type.Integer(),
+  warningCount: Type.Integer(),
+  overriddenCount: Type.Integer(),
+  skippedCount: Type.Integer(),
+  runStartedAt: Type.String(),
+  runCompletedAt: nullable(Type.String()),
+  results: Type.Array(ValidationResultResponseSchema),
+});
+
+export const EcrSubmissionResponseSchema = Type.Object({
+  submissionId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  snapshotId: Type.String(),
+  status: lit(ECR_STATUS),
+  ecrFileDocumentId: nullable(Type.String()),
+  piFileDocumentId: nullable(Type.String()),
+  supportingDocumentsDocumentIds: Type.Array(Type.String()),
+  mcrefAcknowledgmentNumber: nullable(Type.String()),
+  mcrefRejectionCode: nullable(Type.String()),
+  mcrefRejectionDetail: nullable(Type.String()),
+  generatedAt: Type.String(),
+  uploadedAt: nullable(Type.String()),
+  acknowledgedAt: nullable(Type.String()),
+});
+
+export const ComplianceWindowResponseSchema = Type.Object({
+  windowId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  deadlineDate: Type.String(),
+  currentEffectiveDeadlineDate: Type.String(),
+  lastAlertTier: lit(ALERT_TIER),
+  lastAlertTierEmittedAt: nullable(Type.String()),
+  closedAt: nullable(Type.String()),
+});
+
+const costReportSummaryProps = {
+  costReportId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  fiscalYearStartDate: Type.String(),
+  fiscalYearEndDate: Type.String(),
+  state: lit(COST_REPORT_STATE),
+  reopenCount: Type.Integer(),
+  badDebtClaimed: Type.Boolean(),
+  wageSource: lit(WAGE_SOURCE),
+  version: Type.Integer(),
+};
+export const CostReportSummaryResponseSchema = Type.Object(costReportSummaryProps);
+
+export const CostReportDetailResponseSchema = Type.Object({
+  ...costReportSummaryProps,
+  latestSnapshotId: nullable(Type.String()),
+  latestValidation: nullable(ValidationRunSummaryResponseSchema),
+  latestSubmission: nullable(EcrSubmissionResponseSchema),
+  complianceWindow: nullable(ComplianceWindowResponseSchema),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+  closedAt: nullable(Type.String()),
+});
+
+export const CostReportPageResponseSchema = Type.Object({
+  items: Type.Array(CostReportSummaryResponseSchema),
+  nextCursor: nullable(Type.String()),
+  hasMore: Type.Boolean(),
+});
+
+export const WorksheetResponseSchema = Type.Object({
+  worksheetId: nullable(Type.String()),
+  costReportId: Type.String(),
+  worksheetCode: lit(WORKSHEET_CODE),
+  data: Type.Unknown(),
+  computedAt: nullable(Type.String()),
+  version: Type.Integer(),
+});
+
+export const CostCenterMappingResponseSchema = Type.Object({
+  mappingId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  fiscalYearInt: Type.Integer(),
+  xeroAccountCode: Type.String(),
+  xeroAccountName: Type.String(),
+  cmsCostCenterCode: Type.String(),
+  mappingSource: lit(MAPPING_SOURCE_ALL),
+  version: Type.Integer(),
+});
+export const CostCenterMappingListResponseSchema = Type.Array(CostCenterMappingResponseSchema);
+
+export const MappingPreviewResponseSchema = Type.Object({
+  costReportId: Type.String(),
+  changedAccounts: Type.Array(
+    Type.Object({
+      xeroAccountCode: Type.String(),
+      fromCmsCostCenterCode: nullable(Type.String()),
+      toCmsCostCenterCode: Type.String(),
+    }),
+  ),
+  unmappedAccounts: Type.Array(Type.String()),
+});
+
+export const BadDebtRecordResponseSchema = Type.Object({
+  recordId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  periodLabel: Type.String(),
+  debtKind: lit(BAD_DEBT_KIND),
+  amountCents: Type.Integer(),
+  collectionEffortsDocumented: Type.Boolean(),
+  supportingDocumentIds: Type.Array(Type.String()),
+  addedByMembershipId: Type.String(),
+  addedAt: Type.String(),
+  deletedAt: nullable(Type.String()),
+});
+export const BadDebtRecordListResponseSchema = Type.Array(BadDebtRecordResponseSchema);
+
+export const StatisticDataResponseSchema = Type.Object({
+  statisticId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  monthlyBreakdown: Type.Unknown(),
+  visitCountsByDiscipline: Type.Unknown(),
+  fteCalculations: Type.Unknown(),
+  bereavementCensus: Type.Unknown(),
+  refreshedAt: Type.String(),
+  refreshedByMembershipId: nullable(Type.String()),
+  version: Type.Integer(),
+});
+export const StatisticDataOrNullResponseSchema = nullable(StatisticDataResponseSchema);
+
+export const TrialBalanceImportResponseSchema = Type.Object({
+  importId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  source: lit(IMPORT_SOURCE),
+  status: lit(IMPORT_STATUS),
+  accountCount: Type.Integer(),
+  failureReason: nullable(Type.String()),
+  pulledAt: Type.String(),
+});
+export const TrialBalanceImportListResponseSchema = Type.Array(TrialBalanceImportResponseSchema);
+
+export const WageDataImportResponseSchema = Type.Object({
+  importId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  source: lit(IMPORT_SOURCE),
+  status: lit(IMPORT_STATUS),
+  rowCount: Type.Integer(),
+  failureReason: nullable(Type.String()),
+  pulledAt: Type.String(),
+});
+export const WageDataImportListResponseSchema = Type.Array(WageDataImportResponseSchema);
+
+export const ValidationRunSummaryListResponseSchema = Type.Array(ValidationRunSummaryResponseSchema);
+
+export const EcrSubmissionListResponseSchema = Type.Array(EcrSubmissionResponseSchema);
+
+const snapshotSummaryProps = {
+  snapshotId: Type.String(),
+  organizationId: Type.String(),
+  costReportId: Type.String(),
+  priorSnapshotId: nullable(Type.String()),
+  contentHashSha256: Type.String(),
+  reason: lit(SNAPSHOT_REASON),
+  createdByMembershipId: Type.String(),
+  createdAt: Type.String(),
+};
+export const SnapshotSummaryResponseSchema = Type.Object(snapshotSummaryProps);
+export const SnapshotSummaryListResponseSchema = Type.Array(SnapshotSummaryResponseSchema);
+export const SnapshotDetailResponseSchema = Type.Object({
+  ...snapshotSummaryProps,
+  materializedInputs: Type.Unknown(),
+  worksheetSnapshot: Type.Unknown(),
+});
+
+export const ComplianceWindowOrNullResponseSchema = nullable(ComplianceWindowResponseSchema);
+
+export const ValidationRuleResponseSchema = Type.Object({
+  ruleId: Type.String(),
+  organizationId: nullable(Type.String()),
+  ruleCode: Type.String(),
+  category: Type.String(),
+  description: Type.String(),
+  ruleSetVersion: Type.Integer(),
+  regulatoryRequired: Type.Boolean(),
+  severity: lit(RULE_SEVERITY),
+  status: lit(RULE_STATUS),
+  macJurisdictionScope: Type.String(),
+  publishedAt: Type.String(),
+  deprecatedAt: nullable(Type.String()),
+});
+export const ValidationRuleListResponseSchema = Type.Array(ValidationRuleResponseSchema);
+
+// ── accepted-view returns (async enqueue endpoints) ───────────────────────────────────────────────────
+export const RefreshInputsAcceptedResponseSchema = Type.Object({
+  trialBalanceJobId: Type.String(),
+  wageDataJobId: nullable(Type.String()),
+  statisticsJobId: Type.String(),
+});
+export const ImportJobAcceptedResponseSchema = Type.Object({ jobId: Type.String() });
+export const StatisticsRefreshAcceptedResponseSchema = Type.Object({ jobId: Type.String() });
+export const AllocationAcceptedResponseSchema = Type.Object({
+  jobId: Type.String(),
+  worksheetsToRecompute: Type.Array(lit(WORKSHEET_CODE)),
+});
+export const ValidationJobAcceptedResponseSchema = Type.Object({
+  validationId: Type.String(),
+  jobId: Type.String(),
+  ruleSetVersion: Type.Integer(),
+});
+
+// Compile-time pins: what each schema publishes (`T`) must be assignable to what the service returns (`V`).
+type Conforms<T extends V, V> = T;
+type _CostReportSummary = Conforms<Static<typeof CostReportSummaryResponseSchema>, CostReportSummaryView>;
+type _CostReportDetail = Conforms<Static<typeof CostReportDetailResponseSchema>, CostReportDetailView>;
+type _CostReportPage = Conforms<
+  Static<typeof CostReportPageResponseSchema>,
+  CursorPage<CostReportSummaryView>
+>;
+type _Worksheet = Conforms<Static<typeof WorksheetResponseSchema>, WorksheetView>;
+type _CostCenterMapping = Conforms<Static<typeof CostCenterMappingResponseSchema>, CostCenterMappingView>;
+type _MappingPreview = Conforms<Static<typeof MappingPreviewResponseSchema>, MappingPreviewView>;
+type _BadDebtRecord = Conforms<Static<typeof BadDebtRecordResponseSchema>, BadDebtRecordView>;
+type _StatisticData = Conforms<Static<typeof StatisticDataResponseSchema>, StatisticDataView>;
+type _TrialBalanceImport = Conforms<Static<typeof TrialBalanceImportResponseSchema>, TrialBalanceImportView>;
+type _WageDataImport = Conforms<Static<typeof WageDataImportResponseSchema>, WageDataImportView>;
+type _ValidationRunSummary = Conforms<
+  Static<typeof ValidationRunSummaryResponseSchema>,
+  ValidationRunSummaryView
+>;
+type _ValidationResult = Conforms<Static<typeof ValidationResultResponseSchema>, ValidationResultView>;
+type _ValidationRunDetail = Conforms<
+  Static<typeof ValidationRunDetailResponseSchema>,
+  ValidationRunDetailView
+>;
+type _ValidationOverride = Conforms<Static<typeof ValidationOverrideResponseSchema>, ValidationOverrideView>;
+type _EcrSubmission = Conforms<Static<typeof EcrSubmissionResponseSchema>, EcrSubmissionView>;
+type _SnapshotSummary = Conforms<Static<typeof SnapshotSummaryResponseSchema>, SnapshotSummaryView>;
+type _SnapshotDetail = Conforms<Static<typeof SnapshotDetailResponseSchema>, SnapshotDetailView>;
+type _ComplianceWindow = Conforms<Static<typeof ComplianceWindowResponseSchema>, ComplianceWindowView>;
+type _ValidationRule = Conforms<Static<typeof ValidationRuleResponseSchema>, ValidationRuleView>;
+type _RefreshInputsAccepted = Conforms<
+  Static<typeof RefreshInputsAcceptedResponseSchema>,
+  RefreshInputsAcceptedView
+>;
+type _ImportJobAccepted = Conforms<Static<typeof ImportJobAcceptedResponseSchema>, ImportJobAcceptedView>;
+type _StatisticsRefreshAccepted = Conforms<
+  Static<typeof StatisticsRefreshAcceptedResponseSchema>,
+  StatisticsRefreshAcceptedView
+>;
+type _AllocationAccepted = Conforms<Static<typeof AllocationAcceptedResponseSchema>, AllocationAcceptedView>;
+type _ValidationJobAccepted = Conforms<
+  Static<typeof ValidationJobAcceptedResponseSchema>,
+  ValidationJobAcceptedView
+>;
 
 /**
  * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on the

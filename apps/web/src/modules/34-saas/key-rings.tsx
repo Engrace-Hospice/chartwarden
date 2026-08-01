@@ -80,6 +80,8 @@ export function KeyRings(): JSX.Element {
     if (!slug) return;
     const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
       params: { path: { orgSlug: slug } },
+      // TODO(M34 web): this stub screen should collect the rotation reason from the ceremony input.
+      body: { reason: "Manual DEK rotation via platform console" },
     });
     if (err) {
       setBanner("DEK rotation request failed — the step-up was rejected.");

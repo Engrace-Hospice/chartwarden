@@ -149,6 +149,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Pending merge requests (platform-ops, §4.2) */
         get: operations["getApiV1AdminMdmMergerequests"];
         put?: never;
         post?: never;
@@ -167,6 +168,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Approve a merge — flips the duplicate to merged (step-up re-auth, §7.6) */
         post: operations["postApiV1AdminMdmMergerequestsByIdApprove"];
         delete?: never;
         options?: never;
@@ -183,6 +185,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reject a pending merge with a reason — 204 no content (§4.2) */
         post: operations["postApiV1AdminMdmMergerequestsByIdReject"];
         delete?: never;
         options?: never;
@@ -199,6 +202,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** On-demand single-NPI NPPES sync (§4.2) */
         post: operations["postApiV1AdminMdmNppesLookup"];
         delete?: never;
         options?: never;
@@ -213,6 +217,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Recent NPPES sync outcomes (§4.2) */
         get: operations["getApiV1AdminMdmNppesSynclog"];
         put?: never;
         post?: never;
@@ -231,6 +236,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Promote a provisional to canonical (§4.2) */
         post: operations["postApiV1AdminMdmProvisionalByIdPromote"];
         delete?: never;
         options?: never;
@@ -1331,6 +1337,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant + inherited platform alert rules */
         get: operations["getApiV1Alertrules"];
         put?: never;
         post?: never;
@@ -1353,6 +1360,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Enable/disable/override a rule (SYSTEM_LOCKED 403; clones platform default) */
         patch: operations["patchApiV1AlertrulesById"];
         trace?: never;
     };
@@ -1363,7 +1371,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The caller's alert inbox (§4.7) */
+        /** The actor's recent alerts with delivery status */
         get: operations["getApiV1AlertsInbox"];
         put?: never;
         post?: never;
@@ -1382,6 +1390,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Accept an amendment request (§7.7) */
         post: operations["postApiV1AmendmentsByIdAccept"];
         delete?: never;
         options?: never;
@@ -1398,7 +1407,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deny an amendment request (denial reason required) */
+        /** Deny an amendment request (denial reason required, §7.7) */
         post: operations["postApiV1AmendmentsByIdDeny"];
         delete?: never;
         options?: never;
@@ -1430,6 +1439,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Appeal case detail + event timeline (§4.1) */
         get: operations["getApiV1AppealsById"];
         put?: never;
         post?: never;
@@ -1452,6 +1462,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Record the payer's receipt acknowledgement of an appeal (§4.1) */
         patch: operations["patchApiV1AppealsByIdAck"];
         trace?: never;
     };
@@ -1468,7 +1479,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Attach supporting evidence to an appeal (§4.1) */
+        /** Attach a supporting M22 document to an appeal (§4.1) */
         patch: operations["patchApiV1AppealsByIdAttach"];
         trace?: never;
     };
@@ -1481,6 +1492,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close a decided/withdrawn appeal case (§4.1) */
         post: operations["postApiV1AppealsByIdClose"];
         delete?: never;
         options?: never;
@@ -1497,7 +1509,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the payer's appeal decision (§4.1) */
+        /** Record the payer's appeal decision (typed outcome, §4.1) */
         post: operations["postApiV1AppealsByIdDecide"];
         delete?: never;
         options?: never;
@@ -1514,7 +1526,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an appeal to the payer (§4.1) */
+        /** Submit an appeal to the payer (within-deadline + step-up, §4.1) */
         post: operations["postApiV1AppealsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -1563,7 +1575,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search audit events (cursor-paginated, §4.3) */
+        /** Search audit events (cursor-paginated, §4.2/§4.3) */
         get: operations["getApiV1AuditEvents"];
         put?: never;
         post?: never;
@@ -1580,6 +1592,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Fetch one audit event by id — the before/after diff (§4.2) */
         get: operations["getApiV1AuditEventsById"];
         put?: never;
         post?: never;
@@ -1596,6 +1609,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient internal access history — who touched this chart (§10.2) */
         get: operations["getApiV1AuditPatientsByPatientIdAccess"];
         put?: never;
         post?: never;
@@ -1612,6 +1626,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Patient accounting of disclosures — §164.528 / 42 CFR §2.13, scope-gated (§7.1) */
         get: operations["getApiV1AuditPatientsByPatientIdAccounting"];
         put?: never;
         post?: never;
@@ -1628,7 +1643,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The authenticated actor's roles/membership context (M2↔M3 enrichment, FB-T15) */
+        /** App-shell identity/role/permission projection (FB-T15) */
         get: operations["getApiV1AuthContext"];
         put?: never;
         post?: never;
@@ -1645,7 +1660,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the caller's memberships (pre-org-bind, §7.2) */
+        /** List the caller's memberships (pre-org, §7.2) */
         get: operations["getApiV1AuthMemberships"];
         put?: never;
         post?: never;
@@ -1664,7 +1679,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bind the session to one organization (one-time, §7.2) */
+        /** Bind the pre-org session to exactly one org (one-time, §7.2) */
         post: operations["postApiV1AuthSelectorganization"];
         delete?: never;
         options?: never;
@@ -2019,6 +2034,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Bereavement plan detail — the header with its rolled-up roster + risk; an off-caseload plan 404s (never 403) so the response can't reveal a patient died (§4.1 #2) */
         get: operations["getApiV1BereavementPlansByPlanId"];
         put?: never;
         post?: never;
@@ -2086,6 +2102,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The §3.3.7 closure record — the §7.15 survey-reconstruction rollup; a closed plan is outside the window, so oversight or the plan's own counselor reads it (§4.1 #10) */
         get: operations["getApiV1BereavementPlansByPlanIdClosure"];
         put?: never;
         post?: never;
@@ -2669,6 +2686,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List break-glass events for the org (§7.4) */
         get: operations["getApiV1Breakglass"];
         put?: never;
         /** Invoke break-glass emergency access (§7.4; reason ≥10 chars) */
@@ -2688,6 +2706,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Co-sign a break-glass event → active (§7.4) */
         post: operations["postApiV1BreakglassByIdCosign"];
         delete?: never;
         options?: never;
@@ -2704,6 +2723,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke an open break-glass event (§7.4) */
         post: operations["postApiV1BreakglassByIdRevoke"];
         delete?: never;
         options?: never;
@@ -2718,6 +2738,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Inpatient accrual — GIP/IRC/total patient days + inpatient pct for the period (§4.1) */
         get: operations["getApiV1CapAccrualsInpatientByPeriodId"];
         put?: never;
         post?: never;
@@ -2734,6 +2755,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient accrual — paid + outstanding-billed cents, first election, last-paid-through (§4.1) */
         get: operations["getApiV1CapAccrualsPatientByPeriodIdByPatientId"];
         put?: never;
         post?: never;
@@ -2750,6 +2772,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Per-patient accrual source lines — cursor-paginated (source kind/id, amount cents, service span; §4.1) */
         get: operations["getApiV1CapAccrualsPatientByPeriodIdByPatientIdLines"];
         put?: never;
         post?: never;
@@ -2766,6 +2789,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Cap-watch dashboard composite — period + agency/inpatient projection + recent events + open variances (§4.1) */
         get: operations["getApiV1CapDashboard"];
         put?: never;
         post?: never;
@@ -2970,6 +2994,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** PS&R import status — MAC region, PSR period span, parse status/error, PSR totals (§4.1) */
         get: operations["getApiV1CapPsrimportsByImportId"];
         put?: never;
         post?: never;
@@ -2986,6 +3011,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** PS&R reconciliation lines — per-scope M26-accrual vs PSR amount + variance + status (§4.1) */
         get: operations["getApiV1CapPsrimportsByImportIdReconciliation"];
         put?: never;
         post?: never;
@@ -3008,7 +3034,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Resolve a variance line with a categorical reason + note (§4.1) */
+        /** Resolve a variance line with a categorical reason + note (204; §4.1) */
         patch: operations["patchApiV1CapPsrimportsByImportIdReconciliationByLineIdResolve"];
         trace?: never;
     };
@@ -3055,7 +3081,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; §4.1) */
+        /** Propose a settlement worksheet from current accruals (cap_period_in_settlement ABAC; 201; §4.1) */
         post: operations["postApiV1CapSettlementsByPeriodIdPropose"];
         delete?: never;
         options?: never;
@@ -3070,6 +3096,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Threshold-event queue — filter by period/scope/band and unacknowledged-only (§4.1) */
         get: operations["getApiV1CapThresholdevents"];
         put?: never;
         post?: never;
@@ -3092,7 +3119,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Acknowledge a threshold event — records actor + timestamp (does not clear the breach; §4.1) */
+        /** Acknowledge a threshold event — records actor + timestamp (does not clear the breach; 204; §4.1) */
         patch: operations["patchApiV1CapThresholdeventsByEventIdAcknowledge"];
         trace?: never;
     };
@@ -3429,6 +3456,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Consume the link → scoped external-collaborator session (§7.6) */
         post: operations["postApiV1CollaboratorsConsume"];
         delete?: never;
         options?: never;
@@ -3445,6 +3473,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mint a per-patient magic-link (caseload_membership ABAC, §7.6) */
         post: operations["postApiV1CollaboratorsInvite"];
         delete?: never;
         options?: never;
@@ -3561,6 +3590,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Consent-type catalog + applicable tenant overlay (§4.1 #1) */
         get: operations["getApiV1Consenttypes"];
         put?: never;
         post?: never;
@@ -3579,7 +3609,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6) */
+        /** Publish a TIGHTEN-ONLY tenant consent-type overlay (§7.6, step-up) */
         post: operations["postApiV1ConsenttypesOverlay"];
         delete?: never;
         options?: never;
@@ -3594,6 +3624,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a full consent record (§4.1 #4) */
         get: operations["getApiV1ConsentsByConsentId"];
         put?: never;
         post?: never;
@@ -3613,6 +3644,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Re-fire a stuck revocation cascade — reports partial_failed honestly (D7, step-up) */
         post: operations["postApiV1ConsentsByConsentIdCascadeRetry"];
         delete?: never;
         options?: never;
@@ -3629,6 +3661,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Re-emit m39.consent.signed so M22 re-renders the signed PDF (compliance-only, step-up) */
         post: operations["postApiV1ConsentsByConsentIdDocumentRerender"];
         delete?: never;
         options?: never;
@@ -3646,7 +3679,7 @@ export interface paths {
         /** Named DPOA agents on a consent, active + historical (D5) */
         get: operations["getApiV1ConsentsByConsentIdDpoaagents"];
         put?: never;
-        /** Name a DPOA agent (D5) */
+        /** Name a DPOA agent (D5, step-up) */
         post: operations["postApiV1ConsentsByConsentIdDpoaagents"];
         delete?: never;
         options?: never;
@@ -3667,7 +3700,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Mutate a DPOA agent's scope / activation / term, or retire them (D5) */
+        /** Mutate a DPOA agent's scope / activation / term, or retire them (D5, step-up) */
         patch: operations["patchApiV1ConsentsByConsentIdDpoaagentsByAgentId"];
         trace?: never;
     };
@@ -3698,7 +3731,7 @@ export interface paths {
         /** Named disclosure recipients on a consent, active + historical (D6) */
         get: operations["getApiV1ConsentsByConsentIdRecipients"];
         put?: never;
-        /** Add a named disclosure recipient (D6) */
+        /** Add a named disclosure recipient (D6, step-up) */
         post: operations["postApiV1ConsentsByConsentIdRecipients"];
         delete?: never;
         options?: never;
@@ -3716,7 +3749,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove a named recipient — flips removed_at, never deletes (D6) */
+        /** Remove a named recipient — flips removed_at, never deletes (D6, step-up) */
         delete: operations["deleteApiV1ConsentsByConsentIdRecipientsByRecipientId"];
         options?: never;
         head?: never;
@@ -3732,7 +3765,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Renew an expired/revoked consent (D13 renewal chain) */
+        /** Renew an expired/revoked consent (D13 renewal chain, step-up) */
         post: operations["postApiV1ConsentsByConsentIdRenew"];
         delete?: never;
         options?: never;
@@ -3747,6 +3780,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Open + closed renewal cycles on a consent (D8) */
         get: operations["getApiV1ConsentsByConsentIdRenewalcycle"];
         put?: never;
         post?: never;
@@ -3765,7 +3799,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a consent (§7.3 cascade; staff revocation needs evidence) */
+        /** Revoke a consent (§7.3 cascade; staff revocation needs evidence, step-up) */
         post: operations["postApiV1ConsentsByConsentIdRevoke"];
         delete?: never;
         options?: never;
@@ -3782,6 +3816,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign a consent (step-up; emits m39.consent.signed) */
         post: operations["postApiV1ConsentsByConsentIdSign"];
         delete?: never;
         options?: never;
@@ -3798,7 +3833,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Supersede an active consent with a new row (D1 append-only) */
+        /** Supersede an active consent with a new row (D1 append-only, step-up) */
         post: operations["postApiV1ConsentsByConsentIdSupersede"];
         delete?: never;
         options?: never;
@@ -3813,6 +3848,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Both ancestor chains — supersession (D1) + renewal (D13) */
         get: operations["getApiV1ConsentsByConsentIdVersionchain"];
         put?: never;
         post?: never;
@@ -3831,7 +3867,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Capture post-mortem bereavement-outreach consent (D14) */
+        /** Capture post-mortem bereavement-outreach consent (D14, step-up) */
         post: operations["postApiV1ConsentsBereavementoutreach"];
         delete?: never;
         options?: never;
@@ -3863,6 +3899,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Which of a patient's consents survive death vs terminate (M16 consumer, D13) */
         get: operations["getApiV1ConsentsPostmortemeligibleByPatientId"];
         put?: never;
         post?: never;
@@ -3879,6 +3916,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the effective validation-rule library — platform floor + tenant layer (cost_report.read; §11.B) */
         get: operations["getApiV1Costreportvalidationrules"];
         put?: never;
         /** Create a tenant validation rule layered on the platform floor (cost_report.manage_rules; D21; §11.B) */
@@ -3902,6 +3940,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a tenant validation rule (cost_report.manage_rules; §11.B) */
         patch: operations["patchApiV1CostreportvalidationrulesById"];
         trace?: never;
     };
@@ -3914,6 +3953,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Deprecate/disable a tenant validation rule (cost_report.manage_rules; §11.B) */
         post: operations["postApiV1CostreportvalidationrulesByIdDisable"];
         delete?: never;
         options?: never;
@@ -3946,6 +3986,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one cost report — summary + latest snapshot/validation/submission + compliance window (§4.1) */
         get: operations["getApiV1CostreportsById"];
         put?: never;
         post?: never;
@@ -3965,6 +4006,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue the step-down allocation recompute (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdAllocate"];
         delete?: never;
         options?: never;
@@ -3996,6 +4038,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List Medicare bad-debt entries (cost_report.read; D7; §4.1) */
         get: operations["getApiV1CostreportsByIdBaddebt"];
         put?: never;
         /** Add a Medicare bad-debt entry — deductible/coinsurance (cost_report.edit_bad_debt; D7; §4.1) */
@@ -4016,9 +4059,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Soft-delete a bad-debt entry (returns the tombstoned record; cost_report.edit_bad_debt; §4.1) */
         delete: operations["deleteApiV1CostreportsByIdBaddebtByRecordId"];
         options?: never;
         head?: never;
+        /** Edit a bad-debt entry (cost_report.edit_bad_debt; D7; §4.1) */
         patch: operations["patchApiV1CostreportsByIdBaddebtByRecordId"];
         trace?: never;
     };
@@ -4029,6 +4074,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read the deadline/alert-tier compliance window (null when none; cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdCompliancewindow"];
         put?: never;
         post?: never;
@@ -4045,6 +4091,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the effective Xero->CMS cost-center mappings (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdCostcentermappings"];
         put?: never;
         post?: never;
@@ -4063,6 +4110,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Apply tenant mapping overrides/extensions (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdCostcentermappingsApply"];
         delete?: never;
         options?: never;
@@ -4079,6 +4127,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Dry-run a mapping change — changed accounts + unmapped GL accounts, no write (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdCostcentermappingsPreview"];
         delete?: never;
         options?: never;
@@ -4095,6 +4144,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reset mappings to the platform default (optionally keep tenant overrides) (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdCostcentermappingsResettoplatformdefault"];
         delete?: never;
         options?: never;
@@ -4111,6 +4161,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a MAC-granted deadline extension (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdDeadlineextensions"];
         delete?: never;
         options?: never;
@@ -4125,6 +4176,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List MCReF ECR submissions (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdEcrsubmissions"];
         put?: never;
         post?: never;
@@ -4141,6 +4193,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one ECR submission + MCReF acknowledgment/rejection (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdEcrsubmissionsBySid"];
         put?: never;
         post?: never;
@@ -4174,8 +4227,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List trial-balance import runs (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdImportsTrialbalance"];
         put?: never;
+        /** Trigger a Xero trial-balance pull (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdImportsTrialbalance"];
         delete?: never;
         options?: never;
@@ -4192,6 +4247,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Manual trial-balance upload — pre-normalized GL rows (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdImportsTrialbalanceManual"];
         delete?: never;
         options?: never;
@@ -4206,8 +4262,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List wage-data import runs (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdImportsWagedata"];
         put?: never;
+        /** Trigger a Gusto wage-data pull (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdImportsWagedata"];
         delete?: never;
         options?: never;
@@ -4224,6 +4282,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Manual wage-data upload — pre-normalized wage rows (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdImportsWagedataManual"];
         delete?: never;
         options?: never;
@@ -4240,6 +4299,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue trial-balance + wage-data + statistics refresh (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdRefreshinputs"];
         delete?: never;
         options?: never;
@@ -4273,6 +4333,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Return a validating/ready report to draft (cost_report.edit; §4.1) */
         post: operations["postApiV1CostreportsByIdReturntodraft"];
         delete?: never;
         options?: never;
@@ -4287,6 +4348,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List content-hashed submission/reopen snapshots (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdSnapshots"];
         put?: never;
         post?: never;
@@ -4303,6 +4365,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one snapshot + its materialized inputs/worksheet payload (audit-read-logged; cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdSnapshotsBySid"];
         put?: never;
         post?: never;
@@ -4319,6 +4382,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read the census/visit/FTE statistics block (null until refreshed; cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdStatistics"];
         put?: never;
         post?: never;
@@ -4337,6 +4401,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue a statistics recompute (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdStatisticsRefresh"];
         delete?: never;
         options?: never;
@@ -4370,6 +4435,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Submit past the effective deadline — documented reason + attestation (cost_report.submit; §4.1) */
         post: operations["postApiV1CostreportsByIdSubmitpastdeadline"];
         delete?: never;
         options?: never;
@@ -4386,6 +4452,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue a validation run against the effective rule set (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdValidate"];
         delete?: never;
         options?: never;
@@ -4400,6 +4467,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List validation runs for a cost report (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdValidations"];
         put?: never;
         post?: never;
@@ -4416,6 +4484,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one validation run + its per-rule results and overrides (cost_report.read; §4.1) */
         get: operations["getApiV1CostreportsByIdValidationsByVid"];
         put?: never;
         post?: never;
@@ -4449,6 +4518,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a worksheet's data jsonb (lazy — TypeBox default when unpopulated; cost_report.read; §4.2) */
         get: operations["getApiV1CostreportsByIdWorksheetsByCode"];
         /** Write a worksheet's TypeBox-validated data jsonb (cost_report.edit; §4.2) */
         put: operations["putApiV1CostreportsByIdWorksheetsByCode"];
@@ -4468,6 +4538,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enqueue a single-worksheet recompute (cost_report.edit; §4.8) */
         post: operations["postApiV1CostreportsByIdWorksheetsByCodeCompute"];
         delete?: never;
         options?: never;
@@ -4601,6 +4672,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Denial case detail (§4.1) */
         get: operations["getApiV1DenialsById"];
         put?: never;
         post?: never;
@@ -4653,6 +4725,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close a resolved denial case (§4.1) */
         post: operations["postApiV1DenialsByIdClose"];
         delete?: never;
         options?: never;
@@ -4669,7 +4742,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close a denial case as a write-off (§4.1) */
+        /** Close a denial case as a write-off (step-up, §4.1) */
         post: operations["postApiV1DenialsByIdClosewriteoff"];
         delete?: never;
         options?: never;
@@ -4741,6 +4814,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Start work on a denial case (→ in_progress, §4.1) */
         patch: operations["patchApiV1DenialsByIdStart"];
         trace?: never;
     };
@@ -4785,6 +4859,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The full plan — goals/interventions/assessments/supervisory visits/volunteer assignments, SQL-filtered per §7.8/§7.9 with the withheld categories on `redacted_categories` (§4.1 #2) */
         get: operations["getApiV1DisciplineplansByPlanId"];
         put?: never;
         post?: never;
@@ -4820,6 +4895,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign a recorded supervisory attestation — step-up (§4.1 #16) */
         post: operations["postApiV1DisciplineplansByPlanIdAidesupervisoryvisitsByVisitIdSign"];
         delete?: never;
         options?: never;
@@ -4870,6 +4946,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Sign a drafted assessment — step-up; closes the D10 initial-assessment clock when `isInitial` (§4.1 #13) */
         post: operations["postApiV1DisciplineplansByPlanIdAssessmentsByAssessmentIdSign"];
         delete?: never;
         options?: never;
@@ -4952,6 +5029,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The patient-shareable summary — both confidential categories always stripped (§7.9; §4.1 #3) */
         get: operations["getApiV1DisciplineplansByPlanIdSummary"];
         put?: never;
         post?: never;
@@ -4985,6 +5063,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One version with its sealed state snapshot, frozen D11 quorum and collected signatures (§4.1 #5) */
         get: operations["getApiV1DisciplineplansByPlanIdVersionsByVersionId"];
         put?: never;
         post?: never;
@@ -5788,6 +5867,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Post-engagement report — auditors enrolled + resources touched (§5.2) */
         get: operations["getApiV1EngagementsByIdSummary"];
         put?: never;
         post?: never;
@@ -7406,6 +7486,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal DenialMetricsProvider seam — aging/open aggregates (§17 system principal) */
         get: operations["getApiV1InternalDenialsMetrics"];
         put?: never;
         post?: never;
@@ -7473,6 +7554,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal PatientResponsibilityReader seam — PR ledger rows (§17 system principal) */
         get: operations["getApiV1InternalPatientresponsibility"];
         put?: never;
         post?: never;
@@ -7489,6 +7571,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Internal RemittanceReader seam — advice by id (§17 system principal) */
         get: operations["getApiV1InternalRemittanceReader"];
         put?: never;
         post?: never;
@@ -7507,7 +7590,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Accept an invitation token → membership (§7.1) */
+        /** Consume an invite token → membership (§7.1) */
         post: operations["postApiV1InvitationsAccept"];
         delete?: never;
         options?: never;
@@ -7556,6 +7639,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Resolve one entity by kind — follows merged_into_id transparently (§4.2 / §7.2) */
         get: operations["getApiV1MdmByKindById"];
         put?: never;
         post?: never;
@@ -7578,6 +7662,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Upsert this tenant's overlay (Phase-1: physician only) (§4.2) */
         patch: operations["patchApiV1MdmByKindByIdOverlay"];
         trace?: never;
     };
@@ -7588,6 +7673,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Canonical parent/children for the entity (no overlay join) (§4.2) */
         get: operations["getApiV1MdmByKindByIdRelationships"];
         put?: never;
         post?: never;
@@ -7606,6 +7692,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Match by identifier; write a provisional if no canonical match (§4.2 / §7.1) */
         post: operations["postApiV1MdmByKindGetorcreate"];
         delete?: never;
         options?: never;
@@ -7637,8 +7724,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The tenant's BAA register across MDM entities (§4.2) */
         get: operations["getApiV1MdmBaa"];
         put?: never;
+        /** Record/update a BAA execution + expiration (§4.2) */
         post: operations["postApiV1MdmBaa"];
         delete?: never;
         options?: never;
@@ -7655,6 +7744,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Enter/update a license + expiration — Phase-1 manual (§4.2) */
         post: operations["postApiV1MdmLicenseManual"];
         delete?: never;
         options?: never;
@@ -7669,6 +7759,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The caller's effective permission keys (drives UI gating, §4.3) */
         get: operations["getApiV1MePermissions"];
         put?: never;
         post?: never;
@@ -8287,6 +8378,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List a membership's role grants (§6) */
         get: operations["getApiV1MembershipsByIdRoles"];
         put?: never;
         /** Grant a role onto a membership (§6 anti-escalation applies) */
@@ -8307,6 +8399,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Revoke a role grant from a membership (§6) */
         delete: operations["deleteApiV1MembershipsByIdRolesByRid"];
         options?: never;
         head?: never;
@@ -8322,6 +8415,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Post to the tenant announcement channel (org_admin; 201) */
         post: operations["postApiV1MessagingAnnounce"];
         delete?: never;
         options?: never;
@@ -8336,7 +8430,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the caller's channels (§4.6) */
+        /** List the channels the actor is a member of */
         get: operations["getApiV1MessagingChannels"];
         put?: never;
         post?: never;
@@ -8353,6 +8447,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Channel detail + recent members (channel_visibility ABAC) */
         get: operations["getApiV1MessagingChannelsById"];
         put?: never;
         post?: never;
@@ -8371,6 +8466,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a manual member (admin override on auto channels; 204) */
         post: operations["postApiV1MessagingChannelsByIdMembers"];
         delete?: never;
         options?: never;
@@ -8388,6 +8484,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove a channel member (204) */
         delete: operations["deleteApiV1MessagingChannelsByIdMembersByUserId"];
         options?: never;
         head?: never;
@@ -8401,10 +8498,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List a channel's messages (cursor-paginated, §4.6) */
+        /** Paginated message history (bodies decrypted for entitled readers) */
         get: operations["getApiV1MessagingChannelsByIdMessages"];
         put?: never;
-        /** Post a message to a channel (§4.6) */
+        /** Post a message (201; CHANNEL_ARCHIVED 410) */
         post: operations["postApiV1MessagingChannelsByIdMessages"];
         delete?: never;
         options?: never;
@@ -8421,6 +8518,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Open or find a 1:1 DM channel (idempotent; 200/201) */
         post: operations["postApiV1MessagingDm"];
         delete?: never;
         options?: never;
@@ -8438,9 +8536,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Soft-delete a message (author-only; 204) */
         delete: operations["deleteApiV1MessagingMessagesById"];
         options?: never;
         head?: never;
+        /** Edit a message within the edit window (author-only) */
         patch: operations["patchApiV1MessagingMessagesById"];
         trace?: never;
     };
@@ -8453,6 +8553,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Mark message(s) read — single or up-through-id (204) */
         post: operations["postApiV1MessagingMessagesByIdRead"];
         delete?: never;
         options?: never;
@@ -8605,6 +8706,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Register a push/sms/email delivery endpoint (201) */
         post: operations["postApiV1NotificationsEndpoints"];
         delete?: never;
         options?: never;
@@ -8622,6 +8724,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove a delivery endpoint (204) */
         delete: operations["deleteApiV1NotificationsEndpointsById"];
         options?: never;
         head?: never;
@@ -8637,6 +8740,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Confirm an endpoint verification token */
         post: operations["postApiV1NotificationsEndpointsByIdVerify"];
         delete?: never;
         options?: never;
@@ -8651,7 +8755,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read the actor's notification preferences */
         get: operations["getApiV1NotificationsPreferences"];
+        /** Replace preferences (INVALID_ROUTING_MAP 422 / VACATION_FORWARD_* 409) */
         put: operations["putApiV1NotificationsPreferences"];
         post?: never;
         delete?: never;
@@ -8752,6 +8858,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The tenant's vendor bindings, each with whether its §8.5 adapter is actually loaded — NO secret is projected (ADR-0026) (§4.1 #33) */
         get: operations["getApiV1OncallExternalvendors"];
         put?: never;
         /** Create a vendor binding (step-up). The BAA is a PRECONDITION, and there is deliberately NO secret field — ADR-0026 puts vendor credentials in the platform secret store, and the absence of the field is the control (§4.1 #34) */
@@ -9149,7 +9256,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Invite a member by email — token emailed, never returned (§7.1) */
+        /** Invite a user to an org (member.invite, §7.1) */
         post: operations["postApiV1OrgsByIdInvitations"];
         delete?: never;
         options?: never;
@@ -9167,6 +9274,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Rescind a pending invite (member.invite) */
         delete: operations["deleteApiV1OrgsByIdInvitationsByInvId"];
         options?: never;
         head?: never;
@@ -9180,7 +9288,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List an org's members; optional ?q narrows by user identity (member.manage, §6; FB-T11) */
+        /** List an org's memberships + pending-invites KPI (member.manage, §7.5) */
         get: operations["getApiV1OrgsByIdMembers"];
         put?: never;
         post?: never;
@@ -9200,11 +9308,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Revoke a membership (terminates its sessions; last-admin guarded, §6/§7.5) */
+        /** Revoke a membership + reap its sessions (member.manage, §7.5) */
         delete: operations["deleteApiV1OrgsByIdMembersByMId"];
         options?: never;
         head?: never;
-        /** Change a member's status (active|suspended) or default locations; last-admin guarded (§6) */
+        /** Suspend/reinstate and/or re-scope a membership (member.manage, §7.5) */
         patch: operations["patchApiV1OrgsByIdMembersByMId"];
         trace?: never;
     };
@@ -9218,7 +9326,7 @@ export interface paths {
         /** Patient census / list (cursor-paginated, §4.2) */
         get: operations["getApiV1Patients"];
         put?: never;
-        /** Admit a patient (§7.1 duplicate-check) */
+        /** Admit a patient (§7.1 duplicate-check; 201 created | soft_review, hard dup → 409) */
         post: operations["postApiV1Patients"];
         delete?: never;
         options?: never;
@@ -9457,10 +9565,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A patient's ACTIVE consents (§4.1) */
+        /** A patient's ACTIVE consents (§4.1 #3) */
         get: operations["getApiV1PatientsByPatientIdConsents"];
         put?: never;
-        /** Create a consent DRAFT for a patient (§4.1) */
+        /** Create a consent DRAFT for a patient (§4.1 #6) */
         post: operations["postApiV1PatientsByPatientIdConsents"];
         delete?: never;
         options?: never;
@@ -9475,6 +9583,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The D10 delegated-access projection a portal/caregiver session resolves against */
         get: operations["getApiV1PatientsByPatientIdDelegatedaccess"];
         put?: never;
         post?: never;
@@ -9491,6 +9600,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The patient's ACTIVE primary DPOA agent, or null (M7/M11/M14 consumer, D5) */
         get: operations["getApiV1PatientsByPatientIdDpoaActiveprimary"];
         put?: never;
         post?: never;
@@ -9694,9 +9804,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Platform BAA register — optional tenant filter (§4.1) */
+        /** Platform→tenant BAA register across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformBaaregister"];
         put?: never;
+        /** File a BAA record for a (tenant_account, addendum_version) — UNIQUE */
         post: operations["postApiV1PlatformBaaregister"];
         delete?: never;
         options?: never;
@@ -9717,6 +9828,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Update a BAA record (execution/termination/dates/contacts/document linkage) */
         patch: operations["patchApiV1PlatformBaaregisterById"];
         trace?: never;
     };
@@ -9727,9 +9839,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List CMS per-cap-year cap amounts — platform-admin (cap_platform_admin ABAC; D3; §4.1) */
         get: operations["getApiV1PlatformCapConstants"];
         put?: never;
-        /** Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; §4.1) */
+        /** Publish a CMS per-cap-year cap amount — platform-admin (cap_platform_admin ABAC; D3; 201; §4.1) */
         post: operations["postApiV1PlatformCapConstants"];
         delete?: never;
         options?: never;
@@ -9750,7 +9863,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Amend a published cap amount before first tenant use — platform-admin (D3; §4.1) */
+        /** Amend a published cap amount before first tenant use — platform-admin (D3; 204; §4.1) */
         patch: operations["patchApiV1PlatformCapConstantsByCapYear"];
         trace?: never;
     };
@@ -9761,9 +9874,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Platform feature-flag registry — optional org filter (§4.1) */
+        /** Platform-global + per-tenant feature flags (cursor-paginated) */
         get: operations["getApiV1PlatformFeatureflags"];
         put?: never;
+        /** Create/update a feature flag via the M1 admin seam (step-up) */
         post: operations["postApiV1PlatformFeatureflags"];
         delete?: never;
         options?: never;
@@ -9780,7 +9894,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Toggle a feature flag's kill switch (org-scoped or platform-wide) */
+        /** Toggle a flag's kill switch (emits M36 emergency alert; step-up) */
         post: operations["postApiV1PlatformFeatureflagsByFlagKeyKillswitch"];
         delete?: never;
         options?: never;
@@ -9798,7 +9912,7 @@ export interface paths {
         /** Platform onboarding-template catalog (cursor-paginated) */
         get: operations["getApiV1PlatformOnboardingtemplates"];
         put?: never;
-        /** Create or update a platform onboarding template */
+        /** Add/edit a NON-canonical onboarding template (step-up; canonical is migration-only) */
         post: operations["postApiV1PlatformOnboardingtemplates"];
         delete?: never;
         options?: never;
@@ -9813,6 +9927,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Signup-intent triage queue (status/source filters; cursor-paginated) */
         get: operations["getApiV1PlatformSignupintents"];
         put?: never;
         post?: never;
@@ -9831,6 +9946,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Qualify an intent (new → qualified; enqueues tenant.provision) */
         post: operations["postApiV1PlatformSignupintentsByIdQualify"];
         delete?: never;
         options?: never;
@@ -9847,6 +9963,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Reject an intent (new → rejected) with a recorded rationale */
         post: operations["postApiV1PlatformSignupintentsByIdReject"];
         delete?: never;
         options?: never;
@@ -9861,8 +9978,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Active + recent support sessions across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformSupportsessions"];
         put?: never;
+        /** Start a session against a consent grant (distinct-actor + passkey-5min step-up) */
         post: operations["postApiV1PlatformSupportsessions"];
         delete?: never;
         options?: never;
@@ -9879,6 +9998,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close a session with reason='manual' (no step-up) */
         post: operations["postApiV1PlatformSupportsessionsByIdClose"];
         delete?: never;
         options?: never;
@@ -9895,6 +10015,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403) */
         post: operations["postApiV1PlatformSupportsessionsByIdElevate"];
         delete?: never;
         options?: never;
@@ -9909,6 +10030,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** A session's event ledger — the surveyor trail (cursor-paginated; audited) */
         get: operations["getApiV1PlatformSupportsessionsByIdEvents"];
         put?: never;
         post?: never;
@@ -9925,8 +10047,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Platform → first-admin invitations across tenants (cursor-paginated) */
         get: operations["getApiV1PlatformTenantinvitations"];
         put?: never;
+        /** Issue a single-use first-admin invitation token (sent via M36; step-up) */
         post: operations["postApiV1PlatformTenantinvitations"];
         delete?: never;
         options?: never;
@@ -9944,6 +10068,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Revoke a pending invitation */
         delete: operations["deleteApiV1PlatformTenantinvitationsById"];
         options?: never;
         head?: never;
@@ -9957,9 +10082,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Platform tenant inventory — status/search filters (§4.1) */
+        /** Platform tenant inventory (cross-tenant; status/plan/search filters) */
         get: operations["getApiV1PlatformTenants"];
         put?: never;
+        /** Provision a tenant from a signup_intent or raw input (enqueues tenant.provision; step-up) */
         post: operations["postApiV1PlatformTenants"];
         delete?: never;
         options?: never;
@@ -9974,6 +10100,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Full tenant overview (account + status event + key-ring + onboarding + BAA; §5.2) */
         get: operations["getApiV1PlatformTenantsByOrgSlug"];
         put?: never;
         post?: never;
@@ -9992,6 +10119,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Request a DEK rotation (enqueues tenant.dek_rotate; step-up) */
         post: operations["postApiV1PlatformTenantsByOrgSlugDekrotate"];
         delete?: never;
         options?: never;
@@ -10006,6 +10134,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read key-ring METADATA only (ciphertext never exposed; §3.5) */
         get: operations["getApiV1PlatformTenantsByOrgSlugKeyring"];
         put?: never;
         post?: never;
@@ -10024,6 +10153,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Initiate offboarding cascade (step-up) */
         post: operations["postApiV1PlatformTenantsByOrgSlugOffboard"];
         delete?: never;
         options?: never;
@@ -10040,6 +10170,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Execute the cryptographic shred (enqueues tenant.shred; passkey-2min + co-signer) */
         post: operations["postApiV1PlatformTenantsByOrgSlugShred"];
         delete?: never;
         options?: never;
@@ -10056,6 +10187,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Apply a lifecycle status transition (eleven-state machine; step-up) */
         post: operations["postApiV1PlatformTenantsByOrgSlugStatus"];
         delete?: never;
         options?: never;
@@ -10123,6 +10255,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Public self-serve signup intake (no session; source server-pinned; rate-limited) */
         post: operations["postApiV1PublicSignupintents"];
         delete?: never;
         options?: never;
@@ -10139,6 +10272,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Consume the single-use email-verification token (idempotent re-consume → 409) */
         post: operations["postApiV1PublicSignupintentsByTokenHashVerifyemail"];
         delete?: never;
         options?: never;
@@ -10155,6 +10289,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Accept the platform → first-admin invitation (creates M2 user + first org_admin) */
         post: operations["postApiV1PublicTenantinvitationsByTokenHashAccept"];
         delete?: never;
         options?: never;
@@ -10378,6 +10513,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close an incident (resolved → closed, follow-up complete) */
         post: operations["postApiV1QualityIncidentsByIncidentIdClose"];
         delete?: never;
         options?: never;
@@ -10462,6 +10598,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Submit an incident (draft → submitted) */
         post: operations["postApiV1QualityIncidentsByIncidentIdSubmit"];
         delete?: never;
         options?: never;
@@ -10876,6 +11013,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Force a risk-register materialized-view refresh */
         post: operations["postApiV1QualityRiskregisterRefresh"];
         delete?: never;
         options?: never;
@@ -11425,7 +11563,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Override an adjustment's taxonomy classification (§4.1) */
+        /** Override an adjustment's taxonomy classification (step-up, §4.1) */
         post: operations["postApiV1RemittanceAdjustmentsByIdOverride"];
         delete?: never;
         options?: never;
@@ -11457,6 +11595,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Remittance advice detail (835 header, §4.1) */
         get: operations["getApiV1RemittanceAdvicesById"];
         put?: never;
         post?: never;
@@ -11475,6 +11614,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Queue a remittance advice for re-parse/replay (§4.1) */
         post: operations["postApiV1RemittanceAdvicesByIdReplay"];
         delete?: never;
         options?: never;
@@ -11506,6 +11646,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Remittance service line detail (§4.1) */
         get: operations["getApiV1RemittanceLinesById"];
         put?: never;
         post?: never;
@@ -11539,7 +11680,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Unmatched remittance lines awaiting manual match (§4.1) */
+        /** Unmatched remittance lines awaiting manual match (cursor-paginated, §4.1) */
         get: operations["getApiV1RemittanceUnmatched"];
         put?: never;
         post?: never;
@@ -11556,6 +11697,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Query the compliance drilldown-audit trail (query_filters_cipher denylisted) */
         get: operations["getApiV1ReportingAdminAuditDrilldowns"];
         put?: never;
         post?: never;
@@ -11572,6 +11714,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read the replica-lag posture (the D14 breaker + freshness) */
         get: operations["getApiV1ReportingAdminLag"];
         put?: never;
         post?: never;
@@ -11588,7 +11731,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Materialized-view admin registry (cursor-paginated) */
+        /** List the registered materialized views (refresh telemetry + status) */
         get: operations["getApiV1ReportingAdminMvs"];
         put?: never;
         post?: never;
@@ -11607,6 +11750,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Refresh an MV (enqueues the on-primary worker) → 202 */
         post: operations["postApiV1ReportingAdminMvsByMvKeyRefresh"];
         delete?: never;
         options?: never;
@@ -11623,6 +11767,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Suspend an MV (halt its refresh schedule) → 202 */
         post: operations["postApiV1ReportingAdminMvsByMvKeySuspend"];
         delete?: never;
         options?: never;
@@ -11637,6 +11782,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List report bases (status-filtered, cursor-paginated) */
         get: operations["getApiV1ReportingBases"];
         put?: never;
         post?: never;
@@ -11653,6 +11799,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one report base (dimensions + measures + drilldown template) */
         get: operations["getApiV1ReportingBasesByBaseKey"];
         put?: never;
         post?: never;
@@ -11669,7 +11816,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reporting dashboard catalog (cursor-paginated) */
+        /** List dashboards in the actor's org scope (cursor-paginated) */
         get: operations["getApiV1ReportingDashboards"];
         put?: never;
         post?: never;
@@ -11686,6 +11833,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one dashboard (share-scope visibility gate) */
         get: operations["getApiV1ReportingDashboardsByDashboardId"];
         put?: never;
         post?: never;
@@ -11702,8 +11850,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the org's definitions (status/authorship-filtered, cursor-paginated) */
         get: operations["getApiV1ReportingDefinitions"];
         put?: never;
+        /** Create a tenant definition + its initial draft (v1) spec (201) */
         post: operations["postApiV1ReportingDefinitions"];
         delete?: never;
         options?: never;
@@ -11718,6 +11868,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one definition (latest-version pointer + lock) */
         get: operations["getApiV1ReportingDefinitionsById"];
         put?: never;
         post?: never;
@@ -11736,6 +11887,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Archive a definition (terminal; version chain retained) (201) */
         post: operations["postApiV1ReportingDefinitionsByIdArchive"];
         delete?: never;
         options?: never;
@@ -11750,8 +11902,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List a definition's version chain (newest first, D9) */
         get: operations["getApiV1ReportingDefinitionsByIdVersions"];
         put?: never;
+        /** Append a NEW immutable version (editing is never in-place, D9) (201) */
         post: operations["postApiV1ReportingDefinitionsByIdVersions"];
         delete?: never;
         options?: never;
@@ -11768,6 +11922,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Publish a version: promote to latest, supersede the prior (D9) (201) */
         post: operations["postApiV1ReportingDefinitionsByIdVersionsByVidPublish"];
         delete?: never;
         options?: never;
@@ -11784,6 +11939,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Compliance bulk drilldown export (step-up + device attestation, §12.4). Response is a chunked CSV stream, not JSON */
         post: operations["postApiV1ReportingDrilldownBulkexport"];
         delete?: never;
         options?: never;
@@ -11800,7 +11956,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resolve a tile's drilldown URL template + dimension context into a signed drilldown */
+        /** Resolve + consent-narrow a drilldown URL + write the audit row (W-R-05) (201) */
         post: operations["postApiV1ReportingDrilldownEmit"];
         delete?: never;
         options?: never;
@@ -11815,6 +11971,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List the platform metric catalog (status-filtered, cursor-paginated) */
         get: operations["getApiV1ReportingMetrics"];
         put?: never;
         post?: never;
@@ -11831,6 +11988,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a single dashboard metric at an as-of/window (backs the MetricsProvider seam) */
         get: operations["getApiV1ReportingMetricsseamDashboardByMetricKey"];
         put?: never;
         post?: never;
@@ -11847,9 +12005,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Report schedules — optional status filter (§4.1) */
+        /** List schedules (status-filtered, cursor-paginated) */
         get: operations["getApiV1ReportingSchedules"];
         put?: never;
+        /** Create a schedule (§2.3 cron/recipient/pdf-row-limit rules) (201) */
         post: operations["postApiV1ReportingSchedules"];
         delete?: never;
         options?: never;
@@ -11864,12 +12023,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one schedule */
         get: operations["getApiV1ReportingSchedulesById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a schedule (re-validates the §2.3 rules on changed fields) */
         patch: operations["patchApiV1ReportingSchedulesById"];
         trace?: never;
     };
@@ -11882,6 +12043,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Cancel a schedule (terminal) (201) */
         post: operations["postApiV1ReportingSchedulesByIdCancel"];
         delete?: never;
         options?: never;
@@ -11898,6 +12060,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Bulk-delete the run history (step-up + org-admin, D11) */
         post: operations["postApiV1ReportingSchedulesByIdDeleteallruns"];
         delete?: never;
         options?: never;
@@ -11914,6 +12077,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Pause a schedule (clears next_run_at) (201) */
         post: operations["postApiV1ReportingSchedulesByIdPause"];
         delete?: never;
         options?: never;
@@ -11930,6 +12094,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resume a paused schedule (recomputes next_run_at) (201) */
         post: operations["postApiV1ReportingSchedulesByIdResume"];
         delete?: never;
         options?: never;
@@ -11944,6 +12109,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a schedule's run ledger (newest first, cursor-paginated) */
         get: operations["getApiV1ReportingSchedulesByIdRuns"];
         put?: never;
         post?: never;
@@ -11960,6 +12126,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one run (M22 document back-ref + failure telemetry) */
         get: operations["getApiV1ReportingSchedulesRunsByRunId"];
         put?: never;
         post?: never;
@@ -11976,6 +12143,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read a tile: compile+execute its spec (aggregate-only, D6) */
         get: operations["getApiV1ReportingTilesByTileKey"];
         put?: never;
         post?: never;
@@ -11992,6 +12160,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tile freshness badge (data_freshness_seconds + as-of) */
         get: operations["getApiV1ReportingTilesByTileKeyFreshness"];
         put?: never;
         post?: never;
@@ -12008,8 +12177,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** List views (scope=mine own / scope=org shared; cursor-paginated) */
         get: operations["getApiV1ReportingViews"];
         put?: never;
+        /** Create a saved view over a published definition version (201) */
         post: operations["postApiV1ReportingViews"];
         delete?: never;
         options?: never;
@@ -12024,12 +12195,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one view (§4.7.2 visibility ladder gates access) */
         get: operations["getApiV1ReportingViewsById"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a view (display / pinned filters / share scope) */
         patch: operations["patchApiV1ReportingViewsById"];
         trace?: never;
     };
@@ -12042,6 +12215,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Archive a view (clears the org-default flag) (201) */
         post: operations["postApiV1ReportingViewsByIdArchive"];
         delete?: never;
         options?: never;
@@ -12058,6 +12232,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Stream a saved view as CSV (direct replica stream; §4.8 250k cap → 413). Response is a chunked CSV stream, not JSON */
         post: operations["postApiV1ReportingViewsByIdExportcsv"];
         delete?: never;
         options?: never;
@@ -12074,6 +12249,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Request a PDF render (M22 handshake; ≤5000-row gate → 413) → 202 */
         post: operations["postApiV1ReportingViewsByIdExportpdf"];
         delete?: never;
         options?: never;
@@ -12090,6 +12266,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Request an XLSX render (M22 handshake; no row gate) → 202 */
         post: operations["postApiV1ReportingViewsByIdExportxlsx"];
         delete?: never;
         options?: never;
@@ -12106,6 +12283,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Set the single org-default view (Org Admin, D17) (201) */
         post: operations["postApiV1ReportingViewsByIdSetorgdefault"];
         delete?: never;
         options?: never;
@@ -12122,6 +12300,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Set a view's share scope (D17; org needs report.share.org) (201) */
         post: operations["postApiV1ReportingViewsByIdShare"];
         delete?: never;
         options?: never;
@@ -12157,6 +12336,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Delete a custom role (system_locked → 409, §3.4.1) */
         delete: operations["deleteApiV1RolesById"];
         options?: never;
         head?: never;
@@ -12190,7 +12370,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record a check-in against an obligation — the attribution column is stamped from the SESSION (routes/actor.ts), so a caller cannot post an attestation as somebody else whatever they send (§4.1 #1) */
+        /** Record a safety check-in (attestation; no If-Match, idempotency-keyed) */
         post: operations["postApiV1SafetyCheckins"];
         delete?: never;
         options?: never;
@@ -12205,13 +12385,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Read one check-in (self ∨ supervisor; 404 on deny) */
         get: operations["getApiV1SafetyCheckinsByCheckInId"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Amend within the 5-minute grace — a correction is a NEW row that supersedes (§2.2.1); the original stays readable because it is what the supervisor may already have acted on (§4.1 #3) */
+        /** Amend within the 5-minute grace (supersedes, never mutates) */
         patch: operations["patchApiV1SafetyCheckinsByCheckInId"];
         trace?: never;
     };
@@ -12222,7 +12403,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The clinician's own day — what she owes and what she has posted. Scoped to the SESSION's membership inside the read service, so `/me/today` cannot be pointed at a colleague (§4.1 #4) */
+        /** The clinician's own day: obligations + posted check-ins */
         get: operations["getApiV1SafetyCheckinsMeToday"];
         put?: never;
         post?: never;
@@ -12239,7 +12420,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** My own consents — the three §M20-F16 purposes and their current state (§4.1 #27) */
+        /** The clinician's own consent surface (membership from the session) */
         get: operations["getApiV1SafetyConsent"];
         put?: never;
         post?: never;
@@ -12258,7 +12439,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Grant one purpose — the three are separately grantable (M20-F16): declining `sos_coordinates` never disables SOS, and `continuous_location_during_sos` additionally needs the TENANT's `sosContinuousLocationEnabled` before a stream row may exist (§4.1 #28) */
+        /** Grant one consent purpose (three are separately grantable, M20-F16) */
         post: operations["postApiV1SafetyConsentGrant"];
         delete?: never;
         options?: never;
@@ -12275,7 +12456,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29) */
+        /** Revoke one purpose (writes revoked, never expired) */
         post: operations["postApiV1SafetyConsentRevoke"];
         delete?: never;
         options?: never;
@@ -12290,7 +12471,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The live-awareness board — open obligations, active alerts, and the coverage gaps behind them (§4.1 #26) */
+        /** The supervisor live-awareness board (no coordinate; own row without oversight) */
         get: operations["getApiV1SafetyDashboard"];
         put?: never;
         post?: never;
@@ -12307,10 +12488,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23) */
+        /** The advisory polygons in force (includeExpired defaults false) */
         get: operations["getApiV1SafetyHighriskareas"];
         put?: never;
-        /** Draw one (§7.6) — M20-F07: no PostGIS, so ring closure and the ≥4-point minimum are validated in app code the moment the Compliance Officer draws it, not on the night a clinician is standing in it (§4.1 #24) */
+        /** Draw an advisory polygon (M20-F07: ring validity in app code, no PostGIS) */
         post: operations["postApiV1SafetyHighriskareas"];
         delete?: never;
         options?: never;
@@ -12331,7 +12512,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit or retire one — retiring is `effectiveTo`, never a delete: an incident review has to be able to ask what advisory was in force on the day (§4.1 #25) */
+        /** Edit or retire an area (retire is effectiveTo, never a delete) */
         patch: operations["patchApiV1SafetyHighriskareasByAreaId"];
         trace?: never;
     };
@@ -12342,10 +12523,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The review queue — narrowed to the caller's own incidents inside the read service when they hold no oversight role: the guard admits them to the route, the service decides which rows (§4.1 #13) */
+        /** The review queue (narrowed to own incidents without oversight) */
         get: operations["getApiV1SafetyIncidents"];
         put?: never;
-        /** Open a draft — `affectedClinicianMembershipId` is the ONE membership a caller may name (the §2.2.3 supervisor-opens-on-behalf-of path), and `incident_subject_or_supervisor` is what keeps naming somebody else a supervisor-only act (§4.1 #12) */
+        /** Open a draft incident (affectedClinicianMembershipId is the one caller-named membership) */
         post: operations["postApiV1SafetyIncidents"];
         delete?: never;
         options?: never;
@@ -12360,13 +12541,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One incident (narrative is a cipher until a decipher is bound) */
         get: operations["getApiV1SafetyIncidentsByIncidentId"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit a draft — the `(draft)` qualifier is enforced by the service, not the shape (§4.1 #14) */
+        /** Edit a draft (the draft qualifier runs in the transaction) */
         patch: operations["patchApiV1SafetyIncidentsByIncidentId"];
         trace?: never;
     };
@@ -12379,7 +12561,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** §7.6 / D9's OSHA-equivalent sign-off — step-up asserted at the route (§4.1 #17) */
+        /** D9 OSHA-equivalent sign-off (step-up; state code + reporting-window clock) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdOshasignoff"];
         delete?: never;
         options?: never;
@@ -12396,7 +12578,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16) */
+        /** The supervisor state machine (§2.2.3; reopened re-enters review) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdState"];
         delete?: never;
         options?: never;
@@ -12413,7 +12595,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit for review — D9's gate: `oshaReportable: true` without the signed-off pair is a 422 that NAMES the fix, not a constraint violation surfacing on a clinician's Submit button (§4.1 #15) */
+        /** Submit for review (oshaReportable:true needs the signed-off pair) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdSubmit"];
         delete?: never;
         options?: never;
@@ -12428,14 +12610,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18) */
+        /** The effective policy (asOf is the §2.2.4 replay arm) */
         get: operations["getApiV1SafetyPolicy"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit the policy — step-up asserted at the route (§4.1 #19) */
+        /** Edit the policy (step-up; editReason ≥30; a NEW version row) */
         patch: operations["patchApiV1SafetyPolicy"];
         trace?: never;
     };
@@ -12448,7 +12630,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The press — deliberately NO idempotency key: a duplicate alert is recoverable, a swallowed one is not. `field_eligible_for_sos` gates who may PRESS; nothing downstream of the row gates the fan-out (M20-F05 / S13, §4.1 #5) */
+        /** The SOS press (no idempotency key; coordinates optional, M20-F16) */
         post: operations["postApiV1SafetySos"];
         delete?: never;
         options?: never;
@@ -12463,6 +12645,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Alert detail with §2.2.2 ledger + §2.2.6 acknowledgments */
         get: operations["getApiV1SafetySosBySosAlertId"];
         put?: never;
         post?: never;
@@ -12481,7 +12664,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** A responder answers — the §2.2.6 acknowledgment row is written in the SAME transaction, so an `acknowledged` alert nobody signed is unrepresentable (§4.1 #7) */
+        /** A responder acknowledges (ack row on the same tx) */
         post: operations["postApiV1SafetySosBySosAlertIdAcknowledge"];
         delete?: never;
         options?: never;
@@ -12498,7 +12681,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6) */
+        /** D5 cancel (a rejected cancel is a 200, never a 4xx) */
         post: operations["postApiV1SafetySosBySosAlertIdCancel"];
         delete?: never;
         options?: never;
@@ -12513,7 +12696,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The D6 coordinate stream — readable only while the consent that produced it stands; `continuous_location_during_sos` additionally requires the TENANT flag before a single row may exist (§4.1 #10) */
+        /** The D6 coordinate stream (own permission + warn-audit; ≥40-char reason once closed) */
         get: operations["getApiV1SafetySosBySosAlertIdLocationstream"];
         put?: never;
         post?: never;
@@ -12532,7 +12715,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Resolve, or convert into an incident — `openIncidentFromOutcome` dispatches to a DIFFERENT §2.2.2 command (`openIncident`, not `resolve`) because they are different terminal states (§4.1 #8) */
+        /** Resolve, or convert into an incident (dispatches on the flag) */
         post: operations["postApiV1SafetySosBySosAlertIdResolve"];
         delete?: never;
         options?: never;
@@ -12547,6 +12730,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The active-SOS board tile (registered before :sosAlertId) */
         get: operations["getApiV1SafetySosActive"];
         put?: never;
         post?: never;
@@ -12563,10 +12747,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20) */
+        /** Who watches whom (§2.2.5 / D8) */
         get: operations["getApiV1SafetySupervisorsubscriptions"];
         put?: never;
-        /** Add one — the scope-selector pairing (§3.3's `m20_sss_scope_integrity`) and the vacation-forward pairing are re-checked in the service so the DON is told WHICH selector is missing rather than shown a constraint name (§4.1 #21) */
+        /** Add a subscription (scope-selector pairing re-checked in service) */
         post: operations["postApiV1SafetySupervisorsubscriptions"];
         delete?: never;
         options?: never;
@@ -12584,6 +12768,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Deactivate (always succeeds; reports coverageGapsCreated) */
         delete: operations["deleteApiV1SafetySupervisorsubscriptionsBySubscriptionId"];
         options?: never;
         head?: never;
@@ -12633,7 +12818,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Verify a step-up challenge → paired-write the session freshness (§4.4, D8) */
+        /** Verify a step-up challenge; paired-write freshness on success (§4.4.1, D8) */
         post: operations["postApiV1SessionsStepup"];
         delete?: never;
         options?: never;
@@ -12650,7 +12835,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Begin a step-up challenge (webauthn | totp, §4.4) */
+        /** Start an MFA step-up challenge (WebAuthn or TOTP, §4.4) */
         post: operations["postApiV1SessionsStepupInitiate"];
         delete?: never;
         options?: never;
@@ -12821,10 +13006,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dispatch list — per patient, per Location, or per IPU room for the D17 stock-kit view (§4.1 #21) */
+        /** Dispatch list (per patient / Location / IPU room) */
         get: operations["getApiV1SuppliesComfortkitdispatches"];
         put?: never;
-        /** Dispatch a comfort kit — the DEA 21 CFR §1304 outbound log entry: §4.4's dispatcher predicate plus a step-up gate, and the §2.5 refusals, shelf decrement and per-line log all in ONE transaction (§4.1 #20) */
+        /** Dispatch a comfort kit (§2.5 five refusals + DEA outbound log, one tx; step-up; 201) */
         post: operations["postApiV1SuppliesComfortkitdispatches"];
         delete?: never;
         options?: never;
@@ -12839,6 +13024,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Dispatch detail with the full per-line DEA 1304 manifest */
         get: operations["getApiV1SuppliesComfortkitdispatchesByDispatchId"];
         put?: never;
         post?: never;
@@ -12857,7 +13043,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The kit is physically at the patient — the event M13 builds its deployment rows FROM, so the emitted payload carries the whole manifest rather than making M13 read back (§4.1 #23) */
+        /** Mark the kit physically at the patient (event M13 builds deployments from; If-Match) */
         post: operations["postApiV1SuppliesComfortkitdispatchesByDispatchIdDeployatpatient"];
         delete?: never;
         options?: never;
@@ -12872,6 +13058,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** §8.1 DEA 21 CFR §1304 perpetual log for one kit */
         get: operations["getApiV1SuppliesComfortkitdispatchesByDispatchIdPerpetuallog"];
         put?: never;
         post?: never;
@@ -12888,10 +13075,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The reconciliation worklist — OLDEST due first, with `daysOverdue` computed at read time from `return_due_at` (§4.1 #25) */
+        /** Reconciliation worklist (oldest due first; daysOverdue read-time) */
         get: operations["getApiV1SuppliesComfortkitreturns"];
         put?: never;
-        /** Open a return obligation — refused until M13 has acked the deployment, because a return with nothing to close is a count nobody can reconcile (§4.1 #24) */
+        /** Open a return obligation (refused before M13 acks the deployment; 201) */
         post: operations["postApiV1SuppliesComfortkitreturns"];
         delete?: never;
         options?: never;
@@ -12906,6 +13093,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Return detail with per-line accounting + disposal record */
         get: operations["getApiV1SuppliesComfortkitreturnsByReturnId"];
         put?: never;
         post?: never;
@@ -12924,7 +13112,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Assign the supply-team member who will physically retrieve — §4.4's separation-of-duties clause compares them against the witness (§2.6) */
+        /** Assign the supply-team member who will physically retrieve (If-Match) */
         post: operations["postApiV1SuppliesComfortkitreturnsByReturnIdAssignretriever"];
         delete?: never;
         options?: never;
@@ -12941,7 +13129,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The 90-day assumption of loss — deliberately NOT folded into reconcile: writing off a kit that held a CII solution is a different authority from counting one that came back (§2.6) */
+        /** §2.6 90-day assumption of loss (attested reason; step-up; If-Match) */
         post: operations["postApiV1SuppliesComfortkitreturnsByReturnIdDeclareunreturnable"];
         delete?: never;
         options?: never;
@@ -12958,7 +13146,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reconcile the physical count — step-up plus the reconciler predicate whose FIRST clause is separation of duties; the D8 discrepancy is COMPUTED from the quantities and never accepted from the body (§4.1 #27) */
+        /** Reconcile (D8 discrepancy COMPUTED, never accepted; SoD predicate + step-up; If-Match) */
         post: operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"];
         delete?: never;
         options?: never;
@@ -12973,10 +13161,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The §2.3 comfort-kit templates — `includePlatformFloor` defaults ON so the admin screen shows the D3 floor row as locked; a picker passes false (§4.1 #17) */
+        /** Comfort-kit templates (D3 floor row included by default) */
         get: operations["getApiV1SuppliesComfortkittemplates"];
         put?: never;
-        /** Author a tenant template — the D3 floor validation runs BEFORE anything is written, so a template that drops below the floor never exists even transiently (§4.1 #18) */
+        /** Author a tenant template (D3 four-medication floor validated first; 201) */
         post: operations["postApiV1SuppliesComfortkittemplates"];
         delete?: never;
         options?: never;
@@ -12992,7 +13180,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Supersede a template — this INSERTS a new row pointing back through `replaces_template_id` rather than patching, so a dispatch from three months ago still resolves the recipe it actually used (§4.1 #19) */
+        /** Supersede a template (INSERTS a new row via replaces_template_id) */
         put: operations["putApiV1SuppliesComfortkittemplatesByTemplateId"];
         post?: never;
         delete?: never;
@@ -13008,7 +13196,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The hub shelf — `severity` is DERIVED per row and never stored, because a stored band goes stale the moment a threshold is edited (§4.1 #32) */
+        /** Hub shelf with DERIVED severity band (ok/below_threshold/critical_low/depleted) */
         get: operations["getApiV1SuppliesParstock"];
         put?: never;
         post?: never;
@@ -13026,7 +13214,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edit the par thresholds — the boundary mirrors §3.1.6's ordering CHECK, so an inverted pair is a field-anchored 422 rather than a 500 out of PostgreSQL (§4.1 #33) */
+        /** Edit par thresholds (ordering mirrored at boundary; If-Match) */
         put: operations["putApiV1SuppliesParstockByParStockId"];
         post?: never;
         delete?: never;
@@ -13044,7 +13232,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record an on-hand count — this SETS the shelf rather than adjusting it, and the nightly cron (not this route) is the canonical emitter of the below-threshold alert (§4.1 #34) */
+        /** Record an on-hand count (SETS the shelf, never adjusts; §2.7 pure rule) */
         post: operations["postApiV1SuppliesParstockObserve"];
         delete?: never;
         options?: never;
@@ -13059,10 +13247,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The D11 SKU catalog — the platform rows UNION the tenant overlay, one browsable list (§4.1 #11) */
+        /** SKU catalog (platform rows UNION the tenant overlay) */
         get: operations["getApiV1SuppliesSupplyitems"];
         put?: never;
-        /** Create a canonical HCPCS-keyed SKU — PLATFORM-ONLY: `supply_item` carries no organization_id, so the permission is the first gate and the wardenx_admin-only write policy is the backstop (§4.1 #12) */
+        /** Create a canonical HCPCS-keyed SKU (PLATFORM-ONLY; 201) */
         post: operations["postApiV1SuppliesSupplyitems"];
         delete?: never;
         options?: never;
@@ -13077,6 +13265,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One SKU (platform or overlay; disjoint id space) */
         get: operations["getApiV1SuppliesSupplyitemsById"];
         put?: never;
         post?: never;
@@ -13095,7 +13284,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retire a canonical SKU — effective-dating, never deletion: a retired HCPCS code must keep resolving for every historical request written against it (§4.1 #14) */
+        /** Retire a canonical SKU (effective-dating, PLATFORM-ONLY) */
         post: operations["postApiV1SuppliesSupplyitemsByIdRetire"];
         delete?: never;
         options?: never;
@@ -13110,10 +13299,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The supply-team worklist — cursor-paginated; `openOnly` narrows to the §2.2 non-terminal set, which is the dashboard's default view (§4.1 #2) */
+        /** Supply-team worklist (cursor-paginated; openOnly default) */
         get: operations["getApiV1SuppliesSupplyrequests"];
         put?: never;
-        /** Create a DME / supply / comfort-kit request — the §4.4 dispatcher predicate applies CONDITIONALLY, only when the kind is a comfort-kit deploy (§4.1 #1) */
+        /** Create a supply / DME / comfort-kit request (freezes the D4 routing record; 201) */
         post: operations["postApiV1SuppliesSupplyrequests"];
         delete?: never;
         options?: never;
@@ -13128,6 +13317,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Request detail (D13 delivery text + frozen D4 routing record) */
         get: operations["getApiV1SuppliesSupplyrequestsBySupplyRequestId"];
         put?: never;
         post?: never;
@@ -13146,7 +13336,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** D4 vendor override — the ladder still runs and the override is recorded ON TOP of its trace, so the record shows both the rules evaluated and the human decision that overrode them (§4.1 #4) */
+        /** D4 vendor override (recorded on top of the ladder trace; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdAssignvendor"];
         delete?: never;
         options?: never;
@@ -13163,7 +13353,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel — ONE route for both §2.2 edges: immediate before `ordered`, two-phase after, so a caller never has to know which side of the vendor handshake the row sits on (§4.1 #9) */
+        /** Cancel (service picks the immediate vs two-phase edge; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdCancel"];
         delete?: never;
         options?: never;
@@ -13180,7 +13370,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Caregiver / clinician receipt confirmation — `system_auto_confirm` is NOT accepted here, it is the 72h fallback the worker writes (§4.1 #8) */
+        /** Caregiver/clinician confirms receipt (If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdConfirmreceived"];
         delete?: never;
         options?: never;
@@ -13197,7 +13387,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** D7 courier attestation — the delivering membership is stamped from the SESSION and is not a body field: a courier who could name someone else has attested to nothing (§4.1 #7) */
+        /** D7 courier attestation (deliveredBy stamped from session; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered"];
         delete?: never;
         options?: never;
@@ -13214,7 +13404,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Shipment identifiers — Phase-1 manual, Phase-2 the EDI 856 ASN (§4.1 #6) */
+        /** Record shipment identifiers (If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkintransit"];
         delete?: never;
         options?: never;
@@ -13231,7 +13421,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** The vendor accepted — Phase-1 portal/email/fax entry, Phase-2 the EDI 855 acknowledgment (§4.1 #5) */
+        /** Vendor accepted (PO reference; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkordered"];
         delete?: never;
         options?: never;
@@ -13248,7 +13438,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Initiate an equipment return — the kit-only §2.2 `returned` branch; DME comes back through the M11 rental-pickup path instead (§4.1 #10) */
+        /** Initiate an equipment return (the DME pickup path; If-Match) */
         post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdReturn"];
         delete?: never;
         options?: never;
@@ -13265,7 +13455,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a tenant-local, non-billable overlay item (D11's tenant half; §4.1 #15) */
+        /** Create a tenant-local non-billable item (D11 overlay; 201) */
         post: operations["postApiV1SuppliesTenantsupplyitems"];
         delete?: never;
         options?: never;
@@ -13281,7 +13471,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edit a tenant-local overlay item (§4.1 #16) */
+        /** Edit a tenant-local item */
         put: operations["putApiV1SuppliesTenantsupplyitemsById"];
         post?: never;
         delete?: never;
@@ -13297,10 +13487,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The D4 ladder, most-specific first — the platform-scope rows come back for every tenant via the table's own floor-plus-overlay policy (§4.1 #28) */
+        /** The D4 routing ladder (most-specific first; platform floor + overlay) */
         get: operations["getApiV1SuppliesVendorroutingrules"];
         put?: never;
-        /** Author a routing rule — `platform` scope is absent from the union by design: a tenant may never author one, and the RLS write policy would refuse it anyway (§4.1 #29) */
+        /** Author a routing rule (platform scope refused; 201) */
         post: operations["postApiV1SuppliesVendorroutingrules"];
         delete?: never;
         options?: never;
@@ -13316,9 +13506,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Edit a routing rule (§4.1 #30) */
+        /** Edit a routing rule */
         put: operations["putApiV1SuppliesVendorroutingrulesByRuleId"];
         post?: never;
+        /** Retire a routing rule (is_active=false; NOT a delete — history must resolve) */
         delete: operations["deleteApiV1SuppliesVendorroutingrulesByRuleId"];
         options?: never;
         head?: never;
@@ -13364,6 +13555,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Merged CARC/RARC taxonomy view — M38 floor + tenant overlay (§4.1) */
         get: operations["getApiV1TaxonomyCarcByCode"];
         put?: never;
         post?: never;
@@ -13431,6 +13623,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant's platform→tenant BAA history (cursor-paginated; D11) */
         get: operations["getApiV1TenantBaa"];
         put?: never;
         post?: never;
@@ -13449,6 +13642,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Compliance-officer attestation of a BAA record (step-up) */
         post: operations["postApiV1TenantBaaByIdAttest"];
         delete?: never;
         options?: never;
@@ -13463,9 +13657,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tenant DSAR export job queue (cursor-paginated) */
+        /** The tenant's DSAR export queue (filtered, cursor-paginated) */
         get: operations["getApiV1TenantDsarexportjobs"];
         put?: never;
+        /** Request a patient-scoped DSAR export (enqueues tenant.dsar_export; §164.524) */
         post: operations["postApiV1TenantDsarexportjobs"];
         delete?: never;
         options?: never;
@@ -13482,6 +13677,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Deny a DSAR job with a permitted-denial reason (step-up) */
         post: operations["postApiV1TenantDsarexportjobsByIdDeny"];
         delete?: never;
         options?: never;
@@ -13496,6 +13692,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Mint a 24h presigned DSAR bundle URL (SEC-052; rate-limited) */
         get: operations["getApiV1TenantDsarexportjobsByIdDownload"];
         put?: never;
         post?: never;
@@ -13514,6 +13711,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** One-time §164.524 30-day extension */
         post: operations["postApiV1TenantDsarexportjobsByIdExtend"];
         delete?: never;
         options?: never;
@@ -13530,6 +13728,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up) */
         post: operations["postApiV1TenantDsarexportjobsByIdFulfill"];
         delete?: never;
         options?: never;
@@ -13544,6 +13743,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant's onboarding state (D3; cursor-paginated) */
         get: operations["getApiV1TenantOnboarding"];
         put?: never;
         post?: never;
@@ -13562,6 +13762,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Block a task with a reason (emits M36 alert) */
         post: operations["postApiV1TenantOnboardingByTaskIdBlock"];
         delete?: never;
         options?: never;
@@ -13578,6 +13779,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Complete a task with evidence (precondition DSL → 422 if false) */
         post: operations["postApiV1TenantOnboardingByTaskIdComplete"];
         delete?: never;
         options?: never;
@@ -13594,6 +13796,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Advance an onboarding task pending → in_progress */
         post: operations["postApiV1TenantOnboardingByTaskIdStart"];
         delete?: never;
         options?: never;
@@ -13608,9 +13811,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Tenant's support-access consent grants (cursor-paginated) */
         get: operations["getApiV1TenantSupportconsentgrants"];
         put?: never;
-        /** Issue a tenant-scoped support-access consent grant (§6/D10 step-up enforced server-side) */
+        /** Issue a support-access consent grant (≤72h; compliance-officer; step-up) */
         post: operations["postApiV1TenantSupportconsentgrants"];
         delete?: never;
         options?: never;
@@ -13627,6 +13831,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke a grant (cascades to any open support_session) */
         post: operations["postApiV1TenantSupportconsentgrantsByIdRevoke"];
         delete?: never;
         options?: never;
@@ -13641,9 +13846,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tenant data-export job queue (cursor-paginated) */
+        /** The tenant's export queue (filtered, cursor-paginated) */
         get: operations["getApiV1TenantTenantexportjobs"];
         put?: never;
+        /** Request a tenant-wide export archive (enqueues tenant.export; step-up) */
         post: operations["postApiV1TenantTenantexportjobs"];
         delete?: never;
         options?: never;
@@ -13658,6 +13864,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Mint a 24h presigned tenant-export URL (SEC-052; step-up) */
         get: operations["getApiV1TenantTenantexportjobsByIdDownload"];
         put?: never;
         post?: never;
@@ -13674,6 +13881,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Lookup a full concept at asOf (§4.2) */
         get: operations["getApiV1TerminologyBySystemByCode"];
         put?: never;
         post?: never;
@@ -13690,6 +13898,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Deprecation successor mapping for a code, or null (§4.2) */
         get: operations["getApiV1TerminologyBySystemByCodeDeprecation"];
         put?: never;
         post?: never;
@@ -13723,6 +13932,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Version-aware validate a (system, code) at asOf (§4.2) */
         get: operations["getApiV1TerminologyBySystemValidate"];
         put?: never;
         post?: never;
@@ -13739,6 +13949,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Expand a value set at asOf, with tenant extensions (§4.2) */
         get: operations["getApiV1TerminologyValuesetsByIdExpand"];
         put?: never;
         post?: never;
@@ -13757,6 +13968,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Add a (system, code) tenant extension to a value set (§4.2) */
         post: operations["postApiV1TerminologyValuesetsByIdExtensions"];
         delete?: never;
         options?: never;
@@ -13774,6 +13986,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
+        /** Remove a tenant value-set extension (soft-delete; 204, §4.2) */
         delete: operations["deleteApiV1TerminologyValuesetsByIdExtensionsByExtId"];
         options?: never;
         head?: never;
@@ -13787,6 +14000,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Membership of a (system, code) in a value set + provenance (§4.2) */
         get: operations["getApiV1TerminologyValuesetsByIdIsmember"];
         put?: never;
         post?: never;
@@ -13890,6 +14104,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The full call — the STAFF projection or the PHI-minimized VENDOR one depending on the session class (a different TYPE, not a filtered one) (§4.1 #3) */
         get: operations["getApiV1TriagecallsByTriageCallId"];
         put?: never;
         post?: never;
@@ -13993,6 +14208,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Close the protocol walk — the machine's two §2.3 gates run: every required question answered, and no red-flag escalation still open (§4.1 #8) */
         post: operations["postApiV1TriagecallsByTriageCallIdCompleteprotocol"];
         delete?: never;
         options?: never;
@@ -14077,6 +14293,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resume the same walk at the server's own cursor — no answer is discarded and none is re-asked (§4.1 #10) */
         post: operations["postApiV1TriagecallsByTriageCallIdResume"];
         delete?: never;
         options?: never;
@@ -14091,6 +14308,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Decrypt the transcript — distinct permission + M2 step-up + a per-access M4 audit row; the plaintext never rides the detail DTO (§8.7.2 / §4.1 #14) */
         get: operations["getApiV1TriagecallsByTriageCallIdTranscriptdecrypt"];
         put?: never;
         post?: never;
@@ -14124,6 +14342,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The DON's outstanding paper-re-entry worklist — outage-window scheduling metadata only (no patient, no caller, no clinical content) (§2.7) */
         get: operations["getApiV1TriagecallsPaperreentryWorklist"];
         put?: never;
         post?: never;
@@ -14175,6 +14394,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** One protocol with its ordered questions — what the §5 stepper renders from (§4.1 #28) */
         get: operations["getApiV1TriageprotocolsByProtocolId"];
         put?: never;
         post?: never;
@@ -14211,6 +14431,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Full offboard: disable credentials + reap all sessions (user.deactivate, §7.5) */
         post: operations["postApiV1UsersByIdDeactivate"];
         delete?: never;
         options?: never;
@@ -14618,6 +14839,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Postmark bounce/delivery event callback (IP allowlist + bearer) */
         post: operations["postWebhooksPostmarkEvent"];
         delete?: never;
         options?: never;
@@ -14634,6 +14856,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Twilio SMS delivery-status callback (HMAC-verified; reconciles notification_delivery) */
         post: operations["postWebhooksTwilioSmsstatus"];
         delete?: never;
         options?: never;
@@ -14650,6 +14873,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Twilio Voice (SOS) delivery-status callback (HMAC-verified) */
         post: operations["postWebhooksTwilioVoicestatus"];
         delete?: never;
         options?: never;
@@ -14975,7 +15199,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mergeRequests: {
+                            id: string;
+                            kind: "physician" | "facility" | "pharmacy" | "referral_source" | "payer" | "dme_vendor" | "funeral_home";
+                            canonicalId: string;
+                            duplicateId: string;
+                            status: "pending" | "approved" | "rejected" | "executed";
+                            evidence: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -14997,7 +15234,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        duplicateId: string;
+                        canonicalId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15012,7 +15254,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -15032,14 +15280,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    npi: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        matched: boolean;
+                        canonicalId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15059,7 +15318,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        runs: {
+                            id: string;
+                            mode: "nightly_delta" | "weekly_full" | "on_demand";
+                            outcome: "success" | "partial" | "failure";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -15081,7 +15348,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        canonicalId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17632,7 +17903,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        rules: {
+                            ruleId: string;
+                            organizationId: string | null;
+                            eventType: string;
+                            category: "clinical_urgent" | "clinical_routine" | "operational" | "field_safety" | "administrative" | "system";
+                            severityFloor: "info" | "warn" | "critical";
+                            recipientResolver: "care_team" | "on_call" | "discipline" | "role_set" | "tenant_admins" | "user_list" | "broadcast";
+                            systemLocked: boolean;
+                            enabled: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17647,14 +17931,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled?: boolean;
+                    severityFloor?: "info" | "warn" | "critical";
+                    recipientResolver?: "care_team" | "on_call" | "discipline" | "role_set" | "tenant_admins" | "user_list" | "broadcast";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        organizationId: string | null;
+                        eventType: string;
+                        category: "clinical_urgent" | "clinical_routine" | "operational" | "field_safety" | "administrative" | "system";
+                        severityFloor: "info" | "warn" | "critical";
+                        recipientResolver: "care_team" | "on_call" | "discipline" | "role_set" | "tenant_admins" | "user_list" | "broadcast";
+                        systemLocked: boolean;
+                        enabled: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17679,8 +17982,8 @@ export interface operations {
                         alerts: {
                             alertId: string;
                             eventType: string;
-                            category: string;
-                            severity: string;
+                            category: "clinical_urgent" | "clinical_routine" | "operational" | "field_safety" | "administrative" | "system";
+                            severity: "info" | "warn" | "critical";
                             summary: string;
                             createdAt: string;
                             deliveryStatus: "delivered" | "partial" | "failed" | "pending";
@@ -17708,7 +18011,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        status: "pending" | "accepted" | "denied" | "withdrawn";
+                        slaDueAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17736,7 +18046,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        status: "pending" | "accepted" | "denied" | "withdrawn";
+                        slaDueAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17799,7 +18116,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        denialCaseId: string;
+                        /** Format: uuid */
+                        claimId: string;
+                        tier: string;
+                        state: string;
+                        decisionOutcome: string | null;
+                        /** Format: date-time */
+                        tierDeadlineAt: string;
+                        version: number;
+                        appealPacketDocumentId: string | null;
+                        submittedAt: string | null;
+                        decidedAt: string | null;
+                        events: {
+                            /** Format: uuid */
+                            id: string;
+                            eventKind: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17821,7 +18163,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17850,7 +18198,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17872,7 +18226,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17906,7 +18266,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17935,7 +18301,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -17963,7 +18335,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18074,7 +18452,33 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        organizationId: string | null;
+                        actorUserId: string | null;
+                        actorKind: string;
+                        actorRole: string | null;
+                        eventType: string;
+                        resourceKind: string;
+                        resourceId: string | null;
+                        outcome: "success" | "failure" | "denied";
+                        severity: "info" | "warn" | "critical";
+                        before: {
+                            [key: string]: unknown;
+                        } | null;
+                        after: {
+                            [key: string]: unknown;
+                        } | null;
+                        context: {
+                            [key: string]: unknown;
+                        };
+                        retentionClass: "operational" | "compliance" | "legal_hold" | "compliance_42cfr_part2";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18082,7 +18486,12 @@ export interface operations {
     };
     getApiV1AuditPatientsByPatientIdAccess: {
         parameters: {
-            query?: never;
+            query?: {
+                from?: string;
+                to?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 patientId: string;
@@ -18096,7 +18505,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            eventId: string;
+                            /** Format: date-time */
+                            at: string;
+                            actorUserId: string | null;
+                            actorRole: string | null;
+                            eventType: string;
+                            fields: string[];
+                            viaBreakGlass: boolean;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18104,7 +18528,13 @@ export interface operations {
     };
     getApiV1AuditPatientsByPatientIdAccounting: {
         parameters: {
-            query?: never;
+            query?: {
+                scope?: "hipaa_528" | "part_2_13" | "all";
+                from?: string;
+                to?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 patientId: string;
@@ -18118,7 +18548,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        patientId: string;
+                        period: {
+                            from: string;
+                            to: string;
+                        };
+                        disclosures: {
+                            /** Format: date-time */
+                            date: string;
+                            recipient: string;
+                            purpose: string;
+                            description: string;
+                            /** Format: uuid */
+                            eventId: string;
+                            rationale?: string;
+                        }[];
+                        note: string;
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18176,13 +18627,13 @@ export interface operations {
                             userId: string;
                             organizationId: string;
                             organizationName: string;
-                            status: "pending" | "active" | "suspended" | "revoked";
+                            status: "active" | "suspended" | "revoked";
                             isAdmin: boolean;
                             defaultLocationIds: string[];
                             displayName: string | null;
                             email: string | null;
                             lastLoginAt: string | null;
-                            accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
+                            accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
                         }[];
                     };
                 };
@@ -18211,7 +18662,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        activeOrganizationId: string;
+                        organizationName: string;
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18324,7 +18781,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18353,7 +18830,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18385,7 +18882,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18419,7 +18936,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactLogId: string;
+                        planId: string;
+                        contactId: string;
+                        outreachId: string;
+                        kind: string;
+                        outcome: string;
+                        contactAt: string;
+                        artifactDocumentId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18449,7 +18977,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18477,7 +19025,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18508,7 +19076,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18540,7 +19128,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactLogId: string;
+                        planId: string;
+                        contactId: string;
+                        outreachId: string;
+                        kind: string;
+                        outcome: string;
+                        contactAt: string;
+                        artifactDocumentId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18568,7 +19167,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18591,7 +19210,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        counselorUserId: string;
+                        caseloadCount: number;
+                        dueWithinDays: number;
+                        dueSoon: {
+                            outreachId: string;
+                            planId: string;
+                            contactId: string;
+                            kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                            status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                            anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            dueAt: string;
+                            lateGraceUntil: string;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            cancelledAt: string | null;
+                            assigneeUserId: string | null;
+                            renderedDocumentId: string | null;
+                            sourceEncounterId: string | null;
+                            version: number;
+                        }[];
+                        overdue: {
+                            outreachId: string;
+                            planId: string;
+                            contactId: string;
+                            kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                            status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                            anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            dueAt: string;
+                            lateGraceUntil: string;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            cancelledAt: string | null;
+                            assigneeUserId: string | null;
+                            renderedDocumentId: string | null;
+                            sourceEncounterId: string | null;
+                            version: number;
+                        }[];
+                        tierDistribution: {
+                            low: number;
+                            moderate: number;
+                            high: number;
+                            complicated: number;
+                        };
+                        externalSourceCosignPendingCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18614,7 +19280,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planCountsByStatus: {
+                            eligible: number;
+                            initiating: number;
+                            active: number;
+                            paused: number;
+                            closed_completed: number;
+                            closed_declined: number;
+                            closed_early: number;
+                            closed_legal_hold_extended: number;
+                        };
+                        outreachCountsByStatus: {
+                            scheduled: number;
+                            in_progress: number;
+                            completed: number;
+                            declined: number;
+                            no_response: number;
+                            missed: number;
+                            cancelled: number;
+                        };
+                        copCounts: {
+                            numerator: number;
+                            denominator: number;
+                        };
+                        tierDistribution: {
+                            low: number;
+                            moderate: number;
+                            high: number;
+                            complicated: number;
+                        };
+                        closureCountsByReason: {
+                            thirteen_month_completion: number;
+                            all_contacts_declined: number;
+                            patient_opt_out_pre_death: number;
+                            patient_opt_out_post_creation: number;
+                            tenant_offboarding: number;
+                            all_bereaved_deceased: number;
+                            geographic_relocation: number;
+                            family_legal_action: number;
+                            other_early: number;
+                        };
+                        unassignedPlanCount: number;
+                        externalSourceCosignPendingCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18642,7 +19353,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18683,7 +19412,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18711,7 +19458,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18737,7 +19502,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18765,7 +19548,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18791,7 +19592,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18819,7 +19638,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            planId: string;
+                            patientId: string;
+                            admissionId: string;
+                            status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                            deathDate: string;
+                            windowEndsAt: string;
+                            assignedCounselorUserId: string | null;
+                            assignedVolunteerUserId: string | null;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            contactsActiveCount: number;
+                            nextOutreachDueAt: string | null;
+                            overdueOutreachCount: number;
+                            externalSourceCosignPending: boolean;
+                            version: number;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18841,7 +19683,70 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string | null;
+                        status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                        deathDate: string;
+                        deathTime: string | null;
+                        windowEndsAt: string;
+                        openedAt: string | null;
+                        pausedAt: string | null;
+                        pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                        closedAt: string | null;
+                        assignedCounselorUserId: string | null;
+                        assignedCounselorAssignedAt: string | null;
+                        assignedVolunteerUserId: string | null;
+                        assignedVolunteerAssignedAt: string | null;
+                        externalSource: {
+                            sourceProposalId: string;
+                            sourceMessageId: string;
+                            sourceFacilityMdmId: string;
+                            sourceFacilityName: string;
+                            ackReceivedAt: string;
+                            cosignStatus: "pending" | "cosigned";
+                            cosignedAt?: string;
+                            medicalDirectorMembershipId?: string;
+                        } | null;
+                        firstContactAllowed: boolean;
+                        firstContactGateReason: string | null;
+                        contacts: {
+                            contactId: string;
+                            planId: string;
+                            status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                            displayName: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            preferredLanguageIso639: string;
+                            portalAccountId: string | null;
+                            consentRecordId: string | null;
+                            allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                            volunteerVisibleOnly: boolean;
+                            confirmedAt: string | null;
+                            optedOutAt: string | null;
+                            unreachableAt: string | null;
+                            deceasedAt: string | null;
+                            mayRescindOptOut: boolean;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            version: number;
+                        }[];
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        currentRiskComputedAt?: string | null;
+                        legalHoldId: string | null;
+                        version: number;
+                        updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18872,7 +19777,70 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string | null;
+                        status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                        deathDate: string;
+                        deathTime: string | null;
+                        windowEndsAt: string;
+                        openedAt: string | null;
+                        pausedAt: string | null;
+                        pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                        closedAt: string | null;
+                        assignedCounselorUserId: string | null;
+                        assignedCounselorAssignedAt: string | null;
+                        assignedVolunteerUserId: string | null;
+                        assignedVolunteerAssignedAt: string | null;
+                        externalSource: {
+                            sourceProposalId: string;
+                            sourceMessageId: string;
+                            sourceFacilityMdmId: string;
+                            sourceFacilityName: string;
+                            ackReceivedAt: string;
+                            cosignStatus: "pending" | "cosigned";
+                            cosignedAt?: string;
+                            medicalDirectorMembershipId?: string;
+                        } | null;
+                        firstContactAllowed: boolean;
+                        firstContactGateReason: string | null;
+                        contacts: {
+                            contactId: string;
+                            planId: string;
+                            status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                            displayName: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            preferredLanguageIso639: string;
+                            portalAccountId: string | null;
+                            consentRecordId: string | null;
+                            allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                            volunteerVisibleOnly: boolean;
+                            confirmedAt: string | null;
+                            optedOutAt: string | null;
+                            unreachableAt: string | null;
+                            deceasedAt: string | null;
+                            mayRescindOptOut: boolean;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            version: number;
+                        }[];
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        currentRiskComputedAt?: string | null;
+                        legalHoldId: string | null;
+                        version: number;
+                        updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18903,7 +19871,70 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string | null;
+                        status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                        deathDate: string;
+                        deathTime: string | null;
+                        windowEndsAt: string;
+                        openedAt: string | null;
+                        pausedAt: string | null;
+                        pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                        closedAt: string | null;
+                        assignedCounselorUserId: string | null;
+                        assignedCounselorAssignedAt: string | null;
+                        assignedVolunteerUserId: string | null;
+                        assignedVolunteerAssignedAt: string | null;
+                        externalSource: {
+                            sourceProposalId: string;
+                            sourceMessageId: string;
+                            sourceFacilityMdmId: string;
+                            sourceFacilityName: string;
+                            ackReceivedAt: string;
+                            cosignStatus: "pending" | "cosigned";
+                            cosignedAt?: string;
+                            medicalDirectorMembershipId?: string;
+                        } | null;
+                        firstContactAllowed: boolean;
+                        firstContactGateReason: string | null;
+                        contacts: {
+                            contactId: string;
+                            planId: string;
+                            status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                            displayName: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            preferredLanguageIso639: string;
+                            portalAccountId: string | null;
+                            consentRecordId: string | null;
+                            allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                            volunteerVisibleOnly: boolean;
+                            confirmedAt: string | null;
+                            optedOutAt: string | null;
+                            unreachableAt: string | null;
+                            deceasedAt: string | null;
+                            mayRescindOptOut: boolean;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            version: number;
+                        }[];
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        currentRiskComputedAt?: string | null;
+                        legalHoldId: string | null;
+                        version: number;
+                        updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18932,7 +19963,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        closureId: string;
+                        planId: string;
+                        reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                        closeKind: string;
+                        closedAt: string;
+                        closedByUserId: string | null;
+                        cosignedByUserId: string | null;
+                        cosignedAt: string | null;
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        bereavementSummaryDocumentId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18954,7 +20003,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        closureId: string;
+                        planId: string;
+                        reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                        closeKind: string;
+                        closedAt: string;
+                        closedByUserId: string | null;
+                        cosignedByUserId: string | null;
+                        cosignedAt: string | null;
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        bereavementSummaryDocumentId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18993,7 +20060,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        contactId: string;
+                        planId: string;
+                        status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                        displayName: string;
+                        relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                        preferredLanguageIso639: string;
+                        portalAccountId: string | null;
+                        consentRecordId: string | null;
+                        allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                        volunteerVisibleOnly: boolean;
+                        confirmedAt: string | null;
+                        optedOutAt: string | null;
+                        unreachableAt: string | null;
+                        deceasedAt: string | null;
+                        mayRescindOptOut: boolean;
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19021,7 +20108,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        closureId: string;
+                        planId: string;
+                        reason: "thirteen_month_completion" | "all_contacts_declined" | "patient_opt_out_pre_death" | "patient_opt_out_post_creation" | "tenant_offboarding" | "all_bereaved_deceased" | "geographic_relocation" | "family_legal_action" | "other_early";
+                        closeKind: string;
+                        closedAt: string;
+                        closedByUserId: string | null;
+                        cosignedByUserId: string | null;
+                        cosignedAt: string | null;
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        bereavementSummaryDocumentId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19051,7 +20156,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        outreachId: string;
+                        planId: string;
+                        contactId: string;
+                        kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                        status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                        anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                        dueAt: string;
+                        lateGraceUntil: string;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        assigneeUserId: string | null;
+                        renderedDocumentId: string | null;
+                        sourceEncounterId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19081,7 +20204,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            outreachId: string;
+                            planId: string;
+                            contactId: string;
+                            kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                            status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                            anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            dueAt: string;
+                            lateGraceUntil: string;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            cancelledAt: string | null;
+                            assigneeUserId: string | null;
+                            renderedDocumentId: string | null;
+                            sourceEncounterId: string | null;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19110,7 +20256,70 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string | null;
+                        status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                        deathDate: string;
+                        deathTime: string | null;
+                        windowEndsAt: string;
+                        openedAt: string | null;
+                        pausedAt: string | null;
+                        pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                        closedAt: string | null;
+                        assignedCounselorUserId: string | null;
+                        assignedCounselorAssignedAt: string | null;
+                        assignedVolunteerUserId: string | null;
+                        assignedVolunteerAssignedAt: string | null;
+                        externalSource: {
+                            sourceProposalId: string;
+                            sourceMessageId: string;
+                            sourceFacilityMdmId: string;
+                            sourceFacilityName: string;
+                            ackReceivedAt: string;
+                            cosignStatus: "pending" | "cosigned";
+                            cosignedAt?: string;
+                            medicalDirectorMembershipId?: string;
+                        } | null;
+                        firstContactAllowed: boolean;
+                        firstContactGateReason: string | null;
+                        contacts: {
+                            contactId: string;
+                            planId: string;
+                            status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                            displayName: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            preferredLanguageIso639: string;
+                            portalAccountId: string | null;
+                            consentRecordId: string | null;
+                            allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                            volunteerVisibleOnly: boolean;
+                            confirmedAt: string | null;
+                            optedOutAt: string | null;
+                            unreachableAt: string | null;
+                            deceasedAt: string | null;
+                            mayRescindOptOut: boolean;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            version: number;
+                        }[];
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        currentRiskComputedAt?: string | null;
+                        legalHoldId: string | null;
+                        version: number;
+                        updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19155,7 +20364,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        scoreId: string;
+                        planId: string;
+                        contactId: string | null;
+                        scoreKind: "rule_deterministic" | "llm_augmented";
+                        assessedAt: string;
+                        assessedByUserId: string | null;
+                        tier: "low" | "moderate" | "high" | "complicated";
+                        deterministicTier: "low" | "moderate" | "high" | "complicated";
+                        ruleScore: number;
+                        dataCompleteness: "complete" | "partial" | "minimal";
+                        confidenceBand: "HIGH" | "MEDIUM" | "LOW";
+                        factors?: {
+                            [key: string]: boolean | "unknown";
+                        };
+                        pg13Score: number | null;
+                        ipgrScore: number | null;
+                        evidenceDegraded: boolean;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19186,7 +20416,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        cancelledCount: number;
+                        generatedCount: number;
+                        outreach: {
+                            outreachId: string;
+                            planId: string;
+                            contactId: string;
+                            kind: "phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral";
+                            status: "scheduled" | "in_progress" | "completed" | "declined" | "no_response" | "missed" | "cancelled";
+                            anniversaryMark: ("one_month" | "three_month" | "six_month" | "nine_month_high_risk_only" | "anniversary") | null;
+                            dueAt: string;
+                            lateGraceUntil: string;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            cancelledAt: string | null;
+                            assigneeUserId: string | null;
+                            renderedDocumentId: string | null;
+                            sourceEncounterId: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19212,7 +20465,70 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string | null;
+                        status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                        deathDate: string;
+                        deathTime: string | null;
+                        windowEndsAt: string;
+                        openedAt: string | null;
+                        pausedAt: string | null;
+                        pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                        closedAt: string | null;
+                        assignedCounselorUserId: string | null;
+                        assignedCounselorAssignedAt: string | null;
+                        assignedVolunteerUserId: string | null;
+                        assignedVolunteerAssignedAt: string | null;
+                        externalSource: {
+                            sourceProposalId: string;
+                            sourceMessageId: string;
+                            sourceFacilityMdmId: string;
+                            sourceFacilityName: string;
+                            ackReceivedAt: string;
+                            cosignStatus: "pending" | "cosigned";
+                            cosignedAt?: string;
+                            medicalDirectorMembershipId?: string;
+                        } | null;
+                        firstContactAllowed: boolean;
+                        firstContactGateReason: string | null;
+                        contacts: {
+                            contactId: string;
+                            planId: string;
+                            status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                            displayName: string;
+                            relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                            preferredLanguageIso639: string;
+                            portalAccountId: string | null;
+                            consentRecordId: string | null;
+                            allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                            volunteerVisibleOnly: boolean;
+                            confirmedAt: string | null;
+                            optedOutAt: string | null;
+                            unreachableAt: string | null;
+                            deceasedAt: string | null;
+                            mayRescindOptOut: boolean;
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            version: number;
+                        }[];
+                        stats: {
+                            completedCount: number;
+                            missedCount: number;
+                            contactsActiveCount: number;
+                            contactsOptedOutCount: number;
+                        };
+                        currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                        currentRiskComputedAt?: string | null;
+                        legalHoldId: string | null;
+                        version: number;
+                        updatedAt: string;
+                        redactedCategories: ("sud" | "clinical_risk")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19238,7 +20554,33 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            scoreId: string;
+                            planId: string;
+                            contactId: string | null;
+                            scoreKind: "rule_deterministic" | "llm_augmented";
+                            assessedAt: string;
+                            assessedByUserId: string | null;
+                            tier: "low" | "moderate" | "high" | "complicated";
+                            deterministicTier: "low" | "moderate" | "high" | "complicated";
+                            ruleScore: number;
+                            dataCompleteness: "complete" | "partial" | "minimal";
+                            confidenceBand: "HIGH" | "MEDIUM" | "LOW";
+                            factors?: {
+                                [key: string]: boolean | "unknown";
+                            };
+                            pg13Score: number | null;
+                            ipgrScore: number | null;
+                            evidenceDegraded: boolean;
+                            redactedCategories: ("sud" | "clinical_risk")[];
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19280,7 +20622,76 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        plan: {
+                            planId: string;
+                            patientId: string;
+                            admissionId: string;
+                            providerEntityId: string;
+                            locationId: string | null;
+                            status: "eligible" | "initiating" | "active" | "paused" | "closed_completed" | "closed_declined" | "closed_early" | "closed_legal_hold_extended";
+                            deathDate: string;
+                            deathTime: string | null;
+                            windowEndsAt: string;
+                            openedAt: string | null;
+                            pausedAt: string | null;
+                            pauseKind: ("operational" | "family_request" | "counselor_unavailable_temp") | null;
+                            closedAt: string | null;
+                            assignedCounselorUserId: string | null;
+                            assignedCounselorAssignedAt: string | null;
+                            assignedVolunteerUserId: string | null;
+                            assignedVolunteerAssignedAt: string | null;
+                            externalSource: {
+                                sourceProposalId: string;
+                                sourceMessageId: string;
+                                sourceFacilityMdmId: string;
+                                sourceFacilityName: string;
+                                ackReceivedAt: string;
+                                cosignStatus: "pending" | "cosigned";
+                                cosignedAt?: string;
+                                medicalDirectorMembershipId?: string;
+                            } | null;
+                            firstContactAllowed: boolean;
+                            firstContactGateReason: string | null;
+                            contacts: {
+                                contactId: string;
+                                planId: string;
+                                status: "proposed" | "active" | "opted_out" | "deceased" | "unreachable" | "ineligible_post_review";
+                                displayName: string;
+                                relationshipCode: "spouse" | "domestic_partner" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "aunt_uncle" | "cousin" | "in_law" | "friend" | "neighbor" | "clergy" | "colleague" | "caregiver_non_family" | "other";
+                                preferredLanguageIso639: string;
+                                portalAccountId: string | null;
+                                consentRecordId: string | null;
+                                allowedOutreachKinds: ("phone_call" | "in_person_visit" | "sympathy_card" | "sympathy_letter" | "anniversary_letter" | "email" | "portal_message" | "group_support_invitation" | "external_referral")[];
+                                volunteerVisibleOnly: boolean;
+                                confirmedAt: string | null;
+                                optedOutAt: string | null;
+                                unreachableAt: string | null;
+                                deceasedAt: string | null;
+                                mayRescindOptOut: boolean;
+                                currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                                version: number;
+                            }[];
+                            stats: {
+                                completedCount: number;
+                                missedCount: number;
+                                contactsActiveCount: number;
+                                contactsOptedOutCount: number;
+                            };
+                            currentRiskTier?: ("low" | "moderate" | "high" | "complicated") | null;
+                            currentRiskComputedAt?: string | null;
+                            legalHoldId: string | null;
+                            version: number;
+                            updatedAt: string;
+                            redactedCategories: ("sud" | "clinical_risk")[];
+                        };
+                        contactsSeededCount: number;
+                        outreachScheduledCount: number;
+                        anniversaryRemindersCount: number;
+                        effects: ("audit" | "outbox" | "alert" | "set_timestamp" | "set_assignment" | "insert_closure" | "insert_opt_out" | "rescind_opt_out" | "cancel_future_outreach" | "regenerate_schedule" | "generate_schedule" | "seed_anniversary_reminders" | "recompute_risk" | "set_external_source_metadata" | "set_legal_hold" | "clear_legal_hold" | "log_external_referral")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20083,7 +21494,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        events: {
+                            eventId: string;
+                            organizationId: string;
+                            actorUserId: string;
+                            targetPatientId: string | null;
+                            reason: string;
+                            status: "active" | "cosign_pending" | "revoked" | "expired";
+                            cosignRequired: boolean;
+                            startedAt: string;
+                            expiresAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20111,7 +21536,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        breakGlassId: string;
+                        status: "active" | "cosign_pending" | "revoked" | "expired";
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20133,7 +21564,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        breakGlassId: string;
+                        status: "active" | "cosign_pending" | "revoked" | "expired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20155,7 +21591,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        breakGlassId: string;
+                        status: "active" | "cosign_pending" | "revoked" | "expired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20177,7 +21618,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        capPeriodId: string;
+                        gipDays: number;
+                        ircDays: number;
+                        totalPatientDays: number;
+                        inpatientPct: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20200,7 +21649,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        patientId: string;
+                        capPeriodId: string;
+                        paidCents: number;
+                        outstandingBilledCents: number;
+                        firstElectionInPeriod: string;
+                        lastPaidThrough: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20223,7 +21681,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            sourceKind: string;
+                            sourceId: string;
+                            amountCents: number;
+                            serviceFrom: string;
+                            serviceTo: string;
+                            postedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20243,7 +21714,90 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        period: {
+                            id: string;
+                            capYear: string;
+                            ccn: string;
+                            startDate: string;
+                            endDate: string;
+                            status: string;
+                            methodology: string | null;
+                            methodologyLockedAt: string | null;
+                            graceWindowDays: number;
+                            aggregateCapAmountCents: number;
+                            inpatientCapPct: number;
+                            openedAt: string;
+                        } | null;
+                        agency: {
+                            id: string;
+                            capPeriodId: string;
+                            scope: string;
+                            patientId: string | null;
+                            methodology: string;
+                            paidYtdCents: number;
+                            outstandingBilledCents: number;
+                            projectedYearEndCents: number;
+                            capAmountCents: number | null;
+                            inpatientDaysYtd: number | null;
+                            inpatientPctYtd: number | null;
+                            pctOfCap: number;
+                            alertBand: string;
+                            beneficiaryCount: number | null;
+                            computedAt: string;
+                            computedBy: string;
+                        } | null;
+                        inpatient: {
+                            id: string;
+                            capPeriodId: string;
+                            scope: string;
+                            patientId: string | null;
+                            methodology: string;
+                            paidYtdCents: number;
+                            outstandingBilledCents: number;
+                            projectedYearEndCents: number;
+                            capAmountCents: number | null;
+                            inpatientDaysYtd: number | null;
+                            inpatientPctYtd: number | null;
+                            pctOfCap: number;
+                            alertBand: string;
+                            beneficiaryCount: number | null;
+                            computedAt: string;
+                            computedBy: string;
+                        } | null;
+                        topPatients: {
+                            id: string;
+                            capPeriodId: string;
+                            scope: string;
+                            patientId: string | null;
+                            methodology: string;
+                            paidYtdCents: number;
+                            outstandingBilledCents: number;
+                            projectedYearEndCents: number;
+                            capAmountCents: number | null;
+                            inpatientDaysYtd: number | null;
+                            inpatientPctYtd: number | null;
+                            pctOfCap: number;
+                            alertBand: string;
+                            beneficiaryCount: number | null;
+                            computedAt: string;
+                            computedBy: string;
+                        }[];
+                        recentEvents: {
+                            id: string;
+                            capPeriodId: string;
+                            scope: string;
+                            patientId: string | null;
+                            priorBand: string;
+                            currentBand: string;
+                            raisedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                        }[];
+                        openVarianceCount: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20265,21 +21819,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
                         capYear: string;
                         ccn: string;
-                        /** Format: date */
                         startDate: string;
-                        /** Format: date */
                         endDate: string;
-                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
-                        methodology?: ("streamlined" | "proportional") | null;
-                        methodologyLockedAt?: string | null;
+                        status: string;
+                        methodology: string | null;
+                        methodologyLockedAt: string | null;
                         graceWindowDays: number;
                         aggregateCapAmountCents: number;
                         inpatientCapPct: number;
-                        /** Format: date-time */
                         openedAt: string;
                     }[];
                 };
@@ -20313,21 +21863,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
                         capYear: string;
                         ccn: string;
-                        /** Format: date */
                         startDate: string;
-                        /** Format: date */
                         endDate: string;
-                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
-                        methodology?: ("streamlined" | "proportional") | null;
-                        methodologyLockedAt?: string | null;
+                        status: string;
+                        methodology: string | null;
+                        methodologyLockedAt: string | null;
                         graceWindowDays: number;
                         aggregateCapAmountCents: number;
                         inpatientCapPct: number;
-                        /** Format: date-time */
                         openedAt: string;
                     };
                 };
@@ -20354,21 +21900,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
                         capYear: string;
                         ccn: string;
-                        /** Format: date */
                         startDate: string;
-                        /** Format: date */
                         endDate: string;
-                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
-                        methodology?: ("streamlined" | "proportional") | null;
-                        methodologyLockedAt?: string | null;
+                        status: string;
+                        methodology: string | null;
+                        methodologyLockedAt: string | null;
                         graceWindowDays: number;
                         aggregateCapAmountCents: number;
                         inpatientCapPct: number;
-                        /** Format: date-time */
                         openedAt: string;
                     };
                 };
@@ -20386,13 +21928,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": {
-                    reason?: string;
-                };
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -20401,21 +21937,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
                         capYear: string;
                         ccn: string;
-                        /** Format: date */
                         startDate: string;
-                        /** Format: date */
                         endDate: string;
-                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
-                        methodology?: ("streamlined" | "proportional") | null;
-                        methodologyLockedAt?: string | null;
+                        status: string;
+                        methodology: string | null;
+                        methodologyLockedAt: string | null;
                         graceWindowDays: number;
                         aggregateCapAmountCents: number;
                         inpatientCapPct: number;
-                        /** Format: date-time */
                         openedAt: string;
                     };
                 };
@@ -20449,21 +21981,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
                         capYear: string;
                         ccn: string;
-                        /** Format: date */
                         startDate: string;
-                        /** Format: date */
                         endDate: string;
-                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
-                        methodology?: ("streamlined" | "proportional") | null;
-                        methodologyLockedAt?: string | null;
+                        status: string;
+                        methodology: string | null;
+                        methodologyLockedAt: string | null;
                         graceWindowDays: number;
                         aggregateCapAmountCents: number;
                         inpatientCapPct: number;
-                        /** Format: date-time */
                         openedAt: string;
                     };
                 };
@@ -20499,7 +22027,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        importId: string;
+                        status: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20531,21 +22064,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
                         capYear: string;
                         ccn: string;
-                        /** Format: date */
                         startDate: string;
-                        /** Format: date */
                         endDate: string;
-                        status: "open" | "active" | "in_settlement" | "settled" | "reopened";
-                        methodology?: ("streamlined" | "proportional") | null;
-                        methodologyLockedAt?: string | null;
+                        status: string;
+                        methodology: string | null;
+                        methodologyLockedAt: string | null;
                         graceWindowDays: number;
                         aggregateCapAmountCents: number;
                         inpatientCapPct: number;
-                        /** Format: date-time */
                         openedAt: string;
                     };
                 };
@@ -20570,23 +22099,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
-                        patientId?: string | null;
-                        methodology: "streamlined" | "proportional";
+                        scope: string;
+                        patientId: string | null;
+                        methodology: string;
                         paidYtdCents: number;
                         outstandingBilledCents: number;
                         projectedYearEndCents: number;
                         capAmountCents: number | null;
+                        inpatientDaysYtd: number | null;
+                        inpatientPctYtd: number | null;
                         pctOfCap: number;
                         alertBand: string;
-                        beneficiaryCount?: number | null;
-                        /** Format: date-time */
+                        beneficiaryCount: number | null;
                         computedAt: string;
-                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                        computedBy: string;
                     }[];
                 };
             };
@@ -20612,23 +22140,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
-                        patientId?: string | null;
-                        methodology: "streamlined" | "proportional";
+                        scope: string;
+                        patientId: string | null;
+                        methodology: string;
                         paidYtdCents: number;
                         outstandingBilledCents: number;
                         projectedYearEndCents: number;
                         capAmountCents: number | null;
+                        inpatientDaysYtd: number | null;
+                        inpatientPctYtd: number | null;
                         pctOfCap: number;
                         alertBand: string;
-                        beneficiaryCount?: number | null;
-                        /** Format: date-time */
+                        beneficiaryCount: number | null;
                         computedAt: string;
-                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                        computedBy: string;
                     }[];
                 };
             };
@@ -20654,23 +22181,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
-                        patientId?: string | null;
-                        methodology: "streamlined" | "proportional";
+                        scope: string;
+                        patientId: string | null;
+                        methodology: string;
                         paidYtdCents: number;
                         outstandingBilledCents: number;
                         projectedYearEndCents: number;
                         capAmountCents: number | null;
+                        inpatientDaysYtd: number | null;
+                        inpatientPctYtd: number | null;
                         pctOfCap: number;
                         alertBand: string;
-                        beneficiaryCount?: number | null;
-                        /** Format: date-time */
+                        beneficiaryCount: number | null;
                         computedAt: string;
-                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                        computedBy: string;
                     };
                 };
             };
@@ -20696,14 +22222,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
+                        id: string;
                         capPeriodId: string;
-                        inpatientDayCount: number;
-                        totalDayCount: number;
-                        utilizationPct: number;
-                        band: string;
-                        /** Format: date-time */
+                        scope: string;
+                        patientId: string | null;
+                        methodology: string;
+                        paidYtdCents: number;
+                        outstandingBilledCents: number;
+                        projectedYearEndCents: number;
+                        capAmountCents: number | null;
+                        inpatientDaysYtd: number | null;
+                        inpatientPctYtd: number | null;
+                        pctOfCap: number;
+                        alertBand: string;
+                        beneficiaryCount: number | null;
                         computedAt: string;
+                        computedBy: string;
                     };
                 };
             };
@@ -20730,23 +22264,22 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        scope: "agency_aggregate" | "patient_aggregate" | "inpatient";
-                        patientId?: string | null;
-                        methodology: "streamlined" | "proportional";
+                        scope: string;
+                        patientId: string | null;
+                        methodology: string;
                         paidYtdCents: number;
                         outstandingBilledCents: number;
                         projectedYearEndCents: number;
                         capAmountCents: number | null;
+                        inpatientDaysYtd: number | null;
+                        inpatientPctYtd: number | null;
                         pctOfCap: number;
                         alertBand: string;
-                        beneficiaryCount?: number | null;
-                        /** Format: date-time */
+                        beneficiaryCount: number | null;
                         computedAt: string;
-                        computedBy: "nightly_batch" | "remittance_trigger" | "manual_recompute";
+                        computedBy: string;
                     };
                 };
             };
@@ -20770,7 +22303,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        capPeriodId: string;
+                        macRegion: string;
+                        psrPeriodFrom: string;
+                        psrPeriodTo: string;
+                        parseStatus: string;
+                        parseError: string | null;
+                        beneficiaryCountPsr: number | null;
+                        paidTotalCentsPsr: number | null;
+                        importedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20792,7 +22338,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: string;
+                        patientId: string | null;
+                        m26AccrualCents: number | null;
+                        psrAmountCents: number | null;
+                        varianceCents: number | null;
+                        varianceReason: string | null;
+                        status: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20846,22 +22403,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        status: "proposed" | "reviewed" | "final";
+                        status: string;
                         paidTotalCents: number;
                         beneficiaryCount: number;
                         aggregateCapAmountCents: number;
                         aggregateOverageCents: number;
-                        direction: "overpayment_owed_to_cms" | "underpayment_owed_to_provider" | "balanced";
                         inpatientTotalDays: number;
                         inpatientOverageDays: number;
                         inpatientOverageCents: number;
-                        /** Format: date-time */
                         proposedAt: string;
-                        finalizedAt?: string | null;
+                        finalizedAt: string | null;
                     };
                 };
             };
@@ -20893,22 +22446,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        status: "proposed" | "reviewed" | "final";
+                        status: string;
                         paidTotalCents: number;
                         beneficiaryCount: number;
                         aggregateCapAmountCents: number;
                         aggregateOverageCents: number;
-                        direction: "overpayment_owed_to_cms" | "underpayment_owed_to_provider" | "balanced";
                         inpatientTotalDays: number;
                         inpatientOverageDays: number;
                         inpatientOverageCents: number;
-                        /** Format: date-time */
                         proposedAt: string;
-                        finalizedAt?: string | null;
+                        finalizedAt: string | null;
                     };
                 };
             };
@@ -20934,22 +22483,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        /** Format: uuid */
                         id: string;
-                        /** Format: uuid */
                         capPeriodId: string;
-                        status: "proposed" | "reviewed" | "final";
+                        status: string;
                         paidTotalCents: number;
                         beneficiaryCount: number;
                         aggregateCapAmountCents: number;
                         aggregateOverageCents: number;
-                        direction: "overpayment_owed_to_cms" | "underpayment_owed_to_provider" | "balanced";
                         inpatientTotalDays: number;
                         inpatientOverageDays: number;
                         inpatientOverageCents: number;
-                        /** Format: date-time */
                         proposedAt: string;
-                        finalizedAt?: string | null;
+                        finalizedAt: string | null;
                     };
                 };
             };
@@ -20971,7 +22516,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        capPeriodId: string;
+                        scope: string;
+                        patientId: string | null;
+                        priorBand: string;
+                        currentBand: string;
+                        raisedAt: string;
+                        acknowledgedAt: string | null;
+                        resolvedAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21658,14 +23215,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        sessionClass: "external_collaborator";
+                        scope: {
+                            patientId: string;
+                        };
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21678,14 +23250,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        linkId: string;
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21881,7 +23464,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            displayNameEn: string;
+                            scopeDiscriminator: string;
+                            isPerRecipient: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21912,7 +23504,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            tighterExpirationSeconds: number | null;
+                            tighterCaptureMethods: string[] | null;
+                            tighterReminderCadence: string[] | null;
+                            stateAddendumText: string | null;
+                            jurisdictionCodeRequired: boolean | null;
+                            publishedAt: string | null;
+                            publishedById: string | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21934,7 +23541,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21965,7 +23593,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21987,7 +23636,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            consentRecordId: string;
+                            revocationId: string;
+                            status: "pending" | "in_progress" | "completed" | "partial_failed";
+                            attempts: number;
+                            pendingConsumers: string[];
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22009,7 +23668,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            consentRecordId: string;
+                            requestedAt: string;
+                            requestedById: string;
+                            /** @constant */
+                            eventType: "m39.consent.signed";
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22038,12 +23707,12 @@ export interface operations {
                             organizationId: string;
                             consentRecordId: string;
                             patientId: string;
-                            agentKind: string;
+                            agentKind: "primary" | "alternate_1" | "alternate_2";
                             agentName: string;
                             agentRelationship: string;
-                            scopeKind: string;
-                            activationCondition: string;
-                            termKind: string;
+                            scopeKind: "healthcare_full" | "healthcare_end_of_life_only" | "financial_narrow" | "financial_broad";
+                            activationCondition: "immediate" | "upon_incapacity_attested" | "upon_physician_determination" | "upon_incompetence_court_order";
+                            termKind: "indefinite" | "until_date" | "event_driven";
                             termUntil: string | null;
                             addedAt: string;
                             addedById: string;
@@ -22088,7 +23757,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            patientId: string;
+                            agentKind: "primary" | "alternate_1" | "alternate_2";
+                            agentName: string;
+                            agentRelationship: string;
+                            scopeKind: "healthcare_full" | "healthcare_end_of_life_only" | "financial_narrow" | "financial_broad";
+                            activationCondition: "immediate" | "upon_incapacity_attested" | "upon_physician_determination" | "upon_incompetence_court_order";
+                            termKind: "indefinite" | "until_date" | "event_driven";
+                            termUntil: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            active: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22121,7 +23810,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            patientId: string;
+                            agentKind: "primary" | "alternate_1" | "alternate_2";
+                            agentName: string;
+                            agentRelationship: string;
+                            scopeKind: "healthcare_full" | "healthcare_end_of_life_only" | "financial_narrow" | "financial_broad";
+                            activationCondition: "immediate" | "upon_incapacity_attested" | "upon_physician_determination" | "upon_incompetence_court_order";
+                            termKind: "indefinite" | "until_date" | "event_driven";
+                            termUntil: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            active: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22146,7 +23855,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            consentRecordId: string | null;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            allowed: boolean;
+                            denyReason: string | null;
+                            callerModule: string;
+                            evaluatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22174,7 +23898,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             consentRecordId: string;
-                            recipientKind: string;
+                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
                             recipientEntityId: string | null;
                             recipientDisplayName: string;
                             purposeCode: string | null;
@@ -22219,7 +23943,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                            recipientEntityId: string | null;
+                            recipientDisplayName: string;
+                            purposeCode: string | null;
+                            expiresAt: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            removedReasonText: string | null;
+                            active: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22248,7 +23990,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            recipientKind: "external_physician" | "facility" | "pharmacy" | "irb" | "family_member" | "attorney" | "employer" | "researcher" | "free_text";
+                            recipientEntityId: string | null;
+                            recipientDisplayName: string;
+                            purposeCode: string | null;
+                            expiresAt: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            removedReasonText: string | null;
+                            active: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22279,7 +24039,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22301,7 +24082,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            sourceConsentRecordId: string;
+                            patientId: string;
+                            status: "open" | "renewed" | "closed_expired" | "closed_revoked" | "closed_no_longer_applicable";
+                            cycleStartedAt: string;
+                            nextActionDueAt: string | null;
+                            closedAt: string | null;
+                            closedReason: string | null;
+                            resolvedConsentRecordId: string | null;
+                            assignedToMembershipId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22333,7 +24130,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22355,7 +24173,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22386,7 +24225,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22408,7 +24268,49 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            consentId: string;
+                            supersedes: {
+                                id: string;
+                                organizationId: string;
+                                patientId: string;
+                                typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                                grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                                captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                                scopeDescriptor: unknown;
+                                status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                                version: number;
+                                effectiveAt: string | null;
+                                expiresAt: string | null;
+                                signedAt: string | null;
+                                createdById: string;
+                                supersedesConsentRecordId?: string | null;
+                                renewedFromConsentRecordId?: string | null;
+                                survivesDeath?: boolean;
+                            }[];
+                            renewedFrom: {
+                                id: string;
+                                organizationId: string;
+                                patientId: string;
+                                typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                                grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                                captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                                scopeDescriptor: unknown;
+                                status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                                version: number;
+                                effectiveAt: string | null;
+                                expiresAt: string | null;
+                                signedAt: string | null;
+                                createdById: string;
+                                supersedesConsentRecordId?: string | null;
+                                renewedFromConsentRecordId?: string | null;
+                                survivesDeath?: boolean;
+                            }[];
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22437,7 +24339,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22461,7 +24384,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            consentRecordId: string | null;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            allowed: boolean;
+                            denyReason: string | null;
+                            callerModule: string;
+                            evaluatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22483,7 +24421,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            consentId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            survivesDeath: boolean;
+                            terminatesOnDeath: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22503,7 +24451,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        organizationId: string | null;
+                        ruleCode: string;
+                        category: string;
+                        description: string;
+                        ruleSetVersion: number;
+                        regulatoryRequired: boolean;
+                        severity: "block" | "warn" | "info";
+                        status: "active" | "deprecated" | "draft_suggestion";
+                        macJurisdictionScope: string;
+                        publishedAt: string;
+                        deprecatedAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22534,7 +24497,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        organizationId: string | null;
+                        ruleCode: string;
+                        category: string;
+                        description: string;
+                        ruleSetVersion: number;
+                        regulatoryRequired: boolean;
+                        severity: "block" | "warn" | "info";
+                        status: "active" | "deprecated" | "draft_suggestion";
+                        macJurisdictionScope: string;
+                        publishedAt: string;
+                        deprecatedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22549,14 +24527,38 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    description?: string;
+                    severity?: "block" | "warn" | "info";
+                    macJurisdictionScope?: string;
+                    predicateSpec?: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        organizationId: string | null;
+                        ruleCode: string;
+                        category: string;
+                        description: string;
+                        ruleSetVersion: number;
+                        regulatoryRequired: boolean;
+                        severity: "block" | "warn" | "info";
+                        status: "active" | "deprecated" | "draft_suggestion";
+                        macJurisdictionScope: string;
+                        publishedAt: string;
+                        deprecatedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22578,7 +24580,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        organizationId: string | null;
+                        ruleCode: string;
+                        category: string;
+                        description: string;
+                        ruleSetVersion: number;
+                        regulatoryRequired: boolean;
+                        severity: "block" | "warn" | "info";
+                        status: "active" | "deprecated" | "draft_suggestion";
+                        macJurisdictionScope: string;
+                        publishedAt: string;
+                        deprecatedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22604,7 +24621,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            costReportId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            fiscalYearStartDate: string;
+                            fiscalYearEndDate: string;
+                            state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                            reopenCount: number;
+                            badDebtClaimed: boolean;
+                            wageSource: "gusto" | "manual";
+                            version: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22636,7 +24670,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22658,7 +24749,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22688,7 +24836,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22710,7 +24915,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                        worksheetsToRecompute: ("S" | "S-1" | "S-2" | "A" | "A-1" | "A-2" | "A-3" | "A-4" | "A-6" | "A-8" | "A-8-1" | "B" | "B-1" | "C" | "F" | "F-1" | "F-2")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22739,7 +24949,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22761,7 +25028,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        recordId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        periodLabel: string;
+                        debtKind: "deductible" | "coinsurance";
+                        amountCents: number;
+                        collectionEffortsDocumented: boolean;
+                        supportingDocumentIds: string[];
+                        addedByMembershipId: string;
+                        addedAt: string;
+                        deletedAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22793,7 +25074,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        recordId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        periodLabel: string;
+                        debtKind: "deductible" | "coinsurance";
+                        amountCents: number;
+                        collectionEffortsDocumented: boolean;
+                        supportingDocumentIds: string[];
+                        addedByMembershipId: string;
+                        addedAt: string;
+                        deletedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22816,7 +25111,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        recordId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        periodLabel: string;
+                        debtKind: "deductible" | "coinsurance";
+                        amountCents: number;
+                        collectionEffortsDocumented: boolean;
+                        supportingDocumentIds: string[];
+                        addedByMembershipId: string;
+                        addedAt: string;
+                        deletedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22832,14 +25141,38 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    periodLabel?: string;
+                    debtKind?: "deductible" | "coinsurance";
+                    amountCents?: number;
+                    collectionEffortsDocumented?: boolean;
+                    supportingDocumentIds?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        recordId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        periodLabel: string;
+                        debtKind: "deductible" | "coinsurance";
+                        amountCents: number;
+                        collectionEffortsDocumented: boolean;
+                        supportingDocumentIds: string[];
+                        addedByMembershipId: string;
+                        addedAt: string;
+                        deletedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22861,7 +25194,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        windowId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        deadlineDate: string;
+                        currentEffectiveDeadlineDate: string;
+                        lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                        lastAlertTierEmittedAt: string | null;
+                        closedAt: string | null;
+                    } | null;
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22883,7 +25227,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mappingId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearInt: number;
+                        xeroAccountCode: string;
+                        xeroAccountName: string;
+                        cmsCostCenterCode: string;
+                        mappingSource: "platform_default" | "tenant_override" | "tenant_extended";
+                        version: number;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22898,14 +25254,37 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    changes: {
+                        xeroAccountCode: string;
+                        xeroAccountName: string;
+                        cmsCostCenterCode: string;
+                    }[];
+                    mappingSource?: "tenant_override" | "tenant_extended";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mappingId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearInt: number;
+                        xeroAccountCode: string;
+                        xeroAccountName: string;
+                        cmsCostCenterCode: string;
+                        mappingSource: "platform_default" | "tenant_override" | "tenant_extended";
+                        version: number;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22920,14 +25299,34 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    changes: {
+                        xeroAccountCode: string;
+                        xeroAccountName: string;
+                        cmsCostCenterCode: string;
+                    }[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        changedAccounts: {
+                            xeroAccountCode: string;
+                            fromCmsCostCenterCode: string | null;
+                            toCmsCostCenterCode: string;
+                        }[];
+                        unmappedAccounts: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22942,14 +25341,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    keepTenantOverrides: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mappingId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearInt: number;
+                        xeroAccountCode: string;
+                        xeroAccountName: string;
+                        cmsCostCenterCode: string;
+                        mappingSource: "platform_default" | "tenant_override" | "tenant_extended";
+                        version: number;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22964,14 +25381,32 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    newEffectiveDeadlineDate: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        windowId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        deadlineDate: string;
+                        currentEffectiveDeadlineDate: string;
+                        lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                        lastAlertTierEmittedAt: string | null;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -22993,7 +25428,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        snapshotId: string;
+                        status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                        ecrFileDocumentId: string | null;
+                        piFileDocumentId: string | null;
+                        supportingDocumentsDocumentIds: string[];
+                        mcrefAcknowledgmentNumber: string | null;
+                        mcrefRejectionCode: string | null;
+                        mcrefRejectionDetail: string | null;
+                        generatedAt: string;
+                        uploadedAt: string | null;
+                        acknowledgedAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23016,7 +25468,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        snapshotId: string;
+                        status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                        ecrFileDocumentId: string | null;
+                        piFileDocumentId: string | null;
+                        supportingDocumentsDocumentIds: string[];
+                        mcrefAcknowledgmentNumber: string | null;
+                        mcrefRejectionCode: string | null;
+                        mcrefRejectionDetail: string | null;
+                        generatedAt: string;
+                        uploadedAt: string | null;
+                        acknowledgedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23047,7 +25516,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        snapshotId: string;
+                        status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                        ecrFileDocumentId: string | null;
+                        piFileDocumentId: string | null;
+                        supportingDocumentsDocumentIds: string[];
+                        mcrefAcknowledgmentNumber: string | null;
+                        mcrefRejectionCode: string | null;
+                        mcrefRejectionDetail: string | null;
+                        generatedAt: string;
+                        uploadedAt: string | null;
+                        acknowledgedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23069,7 +25555,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        importId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        source: "xero" | "manual_csv" | "gusto";
+                        status: "pending" | "complete" | "failed";
+                        accountCount: number;
+                        failureReason: string | null;
+                        pulledAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23091,7 +25588,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23106,14 +25607,31 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    normalizedAccounts: unknown[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        importId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        source: "xero" | "manual_csv" | "gusto";
+                        status: "pending" | "complete" | "failed";
+                        accountCount: number;
+                        failureReason: string | null;
+                        pulledAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23135,7 +25653,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        importId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        source: "xero" | "manual_csv" | "gusto";
+                        status: "pending" | "complete" | "failed";
+                        rowCount: number;
+                        failureReason: string | null;
+                        pulledAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23157,7 +25686,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23172,14 +25705,31 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    normalizedWageRows: unknown[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        importId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        source: "xero" | "manual_csv" | "gusto";
+                        status: "pending" | "complete" | "failed";
+                        rowCount: number;
+                        failureReason: string | null;
+                        pulledAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23201,7 +25751,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        trialBalanceJobId: string;
+                        wageDataJobId: string | null;
+                        statisticsJobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23230,7 +25786,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23252,7 +25865,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23274,7 +25944,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        snapshotId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        priorSnapshotId: string | null;
+                        contentHashSha256: string;
+                        reason: "submit" | "reopen" | "mac_revision_request" | "admin_audit";
+                        createdByMembershipId: string;
+                        createdAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23297,7 +25978,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        snapshotId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        priorSnapshotId: string | null;
+                        contentHashSha256: string;
+                        reason: "submit" | "reopen" | "mac_revision_request" | "admin_audit";
+                        createdByMembershipId: string;
+                        createdAt: string;
+                        materializedInputs: unknown;
+                        worksheetSnapshot: unknown;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23319,7 +26013,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        statisticId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        monthlyBreakdown: unknown;
+                        visitCountsByDiscipline: unknown;
+                        fteCalculations: unknown;
+                        bereavementCensus: unknown;
+                        refreshedAt: string;
+                        refreshedByMembershipId: string | null;
+                        version: number;
+                    } | null;
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23341,7 +26048,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23374,7 +26085,64 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23389,14 +26157,83 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    attestedByMembershipId: string;
+                    /** Format: date-time */
+                    attestedAt: string;
+                    /** Format: uuid */
+                    approvedByMembershipId?: string;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        costReportId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStartDate: string;
+                        fiscalYearEndDate: string;
+                        state: "draft" | "populating" | "validating" | "ready_for_review" | "approved_for_submit" | "submitted" | "accepted" | "rejected" | "reopened" | "closed";
+                        reopenCount: number;
+                        badDebtClaimed: boolean;
+                        wageSource: "gusto" | "manual";
+                        version: number;
+                        latestSnapshotId: string | null;
+                        latestValidation: {
+                            validationId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            status: "in_progress" | "complete" | "failed_to_run";
+                            ruleSetVersion: number;
+                            passedCount: number;
+                            failedCount: number;
+                            warningCount: number;
+                            overriddenCount: number;
+                            skippedCount: number;
+                            runStartedAt: string;
+                            runCompletedAt: string | null;
+                        } | null;
+                        latestSubmission: {
+                            submissionId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            snapshotId: string;
+                            status: "generating" | "generated" | "uploaded" | "accepted" | "rejected";
+                            ecrFileDocumentId: string | null;
+                            piFileDocumentId: string | null;
+                            supportingDocumentsDocumentIds: string[];
+                            mcrefAcknowledgmentNumber: string | null;
+                            mcrefRejectionCode: string | null;
+                            mcrefRejectionDetail: string | null;
+                            generatedAt: string;
+                            uploadedAt: string | null;
+                            acknowledgedAt: string | null;
+                        } | null;
+                        complianceWindow: {
+                            windowId: string;
+                            organizationId: string;
+                            costReportId: string;
+                            deadlineDate: string;
+                            currentEffectiveDeadlineDate: string;
+                            lastAlertTier: "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
+                            lastAlertTierEmittedAt: string | null;
+                            closedAt: string | null;
+                        } | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        closedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23418,7 +26255,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        validationId: string;
+                        jobId: string;
+                        ruleSetVersion: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23440,7 +26283,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        validationId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        status: "in_progress" | "complete" | "failed_to_run";
+                        ruleSetVersion: number;
+                        passedCount: number;
+                        failedCount: number;
+                        warningCount: number;
+                        overriddenCount: number;
+                        skippedCount: number;
+                        runStartedAt: string;
+                        runCompletedAt: string | null;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23463,7 +26321,41 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        validationId: string;
+                        organizationId: string;
+                        costReportId: string;
+                        status: "in_progress" | "complete" | "failed_to_run";
+                        ruleSetVersion: number;
+                        passedCount: number;
+                        failedCount: number;
+                        warningCount: number;
+                        overriddenCount: number;
+                        skippedCount: number;
+                        runStartedAt: string;
+                        runCompletedAt: string | null;
+                        results: {
+                            resultId: string;
+                            validationId: string;
+                            ruleId: string;
+                            outcome: "pass" | "fail" | "warn" | "skip";
+                            details: {
+                                [key: string]: unknown;
+                            };
+                            overridden: boolean;
+                            override: {
+                                overrideId: string;
+                                organizationId: string;
+                                validationResultId: string;
+                                overriddenByMembershipId: string;
+                                reason: string;
+                                overriddenAt: string;
+                            } | null;
+                            recordedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23494,7 +26386,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        overrideId: string;
+                        organizationId: string;
+                        validationResultId: string;
+                        overriddenByMembershipId: string;
+                        reason: string;
+                        overriddenAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23517,7 +26418,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        worksheetId: string | null;
+                        costReportId: string;
+                        worksheetCode: "S" | "S-1" | "S-2" | "A" | "A-1" | "A-2" | "A-3" | "A-4" | "A-6" | "A-8" | "A-8-1" | "B" | "B-1" | "C" | "F" | "F-1" | "F-2";
+                        data: unknown;
+                        computedAt: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23547,7 +26457,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        worksheetId: string | null;
+                        costReportId: string;
+                        worksheetCode: "S" | "S-1" | "S-2" | "A" | "A-1" | "A-2" | "A-3" | "A-4" | "A-6" | "A-8" | "A-8-1" | "B" | "B-1" | "C" | "F" | "F-1" | "F-2";
+                        data: unknown;
+                        computedAt: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23570,7 +26489,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobId: string;
+                        worksheetsToRecompute: ("S" | "S-1" | "S-2" | "A" | "A-1" | "A-2" | "A-3" | "A-4" | "A-6" | "A-8" | "A-8-1" | "B" | "B-1" | "C" | "F" | "F-1" | "F-2")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23841,7 +26765,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        claimId: string | null;
+                        carcCode: string;
+                        rarcCode: string | null;
+                        category: string;
+                        source: string;
+                        state: string;
+                        assigneeMembershipId: string | null;
+                        /** Format: date-time */
+                        openedAt: string;
+                        agingBucketDays: number;
+                        agingBucketLabel: string;
+                        /** @description Decimal string (numeric column) — never a float */
+                        dollarValue: string;
+                        taxonomyStatus: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23869,7 +26814,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23899,7 +26850,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23921,7 +26878,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23949,7 +26912,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23977,7 +26946,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24005,7 +26980,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24033,7 +27014,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24055,7 +27042,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24112,7 +27105,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            planId: string;
+                            patientId: string;
+                            admissionId: string;
+                            providerEntityId: string;
+                            locationId: string;
+                            kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                            status: string;
+                            nextSupervisoryDueAt: string | null;
+                            initialAssessmentClockStartedAt: string | null;
+                            initialAssessmentSignedAt: string | null;
+                            spiritualCareDeclinedAt: string | null;
+                            updatedAt: string;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24134,7 +27148,123 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        patientId: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        locationId: string;
+                        kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                        status: string;
+                        nextSupervisoryDueAt: string | null;
+                        initialAssessmentClockStartedAt: string | null;
+                        initialAssessmentSignedAt: string | null;
+                        spiritualCareDeclinedAt: string | null;
+                        updatedAt: string;
+                        version: number;
+                        aideMembershipId: string | null;
+                        supervisingRnMembershipId: string | null;
+                        supervisoryCadenceDaysOverride: number | null;
+                        spiritualCareDeclined: string | null;
+                        goals: {
+                            goalId: string;
+                            parentProblemId: string | null;
+                            parentGoalId: string | null;
+                            source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                            status: string;
+                            originalText: string;
+                            revisedText: string | null;
+                            measurableOutcome: string | null;
+                            targetAt: string | null;
+                            frequencyText: string | null;
+                            frequencyValue: string | null;
+                            modalityText: string | null;
+                            sudRelated: boolean;
+                            addedByDiscipline: string;
+                            addedAt: string;
+                            version: number;
+                        }[];
+                        interventions: {
+                            interventionId: string;
+                            parentInterventionId: string | null;
+                            goalRefs: string[];
+                            scopeText: string;
+                            frequencyText: string;
+                            frequencyValue: string;
+                            discipline: string;
+                            responsibleRoles: string[];
+                            status: string;
+                            discontinuationReason: string | null;
+                            addedByDiscipline: string;
+                            addedAt: string;
+                            version: number;
+                        }[];
+                        assessments: {
+                            assessmentId: string;
+                            kind: string;
+                            status: string;
+                            capturedAt: string;
+                            isInitial: boolean;
+                            sudFlag: boolean;
+                            familyViolenceFlag: boolean;
+                            sourceEncounterId: string | null;
+                            data: unknown;
+                            amendsAssessmentId: string | null;
+                            amendmentReason: string | null;
+                            capturedByMembershipId: string;
+                            signedAt: string | null;
+                            signedByMembershipId: string | null;
+                            version: number;
+                        }[];
+                        supervisoryVisits: {
+                            supervisoryVisitId: string;
+                            aideMembershipId: string;
+                            supervisingRnMembershipId: string;
+                            sourceEncounterId: string | null;
+                            supervisoryAt: string;
+                            attestationMode: "aide_present" | "observation_of_work";
+                            aidePerformanceSatisfactory: boolean;
+                            correctiveActions: string | null;
+                            supervisoryNarrative: string;
+                            nextDueAt: string;
+                            cadenceDaysAtInsert: number;
+                            signedAt: string | null;
+                            version: number;
+                        }[];
+                        volunteerAssignments: {
+                            assignmentId: string;
+                            volunteerMembershipId: string;
+                            coordinatorMembershipId: string;
+                            activities: string[];
+                            startsAt: string;
+                            endsAt: string | null;
+                            coordinatorAcknowledgedAt: string | null;
+                            inactivatedAt: string | null;
+                            inactivationReason: string | null;
+                            version: number;
+                        }[];
+                        versions: {
+                            versionId: string;
+                            planId: string;
+                            sequence: number;
+                            status: string;
+                            kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                            idgMeetingId: string | null;
+                            finalizedAt: string | null;
+                            signedAt: string | null;
+                            supersededAt: string | null;
+                            version: number;
+                        }[];
+                        supervisoryCadence: {
+                            nextDueAt: string;
+                            cadenceDays: number;
+                            status: string;
+                            hoursOverdue: number;
+                        } | null;
+                        redacted_categories: ("sud" | "family_violence")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24172,7 +27302,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supervisoryVisitId: string;
+                        aideMembershipId: string;
+                        supervisingRnMembershipId: string;
+                        sourceEncounterId: string | null;
+                        supervisoryAt: string;
+                        attestationMode: "aide_present" | "observation_of_work";
+                        aidePerformanceSatisfactory: boolean;
+                        correctiveActions: string | null;
+                        supervisoryNarrative: string;
+                        nextDueAt: string;
+                        cadenceDaysAtInsert: number;
+                        signedAt: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24195,7 +27341,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supervisoryVisitId: string;
+                        aideMembershipId: string;
+                        supervisingRnMembershipId: string;
+                        sourceEncounterId: string | null;
+                        supervisoryAt: string;
+                        attestationMode: "aide_present" | "observation_of_work";
+                        aidePerformanceSatisfactory: boolean;
+                        correctiveActions: string | null;
+                        supervisoryNarrative: string;
+                        nextDueAt: string;
+                        cadenceDaysAtInsert: number;
+                        signedAt: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24230,7 +27392,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        kind: string;
+                        status: string;
+                        capturedAt: string;
+                        isInitial: boolean;
+                        sudFlag: boolean;
+                        familyViolenceFlag: boolean;
+                        sourceEncounterId: string | null;
+                        data: unknown;
+                        amendsAssessmentId: string | null;
+                        amendmentReason: string | null;
+                        capturedByMembershipId: string;
+                        signedAt: string | null;
+                        signedByMembershipId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24261,7 +27441,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        kind: string;
+                        status: string;
+                        capturedAt: string;
+                        isInitial: boolean;
+                        sudFlag: boolean;
+                        familyViolenceFlag: boolean;
+                        sourceEncounterId: string | null;
+                        data: unknown;
+                        amendsAssessmentId: string | null;
+                        amendmentReason: string | null;
+                        capturedByMembershipId: string;
+                        signedAt: string | null;
+                        signedByMembershipId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24284,7 +27482,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        kind: string;
+                        status: string;
+                        capturedAt: string;
+                        isInitial: boolean;
+                        sudFlag: boolean;
+                        familyViolenceFlag: boolean;
+                        sourceEncounterId: string | null;
+                        data: unknown;
+                        amendsAssessmentId: string | null;
+                        amendmentReason: string | null;
+                        capturedByMembershipId: string;
+                        signedAt: string | null;
+                        signedByMembershipId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24324,7 +27540,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        goalId: string;
+                        parentProblemId: string | null;
+                        parentGoalId: string | null;
+                        source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                        status: string;
+                        originalText: string;
+                        revisedText: string | null;
+                        measurableOutcome: string | null;
+                        targetAt: string | null;
+                        frequencyText: string | null;
+                        frequencyValue: string | null;
+                        modalityText: string | null;
+                        sudRelated: boolean;
+                        addedByDiscipline: string;
+                        addedAt: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24362,7 +27597,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        goalId: string;
+                        parentProblemId: string | null;
+                        parentGoalId: string | null;
+                        source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                        status: string;
+                        originalText: string;
+                        revisedText: string | null;
+                        measurableOutcome: string | null;
+                        targetAt: string | null;
+                        frequencyText: string | null;
+                        frequencyValue: string | null;
+                        modalityText: string | null;
+                        sudRelated: boolean;
+                        addedByDiscipline: string;
+                        addedAt: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24397,7 +27651,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        interventionId: string;
+                        parentInterventionId: string | null;
+                        goalRefs: string[];
+                        scopeText: string;
+                        frequencyText: string;
+                        frequencyValue: string;
+                        discipline: string;
+                        responsibleRoles: string[];
+                        status: string;
+                        discontinuationReason: string | null;
+                        addedByDiscipline: string;
+                        addedAt: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24433,7 +27703,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        interventionId: string;
+                        parentInterventionId: string | null;
+                        goalRefs: string[];
+                        scopeText: string;
+                        frequencyText: string;
+                        frequencyValue: string;
+                        discipline: string;
+                        responsibleRoles: string[];
+                        status: string;
+                        discontinuationReason: string | null;
+                        addedByDiscipline: string;
+                        addedAt: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24455,7 +27741,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        planId: string;
+                        kind: string;
+                        status: string;
+                        goals: {
+                            goalId: string;
+                            text: string;
+                            status: string;
+                            targetAt: string | null;
+                        }[];
+                        interventions: {
+                            interventionId: string;
+                            scopeText: string;
+                            frequencyText: string;
+                            status: string;
+                        }[];
+                        spiritualCareDeclined: boolean;
+                        redacted_categories: ("sud" | "family_violence")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24480,7 +27786,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            versionId: string;
+                            planId: string;
+                            sequence: number;
+                            status: string;
+                            kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                            idgMeetingId: string | null;
+                            finalizedAt: string | null;
+                            signedAt: string | null;
+                            supersededAt: string | null;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24503,7 +27827,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        planId: string;
+                        sequence: number;
+                        status: string;
+                        kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                        idgMeetingId: string | null;
+                        finalizedAt: string | null;
+                        signedAt: string | null;
+                        supersededAt: string | null;
+                        version: number;
+                        stateSnapshot: unknown;
+                        requiredSignerSet: unknown;
+                        signatures: {
+                            signatureId: string;
+                            signerMembershipId: string;
+                            signerRole: string;
+                            isAcknowledgment: boolean;
+                            signedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24536,7 +27882,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        planId: string;
+                        sequence: number;
+                        status: string;
+                        kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                        idgMeetingId: string | null;
+                        finalizedAt: string | null;
+                        signedAt: string | null;
+                        supersededAt: string | null;
+                        version: number;
+                        stateSnapshot: unknown;
+                        requiredSignerSet: unknown;
+                        signatures: {
+                            signatureId: string;
+                            signerMembershipId: string;
+                            signerRole: string;
+                            isAcknowledgment: boolean;
+                            signedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24567,7 +27935,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        versionId: string;
+                        planId: string;
+                        sequence: number;
+                        status: string;
+                        kind: "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan";
+                        idgMeetingId: string | null;
+                        finalizedAt: string | null;
+                        signedAt: string | null;
+                        supersededAt: string | null;
+                        version: number;
+                        stateSnapshot: unknown;
+                        requiredSignerSet: unknown;
+                        signatures: {
+                            signatureId: string;
+                            signerMembershipId: string;
+                            signerRole: string;
+                            isAcknowledgment: boolean;
+                            signedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24601,7 +27991,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assignmentId: string;
+                        volunteerMembershipId: string;
+                        coordinatorMembershipId: string;
+                        activities: string[];
+                        startsAt: string;
+                        endsAt: string | null;
+                        coordinatorAcknowledgedAt: string | null;
+                        inactivatedAt: string | null;
+                        inactivationReason: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24636,7 +28039,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assignmentId: string;
+                        volunteerMembershipId: string;
+                        coordinatorMembershipId: string;
+                        activities: string[];
+                        startsAt: string;
+                        endsAt: string | null;
+                        coordinatorAcknowledgedAt: string | null;
+                        inactivatedAt: string | null;
+                        inactivationReason: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26239,7 +29655,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        engagementId: string;
+                        organizationId: string;
+                        engagementType: "cms_survey" | "state_survey" | "tpe_probe" | "upic_investigation" | "cost_report_field_audit" | "financial_audit" | "accreditation" | "other";
+                        auditorAgency: string;
+                        scope: unknown;
+                        status: "scheduled" | "active" | "closed" | "cancelled";
+                        startAt: string;
+                        endAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26269,7 +29696,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        engagementId: string;
+                        organizationId: string;
+                        engagementType: "cms_survey" | "state_survey" | "tpe_probe" | "upic_investigation" | "cost_report_field_audit" | "financial_audit" | "accreditation" | "other";
+                        auditorAgency: string;
+                        scope: unknown;
+                        status: "scheduled" | "active" | "closed" | "cancelled";
+                        startAt: string;
+                        endAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26299,7 +29737,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        engagementId: string;
+                        /** @constant */
+                        status: "pending";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26321,7 +29765,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        engagementId: string;
+                        auditorsEnrolled: number;
+                        resourcesTouched: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26347,7 +29797,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                            triageCallId: string;
+                            providerEntityId: string;
+                            patientId: string | null;
+                            callState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            minutesOpen: number;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26373,7 +29847,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                        triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                        state: "open" | "acknowledged" | "resolved";
+                        mandatory: boolean;
+                        escalatedToMembershipId: string | null;
+                        escalatedToExternalActorId: string | null;
+                        escalatedAt: string;
+                        acknowledgedAt: string | null;
+                        resolvedAt: string | null;
+                        resolvedByMembershipId: string | null;
+                        triageCallId: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        callState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        minutesOpen: number;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26401,7 +29895,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                        triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                        state: "open" | "acknowledged" | "resolved";
+                        mandatory: boolean;
+                        escalatedToMembershipId: string | null;
+                        escalatedToExternalActorId: string | null;
+                        escalatedAt: string;
+                        acknowledgedAt: string | null;
+                        resolvedAt: string | null;
+                        resolvedByMembershipId: string | null;
+                        triageCallId: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        callState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        minutesOpen: number;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30012,7 +33526,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        agingBucketCounts: {
+                            "0-7": number;
+                            "8-15": number;
+                            "16-30": number;
+                            "31-60": number;
+                            "61-90": number;
+                            "91+": number;
+                        };
+                        openCount: number;
+                        /** @description Decimal string — never a float */
+                        totalDollarOpen: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30131,7 +33659,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            /** @description Decimal string — never a float */
+                            prAmount: string;
+                            status: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30151,7 +33693,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        advice: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            payerId: string;
+                            payerKind: string;
+                            paymentMethod: string;
+                            /** @description Decimal string — never a float */
+                            totalPaymentAmount: string;
+                            parseStatus: string;
+                            /** Format: date-time */
+                            receivedAt: string;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30177,7 +33736,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        membershipId: string;
+                        organizationId: string;
+                        status: "active" | "suspended" | "revoked";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30283,7 +33848,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        resolvedFrom?: string;
+                        canonical: {
+                            id: string;
+                            identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
+                            identifierValue: string | null;
+                            displayName: string;
+                        };
+                        overlay: {
+                            preferredContactPhone: string | null;
+                            preferredContactEmail: string | null;
+                            relationshipNotes: string | null;
+                            doNotRefer: boolean;
+                            isPreferred: boolean;
+                            preferredRank: number | null;
+                        } | null;
+                        status: "active" | "deactivated" | "provisional";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30299,14 +33884,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    preferredContactPhone?: string | null;
+                    preferredContactEmail?: string | null;
+                    relationshipNotes?: string | null;
+                    doNotRefer?: boolean;
+                    isPreferred?: boolean;
+                    preferredRank?: number | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        applied: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30329,7 +33929,48 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        parent: {
+                            id: string;
+                            resolvedFrom?: string;
+                            canonical: {
+                                id: string;
+                                identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
+                                identifierValue: string | null;
+                                displayName: string;
+                            };
+                            overlay: {
+                                preferredContactPhone: string | null;
+                                preferredContactEmail: string | null;
+                                relationshipNotes: string | null;
+                                doNotRefer: boolean;
+                                isPreferred: boolean;
+                                preferredRank: number | null;
+                            } | null;
+                            status: "active" | "deactivated" | "provisional";
+                        } | null;
+                        children: {
+                            id: string;
+                            resolvedFrom?: string;
+                            canonical: {
+                                id: string;
+                                identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
+                                identifierValue: string | null;
+                                displayName: string;
+                            };
+                            overlay: {
+                                preferredContactPhone: string | null;
+                                preferredContactEmail: string | null;
+                                relationshipNotes: string | null;
+                                doNotRefer: boolean;
+                                isPreferred: boolean;
+                                preferredRank: number | null;
+                            } | null;
+                            status: "active" | "deactivated" | "provisional";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30344,14 +33985,73 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
+                    identifierValue: string;
+                    displayName?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        kind: "matched_canonical";
+                        entity: {
+                            id: string;
+                            resolvedFrom?: string;
+                            canonical: {
+                                id: string;
+                                identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
+                                identifierValue: string | null;
+                                displayName: string;
+                            };
+                            overlay: {
+                                preferredContactPhone: string | null;
+                                preferredContactEmail: string | null;
+                                relationshipNotes: string | null;
+                                doNotRefer: boolean;
+                                isPreferred: boolean;
+                                preferredRank: number | null;
+                            } | null;
+                            status: "active" | "deactivated" | "provisional";
+                        };
+                    } | {
+                        /** @constant */
+                        kind: "created_provisional";
+                        provisionalId: string;
+                    } | {
+                        /** @constant */
+                        kind: "fuzzy_candidates";
+                        candidates: {
+                            id: string;
+                            resolvedFrom?: string;
+                            canonical: {
+                                id: string;
+                                identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
+                                identifierValue: string | null;
+                                displayName: string;
+                            };
+                            overlay: {
+                                preferredContactPhone: string | null;
+                                preferredContactEmail: string | null;
+                                relationshipNotes: string | null;
+                                doNotRefer: boolean;
+                                isPreferred: boolean;
+                                preferredRank: number | null;
+                            } | null;
+                            status: "active" | "deactivated" | "provisional";
+                        }[];
+                        provisionalId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30381,13 +34081,22 @@ export interface operations {
                     "application/json": {
                         results: {
                             id: string;
-                            status: "active" | "deactivated" | "provisional";
+                            resolvedFrom?: string;
                             canonical: {
                                 id: string;
-                                identifierType: string;
+                                identifierType: "npi" | "ccn" | "x12_payer_id" | "ncpdp";
                                 identifierValue: string | null;
                                 displayName: string;
                             };
+                            overlay: {
+                                preferredContactPhone: string | null;
+                                preferredContactEmail: string | null;
+                                relationshipNotes: string | null;
+                                doNotRefer: boolean;
+                                isPreferred: boolean;
+                                preferredRank: number | null;
+                            } | null;
+                            status: "active" | "deactivated" | "provisional";
                         }[];
                     };
                 };
@@ -30410,7 +34119,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        entries: {
+                            id: string;
+                            kind: "facility" | "payer" | "referral_source" | "dme_vendor" | "funeral_home";
+                            canonicalId: string;
+                            baaStatus: "executed" | "pending" | "n_a";
+                            executedOn: string | null;
+                            expiresOn: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30423,14 +34143,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "facility" | "payer" | "referral_source" | "dme_vendor" | "funeral_home";
+                    /** Format: uuid */
+                    canonicalId: string;
+                    baaStatus: "executed" | "pending" | "n_a";
+                    executedOn: string | null;
+                    expiresOn: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30443,14 +34178,30 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "physician" | "facility" | "pharmacy" | "referral_source" | "payer" | "dme_vendor" | "funeral_home";
+                    /** Format: uuid */
+                    canonicalId: string;
+                    licenseState: string;
+                    /** Format: date */
+                    expiresOn: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        recorded: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -30470,7 +34221,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        permissions: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32192,7 +35947,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        roles: {
+                            grantId: string;
+                            membershipId: string;
+                            roleId: string;
+                            roleKey: string;
+                            scope: unknown;
+                            expiresAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32224,7 +35990,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        grantId: string;
+                        membershipId: string;
+                        roleId: string;
+                        roleKey: string;
+                        scope: unknown;
+                        expiresAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32247,7 +36022,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        revoked: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32260,14 +36040,26 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32291,7 +36083,7 @@ export interface operations {
                     "application/json": {
                         channels: {
                             channelId: string;
-                            kind: string;
+                            kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement";
                             title: string | null;
                             subjectId: string | null;
                             archivedAt: string | null;
@@ -32320,7 +36112,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        channelId: string;
+                        kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement";
+                        title: string | null;
+                        subjectId: string | null;
+                        archivedAt: string | null;
+                        unreadCount: number;
+                        members: {
+                            userId: string;
+                            role: "owner" | "member" | "read_only" | "portal_caregiver";
+                            source: "auto" | "manual";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32335,7 +36141,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    userId: string;
+                    role?: "owner" | "member" | "read_only" | "portal_caregiver";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32397,7 +36210,7 @@ export interface operations {
                             channelId: string;
                             authorUserId: string | null;
                             body: string;
-                            bodyKind: string;
+                            bodyKind: "plain" | "markdown" | "system";
                             createdAt: string;
                             parentMessageId: string | null;
                         }[];
@@ -32440,7 +36253,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32453,14 +36272,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    userId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        channelId: string;
+                        created: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32497,14 +36327,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    body: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        messageId: string;
+                        editedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32519,7 +36360,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    upTo?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -32753,14 +36600,27 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    channel: "push" | "sms" | "email";
+                    target: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        endpointId: string;
+                        channel: "push" | "sms" | "email";
+                        verificationStatus: "verified" | "pending" | "expired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32797,14 +36657,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        endpointId: string;
+                        channel: "push" | "sms" | "email";
+                        verificationStatus: "verified" | "pending" | "expired";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32824,7 +36696,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        userId: string;
+                        routingMap: {
+                            [key: string]: {
+                                [key: string]: ("in_app" | "push" | "sms" | "email" | "voice")[];
+                            };
+                        };
+                        quietHours: {
+                            tz: string;
+                            ranges: {
+                                daysOfWeek: number[];
+                                start: string;
+                                end: string;
+                            }[];
+                            severityOverride: "info" | "warn" | "critical";
+                        };
+                        vacationForwardToUserId: string | null;
+                        vacationUntil: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32837,14 +36731,40 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    routingMap: {
+                        [key: string]: {
+                            [key: string]: string[];
+                        };
+                    };
+                    quietHours: {
+                        tz: string;
+                        ranges: {
+                            daysOfWeek: number[];
+                            start: string;
+                            end: string;
+                        }[];
+                        severityOverride: "info" | "warn" | "critical";
+                    };
+                    vacationForwardToUserId?: string | null;
+                    vacationUntil?: string | null;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32967,7 +36887,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        asOf: string;
+                        perProviderEntity: {
+                            providerEntityId: string;
+                            actors: unknown[];
+                            rnCoverageGap: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -32987,7 +36916,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        mdmVendorId: string;
+                        name: string;
+                        adapterKey: string;
+                        rnCoverageAttested: boolean;
+                        baaInEffect: boolean;
+                        baaExpiresOn: string | null;
+                        minimizationProfile: string;
+                        adapterRegistered: boolean;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33024,7 +36965,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        mdmVendorId: string;
+                        name: string;
+                        adapterKey: string;
+                        rnCoverageAttested: boolean;
+                        baaInEffect: boolean;
+                        baaExpiresOn: string | null;
+                        minimizationProfile: string;
+                        adapterRegistered: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33054,7 +37007,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        mdmVendorId: string;
+                        name: string;
+                        adapterKey: string;
+                        rnCoverageAttested: boolean;
+                        baaInEffect: boolean;
+                        baaExpiresOn: string | null;
+                        minimizationProfile: string;
+                        adapterRegistered: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33076,7 +37041,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        model: "direct" | "hybrid" | "centralized";
+                        escalationTiers: unknown;
+                        callbackSlaPerSeverity: unknown;
+                        stateOverrides: unknown;
+                        externalTriageVendorId: string | null;
+                        emergencyContactE164: string | null;
+                        aiProtocolSuggestionEnabled: boolean;
+                        aiHospitalizationRiskEnabled: boolean;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33117,7 +37096,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        model: "direct" | "hybrid" | "centralized";
+                        escalationTiers: unknown;
+                        callbackSlaPerSeverity: unknown;
+                        stateOverrides: unknown;
+                        externalTriageVendorId: string | null;
+                        emergencyContactE164: string | null;
+                        aiProtocolSuggestionEnabled: boolean;
+                        aiHospitalizationRiskEnabled: boolean;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33144,7 +37137,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            providerEntityId: string;
+                            shiftStartsAt: string;
+                            shiftEndsAt: string;
+                            discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                            status: "scheduled" | "active" | "completed" | "cancelled";
+                            primaryOnCallMembershipId: string | null;
+                            backupMembershipId: string | null;
+                            externalActorId: string | null;
+                            externalActorLabel: string | null;
+                            openedAt: string | null;
+                            closedAt: string | null;
+                            m17VisitAssignmentRef: string | null;
+                            cancellationReason: string | null;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33183,7 +37198,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        shiftStartsAt: string;
+                        shiftEndsAt: string;
+                        discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                        status: "scheduled" | "active" | "completed" | "cancelled";
+                        primaryOnCallMembershipId: string | null;
+                        backupMembershipId: string | null;
+                        externalActorId: string | null;
+                        externalActorLabel: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        m17VisitAssignmentRef: string | null;
+                        cancellationReason: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33211,7 +37244,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        shiftStartsAt: string;
+                        shiftEndsAt: string;
+                        discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                        status: "scheduled" | "active" | "completed" | "cancelled";
+                        primaryOnCallMembershipId: string | null;
+                        backupMembershipId: string | null;
+                        externalActorId: string | null;
+                        externalActorLabel: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        m17VisitAssignmentRef: string | null;
+                        cancellationReason: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33237,7 +37288,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        shiftStartsAt: string;
+                        shiftEndsAt: string;
+                        discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                        status: "scheduled" | "active" | "completed" | "cancelled";
+                        primaryOnCallMembershipId: string | null;
+                        backupMembershipId: string | null;
+                        externalActorId: string | null;
+                        externalActorLabel: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        m17VisitAssignmentRef: string | null;
+                        cancellationReason: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33263,7 +37332,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        shiftStartsAt: string;
+                        shiftEndsAt: string;
+                        discipline: "clinical_rn" | "clinical_lpn" | "medical_director" | "msw" | "chaplain" | "external";
+                        status: "scheduled" | "active" | "completed" | "cancelled";
+                        primaryOnCallMembershipId: string | null;
+                        backupMembershipId: string | null;
+                        externalActorId: string | null;
+                        externalActorLabel: string | null;
+                        openedAt: string | null;
+                        closedAt: string | null;
+                        m17VisitAssignmentRef: string | null;
+                        cancellationReason: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -34243,10 +38330,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: email */
                     email: string;
                     proposedRoleKeys?: string[];
                     proposedDefaultLocationIds?: string[];
+                    proposedDefaultProviderEntityId?: string;
                 };
             };
         };
@@ -34256,7 +38343,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -34279,7 +38371,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        rescinded: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -34310,13 +38406,13 @@ export interface operations {
                             userId: string;
                             organizationId: string;
                             organizationName: string;
-                            status: "pending" | "active" | "suspended" | "revoked";
+                            status: "active" | "suspended" | "revoked";
                             isAdmin: boolean;
                             defaultLocationIds: string[];
                             displayName: string | null;
                             email: string | null;
                             lastLoginAt: string | null;
-                            accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
+                            accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
                         }[];
                         pendingInvitations: number;
                     };
@@ -34383,13 +38479,13 @@ export interface operations {
                         userId: string;
                         organizationId: string;
                         organizationName: string;
-                        status: "pending" | "active" | "suspended" | "revoked";
+                        status: "active" | "suspended" | "revoked";
                         isAdmin: boolean;
                         defaultLocationIds: string[];
                         displayName: string | null;
                         email: string | null;
                         lastLoginAt: string | null;
-                        accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
+                        accountStatus: ("created" | "active" | "suspended" | "deactivated") | null;
                     };
                 };
             };
@@ -34469,7 +38565,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        outcome: "created";
+                        patientId: string;
+                    } | {
+                        /** @constant */
+                        outcome: "soft_review";
+                        patientId: string;
+                        matchReviewIds: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -34577,7 +38684,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        addressId: string;
+                        /** @constant */
+                        cascadeEmitted: "m5.patient.address_changed";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -34606,7 +38719,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        status: "pending" | "accepted" | "denied" | "withdrawn";
+                        slaDueAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35202,8 +39322,8 @@ export interface operations {
                             organizationId: string;
                             patientId: string;
                             typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
-                            grantorKind: string;
-                            captureMethod: string;
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
                             status: "draft" | "active" | "superseded" | "revoked" | "expired";
                             version: number;
@@ -35247,7 +39367,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
+                            scopeDescriptor: unknown;
+                            status: "draft" | "active" | "superseded" | "revoked" | "expired";
+                            version: number;
+                            effectiveAt: string | null;
+                            expiresAt: string | null;
+                            signedAt: string | null;
+                            createdById: string;
+                            supersedesConsentRecordId?: string | null;
+                            renewedFromConsentRecordId?: string | null;
+                            survivesDeath?: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35269,7 +39410,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            patientId: string;
+                            consentRecordId: string;
+                            consentRecordRecipientId: string | null;
+                            delegateUserId: string | null;
+                            delegateCaregiverId: string;
+                            scope: string;
+                            effectiveFrom: string;
+                            effectiveUntil: string | null;
+                            portalSessionClass: string;
+                            revokedAt: string | null;
+                            active: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35291,7 +39450,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string;
+                            consentRecordId: string;
+                            patientId: string;
+                            agentKind: "primary" | "alternate_1" | "alternate_2";
+                            agentName: string;
+                            agentRelationship: string;
+                            scopeKind: "healthcare_full" | "healthcare_end_of_life_only" | "financial_narrow" | "financial_broad";
+                            activationCondition: "immediate" | "upon_incapacity_attested" | "upon_physician_determination" | "upon_incompetence_court_order";
+                            termKind: "indefinite" | "until_date" | "event_driven";
+                            termUntil: string | null;
+                            addedAt: string;
+                            addedById: string;
+                            removedAt: string | null;
+                            active: boolean;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35324,8 +39503,8 @@ export interface operations {
                             organizationId: string;
                             patientId: string;
                             typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
-                            grantorKind: string;
-                            captureMethod: string;
+                            grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
+                            captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
                             status: "draft" | "active" | "superseded" | "revoked" | "expired";
                             version: number;
@@ -35713,6 +39892,8 @@ export interface operations {
                             resource: string;
                             action: string;
                             category: string;
+                            defaultAbac: string;
+                            description: string;
                         }[];
                     };
                 };
@@ -35740,7 +39921,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            tenantAccountId: string;
+                            addendumVersion: string;
+                            baaStatus: "executed" | "pending" | "terminated" | "missing";
+                            executedOn: string | null;
+                            effectiveOn: string | null;
+                            expiresOn: string | null;
+                            documentId: string | null;
+                            attestedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35753,14 +39951,42 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    tenantAccountId: string;
+                    addendumVersion: string;
+                    baaStatus: "executed" | "pending" | "terminated" | "missing";
+                    executedOn?: string;
+                    effectiveOn?: string;
+                    expiresOn?: string;
+                    /** Format: email */
+                    breachNotificationContactEmail?: string;
+                    breachNotificationContactPhone?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        tenantAccountId: string;
+                        addendumVersion: string;
+                        baaStatus: "executed" | "pending" | "terminated" | "missing";
+                        executedOn: string | null;
+                        effectiveOn: string | null;
+                        expiresOn: string | null;
+                        documentId: string | null;
+                        attestedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35775,14 +40001,41 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    baaStatus?: "executed" | "pending" | "terminated" | "missing";
+                    executedOn?: string;
+                    effectiveOn?: string;
+                    expiresOn?: string;
+                    /** Format: email */
+                    breachNotificationContactEmail?: string;
+                    breachNotificationContactPhone?: string;
+                    /** Format: uuid */
+                    documentId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        tenantAccountId: string;
+                        addendumVersion: string;
+                        baaStatus: "executed" | "pending" | "terminated" | "missing";
+                        executedOn: string | null;
+                        effectiveOn: string | null;
+                        expiresOn: string | null;
+                        documentId: string | null;
+                        attestedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35802,7 +40055,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        capYear: string;
+                        aggregateCapAmountCents: number | null;
+                        inpatientCapPct: number;
+                        sourceUrl: string | null;
+                        firstTenantUseAt: string | null;
+                        recordedAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35832,7 +40094,11 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        capYear: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35886,7 +40152,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            flagKey: string;
+                            organizationId: string | null;
+                            flagKind: "product" | "rollout" | "kill_switch" | "migration";
+                            valueType: "boolean" | "string" | "number" | "json";
+                            value: unknown;
+                            rolloutPercent: number | null;
+                            killSwitchActive: boolean;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35899,14 +40182,39 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    flagKey: string;
+                    organizationId?: string | null;
+                    flagKind: "product" | "rollout" | "kill_switch" | "migration";
+                    valueType: "boolean" | "string" | "number" | "json";
+                    value: unknown;
+                    rolloutPercent?: number;
+                    rationale?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        flagKey: string;
+                        organizationId: string | null;
+                        flagKind: "product" | "rollout" | "kill_switch" | "migration";
+                        valueType: "boolean" | "string" | "number" | "json";
+                        value: unknown;
+                        rolloutPercent: number | null;
+                        killSwitchActive: boolean;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35925,7 +40233,7 @@ export interface operations {
             content: {
                 "application/json": {
                     killSwitchActive: boolean;
-                    reason: string;
+                    organizationId?: string | null;
                 };
             };
         };
@@ -35935,7 +40243,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        flagKey: string;
+                        organizationId: string | null;
+                        flagKind: "product" | "rollout" | "kill_switch" | "migration";
+                        valueType: "boolean" | "string" | "number" | "json";
+                        value: unknown;
+                        rolloutPercent: number | null;
+                        killSwitchActive: boolean;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35958,7 +40279,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            key: string;
+                            title: string;
+                            canonicalOrder: number;
+                            isCanonical: boolean;
+                            /** Format: date-time */
+                            createdAt: string;
+                            id: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35989,7 +40324,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        key: string;
+                        title: string;
+                        canonicalOrder: number;
+                        isCanonical: boolean;
+                        /** Format: date-time */
+                        createdAt: string;
+                        id: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -35997,7 +40342,12 @@ export interface operations {
     };
     getApiV1PlatformSignupintents: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "new" | "qualified" | "provisioned" | "abandoned" | "rejected";
+                source?: "self_serve_form" | "platform_ops_manual" | "partner_referral";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36009,7 +40359,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            contactEmail: string;
+                            legalBusinessName: string;
+                            intendedFirstAdminEmail: string;
+                            intentStatus: "new" | "qualified" | "provisioned" | "abandoned" | "rejected";
+                            source: "self_serve_form" | "platform_ops_manual" | "partner_referral";
+                            rejectionReason: string | null;
+                            /** Format: date-time */
+                            receivedAt: string;
+                            processedAt: string | null;
+                            tenantAccountId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36024,14 +40392,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    planLabel: "starter" | "standard" | "enterprise";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        intentId: string;
+                        intentStatus: string;
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36046,14 +40426,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    rejectionReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        intentId: string;
+                        intentStatus: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36061,7 +40452,12 @@ export interface operations {
     };
     getApiV1PlatformSupportsessions: {
         parameters: {
-            query?: never;
+            query?: {
+                tenantAccountId?: string;
+                status?: "open" | "expired" | "closed";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36073,7 +40469,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            supportConsentGrantId: string;
+                            tenantAccountId: string | null;
+                            actorMembershipId: string;
+                            /** Format: date-time */
+                            startedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            closedAt: string | null;
+                            closeReason: string | null;
+                            status: "open" | "expired" | "closed";
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36086,14 +40501,27 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    supportConsentGrantId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36108,14 +40536,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        sessionId: string;
+                        closeReason: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36137,7 +40576,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        elevationExpiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36145,7 +40589,10 @@ export interface operations {
     };
     getApiV1PlatformSupportsessionsByIdEvents: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -36159,7 +40606,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            supportSessionId: string;
+                            eventKind: string;
+                            resourceKind: string | null;
+                            resourceId: string | null;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            actorIp: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36167,7 +40629,11 @@ export interface operations {
     };
     getApiV1PlatformTenantinvitations: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: string;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36179,7 +40645,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            firstAdminEmail: string;
+                            status: string;
+                            /** Format: date-time */
+                            issuedAt: string;
+                            expiresAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36192,14 +40672,33 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    orgSlug: string;
+                    /** Format: email */
+                    firstAdminEmail: string;
+                    expiresInDays?: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        firstAdminEmail: string;
+                        status: string;
+                        /** Format: date-time */
+                        issuedAt: string;
+                        expiresAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36221,7 +40720,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        status: "revoked";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36230,7 +40735,7 @@ export interface operations {
     getApiV1PlatformTenants: {
         parameters: {
             query?: {
-                status?: "signup_intent" | "provisioning" | "onboarding" | "active" | "suspended" | "at_risk" | "offboarding_initiated" | "final_export_pending" | "retained" | "destruction_pending" | "destroyed";
+                status?: string;
                 planLabel?: string;
                 createdAfter?: string;
                 search?: string;
@@ -36248,7 +40753,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            orgSlug: string;
+                            legalBusinessName: string;
+                            status: string;
+                            planLabel: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36261,14 +40783,34 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    signupIntentId?: string;
+                    legalBusinessName: string;
+                    /** Format: email */
+                    billingContactEmail: string;
+                    /** Format: email */
+                    breachNotificationContactEmail: string;
+                    /** Format: email */
+                    firstAdminEmail: string;
+                    planLabel: "starter" | "standard" | "enterprise";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36290,7 +40832,43 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        orgSlug: string;
+                        legalBusinessName: string;
+                        status: string;
+                        planLabel: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                        latestStatusEvent: {
+                            id: string;
+                            toStatus: string;
+                            /** Format: date-time */
+                            occurredAt: string;
+                            reason: string;
+                        } | null;
+                        keyRing: {
+                            currentDekVersion: string;
+                            dekLastRotatedAt: string | null;
+                            destroyedAt: string | null;
+                        } | null;
+                        onboarding: {
+                            totalTasks: number;
+                            doneTasks: number;
+                            currentStep: string | null;
+                        };
+                        baa: {
+                            status: string;
+                            expiresOn: string | null;
+                        } | null;
+                        activeGrants: number;
+                        activeSessions: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36305,14 +40883,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36334,7 +40923,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        currentDekVersion: string;
+                        currentDekKekId: string;
+                        priorDekVersionCount: number;
+                        /** Format: date-time */
+                        dekCreatedAt: string;
+                        dekLastRotatedAt: string | null;
+                        destroyedAt: string | null;
+                        destructionCertificateId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36349,14 +40951,26 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    transitionReason: string;
+                    exportPurpose: "baa_termination" | "migration";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        status: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36371,14 +40985,27 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    transitionReason: string;
+                    /** Format: uuid */
+                    destructionCertificateId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36393,14 +41020,30 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    toStatus: "provisioning" | "onboarding" | "active" | "suspended" | "at_risk" | "offboarding_initiated" | "final_export_pending" | "retained" | "destruction_pending";
+                    transitionReason: string;
+                    sideEffectAcknowledgments?: {
+                        sessionRevocationCascade?: boolean;
+                        subscriptionCancellationScheduled?: boolean;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tenantAccountId: string;
+                        status: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36424,7 +41067,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            triageCallId: string;
+                            occurredAt: string;
+                            callerRelationshipLabel: string | null;
+                            callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                            dispositionSummaryLay: string;
+                            visitDispatched: boolean;
+                            visitScheduledFirstLight: boolean;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36499,14 +41156,30 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    contactEmail: string;
+                    legalBusinessName: string;
+                    /** Format: email */
+                    intendedFirstAdminEmail: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        signupIntentId: string;
+                        /** @constant */
+                        status: "new";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36528,7 +41201,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        verified: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36543,14 +41221,25 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        accepted: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -39939,7 +44628,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        postAction: "auto_posted" | "ledger_recorded" | "denial_seeded";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40002,7 +44696,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        payerId: string;
+                        payerKind: string;
+                        paymentMethod: string;
+                        /** @description Decimal string — never a float */
+                        totalPaymentAmount: string;
+                        parseStatus: string;
+                        /** Format: date-time */
+                        receivedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40024,7 +44733,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        status: "queued";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40092,7 +44807,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        remittanceAdviceId: string;
+                        claimId: string | null;
+                        clp02StatusCode: number;
+                        /** @description Decimal string — never a float */
+                        clp03TotalChargeAmount: string;
+                        /** @description Decimal string — never a float */
+                        clp04TotalPaymentAmount: string;
+                        /** @description Decimal string — never a float */
+                        clp05PatientResponsibilityAmount: string;
+                        matchState: string;
+                        matchStrategy: string | null;
+                        matchConfidence: number | null;
+                        /** Format: date-time */
+                        receivedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40122,7 +44857,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        /** @constant */
+                        matchState: "manual_matched";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40176,7 +44917,11 @@ export interface operations {
     };
     getApiV1ReportingAdminAuditDrilldowns: {
         parameters: {
-            query?: never;
+            query?: {
+                targetModule?: number;
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -40188,7 +44933,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            actorMembershipId: string;
+                            reportViewId: string | null;
+                            sourceTileKey: string;
+                            drilldownTargetModule: number;
+                            drilldownTargetSurface: string;
+                            drilldownTraceId: string;
+                            isConsentNarrowed: boolean;
+                            consentNarrowingReason: string | null;
+                            /** Format: date-time */
+                            accessedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40208,7 +44972,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        lagSeconds: number;
+                        breakerOpen: boolean;
+                        thresholdSeconds: number;
+                        dataFreshnessSeconds: number;
+                        /** Format: date-time */
+                        sampledAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40232,7 +45005,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            mvKey: string;
+                            schemaName: string;
+                            refreshStrategy: "nightly" | "incremental" | "on_demand";
+                            status: "registered" | "active" | "suspended" | "retired";
+                            expectedFreshnessSeconds: number;
+                            debounceWindowSeconds: number;
+                            lastRefreshedAt: string | null;
+                            lastRefreshDurationMs: number | null;
+                            refreshFailureCount: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40254,7 +45044,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mvKey: string;
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40276,7 +45071,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mvKey: string;
+                        jobId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40284,7 +45084,11 @@ export interface operations {
     };
     getApiV1ReportingBases: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "seeded" | "active" | "deprecated" | "retired";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -40296,7 +45100,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            baseKey: string;
+                            displayName: string;
+                            domain: string;
+                            description: string;
+                            mvKey: string;
+                            maxRowLimit: number;
+                            drilldownUrlTemplate: string | null;
+                            exposesPhiViaDrilldown: boolean;
+                            status: "seeded" | "active" | "deprecated" | "retired";
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40318,7 +45141,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        baseKey: string;
+                        displayName: string;
+                        domain: string;
+                        description: string;
+                        mvKey: string;
+                        maxRowLimit: number;
+                        drilldownUrlTemplate: string | null;
+                        exposesPhiViaDrilldown: boolean;
+                        status: "seeded" | "active" | "deprecated" | "retired";
+                        /** Format: date-time */
+                        createdAt: string;
+                        dimensions: {
+                            dimensionKey: string;
+                            displayName: string;
+                            dataType: "string" | "number" | "boolean" | "date" | "uuid";
+                        }[];
+                        measures: {
+                            measureKey: string;
+                            displayName: string;
+                            metricKey: string;
+                            unit: "count" | "rate_pct" | "currency_cents" | "minutes" | "days" | "ratio";
+                            aggregation: "sum" | "avg" | "count_distinct" | "max" | "min" | "percentile";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40341,7 +45191,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            dashboardId: string;
+                            displayName: string;
+                            authorship: "system" | "tenant";
+                            tileCount: number;
+                            shareScope: "private" | "role" | "org";
+                            isOrgDefault: boolean;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40363,7 +45226,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        dashboardId: string;
+                        displayName: string;
+                        authorship: "system" | "tenant";
+                        tileCount: number;
+                        shareScope: "private" | "role" | "org";
+                        isOrgDefault: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40371,7 +45243,12 @@ export interface operations {
     };
     getApiV1ReportingDefinitions: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "draft" | "published" | "archived";
+                authorship?: "system" | "tenant";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -40383,7 +45260,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            authorship: "system" | "tenant";
+                            baseKey: string;
+                            ownerMembershipId: string | null;
+                            displayName: string;
+                            description: string | null;
+                            latestVersionId: string | null;
+                            versionSeq: number;
+                            status: "draft" | "published" | "archived";
+                            /** Format: date-time */
+                            createdAt: string;
+                            archivedAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40396,14 +45293,64 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    baseKey: string;
+                    displayName: string;
+                    description?: string;
+                    spec: {
+                        dimensions: {
+                            dimensionKey: string;
+                            alias?: string;
+                        }[];
+                        measures: {
+                            measureKey: string;
+                            alias?: string;
+                        }[];
+                        /** @default [] */
+                        filters: {
+                            dimensionKey: string;
+                            comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                            value?: string | number | boolean | string[] | number[] | [
+                                string,
+                                string
+                            ];
+                        }[];
+                        sort?: {
+                            by: string;
+                            direction: "asc" | "desc";
+                        }[];
+                        /** @default 1000 */
+                        rowLimit?: number;
+                        chartHint?: "table" | "bar" | "line" | "area" | "pie" | "kpi_tile" | "heatmap";
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        authorship: "system" | "tenant";
+                        baseKey: string;
+                        ownerMembershipId: string | null;
+                        displayName: string;
+                        description: string | null;
+                        latestVersionId: string | null;
+                        versionSeq: number;
+                        status: "draft" | "published" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                        archivedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40425,7 +45372,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        authorship: "system" | "tenant";
+                        baseKey: string;
+                        ownerMembershipId: string | null;
+                        displayName: string;
+                        description: string | null;
+                        latestVersionId: string | null;
+                        versionSeq: number;
+                        status: "draft" | "published" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                        archivedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40447,7 +45410,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        authorship: "system" | "tenant";
+                        baseKey: string;
+                        ownerMembershipId: string | null;
+                        displayName: string;
+                        description: string | null;
+                        latestVersionId: string | null;
+                        versionSeq: number;
+                        status: "draft" | "published" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                        archivedAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40455,7 +45434,12 @@ export interface operations {
     };
     getApiV1ReportingDefinitionsByIdVersions: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "draft" | "published" | "archived";
+                authorship?: "system" | "tenant";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -40469,7 +45453,42 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            definitionId: string;
+                            organizationId: string;
+                            versionNumber: number;
+                            spec: {
+                                dimensions: {
+                                    dimensionKey: string;
+                                    alias?: string;
+                                }[];
+                                measures: {
+                                    measureKey: string;
+                                    alias?: string;
+                                }[];
+                                filters: {
+                                    [key: string]: unknown;
+                                }[];
+                                sort?: {
+                                    by: string;
+                                    direction: "asc" | "desc";
+                                }[];
+                                rowLimit?: number;
+                                chartHint?: string;
+                            };
+                            status: "draft" | "published" | "superseded";
+                            publishedAt: string | null;
+                            supersededAt: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40484,14 +45503,78 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    spec: {
+                        dimensions: {
+                            dimensionKey: string;
+                            alias?: string;
+                        }[];
+                        measures: {
+                            measureKey: string;
+                            alias?: string;
+                        }[];
+                        /** @default [] */
+                        filters: {
+                            dimensionKey: string;
+                            comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                            value?: string | number | boolean | string[] | number[] | [
+                                string,
+                                string
+                            ];
+                        }[];
+                        sort?: {
+                            by: string;
+                            direction: "asc" | "desc";
+                        }[];
+                        /** @default 1000 */
+                        rowLimit?: number;
+                        chartHint?: "table" | "bar" | "line" | "area" | "pie" | "kpi_tile" | "heatmap";
+                    };
+                    displayName?: string;
+                    description?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        definitionId: string;
+                        organizationId: string;
+                        versionNumber: number;
+                        spec: {
+                            dimensions: {
+                                dimensionKey: string;
+                                alias?: string;
+                            }[];
+                            measures: {
+                                measureKey: string;
+                                alias?: string;
+                            }[];
+                            filters: {
+                                [key: string]: unknown;
+                            }[];
+                            sort?: {
+                                by: string;
+                                direction: "asc" | "desc";
+                            }[];
+                            rowLimit?: number;
+                            chartHint?: string;
+                        };
+                        status: "draft" | "published" | "superseded";
+                        publishedAt: string | null;
+                        supersededAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40514,7 +45597,55 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        definition: {
+                            id: string;
+                            organizationId: string;
+                            authorship: "system" | "tenant";
+                            baseKey: string;
+                            ownerMembershipId: string | null;
+                            displayName: string;
+                            description: string | null;
+                            latestVersionId: string | null;
+                            versionSeq: number;
+                            status: "draft" | "published" | "archived";
+                            /** Format: date-time */
+                            createdAt: string;
+                            archivedAt: string | null;
+                        };
+                        version: {
+                            id: string;
+                            definitionId: string;
+                            organizationId: string;
+                            versionNumber: number;
+                            spec: {
+                                dimensions: {
+                                    dimensionKey: string;
+                                    alias?: string;
+                                }[];
+                                measures: {
+                                    measureKey: string;
+                                    alias?: string;
+                                }[];
+                                filters: {
+                                    [key: string]: unknown;
+                                }[];
+                                sort?: {
+                                    by: string;
+                                    direction: "asc" | "desc";
+                                }[];
+                                rowLimit?: number;
+                                chartHint?: string;
+                            };
+                            status: "draft" | "published" | "superseded";
+                            publishedAt: string | null;
+                            supersededAt: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40527,7 +45658,16 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    targetModule?: number;
+                    dimensionContext?: {
+                        [key: string]: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -40567,7 +45707,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        targetUrl: string;
+                        drilldownTraceId: string;
+                        isConsentNarrowed: boolean;
+                        consentNarrowingReason: string | null;
+                        outcome: "emitted" | "denied" | "target_unavailable";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40575,7 +45723,11 @@ export interface operations {
     };
     getApiV1ReportingMetrics: {
         parameters: {
-            query?: never;
+            query?: {
+                status?: "seeded" | "active" | "deprecated" | "retired";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -40587,7 +45739,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            metricKey: string;
+                            displayName: string;
+                            unit: "count" | "rate_pct" | "currency_cents" | "minutes" | "days" | "ratio";
+                            aggregation: "sum" | "avg" | "count_distinct" | "max" | "min" | "percentile";
+                            sourceSeam: string;
+                            formula: string | null;
+                            sensitiveFlag: boolean;
+                            status: "seeded" | "active" | "deprecated" | "retired";
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40595,7 +45765,11 @@ export interface operations {
     };
     getApiV1ReportingMetricsseamDashboardByMetricKey: {
         parameters: {
-            query?: never;
+            query?: {
+                asOf?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path: {
                 metricKey: string;
@@ -40609,7 +45783,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        metricKey: string;
+                        value: number | null;
+                        unit: string;
+                        rowCount: number;
+                        /** Format: date-time */
+                        asOf: string;
+                        dataFreshnessSeconds: number;
+                        isForwardSeamDenyStub: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40633,7 +45818,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            reportViewId: string;
+                            ownerMembershipId: string;
+                            cronExpression: string;
+                            tenantTimezone: string;
+                            format: "pdf" | "xlsx" | "csv";
+                            recipientMembershipIds: string[];
+                            /** @constant */
+                            deliveryChannel: "in_app";
+                            nextRunAt: string | null;
+                            status: "active" | "paused" | "cancelled";
+                            /** Format: date-time */
+                            createdAt: string;
+                            cancelledAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40646,14 +45853,43 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    reportViewId: string;
+                    cronExpression: string;
+                    tenantTimezone: string;
+                    format: "pdf" | "xlsx" | "csv";
+                    recipientMembershipIds: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        reportViewId: string;
+                        ownerMembershipId: string;
+                        cronExpression: string;
+                        tenantTimezone: string;
+                        format: "pdf" | "xlsx" | "csv";
+                        recipientMembershipIds: string[];
+                        /** @constant */
+                        deliveryChannel: "in_app";
+                        nextRunAt: string | null;
+                        status: "active" | "paused" | "cancelled";
+                        /** Format: date-time */
+                        createdAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40675,7 +45911,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        reportViewId: string;
+                        ownerMembershipId: string;
+                        cronExpression: string;
+                        tenantTimezone: string;
+                        format: "pdf" | "xlsx" | "csv";
+                        recipientMembershipIds: string[];
+                        /** @constant */
+                        deliveryChannel: "in_app";
+                        nextRunAt: string | null;
+                        status: "active" | "paused" | "cancelled";
+                        /** Format: date-time */
+                        createdAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40690,14 +45944,41 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    cronExpression?: string;
+                    tenantTimezone?: string;
+                    format?: "pdf" | "xlsx" | "csv";
+                    recipientMembershipIds?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        reportViewId: string;
+                        ownerMembershipId: string;
+                        cronExpression: string;
+                        tenantTimezone: string;
+                        format: "pdf" | "xlsx" | "csv";
+                        recipientMembershipIds: string[];
+                        /** @constant */
+                        deliveryChannel: "in_app";
+                        nextRunAt: string | null;
+                        status: "active" | "paused" | "cancelled";
+                        /** Format: date-time */
+                        createdAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40719,7 +46000,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        reportViewId: string;
+                        ownerMembershipId: string;
+                        cronExpression: string;
+                        tenantTimezone: string;
+                        format: "pdf" | "xlsx" | "csv";
+                        recipientMembershipIds: string[];
+                        /** @constant */
+                        deliveryChannel: "in_app";
+                        nextRunAt: string | null;
+                        status: "active" | "paused" | "cancelled";
+                        /** Format: date-time */
+                        createdAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40741,7 +46040,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        scheduleId: string;
+                        deleted: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40763,7 +46067,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        reportViewId: string;
+                        ownerMembershipId: string;
+                        cronExpression: string;
+                        tenantTimezone: string;
+                        format: "pdf" | "xlsx" | "csv";
+                        recipientMembershipIds: string[];
+                        /** @constant */
+                        deliveryChannel: "in_app";
+                        nextRunAt: string | null;
+                        status: "active" | "paused" | "cancelled";
+                        /** Format: date-time */
+                        createdAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40785,7 +46107,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        reportViewId: string;
+                        ownerMembershipId: string;
+                        cronExpression: string;
+                        tenantTimezone: string;
+                        format: "pdf" | "xlsx" | "csv";
+                        recipientMembershipIds: string[];
+                        /** @constant */
+                        deliveryChannel: "in_app";
+                        nextRunAt: string | null;
+                        status: "active" | "paused" | "cancelled";
+                        /** Format: date-time */
+                        createdAt: string;
+                        cancelledAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40793,7 +46133,10 @@ export interface operations {
     };
     getApiV1ReportingSchedulesByIdRuns: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -40807,7 +46150,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            scheduleId: string;
+                            organizationId: string;
+                            /** Format: date-time */
+                            scheduledFor: string;
+                            status: "queued" | "running" | "rendered_pending" | "rendered_complete" | "delivered" | "failed";
+                            startedAt: string | null;
+                            finishedAt: string | null;
+                            documentId: string | null;
+                            failureReason: string | null;
+                            rowCount: number | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40829,7 +46190,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        scheduleId: string;
+                        organizationId: string;
+                        /** Format: date-time */
+                        scheduledFor: string;
+                        status: "queued" | "running" | "rendered_pending" | "rendered_complete" | "delivered" | "failed";
+                        startedAt: string | null;
+                        finishedAt: string | null;
+                        documentId: string | null;
+                        failureReason: string | null;
+                        rowCount: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40837,7 +46212,18 @@ export interface operations {
     };
     getApiV1ReportingTilesByTileKey: {
         parameters: {
-            query?: never;
+            query?: {
+                filters?: {
+                    dimensionKey: string;
+                    comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                    value?: string | number | boolean | string[] | number[] | [
+                        string,
+                        string
+                    ];
+                }[];
+                scopeOverride?: "self" | "team" | "location" | "org";
+                asOf?: string;
+            };
             header?: never;
             path: {
                 tileKey: string;
@@ -40851,7 +46237,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tileKey: string;
+                        result: unknown[];
+                        rowCount: number;
+                        dataFreshnessSeconds: number;
+                        /** Format: date-time */
+                        asOf: string;
+                        drilldownUrlTemplate?: string;
+                        scopeApplied: {
+                            scopeKind: "self" | "team" | "location" | "org";
+                            narrowedFromRequested: boolean;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40873,7 +46273,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        tileKey: string;
+                        dataFreshnessSeconds: number;
+                        /** Format: date-time */
+                        asOf: string;
+                        breakerOpen: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40881,7 +46289,11 @@ export interface operations {
     };
     getApiV1ReportingViews: {
         parameters: {
-            query?: never;
+            query?: {
+                scope?: "mine" | "org";
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -40893,7 +46305,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            definitionVersionId: string;
+                            ownerMembershipId: string;
+                            displayName: string;
+                            pinnedFilters: {
+                                [key: string]: unknown;
+                            }[];
+                            shareScope: "private" | "role" | "org";
+                            shareRoleKeys: string[] | null;
+                            isOrgDefault: boolean;
+                            status: "active" | "archived";
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40906,14 +46339,49 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    definitionVersionId: string;
+                    displayName: string;
+                    pinnedFilters?: {
+                        dimensionKey: string;
+                        comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                        value?: string | number | boolean | string[] | number[] | [
+                            string,
+                            string
+                        ];
+                    }[];
+                    shareScope?: "private" | "role" | "org";
+                    shareRoleKeys?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        definitionVersionId: string;
+                        ownerMembershipId: string;
+                        displayName: string;
+                        pinnedFilters: {
+                            [key: string]: unknown;
+                        }[];
+                        shareScope: "private" | "role" | "org";
+                        shareRoleKeys: string[] | null;
+                        isOrgDefault: boolean;
+                        status: "active" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40935,7 +46403,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        definitionVersionId: string;
+                        ownerMembershipId: string;
+                        displayName: string;
+                        pinnedFilters: {
+                            [key: string]: unknown;
+                        }[];
+                        shareScope: "private" | "role" | "org";
+                        shareRoleKeys: string[] | null;
+                        isOrgDefault: boolean;
+                        status: "active" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40950,14 +46435,47 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    pinnedFilters?: {
+                        dimensionKey: string;
+                        comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                        value?: string | number | boolean | string[] | number[] | [
+                            string,
+                            string
+                        ];
+                    }[];
+                    shareScope?: "private" | "role" | "org";
+                    shareRoleKeys?: string[];
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        definitionVersionId: string;
+                        ownerMembershipId: string;
+                        displayName: string;
+                        pinnedFilters: {
+                            [key: string]: unknown;
+                        }[];
+                        shareScope: "private" | "role" | "org";
+                        shareRoleKeys: string[] | null;
+                        isOrgDefault: boolean;
+                        status: "active" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40979,7 +46497,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        definitionVersionId: string;
+                        ownerMembershipId: string;
+                        displayName: string;
+                        pinnedFilters: {
+                            [key: string]: unknown;
+                        }[];
+                        shareScope: "private" | "role" | "org";
+                        shareRoleKeys: string[] | null;
+                        isOrgDefault: boolean;
+                        status: "active" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40994,7 +46529,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    filters?: {
+                        dimensionKey: string;
+                        comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                        value?: string | number | boolean | string[] | number[] | [
+                            string,
+                            string
+                        ];
+                    }[];
+                    scopeOverride?: "self" | "team" | "location" | "org";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -41016,14 +46565,36 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    filters?: {
+                        dimensionKey: string;
+                        comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                        value?: string | number | boolean | string[] | number[] | [
+                            string,
+                            string
+                        ];
+                    }[];
+                    scopeOverride?: "self" | "team" | "location" | "org";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        exportId: string;
+                        viewId: string;
+                        format: "pdf" | "xlsx";
+                        /** @constant */
+                        status: "render_requested";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41038,14 +46609,36 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    filters?: {
+                        dimensionKey: string;
+                        comparator: "eq" | "ne" | "lt" | "le" | "gt" | "ge" | "in" | "not_in" | "between" | "is_null" | "is_not_null";
+                        value?: string | number | boolean | string[] | number[] | [
+                            string,
+                            string
+                        ];
+                    }[];
+                    scopeOverride?: "self" | "team" | "location" | "org";
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        exportId: string;
+                        viewId: string;
+                        format: "pdf" | "xlsx";
+                        /** @constant */
+                        status: "render_requested";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41067,7 +46660,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        definitionVersionId: string;
+                        ownerMembershipId: string;
+                        displayName: string;
+                        pinnedFilters: {
+                            [key: string]: unknown;
+                        }[];
+                        shareScope: "private" | "role" | "org";
+                        shareRoleKeys: string[] | null;
+                        isOrgDefault: boolean;
+                        status: "active" | "archived";
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41082,14 +46692,53 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    shareScope: "private" | "role" | "org";
+                    shareRoleKeys?: string[];
+                    /** Format: uuid */
+                    sharedWithMembershipId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        view: {
+                            id: string;
+                            organizationId: string;
+                            definitionVersionId: string;
+                            ownerMembershipId: string;
+                            displayName: string;
+                            pinnedFilters: {
+                                [key: string]: unknown;
+                            }[];
+                            shareScope: "private" | "role" | "org";
+                            shareRoleKeys: string[] | null;
+                            isOrgDefault: boolean;
+                            status: "active" | "archived";
+                            /** Format: date-time */
+                            createdAt: string;
+                        };
+                        share: {
+                            id: string;
+                            organizationId: string;
+                            reportViewId: string;
+                            sharedWithMembershipId: string | null;
+                            sharedWithRoleKey: string | null;
+                            status: "active" | "revoked";
+                            /** Format: date-time */
+                            createdAt: string;
+                            revokedAt: string | null;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41116,8 +46765,8 @@ export interface operations {
                             organizationId: string | null;
                             key: string;
                             name: string;
-                            category: string;
-                            scopeLevel: string;
+                            category: "clinical_staff" | "clinical_leadership" | "operations" | "admin_executive" | "billing_finance" | "compliance_quality" | "volunteer" | "patient_family" | "external_auditor" | "external_collaborator" | "platform_staff" | "temporary_special";
+                            scopeLevel: "organization" | "provider_entity" | "location" | "patient";
                             systemDefault: boolean;
                             systemLocked: boolean;
                             enabled: boolean;
@@ -41156,7 +46805,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        roleId: string;
+                        organizationId: string | null;
+                        key: string;
+                        name: string;
+                        category: "clinical_staff" | "clinical_leadership" | "operations" | "admin_executive" | "billing_finance" | "compliance_quality" | "volunteer" | "patient_family" | "external_auditor" | "external_collaborator" | "platform_staff" | "temporary_special";
+                        scopeLevel: "organization" | "provider_entity" | "location" | "patient";
+                        systemDefault: boolean;
+                        systemLocked: boolean;
+                        enabled: boolean;
+                        customized: boolean;
+                        permissionKeys: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41178,7 +46841,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        deleted: true;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41208,7 +46876,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        roleId: string;
+                        organizationId: string | null;
+                        key: string;
+                        name: string;
+                        category: "clinical_staff" | "clinical_leadership" | "operations" | "admin_executive" | "billing_finance" | "compliance_quality" | "volunteer" | "patient_family" | "external_auditor" | "external_collaborator" | "platform_staff" | "temporary_special";
+                        scopeLevel: "organization" | "provider_entity" | "location" | "patient";
+                        systemDefault: boolean;
+                        systemLocked: boolean;
+                        enabled: boolean;
+                        customized: boolean;
+                        permissionKeys: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41275,7 +46957,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        checkIn: {
+                            id: string;
+                            scheduleId: string | null;
+                            visitId: string | null;
+                            postedByMembershipId: string;
+                            postedAt: string;
+                            kind: "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+                            status: "ok" | "concerned_continue" | "concerned_stop";
+                            concernNote: string | null;
+                            coordinatesCaptured: boolean;
+                            isPartOfSosBracket: boolean;
+                            correctsCheckInId: string | null;
+                            supersededAt: string | null;
+                            supersededByCheckInId: string | null;
+                            amendableUntil: string | null;
+                        };
+                        scheduleClosed: boolean;
+                        warningsSurfaced: {
+                            code: string;
+                            message: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41297,7 +47003,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        scheduleId: string | null;
+                        visitId: string | null;
+                        postedByMembershipId: string;
+                        postedAt: string;
+                        kind: "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+                        status: "ok" | "concerned_continue" | "concerned_stop";
+                        concernNote: string | null;
+                        coordinatesCaptured: boolean;
+                        isPartOfSosBracket: boolean;
+                        correctsCheckInId: string | null;
+                        supersededAt: string | null;
+                        supersededByCheckInId: string | null;
+                        amendableUntil: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41327,7 +47050,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        scheduleId: string | null;
+                        visitId: string | null;
+                        postedByMembershipId: string;
+                        postedAt: string;
+                        kind: "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+                        status: "ok" | "concerned_continue" | "concerned_stop";
+                        concernNote: string | null;
+                        coordinatesCaptured: boolean;
+                        isPartOfSosBracket: boolean;
+                        correctsCheckInId: string | null;
+                        supersededAt: string | null;
+                        supersededByCheckInId: string | null;
+                        amendableUntil: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41352,7 +47092,36 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        asOf: string;
+                        obligations: {
+                            scheduleId: string;
+                            visitId: string | null;
+                            kind: "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+                            expectedAt: string;
+                            windowMinutes: number;
+                            state: "proposed" | "recorded" | "overdue" | "escalated" | "superseded" | "incident_opened";
+                            fulfilledByCheckInId: string | null;
+                        }[];
+                        recentCheckIns: {
+                            id: string;
+                            scheduleId: string | null;
+                            visitId: string | null;
+                            postedByMembershipId: string;
+                            postedAt: string;
+                            kind: "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+                            status: "ok" | "concerned_continue" | "concerned_stop";
+                            concernNote: string | null;
+                            coordinatesCaptured: boolean;
+                            isPartOfSosBracket: boolean;
+                            correctsCheckInId: string | null;
+                            supersededAt: string | null;
+                            supersededByCheckInId: string | null;
+                            amendableUntil: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41374,7 +47143,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        consents: {
+                            purpose: "sos_coordinates" | "continuous_location_during_sos" | "emergency_contact_call";
+                            status: "granted" | "revoked" | "expired";
+                            grantedAt: string;
+                            revokedAt: string | null;
+                            expiresAt: string | null;
+                            acknowledgmentTextSnapshot: string;
+                            contactOnFile: boolean;
+                        }[];
+                        asOf: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41408,7 +47190,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        purpose: "sos_coordinates" | "continuous_location_during_sos" | "emergency_contact_call";
+                        status: "granted" | "revoked" | "expired";
+                        grantedAt: string;
+                        revokedAt: string | null;
+                        expiresAt: string | null;
+                        acknowledgmentTextSnapshot: string;
+                        contactOnFile: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41435,7 +47227,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        purpose: "sos_coordinates" | "continuous_location_during_sos" | "emergency_contact_call";
+                        status: "granted" | "revoked" | "expired";
+                        grantedAt: string;
+                        revokedAt: string | null;
+                        expiresAt: string | null;
+                        acknowledgmentTextSnapshot: string;
+                        contactOnFile: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41460,7 +47262,39 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        clinicians: {
+                            membershipId: string;
+                            displayName: string;
+                            currentVisitId: string | null;
+                            currentPatientFirstName: string | null;
+                            lastKnownLocation: {
+                                source: "evv_check_in" | "evv_check_out" | "m20_check_in" | "sos_active";
+                                sampledAt: string;
+                                ageMinutes: number;
+                            } | null;
+                            lastCheckInAt: string | null;
+                            lastCheckInStatus: ("ok" | "concerned_continue" | "concerned_stop") | null;
+                            nextExpectedCheckInAt: string | null;
+                            overdueState: "on_time" | "reminder" | "overdue" | "escalated";
+                            activeSosAlert: {
+                                id: string;
+                                raisedAt: string;
+                                lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                            } | null;
+                            inHighRiskArea: {
+                                areaId: string;
+                                riskCategory: "documented_prior_incident" | "community_self_reported_unsafe" | "nighttime_only_advisory" | "weather_advisory_seasonal" | "general_caution";
+                                advisoryMessage: string;
+                            } | null;
+                            gpsSpoofSuspected: boolean;
+                        }[];
+                        activeSosCount: number;
+                        overdueCount: number;
+                        fetchedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41484,7 +47318,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            riskCategory: "documented_prior_incident" | "community_self_reported_unsafe" | "nighttime_only_advisory" | "weather_advisory_seasonal" | "general_caution";
+                            advisoryMessage: string;
+                            polygon: [
+                                number,
+                                number
+                            ][][];
+                            policyForVisitsToArea: "advisory_only" | "requires_pre_visit_check_in" | "requires_buddy_visit";
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            createdByMembershipId: string | null;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41520,7 +47372,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        riskCategory: "documented_prior_incident" | "community_self_reported_unsafe" | "nighttime_only_advisory" | "weather_advisory_seasonal" | "general_caution";
+                        advisoryMessage: string;
+                        polygon: [
+                            number,
+                            number
+                        ][][];
+                        policyForVisitsToArea: "advisory_only" | "requires_pre_visit_check_in" | "requires_buddy_visit";
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        createdByMembershipId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41556,7 +47422,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        riskCategory: "documented_prior_incident" | "community_self_reported_unsafe" | "nighttime_only_advisory" | "weather_advisory_seasonal" | "general_caution";
+                        advisoryMessage: string;
+                        polygon: [
+                            number,
+                            number
+                        ][][];
+                        policyForVisitsToArea: "advisory_only" | "requires_pre_visit_check_in" | "requires_buddy_visit";
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        createdByMembershipId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41581,7 +47461,50 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            providerEntityId: string;
+                            affectedClinicianMembershipId: string;
+                            reportedByMembershipId: string;
+                            category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                            severity: "minor" | "moderate" | "serious" | "life_threatening";
+                            visitId: string | null;
+                            patientId: string | null;
+                            occurredAt: string;
+                            reportedAt: string;
+                            locationDescription: string | null;
+                            narrative: string | null;
+                            narrativeAvailable: boolean;
+                            witnesses: string | null;
+                            oshaReportable: boolean;
+                            oshaReportableSignedOffByMembershipId: string | null;
+                            oshaReportableSignedOffAt: string | null;
+                            workersCompClaimInitiated: boolean;
+                            workersCompClaimReference: string | null;
+                            linkedSosAlertId: string | null;
+                            lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            submittedAt: string | null;
+                            reviewedByMembershipId: string | null;
+                            reviewedAt: string | null;
+                            actionPlan: string | null;
+                            actionPlanAvailable: boolean;
+                            closedAt: string | null;
+                            reopenReason: string | null;
+                            version: number;
+                            stateHistory: {
+                                fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                                toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                                transitionedAt: string;
+                                transitionedByMembershipId: string | null;
+                                reason: string | null;
+                            }[];
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41623,7 +47546,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        affectedClinicianMembershipId: string;
+                        reportedByMembershipId: string;
+                        category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                        severity: "minor" | "moderate" | "serious" | "life_threatening";
+                        visitId: string | null;
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        locationDescription: string | null;
+                        narrative: string | null;
+                        narrativeAvailable: boolean;
+                        witnesses: string | null;
+                        oshaReportable: boolean;
+                        oshaReportableSignedOffByMembershipId: string | null;
+                        oshaReportableSignedOffAt: string | null;
+                        workersCompClaimInitiated: boolean;
+                        workersCompClaimReference: string | null;
+                        linkedSosAlertId: string | null;
+                        lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                        submittedAt: string | null;
+                        reviewedByMembershipId: string | null;
+                        reviewedAt: string | null;
+                        actionPlan: string | null;
+                        actionPlanAvailable: boolean;
+                        closedAt: string | null;
+                        reopenReason: string | null;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                            toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                            reason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41645,7 +47607,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        affectedClinicianMembershipId: string;
+                        reportedByMembershipId: string;
+                        category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                        severity: "minor" | "moderate" | "serious" | "life_threatening";
+                        visitId: string | null;
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        locationDescription: string | null;
+                        narrative: string | null;
+                        narrativeAvailable: boolean;
+                        witnesses: string | null;
+                        oshaReportable: boolean;
+                        oshaReportableSignedOffByMembershipId: string | null;
+                        oshaReportableSignedOffAt: string | null;
+                        workersCompClaimInitiated: boolean;
+                        workersCompClaimReference: string | null;
+                        linkedSosAlertId: string | null;
+                        lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                        submittedAt: string | null;
+                        reviewedByMembershipId: string | null;
+                        reviewedAt: string | null;
+                        actionPlan: string | null;
+                        actionPlanAvailable: boolean;
+                        closedAt: string | null;
+                        reopenReason: string | null;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                            toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                            reason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41681,7 +47682,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        affectedClinicianMembershipId: string;
+                        reportedByMembershipId: string;
+                        category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                        severity: "minor" | "moderate" | "serious" | "life_threatening";
+                        visitId: string | null;
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        locationDescription: string | null;
+                        narrative: string | null;
+                        narrativeAvailable: boolean;
+                        witnesses: string | null;
+                        oshaReportable: boolean;
+                        oshaReportableSignedOffByMembershipId: string | null;
+                        oshaReportableSignedOffAt: string | null;
+                        workersCompClaimInitiated: boolean;
+                        workersCompClaimReference: string | null;
+                        linkedSosAlertId: string | null;
+                        lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                        submittedAt: string | null;
+                        reviewedByMembershipId: string | null;
+                        reviewedAt: string | null;
+                        actionPlan: string | null;
+                        actionPlanAvailable: boolean;
+                        closedAt: string | null;
+                        reopenReason: string | null;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                            toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                            reason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41712,7 +47752,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        affectedClinicianMembershipId: string;
+                        reportedByMembershipId: string;
+                        category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                        severity: "minor" | "moderate" | "serious" | "life_threatening";
+                        visitId: string | null;
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        locationDescription: string | null;
+                        narrative: string | null;
+                        narrativeAvailable: boolean;
+                        witnesses: string | null;
+                        oshaReportable: boolean;
+                        oshaReportableSignedOffByMembershipId: string | null;
+                        oshaReportableSignedOffAt: string | null;
+                        workersCompClaimInitiated: boolean;
+                        workersCompClaimReference: string | null;
+                        linkedSosAlertId: string | null;
+                        lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                        submittedAt: string | null;
+                        reviewedByMembershipId: string | null;
+                        reviewedAt: string | null;
+                        actionPlan: string | null;
+                        actionPlanAvailable: boolean;
+                        closedAt: string | null;
+                        reopenReason: string | null;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                            toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                            reason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41742,7 +47821,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        affectedClinicianMembershipId: string;
+                        reportedByMembershipId: string;
+                        category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                        severity: "minor" | "moderate" | "serious" | "life_threatening";
+                        visitId: string | null;
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        locationDescription: string | null;
+                        narrative: string | null;
+                        narrativeAvailable: boolean;
+                        witnesses: string | null;
+                        oshaReportable: boolean;
+                        oshaReportableSignedOffByMembershipId: string | null;
+                        oshaReportableSignedOffAt: string | null;
+                        workersCompClaimInitiated: boolean;
+                        workersCompClaimReference: string | null;
+                        linkedSosAlertId: string | null;
+                        lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                        submittedAt: string | null;
+                        reviewedByMembershipId: string | null;
+                        reviewedAt: string | null;
+                        actionPlan: string | null;
+                        actionPlanAvailable: boolean;
+                        closedAt: string | null;
+                        reopenReason: string | null;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                            toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                            reason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41771,7 +47889,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        affectedClinicianMembershipId: string;
+                        reportedByMembershipId: string;
+                        category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                        severity: "minor" | "moderate" | "serious" | "life_threatening";
+                        visitId: string | null;
+                        patientId: string | null;
+                        occurredAt: string;
+                        reportedAt: string;
+                        locationDescription: string | null;
+                        narrative: string | null;
+                        narrativeAvailable: boolean;
+                        witnesses: string | null;
+                        oshaReportable: boolean;
+                        oshaReportableSignedOffByMembershipId: string | null;
+                        oshaReportableSignedOffAt: string | null;
+                        workersCompClaimInitiated: boolean;
+                        workersCompClaimReference: string | null;
+                        linkedSosAlertId: string | null;
+                        lifecycleState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                        submittedAt: string | null;
+                        reviewedByMembershipId: string | null;
+                        reviewedAt: string | null;
+                        actionPlan: string | null;
+                        actionPlanAvailable: boolean;
+                        closedAt: string | null;
+                        reopenReason: string | null;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened") | null;
+                            toState: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                            reason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41793,7 +47950,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        organizationId: string;
+                        versionId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        midVisitCadenceMinutes: number;
+                        midVisitMinVisitDurationMinutes: number;
+                        preVisitWindowMinutes: number;
+                        postVisitWindowMinutes: number;
+                        gentleReminderMinutes: number;
+                        supervisorAlertMinutes: number;
+                        escalationMinutes: number;
+                        sosEquivalentMinutes: number;
+                        sosCancelWindowSeconds: number;
+                        sosCancelRequiresBiometric: boolean;
+                        sosContinuousLocationEnabled: boolean;
+                        sosContinuousLocationSampleSeconds: number;
+                        sosContinuousLocationMaxDurationHours: number;
+                        sosTier1SlaSeconds: number;
+                        sosTier2SlaSeconds: number;
+                        sosTier3SlaSeconds: number;
+                        subscriptionModel: "location_scoped" | "provider_entity_scoped" | "role_scoped" | "explicit_only";
+                        afterHoursStartHour: number;
+                        afterHoursEndHour: number;
+                        oshaReportableAutoFlagCategories: ("physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41839,7 +48023,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        organizationId: string;
+                        versionId: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        midVisitCadenceMinutes: number;
+                        midVisitMinVisitDurationMinutes: number;
+                        preVisitWindowMinutes: number;
+                        postVisitWindowMinutes: number;
+                        gentleReminderMinutes: number;
+                        supervisorAlertMinutes: number;
+                        escalationMinutes: number;
+                        sosEquivalentMinutes: number;
+                        sosCancelWindowSeconds: number;
+                        sosCancelRequiresBiometric: boolean;
+                        sosContinuousLocationEnabled: boolean;
+                        sosContinuousLocationSampleSeconds: number;
+                        sosContinuousLocationMaxDurationHours: number;
+                        sosTier1SlaSeconds: number;
+                        sosTier2SlaSeconds: number;
+                        sosTier3SlaSeconds: number;
+                        subscriptionModel: "location_scoped" | "provider_entity_scoped" | "role_scoped" | "explicit_only";
+                        afterHoursStartHour: number;
+                        afterHoursEndHour: number;
+                        oshaReportableAutoFlagCategories: ("physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41877,7 +48088,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        postedAt: string;
+                        cancelWindowExpiresAt: string;
+                        lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                        acknowledgersDispatched: number | null;
+                        warningsSurfaced: {
+                            code: string;
+                            message: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41899,7 +48122,42 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        postedByMembershipId: string;
+                        postedAt: string;
+                        lastKnownVisitId: string | null;
+                        lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                        cancelWindowExpiredAt: string;
+                        cancelStatus: "not_cancelled" | "cancelled_in_window" | "cancel_attempted_but_rejected";
+                        cancelAttemptedAt: string | null;
+                        acknowledgedAt: string | null;
+                        acknowledgedByMembershipId: string | null;
+                        resolvedAt: string | null;
+                        resolvedByMembershipId: string | null;
+                        outcome: ("no_action_needed" | "clinician_safe_continued" | "visit_cancelled" | "incident_opened" | "911_called" | "other") | null;
+                        resolutionNarrative: string | null;
+                        resolutionNarrativeAvailable: boolean;
+                        linkedIncidentId: string | null;
+                        coordinatesCaptured: boolean;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened") | null;
+                            toState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                        }[];
+                        acknowledgments: {
+                            id: string;
+                            acknowledgedByMembershipId: string;
+                            acknowledgedAt: string;
+                            actionTaken: string;
+                            outcome: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41929,7 +48187,42 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        postedByMembershipId: string;
+                        postedAt: string;
+                        lastKnownVisitId: string | null;
+                        lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                        cancelWindowExpiredAt: string;
+                        cancelStatus: "not_cancelled" | "cancelled_in_window" | "cancel_attempted_but_rejected";
+                        cancelAttemptedAt: string | null;
+                        acknowledgedAt: string | null;
+                        acknowledgedByMembershipId: string | null;
+                        resolvedAt: string | null;
+                        resolvedByMembershipId: string | null;
+                        outcome: ("no_action_needed" | "clinician_safe_continued" | "visit_cancelled" | "incident_opened" | "911_called" | "other") | null;
+                        resolutionNarrative: string | null;
+                        resolutionNarrativeAvailable: boolean;
+                        linkedIncidentId: string | null;
+                        coordinatesCaptured: boolean;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened") | null;
+                            toState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                        }[];
+                        acknowledgments: {
+                            id: string;
+                            acknowledgedByMembershipId: string;
+                            acknowledgedAt: string;
+                            actionTaken: string;
+                            outcome: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41957,7 +48250,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        cancelStatus: "cancelled_in_window" | "cancel_attempted_but_rejected";
+                        lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -41983,7 +48282,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        sosAlertId: string;
+                        samples: {
+                            id: string;
+                            sampledAt: string;
+                            latitude: number;
+                            longitude: number;
+                            accuracyM: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        auditWarningBanner: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42013,7 +48326,42 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        postedByMembershipId: string;
+                        postedAt: string;
+                        lastKnownVisitId: string | null;
+                        lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                        cancelWindowExpiredAt: string;
+                        cancelStatus: "not_cancelled" | "cancelled_in_window" | "cancel_attempted_but_rejected";
+                        cancelAttemptedAt: string | null;
+                        acknowledgedAt: string | null;
+                        acknowledgedByMembershipId: string | null;
+                        resolvedAt: string | null;
+                        resolvedByMembershipId: string | null;
+                        outcome: ("no_action_needed" | "clinician_safe_continued" | "visit_cancelled" | "incident_opened" | "911_called" | "other") | null;
+                        resolutionNarrative: string | null;
+                        resolutionNarrativeAvailable: boolean;
+                        linkedIncidentId: string | null;
+                        coordinatesCaptured: boolean;
+                        version: number;
+                        stateHistory: {
+                            fromState: ("raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened") | null;
+                            toState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                            transitionedAt: string;
+                            transitionedByMembershipId: string | null;
+                        }[];
+                        acknowledgments: {
+                            id: string;
+                            acknowledgedByMembershipId: string;
+                            acknowledgedAt: string;
+                            actionTaken: string;
+                            outcome: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42033,7 +48381,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        alerts: {
+                            id: string;
+                            postedByMembershipId: string;
+                            postedByFirstName: string;
+                            postedAt: string;
+                            lifecycleState: "raised" | "cancel_window_open" | "acknowledging" | "acknowledged" | "escalation_tier_1" | "escalation_tier_2" | "escalation_tier_3" | "emergency_terminus" | "resolving" | "resolved" | "cancelled_in_window" | "cancel_attempted_but_rejected" | "incident_opened";
+                            minutesOpen: number;
+                            acknowledgedAt: string | null;
+                        }[];
+                        fetchedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42058,7 +48419,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            supervisorMembershipId: string;
+                            clinicianMembershipId: string | null;
+                            locationId: string | null;
+                            providerEntityId: string | null;
+                            scopeKind: "explicit" | "location" | "provider_entity" | "role";
+                            alertKinds: ("sos" | "overdue" | "incident" | "high_risk_area")[];
+                            isVacationForwarding: boolean;
+                            vacationForwardToMembershipId: string | null;
+                            createdAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42096,7 +48474,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        supervisorMembershipId: string;
+                        clinicianMembershipId: string | null;
+                        locationId: string | null;
+                        providerEntityId: string | null;
+                        scopeKind: "explicit" | "location" | "provider_entity" | "role";
+                        alertKinds: ("sos" | "overdue" | "incident" | "high_risk_area")[];
+                        isVacationForwarding: boolean;
+                        vacationForwardToMembershipId: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42118,7 +48509,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        deactivatedAt: string;
+                        coverageGapsCreated: {
+                            clinicianMembershipId: string;
+                            reason: "no_subscription" | "all_subscriptions_deactivated" | "vacation_forwards_unresolved";
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42194,10 +48594,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    factor: "webauthn" | "totp";
                     challengeId: string;
-                    totpCode?: string;
+                    factor: "webauthn" | "totp";
                     assertion?: unknown;
+                    totpCode?: string;
                 };
             };
         };
@@ -42241,8 +48641,13 @@ export interface operations {
                 content: {
                     "application/json": {
                         challengeId: string;
-                        factor: "webauthn" | "totp";
-                        webauthnChallenge?: {
+                        /** @constant */
+                        factor: "totp";
+                    } | {
+                        challengeId: string;
+                        /** @constant */
+                        factor: "webauthn";
+                        webauthnChallenge: {
                             challenge: string;
                             rpId: string;
                         };
@@ -42721,7 +49126,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            dispatchId: string;
+                            supplyRequestId: string;
+                            patientId: string;
+                            locationId: string;
+                            comfortKitTemplateId: string;
+                            kitSerialNumber: string;
+                            deploymentSite: "home" | "alf" | "snf_residence" | "ipu_room";
+                            dispatchStatus: "dispatched" | "deployed_at_patient" | "partially_returned" | "fully_returned" | "reconciled" | "reconciled_with_discrepancy";
+                            ipuRoomId: string | null;
+                            dispatchedAt: string;
+                            deployedAtPatientAt: string | null;
+                            containsControlledSubstance: boolean;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42777,7 +49203,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        dispatchId: string;
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        comfortKitTemplateId: string;
+                        kitSerialNumber: string;
+                        deploymentSite: "home" | "alf" | "snf_residence" | "ipu_room";
+                        dispatchStatus: "dispatched" | "deployed_at_patient" | "partially_returned" | "fully_returned" | "reconciled" | "reconciled_with_discrepancy";
+                        ipuRoomId: string | null;
+                        dispatchedAt: string;
+                        deployedAtPatientAt: string | null;
+                        containsControlledSubstance: boolean;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        dispatchSource: "supply_hub" | "pharmacy_partner" | "dosespot_pharmacy";
+                        pharmacyDispatchMode: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                        pharmacyPartnerId: string | null;
+                        dispatchedByMembershipId: string;
+                        deployedByMembershipId: string | null;
+                        bolDocumentId: string | null;
+                        m13DeploymentId: string | null;
+                        controlledSubstanceHandlingPolicyDigest: string;
+                        facilityIdentifier: unknown;
+                        specialHandlingNotes: string | null;
+                        contents: {
+                            dispatchedContentId: string;
+                            comfortKitTemplateMedicationId: string;
+                            medicationOrderId: string | null;
+                            rxnorm: string;
+                            ndc: string | null;
+                            drugName: string;
+                            strength: string;
+                            dosageForm: string;
+                            routeOfAdministration: string;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            dispatchedUnit: string;
+                            lotNumber: string | null;
+                            expirationDate: string | null;
+                            manufacturerNdc: string | null;
+                            replenishmentThresholdPct: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42799,7 +49272,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        dispatchId: string;
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        comfortKitTemplateId: string;
+                        kitSerialNumber: string;
+                        deploymentSite: "home" | "alf" | "snf_residence" | "ipu_room";
+                        dispatchStatus: "dispatched" | "deployed_at_patient" | "partially_returned" | "fully_returned" | "reconciled" | "reconciled_with_discrepancy";
+                        ipuRoomId: string | null;
+                        dispatchedAt: string;
+                        deployedAtPatientAt: string | null;
+                        containsControlledSubstance: boolean;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        dispatchSource: "supply_hub" | "pharmacy_partner" | "dosespot_pharmacy";
+                        pharmacyDispatchMode: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                        pharmacyPartnerId: string | null;
+                        dispatchedByMembershipId: string;
+                        deployedByMembershipId: string | null;
+                        bolDocumentId: string | null;
+                        m13DeploymentId: string | null;
+                        controlledSubstanceHandlingPolicyDigest: string;
+                        facilityIdentifier: unknown;
+                        specialHandlingNotes: string | null;
+                        contents: {
+                            dispatchedContentId: string;
+                            comfortKitTemplateMedicationId: string;
+                            medicationOrderId: string | null;
+                            rxnorm: string;
+                            ndc: string | null;
+                            drugName: string;
+                            strength: string;
+                            dosageForm: string;
+                            routeOfAdministration: string;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            dispatchedUnit: string;
+                            lotNumber: string | null;
+                            expirationDate: string | null;
+                            manufacturerNdc: string | null;
+                            replenishmentThresholdPct: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42828,7 +49348,54 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        dispatchId: string;
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        comfortKitTemplateId: string;
+                        kitSerialNumber: string;
+                        deploymentSite: "home" | "alf" | "snf_residence" | "ipu_room";
+                        dispatchStatus: "dispatched" | "deployed_at_patient" | "partially_returned" | "fully_returned" | "reconciled" | "reconciled_with_discrepancy";
+                        ipuRoomId: string | null;
+                        dispatchedAt: string;
+                        deployedAtPatientAt: string | null;
+                        containsControlledSubstance: boolean;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        dispatchSource: "supply_hub" | "pharmacy_partner" | "dosespot_pharmacy";
+                        pharmacyDispatchMode: "supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy";
+                        pharmacyPartnerId: string | null;
+                        dispatchedByMembershipId: string;
+                        deployedByMembershipId: string | null;
+                        bolDocumentId: string | null;
+                        m13DeploymentId: string | null;
+                        controlledSubstanceHandlingPolicyDigest: string;
+                        facilityIdentifier: unknown;
+                        specialHandlingNotes: string | null;
+                        contents: {
+                            dispatchedContentId: string;
+                            comfortKitTemplateMedicationId: string;
+                            medicationOrderId: string | null;
+                            rxnorm: string;
+                            ndc: string | null;
+                            drugName: string;
+                            strength: string;
+                            dosageForm: string;
+                            routeOfAdministration: string;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            dispatchedUnit: string;
+                            lotNumber: string | null;
+                            expirationDate: string | null;
+                            manufacturerNdc: string | null;
+                            replenishmentThresholdPct: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42850,7 +49417,33 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        dispatchId: string;
+                        kitSerialNumber: string;
+                        dispatchedAt: string;
+                        dispatchedByMembershipId: string;
+                        lines: {
+                            dispatchedContentId: string;
+                            drugName: string;
+                            lotNumber: string | null;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            dispatchedUnit: string;
+                            expirationDate: string | null;
+                            entries: {
+                                transactionKind: "dispense" | "administer_drawdown" | "return" | "disposal" | "adjustment";
+                                quantityDelta: string;
+                                balanceAfterQuantity: string;
+                                unit: string;
+                                recordedByMembershipId: string;
+                                witnessMembershipId: string | null;
+                                occurredAt: string;
+                                sourceReference: string | null;
+                            }[];
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42876,7 +49469,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            returnId: string;
+                            dispatchId: string;
+                            patientId: string;
+                            locationId: string;
+                            state: "requested" | "assigned" | "retrieving" | "retrieved" | "reconciled" | "overdue" | "unreturnable";
+                            returnRequiredAt: string;
+                            returnDueAt: string;
+                            assignedRetrievingMembershipId: string | null;
+                            reconciledAt: string | null;
+                            containsControlledSubstance: boolean;
+                            daysOverdue: number;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42906,7 +49519,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        returnId: string;
+                        dispatchId: string;
+                        patientId: string;
+                        locationId: string;
+                        state: "requested" | "assigned" | "retrieving" | "retrieved" | "reconciled" | "overdue" | "unreturnable";
+                        returnRequiredAt: string;
+                        returnDueAt: string;
+                        assignedRetrievingMembershipId: string | null;
+                        reconciledAt: string | null;
+                        containsControlledSubstance: boolean;
+                        daysOverdue: number;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        m13DeploymentId: string;
+                        retrievingAt: string | null;
+                        retrievedAt: string | null;
+                        returnedToHubAt: string | null;
+                        disposalMethod: ("take_back_by_supply_team" | "dispose_at_home_by_witnessed_destruction" | "transferred_to_disposing_pharmacy") | null;
+                        disposalWitnessMembershipId: string | null;
+                        disposalMethodJurisdictionPolicyDigest: string | null;
+                        reconciledByMembershipId: string | null;
+                        receiptDocumentId: string | null;
+                        disposalNotes: string | null;
+                        discrepancyNotes: string | null;
+                        unreturnableReason: string | null;
+                        unreturnableAttestedByMembershipId: string | null;
+                        lines: {
+                            returnedContentId: string;
+                            dispatchedContentId: string;
+                            drugName: string;
+                            lotNumber: string | null;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            quantityReturned: string;
+                            quantityDisposedAtHome: string;
+                            quantityUnaccounted: string;
+                            discrepancyPct: string;
+                            discrepancyFlagged: boolean;
+                        }[];
+                        discrepancyDetected: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42928,7 +49586,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        returnId: string;
+                        dispatchId: string;
+                        patientId: string;
+                        locationId: string;
+                        state: "requested" | "assigned" | "retrieving" | "retrieved" | "reconciled" | "overdue" | "unreturnable";
+                        returnRequiredAt: string;
+                        returnDueAt: string;
+                        assignedRetrievingMembershipId: string | null;
+                        reconciledAt: string | null;
+                        containsControlledSubstance: boolean;
+                        daysOverdue: number;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        m13DeploymentId: string;
+                        retrievingAt: string | null;
+                        retrievedAt: string | null;
+                        returnedToHubAt: string | null;
+                        disposalMethod: ("take_back_by_supply_team" | "dispose_at_home_by_witnessed_destruction" | "transferred_to_disposing_pharmacy") | null;
+                        disposalWitnessMembershipId: string | null;
+                        disposalMethodJurisdictionPolicyDigest: string | null;
+                        reconciledByMembershipId: string | null;
+                        receiptDocumentId: string | null;
+                        disposalNotes: string | null;
+                        discrepancyNotes: string | null;
+                        unreturnableReason: string | null;
+                        unreturnableAttestedByMembershipId: string | null;
+                        lines: {
+                            returnedContentId: string;
+                            dispatchedContentId: string;
+                            drugName: string;
+                            lotNumber: string | null;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            quantityReturned: string;
+                            quantityDisposedAtHome: string;
+                            quantityUnaccounted: string;
+                            discrepancyPct: string;
+                            discrepancyFlagged: boolean;
+                        }[];
+                        discrepancyDetected: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42957,7 +49660,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        returnId: string;
+                        dispatchId: string;
+                        patientId: string;
+                        locationId: string;
+                        state: "requested" | "assigned" | "retrieving" | "retrieved" | "reconciled" | "overdue" | "unreturnable";
+                        returnRequiredAt: string;
+                        returnDueAt: string;
+                        assignedRetrievingMembershipId: string | null;
+                        reconciledAt: string | null;
+                        containsControlledSubstance: boolean;
+                        daysOverdue: number;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        m13DeploymentId: string;
+                        retrievingAt: string | null;
+                        retrievedAt: string | null;
+                        returnedToHubAt: string | null;
+                        disposalMethod: ("take_back_by_supply_team" | "dispose_at_home_by_witnessed_destruction" | "transferred_to_disposing_pharmacy") | null;
+                        disposalWitnessMembershipId: string | null;
+                        disposalMethodJurisdictionPolicyDigest: string | null;
+                        reconciledByMembershipId: string | null;
+                        receiptDocumentId: string | null;
+                        disposalNotes: string | null;
+                        discrepancyNotes: string | null;
+                        unreturnableReason: string | null;
+                        unreturnableAttestedByMembershipId: string | null;
+                        lines: {
+                            returnedContentId: string;
+                            dispatchedContentId: string;
+                            drugName: string;
+                            lotNumber: string | null;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            quantityReturned: string;
+                            quantityDisposedAtHome: string;
+                            quantityUnaccounted: string;
+                            discrepancyPct: string;
+                            discrepancyFlagged: boolean;
+                        }[];
+                        discrepancyDetected: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -42985,7 +49733,52 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        returnId: string;
+                        dispatchId: string;
+                        patientId: string;
+                        locationId: string;
+                        state: "requested" | "assigned" | "retrieving" | "retrieved" | "reconciled" | "overdue" | "unreturnable";
+                        returnRequiredAt: string;
+                        returnDueAt: string;
+                        assignedRetrievingMembershipId: string | null;
+                        reconciledAt: string | null;
+                        containsControlledSubstance: boolean;
+                        daysOverdue: number;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        m13DeploymentId: string;
+                        retrievingAt: string | null;
+                        retrievedAt: string | null;
+                        returnedToHubAt: string | null;
+                        disposalMethod: ("take_back_by_supply_team" | "dispose_at_home_by_witnessed_destruction" | "transferred_to_disposing_pharmacy") | null;
+                        disposalWitnessMembershipId: string | null;
+                        disposalMethodJurisdictionPolicyDigest: string | null;
+                        reconciledByMembershipId: string | null;
+                        receiptDocumentId: string | null;
+                        disposalNotes: string | null;
+                        discrepancyNotes: string | null;
+                        unreturnableReason: string | null;
+                        unreturnableAttestedByMembershipId: string | null;
+                        lines: {
+                            returnedContentId: string;
+                            dispatchedContentId: string;
+                            drugName: string;
+                            lotNumber: string | null;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            quantityReturned: string;
+                            quantityDisposedAtHome: string;
+                            quantityUnaccounted: string;
+                            discrepancyPct: string;
+                            discrepancyFlagged: boolean;
+                        }[];
+                        discrepancyDetected: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43024,7 +49817,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        returnId: string;
+                        /** @constant */
+                        state: "reconciled";
+                        discrepancyDetected: boolean;
+                        perMedication: {
+                            returnedContentId: string;
+                            dispatchedContentId: string;
+                            drugName: string;
+                            lotNumber: string | null;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            dispatchedQuantity: string;
+                            quantityReturned: string;
+                            quantityDisposedAtHome: string;
+                            quantityUnaccounted: string;
+                            discrepancyPct: string;
+                            discrepancyFlagged: boolean;
+                        }[];
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43049,7 +49864,39 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            comfortKitTemplateId: string;
+                            name: string;
+                            isPlatformFloor: boolean;
+                            systemLocked: boolean;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            replacesTemplateId: string | null;
+                            medications: {
+                                templateMedicationId: string;
+                                rxnorm: string;
+                                ndc: string | null;
+                                drugName: string;
+                                strength: string;
+                                dosageForm: string;
+                                routeOfAdministration: string;
+                                isControlledSubstance: boolean;
+                                controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                                expectedQuantity: string;
+                                expectedUnit: string;
+                                replenishmentThresholdPct: string;
+                                systemLocked: boolean;
+                                displayOrder: number;
+                            }[];
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43096,7 +49943,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        comfortKitTemplateId: string;
+                        name: string;
+                        isPlatformFloor: boolean;
+                        systemLocked: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        replacesTemplateId: string | null;
+                        medications: {
+                            templateMedicationId: string;
+                            rxnorm: string;
+                            ndc: string | null;
+                            drugName: string;
+                            strength: string;
+                            dosageForm: string;
+                            routeOfAdministration: string;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            expectedQuantity: string;
+                            expectedUnit: string;
+                            replenishmentThresholdPct: string;
+                            systemLocked: boolean;
+                            displayOrder: number;
+                        }[];
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43147,7 +50021,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        comfortKitTemplateId: string;
+                        name: string;
+                        isPlatformFloor: boolean;
+                        systemLocked: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        replacesTemplateId: string | null;
+                        medications: {
+                            templateMedicationId: string;
+                            rxnorm: string;
+                            ndc: string | null;
+                            drugName: string;
+                            strength: string;
+                            dosageForm: string;
+                            routeOfAdministration: string;
+                            isControlledSubstance: boolean;
+                            controlledSubstanceSchedule: ("CII" | "CIII" | "CIV" | "CV") | null;
+                            expectedQuantity: string;
+                            expectedUnit: string;
+                            replenishmentThresholdPct: string;
+                            systemLocked: boolean;
+                            displayOrder: number;
+                        }[];
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43172,7 +50073,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            parStockId: string;
+                            locationId: string;
+                            skuId: string | null;
+                            tenantSkuExtensionId: string | null;
+                            skuName: string;
+                            currentQuantity: string;
+                            unit: string;
+                            reorderPoint: string;
+                            reorderQuantity: string;
+                            minSafetyStock: string;
+                            severity: "ok" | "below_threshold" | "critical_low" | "depleted";
+                            isActive: boolean;
+                            lastParReviewAt: string | null;
+                            lastParReviewedByMembershipId: string | null;
+                            reorderNotes: string | null;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43204,7 +50129,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        parStockId: string;
+                        locationId: string;
+                        skuId: string | null;
+                        tenantSkuExtensionId: string | null;
+                        skuName: string;
+                        currentQuantity: string;
+                        unit: string;
+                        reorderPoint: string;
+                        reorderQuantity: string;
+                        minSafetyStock: string;
+                        severity: "ok" | "below_threshold" | "critical_low" | "depleted";
+                        isActive: boolean;
+                        lastParReviewAt: string | null;
+                        lastParReviewedByMembershipId: string | null;
+                        reorderNotes: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43235,7 +50179,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        parStockId: string;
+                        locationId: string;
+                        skuId: string | null;
+                        tenantSkuExtensionId: string | null;
+                        skuName: string;
+                        currentQuantity: string;
+                        unit: string;
+                        reorderPoint: string;
+                        reorderQuantity: string;
+                        minSafetyStock: string;
+                        severity: "ok" | "below_threshold" | "critical_low" | "depleted";
+                        isActive: boolean;
+                        lastParReviewAt: string | null;
+                        lastParReviewedByMembershipId: string | null;
+                        reorderNotes: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43261,7 +50224,33 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            supplyItemId: string;
+                            isPlatform: boolean;
+                            hcpcs: string | null;
+                            rxnorm: string | null;
+                            ndc: string | null;
+                            name: string;
+                            skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                            defaultUnit: string;
+                            isBillable: boolean;
+                            isActive: boolean;
+                            isControlledSubstance: boolean | null;
+                            requiresLotTracking: boolean | null;
+                            requiresExpirationTracking: boolean | null;
+                            isSerializedAsset: boolean | null;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            localSkuCode: string | null;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43297,7 +50286,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyItemId: string;
+                        isPlatform: boolean;
+                        hcpcs: string | null;
+                        rxnorm: string | null;
+                        ndc: string | null;
+                        name: string;
+                        skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                        defaultUnit: string;
+                        isBillable: boolean;
+                        isActive: boolean;
+                        isControlledSubstance: boolean | null;
+                        requiresLotTracking: boolean | null;
+                        requiresExpirationTracking: boolean | null;
+                        isSerializedAsset: boolean | null;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        localSkuCode: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43319,7 +50329,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyItemId: string;
+                        isPlatform: boolean;
+                        hcpcs: string | null;
+                        rxnorm: string | null;
+                        ndc: string | null;
+                        name: string;
+                        skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                        defaultUnit: string;
+                        isBillable: boolean;
+                        isActive: boolean;
+                        isControlledSubstance: boolean | null;
+                        requiresLotTracking: boolean | null;
+                        requiresExpirationTracking: boolean | null;
+                        isSerializedAsset: boolean | null;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        localSkuCode: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43349,7 +50380,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyItemId: string;
+                        isPlatform: boolean;
+                        hcpcs: string | null;
+                        rxnorm: string | null;
+                        ndc: string | null;
+                        name: string;
+                        skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                        defaultUnit: string;
+                        isBillable: boolean;
+                        isActive: boolean;
+                        isControlledSubstance: boolean | null;
+                        requiresLotTracking: boolean | null;
+                        requiresExpirationTracking: boolean | null;
+                        isSerializedAsset: boolean | null;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        localSkuCode: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43377,7 +50429,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            supplyRequestId: string;
+                            patientId: string;
+                            locationId: string;
+                            kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                            status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                            assignedVendorId: string | null;
+                            vendorOrderReference: string | null;
+                            trackingNumber: string | null;
+                            carrier: string | null;
+                            orderedAt: string | null;
+                            deliveredAt: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43423,7 +50496,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        /** @constant */
+                        status: "requested";
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43445,7 +50541,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43476,7 +50628,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43504,7 +50712,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43534,7 +50798,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43566,7 +50886,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43595,7 +50971,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43623,7 +51055,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43651,7 +51139,63 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43681,7 +51225,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyItemId: string;
+                        isPlatform: boolean;
+                        hcpcs: string | null;
+                        rxnorm: string | null;
+                        ndc: string | null;
+                        name: string;
+                        skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                        defaultUnit: string;
+                        isBillable: boolean;
+                        isActive: boolean;
+                        isControlledSubstance: boolean | null;
+                        requiresLotTracking: boolean | null;
+                        requiresExpirationTracking: boolean | null;
+                        isSerializedAsset: boolean | null;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        localSkuCode: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43713,7 +51278,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        supplyItemId: string;
+                        isPlatform: boolean;
+                        hcpcs: string | null;
+                        rxnorm: string | null;
+                        ndc: string | null;
+                        name: string;
+                        skuClass: "E" | "A" | "B" | "K" | "L" | "Q" | "internal";
+                        defaultUnit: string;
+                        isBillable: boolean;
+                        isActive: boolean;
+                        isControlledSubstance: boolean | null;
+                        requiresLotTracking: boolean | null;
+                        requiresExpirationTracking: boolean | null;
+                        isSerializedAsset: boolean | null;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        localSkuCode: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43738,7 +51324,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            ruleId: string;
+                            isPlatform: boolean;
+                            scopeKind: "sku" | "location" | "tenant";
+                            scopeId: string | null;
+                            skuClassPattern: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            precedencePriority: number;
+                            isActive: boolean;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            updatedAt: string;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43771,7 +51378,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        isPlatform: boolean;
+                        scopeKind: "sku" | "location" | "tenant";
+                        scopeId: string | null;
+                        skuClassPattern: string | null;
+                        assignedVendorId: string | null;
+                        assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                        defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                        precedencePriority: number;
+                        isActive: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43806,7 +51429,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        isPlatform: boolean;
+                        scopeKind: "sku" | "location" | "tenant";
+                        scopeId: string | null;
+                        skuClassPattern: string | null;
+                        assignedVendorId: string | null;
+                        assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                        defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                        precedencePriority: number;
+                        isActive: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43828,7 +51467,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleId: string;
+                        isPlatform: boolean;
+                        scopeKind: "sku" | "location" | "tenant";
+                        scopeId: string | null;
+                        skuClassPattern: string | null;
+                        assignedVendorId: string | null;
+                        assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                        defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                        precedencePriority: number;
+                        isActive: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43890,7 +51545,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        carcCode: string;
+                        rarcCode: string | null;
+                        category: string;
+                        plainLanguage: string;
+                        suggestedAction: string | null;
+                        ownerRole: string | null;
+                        severity: string | null;
+                        hasOverlay: boolean;
+                        overlayVersion: number | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -43922,7 +51589,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44000,7 +51673,10 @@ export interface operations {
     };
     getApiV1TenantBaa: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -44012,7 +51688,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            addendumVersion: string;
+                            baaStatus: "executed" | "pending" | "terminated" | "missing";
+                            executedOn: string | null;
+                            effectiveOn: string | null;
+                            expiresOn: string | null;
+                            attestedAt: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44027,14 +51720,34 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @constant */
+                    attestationConfirmed: true;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        addendumVersion: string;
+                        baaStatus: "executed" | "pending" | "terminated" | "missing";
+                        executedOn: string | null;
+                        effectiveOn: string | null;
+                        expiresOn: string | null;
+                        attestedAt: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44059,7 +51772,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            patientId: string;
+                            requestSource: "patient" | "caregiver" | "legal_representative" | "authorized_third_party";
+                            status: "requested" | "generating" | "review_pending" | "fulfilled" | "denied" | "extended";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            /** Format: date-time */
+                            slaDueAt: string;
+                            extendedUntil: string | null;
+                            fulfilledAt: string | null;
+                            deniedReason: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44072,14 +51805,40 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    requestSource: "patient" | "caregiver" | "legal_representative" | "authorized_third_party";
+                    requestorIdentityVerificationEvidence: string;
+                    idempotencyKey?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        requestSource: "patient" | "caregiver" | "legal_representative" | "authorized_third_party";
+                        status: "requested" | "generating" | "review_pending" | "fulfilled" | "denied" | "extended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        /** Format: date-time */
+                        slaDueAt: string;
+                        extendedUntil: string | null;
+                        fulfilledAt: string | null;
+                        deniedReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44094,14 +51853,37 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    deniedReason: "psychotherapy_notes" | "legal_proceeding" | "endangerment" | "research_in_progress" | "denied_by_authorized_party" | "other_permitted";
+                    narrative: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        requestSource: "patient" | "caregiver" | "legal_representative" | "authorized_third_party";
+                        status: "requested" | "generating" | "review_pending" | "fulfilled" | "denied" | "extended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        /** Format: date-time */
+                        slaDueAt: string;
+                        extendedUntil: string | null;
+                        fulfilledAt: string | null;
+                        deniedReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44123,7 +51905,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        url: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44138,14 +51926,36 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        requestSource: "patient" | "caregiver" | "legal_representative" | "authorized_third_party";
+                        status: "requested" | "generating" | "review_pending" | "fulfilled" | "denied" | "extended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        /** Format: date-time */
+                        slaDueAt: string;
+                        extendedUntil: string | null;
+                        fulfilledAt: string | null;
+                        deniedReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44167,7 +51977,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        requestSource: "patient" | "caregiver" | "legal_representative" | "authorized_third_party";
+                        status: "requested" | "generating" | "review_pending" | "fulfilled" | "denied" | "extended";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        /** Format: date-time */
+                        slaDueAt: string;
+                        extendedUntil: string | null;
+                        fulfilledAt: string | null;
+                        deniedReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44175,7 +52001,10 @@ export interface operations {
     };
     getApiV1TenantOnboarding: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -44187,7 +52016,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            templateKey: string;
+                            status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                            assignedToMembershipId: string | null;
+                            dueAt: string | null;
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            blockerReason: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44202,14 +52048,33 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    blockerReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        templateKey: string;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44224,14 +52089,35 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    completionEvidence?: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        templateKey: string;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44253,7 +52139,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        templateKey: string;
+                        status: "pending" | "in_progress" | "done" | "skipped" | "blocked";
+                        assignedToMembershipId: string | null;
+                        dueAt: string | null;
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        blockerReason: string | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44261,7 +52160,10 @@ export interface operations {
     };
     getApiV1TenantSupportconsentgrants: {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -44273,7 +52175,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            tenantAccountId: string;
+                            scope: "organization_scoped" | "patient_scoped";
+                            grantReason: string;
+                            /** Format: date-time */
+                            issuedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            revokedAt: string | null;
+                            active: boolean;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44302,7 +52223,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        scope: "organization_scoped" | "patient_scoped";
+                        grantReason: string;
+                        /** Format: date-time */
+                        issuedAt: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        revokedAt: string | null;
+                        active: boolean;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44317,14 +52253,35 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    revocationReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tenantAccountId: string;
+                        scope: "organization_scoped" | "patient_scoped";
+                        grantReason: string;
+                        /** Format: date-time */
+                        issuedAt: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                        revokedAt: string | null;
+                        active: boolean;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44348,7 +52305,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                            status: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
+                            /** Format: date-time */
+                            requestedAt: string;
+                            fulfilledAt: string | null;
+                            bundleSizeBytes: number | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44361,14 +52334,33 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                    justification: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                        status: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
+                        /** Format: date-time */
+                        requestedAt: string;
+                        fulfilledAt: string | null;
+                        bundleSizeBytes: number | null;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44390,7 +52382,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        url: string;
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44398,7 +52396,9 @@ export interface operations {
     };
     getApiV1TerminologyBySystemByCode: {
         parameters: {
-            query?: never;
+            query?: {
+                asOf?: string;
+            };
             header?: never;
             path: {
                 system: string;
@@ -44413,7 +52413,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                        code: string;
+                        display: string;
+                        status: "active" | "deprecated" | "retired";
+                        effectiveDate: string;
+                        endDate: string | null;
+                        properties: {
+                            [key: string]: unknown;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44436,7 +52448,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        mapping: {
+                            deprecatedCode: string;
+                            deprecationEffective: string;
+                            successorCodes: string[];
+                            mappingKind: "equivalent" | "broader" | "narrower" | "none" | "see_other";
+                            guidance: string | null;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44486,7 +52508,10 @@ export interface operations {
     };
     getApiV1TerminologyBySystemValidate: {
         parameters: {
-            query?: never;
+            query: {
+                code: string;
+                asOf?: string;
+            };
             header?: never;
             path: {
                 system: string;
@@ -44500,7 +52525,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        valid: boolean;
+                        status?: "active" | "deprecated" | "retired";
+                        successor?: {
+                            deprecatedCode: string;
+                            deprecationEffective: string;
+                            successorCodes: string[];
+                            mappingKind: "equivalent" | "broader" | "narrower" | "none" | "see_other";
+                            guidance: string | null;
+                        };
+                        asOf: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44508,7 +52546,13 @@ export interface operations {
     };
     getApiV1TerminologyValuesetsByIdExpand: {
         parameters: {
-            query?: never;
+            query?: {
+                asOf?: string;
+                system?: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                cursor?: string;
+                limit?: number;
+                includeTenantExtensions?: boolean;
+            };
             header?: never;
             path: {
                 id: string;
@@ -44522,7 +52566,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            systemId: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                            code: string;
+                            display: string;
+                            annotations: {
+                                [key: string]: unknown;
+                            };
+                        }[];
+                        nextCursor: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44537,14 +52593,29 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                    code: string;
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        extensionId: string;
+                        valueSetId: string;
+                        system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                        code: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44575,7 +52646,11 @@ export interface operations {
     };
     getApiV1TerminologyValuesetsByIdIsmember: {
         parameters: {
-            query?: never;
+            query: {
+                system: "icd10cm" | "icd10pcs" | "snomed" | "loinc" | "rxnorm" | "ndc" | "hcpcs" | "cvx" | "revenue" | "carc" | "rarc";
+                code: string;
+                asOf?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -44589,7 +52664,12 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        isMember: boolean;
+                        source: "platform" | "tenant_extension" | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44821,7 +52901,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            providerEntityId: string;
+                            patientId: string | null;
+                            state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                            callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                            inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                            source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                            chiefComplaintSnomed: string | null;
+                            openedAt: string;
+                            firstResponseAt: string | null;
+                            closedAt: string | null;
+                            protocolLabel: string | null;
+                            openEscalationCount: number;
+                            redFlagAnswerCount: number;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44864,7 +52967,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        triageCallId: string;
+                        /** @constant */
+                        state: "open";
+                        onCallShiftId: string;
+                        version: number;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: string | null;
+                        hospitalizationRiskBand: string | null;
+                        aiBlockDisabled: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44886,7 +53001,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44915,7 +53150,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -44957,7 +53312,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        answerId: string;
+                        redFlagHit: boolean;
+                        mandatoryEscalationTriggered: boolean;
+                        escalationId: string | null;
+                        tier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        nextQuestionId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45001,7 +53366,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        answerId: string;
+                        redFlagHit: boolean;
+                        mandatoryEscalationTriggered: boolean;
+                        escalationId: string | null;
+                        tier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        nextQuestionId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45031,7 +53406,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45061,7 +53556,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45083,7 +53698,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45157,7 +53892,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45185,7 +54040,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45219,7 +54194,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                        triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                        state: "open" | "acknowledged" | "resolved";
+                        mandatory: boolean;
+                        escalatedToMembershipId: string | null;
+                        escalatedToExternalActorId: string | null;
+                        escalatedAt: string;
+                        acknowledgedAt: string | null;
+                        resolvedAt: string | null;
+                        resolvedByMembershipId: string | null;
+                        triageCallId: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        callState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        minutesOpen: number;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45254,7 +54249,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45276,7 +54391,127 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string | null;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        disposition: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled" | "escalated_unresolved" | "abandoned") | null;
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        source: "manual" | "no_show" | "late_checkout" | "geofence_anomaly" | "m36_delivery_failure" | "paper_origin";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        firstResponseAt: string | null;
+                        closedAt: string | null;
+                        protocolLabel: string | null;
+                        openEscalationCount: number;
+                        redFlagAnswerCount: number;
+                        version: number;
+                        locationId: string | null;
+                        admissionId: string | null;
+                        callerDisplayName: string | null;
+                        callerPhoneE164: string | null;
+                        callerRelationshipLabel: string | null;
+                        callerCaregiverId: string | null;
+                        chiefComplaintText: string | null;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: ("low" | "medium" | "high") | null;
+                        hospitalizationRiskBand: ("low" | "medium" | "high") | null;
+                        dispositionData: unknown;
+                        linkedEncounterId: string | null;
+                        linkedVerbalOrderIds: string[];
+                        linkedVisitProposalId: string | null;
+                        paperOriginFlag: boolean;
+                        paperOriginalOpenedAt: string | null;
+                        documentedAt: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        stateHistory: {
+                            id: string;
+                            fromState: ("open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned") | null;
+                            toState: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                            transitionedAt: string;
+                            actorMembershipId: string | null;
+                            systemActor: boolean;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        medicationContext: unknown;
+                        redactedCategories: ("sud" | "ai_advisory" | "caller_free_text")[];
+                        dispositionBlockedByMandatoryEscalation: boolean;
+                    } | {
+                        id: string;
+                        providerEntityId: string;
+                        state: "open" | "protocol_in_progress" | "awaiting_callback" | "disposition_pending" | "documented_pending_encounter" | "escalated_unresolved" | "documented" | "closed" | "abandoned";
+                        callerKind: "patient" | "caregiver" | "external_clinician" | "portal_session" | "system_inbound" | "bereaved_family";
+                        inboundChannel: "phone" | "sms" | "email" | "portal_message" | "inbound_visit_failure" | "inbound_evv_anomaly" | "inbound_alert_failure";
+                        chiefComplaintSnomed: string | null;
+                        openedAt: string;
+                        onCallShiftId: string;
+                        selectedProtocolId: string | null;
+                        selectedProtocolVersion: string | null;
+                        answers: {
+                            id: string;
+                            questionId: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            valueText: string | null;
+                            valueInt: number | null;
+                            valueBool: boolean | null;
+                            redFlagHit: boolean;
+                            correctionOfAnswerId: string | null;
+                            answeredAt: string;
+                            answeredByMembershipId: string;
+                        }[];
+                        escalations: {
+                            id: string;
+                            tier: "tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external";
+                            triggerKind: "manual" | "red_flag_question" | "mandatory_protocol" | "sla_breach";
+                            state: "open" | "acknowledged" | "resolved";
+                            mandatory: boolean;
+                            escalatedToMembershipId: string | null;
+                            escalatedToExternalActorId: string | null;
+                            escalatedAt: string;
+                            acknowledgedAt: string | null;
+                            resolvedAt: string | null;
+                            resolvedByMembershipId: string | null;
+                        }[];
+                        nextQuestionId: string | null;
+                        permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45298,7 +54533,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        triageCallId: string;
+                        transcript: string | null;
+                        callerQuote: string | null;
+                        decryptedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45337,7 +54579,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        triageCallId: string;
+                        /** @constant */
+                        state: "open";
+                        onCallShiftId: string;
+                        version: number;
+                        suggestedProtocolId: string | null;
+                        suggestedProtocolConfidence: string | null;
+                        hospitalizationRiskBand: string | null;
+                        aiBlockDisabled: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45357,7 +54611,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        outageWindowId: string;
+                        shiftId: string | null;
+                        shiftStartsAt: string;
+                        shiftEndsAt: string;
+                        assignedToMembershipId: string | null;
+                        reenteredAt: string | null;
+                        linkedTriageCallId: string | null;
+                        expiresAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45410,7 +54677,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string | null;
+                        key: string;
+                        chiefComplaintLabel: string;
+                        snomedCode: string;
+                        disciplineRequired: string;
+                        isSystemLocked: boolean;
+                        requiresMandatoryEscalation: boolean;
+                        mandatoryEscalationTier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        version: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        sortOrder: number;
+                        questions: {
+                            id: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            answerEnumValues: string[] | null;
+                            required: boolean;
+                            isRedFlagQuestion: boolean;
+                            redFlagMatch: unknown;
+                            isSystemLocked: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45436,7 +54730,38 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            id: string;
+                            organizationId: string | null;
+                            key: string;
+                            chiefComplaintLabel: string;
+                            snomedCode: string;
+                            disciplineRequired: string;
+                            isSystemLocked: boolean;
+                            requiresMandatoryEscalation: boolean;
+                            mandatoryEscalationTier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                            version: string;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            sortOrder: number;
+                            questions: {
+                                id: string;
+                                questionOrder: number;
+                                prompt: string;
+                                answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                                answerEnumValues: string[] | null;
+                                required: boolean;
+                                isRedFlagQuestion: boolean;
+                                redFlagMatch: unknown;
+                                isSystemLocked: boolean;
+                            }[];
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45500,7 +54825,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string | null;
+                        key: string;
+                        chiefComplaintLabel: string;
+                        snomedCode: string;
+                        disciplineRequired: string;
+                        isSystemLocked: boolean;
+                        requiresMandatoryEscalation: boolean;
+                        mandatoryEscalationTier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        version: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        sortOrder: number;
+                        questions: {
+                            id: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            answerEnumValues: string[] | null;
+                            required: boolean;
+                            isRedFlagQuestion: boolean;
+                            redFlagMatch: unknown;
+                            isSystemLocked: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45522,7 +54874,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string | null;
+                        key: string;
+                        chiefComplaintLabel: string;
+                        snomedCode: string;
+                        disciplineRequired: string;
+                        isSystemLocked: boolean;
+                        requiresMandatoryEscalation: boolean;
+                        mandatoryEscalationTier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        version: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        sortOrder: number;
+                        questions: {
+                            id: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            answerEnumValues: string[] | null;
+                            required: boolean;
+                            isRedFlagQuestion: boolean;
+                            redFlagMatch: unknown;
+                            isSystemLocked: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45557,7 +54936,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string | null;
+                        key: string;
+                        chiefComplaintLabel: string;
+                        snomedCode: string;
+                        disciplineRequired: string;
+                        isSystemLocked: boolean;
+                        requiresMandatoryEscalation: boolean;
+                        mandatoryEscalationTier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        version: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        sortOrder: number;
+                        questions: {
+                            id: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            answerEnumValues: string[] | null;
+                            required: boolean;
+                            isRedFlagQuestion: boolean;
+                            redFlagMatch: unknown;
+                            isSystemLocked: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45610,7 +55016,34 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string | null;
+                        key: string;
+                        chiefComplaintLabel: string;
+                        snomedCode: string;
+                        disciplineRequired: string;
+                        isSystemLocked: boolean;
+                        requiresMandatoryEscalation: boolean;
+                        mandatoryEscalationTier: ("tier_1_rn_supervisor" | "tier_2_clinical_manager" | "tier_3_medical_director" | "tier_4_compliance_officer" | "tier_5_external") | null;
+                        version: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        sortOrder: number;
+                        questions: {
+                            id: string;
+                            questionOrder: number;
+                            prompt: string;
+                            answerType: "boolean" | "integer" | "scale_0_10" | "free_text" | "enum";
+                            answerEnumValues: string[] | null;
+                            required: boolean;
+                            isRedFlagQuestion: boolean;
+                            redFlagMatch: unknown;
+                            isSystemLocked: boolean;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45625,14 +55058,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        deactivated: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46308,7 +55751,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            gateId: string;
+                            volunteerMembershipId: string;
+                            gateKind: "background_check" | "tb_screening" | "confidentiality_agreement" | "initial_training" | "annual_ce" | "assignment_specific_training" | "vaccination_status";
+                            storedStatus: string;
+                            effectiveStatus: string;
+                            validFrom: string;
+                            validUntil: string | null;
+                            revokedAt: string | null;
+                            sourceDocumentId: string | null;
+                            version: number;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46341,7 +55802,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        gateId: string;
+                        volunteerMembershipId: string;
+                        gateKind: "background_check" | "tb_screening" | "confidentiality_agreement" | "initial_training" | "annual_ce" | "assignment_specific_training" | "vaccination_status";
+                        storedStatus: string;
+                        effectiveStatus: string;
+                        validFrom: string;
+                        validUntil: string | null;
+                        revokedAt: string | null;
+                        sourceDocumentId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46371,7 +55845,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        gateId: string;
+                        volunteerMembershipId: string;
+                        gateKind: "background_check" | "tb_screening" | "confidentiality_agreement" | "initial_training" | "annual_ce" | "assignment_specific_training" | "vaccination_status";
+                        storedStatus: string;
+                        effectiveStatus: string;
+                        validFrom: string;
+                        validUntil: string | null;
+                        revokedAt: string | null;
+                        sourceDocumentId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46399,7 +55886,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        gateId: string;
+                        volunteerMembershipId: string;
+                        gateKind: "background_check" | "tb_screening" | "confidentiality_agreement" | "initial_training" | "annual_ce" | "assignment_specific_training" | "vaccination_status";
+                        storedStatus: string;
+                        effectiveStatus: string;
+                        validFrom: string;
+                        validUntil: string | null;
+                        revokedAt: string | null;
+                        sourceDocumentId: string | null;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46433,7 +55933,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        hourEntryId: string;
+                        ledgerId: string;
+                        volunteerMembershipId: string;
+                        source: string;
+                        durationMinutes: number;
+                        occurredAt: string;
+                        ledgerTotalMinutes: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46578,7 +56088,51 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            planId: string;
+                            kind: string;
+                            status: string;
+                            goals: {
+                                goalId: string;
+                                parentProblemId: string | null;
+                                parentGoalId: string | null;
+                                source: "clinician_authored" | "patient_stated" | "family_stated" | "agent_stated" | "idg_directed";
+                                status: string;
+                                originalText: string;
+                                revisedText: string | null;
+                                measurableOutcome: string | null;
+                                targetAt: string | null;
+                                frequencyText: string | null;
+                                frequencyValue: string | null;
+                                modalityText: string | null;
+                                sudRelated: boolean;
+                                addedByDiscipline: string;
+                                addedAt: string;
+                                version: number;
+                            }[];
+                            interventions: {
+                                interventionId: string;
+                                parentInterventionId: string | null;
+                                goalRefs: string[];
+                                scopeText: string;
+                                frequencyText: string;
+                                frequencyValue: string;
+                                discipline: string;
+                                responsibleRoles: string[];
+                                status: string;
+                                discontinuationReason: string | null;
+                                addedByDiscipline: string;
+                                addedAt: string;
+                                version: number;
+                            }[];
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46604,7 +56158,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        data: {
+                            planId: string;
+                            patientId: string;
+                            admissionId: string;
+                            providerEntityId: string;
+                            locationId: string;
+                            aideMembershipId: string | null;
+                            supervisingRnMembershipId: string | null;
+                            nextDueAt: string;
+                            cadenceDays: number;
+                            status: string;
+                            hoursOverdue: number;
+                            gateEngaged: boolean;
+                        }[];
+                        next_cursor: string | null;
+                        has_more: boolean;
+                        total_count?: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -46626,7 +56200,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        volunteerMembershipId: string;
+                        isActive: boolean;
+                        failingGates: {
+                            gateKind: string;
+                            reason: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

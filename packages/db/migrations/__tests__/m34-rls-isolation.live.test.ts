@@ -18,6 +18,11 @@
  * Plus the §3.10 lockdown that wardenx_app's SELECT on the tenant_key_ring BASE table is REVOKED
  * (the wrapped-DEK ciphertext is reachable only through the org-filtered metadata view).
  *
+ * Those 14 are every ORG-SCOPED M34 table. The other 3 of the 17 manifest-owned tables
+ * (onboarding_task_template, tenant_signup_intent, tenant_signup_token) are PLATFORM / org-less by
+ * design — no organization_id, no canonical app.org_id tenant policy — so they are documented as
+ * explicit exclusions at the COVERED list below, not swept. That makes the accounting a full 17/17.
+ *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   - CI: the `rls-live` job provides a postgres service + WARDENX_TEST_DATABASE_URL.
  *   - Local: `WARDENX_TEST_DATABASE_URL=postgres://… bun run test:rls:live`
@@ -78,6 +83,14 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "tenant_export_job_event", key: "exportEvent" },
   { table: "platform_tenant_baa_record", key: "baaRecord" },
 ];
+
+// FULL 17/17 owned-table accounting (manifest ownedTables[M34]): the 13 COVERED above + the 14th
+// (tenant_key_ring, proven via the masking view) exhaust every ORG-SCOPED M34 table. The remaining
+// 3 owned tables are PLATFORM / org-less by design — no organization_id column, hence no canonical
+// app.org_id tenant policy — so they are deliberately EXCLUDED from the org sweep, not gaps:
+//   • onboarding_task_template — platform-shared read-only catalog (0052 §3: SELECT USING(true), no org).
+//   • tenant_signup_intent     — pre-organization signup funnel (0052 §15: RLS on, NO wardenx_app policy).
+//   • tenant_signup_token      — pre-organization acceptance token (0052 §16: RLS on, NO wardenx_app policy).
 
 describe.skipIf(!DB_URL)(
   "M34 SaaS Tenant Platform — RLS cross-tenant denial — LIVE Postgres (§9.3)",

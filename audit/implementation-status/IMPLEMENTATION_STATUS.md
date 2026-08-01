@@ -10,11 +10,11 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 
 | Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 12/16 ⚠️ |
-| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 10/14 ⚠️ | ✅ | ✅ | — | 2/4 ⚠️ |
-| M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 9/17 ⚠️ | ✅ | ❌ | — | 5/6 ⚠️ |
-| M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 1/4 ⚠️ | ✅ | ✅ | — | 7/7 ✅ |
-| M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/14 ⚠️ | ✅ | ✅ | — | 16/16 ✅ |
+| M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 16/16 ✅ |
+| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 4/4 ✅ |
+| M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ❌ | — | 6/6 ✅ |
+| M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 4/4 ✅ | ✅ | ✅ | — | 7/7 ✅ |
+| M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 16/16 ✅ |
 | M06 Admission, Election & Certification | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 46/46 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M07 Care Plan (IPOC) | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 6/6 ✅ |
 | M08 Encounters & Visit Notes | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | — | 10/10 ✅ |
@@ -24,32 +24,32 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 6/6 ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 26/26 ✅ | ✅ | ✅ | — | 9/9 ✅ |
-| M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 23/28 ⚠️ | ✅ | ✅ | — | 11/11 ✅ |
-| M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/33 ⚠️ | ✅ | ✅ | — | 9/9 ✅ |
+| M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 11/11 ✅ |
+| M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 29/29 ✅ | ✅ | ✅ | ✅ | 7/7 ✅ |
 | M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 6/6 ✅ |
-| M19 On-Call Triage | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/38 ⚠️ | ✅ | ✅ | ✅ | 10/10 ✅ |
-| M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/30 ⚠️ | ✅ | ✅ | — | 13/13 ✅ |
-| M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/37 ⚠️ | ✅ | ✅ | — | 11/11 ✅ |
+| M19 On-Call Triage | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | ✅ | 10/10 ✅ |
+| M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | — | 13/13 ✅ |
+| M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 37/37 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 43/43 ✅ | ✅ | ✅ | ✅ | 17/17 ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
-| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 18/31 ⚠️ | ✅ | ✅ | ✅ | 11/11 ✅ |
-| M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/27 ⚠️ | ✅ | ✅ | — | 12/12 ✅ |
-| M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 11/45 ⚠️ | ✅ | ✅ | ✅ | 4/14 ⚠️ |
+| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 11/11 ✅ |
+| M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |
+| M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
 | M28 FHIR Gateway | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/8 ⚠️ |
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/11 ⚠️ |
-| M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 57/60 ⚠️ | ✅ | ✅ | ✅ | 18/18 ✅ |
+| M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 60/60 ✅ | ✅ | ✅ | ✅ | 18/18 ✅ |
 | M31 Patient/Family Portal & Telehealth | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | ❌ | 0/3 ⚠️ |
 | M32 AI Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ❌ | ✅ | — | 13/13 ✅ |
-| M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 4/42 ⚠️ | ✅ | ✅ | — | 12/12 ✅ |
-| M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 9/48 ⚠️ | ✅ | ✅ | — | 14/17 ⚠️ |
+| M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 42/42 ✅ | ✅ | ✅ | — | 12/12 ✅ |
+| M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 48/48 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M35 Subscription Billing | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 3/21 ⚠️ |
-| M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 4/22 ⚠️ | ✅ | ✅ | — | 11/15 ⚠️ |
+| M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 22/22 ✅ | ✅ | ✅ | — | 15/15 ✅ |
 | M37 Inpatient Unit (IPU) Management | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/26 ⚠️ |
-| M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 1/8 ⚠️ | ✅ | ✅ | — | 8/13 ⚠️ |
-| M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/27 ⚠️ | ✅ | ✅ | — | 3/11 ⚠️ |
-| M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 1/14 ⚠️ | ✅ | ✅ | — | 5/11 ⚠️ |
+| M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 8/8 ✅ | ✅ | ✅ | — | 13/13 ✅ |
+| M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |
+| M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 
 ## Hard-fail consistency checks
 
