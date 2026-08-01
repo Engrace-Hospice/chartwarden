@@ -428,7 +428,7 @@ The six backends registered at lock time per the architecture §10.7.3 mapping:
 
 | backend_key | kind | vendor | modalities | context window | Capabilities served (Phase 1) |
 |---|---|---|---|---|---|
-| `anthropic-claude-opus-4-7` | cloud | anthropic | text, vision | 200K | hearthnote_layer2 (default cloud); doclens_extract (default when cloud); doclens_vision_verify; copilot_clinical |
+| `anthropic-claude-opus-4-7` | cloud | anthropic | text, vision | 1M | hearthnote_layer2 (default cloud); doclens_extract (default when cloud); doclens_vision_verify; copilot_clinical |
 | `anthropic-claude-haiku-4-5` | cloud | anthropic | text | 200K | copilot_admin (cost-optimized); doclens_classify (cloud fallback) |
 | `local-llama-3.1-8b-instruct` | local | meta | text | 128K | hearthnote_layer2 (default local); doclens_extract (local opt-in); copilot_clinical (local opt-in); copilot_admin (local opt-in) |
 | `local-mistral-7b-instruct` | local | mistral | text | 32K | alternative to Llama for the same set; per-tenant choice |

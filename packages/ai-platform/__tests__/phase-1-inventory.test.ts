@@ -49,7 +49,9 @@ describe("§2.3 backend inventory", () => {
     const stated = Object.fromEntries(
       AI_PHASE_1_BACKENDS.map((b) => [b.backendKey, b.contextWindowTokens]),
     );
-    expect(stated["anthropic-claude-opus-4-7"]).toBe(200_000);
+    // 1M — `claude-opus-4-7` is a 1M-context model. §2.3's table said 200K against an earlier Opus
+    // generation; the table and this row were corrected together. Haiku 4.5 really is 200K.
+    expect(stated["anthropic-claude-opus-4-7"]).toBe(1_000_000);
     expect(stated["anthropic-claude-haiku-4-5"]).toBe(200_000);
     expect(stated["local-llama-3.1-8b-instruct"]).toBe(128_000);
     expect(stated["local-mistral-7b-instruct"]).toBe(32_000);
@@ -140,12 +142,16 @@ describe("§2.4 capability inventory", () => {
     expect([...(gap?.blocks ?? [])].sort()).toEqual(backendless.sort());
   });
 
-  it("states a risk tier everywhere an authority states one, and null where none does", () => {
-    const unstated = AI_PHASE_1_CAPABILITIES.filter((c) => c.riskTier === null).map(
-      (c) => c.capabilityKey,
-    );
-    expect(unstated).toEqual(["level_of_care_prediction"]);
-    expect(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).toContain(
+  it("states a risk tier for every capability — an unclassified one is unrepresentable", () => {
+    // `riskTier` was `AiCapabilityRiskTier | null` while `level_of_care_prediction` had no stated
+    // tier. The architecture catalog now states one for all eighteen, so the type dropped `| null`
+    // and this asserts the value side of that: every row carries a real tier. If a future capability
+    // arrives unclassified, the fix is a catalog entry, not re-widening the type.
+    for (const c of AI_PHASE_1_CAPABILITIES) {
+      expect(["high", "medium", "low"]).toContain(c.riskTier);
+    }
+    expect(AI_PHASE_1_CAPABILITIES_BY_KEY.get("level_of_care_prediction")?.riskTier).toBe("high");
+    expect(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).not.toContain(
       "level-of-care-risk-tier-unstated",
     );
   });
@@ -160,10 +166,18 @@ describe("§2.4 capability inventory", () => {
     expect(
       AI_PHASE_1_CAPABILITIES_BY_KEY.get("mortality_decline_prediction")?.governanceCatalogId,
     ).toBe("mortality-decline-prediction");
+    // Every registered capability now resolves to a catalog id — the six that did not were added to
+    // docs/ai/capability-catalog.yaml and to AI Governance §4.1, and check-ai-governance.ts enforces
+    // all eighteen. A capability registered here with no governance doc is the hole this closes.
     const uncatalogued = AI_PHASE_1_CAPABILITIES.filter(
       (c) => c.governanceCatalogId === null,
     ).map((c) => c.capabilityKey);
-    expect(uncatalogued).toHaveLength(6);
+    expect(uncatalogued).toEqual([]);
+    expect(new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.governanceCatalogId)).size).toBe(
+      AI_PHASE_1_CAPABILITIES.length,
+    );
+    // The gap stays: it now records only the REVERSE direction — `aggregate-cap-projection` is
+    // cataloged but has no §2.4 row, so it is registrable by nobody and servable by nothing.
     expect(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).toContain(
       "registry-and-architecture-catalog-are-not-one-to-one",
     );
@@ -201,17 +215,23 @@ describe("risk-tier-derived governance defaults (§3.2.1)", () => {
     expect(aiCapabilityGovernanceDefaults("low").clinicalReviewRequired).toBe(false);
   });
 
-  it("resolves an UNSTATED tier to the safe side", () => {
-    // `level_of_care_prediction` has no stated tier. Defaulting it to "no clinical review" would let
-    // the missing datum become a skipped gate.
-    expect(aiCapabilityGovernanceDefaults(null).clinicalReviewRequired).toBe(true);
+  it("requires clinical review for high risk, and cannot be asked about an unstated tier", () => {
+    expect(aiCapabilityGovernanceDefaults("high").clinicalReviewRequired).toBe(true);
+    // There is deliberately no `null` case left to test. This helper used to resolve an unstated
+    // tier to the safe side (review required); now `AiCapabilityRiskTier` admits no null, so the
+    // question cannot be asked. `@ts-expect-error` is the assertion — if someone re-widens the
+    // parameter this line stops erroring and the test fails, which is the point.
+    // @ts-expect-error an unstated risk tier is unrepresentable
+    expect(() => aiCapabilityGovernanceDefaults(null)).toBeDefined();
   });
 });
 
 describe("the gap list", () => {
-  it("carries six gaps with unique ids and non-empty detail", () => {
-    expect(AI_PHASE_1_INVENTORY_GAPS).toHaveLength(6);
-    expect(new Set(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).size).toBe(6);
+  it("carries five gaps with unique ids and non-empty detail", () => {
+    // Six until `level-of-care-risk-tier-unstated` was closed by the architecture catalog stating
+    // the tier. The count is asserted so a gap cannot be silently dropped OR silently added.
+    expect(AI_PHASE_1_INVENTORY_GAPS).toHaveLength(5);
+    expect(new Set(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).size).toBe(5);
     for (const gap of AI_PHASE_1_INVENTORY_GAPS) {
       expect(gap.detail.length).toBeGreaterThan(80);
     }

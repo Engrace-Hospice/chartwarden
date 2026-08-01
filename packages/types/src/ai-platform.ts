@@ -500,8 +500,11 @@ export interface AiPhase1BackendRegistration {
 export interface AiPhase1CapabilityRegistration {
   readonly capabilityKey: string;
   readonly displayName: string;
-  /** `null` where no authority states it — see `AI_PHASE_1_INVENTORY_GAPS`. */
-  readonly riskTier: AiCapabilityRiskTier | null;
+  /** Never null. Every cataloged capability carries a risk class, and `ai_capability.risk_tier` is
+   *  NOT NULL — so an unclassified capability is unrepresentable here rather than merely unseeded.
+   *  This was `| null` while `level_of_care_prediction` had no stated tier; the architecture catalog
+   *  now states one for all eighteen. Re-widening this is how that hole comes back. */
+  readonly riskTier: AiCapabilityRiskTier;
   readonly phase1LifecycleState: AiCapabilityLifecycleState;
   /** `null` for the tabular-ML capabilities: §2.4 writes "tabular ML (XGBoost on `local-ml-worker`)",
    *  which is a SERVICE, not one of the backend keys §2.3 registers. `ai_capability.default_backend_key`

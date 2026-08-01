@@ -40,7 +40,11 @@ export const AI_PHASE_1_BACKENDS: readonly AiPhase1BackendRegistration[] = [
     vendor: "anthropic",
     modelFamily: "claude",
     supportedModalities: ["text", "vision"],
-    contextWindowTokens: 200_000,
+    // 1M, not the 200K §2.3's table states. `claude-opus-4-7` is a 1M-context / 128K-output model;
+    // the spec table was written against an earlier Opus generation and has been corrected alongside
+    // this. Understating it is not harmless in the "safe direction" — it truncates prompts the model
+    // could serve, which is the failure this file's header warns about.
+    contextWindowTokens: 1_000_000,
     isActive: true,
     servesCapabilityKeys: [
       "hearthnote_layer2",

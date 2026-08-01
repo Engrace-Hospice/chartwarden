@@ -93,8 +93,8 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "anthropic-claude-opus-4-7",
     consumerModules: ["m22"],
-    governanceCatalogId: null,
-    note: "Phase-2 promotion target. No entry in the architecture capability catalog — a 42 CFR Part 2 detector that reaches APPROVED without one would be a governance gap, not just a bookkeeping one.",
+    governanceCatalogId: "doclens-sud-detection",
+    note: "Phase-2 promotion target. Cataloged as `doclens-sud-detection` — a 42 CFR Part 2 detector reaching APPROVED without a governance entry would have been a governance gap, not just a bookkeeping one, so the entry is a precondition of promoting it.",
   },
   {
     capabilityKey: "copilot_clinical",
@@ -143,7 +143,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "anthropic-claude-opus-4-7",
     consumerModules: ["m19"],
-    governanceCatalogId: null,
+    governanceCatalogId: "protocol-suggestion-oncall",
     note: "Phase-2 promotion target. M19-T01 already declared the ProtocolSuggestionProvider seam in @wardenx/types; M32 implements it as a deny-stub, it does not re-declare it.",
   },
   {
@@ -153,8 +153,8 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: null,
     consumerModules: ["m19", "m14", "m16"],
-    governanceCatalogId: null,
-    note: "Tabular ML (XGBoost on local-ml-worker) — no §2.3 backend key. The architecture §10 capability inventory lists it; the architecture's enforced catalog does not.",
+    governanceCatalogId: "hospitalization-risk-30d",
+    note: "Tabular ML (XGBoost on local-ml-worker) — no §2.3 backend key. Named by the architecture §10 capability inventory and now cataloged as `hospitalization-risk-30d`.",
   },
   {
     capabilityKey: "bereavement_risk_narrative",
@@ -163,7 +163,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     phase1LifecycleState: "DESIGN_REVIEW",
     defaultBackendKey: "anthropic-claude-opus-4-7",
     consumerModules: ["m16"],
-    governanceCatalogId: null,
+    governanceCatalogId: "bereavement-risk-narrative",
     note: "Phase-2 promotion target. M16 ships the deterministic D3/D17 score alone until this promotes — its `ai.full` ladder is already built against that expectation.",
   },
   {
@@ -173,7 +173,7 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     phase1LifecycleState: "PROPOSED",
     defaultBackendKey: null,
     consumerModules: ["m25"],
-    governanceCatalogId: null,
+    governanceCatalogId: "denial-outcome-prediction",
     note: "Phase 2+. Tabular ML (XGBoost on local-ml-worker) — no §2.3 backend key.",
   },
   {
@@ -199,12 +199,12 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
   {
     capabilityKey: "level_of_care_prediction",
     displayName: "Level of Care Prediction",
-    riskTier: null,
+    riskTier: "high",
     phase1LifecycleState: "PROPOSED",
     defaultBackendKey: null,
     consumerModules: [],
-    governanceCatalogId: null,
-    note: "Named by §2.4's prediction group and by the architecture §10 capability inventory (XGBoost; care plan + IDG surface), but absent from the enforced architecture catalog — so nothing states its risk tier. `ai_capability.risk_tier` is NOT NULL: unseedable until stated.",
+    governanceCatalogId: "level-of-care-prediction",
+    note: "§2.4's prediction group and the architecture §10 inventory both named this capability without classifying it, which left `ai_capability.risk_tier` (NOT NULL) unseedable. The architecture catalog now states it: `level-of-care-prediction` is high, RATIFIED 2026-08-01. The tier is load-bearing, not descriptive — it puts a Clinical Reviewer on the approval gate (§5.7), sets the 12-month reapproval cadence (§5.6), and makes the §164.528 disclosure-accounting acknowledgment mandatory before a tenant may opt in (§5.3.1(4)).",
   },
 ];
 
@@ -231,14 +231,13 @@ export function isAiPhase1CapabilityKey(key: string): boolean {
  * while clinical review is a high-risk-only burden. A medium-risk capability that silently skipped
  * tenant opt-in would be the exact failure D17's gate exists to prevent.
  */
-export function aiCapabilityGovernanceDefaults(riskTier: AiCapabilityRiskTier | null): {
+export function aiCapabilityGovernanceDefaults(riskTier: AiCapabilityRiskTier): {
   readonly tenantOptInRequired: boolean;
   readonly clinicalReviewRequired: boolean;
 } {
   return {
     tenantOptInRequired: true,
-    // `null` (tier unstated) resolves to the SAFE side: review required until someone states otherwise.
-    clinicalReviewRequired: riskTier === null || riskTier === "high",
+    clinicalReviewRequired: riskTier === "high",
   };
 }
 
@@ -279,15 +278,9 @@ export const AI_PHASE_1_INVENTORY_GAPS: readonly AiPhase1InventoryGap[] = [
       "§2.1 says `ai_capability.current_prompt_template_key` is 'nullable for non-LLM capabilities', but §3.2.1's `ai_capability_approved_has_template` CHECK forbids NULL for any row at APPROVED or MONITORING. `embeddings_clinical` is both APPROVED and non-LLM, so the row as §2.4 specifies it cannot be INSERTed. Resolvable either by relaxing the CHECK to exempt non-LLM capabilities or by registering a degenerate template row; M32-T02 has to pick one and the choice is a schema decision, not a seed decision.",
   },
   {
-    id: "level-of-care-risk-tier-unstated",
-    blocks: ["level_of_care_prediction"],
-    detail:
-      "Neither §2.4, nor the architecture §10 capability inventory, nor the enforced architecture catalog states a risk tier for level-of-care prediction. `ai_capability.risk_tier` is NOT NULL. A guess here is load-bearing — the tier decides `clinical_review_required` and the AI Governance §4.2 evidence burden — so the field is null and the row is unseedable until stated.",
-  },
-  {
     id: "registry-and-architecture-catalog-are-not-one-to-one",
     blocks: [],
     detail:
-      "Six of the seventeen capabilities have no architecture-catalog id (`doclens_sud_detect`, `protocol_suggestion_oncall`, `hospitalization_risk_30d`, `bereavement_risk_narrative`, `denial_outcome_prediction`, `level_of_care_prediction`), and the catalog's `aggregate-cap-projection` (module 26) is absent from §2.4. `arch:ai-governance` only checks the twelve architecture-listed ids, so nothing goes red — but the two registries are not the same set, and the AI Governance §4.1 catalog is meant to be the platform-wide one.",
+      "RESOLVED IN ONE DIRECTION, still open in the other. The six capabilities that had no architecture-catalog id (`doclens_sud_detect`, `protocol_suggestion_oncall`, `hospitalization_risk_30d`, `bereavement_risk_narrative`, `denial_outcome_prediction`, `level_of_care_prediction`) were added to `docs/ai/capability-catalog.yaml` and to AI Governance §4.1, and `check-ai-governance.ts` now enforces all eighteen rather than the original twelve — so every capability this inventory registers has a governance doc, a risk class, and a catalog entry. What remains is the reverse: the catalog's `aggregate-cap-projection` (module 26) is still absent from §2.4, so it is cataloged but unregistered and nothing will serve it. Resolving that is a §2.4 decision — either M32 registers it or the catalog records why it does not.",
   },
 ];

@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 963,
-    "enriched": 485,
+    "routes": 995,
+    "enriched": 517,
     "deficit": 478,
-    "mutating": 563,
+    "mutating": 574,
     "mutatingNoBody": 330,
-    "gets": 378,
-    "getsNoResponse": 211
+    "gets": 395,
+    "getsNoResponse": 228
   },
   "modules": [
     {
@@ -278,6 +278,16 @@
       "mutatingNoBody": 3,
       "gets": 24,
       "getsNoResponse": 0
+    },
+    {
+      "module": "32-ai-platform",
+      "routes": 32,
+      "enriched": 32,
+      "deficit": 0,
+      "mutating": 11,
+      "mutatingNoBody": 0,
+      "gets": 17,
+      "getsNoResponse": 17
     },
     {
       "module": "33-reporting",
