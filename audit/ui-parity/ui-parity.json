@@ -30,6 +30,7 @@
     "16-bereavement",
     "17-scheduling",
     "18-evv",
+    "19-oncall",
     "21-supplies",
     "22-documents",
     "23-billing-medicare",
@@ -787,6 +788,111 @@
       "id": "evv.my-devices",
       "path": "/me/evv/devices",
       "permission": "evv.device.read"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.queue",
+      "path": "/triage",
+      "permission": "triage.read"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.intake",
+      "path": "/triage/intake",
+      "permission": "triage.open"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.call",
+      "path": "/triage/calls/:triageCallId",
+      "permission": "triage.read"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.call.history",
+      "path": "/triage/calls/:triageCallId/history",
+      "permission": "triage.read"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.call.transcript",
+      "path": "/triage/calls/:triageCallId/transcript",
+      "permission": "triage.read_transcript"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.escalations",
+      "path": "/triage/escalations",
+      "permission": "triage.read_escalations"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "oncall.shifts",
+      "path": "/triage/shifts",
+      "permission": "oncall.read_schedule"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "oncall.shift",
+      "path": "/triage/shifts/:shiftId",
+      "permission": "oncall.read_schedule"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "oncall.me",
+      "path": "/me/oncall",
+      "permission": "oncall.read_schedule"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.protocols",
+      "path": "/triage/protocols",
+      "permission": "triage.read"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.protocol",
+      "path": "/triage/protocols/:protocolId",
+      "permission": "triage.read"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "oncall.policy",
+      "path": "/triage/policy",
+      "permission": "oncall.read_policy"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "oncall.vendors",
+      "path": "/triage/vendors",
+      "permission": "oncall.read_policy"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.paper_reentry",
+      "path": "/triage/paper-reentry",
+      "permission": "triage.paper_reentry"
+    },
+    {
+      "module": "19-oncall",
+      "moduleId": 19,
+      "id": "triage.metrics",
+      "path": "/triage/metrics",
+      "permission": "triage.read"
     },
     {
       "module": "21-supplies",

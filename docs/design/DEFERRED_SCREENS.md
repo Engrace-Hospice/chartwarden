@@ -466,6 +466,7 @@ per-screen status. Examples:
 Care Plan (M7 done; M15 discipline plans + volunteer management done²⁴), Orders (M11; done¹⁸),
 eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
 IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), EVV (M18; done²³),
+On-Call Triage + On-Call Roster & Protocols (M19; done²⁷),
 Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
 Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
@@ -578,6 +579,69 @@ Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the 
 > raw. The web slice converts in exactly one place (`fractionAsPct`); the §9.3 live RLS suite asserts the
 > scale, because printing 0.05 under a "%" heading would understate a controlled-substance shortfall a
 > hundredfold.
+
+> ²⁷ **M19 On-Call Triage now LIVE (Wave P2-2, M19-T08).** Fifteen screens under
+> `apps/web/src/modules/19-oncall`, registered into the M1 shell via `oncallScreens` (`main.tsx`) under a
+> new "On-call" nav group, over the live 38-route M19 backend. They cover both M19 screen specs —
+> `WARDENX_UI_ON_CALL_TRIAGE.md` (the live-call surface) and `WARDENX_UI_ONCALL_ROSTER_PROTOCOLS.md` (its
+> administrative twin): the supervisor board; the intake that starts a record; the triage panel driving the
+> §2.2.1 call machine (server-gated protocol stepper, red-flag and mandatory-escalation banners, the §6/§7.3
+> disposition matrix, the M8 encounter hand-off, the D15 medication context, the D11/D12 advisory block);
+> the read-only call history; the D7 escalation inbox with the acknowledge + resolve writes §7.2 waits on;
+> the CoP 418.100(c)(2) coverage record (roster, single shift with the "go on shift" CTA, and the
+> clinician's own `/me/oncall`); the D4 two-layer protocol catalog and its per-protocol red-flag predicate
+> editor; the tenant on-call policy and the §8.5 external-vendor bindings; the §2.7 business-continuity
+> paper re-entry; and the program-metrics page. Built to Lantern: the §6.6 StatusPill taxonomy through a
+> per-module `oncall-status.ts` keyed on the frozen `packages/types/src/oncall.ts` unions, No-Line tables
+> (§6.7), CSS-var tokens only (zero hex), and §5.4's 44×44 tap-target floor on every control because the
+> on-call clinician is this module's primary mobile user. §5's ceremonies are not separate registry entries
+> — each lives in the parent that already read the row's **integer `version`**, which is M19's `If-Match`
+> value (§2.5, unlike M21's timestamp ETag). Nav visibility is gated by the real §4.6 keys (`triage.read` /
+> `.open` / `.read_transcript` / `.read_escalations` / `.paper_reentry`, `oncall.read_schedule` /
+> `.read_policy`); the SERVER stays the only enforcement point — a call outside your reach is a non-leaking
+> **404**, deliberately, because "this call 403s" would tell an unauthorized caller that a particular
+> patient rang the after-hours line.
+>
+> **Two screens §5.1 does not list, each because it carries a different permission and nav gating is
+> per-screen** (the M21 perpetual-log lesson): `/triage/calls/:id/transcript` (`triage.read_transcript` +
+> an M2 step-up + a per-access audit row — a clinician who may WORK a call must not thereby acquire the
+> decrypted words of every call they can see; the screen decrypts on an explicit click, never on mount) and
+> `/triage/paper-reentry` (`triage.paper_reentry`, the one write that can back-date a call past a coverage
+> gap — §4.6 gives it a compliance-category key and a permission with no screen is one that gets granted and
+> forgotten).
+>
+> **Three refusals worth stating, because each was a place the spec asked for something the server cannot
+> back.** §5.1's queue "ack / take / re-route" row actions are not built: §4.1 publishes no assign, claim or
+> re-route route and `triage_call` has no assignee column — the covering SHIFT is the assignment, resolved
+> server-side at open. §5.1's "verbal-order seam button" is not a button: D9's step-up is asserted at the M11
+> seam invocation, not at an M19 route, and M19 mints no order — the `verbal_order_recorded` disposition
+> names an order id M11 already returned. And §5.1's patient header strip carries only M19's own DTO:
+> allergies and code status live in M5/M7 with no M19 reader, and inventing a strip from another module's
+> data would be a second, unaudited PHI path.
+>
+> Further honest gaps, stated on the screens themselves rather than faked: the shift detail finds its row in
+> the roster LIST because M19 publishes no per-shift read (a shift outside the window reads "not in range",
+> never "does not exist"), and §5.1's handoff-notes field is dropped for want of a column; the roster's
+> clinician × time calendar is a sortable table, because a week grid keyed on clinician needs a membership
+> directory M19 does not publish and every lane header would read as an opaque id; the escalation inbox
+> shows true elapsed minutes rather than "% of SLA", because `acknowledged_within_seconds` does not exist and
+> the per-severity target is tenant-shaped JSON no route resolves per row; the policy screen edits its three
+> JSON columns AS JSON, because no per-key schema is published and a structured form would silently drop the
+> first unfamiliar ladder key on save; the protocol catalog's SNOMED field is pattern-validated free text
+> (M38's lookup is another module's screen and permission) and there is no draft/publish workflow, because
+> `triage_protocol` has no draft state — versioning is by effective date and a call freezes its version at
+> apply; the metrics page is PAGE-derived with an explicit "at least" notice (§4.1 publishes no aggregate
+> route and §4.1.1 forbids a total count on a PHI list, because a count is an enumeration oracle) and it
+> NAMES the six §5.1 metrics it will not approximate — hospitalization avoidance, visit conversion,
+> late-checkout conversion, calls per clinician, AI-suggestion acceptance and SLA attainment; and the §5.2
+> Capacitor variants (push, Do-Not-Disturb bypass, one-tap dialling) plus the §5.3 portal care-log stay
+> forward-seams owned by the native shell (ADR-0035) and M31 respectively.
+>
+> **"Unknown" is a third banner state, not a rounding of "off".** `/me/oncall` answers "am I on call?" from
+> the live per-ProviderEntity coverage read, and a FAILED read renders amber ("do not treat this as off
+> call") rather than the grey OFF banner — the M19-T04/T06 lesson that an outage rendered as an empty result
+> is how a clinician turns their phone face-down. The same rule governs the roster's coverage banner and the
+> panel's D15 medication slices, each of which distinguishes "unavailable" from "none" per surface.
 
 ---
 

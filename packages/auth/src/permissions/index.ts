@@ -213,3 +213,10 @@ export {
   M21_CONTRIBUTED_PERMISSIONS,
   m21ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M19 — Module 19's seventeen On-Call Triage permission keys (§4.6 handshake).
+export {
+  type M19ContributedPermissionKey,
+  M19_CONTRIBUTED_PERMISSIONS,
+  m19ContributedPermissionMirrorRows,
+} from "./contributed";

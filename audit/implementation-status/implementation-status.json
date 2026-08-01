@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 32,
+    "Implemented": 33,
     "Partial": 0,
-    "Placeholder": 8
+    "Placeholder": 7
   },
   "rows": [
     {
@@ -260,16 +260,16 @@
     {
       "id": 19,
       "module": "M19 On-Call Triage",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": false,
-      "screens": false,
-      "tests": false,
-      "adapter": false,
-      "liveInfra": false
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": true,
+      "screens": true,
+      "tests": true,
+      "adapter": true,
+      "liveInfra": true
     },
     {
       "id": 20,

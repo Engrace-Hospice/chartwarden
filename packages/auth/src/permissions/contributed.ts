@@ -3701,6 +3701,154 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
 /** Union of the M21 contributed permission keys (twenty-eight). */
 export type M21ContributedPermissionKey = keyof typeof M21_CONTRIBUTED_PERMISSIONS;
 
+/**
+ * Module 19 — On-Call Triage: the §4.6 permission keys the module contributes to this M3-owned catalog
+ * (M19-T07). Seventeen keys, verbatim from §4.6's `M19_PERMISSION_KEYS`, in that block's order.
+ *
+ * THE `abac` FIELD IS THE CATALOG DEFAULT, NOT THE ROUTE BINDING. §4.1 binds a predicate per route and
+ * several keys carry DIFFERENT predicates on different rows (`triage.read` is `caseload_or_scope` on the
+ * list, `triage_call_owner_or_supervisor` on the detail, and org-scoped on the protocol catalog). The
+ * default recorded here is the one an admin granting the key should assume; the route guard is the
+ * authority. All six M19-owned names are registered by `registerOncallAbacPredicates`:
+ * `oncall_eligible`, `triage_call_owner_or_supervisor`, `external_triage_actor`,
+ * `escalation_recipient_scope`, `escalation_recipient`, `portal_session_consent_active`.
+ *
+ * FOUR catalog decisions worth stating, because each is easy to get backwards:
+ *
+ *   1. `triage.read` defaults to `caseload_or_scope` (M7's shared patient-scope predicate), NOT to
+ *      M19's own `triage_call_owner_or_supervisor`. §6's "read call" row grants org-wide (broad) visibility
+ *      to Sched / Clin Supv / DON / Med Dir / Comp Off / Surveyor, and `caseload_or_scope` is the predicate
+ *      that already encodes "caseload OR the role's org scope". Defaulting to the owner predicate would
+ *      make the supervisor board — the one surface that exists to catch a call nobody picked up — return
+ *      nothing for the very roles it is for.
+ *   2. THE TWO POLICY-ADMIN KEYS ARE `admin`, NOT `clinical`. `oncall.admin_policy` edits the escalation
+ *      ladder and the vendor binding; §6 grants it to DON and Compliance Officer only. A clinical
+ *      category grant would sweep it to every RN template that takes `category: clinical` wholesale.
+ *   3. `triage.paper_reentry` is `compliance`, not `triage`. §2.7's back-dated `opened_at` is the one
+ *      write in M19 that can hide a coverage gap (§8.3.2 names it as a tampering threat), so it is
+ *      categorised with the audit/legal-hold keys a compliance template grants, and the route adds step-up.
+ *   4. `portal.triage.read_recent` keeps §4.6's `oncall` category verbatim even though it is a PORTAL key.
+ *      The category is the catalog's grouping for the admin UI, and §4.6 is explicit; re-categorising it
+ *      to `portal` here would silently drop it out of whatever template §4.6's author grouped it into.
+ */
+export const M19_CONTRIBUTED_PERMISSIONS = {
+  // ── triage calls (§4.1 rows 1-14) ───────────────────────────────────────────────────────────────────
+  "triage.open": {
+    resource: "triage_call",
+    action: "open",
+    category: "triage",
+    abac: "oncall_eligible",
+  },
+  "triage.read": {
+    resource: "triage_call",
+    action: "read",
+    category: "triage",
+    abac: "caseload_or_scope",
+  },
+  "triage.write": {
+    resource: "triage_call",
+    action: "write",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
+  "triage.disposition": {
+    resource: "triage_call",
+    action: "disposition",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
+  // §4.1 row 14 — step-up + a per-access M4 audit row on top of the predicate.
+  "triage.read_transcript": {
+    resource: "triage_call",
+    action: "read_transcript",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
+  "triage.close_abandoned": {
+    resource: "triage_call",
+    action: "close_abandoned",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
+  // ── escalations (§4.1 rows 15-18) ───────────────────────────────────────────────────────────────────
+  "triage.escalate": {
+    resource: "triage_escalation",
+    action: "create",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
+  "triage.read_escalations": {
+    resource: "triage_escalation",
+    action: "read",
+    category: "triage",
+    abac: "escalation_recipient_scope",
+  },
+  "triage.escalation_ack": {
+    resource: "triage_escalation",
+    action: "acknowledge",
+    category: "triage",
+    abac: "escalation_recipient",
+  },
+  "triage.escalation_resolve": {
+    resource: "triage_escalation",
+    action: "resolve",
+    category: "triage",
+    abac: "escalation_recipient",
+  },
+  // ── protocol catalog (§4.1 rows 29-32) ──────────────────────────────────────────────────────────────
+  "triage.admin_protocol": {
+    resource: "triage_protocol",
+    action: "admin",
+    category: "triage_admin",
+    abac: "inOrg",
+  },
+  // ── on-call shifts + policy (§4.1 rows 19-26) ───────────────────────────────────────────────────────
+  "oncall.read_schedule": {
+    resource: "on_call_shift",
+    action: "read",
+    category: "oncall",
+    abac: "caseload_or_scope",
+  },
+  "oncall.write_schedule": {
+    resource: "on_call_shift",
+    action: "write",
+    category: "oncall",
+    abac: "inOrg",
+  },
+  "oncall.read_policy": {
+    resource: "tenant_oncall_policy",
+    action: "read",
+    category: "oncall",
+    abac: "inOrg",
+  },
+  // Decision 2 — `admin`, not `clinical`/`oncall`: it edits the escalation ladder and the vendor binding.
+  "oncall.admin_policy": {
+    resource: "tenant_oncall_policy",
+    action: "admin",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── portal (§4.1 row 36) ────────────────────────────────────────────────────────────────────────────
+  // Decision 4 — §4.6's `oncall` category kept verbatim.
+  "portal.triage.read_recent": {
+    resource: "triage_call",
+    action: "portal_read_recent",
+    category: "oncall",
+    abac: "portal_session_consent_active",
+  },
+  // ── M19-F08 BCP paper-origin re-entry (DR-013/066) ──────────────────────────────────────────────────
+  // Decision 3 — `compliance`: this is the one write that can back-date a call past a coverage gap.
+  "triage.paper_reentry": {
+    resource: "triage_call",
+    action: "paper_reentry",
+    category: "compliance",
+    abac: "inOrg",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M19 contributed permission keys (seventeen). */
+export type M19ContributedPermissionKey = keyof typeof M19_CONTRIBUTED_PERMISSIONS;
+
 /** Project a contributed-key map into `permission`-table mirror rows (same contract as M3's). */
 function mirrorRowsFor(map: Record<string, PermissionDef>): PermissionMirrorRow[] {
   return Object.entries(map).map(([key, def]) => ({
@@ -3856,6 +4004,11 @@ export function m16ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
 /** Project the M21 contributed keys into `permission`-table mirror rows (M21 §4.3). */
 export function m21ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M21_CONTRIBUTED_PERMISSIONS);
+}
+
+/** Project the M19 contributed keys into `permission`-table mirror rows (M19 §4.6). */
+export function m19ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M19_CONTRIBUTED_PERMISSIONS);
 }
 
 /**
@@ -4109,5 +4262,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m15ContributedPermissionMirrorRows(),
     ...m16ContributedPermissionMirrorRows(),
     ...m21ContributedPermissionMirrorRows(),
+    ...m19ContributedPermissionMirrorRows(),
   ];
 }

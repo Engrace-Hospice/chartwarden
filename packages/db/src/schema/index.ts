@@ -608,3 +608,26 @@ export * from "./bereavement/index";
 // comfort_kit_dispatch monthly by dispatched_at (0105). Enums + the nine unpartitioned tables 0103;
 // RLS/grants + M4 write-audit + the discrepancy and expiration-floor triggers 0106.
 export * from "./supplies/index";
+
+// M19 On-Call Triage: 10 owned tables (§3.3) in four layers — CONFIG (tenant_oncall_policy, D3/D7's
+// per-(org, PE) model + tier ladder + callback SLA + the two default-OFF AI gates, now carrying the §2.7
+// D-D `emergency_contact_e164` the degraded path names; external_triage_vendor, D13/ADR-0026's BAA-gated
+// binding to a vendor whose canonical entity is M40's and for which M19 mints NO tokens), ROSTER
+// (on_call_shift — the CoP 418.100(c)(2) proof that a nurse was reachable at 2 a.m., with D7's
+// policy_snapshot pinned at open and an actor-integrity CHECK making membership and vendor mutually
+// exclusive), CATALOG (triage_protocol + triage_protocol_question, D4's platform-floor-plus-tenant-overlay
+// where D5's server-evaluated red_flag_match predicates and D7's mandatory-escalation tiers live), and
+// CALL (triage_call, D6's nine-state after-hours clinical record with D10's source-outbox dedupe and the
+// M19-F08 paper-origin pair; the append-only triage_call_answer ledger with one original answer per
+// question and corrections by append; triage_escalation, D7's ladder where three of four trigger kinds are
+// server-written; triage_call_state_history, whose transition GAP is how §2.7 detects an outage window;
+// and triage_paper_reentry_worklist, the 72-hour BCP list — the tenth table §12/§13 predate). Eight tables
+// are org-scoped NOT NULL on canonical app.org_id RLS; triage_protocol/_question carry organization_id
+// NULLABLE on the platform-floor row only, paired with the is_system_locked discriminator + a CHECK pair
+// in both directions. The four call tables also carry provider_entity_id NOT NULL + location_id nullable
+// (the three-column rule the §3.3 block omits). NOTHING is partitioned — §10/§12 ask for monthly
+// partitions on the three call tables, but a partition key in a UNIQUE index would destroy both the D10
+// redelivery guard and the one-original-answer-per-question rule, and forbid the children's real FKs
+// (full reasoning in oncall/triage-calls.ts). Enums land in M19-T01; the ten tables migration 0107;
+// RLS/grants + the ten M4 write-audit triggers + the §2.3 forward-transition guard 0108.
+export * from "./oncall/index";

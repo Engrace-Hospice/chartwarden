@@ -2565,3 +2565,145 @@ export const comfortKitDispatchStatus = pgEnum("m21_comfort_kit_dispatch_status"
   "reconciled",
   "reconciled_with_discrepancy",
 ]);
+
+// ── Module 19 — On-Call Triage (§3.2 Phase A, M19-T01) ───────────────────────────────────────────────
+//
+// NAMING: M19's §3.2 SQL enum names carry NO `m19_` prefix (unlike M21's §3.1.1, which spells its own
+// prefix into the normative DDL). The spec's Phase-A `CREATE TYPE` block is followed verbatim — none of
+// the thirteen names collides with an existing type in this file.
+
+/** `oncall_model` — D3. The tenant's after-hours deployment model. Only `direct` is enabled at Phase 1;
+ *  `hybrid` and `centralized` are structurally complete behind a per-customer feature flag (default OFF)
+ *  until the vendor BAA + PHI-minimization profile clear Compliance. */
+export const oncallModel = pgEnum("oncall_model", ["direct", "hybrid", "centralized"]);
+
+/** `oncall_shift_status` — §2.2.2. `scheduled → active → completed | cancelled`. The `scheduled → active`
+ *  transition is what pins `on_call_shift.policy_snapshot` (D7) and re-syncs M36's `on_call` channel. */
+export const oncallShiftStatus = pgEnum("oncall_shift_status", [
+  "scheduled",
+  "active",
+  "completed",
+  "cancelled",
+]);
+
+/** `oncall_shift_discipline` — who the shift designates. `external` is the Hybrid/Centralized case where
+ *  the recipient is a vendor actor, not a membership; §3.3's `actorIntegrity` CHECK makes the two
+ *  mutually exclusive (external ⇒ vendor id set + membership null, and the converse). */
+export const oncallShiftDiscipline = pgEnum("oncall_shift_discipline", [
+  "clinical_rn",
+  "clinical_lpn",
+  "medical_director",
+  "msw",
+  "chaplain",
+  "external",
+]);
+
+/** `triage_call_state` — §2.2.1 / D6. `documented_pending_encounter` (M19-F06 / ADR-0022) sits between
+ *  disposition selection and `documented`: the call parks there while awaiting `m8.encounter.signed` for
+ *  `linked_encounter_id` (D8), and it is also where the §2.7 D-B degraded-mode flow strands a call when
+ *  the M8 `EncounterCreator` seam is unreachable. */
+export const triageCallState = pgEnum("triage_call_state", [
+  "open",
+  "protocol_in_progress",
+  "awaiting_callback",
+  "disposition_pending",
+  "documented_pending_encounter",
+  "documented",
+  "escalated_unresolved",
+  "abandoned",
+  "closed",
+]);
+
+/** `triage_call_caller_kind` — who is on the other end. `system_inbound` covers the D10 machine-opened
+ *  calls (M17 no-show, M18 late check-out) where no human dialled in. */
+export const triageCallCallerKind = pgEnum("triage_call_caller_kind", [
+  "patient",
+  "caregiver",
+  "external_clinician",
+  "portal_session",
+  "system_inbound",
+  "bereaved_family",
+]);
+
+/** `triage_call_inbound_channel` — the transport the call arrived on. */
+export const triageCallInboundChannel = pgEnum("triage_call_inbound_channel", [
+  "phone",
+  "sms",
+  "email",
+  "portal_message",
+  "inbound_visit_failure",
+  "inbound_evv_anomaly",
+  "inbound_alert_failure",
+]);
+
+/**
+ * `triage_call_source` — what caused the row to exist. Feeds the D10 idempotency guard
+ * (`triage_call_source_dedupe_uq` on `source_outbox_event_id`) and the §4.10 `opened` payload.
+ *
+ * SPEC READ (M19-F08): `paper_origin` is ADDED to the §3.2 Phase-A list. §2.7 step 1 requires the BCP
+ * re-entry path to open the call with **`source='paper_origin'`** and `paper_origin_flag=true`; the F08
+ * amendment added the two `paper_origin_*` columns to §3.3 but never updated this enum, so following
+ * §3.2 verbatim would leave §2.7 unimplementable. The value is additive and breaks nothing; M19-T02
+ * carries the CHECK that keeps the flag and the enum value in lock-step so the two cannot disagree.
+ */
+export const triageCallSource = pgEnum("triage_call_source", [
+  "manual",
+  "no_show",
+  "late_checkout",
+  "geofence_anomaly",
+  "m36_delivery_failure",
+  "paper_origin",
+]);
+
+/** `triage_disposition` — D6. The enumerable commitment that ends the call and that every downstream
+ *  consumer (M8, M11, M12, M17, M22, M30, M37) acts on. Deliberately NOT free text. */
+export const triageDisposition = pgEnum("triage_disposition", [
+  "caregiver_education_only",
+  "prn_intervention_authorized",
+  "verbal_order_recorded",
+  "visit_dispatched_now",
+  "visit_scheduled_first_light",
+  "gip_admission_proposed",
+  "ed_transfer_acknowledged",
+  "pronouncement_scheduled",
+  "escalated_unresolved",
+  "abandoned",
+]);
+
+/** `triage_escalation_tier` — D7. `tier_5_external` is the only tier whose recipient is a vendor rather
+ *  than a membership; §3.3's `recipientIntegrity` CHECK enforces exactly one of the two per row. */
+export const triageEscalationTier = pgEnum("triage_escalation_tier", [
+  "tier_1_rn_supervisor",
+  "tier_2_clinical_manager",
+  "tier_3_medical_director",
+  "tier_4_compliance_officer",
+  "tier_5_external",
+]);
+
+/** `triage_escalation_trigger` — why the escalation row exists. `mandatory_protocol` and
+ *  `red_flag_question` are the two the server writes itself (D5/D7); a tenant cannot suppress either. */
+export const triageEscalationTrigger = pgEnum("triage_escalation_trigger", [
+  "manual",
+  "red_flag_question",
+  "mandatory_protocol",
+  "sla_breach",
+]);
+
+/** `triage_protocol_answer_type` — the shape of one protocol question's answer. Selects which of
+ *  `triage_call_answer`'s three typed value columns the server writes (D5 evaluates the red-flag match
+ *  against that column, never against a client-supplied flag). */
+export const triageProtocolAnswerType = pgEnum("triage_protocol_answer_type", [
+  "boolean",
+  "integer",
+  "scale_0_10",
+  "free_text",
+  "enum",
+]);
+
+/** `triage_risk_band` — D11. The M32 hospitalization-risk advisory band. ADVISORY ONLY: it gates
+ *  nothing, alters no disposition option, and is excluded from the M31 portal projection. */
+export const triageRiskBand = pgEnum("triage_risk_band", ["low", "medium", "high"]);
+
+/** `triage_ai_confidence` — D12. The band M32's protocol suggestion arrived with. Below the governance
+ *  floor the suggestion is still SHOWN (de-emphasized) and still never auto-applied. */
+export const triageAiConfidence = pgEnum("triage_ai_confidence", ["low", "medium", "high"]);

@@ -20219,6 +20219,186 @@
         }
       }
     },
+    "/api/v1/escalations": {
+      "get": {
+        "operationId": "getApiV1Escalations",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The escalation inbox, narrowed server-side to the actor's tier band; `openOnly` defaults TRUE because an inbox shows what is outstanding (§4.1 #16)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "tier",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "tier_1_rn_supervisor",
+                  "type": "string"
+                },
+                {
+                  "const": "tier_2_clinical_manager",
+                  "type": "string"
+                },
+                {
+                  "const": "tier_3_medical_director",
+                  "type": "string"
+                },
+                {
+                  "const": "tier_4_compliance_officer",
+                  "type": "string"
+                },
+                {
+                  "const": "tier_5_external",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "openOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "triageCallId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/escalations/{escalationId}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1EscalationsByEscalationIdAcknowledge",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Acknowledge — the write §7.2 waits on; until it lands the call may take no disposition but the hand-off (§4.1 #17)",
+        "parameters": [
+          {
+            "name": "escalationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/escalations/{escalationId}/resolve": {
+      "post": {
+        "operationId": "postApiV1EscalationsByEscalationIdResolve",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Resolve with the escalated party's own account (≥ 30 chars) — the ONLY place a MANDATORY row can reach `resolved` (§2.2.4 / §4.1 #18)",
+        "parameters": [
+          {
+            "name": "escalationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "resolution"
+                ],
+                "properties": {
+                  "resolution": {
+                    "minLength": 30,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/evv/aggregator-submissions": {
       "get": {
         "operationId": "getApiV1EvvAggregatorsubmissions",
@@ -32867,6 +33047,683 @@
         }
       }
     },
+    "/api/v1/oncall/current": {
+      "get": {
+        "operationId": "getApiV1OncallCurrent",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Who is on call NOW, keyed PER ProviderEntity and never unioned — CoP 418.100(c)(2) is per-CCN, and `actors: []` for an entity is a REAL answer (a coverage gap), not an empty result (§4.1 #24)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/external-vendors": {
+      "get": {
+        "operationId": "getApiV1OncallExternalvendors",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1OncallExternalvendors",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Create a vendor binding (step-up). The BAA is a PRECONDITION, and there is deliberately NO secret field — ADR-0026 puts vendor credentials in the platform secret store, and the absence of the field is the control (§4.1 #34)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "mdmVendorId",
+                  "name",
+                  "adapterKey",
+                  "rnCoverageAttested",
+                  "baaInEffect",
+                  "defaultMinimizationPolicy"
+                ],
+                "properties": {
+                  "mdmVendorId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 2,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "adapterKey": {
+                    "minLength": 2,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "rnCoverageAttested": {
+                    "type": "boolean"
+                  },
+                  "baaInEffect": {
+                    "type": "boolean"
+                  },
+                  "baaExpiresOn": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "defaultMinimizationPolicy": {
+                    "additionalProperties": true,
+                    "type": "object",
+                    "required": [
+                      "profile"
+                    ],
+                    "properties": {
+                      "profile": {
+                        "anyOf": [
+                          {
+                            "const": "hybrid_phi_min",
+                            "type": "string"
+                          },
+                          {
+                            "const": "centralized_phi_min",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/external-vendors/{vendorId}": {
+      "patch": {
+        "operationId": "patchApiV1OncallExternalvendorsByVendorId",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "BAA renewal updates only — the narrow request shape IS the rule: changing the adapter key or the minimization profile would silently re-point live PHI at a different contract (§4.1 #35)",
+        "parameters": [
+          {
+            "name": "vendorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "rnCoverageAttested": {
+                    "type": "boolean"
+                  },
+                  "baaInEffect": {
+                    "type": "boolean"
+                  },
+                  "baaExpiresOn": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/policy": {
+      "get": {
+        "operationId": "getApiV1OncallPolicy",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The tenant on-call policy for one ProviderEntity. NOT auto-created on read: a default invented at read time would be pinned onto shifts as though the tenant had chosen it (§4.1 #25)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1OncallPolicy",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Edit the policy (step-up) — a `hybrid`/`centralized` selection where the D3 flag is off is REFUSED rather than accepted-and-ignored, so a tenant can never believe a vendor is answering their nights (§4.1 #26)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "anyOf": [
+                      {
+                        "const": "direct",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hybrid",
+                        "type": "string"
+                      },
+                      {
+                        "const": "centralized",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "escalationTiers": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "callbackSlaPerSeverity": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "stateOverrides": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {}
+                    }
+                  },
+                  "externalTriageVendorId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "emergencyContactE164": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\+[1-9]\\d{1,14}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "aiProtocolSuggestionEnabled": {
+                    "type": "boolean"
+                  },
+                  "aiHospitalizationRiskEnabled": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts": {
+      "get": {
+        "operationId": "getApiV1OncallShifts",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The on-call schedule, cursor-paginated (§4.1 #19)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "discipline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "clinical_rn",
+                  "type": "string"
+                },
+                {
+                  "const": "clinical_lpn",
+                  "type": "string"
+                },
+                {
+                  "const": "medical_director",
+                  "type": "string"
+                },
+                {
+                  "const": "msw",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain",
+                  "type": "string"
+                },
+                {
+                  "const": "external",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1OncallShifts",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Manual shift create — `policySnapshot` is NOT a body field: D7 pins it from the tenant policy at activation, and a caller-supplied snapshot would be a caller-supplied answer to 'which ladder was in effect that night' (§4.1 #20)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "shiftStartsAt",
+                  "shiftEndsAt",
+                  "discipline"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "shiftStartsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "shiftEndsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "discipline": {
+                    "anyOf": [
+                      {
+                        "const": "clinical_rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_lpn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "primaryOnCallMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "backupMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalActorId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "externalActorLabel": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts/{shiftId}/cancel": {
+      "patch": {
+        "operationId": "patchApiV1OncallShiftsByShiftIdCancel",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Cancel with a reason. No outbox event: a shift that never activated was never in M36's `on_call` channel, so the hole it leaves is the coverage-gap watchdog's finding (§4.1 #21)",
+        "parameters": [
+          {
+            "name": "shiftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts/{shiftId}/close": {
+      "post": {
+        "operationId": "postApiV1OncallShiftsByShiftIdClose",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Manual close — removes the departing actor from M36's channel; messages sent during their tenure stay attributed to them (§4.1 #23)",
+        "parameters": [
+          {
+            "name": "shiftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/oncall/shifts/{shiftId}/open": {
+      "post": {
+        "operationId": "postApiV1OncallShiftsByShiftIdOpen",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Manual 'go on shift' — pins the D7 policy snapshot and emits the single canonical shift-open topic M36's synchronizer and M20's SOS path both subscribe to (§4.1 #22)",
+        "parameters": [
+          {
+            "name": "shiftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/optimize-day": {
       "post": {
         "operationId": "postApiV1Optimizeday",
@@ -39726,6 +40583,57 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/triage/recent": {
+      "get": {
+        "operationId": "getApiV1PortalTriageRecent",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The M31 portal projection — lay-language, caregiver-scoped, with the D11 advisory and the D13 vendor-handoff details excluded BY CONSTRUCTION rather than by filtering (§4.1 #36)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "sinceDays",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 90,
+              "type": "integer"
             }
           }
         ],
@@ -56913,6 +57821,2398 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls": {
+      "get": {
+        "operationId": "getApiV1Triagecalls",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The supervisor board / caseload list — cursor-paginated (offset is refused); `openOnly` is the six-state live set, which deliberately includes `documented_pending_encounter` (§4.1 #2)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "protocol_in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "awaiting_callback",
+                  "type": "string"
+                },
+                {
+                  "const": "disposition_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "documented_pending_encounter",
+                  "type": "string"
+                },
+                {
+                  "const": "escalated_unresolved",
+                  "type": "string"
+                },
+                {
+                  "const": "documented",
+                  "type": "string"
+                },
+                {
+                  "const": "closed",
+                  "type": "string"
+                },
+                {
+                  "const": "abandoned",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "openOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "openedFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "openedTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Triagecalls",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Open a triage call — `source` is pinned to `manual` and the covering shift is resolved server-side, because attributing a call to somebody else's coverage window would forge the CoP 418.100(c)(2) record (§4.1 #1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "inboundChannel",
+                  "callerKind"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "inboundChannel": {
+                    "anyOf": [
+                      {
+                        "const": "phone",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sms",
+                        "type": "string"
+                      },
+                      {
+                        "const": "email",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_message",
+                        "type": "string"
+                      },
+                      {
+                        "const": "inbound_visit_failure",
+                        "type": "string"
+                      },
+                      {
+                        "const": "inbound_evv_anomaly",
+                        "type": "string"
+                      },
+                      {
+                        "const": "inbound_alert_failure",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "callerKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_clinician",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_session",
+                        "type": "string"
+                      },
+                      {
+                        "const": "system_inbound",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_family",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "callerDisplayName": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "callerPhoneE164": {
+                    "pattern": "^\\+[1-9]\\d{1,14}$",
+                    "type": "string"
+                  },
+                  "callerRelationshipLabel": {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "callerCaregiverId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "source": {
+                    "const": "manual",
+                    "type": "string"
+                  },
+                  "chiefComplaintText": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "chiefComplaintSnomed": {
+                    "pattern": "^[0-9]{6,18}$",
+                    "type": "string"
+                  },
+                  "callerQuote": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}": {
+      "get": {
+        "operationId": "getApiV1TriagecallsByTriageCallId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/abandon": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdAbandon",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason",
+                  "callbackAttempts"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "callbackAttempts": {
+                    "minimum": 0,
+                    "maximum": 50,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/answers": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdAnswers",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Append one answer — a DISCRIMINATED value union, so 'exactly one typed value' is a 422 at the boundary rather than a CHECK violation from the driver; `red_flag_hit` is absent because D5 makes it the server's (§4.1 #6)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "triageProtocolQuestionId",
+                  "value"
+                ],
+                "properties": {
+                  "triageProtocolQuestionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "text",
+                            "type": "string"
+                          },
+                          "value": {
+                            "minLength": 1,
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "int",
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "bool",
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/answers/{answerId}/correct": {
+      "patch": {
+        "operationId": "patchApiV1TriagecallsByTriageCallIdAnswersByAnswerIdCorrect",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Append a CORRECTION (§2.2.3 amend-by-append) — the original row is preserved, because a 'no' later corrected to 'yes' means the call HAD a red flag (§4.1 #7)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "answerId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "triageProtocolQuestionId",
+                  "value"
+                ],
+                "properties": {
+                  "triageProtocolQuestionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "text",
+                            "type": "string"
+                          },
+                          "value": {
+                            "minLength": 1,
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "int",
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "integer"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "bool",
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "correctionReason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/apply-protocol": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdApplyprotocol",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Pin the protocol (D4) and, when the catalog row demands it, write the D7 mandatory escalation in the SAME transaction; `aiOverrideReason` is required only above the §8.6 confidence floor (§4.1 #5)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "triageProtocolId"
+                ],
+                "properties": {
+                  "triageProtocolId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "aiOverrideReason": {
+                    "minLength": 10,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/awaiting-callback": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdAwaitingcallback",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Park the call on a callback; it stays in the open set so it keeps its place on the supervisor board while the SLA detector watches the clock (§4.1 #9)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "callbackTargetAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/complete-protocol": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdCompleteprotocol",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/disposition": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdDisposition",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Select the disposition (D6) over the PUBLISHED `TriageDispositionData` union — one route for both §2.2.1 edges into `documented_pending_encounter` (§4.1 #11)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "dispositionData"
+                ],
+                "properties": {
+                  "dispositionData": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "educationSummary",
+                          "followUpCallAt"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "caregiver_education_only",
+                            "type": "string"
+                          },
+                          "educationSummary": {
+                            "minLength": 30,
+                            "maxLength": 4000,
+                            "type": "string"
+                          },
+                          "followUpCallAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "orderRecordId",
+                          "medicationOrderId",
+                          "instructionsGiven"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "prn_intervention_authorized",
+                            "type": "string"
+                          },
+                          "orderRecordId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "medicationOrderId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "instructionsGiven": {
+                            "minLength": 20,
+                            "maxLength": 1000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "orderRecordId",
+                          "attendingPhysicianId"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "verbal_order_recorded",
+                            "type": "string"
+                          },
+                          "orderRecordId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "attendingPhysicianId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "requestedDiscipline",
+                          "requestedArrivalBy",
+                          "reason"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "visit_dispatched_now",
+                            "type": "string"
+                          },
+                          "requestedDiscipline": {
+                            "minLength": 2,
+                            "maxLength": 64,
+                            "type": "string"
+                          },
+                          "requestedArrivalBy": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "minLength": 30,
+                            "maxLength": 1000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "requestedDiscipline",
+                          "proposedForDate",
+                          "reason"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "visit_scheduled_first_light",
+                            "type": "string"
+                          },
+                          "requestedDiscipline": {
+                            "minLength": 2,
+                            "maxLength": 64,
+                            "type": "string"
+                          },
+                          "proposedForDate": {
+                            "format": "date",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "minLength": 30,
+                            "maxLength": 1000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "gipCriteriaSummary",
+                          "preferredFacility"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "gip_admission_proposed",
+                            "type": "string"
+                          },
+                          "gipCriteriaSummary": {
+                            "minLength": 60,
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "preferredFacility": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "electionText",
+                          "transportArrangedBy"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "ed_transfer_acknowledged",
+                            "type": "string"
+                          },
+                          "electionText": {
+                            "minLength": 60,
+                            "maxLength": 2000,
+                            "type": "string"
+                          },
+                          "transportArrangedBy": {
+                            "anyOf": [
+                              {
+                                "const": "family",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ems",
+                                "type": "string"
+                              },
+                              {
+                                "const": "facility",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        }
+                      },
+                      {
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "disposition",
+                          "pronouncingDiscipline",
+                          "expectedArrivalBy"
+                        ],
+                        "properties": {
+                          "disposition": {
+                            "const": "pronouncement_scheduled",
+                            "type": "string"
+                          },
+                          "pronouncingDiscipline": {
+                            "minLength": 2,
+                            "maxLength": 64,
+                            "type": "string"
+                          },
+                          "expectedArrivalBy": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/document": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdDocument",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Invoke M8's `EncounterCreator` (D8). The call does NOT reach `documented` here — that transition belongs to the `m8.encounter.signed` consumer (§4.1 #12)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "narrativeSummary": {
+                    "minLength": 1,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/escalations": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdEscalations",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Raise an escalation on a call — gated by the CALL's predicate, not the escalation ones, because the actor raising the page is the clinician working the call (§4.1 #15)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "tier",
+                  "reason"
+                ],
+                "properties": {
+                  "tier": {
+                    "anyOf": [
+                      {
+                        "const": "tier_1_rn_supervisor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tier_2_clinical_manager",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tier_3_medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tier_4_compliance_officer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tier_5_external",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 30,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "escalatedToMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "escalatedToExternalActorId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "handOffCall": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/identify-patient": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdIdentifypatient",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "admissionId"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "callerCaregiverId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/resume": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdResume",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/transcript-decrypt": {
+      "get": {
+        "operationId": "getApiV1TriagecallsByTriageCallIdTranscriptdecrypt",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/paper-reentry": {
+      "post": {
+        "operationId": "postApiV1TriagecallsPaperreentry",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "§2.7 BCP paper-origin re-entry — its own permission plus a step-up, because the back-dated `opened_at` is §8.3.2's way a coverage gap gets hidden; the instant is range-checked against the worklist row's outage window",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "worklistId",
+                  "providerEntityId",
+                  "paperOriginalOpenedAt",
+                  "inboundChannel",
+                  "callerKind"
+                ],
+                "properties": {
+                  "worklistId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "paperOriginalOpenedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "inboundChannel": {
+                    "anyOf": [
+                      {
+                        "const": "phone",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sms",
+                        "type": "string"
+                      },
+                      {
+                        "const": "email",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_message",
+                        "type": "string"
+                      },
+                      {
+                        "const": "inbound_visit_failure",
+                        "type": "string"
+                      },
+                      {
+                        "const": "inbound_evv_anomaly",
+                        "type": "string"
+                      },
+                      {
+                        "const": "inbound_alert_failure",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "callerKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_clinician",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal_session",
+                        "type": "string"
+                      },
+                      {
+                        "const": "system_inbound",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereaved_family",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "chiefComplaintText": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "callerDisplayName": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/paper-reentry/worklist": {
+      "get": {
+        "operationId": "getApiV1TriagecallsPaperreentryWorklist",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocol-questions/{questionId}": {
+      "patch": {
+        "operationId": "patchApiV1TriageprotocolquestionsByQuestionId",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Edit one question — a system-locked question is refused: it is the D5 red-flag predicate behind a platform-floor mandatory escalation, and editing it is the cheapest way to disable one (§4.1 #32)",
+        "parameters": [
+          {
+            "name": "questionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "questionOrder": {
+                    "minimum": 1,
+                    "maximum": 500,
+                    "type": "integer"
+                  },
+                  "prompt": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "answerType": {
+                    "anyOf": [
+                      {
+                        "const": "boolean",
+                        "type": "string"
+                      },
+                      {
+                        "const": "integer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "scale_0_10",
+                        "type": "string"
+                      },
+                      {
+                        "const": "free_text",
+                        "type": "string"
+                      },
+                      {
+                        "const": "enum",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "answerEnumValues": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "isRedFlagQuestion": {
+                    "type": "boolean"
+                  },
+                  "redFlagMatch": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "bool_is",
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "threshold"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "int_at_least",
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "threshold"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "int_at_most",
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "values"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "enum_in",
+                                "type": "string"
+                              },
+                              "values": {
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "text_any",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocols": {
+      "get": {
+        "operationId": "getApiV1Triageprotocols",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "The catalog — the org-less platform floor plus this tenant's own rows (D4), effective-dated by default (§4.1 #27)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "effectiveOnly",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "disciplineRequired",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "clinical_rn",
+                  "type": "string"
+                },
+                {
+                  "const": "clinical_lpn",
+                  "type": "string"
+                },
+                {
+                  "const": "medical_director",
+                  "type": "string"
+                },
+                {
+                  "const": "msw",
+                  "type": "string"
+                },
+                {
+                  "const": "chaplain",
+                  "type": "string"
+                },
+                {
+                  "const": "external",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 120,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Triageprotocols",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Author a TENANT-CUSTOM protocol (step-up). `isSystemLocked` is absent: accepting and ignoring it would leave the DON believing they had authored a protected question (§4.1 #29)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "key",
+                  "chiefComplaintLabel",
+                  "snomedCode",
+                  "disciplineRequired"
+                ],
+                "properties": {
+                  "key": {
+                    "minLength": 2,
+                    "maxLength": 120,
+                    "pattern": "^[a-z0-9_]+$",
+                    "type": "string"
+                  },
+                  "chiefComplaintLabel": {
+                    "minLength": 3,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "snomedCode": {
+                    "pattern": "^[0-9]{6,18}$",
+                    "type": "string"
+                  },
+                  "disciplineRequired": {
+                    "anyOf": [
+                      {
+                        "const": "clinical_rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_lpn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "requiresMandatoryEscalation": {
+                    "type": "boolean"
+                  },
+                  "mandatoryEscalationTier": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "tier_1_rn_supervisor",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_2_clinical_manager",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_3_medical_director",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_4_compliance_officer",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_5_external",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "version": {
+                    "minLength": 1,
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sortOrder": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  },
+                  "questions": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "questionOrder",
+                        "prompt",
+                        "answerType"
+                      ],
+                      "properties": {
+                        "questionOrder": {
+                          "minimum": 1,
+                          "maximum": 500,
+                          "type": "integer"
+                        },
+                        "prompt": {
+                          "minLength": 3,
+                          "maxLength": 500,
+                          "type": "string"
+                        },
+                        "answerType": {
+                          "anyOf": [
+                            {
+                              "const": "boolean",
+                              "type": "string"
+                            },
+                            {
+                              "const": "integer",
+                              "type": "string"
+                            },
+                            {
+                              "const": "scale_0_10",
+                              "type": "string"
+                            },
+                            {
+                              "const": "free_text",
+                              "type": "string"
+                            },
+                            {
+                              "const": "enum",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "answerEnumValues": {
+                          "anyOf": [
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "required": {
+                          "type": "boolean"
+                        },
+                        "isRedFlagQuestion": {
+                          "type": "boolean"
+                        },
+                        "redFlagMatch": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "value"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "const": "bool_is",
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "threshold"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "const": "int_at_least",
+                                      "type": "string"
+                                    },
+                                    "threshold": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "threshold"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "const": "int_at_most",
+                                      "type": "string"
+                                    },
+                                    "threshold": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "kind",
+                                    "values"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "const": "enum_in",
+                                      "type": "string"
+                                    },
+                                    "values": {
+                                      "minItems": 1,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "type": "object",
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "properties": {
+                                    "kind": {
+                                      "const": "text_any",
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocols/{protocolId}": {
+      "get": {
+        "operationId": "getApiV1TriageprotocolsByProtocolId",
+        "tags": [
+          "19-oncall"
+        ],
+        "parameters": [
+          {
+            "name": "protocolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1TriageprotocolsByProtocolId",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Edit a tenant protocol — a platform-floor row is refused with its key NAMED, because '0 rows updated' is not an answer a DON can act on (§4.1 #30)",
+        "parameters": [
+          {
+            "name": "protocolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {
+                  "chiefComplaintLabel": {
+                    "minLength": 3,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "snomedCode": {
+                    "pattern": "^[0-9]{6,18}$",
+                    "type": "string"
+                  },
+                  "disciplineRequired": {
+                    "anyOf": [
+                      {
+                        "const": "clinical_rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_lpn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "requiresMandatoryEscalation": {
+                    "type": "boolean"
+                  },
+                  "mandatoryEscalationTier": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "tier_1_rn_supervisor",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_2_clinical_manager",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_3_medical_director",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_4_compliance_officer",
+                            "type": "string"
+                          },
+                          {
+                            "const": "tier_5_external",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "version": {
+                    "minLength": 1,
+                    "maxLength": 20,
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "sortOrder": {
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-protocols/{protocolId}/questions": {
+      "post": {
+        "operationId": "postApiV1TriageprotocolsByProtocolIdQuestions",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "Add a question — a tenant cannot write a child row against an org-less parent, so the attempt is refused with the protocol named rather than failing as a policy violation (§4.1 #31)",
+        "parameters": [
+          {
+            "name": "protocolId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "questionOrder",
+                  "prompt",
+                  "answerType"
+                ],
+                "properties": {
+                  "questionOrder": {
+                    "minimum": 1,
+                    "maximum": 500,
+                    "type": "integer"
+                  },
+                  "prompt": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "answerType": {
+                    "anyOf": [
+                      {
+                        "const": "boolean",
+                        "type": "string"
+                      },
+                      {
+                        "const": "integer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "scale_0_10",
+                        "type": "string"
+                      },
+                      {
+                        "const": "free_text",
+                        "type": "string"
+                      },
+                      {
+                        "const": "enum",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "answerEnumValues": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "isRedFlagQuestion": {
+                    "type": "boolean"
+                  },
+                  "redFlagMatch": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "value"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "bool_is",
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "boolean"
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "threshold"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "int_at_least",
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "threshold"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "int_at_most",
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "integer"
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "values"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "enum_in",
+                                "type": "string"
+                              },
+                              "values": {
+                                "minItems": 1,
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "kind"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "text_any",
+                                "type": "string"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

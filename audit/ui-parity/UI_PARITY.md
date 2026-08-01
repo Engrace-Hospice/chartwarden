@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 31 module screen-sets registered · 197 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 32 module screen-sets registered · 212 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -131,6 +131,21 @@
 | 18-evv | `evv.devices` | `/evv/devices/pending` | `evv.device.read` | ✅ |
 | 18-evv | `evv.metrics` | `/admin/evv-metrics` | `evv.read_metrics` | ✅ |
 | 18-evv | `evv.my-devices` | `/me/evv/devices` | `evv.device.read` | ✅ |
+| 19-oncall | `triage.queue` | `/triage` | `triage.read` | ✅ |
+| 19-oncall | `triage.intake` | `/triage/intake` | `triage.open` | ✅ |
+| 19-oncall | `triage.call` | `/triage/calls/:triageCallId` | `triage.read` | ✅ |
+| 19-oncall | `triage.call.history` | `/triage/calls/:triageCallId/history` | `triage.read` | ✅ |
+| 19-oncall | `triage.call.transcript` | `/triage/calls/:triageCallId/transcript` | `triage.read_transcript` | ✅ |
+| 19-oncall | `triage.escalations` | `/triage/escalations` | `triage.read_escalations` | ✅ |
+| 19-oncall | `oncall.shifts` | `/triage/shifts` | `oncall.read_schedule` | ✅ |
+| 19-oncall | `oncall.shift` | `/triage/shifts/:shiftId` | `oncall.read_schedule` | ✅ |
+| 19-oncall | `oncall.me` | `/me/oncall` | `oncall.read_schedule` | ✅ |
+| 19-oncall | `triage.protocols` | `/triage/protocols` | `triage.read` | ✅ |
+| 19-oncall | `triage.protocol` | `/triage/protocols/:protocolId` | `triage.read` | ✅ |
+| 19-oncall | `oncall.policy` | `/triage/policy` | `oncall.read_policy` | ✅ |
+| 19-oncall | `oncall.vendors` | `/triage/vendors` | `oncall.read_policy` | ✅ |
+| 19-oncall | `triage.paper_reentry` | `/triage/paper-reentry` | `triage.paper_reentry` | ✅ |
+| 19-oncall | `triage.metrics` | `/triage/metrics` | `triage.read` | ✅ |
 | 21-supplies | `supplies.dashboard` | `/supplies` | `supplies.request.read` | ✅ |
 | 21-supplies | `supplies.request` | `/supplies/requests/:supplyRequestId` | `supplies.request.read` | ✅ |
 | 21-supplies | `supplies.dispatch.new` | `/supplies/dispatches/new` | `comfort_kit.dispatch.create` | ✅ |

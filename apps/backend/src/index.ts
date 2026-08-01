@@ -99,6 +99,18 @@ import {
 import { registerSchedulingSeams } from "./modules/17-scheduling/index";
 import { registerEvvSeams } from "./modules/18-evv/index";
 import {
+  buildDrizzleM19ReadService,
+  buildDrizzleM19WriteService,
+  buildDrizzleOncallAbacResolver,
+  buildDrizzleOncallSeamStore,
+  createDrizzleTriageEraseStore,
+  denyStubOncallAbacResolver,
+  mountM19Routes,
+  registerOncallAbacPredicates,
+  registerOncallSeams,
+  registerTriageErasers,
+} from "./modules/19-oncall/index";
+import {
   M21_OUTBOX_EVENTS,
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
@@ -485,6 +497,22 @@ export function wireModuleSeams(
   // where the Drizzle services are constructed; unbound, the create method raises rather than writing a
   // routing-less row.
   registerSuppliesSeams(deps.db ? { store: buildDrizzleSuppliesSeamStore(deps.db) } : {});
+  // M19 — the five §4.3 owned READ seams: `OnCallProvider` (who is on call NOW for a ProviderEntity + the
+  // active shifts M36's `on_call` channel synchronizer re-syncs membership from, §4.5 — the same read M20's
+  // after-hours SOS parallel recipient resolves through, M20 §7.5 D14), `TriageCallReader` (M32's PHI-free
+  // feature read + M14's since-last-IDG digest), `TriageCallProvider` (M14's packet slice + M11's
+  // verbal-order → triage-context reverse lookup), `PortalTriageReader` (the ONLY M19 surface M31's portal
+  // may reach — lay-language, D11/D13 scrubbed) and `TriageCallMetricsProvider` (M30/M33 measures, as rates
+  // AND the counts behind them). All five share the Drizzle store, which reads under the CONSUMER's ambient
+  // request context (`withOrgContextFromRequest`), so a seam call is RLS-scoped to the caller's org without
+  // M19 comparing anything — the `orgId` seam argument is ASSERTED against that scope, never used to select.
+  //
+  // WITHOUT a DB client this registers NOTHING and the fail-closed deny-stubs stand — deliberately unlike
+  // M15/M16/M21 above. An in-memory slice would answer `currentOnCallActors` with `[]`, and `[]` from that
+  // seam is a REAL answer meaning "nobody is covering" — the fact M36's escalation routing and the §4.8
+  // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
+  // answer", which is the truth.
+  if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
   // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is
@@ -499,6 +527,26 @@ export function wireModuleSeams(
           roleGrants: createDbEffectivePermissionStore(deps.db),
         })
       : denyStubSuppliesAbacResolver,
+  });
+  // M19-T07 — the six §4.7 ABAC predicates M19 OWNS (`oncall_eligible`,
+  // `triage_call_owner_or_supervisor`, `external_triage_actor`, `escalation_recipient_scope`,
+  // `escalation_recipient`, `portal_session_consent_active`) into M3's named-predicate registry.
+  //
+  // Every one is an AUTHORIZATION read, so unlike M15/M16 the fail direction here is UNIFORM: unreadable
+  // resolver, unknown target, absent row, cross-tenant id and thrown error all DENY. §2.4's "a coverage gap
+  // must ALERT rather than block" governs the watchdog and boot, not who may answer the after-hours line.
+  //
+  // ONE method deliberately does NOT collapse its error into a boolean: `activeShiftForMembership` answers
+  // `true` / `false` / `null`, so "this nurse is not on call" stays distinct from "we could not read the
+  // roster" (the M19-T04 finding). `decideOnCallEligible` treats `null` as no-answer and lets the ROLE path
+  // still speak — a supervisor is not locked out of the board by a slow query, while an ordinary RN, who
+  // has no other path, is still refused.
+  registerOncallAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleOncallAbacResolver(deps.db, {
+          roleGrants: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubOncallAbacResolver,
   });
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
@@ -736,6 +784,13 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // config is never touched. Registers only with a DB client — the shred is a privileged write, and a
   // slice boot must keep the deny-stub rather than report a destruction it did not perform.
   if (deps.db) registerSupplyEraser(deps.db);
+  // M19-T02 — `triage_record` (per-PATIENT destruction-cert callback; nulls the caller identity, chief
+  // complaint and the two DEK ciphers on the patient's `triage_call` rows FIRST, deletes the escalation /
+  // answer / state-history subtree, then leaves each call as a de-identified closed TOMBSTONE because M8's
+  // signed `triage_telephonic_contact` encounter back-references it. The org-scoped policy / vendor binding
+  // / protocol catalog and the CoP 418.100(c)(2) `on_call_shift` roster evidence are never touched, §3.7).
+  // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
+  registerTriageErasers(deps.db ? { store: createDrizzleTriageEraseStore(deps.db) } : {});
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -791,6 +846,7 @@ if ((import.meta as { main?: boolean }).main) {
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
+  const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
   const m21OutboxPublisher = bindCallerModule(txOutboxPublisher, "m21");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
@@ -1100,6 +1156,36 @@ if ((import.meta as { main?: boolean }).main) {
           // create and an M11 cascade (D4 routing freeze + per-kind validation + the §4.5.2 emit). Until
           // this runs the seam's create method refuses loudly rather than writing a routing-less row.
           bindSupplyRequestCreator(m21WriteService);
+          // M19 (On-Call Triage) — mount the §4.1 route plugins over the Drizzle READ + WRITE services.
+          // Every read opens its own withOrgContext (RLS scopes each statement to app.org_id) and resolves
+          // the 42 CFR Part 2 gate through M39's ConsentEvaluator BEFORE it queries, so an uncleared caller
+          // never has the SUD medication in the result set. Every mutation runs the pure §2.2-§2.7 machines
+          // and emits its §4.10 `m19.*` event through the catalog-validating tx publisher (callerModule
+          // `m19`) on the mutation's own transaction — which is how M17 learns a visit was dispatched, M16's
+          // bereavement timeline starts from a `pronouncement_scheduled` disposition, and M36's channel
+          // synchronizer follows a shift open/close.
+          //
+          // TWO fail-directions bind here and they point OPPOSITE ways, deliberately:
+          //   • the M8 `EncounterCreator` call runs AFTER the disposition commits and a failure is a
+          //     §2.7 class D-B DEFERRAL — the call parks in `documented_pending_encounter`, the clinician
+          //     is not blocked, and the §4.8 worker retries. A seam probe inside our own transaction would
+          //     also self-deadlock the pool (the M21-T05 finding).
+          //   • the D3 vendor deployment models stay OFF (`vendorModelsEnabled` unset), so a policy PATCH
+          //     selecting `hybrid`/`centralized` is REFUSED rather than accepted-and-ignored. Phase 1 has
+          //     no signed BAA and the §8.5 adapter registry is empty; a tenant must never believe a vendor
+          //     is answering their nights when none is.
+          //
+          // The two cipher ports (D14's per-tenant DEK envelope) are left UNBOUND: no key-management
+          // binding exists for M19 yet, so the caller quote is dropped rather than written plaintext into a
+          // column named `_cipher`, and the transcript decrypt refuses rather than returning the stored
+          // bytes as though they were readable.
+          const m19ReadService = buildDrizzleM19ReadService(dbHandle.db);
+          mountM19Routes(app, {
+            readService: m19ReadService,
+            writeService: buildDrizzleM19WriteService(dbHandle.db, m19ReadService, {
+              outbox: m19OutboxPublisher,
+            }),
+          });
         }
       : undefined,
     registerModuleSeams: () =>
