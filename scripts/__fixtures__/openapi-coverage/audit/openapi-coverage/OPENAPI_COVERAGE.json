@@ -1,0 +1,23 @@
+{
+  "totals": {
+    "routes": 1,
+    "enriched": 0,
+    "deficit": 1,
+    "mutating": 1,
+    "mutatingNoBody": 1,
+    "gets": 0,
+    "getsNoResponse": 0
+  },
+  "modules": [
+    {
+      "module": "33-reporting",
+      "routes": 1,
+      "enriched": 0,
+      "deficit": 1,
+      "mutating": 1,
+      "mutatingNoBody": 1,
+      "gets": 0,
+      "getsNoResponse": 0
+    }
+  ]
+}

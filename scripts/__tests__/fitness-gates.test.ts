@@ -52,6 +52,23 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/domain-is-pure/);
   });
+
+  // The M20-T06 hole: `openapi:check` only proves openapi.json was REGENERATED and that no
+  // enrichment targets a dead route — an unenriched route is legal, so a routes task could
+  // ship 30+ contract-less routes with all gates green. The fixture plants exactly one such
+  // route; the module has no baseline row, so its floor is 0 and the ratchet must catch it.
+  it("openapi-coverage — a new route shipped with no request contract", () => {
+    const r = run(
+      "bun",
+      ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"],
+      join(FIX, "openapi-coverage"),
+    );
+    expect(r.status).not.toBe(0);
+    // Must fail on the RATCHET, not merely on report staleness — the fixture commits a
+    // fresh report precisely so a freshness failure cannot masquerade as coverage enforcement.
+    expect(r.out).toMatch(/LOST enrichment coverage/);
+    expect(r.out).toMatch(/exceeds baseline 0/);
+  });
 });
 
 describe("every gate stays GREEN on the repo-root baseline", () => {
@@ -65,4 +82,8 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
   it("fitness-gaps", () => expect(gate("check-fitness-gaps.ts", ROOT).status).toBe(0));
   it("ui-screens", () => expect(gate("check-ui-screens.ts", ROOT).status).toBe(0));
   it("boundaries", () => expect(boundaries(["apps", "packages"], ROOT).status).toBe(0));
+  it("openapi-coverage", () =>
+    expect(
+      run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT).status,
+    ).toBe(0));
 });

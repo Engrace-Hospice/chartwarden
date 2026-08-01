@@ -1,6 +1,21 @@
 # WardenX AI capability catalog.
 # Source of truth required by docs/architecture/WARDENX_AI_GOVERNANCE_v0.2.md section 4.1.
 # All entries are disabled until their owning module and governance lifecycle state explicitly advance.
+#
+# `capability_key` is the join into Module 32's registry: `ai_capability.capability_key`, which
+# `ai_kill_switch_state.capability_id` references by foreign key. It replaced a `kill_switch_flag`
+# field naming `ai.<x>_kill` strings, because KILLING A CAPABILITY IS NOT A FLAG FLIP. It is an
+# `ai_kill_switch_state` row, platform-wide (`organization_id IS NULL`) or per-tenant, and the two
+# OR together — neither overrides the other.
+#
+# There ARE two kill mechanisms in this architecture and only one of them is wired to AI:
+# M1 Foundation ships a real `feature_flag` table with a `kill_switch` flag type (its spec even
+# gives `ai.copilot_kill` / `ai.doclens_kill` as examples), but no `ai.*_kill` flag has ever been
+# seeded, and M32's routing gate does not consult feature flags at all. Flipping an M1 flag would
+# stop nothing. Kill a capability through its `ai_kill_switch_state` row.
+#
+# `capability_key: null` means M32's section 2.4 inventory registers no row for that capability —
+# it cannot be killed because it cannot be invoked.
 
 capabilities:
   - id: hearthnote-layer-2
@@ -9,7 +24,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.hearthnote_layer2_kill
+    capability_key: hearthnote_layer2
     doc: docs/ai/capabilities/hearthnote-layer-2.md
 
   - id: hearthnote-idg-aggregation-layer-2
@@ -18,7 +33,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.hearthnote_idg_aggregation_layer2_kill
+    capability_key: idg_layer2_polish
     doc: docs/ai/capabilities/hearthnote-idg-aggregation-layer-2.md
 
   - id: doclens-classifier
@@ -27,7 +42,7 @@ capabilities:
     risk_class: medium
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.doclens_classifier_kill
+    capability_key: doclens_classify
     doc: docs/ai/capabilities/doclens-classifier.md
 
   - id: doclens-extractor
@@ -36,7 +51,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.doclens_extractor_kill
+    capability_key: doclens_extract
     doc: docs/ai/capabilities/doclens-extractor.md
 
   - id: doclens-vision-verification
@@ -45,7 +60,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.doclens_vision_verification_kill
+    capability_key: doclens_vision_verify
     doc: docs/ai/capabilities/doclens-vision-verification.md
 
   - id: ai-copilot-clinical
@@ -54,7 +69,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.copilot_clinical_kill
+    capability_key: copilot_clinical
     doc: docs/ai/capabilities/ai-copilot-clinical.md
 
   - id: ai-copilot-administrative
@@ -63,7 +78,7 @@ capabilities:
     risk_class: medium
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.copilot_administrative_kill
+    capability_key: copilot_admin
     doc: docs/ai/capabilities/ai-copilot-administrative.md
 
   - id: semantic-search
@@ -73,7 +88,7 @@ capabilities:
     risk_class: medium
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.semantic_search_kill
+    capability_key: semantic_search_chart
     doc: docs/ai/capabilities/semantic-search.md
 
   - id: embeddings-generation
@@ -82,7 +97,7 @@ capabilities:
     risk_class: low
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.embeddings_generation_kill
+    capability_key: embeddings_clinical
     doc: docs/ai/capabilities/embeddings-generation.md
 
   - id: mortality-decline-prediction
@@ -91,7 +106,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.mortality_decline_prediction_kill
+    capability_key: mortality_decline_prediction
     doc: docs/ai/capabilities/mortality-decline-prediction.md
 
   - id: falls-risk-prediction
@@ -100,7 +115,7 @@ capabilities:
     risk_class: high
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.falls_risk_prediction_kill
+    capability_key: falls_risk_prediction
     doc: docs/ai/capabilities/falls-risk-prediction.md
 
   - id: aggregate-cap-projection
@@ -109,5 +124,69 @@ capabilities:
     risk_class: medium
     lifecycle_state: proposed
     enabled_by_default: false
-    kill_switch_flag: ai.aggregate_cap_projection_kill
+    capability_key: null   # NO ai_capability row exists — see the note above
     doc: docs/ai/capabilities/aggregate-cap-projection.md
+
+  # Added from Module 32's section 2.4 Phase-1 capability inventory, which registered these six
+  # with `governanceCatalogId: null` — registrable, and (once `ai.full` allows) servable, with no
+  # governance doc, no risk class, and no kill-switch flag name. `lifecycle_state` is `proposed`
+  # for all six: M32's inventory seeds four of them DESIGN_REVIEW, but advancing a lifecycle state
+  # is what the section 5 approval workflow is for, not a side effect of cataloging.
+
+  - id: doclens-sud-detection
+    name: DocLens SUD indicator detection
+    module: 22
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: doclens_sud_detect
+    doc: docs/ai/capabilities/doclens-sud-detection.md
+
+  - id: protocol-suggestion-oncall
+    name: On-call triage protocol suggestion
+    module: 19
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: protocol_suggestion_oncall
+    doc: docs/ai/capabilities/protocol-suggestion-oncall.md
+
+  - id: hospitalization-risk-30d
+    name: 30-day hospitalization risk prediction
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: hospitalization_risk_30d
+    doc: docs/ai/capabilities/hospitalization-risk-30d.md
+
+  - id: bereavement-risk-narrative
+    name: Bereavement risk narrative augmentation
+    module: 16
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: bereavement_risk_narrative
+    doc: docs/ai/capabilities/bereavement-risk-narrative.md
+
+  - id: denial-outcome-prediction
+    name: Denial outcome / appeal probability prediction
+    module: 25
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: denial_outcome_prediction
+    doc: docs/ai/capabilities/denial-outcome-prediction.md
+
+  # risk_class RATIFIED 2026-08-01 — high. Originated here (neither M32 §2.4 nor Architecture §10
+  # classified this capability) and is now decided, not provisional. It gates the Clinical Reviewer
+  # on approval, a 12-month re-approval cadence, and the §164.528 acknowledgment on tenant opt-in.
+  # See the capability doc's Risk Classification section.
+  - id: level-of-care-prediction
+    name: Level of care prediction
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    capability_key: level_of_care_prediction
+    doc: docs/ai/capabilities/level-of-care-prediction.md
