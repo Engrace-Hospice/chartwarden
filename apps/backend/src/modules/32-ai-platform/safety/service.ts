@@ -25,6 +25,7 @@ import {
   aiKillSwitchFor,
   aiKillSwitchRequiresPlatformCredential,
   aiKillSwitchScopeOf,
+  aiSev1DemotionTarget,
   evaluateAiEvaluationRunTransition,
   evaluateAiHallucinationFiling,
   evaluateAiHallucinationTriage,
@@ -281,6 +282,31 @@ export interface AiHallucinationFollowUpResult {
 const NO_DEMOTION: AiKillSwitchDemotionPlan = { required: false, toState: null, rationaleText: "" };
 
 /**
+ * The §2.2 demotion W5.7 requires, given the capability's state — shared by BOTH branches of the worker.
+ *
+ * `evaluateAiKillSwitchActivation` plans a demotion for a SEV-1 kill and for nothing else (D16), which is
+ * exactly right for R7: an operator stopping a capability for a cost cap has not deprecated it. It is not
+ * the whole rule HERE. W5.7 makes `deprecate_capability` demote on the strength of the TRIAGE
+ * DISPOSITION, and `model_rollback_required` on a non-critical report raises a SEV-2 kill — so reading
+ * the demotion off the kill's severity alone would deprecate the capability when a prior incident had
+ * already flipped the switch (the already-active branch, which honours `plan.demotesCapability`) and NOT
+ * when this worker flipped it. Same report, same disposition, two different outcomes decided by whether
+ * something unrelated happened first. This function is the one answer both branches read.
+ */
+function aiHallucinationDemotionPlan(
+  plan: AiHallucinationFollowUpPlan,
+  lifecycleState: AiCapabilityLifecycleState,
+): AiKillSwitchDemotionPlan {
+  if (!plan.demotesCapability) return NO_DEMOTION;
+  const toState = aiSev1DemotionTarget(lifecycleState);
+  return {
+    required: toState !== null,
+    toState,
+    rationaleText: toState === null ? "" : `auto-deprecate following ${plan.action}`,
+  };
+}
+
+/**
  * W5.7 / §4.8's `ai:hallucination-triage-followup` — execute the plan.
  *
  * THE KILL IS ALWAYS PLATFORM-SCOPED. A fabrication is a property of the model, not of the agency that
@@ -315,22 +341,17 @@ export async function executeAiHallucinationFollowUp(
     };
   }
 
+  const lifecycleState = await requireCapabilityLifecycleState(deps, capabilityId);
+  const planned = aiHallucinationDemotionPlan(plan, lifecycleState);
+
   const existing = await deps.killSwitches.findScopedRow(null, capabilityId);
   if (existing !== null && existing.active) {
-    const lifecycleState = await requireCapabilityLifecycleState(deps, capabilityId);
     return {
       action: plan.action,
       killSwitch: null,
       // The demotion still has to be REPORTED: a second critical report against a capability whose
       // switch is already on may still be the first one that finds it in a demotable state.
-      demotion: plan.demotesCapability
-        ? {
-            required: lifecycleState === "APPROVED" || lifecycleState === "MONITORING",
-            toState:
-              lifecycleState === "APPROVED" || lifecycleState === "MONITORING" ? "DEPRECATED" : null,
-            rationaleText: `auto-deprecate following ${plan.action} (kill switch already active)`,
-          }
-        : NO_DEMOTION,
+      demotion: planned,
       killSwitchAlreadyActive: true,
     };
   }
@@ -347,7 +368,9 @@ export async function executeAiHallucinationFollowUp(
   return {
     action: plan.action,
     killSwitch,
-    demotion: killSwitch.demotion,
+    // The kill's OWN plan wins when it has one: a SEV-1 activation's rationale names the severity, which
+    // is the more specific record. Otherwise W5.7's disposition-driven demotion stands (see the helper).
+    demotion: killSwitch.demotion.required ? killSwitch.demotion : planned,
     killSwitchAlreadyActive: false,
   };
 }
