@@ -35,6 +35,11 @@ import { getOnCallProvider } from "../seams/consumed";
  *  literal so a supervisor row and an on-call row can never be confused after the union. */
 export interface SafetyOnCallParallelRecipient {
   readonly membershipId: string;
+  /** M19's OWN user id for the membership (`OnCallActor.userId`). M36 delivers to users, and the §4.5
+   *  composed resolver (../alert-rules, M20-T05) uses this rather than re-resolving the membership: a
+   *  second lookup could disagree with M19 about which account holds tonight's shift, and the pager is
+   *  the wrong place to discover that. */
+  readonly userId: string;
   readonly scope: "on_call_parallel";
   readonly shiftId: string;
   readonly discipline: string;
@@ -86,6 +91,7 @@ export function partitionOnCallActors(actors: readonly OnCallActor[]): {
     if (existing !== undefined && !existing.isBackup) continue;
     byMembership.set(actor.membershipId, {
       membershipId: actor.membershipId,
+      userId: actor.userId,
       scope: "on_call_parallel",
       shiftId: actor.shiftId,
       discipline: actor.discipline,

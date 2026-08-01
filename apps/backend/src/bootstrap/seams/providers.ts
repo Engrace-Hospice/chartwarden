@@ -70,6 +70,13 @@ import type {
   ReconciliationProvider,
   RefillInboxProvider,
   RenderedDocumentProvider,
+  SafetyCheckInProvider,
+  SafetyContextReader,
+  SafetyDashboardProvider,
+  SafetyIncidentReader,
+  SafetyMetricsProvider,
+  SafetyPolicyProvider,
+  SafetySupervisorProvider,
   ScaleSeriesProvider,
   SeamName,
   SessionContextResolver,
@@ -1165,6 +1172,100 @@ export const protocolSuggestionProviderDenyStub: ProtocolSuggestionProvider = {
 export const hospitalizationRiskProviderDenyStub: HospitalizationRiskProvider = {
   async hospitalizationRiskForPatient() {
     return { kind: "unavailable", reason: "provider_unregistered" };
+  },
+};
+
+// M20 (Field Safety) §4.3 PUBLISHED seams (M20-T05). LEAF-TYPED (interfaces in @wardenx/types), so each
+// gets a concrete typed deny-stub that denies until `registerFieldSafetySeams()` stands the real impl over
+// it.
+//
+// ALL SEVEN THROW, and the two that decide the shape are `SafetyDashboardProvider` and
+// `SafetySupervisorProvider`. Both have an EMPTY answer that means something specific and load-bearing:
+// an empty board means "no clinician is in the field", and an empty recipient set means "nobody is
+// subscribed to this clinician" — which is the §7.8 coverage gap the system-locked critical alert wakes
+// the DON for. Resolving an unregistered or unreadable M20 to `[]` would make an outage indistinguishable
+// from either fact: a supervisor asking "is everyone OK?" would read a blank board as "everyone is fine",
+// and a 3 a.m. SOS would conclude it has no recipients instead of falling back to the tenant emergency
+// number (M20-F01). A throw is what makes the caller render UNKNOWN and take its degraded path — the
+// M19-T08 three-state banner rule, one layer down.
+export const safetyDashboardProviderDenyStub: SafetyDashboardProvider = {
+  clinicianStatusForLocation() {
+    throw new NotImplementedError("SafetyDashboardProvider");
+  },
+  clinicianStatusForSupervisor() {
+    throw new NotImplementedError("SafetyDashboardProvider");
+  },
+};
+
+/** M20 — M8's encounter-authoring surface: was there an incident during the visit being documented? */
+export const safetyContextReaderDenyStub: SafetyContextReader = {
+  activeIncidentForVisit() {
+    throw new NotImplementedError("SafetyContextReader");
+  },
+  activeIncidentsForClinicianToday() {
+    throw new NotImplementedError("SafetyContextReader");
+  },
+};
+
+/** M20 — M32's §8.6 minimum-necessary incident projection (rounded coordinates; cleartext never crosses). */
+export const safetyIncidentReaderDenyStub: SafetyIncidentReader = {
+  recentIncidentsForArea() {
+    throw new NotImplementedError("SafetyIncidentReader");
+  },
+  recentIncidentsForClinician() {
+    throw new NotImplementedError("SafetyIncidentReader");
+  },
+};
+
+/** M20 — M30/M33 aggregates. Throws rather than answering a zeroed rate: "0 incidents" on a safety tile
+ *  is a reportable claim, and an outage must not be able to make it (the M21 `SupplyCostProvider` posture). */
+export const safetyMetricsProviderDenyStub: SafetyMetricsProvider = {
+  getSosFrequency() {
+    throw new NotImplementedError("SafetyMetricsProvider");
+  },
+  getOverdueRate() {
+    throw new NotImplementedError("SafetyMetricsProvider");
+  },
+  getIncidentRate() {
+    throw new NotImplementedError("SafetyMetricsProvider");
+  },
+  getResponseTimeMedian() {
+    throw new NotImplementedError("SafetyMetricsProvider");
+  },
+  getCheckInComplianceRate() {
+    throw new NotImplementedError("SafetyMetricsProvider");
+  },
+  getAfterHoursSosCount() {
+    throw new NotImplementedError("SafetyMetricsProvider");
+  },
+};
+
+/** M20 — M17's per-visit pre/mid/post badge trio. `not_required` is a real badge value, so a failed read
+ *  must not be able to produce it: M17's day grid would render "no check-in was ever owed" for a visit
+ *  whose clinician is overdue. */
+export const safetyCheckInProviderDenyStub: SafetyCheckInProvider = {
+  checkInStatusForVisit() {
+    throw new NotImplementedError("SafetyCheckInProvider");
+  },
+};
+
+/** M20 — the ONLY read path to the effective policy (§2.2.4), including the `policyAtTime` replay arm. */
+export const safetyPolicyProviderDenyStub: SafetyPolicyProvider = {
+  effectivePolicy() {
+    throw new NotImplementedError("SafetyPolicyProvider");
+  },
+  policyAtTime() {
+    throw new NotImplementedError("SafetyPolicyProvider");
+  },
+};
+
+/** M20 — who gets paged + the §7.8 coverage gaps. See the block header on why `[]` is not the deny value. */
+export const safetySupervisorProviderDenyStub: SafetySupervisorProvider = {
+  supervisorsForClinician() {
+    throw new NotImplementedError("SafetySupervisorProvider");
+  },
+  coverageGapsForOrg() {
+    throw new NotImplementedError("SafetySupervisorProvider");
   },
 };
 

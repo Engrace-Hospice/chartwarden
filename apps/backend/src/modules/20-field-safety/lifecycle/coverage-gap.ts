@@ -28,7 +28,12 @@
 //
 // FAIL DIRECTION: a clinician the watchdog cannot classify is reported as a GAP. Over-reporting costs the
 // DON a false page; under-reporting costs a clinician her only escalation path.
-import type { MembershipId, SafetyCoverageGapDto, SafetyCoverageGapReason } from "@wardenx/types";
+import type {
+  MembershipId,
+  SafetyAlertKind,
+  SafetyCoverageGapDto,
+  SafetyCoverageGapReason,
+} from "@wardenx/types";
 
 /** One `safety_supervisor_subscription` row as the watchdog sees it (active rows only — the caller's query
  *  already applies `superseded_at IS NULL AND deactivated_at IS NULL` through `sss_clinician_idx`). */
@@ -58,14 +63,23 @@ export interface SafetyCoverageSubjectFacts {
   readonly hasInactiveSubscriptions: boolean;
 }
 
-/** Does one subscription row reach this clinician for the SOS channel? */
+/**
+ * Does one subscription row reach this clinician for `alertKind`?
+ *
+ * The kind DEFAULTS to `sos` because that is the only channel this watchdog's guarantee is about — a row
+ * that does not page on `sos` is not coverage for the purpose §7.8 exists to protect, however complete it
+ * looks on the subscription matrix. It is a parameter rather than a constant because the §4.3
+ * `SafetySupervisorProvider.supervisorsForClinician` resolves the SAME scope layering for `overdue`,
+ * `incident` and `high_risk_area` (M20-T05), and duplicating the D8 scope switch there would let the two
+ * copies drift — a paging rule that is subtly different depending on which caller asked is worse than
+ * either version of it.
+ */
 export function subscriptionCovers(
   subscription: SafetySubscriptionFacts,
   subject: SafetyCoverageSubjectFacts,
+  alertKind: SafetyAlertKind = "sos",
 ): boolean {
-  // §3.3 `m20_sss_alert_kinds_vocab` — a row that does not page on `sos` is not coverage for the purpose
-  // this watchdog exists to guarantee, however complete it looks on the subscription matrix.
-  if (!subscription.alertKinds.includes("sos")) return false;
+  if (!subscription.alertKinds.includes(alertKind)) return false;
   switch (subscription.scopeKind) {
     case "explicit":
       return subscription.clinicianMembershipId === subject.membershipId;

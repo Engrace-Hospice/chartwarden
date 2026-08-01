@@ -58,8 +58,35 @@
 //     `OnCallProvider` outage is `unavailable` (never `[]`, which reads as a real coverage gap), and a
 //     vendor-covered Saturday night has no membership to page but is NOT an uncovered night.
 //
-// Still to land: the seven §4.3 published seams + the §4.5 composed resolver (T05), the §4.1 routes +
-// §4.6 keys + §4.7 ABAC (T06), and the §5 screens (T07).
+// M20-T05 lands the seven §4.3 PUBLISHED seams (`seams/store.ts` · `seams/providers.ts` ·
+// `seams/store-drizzle.ts`), the §4.5 `field_safety_composed` recipient resolver M20 registers onto M36's
+// open registry (`alert-rules.ts`), and the M20-F06 emergency-contact read (`seams/emergency-contact.ts`).
+//
+// SIX THINGS T05 DECIDED THAT ARE NOT OBVIOUS FROM THE SPEC:
+//   • §4.5's SAMPLE RESOLVER RETURNS MEMBERSHIPS; M36's `RecipientResolverFn` RETURNS USER IDS. M20 binds
+//     to the owner's contract (a re-declared seam is a permanently unbound one), so the membership→user
+//     resolution happens inside the composed resolver — and the on-call arm uses M19's OWN `userId`
+//     rather than re-resolving, because a second lookup could disagree about whose shift it is.
+//   • A `string[]` CANNOT SAY "M19 DID NOT ANSWER", "THIS NIGHT IS COVERED BY A VENDOR M36 CANNOT PAGE"
+//     or "THIS SET IS EMPTY" — all three are life-safety facts. `onCompositionGap` is therefore a
+//     REQUIRED port, not an optional callback: optional is exactly the hole that degrades in silence at
+//     3 a.m. with every test green.
+//   • M20-F06's "emergency-contact OVERRIDE row" OVERRIDES NOTHING — M2 has no emergency-contact table,
+//     so this row IS the record, and it is the CONSENT row: the contact lives in `consent_scope_detail`,
+//     which `m20_secc_contact_present` requires for exactly that purpose. No fourteenth table, and no
+//     shape in which a phone number M20 may not dial can exist.
+//   • THE §8.6 PROJECTION REFUSES WITHOUT A DEK DECIPHER instead of answering `roundedCoordinates: null`.
+//     Answering would tell M32's suggestion model that no incidents happened inside a polygon where they
+//     did — a registered contract that denies and says why is the platform rule.
+//   • THE BOARD'S `inHighRiskArea` IS STRUCTURALLY `null`, carried forward from T04: D12 has no address
+//     source, M18's coordinates are projected away before any composer sees them, and a fabricated
+//     advisory would tell a clinician a house is safe.
+//   • `perHundredVisits` HAS NO M17 DENOMINATOR. M17 publishes no per-ProviderEntity visit count, so the
+//     denominator is the visits M20 OBSERVED (materialized a check-in obligation for) — which biases the
+//     rate upward when a consumer was down, and is why every rate method ships `visitCount` beside it.
+//
+// Still to land: the §4.1 routes + §4.6 keys + §4.7 ABAC (T06) and the §5 screens (T07).
+export * from "./alert-rules";
 export * from "./consumers";
 export * from "./lifecycle";
 export * from "./seams";

@@ -92,6 +92,13 @@ import {
   reconciliationProviderDenyStub,
   refillInboxProviderDenyStub,
   renderedDocumentProviderDenyStub,
+  safetyCheckInProviderDenyStub,
+  safetyContextReaderDenyStub,
+  safetyDashboardProviderDenyStub,
+  safetyIncidentReaderDenyStub,
+  safetyMetricsProviderDenyStub,
+  safetyPolicyProviderDenyStub,
+  safetySupervisorProviderDenyStub,
   scaleSeriesProviderDenyStub,
   sessionContextResolverDenyStub,
   signedEncountersReaderDenyStub,
@@ -855,6 +862,71 @@ export const REQUIRED_SEAMS = [
     ownerModule: 32,
     phi: true,
     denyStub: hospitalizationRiskProviderDenyStub,
+  },
+  // M20 (Field Safety) §4.3 PUBLISHED seams (M20-T05). Seven read surfaces over M20's thirteen `safety_*`
+  // tables that M8 (encounter-authoring context), M17 (visit-day badging + the board embed), M19
+  // (after-hours window default), M30/M33 (operational dashboards), M32 (the future high-risk-area
+  // suggestion model) and M36 (the §4.5 `field_safety_composed` recipient resolver) attach to instead of
+  // importing M20's schema (architecture §25.15).
+  //
+  // PHI split — per SEAM, decided by its widest method:
+  //   • `SafetyDashboardProvider` is phi: TRUE. The board row carries `currentPatientFirstName` and a
+  //     `currentVisitId`, which name a served person — the minimum-necessary projection (§4.4) narrows
+  //     WHAT crosses, it does not de-identify it.
+  //   • `SafetyContextReader` is phi: TRUE — an incident summary names the visit and the affected
+  //     clinician, and M8 renders it beside the encounter it happened during.
+  //   • `SafetyIncidentReader` is phi: TRUE. §8.6 strips identity and rounds the geography to ~110 m, but
+  //     a category + severity + instant + coarse location for a hospice visit is re-identifiable at agency
+  //     scale, and PHI leaving the platform for a model is precisely the AI Governance §2.1.4 boundary.
+  //   • `SafetyMetricsProvider` is phi: FALSE — window-scoped aggregates only, no patient argument and no
+  //     per-patient row (the M17 `VisitMetricsProvider` / M19 `TriageCallMetricsProvider` precedent).
+  //   • `SafetyCheckInProvider` is phi: TRUE — the argument is a `visitId`, so the badge trio is a fact
+  //     ABOUT one patient's visit even though the response is three enum values.
+  //   • `SafetyPolicyProvider` is phi: FALSE — per-tenant configuration thresholds, no person at all.
+  //   • `SafetySupervisorProvider` is phi: FALSE — workforce paging configuration and coverage gaps
+  //     (memberships, never patients). It is still boot-validated and fail-closed, because who gets paged
+  //     is what routes a 3 a.m. SOS.
+  {
+    key: "SafetyDashboardProvider",
+    ownerModule: 20,
+    phi: true,
+    denyStub: safetyDashboardProviderDenyStub,
+  },
+  {
+    key: "SafetyContextReader",
+    ownerModule: 20,
+    phi: true,
+    denyStub: safetyContextReaderDenyStub,
+  },
+  {
+    key: "SafetyIncidentReader",
+    ownerModule: 20,
+    phi: true,
+    denyStub: safetyIncidentReaderDenyStub,
+  },
+  {
+    key: "SafetyMetricsProvider",
+    ownerModule: 20,
+    phi: false,
+    denyStub: safetyMetricsProviderDenyStub,
+  },
+  {
+    key: "SafetyCheckInProvider",
+    ownerModule: 20,
+    phi: true,
+    denyStub: safetyCheckInProviderDenyStub,
+  },
+  {
+    key: "SafetyPolicyProvider",
+    ownerModule: 20,
+    phi: false,
+    denyStub: safetyPolicyProviderDenyStub,
+  },
+  {
+    key: "SafetySupervisorProvider",
+    ownerModule: 20,
+    phi: false,
+    denyStub: safetySupervisorProviderDenyStub,
   },
 ] satisfies readonly RequiredSeam[];
 

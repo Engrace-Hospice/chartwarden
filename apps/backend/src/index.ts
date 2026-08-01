@@ -111,7 +111,9 @@ import {
   registerTriageErasers,
 } from "./modules/19-oncall/index";
 import {
+  buildDrizzleSafetySeamStore,
   createDrizzleSafetyEraseStore,
+  registerFieldSafetySeams,
   registerSafetyErasers,
 } from "./modules/20-field-safety/index";
 import {
@@ -517,6 +519,29 @@ export function wireModuleSeams(
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
   if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
+  // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
+  // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
+  // minimum-necessary projection), `SafetyMetricsProvider` (M30/M33 aggregates, every rate WITH its
+  // denominator), `SafetyCheckInProvider` (M17's per-visit badge trio), `SafetyPolicyProvider` (the ONLY
+  // read path to the effective policy, §2.2.4) and `SafetySupervisorProvider` (who gets paged + the §7.8
+  // coverage gaps). All seven share the Drizzle store, which reads under the CONSUMER's ambient request
+  // context, so a seam call is RLS-scoped to the caller's org without M20 comparing anything.
+  //
+  // WITHOUT a DB client this registers NOTHING, for the same reason as M19 above and with a sharper edge:
+  // an in-memory slice answers the board with an empty `clinicians` array and `coverageGapsForOrg` with
+  // `[]`, which read as "nobody is in the field" and "everybody is covered". A DB-less boot must not
+  // manufacture "everyone is fine" on a safety surface; a throwing stub says "M20 cannot answer".
+  //
+  // THREE OPTIONAL DEPS ARE DELIBERATELY UNBOUND HERE. The §8.6 tenant-DEK coordinate decipher lands with
+  // M20's write path (T06) — until then `SafetyIncidentReader` refuses with
+  // `SAFETY_COORDINATE_DECIPHER_UNBOUND` rather than reporting every incident as having no geography. The
+  // org IANA time zone lands with the same task — until then `getAfterHoursSosCount` refuses rather than
+  // counting a Pacific agency's 22:30 presses as business hours. The §7.7 GPS-spoof signal cache is
+  // process-local and is bound by the consumer that fills it (T06's `m18.evv.gps_spoof_suspected`
+  // subscriber); absent, the board shows no spoof badge, which is the documented cost of holding that
+  // suspicion in memory (a MISSING caveat, never a missing alert).
+  if (deps.db) registerFieldSafetySeams({ store: buildDrizzleSafetySeamStore(deps.db) });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
   // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is
