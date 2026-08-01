@@ -28,6 +28,11 @@ const asideRail = {
 // sequestration-policy + eligibility-center asides are 22rem. A fixed outer rail would fight those.
 // So this only puts a ceiling on the unsized case: a self-sizing child up to 24rem is untouched,
 // while a bare <div> of prose is capped instead of growing until the workspace collapses.
+// The `wx-context-rail` class carries the GUTTER (index.css). It cannot live here, because whether the
+// rail should be padded depends on what the caller passed: `RightDetailPanel` is a full-bleed panel that
+// supplies its own padding and a `borderLeft` meant to meet the shell edge, whereas ~12 screens pass a
+// bare <div>/<span>, which then sits flush against the viewport with no chrome at all. A `:has()` rule
+// pads only the second case; an inline style could not tell them apart.
 const contextRailBounds = { flexShrink: 0, minWidth: 0, maxWidth: "24rem", overflow: "auto" };
 
 /** Auth Flow — a single focused action on a centered card (sign-in, MFA, org-select, step-up). */
@@ -180,7 +185,7 @@ export function WorkQueueLayout({
         <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>
           {table}
         </div>
-        {detail ? <div style={contextRailBounds}>{detail}</div> : null}
+        {detail ? <div className="wx-context-rail" style={contextRailBounds}>{detail}</div> : null}
       </div>
     </div>
   );
@@ -309,7 +314,7 @@ export function ConversationView({ list, children, detail }: ConversationViewPro
         >
           {children}
         </div>
-        {detail ? <div style={contextRailBounds}>{detail}</div> : null}
+        {detail ? <div className="wx-context-rail" style={contextRailBounds}>{detail}</div> : null}
       </div>
     </div>
   );
@@ -346,7 +351,7 @@ export function AdminSplitLayout({
         <div className="wx-admin-matrix" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
           {children}
         </div>
-        {detail ? <div style={contextRailBounds}>{detail}</div> : null}
+        {detail ? <div className="wx-context-rail" style={contextRailBounds}>{detail}</div> : null}
       </div>
     </div>
   );
@@ -364,7 +369,7 @@ export function DetailPageLayout({ header, children, aside }: DetailPageLayoutPr
       {header}
       <div style={splitRow}>
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>{children}</div>
-        {aside ? <div style={contextRailBounds}>{aside}</div> : null}
+        {aside ? <div className="wx-context-rail" style={contextRailBounds}>{aside}</div> : null}
       </div>
     </div>
   );
