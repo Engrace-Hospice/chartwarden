@@ -810,6 +810,13 @@ export const electionSignatureMethod = pgEnum("election_signature_method", [
   "electronic_witnessed",
 ]);
 
+/** `election_statement_status` — the §7.3 draft → signed → voided lifecycle (M6L-T03). */
+export const electionStatementStatus = pgEnum("election_statement_status", [
+  "drafted",
+  "signed",
+  "voided",
+]);
+
 /** `cti_status` — the §3.2 certification-of-terminal-illness lifecycle (§2.3.3). */
 export const ctiStatus = pgEnum("cti_status", [
   "drafted",

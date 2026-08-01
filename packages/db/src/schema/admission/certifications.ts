@@ -33,11 +33,13 @@ export const certificationsOfTerminalIllness = pgTable(
     hospiceMdSignedAt: timestamp("hospice_md_signed_at", { withTimezone: true }),
     attendingMdId: uuid("attending_md_id"), // M40 physician (app-validated)
     attendingMdSignedAt: timestamp("attending_md_signed_at", { withTimezone: true }),
-    terminalDiagnosisIcd10: text("terminal_diagnosis_icd10").notNull(),
+    // Nullable at draft (M6L-T03): a `drafted` CTI carries only the physicians + period ref; the clinical
+    // fields are filled when known / on completion. See migration 0124.
+    terminalDiagnosisIcd10: text("terminal_diagnosis_icd10"),
     relatedConditionsIcd10: text("related_conditions_icd10").array().notNull().default(sql`'{}'`),
-    narrative: text("narrative").notNull(),
-    periodStart: date("period_start").notNull(),
-    periodEnd: date("period_end").notNull(),
+    narrative: text("narrative"),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
     signedLate: boolean("signed_late").notNull().default(false),
     lateReason: text("late_reason"),
     status: ctiStatus("status").notNull().default("drafted"),

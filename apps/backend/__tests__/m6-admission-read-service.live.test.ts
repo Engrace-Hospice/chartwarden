@@ -159,10 +159,10 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(await service.listElectionPeriods(ORG_A, PATIENT /* not an admission id */)).toBeNull();
   });
 
-  it("the election/CTI writes still fail-closed 501 until the M6L-T03+ lifecycle lands", async () => {
-    // (The referral + admission writes are live as of M6L-T02 — see m6-admission-write-lifecycle.live.test.ts.)
+  it("the F2F/LOC/discharge/compliance writes still fail-closed 501 until M6L-T04+", async () => {
+    // (Referral + admission [T02] and election + CTI [T03] writes are live — see the *-write*.live tests.)
     await expect(
-      service.draftElectionStatement(ORG_A, seeded[ORG_A].admission, "period-x"),
+      service.changeLoc(ORG_A, seeded[ORG_A].admission, "routine_home_care"),
     ).rejects.toMatchObject({ statusCode: 501 });
   });
 });
