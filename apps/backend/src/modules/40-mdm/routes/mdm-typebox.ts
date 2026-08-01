@@ -10,6 +10,13 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { MDM_ENTITY_KINDS } from "@wardenx/mdm";
+import type {
+  BaaRegisterEntry as ServiceBaaRegisterEntry,
+  MdmEntityKind as ServiceMdmEntityKind,
+  MdmResolved as ServiceMdmResolved,
+  MergeRequestRow as ServiceMergeRequestRow,
+  NppesSyncRun as ServiceNppesSyncRun,
+} from "@wardenx/mdm";
 import { ValidationError } from "@wardenx/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
@@ -100,6 +107,158 @@ export const NppesLookupBodySchema = Type.Object({
 export type SearchQuery = Static<typeof SearchQuerySchema>;
 export type OverlayBody = Static<typeof OverlayBodySchema>;
 export type BaaBody = Static<typeof BaaBodySchema>;
+
+// --- §4.2 RESPONSE DTOs (F0 enrichment) --------------------------------------------------------
+// The MDM read/write routes returned typed view shapes (`MdmResolved` / `BaaRegisterEntry` /
+// `MergeRequestRow` / `NppesSyncRun` and small write acks) but published NO response contract, so
+// the generated client typed every body as `never`. These DTOs mirror the seam/service views and
+// are pinned to them by the compile-time `Conforms` aliases below, so a view field added or renamed
+// breaks `bun run build` rather than silently drifting from the client. `MdmResolved`'s `canonical`
+// is a per-kind rich generic; the DTO publishes the shared `CanonicalBaseFields` denominator (a
+// valid member of the canonical union) so the pin holds across every kind.
+const CanonicalIdentifierSchema = Type.Union([
+  Type.Literal("npi"),
+  Type.Literal("ccn"),
+  Type.Literal("x12_payer_id"),
+  Type.Literal("ncpdp"),
+]);
+
+const CanonicalBaseFieldsSchema = Type.Object({
+  id: Type.String(),
+  identifierType: CanonicalIdentifierSchema,
+  identifierValue: Type.Union([Type.String(), Type.Null()]),
+  displayName: Type.String(),
+});
+
+const OverlayPhysicianFieldsSchema = Type.Object({
+  preferredContactPhone: Type.Union([Type.String(), Type.Null()]),
+  preferredContactEmail: Type.Union([Type.String(), Type.Null()]),
+  relationshipNotes: Type.Union([Type.String(), Type.Null()]),
+  doNotRefer: Type.Boolean(),
+  isPreferred: Type.Boolean(),
+  preferredRank: Type.Union([Type.Integer(), Type.Null()]),
+});
+
+/** The resolved entity (§4.5): survivor id, optional redirect breadcrumb, canonical base payload,
+ *  this-tenant overlay (physician-only, else `null`), and the post-redirect status. */
+export const MdmResolvedResponseSchema = Type.Object({
+  id: Type.String(),
+  resolvedFrom: Type.Optional(Type.String()),
+  canonical: CanonicalBaseFieldsSchema,
+  overlay: Type.Union([OverlayPhysicianFieldsSchema, Type.Null()]),
+  status: Type.Union([
+    Type.Literal("active"),
+    Type.Literal("deactivated"),
+    Type.Literal("provisional"),
+  ]),
+});
+
+/** GET /:kind/search — `{ results }`. */
+export const MdmSearchResponseSchema = Type.Object({
+  results: Type.Array(MdmResolvedResponseSchema),
+});
+
+/** POST /:kind/get-or-create — the §7.1 match / provisional / fuzzy union. */
+export const MdmGetOrCreateResponseSchema = Type.Union([
+  Type.Object({ kind: Type.Literal("matched_canonical"), entity: MdmResolvedResponseSchema }),
+  Type.Object({ kind: Type.Literal("created_provisional"), provisionalId: Type.String() }),
+  Type.Object({
+    kind: Type.Literal("fuzzy_candidates"),
+    candidates: Type.Array(MdmResolvedResponseSchema),
+    provisionalId: Type.String(),
+  }),
+]);
+
+/** PATCH /:kind/:id/overlay — the write ack. */
+export const MdmOverlayAppliedResponseSchema = Type.Object({ applied: Type.Boolean() });
+
+/** GET /:kind/:id/relationships — canonical parent + children (no overlay join). */
+export const MdmRelationshipsResponseSchema = Type.Object({
+  parent: Type.Union([MdmResolvedResponseSchema, Type.Null()]),
+  children: Type.Array(MdmResolvedResponseSchema),
+});
+
+/** A BAA register entry (§4.1 GET /mdm/baa) — the per-tenant view of `mdm_baa_record`. */
+export const BaaRegisterEntryResponseSchema = Type.Object({
+  id: Type.String(),
+  kind: Type.Union([
+    Type.Literal("facility"),
+    Type.Literal("payer"),
+    Type.Literal("referral_source"),
+    Type.Literal("dme_vendor"),
+    Type.Literal("funeral_home"),
+  ]),
+  canonicalId: Type.String(),
+  baaStatus: Type.Union([Type.Literal("executed"), Type.Literal("pending"), Type.Literal("n_a")]),
+  executedOn: Type.Union([Type.String(), Type.Null()]),
+  expiresOn: Type.Union([Type.String(), Type.Null()]),
+});
+export const MdmBaaListResponseSchema = Type.Object({
+  entries: Type.Array(BaaRegisterEntryResponseSchema),
+});
+
+/** POST /mdm/baa — the created register id. */
+export const MdmBaaCreatedResponseSchema = Type.Object({ id: Type.String() });
+
+/** POST /mdm/license/manual — the manual-entry ack. */
+export const MdmLicenseRecordedResponseSchema = Type.Object({ recorded: Type.Literal(true) });
+
+/** A merge-request row (§2.4.2) — the platform-ops surface. */
+export const MergeRequestRowResponseSchema = Type.Object({
+  id: Type.String(),
+  kind: KindSchema,
+  canonicalId: Type.String(),
+  duplicateId: Type.String(),
+  status: Type.Union([
+    Type.Literal("pending"),
+    Type.Literal("approved"),
+    Type.Literal("rejected"),
+    Type.Literal("executed"),
+  ]),
+  evidence: Type.Record(Type.String(), Type.Unknown()),
+});
+export const MdmMergeRequestsResponseSchema = Type.Object({
+  mergeRequests: Type.Array(MergeRequestRowResponseSchema),
+});
+
+/** POST …/merge-requests/:id/approve — the §7.6 flip result. */
+export const MdmMergeApprovedResponseSchema = Type.Object({
+  duplicateId: Type.String(),
+  canonicalId: Type.String(),
+});
+
+/** POST …/provisional/:id/promote — the promoted canonical id. */
+export const MdmProvisionalPromotedResponseSchema = Type.Object({ canonicalId: Type.String() });
+
+/** POST …/nppes/lookup — the single-NPI sync outcome. */
+export const MdmNppesLookupResponseSchema = Type.Object({
+  matched: Type.Boolean(),
+  canonicalId: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** An NPPES sync-log row (§4.1 GET …/nppes/sync-log). */
+export const NppesSyncRunResponseSchema = Type.Object({
+  id: Type.String(),
+  mode: Type.Union([
+    Type.Literal("nightly_delta"),
+    Type.Literal("weekly_full"),
+    Type.Literal("on_demand"),
+  ]),
+  outcome: Type.Union([Type.Literal("success"), Type.Literal("partial"), Type.Literal("failure")]),
+});
+export const MdmNppesSyncLogResponseSchema = Type.Object({
+  runs: Type.Array(NppesSyncRunResponseSchema),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the seam/service returns).
+type Conforms<T extends V, V> = T;
+type _MdmResolved = Conforms<
+  Static<typeof MdmResolvedResponseSchema>,
+  ServiceMdmResolved<ServiceMdmEntityKind>
+>;
+type _BaaEntry = Conforms<Static<typeof BaaRegisterEntryResponseSchema>, ServiceBaaRegisterEntry>;
+type _MergeRow = Conforms<Static<typeof MergeRequestRowResponseSchema>, ServiceMergeRequestRow>;
+type _NppesRun = Conforms<Static<typeof NppesSyncRunResponseSchema>, ServiceNppesSyncRun>;
 
 /** Validate `raw` against `schema`, coercing query scalars first; throws M1's VALIDATION_FAILED. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

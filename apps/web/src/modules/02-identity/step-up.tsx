@@ -126,7 +126,13 @@ export function StepUp(): JSX.Element {
     const initiated = await client.POST("/api/v1/sessions/step-up/initiate", {
       body: { factor: "webauthn" },
     });
-    if (initiated.error || !initiated.data?.webauthnChallenge) {
+    // The initiate response is a discriminated union on `factor`; only the webauthn branch carries a
+    // `webauthnChallenge`. Narrow on the field's presence before reading it.
+    const webauthnChallenge =
+      initiated.data && "webauthnChallenge" in initiated.data
+        ? initiated.data.webauthnChallenge
+        : undefined;
+    if (initiated.error || !webauthnChallenge) {
       setBusy(false);
       setError(
         "Couldn’t start passkey verification. You may not have a passkey registered on this account.",
@@ -135,7 +141,7 @@ export function StepUp(): JSX.Element {
     }
 
     // 2) Run the browser assertion ceremony against the session-scoped challenge.
-    const { challenge, rpId } = initiated.data.webauthnChallenge;
+    const { challenge, rpId } = webauthnChallenge;
     let assertion: unknown;
     try {
       const credential = (await navigator.credentials.get({

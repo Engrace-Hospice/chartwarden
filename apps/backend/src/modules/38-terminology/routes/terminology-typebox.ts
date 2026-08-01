@@ -13,6 +13,14 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { CODE_SYSTEM_IDS } from "@wardenx/terminology";
+import type {
+  CodeSystemId,
+  DeprecationMappingResponse as ServiceDeprecationMapping,
+  ExpansionMember as ServiceExpansionMember,
+  MembershipResult as ServiceMembershipResult,
+  ResolvedConcept as ServiceResolvedConcept,
+  ValidateResult as ServiceValidateResult,
+} from "@wardenx/terminology";
 import { ValidationError } from "@wardenx/types";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
@@ -108,6 +116,119 @@ export const DeprecationParamsSchema = Type.Object({
 export type ValidateQuery = Static<typeof ValidateQuerySchema>;
 export type SearchQuery = Static<typeof SearchQuerySchema>;
 export type ExpandQuery = Static<typeof ExpandQuerySchema>;
+
+// --- §4.2 RESPONSE DTOs (F0 enrichment) -------------------------------------------------------
+// The read + extension routes returned typed provider views (`ValidateResult` / `ResolvedConcept` /
+// `ExpansionMember` / `MembershipResult` / `DeprecationMappingResponse`) but published NO response
+// contract, so the generated client typed every body as `never`. These DTOs mirror the §4.5 seam
+// return shapes 1:1 and are pinned to them by the compile-time `Conforms` aliases below, so a seam
+// field added or renamed breaks `bun run build` rather than silently drifting from the client.
+// (`properties`, a per-system concept union, is published as an open object — the client reads the
+// stable base fields; the base is still pinned.)
+
+const ConceptStatusSchema = Type.Union([
+  Type.Literal("active"),
+  Type.Literal("deprecated"),
+  Type.Literal("retired"),
+]);
+
+const DeprecationMappingKindSchema = Type.Union([
+  Type.Literal("equivalent"),
+  Type.Literal("broader"),
+  Type.Literal("narrower"),
+  Type.Literal("none"),
+  Type.Literal("see_other"),
+]);
+
+/** §4.5 `DeprecationMappingResponse` — a deprecated code's successor mapping. */
+export const DeprecationMappingResponseSchema = Type.Object({
+  deprecatedCode: Type.String(),
+  deprecationEffective: Type.String(),
+  successorCodes: Type.Array(Type.String()),
+  mappingKind: DeprecationMappingKindSchema,
+  guidance: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** GET /:system/validate — `ValidateResult` + the echoed `asOf` (null → "today"). */
+export const ValidateResponseSchema = Type.Object({
+  valid: Type.Boolean(),
+  status: Type.Optional(ConceptStatusSchema),
+  successor: Type.Optional(DeprecationMappingResponseSchema),
+  asOf: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** GET /:system/:code/deprecation — the successor mapping, or null when the code is current. */
+export const DeprecationLookupResponseSchema = Type.Object({
+  mapping: Type.Union([DeprecationMappingResponseSchema, Type.Null()]),
+});
+
+/** GET /:system/:code — the union concept (§4.5 `ResolvedConcept`); `properties` is a per-system union. */
+export const ConceptResponseSchema = Type.Object({
+  systemId: CodeSystemIdSchema,
+  code: Type.String(),
+  display: Type.String(),
+  status: ConceptStatusSchema,
+  effectiveDate: Type.String(),
+  endDate: Type.Union([Type.String(), Type.Null()]),
+  properties: Type.Record(Type.String(), Type.Unknown()),
+});
+
+/** A single (system, code) expansion member (§4.5 `ExpansionMember`). */
+export const ExpansionMemberResponseSchema = Type.Object({
+  systemId: CodeSystemIdSchema,
+  code: Type.String(),
+  display: Type.String(),
+  annotations: Type.Record(Type.String(), Type.Unknown()),
+});
+
+/** GET /value-sets/:id/expand — the member page (`nextCursor` is null in the slice). */
+export const ExpandResponseSchema = Type.Object({
+  items: Type.Array(ExpansionMemberResponseSchema),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+});
+
+/** GET /value-sets/:id/is-member — membership + provenance (§4.5 `MembershipResult`). */
+export const MembershipResponseSchema = Type.Object({
+  isMember: Type.Boolean(),
+  source: Type.Union([
+    Type.Literal("platform"),
+    Type.Literal("tenant_extension"),
+    Type.Null(),
+  ]),
+});
+
+/** POST /value-sets/:id/extensions — the created tenant-extension echo (201). */
+export const ExtensionCreatedResponseSchema = Type.Object({
+  extensionId: Type.String(),
+  valueSetId: Type.String(),
+  system: CodeSystemIdSchema,
+  code: Type.String(),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the seam returns).
+type Conforms<T extends V, V> = T;
+type _Validate = Conforms<
+  Static<typeof ValidateResponseSchema>,
+  ServiceValidateResult & { readonly asOf: string | null }
+>;
+type _Deprecation = Conforms<
+  Static<typeof DeprecationLookupResponseSchema>,
+  { readonly mapping: ServiceDeprecationMapping | null }
+>;
+// `properties` is a per-system union (published open); the stable base fields are pinned.
+type _Concept = Conforms<
+  Omit<Static<typeof ConceptResponseSchema>, "properties">,
+  Omit<ServiceResolvedConcept<CodeSystemId>, "properties">
+>;
+type _Expand = Conforms<
+  Static<typeof ExpandResponseSchema>,
+  { readonly items: readonly ServiceExpansionMember[]; readonly nextCursor: string | null }
+>;
+type _Membership = Conforms<Static<typeof MembershipResponseSchema>, ServiceMembershipResult>;
+type _ExtCreated = Conforms<
+  Static<typeof ExtensionCreatedResponseSchema>,
+  { readonly extensionId: string; readonly valueSetId: string; readonly system: CodeSystemId; readonly code: string }
+>;
 
 /**
  * Validate `raw` against `schema`, coercing query-string scalars first (`limit=10` → 10,

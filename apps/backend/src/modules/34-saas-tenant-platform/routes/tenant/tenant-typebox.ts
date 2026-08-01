@@ -12,6 +12,14 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  BaaRecordView as ServiceBaaRecordView,
+  DownloadUrlView as ServiceDownloadUrlView,
+  DsarExportJobView as ServiceDsarExportJobView,
+  OnboardingTaskView as ServiceOnboardingTaskView,
+  SupportConsentGrantView as ServiceSupportConsentGrantView,
+  TenantExportJobView as ServiceTenantExportJobView,
+} from "./service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -231,6 +239,21 @@ export const BaaRecordViewSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
 });
 export const BaaRecordListResponseSchema = CursorPageOf(BaaRecordViewSchema);
+
+/** §4.1 — a 24h presigned download URL (SEC-052); returned by the DSAR + tenant-export download routes. */
+export const DownloadUrlViewSchema = Type.Object({
+  url: Type.String(),
+  expiresAt: Type.String({ format: "date-time" }),
+});
+
+// Compile-time pins: each response DTO structurally conforms to its `service.ts` view (drift = a type error).
+type Conforms<T extends V, V> = T;
+type _Grant = Conforms<Static<typeof SupportConsentGrantViewSchema>, ServiceSupportConsentGrantView>;
+type _Dsar = Conforms<Static<typeof DsarExportJobViewSchema>, ServiceDsarExportJobView>;
+type _TenantExport = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
+type _Onboarding = Conforms<Static<typeof OnboardingTaskViewSchema>, ServiceOnboardingTaskView>;
+type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
+type _Download = Conforms<Static<typeof DownloadUrlViewSchema>, ServiceDownloadUrlView>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

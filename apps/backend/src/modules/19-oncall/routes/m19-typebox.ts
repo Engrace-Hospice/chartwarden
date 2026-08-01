@@ -31,6 +31,26 @@
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type { PortalTriageSummary } from "@wardenx/types";
+import type { CursorPage } from "./concurrency";
+import type {
+  CurrentOnCallView,
+  EscalationInboxItem,
+  OnCallShiftView,
+  OncallPolicyView,
+  PaperReentryWorklistView,
+  TriageAnswerView,
+  TriageCallDetail,
+  TriageCallListItem,
+  TriageEscalationView,
+  TriageProtocolQuestionView,
+  TriageProtocolView,
+  TriageStateHistoryView,
+  TriageTranscriptView,
+  VendorBindingView,
+  VendorTriageCallView,
+} from "./read-service";
+import type { AnswerWriteResult, OpenTriageCallResult } from "./write-service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -721,3 +741,438 @@ export type PatchOncallPolicyInput = Static<typeof PatchOncallPolicyBody>;
 export type CreateProtocolInput = Static<typeof CreateProtocolBody>;
 export type CreateVendorBindingInput = Static<typeof CreateVendorBindingBody>;
 export type PaperReentryInput = Static<typeof PaperReentryBody>;
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ────────────────────────────────────────────────────────────────
+//
+// The §4.1 read + write routes returned the typed view interfaces of `read-service`/`write-service` but
+// published NO response contract, so `client:gen` typed every body `never`. These schemas mirror those
+// views 1:1 and are pinned to them by the compile-time `Conforms` aliases at the foot of this section, so a
+// view field added or renamed breaks `bun run build` rather than drifting silently from the generated
+// client. Nullable view fields are `Union([_, Null])` (a REQUIRED, nullable property), never `Optional`, so
+// the pin sees the same shape the service returns. The two deeply nested unions a triage-call detail
+// carries — `dispositionData` (`TriageDispositionData`, an eight-arm payload union) and `medicationContext`
+// (`TriageMedicationContext`, the D15 M12 slice pair) — are published as open schemas (`Type.Any`) rather
+// than re-mirrored here, because a second hand-kept copy of either is exactly the drift these pins exist to
+// stop; the same for the discriminated `OnCallActor` and `TriageRedFlagMatch` unions.
+
+const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
+const NullStr = Type.Union([Type.String(), Type.Null()]);
+const Int = Type.Integer();
+
+// enum mirrors not already declared above (`packages/types/src/oncall.ts` is the source of truth)
+const TriageDispositionEnum = Type.Union([
+  Type.Literal("caregiver_education_only"),
+  Type.Literal("prn_intervention_authorized"),
+  Type.Literal("verbal_order_recorded"),
+  Type.Literal("visit_dispatched_now"),
+  Type.Literal("visit_scheduled_first_light"),
+  Type.Literal("gip_admission_proposed"),
+  Type.Literal("ed_transfer_acknowledged"),
+  Type.Literal("pronouncement_scheduled"),
+  Type.Literal("escalated_unresolved"),
+  Type.Literal("abandoned"),
+]);
+const SelectableDispositionEnum = Type.Union([
+  Type.Literal("caregiver_education_only"),
+  Type.Literal("prn_intervention_authorized"),
+  Type.Literal("verbal_order_recorded"),
+  Type.Literal("visit_dispatched_now"),
+  Type.Literal("visit_scheduled_first_light"),
+  Type.Literal("gip_admission_proposed"),
+  Type.Literal("ed_transfer_acknowledged"),
+  Type.Literal("pronouncement_scheduled"),
+]);
+const TriageCallSourceEnum = Type.Union([
+  Type.Literal("manual"),
+  Type.Literal("no_show"),
+  Type.Literal("late_checkout"),
+  Type.Literal("geofence_anomaly"),
+  Type.Literal("m36_delivery_failure"),
+  Type.Literal("paper_origin"),
+]);
+const EscalationStateEnum = Type.Union([
+  Type.Literal("open"),
+  Type.Literal("acknowledged"),
+  Type.Literal("resolved"),
+]);
+const EscalationTriggerEnum = Type.Union([
+  Type.Literal("manual"),
+  Type.Literal("red_flag_question"),
+  Type.Literal("mandatory_protocol"),
+  Type.Literal("sla_breach"),
+]);
+const AnswerTypeEnum = Type.Union([
+  Type.Literal("boolean"),
+  Type.Literal("integer"),
+  Type.Literal("scale_0_10"),
+  Type.Literal("free_text"),
+  Type.Literal("enum"),
+]);
+const AiConfidenceEnum = Type.Union([
+  Type.Literal("low"),
+  Type.Literal("medium"),
+  Type.Literal("high"),
+]);
+const RiskBandEnum = Type.Union([
+  Type.Literal("low"),
+  Type.Literal("medium"),
+  Type.Literal("high"),
+]);
+const ShiftStatusEnum = Type.Union([
+  Type.Literal("scheduled"),
+  Type.Literal("active"),
+  Type.Literal("completed"),
+  Type.Literal("cancelled"),
+]);
+const RedactedCategoryEnum = Type.Union([
+  Type.Literal("sud"),
+  Type.Literal("ai_advisory"),
+  Type.Literal("caller_free_text"),
+]);
+
+/** `CursorPage<T>` (concurrency.ts) — `{ data, next_cursor, has_more }`, NOT `{ items, nextCursor }`. */
+const Page = <T extends TSchema>(item: T) =>
+  Type.Object({
+    data: Type.Array(item),
+    next_cursor: NullStr,
+    has_more: Type.Boolean(),
+  });
+
+// ── triage-call sub-views ─────────────────────────────────────────────────────────────────────────────
+
+export const TriageAnswerViewResponse = Type.Object({
+  id: Type.String(),
+  questionId: Type.String(),
+  questionOrder: Int,
+  prompt: Type.String(),
+  answerType: AnswerTypeEnum,
+  valueText: NullStr,
+  valueInt: Nullable(Type.Integer()),
+  valueBool: Nullable(Type.Boolean()),
+  redFlagHit: Type.Boolean(),
+  correctionOfAnswerId: NullStr,
+  answeredAt: Type.String(),
+  answeredByMembershipId: Type.String(),
+});
+
+export const TriageEscalationViewResponse = Type.Object({
+  id: Type.String(),
+  tier: EscalationTier,
+  triggerKind: EscalationTriggerEnum,
+  state: EscalationStateEnum,
+  mandatory: Type.Boolean(),
+  escalatedToMembershipId: NullStr,
+  escalatedToExternalActorId: NullStr,
+  escalatedAt: Type.String(),
+  acknowledgedAt: NullStr,
+  resolvedAt: NullStr,
+  resolvedByMembershipId: NullStr,
+});
+
+export const TriageStateHistoryViewResponse = Type.Object({
+  id: Type.String(),
+  fromState: Nullable(TriageCallState),
+  toState: TriageCallState,
+  transitionedAt: Type.String(),
+  actorMembershipId: NullStr,
+  systemActor: Type.Boolean(),
+});
+
+const triageCallListItemProps = {
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  patientId: NullStr,
+  state: TriageCallState,
+  disposition: Nullable(TriageDispositionEnum),
+  callerKind: CallerKind,
+  inboundChannel: InboundChannel,
+  source: TriageCallSourceEnum,
+  chiefComplaintSnomed: NullStr,
+  openedAt: Type.String(),
+  firstResponseAt: NullStr,
+  closedAt: NullStr,
+  protocolLabel: NullStr,
+  openEscalationCount: Int,
+  redFlagAnswerCount: Int,
+  version: Int,
+};
+
+/** §4.1 row 2 — one supervisor-board / caseload row. */
+export const TriageCallListItemResponse = Type.Object(triageCallListItemProps);
+
+/** §4.1 row 3 — the full staff projection of one call. */
+export const TriageCallDetailResponse = Type.Object({
+  ...triageCallListItemProps,
+  locationId: NullStr,
+  admissionId: NullStr,
+  callerDisplayName: NullStr,
+  callerPhoneE164: NullStr,
+  callerRelationshipLabel: NullStr,
+  callerCaregiverId: NullStr,
+  chiefComplaintText: NullStr,
+  onCallShiftId: Type.String(),
+  selectedProtocolId: NullStr,
+  selectedProtocolVersion: NullStr,
+  suggestedProtocolId: NullStr,
+  suggestedProtocolConfidence: Nullable(AiConfidenceEnum),
+  hospitalizationRiskBand: Nullable(RiskBandEnum),
+  /** `TriageDispositionData | null` — the published eight-arm payload union (see section header). */
+  dispositionData: Type.Any(),
+  linkedEncounterId: NullStr,
+  linkedVerbalOrderIds: Type.Array(Type.String()),
+  linkedVisitProposalId: NullStr,
+  paperOriginFlag: Type.Boolean(),
+  paperOriginalOpenedAt: NullStr,
+  documentedAt: NullStr,
+  answers: Type.Array(TriageAnswerViewResponse),
+  escalations: Type.Array(TriageEscalationViewResponse),
+  stateHistory: Type.Array(TriageStateHistoryViewResponse),
+  nextQuestionId: NullStr,
+  permittedDispositions: Type.Array(SelectableDispositionEnum),
+  /** `TriageMedicationContext | null` — the D15 M12 slice pair (see section header). */
+  medicationContext: Type.Any(),
+  redactedCategories: Type.Array(RedactedCategoryEnum),
+  dispositionBlockedByMandatoryEscalation: Type.Boolean(),
+});
+
+/** §7.5 / D13 — the PHI-minimized external-vendor projection (a different TYPE, not a filtered one). */
+export const VendorTriageCallViewResponse = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  state: TriageCallState,
+  callerKind: CallerKind,
+  inboundChannel: InboundChannel,
+  chiefComplaintSnomed: NullStr,
+  openedAt: Type.String(),
+  onCallShiftId: Type.String(),
+  selectedProtocolId: NullStr,
+  selectedProtocolVersion: NullStr,
+  answers: Type.Array(TriageAnswerViewResponse),
+  escalations: Type.Array(TriageEscalationViewResponse),
+  nextQuestionId: NullStr,
+  permittedDispositions: Type.Array(SelectableDispositionEnum),
+  version: Int,
+});
+
+/** §4.1 row 3 — `getTriageCall` returns the staff OR the vendor projection by session class. */
+export const TriageCallResponse = Type.Union([
+  TriageCallDetailResponse,
+  VendorTriageCallViewResponse,
+]);
+
+/** §4.1 row 14 — the step-up, per-access-audited transcript read. */
+export const TriageTranscriptResponse = Type.Object({
+  triageCallId: Type.String(),
+  transcript: NullStr,
+  callerQuote: NullStr,
+  decryptedAt: Type.String(),
+});
+
+/** §4.1 row 16 — one escalation-inbox row (a `TriageEscalationView` plus its call context). */
+export const EscalationInboxItemResponse = Type.Object({
+  id: Type.String(),
+  tier: EscalationTier,
+  triggerKind: EscalationTriggerEnum,
+  state: EscalationStateEnum,
+  mandatory: Type.Boolean(),
+  escalatedToMembershipId: NullStr,
+  escalatedToExternalActorId: NullStr,
+  escalatedAt: Type.String(),
+  acknowledgedAt: NullStr,
+  resolvedAt: NullStr,
+  resolvedByMembershipId: NullStr,
+  triageCallId: Type.String(),
+  providerEntityId: Type.String(),
+  patientId: NullStr,
+  callState: TriageCallState,
+  minutesOpen: Int,
+  version: Int,
+});
+
+/** §4.1 rows 19-23 — one `on_call_shift` row. */
+export const OnCallShiftViewResponse = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  shiftStartsAt: Type.String(),
+  shiftEndsAt: Type.String(),
+  discipline: ShiftDiscipline,
+  status: ShiftStatusEnum,
+  primaryOnCallMembershipId: NullStr,
+  backupMembershipId: NullStr,
+  externalActorId: NullStr,
+  externalActorLabel: NullStr,
+  openedAt: NullStr,
+  closedAt: NullStr,
+  m17VisitAssignmentRef: NullStr,
+  cancellationReason: NullStr,
+  version: Int,
+});
+
+/** §4.1 row 24 — who is on call NOW, per ProviderEntity. `actors` is the discriminated `OnCallActor[]`. */
+export const CurrentOnCallResponse = Type.Object({
+  asOf: Type.String(),
+  perProviderEntity: Type.Array(
+    Type.Object({
+      providerEntityId: Type.String(),
+      actors: Type.Array(Type.Any()),
+      rnCoverageGap: Type.Boolean(),
+    }),
+  ),
+});
+
+/** §4.1 rows 25-26 — the tenant policy row. The three ladder objects are opaque `unknown` (§3.2). */
+export const OncallPolicyResponse = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  model: OncallModel,
+  escalationTiers: Type.Unknown(),
+  callbackSlaPerSeverity: Type.Unknown(),
+  stateOverrides: Type.Unknown(),
+  externalTriageVendorId: NullStr,
+  emergencyContactE164: NullStr,
+  aiProtocolSuggestionEnabled: Type.Boolean(),
+  aiHospitalizationRiskEnabled: Type.Boolean(),
+  version: Int,
+});
+
+/** §4.1 rows 27-32 — one catalog question. `redFlagMatch` is the closed `TriageRedFlagMatch` union. */
+export const TriageProtocolQuestionViewResponse = Type.Object({
+  id: Type.String(),
+  questionOrder: Int,
+  prompt: Type.String(),
+  answerType: AnswerTypeEnum,
+  answerEnumValues: Type.Union([Type.Array(Type.String()), Type.Null()]),
+  required: Type.Boolean(),
+  isRedFlagQuestion: Type.Boolean(),
+  redFlagMatch: Type.Any(),
+  isSystemLocked: Type.Boolean(),
+});
+
+/** §4.1 rows 27-32 — one protocol. `organizationId === null` is the platform floor. */
+export const TriageProtocolViewResponse = Type.Object({
+  id: Type.String(),
+  organizationId: NullStr,
+  key: Type.String(),
+  chiefComplaintLabel: Type.String(),
+  snomedCode: Type.String(),
+  disciplineRequired: Type.String(),
+  isSystemLocked: Type.Boolean(),
+  requiresMandatoryEscalation: Type.Boolean(),
+  mandatoryEscalationTier: Nullable(EscalationTier),
+  version: Type.String(),
+  effectiveFrom: Type.String(),
+  effectiveTo: NullStr,
+  sortOrder: Int,
+  questions: Type.Array(TriageProtocolQuestionViewResponse),
+});
+
+/** §4.1 rows 33-35 — one vendor binding. NO secret is ever projected (ADR-0026). */
+export const VendorBindingViewResponse = Type.Object({
+  id: Type.String(),
+  mdmVendorId: Type.String(),
+  name: Type.String(),
+  adapterKey: Type.String(),
+  rnCoverageAttested: Type.Boolean(),
+  baaInEffect: Type.Boolean(),
+  baaExpiresOn: NullStr,
+  minimizationProfile: Type.String(),
+  adapterRegistered: Type.Boolean(),
+});
+
+/** §2.7 — one outstanding paper-re-entry worklist row (the DON's BCP list). */
+export const PaperReentryWorklistViewResponse = Type.Object({
+  id: Type.String(),
+  providerEntityId: Type.String(),
+  outageWindowId: Type.String(),
+  shiftId: NullStr,
+  shiftStartsAt: Type.String(),
+  shiftEndsAt: Type.String(),
+  assignedToMembershipId: NullStr,
+  reenteredAt: NullStr,
+  linkedTriageCallId: NullStr,
+  expiresAt: Type.String(),
+});
+
+/** §4.1 row 36 — the M31 portal's lay-language care-log entry (D11/D13 scrubbed by construction). */
+export const PortalTriageSummaryResponse = Type.Object({
+  triageCallId: Type.String(),
+  occurredAt: Type.String(),
+  callerRelationshipLabel: NullStr,
+  callerKind: CallerKind,
+  dispositionSummaryLay: Type.String(),
+  visitDispatched: Type.Boolean(),
+  visitScheduledFirstLight: Type.Boolean(),
+});
+
+// ── write results ───────────────────────────────────────────────────────────────────────────────────
+
+/** §4.2 open response — the created call plus what the D11/D12 advisories had to say. */
+export const OpenTriageCallResultResponse = Type.Object({
+  triageCallId: Type.String(),
+  state: Type.Literal("open"),
+  onCallShiftId: Type.String(),
+  version: Int,
+  suggestedProtocolId: NullStr,
+  suggestedProtocolConfidence: NullStr,
+  hospitalizationRiskBand: NullStr,
+  aiBlockDisabled: Type.Boolean(),
+});
+
+/** §7.1 / §7.2 answer response — the D5 verdict the panel's sticky banner keys off. */
+export const AnswerWriteResultResponse = Type.Object({
+  answerId: Type.String(),
+  redFlagHit: Type.Boolean(),
+  mandatoryEscalationTriggered: Type.Boolean(),
+  escalationId: NullStr,
+  tier: Nullable(EscalationTier),
+  nextQuestionId: NullStr,
+  version: Int,
+});
+
+// ── page envelopes (cursor-paginated list routes) ─────────────────────────────────────────────────────
+
+export const TriageCallListPageResponse = Page(TriageCallListItemResponse);
+export const EscalationInboxPageResponse = Page(EscalationInboxItemResponse);
+export const OnCallShiftPageResponse = Page(OnCallShiftViewResponse);
+export const TriageProtocolPageResponse = Page(TriageProtocolViewResponse);
+export const PortalRecentPageResponse = Page(PortalTriageSummaryResponse);
+
+/** Bare-array list responses (no cursor envelope). */
+export const VendorBindingListResponse = Type.Array(VendorBindingViewResponse);
+export const PaperReentryWorklistResponse = Type.Array(PaperReentryWorklistViewResponse);
+
+// ── compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service
+//    returns). A view field added or renamed without a matching schema edit fails `bun run build` here.
+type Conforms<T extends V, V> = T;
+type _AnswerView = Conforms<Static<typeof TriageAnswerViewResponse>, TriageAnswerView>;
+type _EscalationView = Conforms<Static<typeof TriageEscalationViewResponse>, TriageEscalationView>;
+type _StateHistory = Conforms<Static<typeof TriageStateHistoryViewResponse>, TriageStateHistoryView>;
+type _ListItem = Conforms<Static<typeof TriageCallListItemResponse>, TriageCallListItem>;
+type _Detail = Conforms<Static<typeof TriageCallDetailResponse>, TriageCallDetail>;
+type _Vendor = Conforms<Static<typeof VendorTriageCallViewResponse>, VendorTriageCallView>;
+type _CallUnion = Conforms<Static<typeof TriageCallResponse>, TriageCallDetail | VendorTriageCallView>;
+type _Transcript = Conforms<Static<typeof TriageTranscriptResponse>, TriageTranscriptView>;
+type _Inbox = Conforms<Static<typeof EscalationInboxItemResponse>, EscalationInboxItem>;
+type _Shift = Conforms<Static<typeof OnCallShiftViewResponse>, OnCallShiftView>;
+type _Current = Conforms<Static<typeof CurrentOnCallResponse>, CurrentOnCallView>;
+type _Policy = Conforms<Static<typeof OncallPolicyResponse>, OncallPolicyView>;
+type _Question = Conforms<
+  Static<typeof TriageProtocolQuestionViewResponse>,
+  TriageProtocolQuestionView
+>;
+type _Protocol = Conforms<Static<typeof TriageProtocolViewResponse>, TriageProtocolView>;
+type _VendorBinding = Conforms<Static<typeof VendorBindingViewResponse>, VendorBindingView>;
+type _Worklist = Conforms<Static<typeof PaperReentryWorklistViewResponse>, PaperReentryWorklistView>;
+type _Portal = Conforms<Static<typeof PortalTriageSummaryResponse>, PortalTriageSummary>;
+type _OpenResult = Conforms<Static<typeof OpenTriageCallResultResponse>, OpenTriageCallResult>;
+type _AnswerResult = Conforms<Static<typeof AnswerWriteResultResponse>, AnswerWriteResult>;
+type _CallPage = Conforms<Static<typeof TriageCallListPageResponse>, CursorPage<TriageCallListItem>>;
+type _EscPage = Conforms<Static<typeof EscalationInboxPageResponse>, CursorPage<EscalationInboxItem>>;
+type _ShiftPage = Conforms<Static<typeof OnCallShiftPageResponse>, CursorPage<OnCallShiftView>>;
+type _ProtoPage = Conforms<Static<typeof TriageProtocolPageResponse>, CursorPage<TriageProtocolView>>;
+type _PortalPage = Conforms<Static<typeof PortalRecentPageResponse>, CursorPage<PortalTriageSummary>>;
+type _VendorList = Conforms<Static<typeof VendorBindingListResponse>, readonly VendorBindingView[]>;
+type _WorklistList = Conforms<
+  Static<typeof PaperReentryWorklistResponse>,
+  readonly PaperReentryWorklistView[]
+>;

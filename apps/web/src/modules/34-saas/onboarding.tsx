@@ -83,6 +83,8 @@ export function Onboarding(): JSX.Element {
       } else {
         await client.POST("/api/v1/tenant/onboarding/{taskId}/complete", {
           params: { path: { taskId } },
+          // completionEvidence is optional; this stub sends none.
+          body: {},
         });
       }
       await load();

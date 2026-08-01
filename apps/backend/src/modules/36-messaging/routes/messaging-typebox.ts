@@ -12,6 +12,16 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { CHANNEL_KINDS } from "@wardenx/messaging";
+import type {
+  AlertInboxItem as ServiceAlertInboxItem,
+  AlertRuleView as ServiceAlertRuleView,
+  ChannelDetail as ServiceChannelDetail,
+  ChannelMemberView as ServiceChannelMemberView,
+  ChannelSummary as ServiceChannelSummary,
+  DeliveryEndpointView as ServiceDeliveryEndpointView,
+  NotificationPreferencesView as ServiceNotificationPreferencesView,
+  ResolvedMessage as ServiceResolvedMessage,
+} from "@wardenx/messaging";
 import { ValidationError } from "@wardenx/types";
 
 // --- shared scalars ---------------------------------------------------------------------------
@@ -130,6 +140,171 @@ export const AlertRulePatchSchema = Type.Object({
   severityFloor: Type.Optional(SeveritySchema),
   recipientResolver: Type.Optional(ResolverSchema),
 });
+
+// --- §4.2 RESPONSE DTOs (F0 enrichment) -------------------------------------------------------
+// The read/mutation routes returned typed `MessagingRouteService` views but published NO response
+// contract, so the generated client typed every body as `never`. These DTOs mirror those views 1:1
+// and are pinned to them by the compile-time `Conforms` aliases below, so a view field added or
+// renamed breaks `bun run build` rather than silently drifting from the generated client. Enums are
+// literal unions (not `Type.String()`) so a wire enum can never publish as a lie.
+
+const NullableString = () => Type.Union([Type.String(), Type.Null()]);
+const MemberSourceSchema = Type.Union([Type.Literal("auto"), Type.Literal("manual")]);
+const MessageBodyKindSchema = Type.Union([
+  Type.Literal("plain"),
+  Type.Literal("markdown"),
+  Type.Literal("system"),
+]);
+const NotificationChannelSchema = Type.Union([
+  Type.Literal("in_app"),
+  Type.Literal("push"),
+  Type.Literal("sms"),
+  Type.Literal("email"),
+  Type.Literal("voice"),
+]);
+const AlertCategorySchema = Type.Union([
+  Type.Literal("clinical_urgent"),
+  Type.Literal("clinical_routine"),
+  Type.Literal("operational"),
+  Type.Literal("field_safety"),
+  Type.Literal("administrative"),
+  Type.Literal("system"),
+]);
+const EndpointChannelSchema = Type.Union([
+  Type.Literal("push"),
+  Type.Literal("sms"),
+  Type.Literal("email"),
+]);
+const EndpointVerificationSchema = Type.Union([
+  Type.Literal("verified"),
+  Type.Literal("pending"),
+  Type.Literal("expired"),
+]);
+const DeliveryStatusSchema = Type.Union([
+  Type.Literal("delivered"),
+  Type.Literal("partial"),
+  Type.Literal("failed"),
+  Type.Literal("pending"),
+]);
+
+// ── channels & messages ──────────────────────────────────────────────────────────────────────
+export const ChannelSummaryResponseSchema = Type.Object({
+  channelId: Type.String(),
+  kind: ChannelKindSchema,
+  title: NullableString(),
+  subjectId: NullableString(),
+  archivedAt: NullableString(),
+  unreadCount: Type.Integer(),
+});
+export const ChannelListResponseSchema = Type.Object({
+  channels: Type.Array(ChannelSummaryResponseSchema),
+});
+const ChannelMemberViewSchema = Type.Object({
+  userId: Type.String(),
+  role: MemberRoleSchema,
+  source: MemberSourceSchema,
+});
+export const ChannelDetailResponseSchema = Type.Object({
+  channelId: Type.String(),
+  kind: ChannelKindSchema,
+  title: NullableString(),
+  subjectId: NullableString(),
+  archivedAt: NullableString(),
+  unreadCount: Type.Integer(),
+  members: Type.Array(ChannelMemberViewSchema),
+});
+const ResolvedMessageSchema = Type.Object({
+  messageId: Type.String(),
+  channelId: Type.String(),
+  authorUserId: NullableString(),
+  body: Type.String(),
+  bodyKind: MessageBodyKindSchema,
+  createdAt: Type.String(),
+  parentMessageId: NullableString(),
+});
+export const MessageListResponseSchema = Type.Object({
+  messages: Type.Array(ResolvedMessageSchema),
+  nextCursor: Type.Optional(Type.String()),
+});
+export const SendMessageResponseSchema = Type.Object({
+  messageId: Type.String(),
+  channelId: Type.String(),
+  createdAt: Type.String(),
+});
+export const EditMessageResponseSchema = Type.Object({
+  messageId: Type.String(),
+  editedAt: Type.String(),
+});
+export const OpenDmResponseSchema = Type.Object({
+  channelId: Type.String(),
+  created: Type.Boolean(),
+});
+
+// ── notification preferences & endpoints ─────────────────────────────────────────────────────
+const RoutingMapResponseSchema = Type.Record(
+  Type.String(),
+  Type.Record(Type.String(), Type.Array(NotificationChannelSchema)),
+);
+export const NotificationPreferencesResponseSchema = Type.Object({
+  id: Type.String(),
+  userId: Type.String(),
+  routingMap: RoutingMapResponseSchema,
+  quietHours: QuietHoursSchema,
+  vacationForwardToUserId: NullableString(),
+  vacationUntil: NullableString(),
+  updatedAt: Type.String(),
+});
+export const PutPreferencesResponseSchema = Type.Object({
+  id: Type.String(),
+  updatedAt: Type.String(),
+});
+export const DeliveryEndpointResponseSchema = Type.Object({
+  endpointId: Type.String(),
+  channel: EndpointChannelSchema,
+  verificationStatus: EndpointVerificationSchema,
+});
+
+// ── alerts ───────────────────────────────────────────────────────────────────────────────────
+const AlertInboxItemSchema = Type.Object({
+  alertId: Type.String(),
+  eventType: Type.String(),
+  category: AlertCategorySchema,
+  severity: SeveritySchema,
+  summary: Type.String(),
+  createdAt: Type.String(),
+  deliveryStatus: DeliveryStatusSchema,
+});
+export const AlertInboxResponseSchema = Type.Object({
+  alerts: Type.Array(AlertInboxItemSchema),
+});
+export const AlertRuleResponseSchema = Type.Object({
+  ruleId: Type.String(),
+  organizationId: NullableString(),
+  eventType: Type.String(),
+  category: AlertCategorySchema,
+  severityFloor: SeveritySchema,
+  recipientResolver: ResolverSchema,
+  systemLocked: Type.Boolean(),
+  enabled: Type.Boolean(),
+});
+export const AlertRuleListResponseSchema = Type.Object({
+  rules: Type.Array(AlertRuleResponseSchema),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service
+// returns). A drifted view field fails `bun run build` here rather than silently in the client.
+type Conforms<T extends V, V> = T;
+type _ChannelSummary = Conforms<Static<typeof ChannelSummaryResponseSchema>, ServiceChannelSummary>;
+type _ChannelMember = Conforms<Static<typeof ChannelMemberViewSchema>, ServiceChannelMemberView>;
+type _ChannelDetail = Conforms<Static<typeof ChannelDetailResponseSchema>, ServiceChannelDetail>;
+type _ResolvedMessage = Conforms<Static<typeof ResolvedMessageSchema>, ServiceResolvedMessage>;
+type _Prefs = Conforms<
+  Static<typeof NotificationPreferencesResponseSchema>,
+  ServiceNotificationPreferencesView
+>;
+type _Endpoint = Conforms<Static<typeof DeliveryEndpointResponseSchema>, ServiceDeliveryEndpointView>;
+type _AlertInbox = Conforms<Static<typeof AlertInboxItemSchema>, ServiceAlertInboxItem>;
+type _AlertRule = Conforms<Static<typeof AlertRuleResponseSchema>, ServiceAlertRuleView>;
 
 export type SendMessageBody = Static<typeof SendMessageBodySchema>;
 export type PreferencesBody = Static<typeof PreferencesBodySchema>;

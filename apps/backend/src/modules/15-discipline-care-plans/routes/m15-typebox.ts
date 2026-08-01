@@ -14,6 +14,25 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type { CursorPage } from "./concurrency";
+import type { RedactedCategory } from "./disclosure";
+import type {
+  AideSupervisoryVisitView,
+  DisciplineAssessmentView,
+  DisciplineGoalView,
+  DisciplineInterventionView,
+  DisciplinePlanDetail,
+  DisciplinePlanListItem,
+  DisciplinePlanSummary,
+  DisciplinePlanVersionDetail,
+  DisciplinePlanVersionListItem,
+  RelevantElementsView,
+  SupervisoryCadenceRowView,
+  VolunteerAssignmentView,
+  VolunteerComplianceGateView,
+  VolunteerEffectiveStatusView,
+} from "./read-service";
+import type { VolunteerHourEntryView } from "./write-service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -334,3 +353,362 @@ export const CreateHourEntryBody = Type.Object({
   occurredAt: Instant,
   adjustmentReason: Type.String({ minLength: 1, maxLength: 2000 }),
 });
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ────────────────────────────────────────────────────────────────
+// The §4.1 read + mutation routes returned typed service views (`DisciplinePlanDetail`, `CursorPage<…>`,
+// the write views) but published NO response contract, so the generated client typed every body as `never`.
+// These schemas mirror the `read-service` / `write-service` views 1:1 and are pinned to them by the
+// compile-time `Conforms` aliases below — a view field added or renamed breaks `bun run build` rather than
+// silently drifting from the client. Enum-shaped columns reuse the request unions above (the service typed
+// them as broad `string`, so a literal union is still assignable); `unknown` payloads stay `Type.Unknown()`.
+const Str = Type.String();
+const StrN = Type.Union([Type.String(), Type.Null()]);
+const Int = Type.Integer();
+
+/** §4.6.1 keyset envelope — `{ data, next_cursor, has_more, total_count? }`. */
+const cursorPage = <T extends TSchema>(item: T) =>
+  Type.Object({
+    data: Type.Array(item),
+    next_cursor: StrN,
+    has_more: Type.Boolean(),
+    total_count: Type.Optional(Int),
+  });
+
+const RedactedCategorySchema = Type.Union([
+  Type.Literal("sud"),
+  Type.Literal("family_violence"),
+]);
+
+/** Route 1 — a plan as the worklist sees it. */
+export const DisciplinePlanListItemResponseSchema = Type.Object({
+  planId: Str,
+  patientId: Str,
+  admissionId: Str,
+  providerEntityId: Str,
+  locationId: Str,
+  kind: PlanKind,
+  status: Str,
+  nextSupervisoryDueAt: StrN,
+  initialAssessmentClockStartedAt: StrN,
+  initialAssessmentSignedAt: StrN,
+  spiritualCareDeclinedAt: StrN,
+  updatedAt: Str,
+  version: Int,
+});
+
+/** A `discipline_goal` row on the full-plan read. */
+export const DisciplineGoalViewResponseSchema = Type.Object({
+  goalId: Str,
+  parentProblemId: StrN,
+  parentGoalId: StrN,
+  source: GoalSource,
+  status: Str,
+  originalText: Str,
+  revisedText: StrN,
+  measurableOutcome: StrN,
+  targetAt: StrN,
+  frequencyText: StrN,
+  frequencyValue: StrN,
+  modalityText: StrN,
+  sudRelated: Type.Boolean(),
+  addedByDiscipline: Str,
+  addedAt: Str,
+  version: Int,
+});
+
+/** A `discipline_intervention` row on the full-plan read. */
+export const DisciplineInterventionViewResponseSchema = Type.Object({
+  interventionId: Str,
+  parentInterventionId: StrN,
+  goalRefs: Type.Array(Str),
+  scopeText: Str,
+  frequencyText: Str,
+  frequencyValue: Str,
+  discipline: Str,
+  responsibleRoles: Type.Array(Str),
+  status: Str,
+  discontinuationReason: StrN,
+  addedByDiscipline: Str,
+  addedAt: Str,
+  version: Int,
+});
+
+/** A `discipline_assessment` row. */
+export const DisciplineAssessmentViewResponseSchema = Type.Object({
+  assessmentId: Str,
+  kind: Str,
+  status: Str,
+  capturedAt: Str,
+  isInitial: Type.Boolean(),
+  sudFlag: Type.Boolean(),
+  familyViolenceFlag: Type.Boolean(),
+  sourceEncounterId: StrN,
+  data: Type.Unknown(),
+  amendsAssessmentId: StrN,
+  amendmentReason: StrN,
+  capturedByMembershipId: Str,
+  signedAt: StrN,
+  signedByMembershipId: StrN,
+  version: Int,
+});
+
+/** An `aide_supervisory_visit` row (§2.2.4). */
+export const AideSupervisoryVisitViewResponseSchema = Type.Object({
+  supervisoryVisitId: Str,
+  aideMembershipId: Str,
+  supervisingRnMembershipId: Str,
+  sourceEncounterId: StrN,
+  supervisoryAt: Str,
+  attestationMode: AttestationMode,
+  aidePerformanceSatisfactory: Type.Boolean(),
+  correctiveActions: StrN,
+  supervisoryNarrative: Str,
+  nextDueAt: Str,
+  cadenceDaysAtInsert: Int,
+  signedAt: StrN,
+  version: Int,
+});
+
+/** A `volunteer_assignment` row (§2.2.5). */
+export const VolunteerAssignmentViewResponseSchema = Type.Object({
+  assignmentId: Str,
+  volunteerMembershipId: Str,
+  coordinatorMembershipId: Str,
+  activities: Type.Array(Str),
+  startsAt: Str,
+  endsAt: StrN,
+  coordinatorAcknowledgedAt: StrN,
+  inactivatedAt: StrN,
+  inactivationReason: StrN,
+  version: Int,
+});
+
+/** A `discipline_care_plan_version` row on the version list (route 4). */
+export const DisciplinePlanVersionListItemResponseSchema = Type.Object({
+  versionId: Str,
+  planId: Str,
+  sequence: Int,
+  status: Str,
+  kind: PlanKind,
+  idgMeetingId: StrN,
+  finalizedAt: StrN,
+  signedAt: StrN,
+  supersededAt: StrN,
+  version: Int,
+});
+
+/** One collected signature on a version (route 5). */
+export const DisciplineSignatureViewResponseSchema = Type.Object({
+  signatureId: Str,
+  signerMembershipId: Str,
+  signerRole: Str,
+  isAcknowledgment: Type.Boolean(),
+  signedAt: Str,
+});
+
+/** Route 5 / 6 / 7 — one version with its sealed snapshot + quorum + collected signatures. */
+export const DisciplinePlanVersionDetailResponseSchema = Type.Object({
+  versionId: Str,
+  planId: Str,
+  sequence: Int,
+  status: Str,
+  kind: PlanKind,
+  idgMeetingId: StrN,
+  finalizedAt: StrN,
+  signedAt: StrN,
+  supersededAt: StrN,
+  version: Int,
+  stateSnapshot: Type.Unknown(),
+  requiredSignerSet: Type.Unknown(),
+  signatures: Type.Array(DisciplineSignatureViewResponseSchema),
+});
+
+/** Route 2 — the full plan the clinical surface renders. */
+export const DisciplinePlanDetailResponseSchema = Type.Object({
+  planId: Str,
+  patientId: Str,
+  admissionId: Str,
+  providerEntityId: Str,
+  locationId: Str,
+  kind: PlanKind,
+  status: Str,
+  nextSupervisoryDueAt: StrN,
+  initialAssessmentClockStartedAt: StrN,
+  initialAssessmentSignedAt: StrN,
+  spiritualCareDeclinedAt: StrN,
+  updatedAt: Str,
+  version: Int,
+  aideMembershipId: StrN,
+  supervisingRnMembershipId: StrN,
+  supervisoryCadenceDaysOverride: Type.Union([Int, Type.Null()]),
+  spiritualCareDeclined: StrN,
+  goals: Type.Array(DisciplineGoalViewResponseSchema),
+  interventions: Type.Array(DisciplineInterventionViewResponseSchema),
+  assessments: Type.Array(DisciplineAssessmentViewResponseSchema),
+  supervisoryVisits: Type.Array(AideSupervisoryVisitViewResponseSchema),
+  volunteerAssignments: Type.Array(VolunteerAssignmentViewResponseSchema),
+  versions: Type.Array(DisciplinePlanVersionListItemResponseSchema),
+  supervisoryCadence: Type.Union([
+    Type.Object({
+      nextDueAt: Str,
+      cadenceDays: Int,
+      status: Str,
+      hoursOverdue: Int,
+    }),
+    Type.Null(),
+  ]),
+  redacted_categories: Type.Array(RedactedCategorySchema),
+});
+
+/** Route 3 — the patient-shareable summary (both confidential categories always stripped, §7.9). */
+export const DisciplinePlanSummaryResponseSchema = Type.Object({
+  planId: Str,
+  kind: Str,
+  status: Str,
+  goals: Type.Array(
+    Type.Object({ goalId: Str, text: Str, status: Str, targetAt: StrN }),
+  ),
+  interventions: Type.Array(
+    Type.Object({ interventionId: Str, scopeText: Str, frequencyText: Str, status: Str }),
+  ),
+  spiritualCareDeclined: Type.Boolean(),
+  redacted_categories: Type.Array(RedactedCategorySchema),
+});
+
+/** Route 19/20/21/22 — a `volunteer_compliance_gate` row (status re-derived over the validity window). */
+export const VolunteerComplianceGateViewResponseSchema = Type.Object({
+  gateId: Str,
+  volunteerMembershipId: Str,
+  gateKind: GateKind,
+  storedStatus: Str,
+  effectiveStatus: Str,
+  validFrom: Str,
+  validUntil: StrN,
+  revokedAt: StrN,
+  sourceDocumentId: StrN,
+  version: Int,
+});
+
+/** Route 27 — the seam-shaped effective status M17's pre-schedule gate reads. */
+export const VolunteerEffectiveStatusViewResponseSchema = Type.Object({
+  volunteerMembershipId: Str,
+  isActive: Type.Boolean(),
+  failingGates: Type.Array(Type.Object({ gateKind: Str, reason: Str })),
+});
+
+/** Route 25 — the discipline elements M8 / M14 / M22 pull for a patient's plans. */
+export const RelevantElementsViewResponseSchema = Type.Object({
+  planId: Str,
+  kind: Str,
+  status: Str,
+  goals: Type.Array(DisciplineGoalViewResponseSchema),
+  interventions: Type.Array(DisciplineInterventionViewResponseSchema),
+});
+
+/** Route 28 — the supervisory worklist row (the §7.1 ladder resolved per plan). */
+export const SupervisoryCadenceRowViewResponseSchema = Type.Object({
+  planId: Str,
+  patientId: Str,
+  admissionId: Str,
+  providerEntityId: Str,
+  locationId: Str,
+  aideMembershipId: StrN,
+  supervisingRnMembershipId: StrN,
+  nextDueAt: Str,
+  cadenceDays: Int,
+  status: Str,
+  hoursOverdue: Int,
+  gateEngaged: Type.Boolean(),
+});
+
+/** Route 24 — the 418.78(e) ledger row an hour entry lands on. */
+export const VolunteerHourEntryViewResponseSchema = Type.Object({
+  hourEntryId: Str,
+  ledgerId: Str,
+  volunteerMembershipId: Str,
+  source: Str,
+  durationMinutes: Int,
+  occurredAt: Str,
+  ledgerTotalMinutes: Int,
+});
+
+// ── page envelopes (the list routes return `CursorPage<T>`) ──────────────────────────────────────────
+export const DisciplinePlanListPageResponseSchema = cursorPage(DisciplinePlanListItemResponseSchema);
+export const DisciplinePlanVersionListPageResponseSchema = cursorPage(
+  DisciplinePlanVersionListItemResponseSchema,
+);
+export const VolunteerComplianceGateListPageResponseSchema = cursorPage(
+  VolunteerComplianceGateViewResponseSchema,
+);
+export const RelevantElementsPageResponseSchema = cursorPage(RelevantElementsViewResponseSchema);
+export const SupervisoryCadencePageResponseSchema = cursorPage(
+  SupervisoryCadenceRowViewResponseSchema,
+);
+
+// ── compile-time pins: `T` (what the schema publishes) must be assignable to `V` (the service view) ────
+type Conforms<T extends V, V> = T;
+type _PlanListItem = Conforms<Static<typeof DisciplinePlanListItemResponseSchema>, DisciplinePlanListItem>;
+type _PlanDetail = Conforms<Static<typeof DisciplinePlanDetailResponseSchema>, DisciplinePlanDetail>;
+type _PlanSummary = Conforms<Static<typeof DisciplinePlanSummaryResponseSchema>, DisciplinePlanSummary>;
+type _VersionListItem = Conforms<
+  Static<typeof DisciplinePlanVersionListItemResponseSchema>,
+  DisciplinePlanVersionListItem
+>;
+type _VersionDetail = Conforms<
+  Static<typeof DisciplinePlanVersionDetailResponseSchema>,
+  DisciplinePlanVersionDetail
+>;
+type _Goal = Conforms<Static<typeof DisciplineGoalViewResponseSchema>, DisciplineGoalView>;
+type _Intervention = Conforms<
+  Static<typeof DisciplineInterventionViewResponseSchema>,
+  DisciplineInterventionView
+>;
+type _Assessment = Conforms<
+  Static<typeof DisciplineAssessmentViewResponseSchema>,
+  DisciplineAssessmentView
+>;
+type _SupervisoryVisit = Conforms<
+  Static<typeof AideSupervisoryVisitViewResponseSchema>,
+  AideSupervisoryVisitView
+>;
+type _Assignment = Conforms<
+  Static<typeof VolunteerAssignmentViewResponseSchema>,
+  VolunteerAssignmentView
+>;
+type _Gate = Conforms<
+  Static<typeof VolunteerComplianceGateViewResponseSchema>,
+  VolunteerComplianceGateView
+>;
+type _EffectiveStatus = Conforms<
+  Static<typeof VolunteerEffectiveStatusViewResponseSchema>,
+  VolunteerEffectiveStatusView
+>;
+type _RelevantElements = Conforms<
+  Static<typeof RelevantElementsViewResponseSchema>,
+  RelevantElementsView
+>;
+type _SupervisoryCadence = Conforms<
+  Static<typeof SupervisoryCadenceRowViewResponseSchema>,
+  SupervisoryCadenceRowView
+>;
+type _HourEntry = Conforms<Static<typeof VolunteerHourEntryViewResponseSchema>, VolunteerHourEntryView>;
+type _PlanPage = Conforms<
+  Static<typeof DisciplinePlanListPageResponseSchema>,
+  CursorPage<DisciplinePlanListItem>
+>;
+type _VersionPage = Conforms<
+  Static<typeof DisciplinePlanVersionListPageResponseSchema>,
+  CursorPage<DisciplinePlanVersionListItem>
+>;
+type _GatePage = Conforms<
+  Static<typeof VolunteerComplianceGateListPageResponseSchema>,
+  CursorPage<VolunteerComplianceGateView>
+>;
+type _RelevantPage = Conforms<
+  Static<typeof RelevantElementsPageResponseSchema>,
+  CursorPage<RelevantElementsView>
+>;
+type _CadencePage = Conforms<
+  Static<typeof SupervisoryCadencePageResponseSchema>,
+  CursorPage<SupervisoryCadenceRowView>
+>;

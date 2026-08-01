@@ -6,6 +6,21 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { CONSENT_TYPE_KEYS } from "@wardenx/consent";
+import type {
+  CascadeRetryView,
+  ConsentCatalogView,
+  ConsentDpoaAgentView,
+  ConsentRecipientView,
+  ConsentRecordView,
+  ConsentRenewalCycleView,
+  ConsentTypeOverlayView,
+  ConsentVersionChainView,
+  DelegatedAccessView,
+  EvalAuditRow,
+  ExpiringConsentView,
+  PostMortemEligibilityView,
+  ReRenderReceiptView,
+} from "@wardenx/consent";
 import { ValidationError } from "@wardenx/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,66 +86,93 @@ export const EvalAuditQuerySchema = Type.Object({
 // value is refused here rather than at the INSERT — the M3/M24 boundary-validation posture.
 
 const GRANTOR_KIND = Type.Union(
-  [
-    "patient_self",
-    "dpoa_healthcare_agent",
-    "dpoa_financial_agent",
-    "court_guardian",
-    "parent_for_minor",
-    "healthcare_surrogate",
-    "bereaved_person_self",
-  ].map((g) => Type.Literal(g)),
+  (
+    [
+      "patient_self",
+      "dpoa_healthcare_agent",
+      "dpoa_financial_agent",
+      "court_guardian",
+      "parent_for_minor",
+      "healthcare_surrogate",
+      "bereaved_person_self",
+    ] as const
+  ).map((g) => Type.Literal(g)),
 );
 
 const CAPTURE_METHOD = Type.Union(
-  [
-    "electronic_portal_signature",
-    "typed_signature_in_app",
-    "uploaded_signed_pdf",
-    "witnessed_verbal_documented",
-    "notarized",
-  ].map((m) => Type.Literal(m)),
+  (
+    [
+      "electronic_portal_signature",
+      "typed_signature_in_app",
+      "uploaded_signed_pdf",
+      "witnessed_verbal_documented",
+      "notarized",
+    ] as const
+  ).map((m) => Type.Literal(m)),
 );
 
 const RECIPIENT_KIND = Type.Union(
-  [
-    "external_physician",
-    "facility",
-    "pharmacy",
-    "irb",
-    "family_member",
-    "attorney",
-    "employer",
-    "researcher",
-    "free_text",
-  ].map((k) => Type.Literal(k)),
+  (
+    [
+      "external_physician",
+      "facility",
+      "pharmacy",
+      "irb",
+      "family_member",
+      "attorney",
+      "employer",
+      "researcher",
+      "free_text",
+    ] as const
+  ).map((k) => Type.Literal(k)),
 );
 
 const DPOA_AGENT_KIND = Type.Union(
-  ["primary", "alternate_1", "alternate_2"].map((k) => Type.Literal(k)),
+  (["primary", "alternate_1", "alternate_2"] as const).map((k) => Type.Literal(k)),
 );
 
 const DPOA_SCOPE_KIND = Type.Union(
-  ["healthcare_full", "healthcare_end_of_life_only", "financial_narrow", "financial_broad"].map(
-    (k) => Type.Literal(k),
-  ),
+  (
+    [
+      "healthcare_full",
+      "healthcare_end_of_life_only",
+      "financial_narrow",
+      "financial_broad",
+    ] as const
+  ).map((k) => Type.Literal(k)),
 );
 
 const DPOA_ACTIVATION = Type.Union(
-  [
-    "immediate",
-    "upon_incapacity_attested",
-    "upon_physician_determination",
-    "upon_incompetence_court_order",
-  ].map((k) => Type.Literal(k)),
+  (
+    [
+      "immediate",
+      "upon_incapacity_attested",
+      "upon_physician_determination",
+      "upon_incompetence_court_order",
+    ] as const
+  ).map((k) => Type.Literal(k)),
 );
 
 const DPOA_TERM_KIND = Type.Union(
-  ["indefinite", "until_date", "event_driven"].map((k) => Type.Literal(k)),
+  (["indefinite", "until_date", "event_driven"] as const).map((k) => Type.Literal(k)),
 );
 
 const REMINDER_KIND = Type.Union(
-  ["90_days", "30_days", "14_days", "7_days", "1_day"].map((k) => Type.Literal(k)),
+  (["90_days", "30_days", "14_days", "7_days", "1_day"] as const).map((k) => Type.Literal(k)),
+);
+
+const CONSENT_STATUS = Type.Union(
+  (["draft", "active", "superseded", "revoked", "expired"] as const).map((s) => Type.Literal(s)),
+);
+
+const RENEWAL_CYCLE_STATUS = Type.Union(
+  (
+    ["open", "renewed", "closed_expired", "closed_revoked", "closed_no_longer_applicable"] as const
+  ).map((s) => Type.Literal(s)),
+);
+
+const CASCADE_STATUS = Type.Union(
+  (["pending", "in_progress", "completed", "partial_failed"] as const).map((s) => Type.Literal(s)),
 );
 
 const isoInstant = () =>
@@ -272,12 +314,10 @@ export const ConsentRecordViewSchema = Type.Object({
   organizationId: Type.String(),
   patientId: Type.String(),
   typeKey: ConsentTypeKeySchema,
-  grantorKind: Type.String(),
-  captureMethod: Type.String(),
+  grantorKind: GRANTOR_KIND,
+  captureMethod: CAPTURE_METHOD,
   scopeDescriptor: Type.Unknown(),
-  status: Type.Union(
-    ["draft", "active", "superseded", "revoked", "expired"].map((s) => Type.Literal(s)),
-  ),
+  status: CONSENT_STATUS,
   version: Type.Integer(),
   effectiveAt: nullableStr(),
   expiresAt: nullableStr(),
@@ -301,7 +341,7 @@ export const ConsentRecipientViewSchema = Type.Object({
   id: Type.String(),
   organizationId: Type.String(),
   consentRecordId: Type.String(),
-  recipientKind: Type.String(),
+  recipientKind: RECIPIENT_KIND,
   recipientEntityId: nullableStr(),
   recipientDisplayName: Type.String(),
   purposeCode: nullableStr(),
@@ -322,12 +362,12 @@ export const ConsentDpoaAgentViewSchema = Type.Object({
   organizationId: Type.String(),
   consentRecordId: Type.String(),
   patientId: Type.String(),
-  agentKind: Type.String(),
+  agentKind: DPOA_AGENT_KIND,
   agentName: Type.String(),
   agentRelationship: Type.String(),
-  scopeKind: Type.String(),
-  activationCondition: Type.String(),
-  termKind: Type.String(),
+  scopeKind: DPOA_SCOPE_KIND,
+  activationCondition: DPOA_ACTIVATION,
+  termKind: DPOA_TERM_KIND,
   termUntil: nullableStr(),
   addedAt: Type.String(),
   addedById: Type.String(),
@@ -337,3 +377,157 @@ export const ConsentDpoaAgentViewSchema = Type.Object({
 export const ConsentDpoaAgentListResponseSchema = dataOf(
   Type.Array(ConsentDpoaAgentViewSchema),
 );
+
+// ── §4.1 RESPONSE DTOs (F0 enrichment batch 2) ───────────────────────────────────────────────────
+//
+// The reads/writes the original DTO block left uncovered — the catalog, single-record reads, the two
+// ancestor chains, the DPOA active-primary resolver, renewal cycles, delegated access, the post-mortem
+// verdict list, the re-render receipt, and the cascade-retry verdict. Each mirrors its `service.ts` view
+// interface 1:1 and is pinned to it by the compile-time `Conforms` aliases at the bottom, so a view field
+// added or renamed breaks `bun run build` rather than silently drifting the generated client to `never`.
+
+/** `ConsentCatalogView` — a row of the consent-type catalog + applicable overlay (route 1). */
+export const ConsentCatalogViewSchema = Type.Object({
+  typeKey: ConsentTypeKeySchema,
+  displayNameEn: Type.String(),
+  scopeDiscriminator: Type.String(),
+  isPerRecipient: Type.Boolean(),
+});
+export const ConsentCatalogListResponseSchema = dataOf(Type.Array(ConsentCatalogViewSchema));
+
+/** A single consent record (routes 4 sign/8/supersede/9/revoke/10/renew/20/create/bereavement). */
+export const ConsentRecordResponseSchema = dataOf(ConsentRecordViewSchema);
+
+/** `ConsentVersionChainView` — both ancestor chains, oldest → newest (route 5). */
+export const ConsentVersionChainViewSchema = Type.Object({
+  consentId: Type.String(),
+  supersedes: Type.Array(ConsentRecordViewSchema),
+  renewedFrom: Type.Array(ConsentRecordViewSchema),
+});
+export const ConsentVersionChainResponseSchema = dataOf(ConsentVersionChainViewSchema);
+
+/** A single recipient row (routes 12 add / 13 remove). */
+export const ConsentRecipientResponseSchema = dataOf(ConsentRecipientViewSchema);
+
+/** A single DPOA agent row (routes 15 add / 16 patch). */
+export const ConsentDpoaAgentResponseSchema = dataOf(ConsentDpoaAgentViewSchema);
+
+/** The patient's ACTIVE primary DPOA agent, or null (route 17; consumed by M7/M11/M14). */
+export const ActivePrimaryDpoaResponseSchema = Type.Object({
+  data: Type.Union([ConsentDpoaAgentViewSchema, Type.Null()]),
+});
+
+/** `ConsentRenewalCycleView` — an open/closed renewal cycle (route 19, D8). */
+export const ConsentRenewalCycleViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  sourceConsentRecordId: Type.String(),
+  patientId: Type.String(),
+  status: RENEWAL_CYCLE_STATUS,
+  cycleStartedAt: Type.String(),
+  nextActionDueAt: nullableStr(),
+  closedAt: nullableStr(),
+  closedReason: nullableStr(),
+  resolvedConsentRecordId: nullableStr(),
+  assignedToMembershipId: nullableStr(),
+});
+export const ConsentRenewalCycleListResponseSchema = dataOf(
+  Type.Array(ConsentRenewalCycleViewSchema),
+);
+
+/** `DelegatedAccessView` — the D10 projection a portal/caregiver session resolves against (route 21). */
+export const DelegatedAccessViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  consentRecordId: Type.String(),
+  consentRecordRecipientId: nullableStr(),
+  delegateUserId: nullableStr(),
+  delegateCaregiverId: Type.String(),
+  scope: Type.String(),
+  effectiveFrom: Type.String(),
+  effectiveUntil: nullableStr(),
+  portalSessionClass: Type.String(),
+  revokedAt: nullableStr(),
+  active: Type.Boolean(),
+});
+export const DelegatedAccessListResponseSchema = dataOf(Type.Array(DelegatedAccessViewSchema));
+
+/** `PostMortemEligibilityView` — the M16 survive-death verdict per consent (route 28, D13). */
+export const PostMortemEligibilityViewSchema = Type.Object({
+  consentId: Type.String(),
+  typeKey: ConsentTypeKeySchema,
+  status: CONSENT_STATUS,
+  survivesDeath: Type.Boolean(),
+  terminatesOnDeath: Type.Boolean(),
+});
+export const PostMortemEligibilityListResponseSchema = dataOf(
+  Type.Array(PostMortemEligibilityViewSchema),
+);
+
+/** `ReRenderReceiptView` — the re-render request receipt (route 24). */
+export const ReRenderReceiptViewSchema = Type.Object({
+  consentRecordId: Type.String(),
+  requestedAt: Type.String(),
+  requestedById: Type.String(),
+  eventType: Type.Literal("m39.consent.signed"),
+});
+export const ReRenderReceiptResponseSchema = dataOf(ReRenderReceiptViewSchema);
+
+/** `CascadeRetryView` — the D7 cascade sweep verdict after a retry (route 30). */
+export const CascadeRetryViewSchema = Type.Object({
+  consentRecordId: Type.String(),
+  revocationId: Type.String(),
+  status: CASCADE_STATUS,
+  attempts: Type.Integer(),
+  pendingConsumers: Type.Array(Type.String()),
+});
+export const CascadeRetryResponseSchema = dataOf(CascadeRetryViewSchema);
+
+/** `EvalAuditRow` — a consent-decision audit row (routes 22/23, cursor-paginated). */
+export const EvalAuditRowSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  patientId: Type.String(),
+  consentRecordId: nullableStr(),
+  typeKey: ConsentTypeKeySchema,
+  allowed: Type.Boolean(),
+  denyReason: nullableStr(),
+  callerModule: Type.String(),
+  evaluatedAt: Type.String(),
+});
+export const EvalAuditPageResponseSchema = pagedOf(EvalAuditRowSchema);
+
+/** `ConsentTypeOverlayView` — the published tenant overlay row (route 2, §7.6). */
+export const ConsentTypeOverlayViewSchema = Type.Object({
+  id: Type.String(),
+  organizationId: Type.String(),
+  typeKey: ConsentTypeKeySchema,
+  tighterExpirationSeconds: Type.Union([Type.Integer(), Type.Null()]),
+  tighterCaptureMethods: Type.Union([Type.Array(Type.String()), Type.Null()]),
+  tighterReminderCadence: Type.Union([Type.Array(Type.String()), Type.Null()]),
+  stateAddendumText: nullableStr(),
+  jurisdictionCodeRequired: Type.Union([Type.Boolean(), Type.Null()]),
+  publishedAt: nullableStr(),
+  publishedById: nullableStr(),
+});
+export const ConsentTypeOverlayResponseSchema = dataOf(ConsentTypeOverlayViewSchema);
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _Rec = Conforms<Static<typeof ConsentRecordViewSchema>, ConsentRecordView>;
+type _Expiring = Conforms<Static<typeof ExpiringConsentViewSchema>, ExpiringConsentView>;
+type _Recipient = Conforms<Static<typeof ConsentRecipientViewSchema>, ConsentRecipientView>;
+type _Dpoa = Conforms<Static<typeof ConsentDpoaAgentViewSchema>, ConsentDpoaAgentView>;
+type _Catalog = Conforms<Static<typeof ConsentCatalogViewSchema>, ConsentCatalogView>;
+type _Chain = Conforms<Static<typeof ConsentVersionChainViewSchema>, ConsentVersionChainView>;
+type _Cycle = Conforms<Static<typeof ConsentRenewalCycleViewSchema>, ConsentRenewalCycleView>;
+type _Delegated = Conforms<Static<typeof DelegatedAccessViewSchema>, DelegatedAccessView>;
+type _PostMortem = Conforms<
+  Static<typeof PostMortemEligibilityViewSchema>,
+  PostMortemEligibilityView
+>;
+type _ReRender = Conforms<Static<typeof ReRenderReceiptViewSchema>, ReRenderReceiptView>;
+type _Cascade = Conforms<Static<typeof CascadeRetryViewSchema>, CascadeRetryView>;
+type _Eval = Conforms<Static<typeof EvalAuditRowSchema>, EvalAuditRow>;
+type _Overlay = Conforms<Static<typeof ConsentTypeOverlayViewSchema>, ConsentTypeOverlayView>;

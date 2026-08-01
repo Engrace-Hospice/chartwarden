@@ -3,19 +3,19 @@
   "modules": {
     "02-identity": {
       "routes": 14,
-      "deficit": 4
+      "deficit": 0
     },
     "03-authorization": {
       "routes": 17,
-      "deficit": 8
+      "deficit": 0
     },
     "04-audit": {
       "routes": 4,
-      "deficit": 3
+      "deficit": 0
     },
     "05-patient": {
       "routes": 14,
-      "deficit": 1
+      "deficit": 0
     },
     "06-admission": {
       "routes": 46,
@@ -55,11 +55,11 @@
     },
     "15-discipline-care-plans": {
       "routes": 28,
-      "deficit": 5
+      "deficit": 0
     },
     "16-bereavement": {
       "routes": 33,
-      "deficit": 2
+      "deficit": 0
     },
     "17-scheduling": {
       "routes": 29,
@@ -71,15 +71,15 @@
     },
     "19-oncall": {
       "routes": 38,
-      "deficit": 7
+      "deficit": 0
     },
     "20-field-safety": {
       "routes": 30,
-      "deficit": 5
+      "deficit": 0
     },
     "21-supplies": {
       "routes": 37,
-      "deficit": 6
+      "deficit": 0
     },
     "22-documents": {
       "routes": 35,
@@ -95,19 +95,19 @@
     },
     "25-remittance": {
       "routes": 31,
-      "deficit": 13
+      "deficit": 0
     },
     "26-cap": {
       "routes": 27,
-      "deficit": 8
+      "deficit": 0
     },
     "27-cost-report": {
       "routes": 45,
-      "deficit": 34
+      "deficit": 0
     },
     "30-quality": {
       "routes": 60,
-      "deficit": 3
+      "deficit": 0
     },
     "32-ai-platform": {
       "routes": 32,
@@ -115,27 +115,27 @@
     },
     "33-reporting": {
       "routes": 42,
-      "deficit": 38
+      "deficit": 0
     },
     "34-saas-tenant-platform": {
       "routes": 48,
-      "deficit": 39
+      "deficit": 0
     },
     "36-messaging": {
       "routes": 22,
-      "deficit": 18
+      "deficit": 0
     },
     "38-terminology": {
       "routes": 8,
-      "deficit": 7
+      "deficit": 0
     },
     "39-consent": {
       "routes": 27,
-      "deficit": 10
+      "deficit": 0
     },
     "40-mdm": {
       "routes": 14,
-      "deficit": 13
+      "deficit": 0
     },
     "bootstrap": {
       "routes": 6,

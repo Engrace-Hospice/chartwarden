@@ -19,7 +19,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 16,
-        "covered": 12
+        "covered": 16
       }
     },
     {
@@ -32,14 +32,14 @@
       "routes": true,
       "enriched": {
         "routes": 14,
-        "enriched": 10
+        "enriched": 14
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 4,
-        "covered": 2
+        "covered": 4
       }
     },
     {
@@ -52,14 +52,14 @@
       "routes": true,
       "enriched": {
         "routes": 17,
-        "enriched": 9
+        "enriched": 17
       },
       "screens": true,
       "tests": false,
       "adapter": null,
       "liveInfra": {
         "tables": 6,
-        "covered": 5
+        "covered": 6
       }
     },
     {
@@ -72,7 +72,7 @@
       "routes": true,
       "enriched": {
         "routes": 4,
-        "enriched": 1
+        "enriched": 4
       },
       "screens": true,
       "tests": true,
@@ -92,7 +92,7 @@
       "routes": true,
       "enriched": {
         "routes": 14,
-        "enriched": 13
+        "enriched": 14
       },
       "screens": true,
       "tests": true,
@@ -292,7 +292,7 @@
       "routes": true,
       "enriched": {
         "routes": 28,
-        "enriched": 23
+        "enriched": 28
       },
       "screens": true,
       "tests": true,
@@ -312,7 +312,7 @@
       "routes": true,
       "enriched": {
         "routes": 33,
-        "enriched": 31
+        "enriched": 33
       },
       "screens": true,
       "tests": true,
@@ -372,7 +372,7 @@
       "routes": true,
       "enriched": {
         "routes": 38,
-        "enriched": 31
+        "enriched": 38
       },
       "screens": true,
       "tests": true,
@@ -392,7 +392,7 @@
       "routes": true,
       "enriched": {
         "routes": 30,
-        "enriched": 25
+        "enriched": 30
       },
       "screens": true,
       "tests": true,
@@ -412,7 +412,7 @@
       "routes": true,
       "enriched": {
         "routes": 37,
-        "enriched": 31
+        "enriched": 37
       },
       "screens": true,
       "tests": true,
@@ -492,7 +492,7 @@
       "routes": true,
       "enriched": {
         "routes": 31,
-        "enriched": 18
+        "enriched": 31
       },
       "screens": true,
       "tests": true,
@@ -512,7 +512,7 @@
       "routes": true,
       "enriched": {
         "routes": 27,
-        "enriched": 19
+        "enriched": 27
       },
       "screens": true,
       "tests": true,
@@ -532,14 +532,14 @@
       "routes": true,
       "enriched": {
         "routes": 45,
-        "enriched": 11
+        "enriched": 45
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
         "tables": 14,
-        "covered": 4
+        "covered": 14
       }
     },
     {
@@ -586,7 +586,7 @@
       "routes": true,
       "enriched": {
         "routes": 60,
-        "enriched": 57
+        "enriched": 60
       },
       "screens": true,
       "tests": true,
@@ -643,7 +643,7 @@
       "routes": true,
       "enriched": {
         "routes": 42,
-        "enriched": 4
+        "enriched": 42
       },
       "screens": true,
       "tests": true,
@@ -663,14 +663,14 @@
       "routes": true,
       "enriched": {
         "routes": 48,
-        "enriched": 9
+        "enriched": 48
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 17,
-        "covered": 14
+        "covered": 17
       }
     },
     {
@@ -700,14 +700,14 @@
       "routes": true,
       "enriched": {
         "routes": 22,
-        "enriched": 4
+        "enriched": 22
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 15,
-        "covered": 11
+        "covered": 15
       }
     },
     {
@@ -737,14 +737,14 @@
       "routes": true,
       "enriched": {
         "routes": 8,
-        "enriched": 1
+        "enriched": 8
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 13,
-        "covered": 8
+        "covered": 13
       }
     },
     {
@@ -757,14 +757,14 @@
       "routes": true,
       "enriched": {
         "routes": 27,
-        "enriched": 17
+        "enriched": 27
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 11,
-        "covered": 3
+        "covered": 11
       }
     },
     {
@@ -777,14 +777,14 @@
       "routes": true,
       "enriched": {
         "routes": 14,
-        "enriched": 1
+        "enriched": 14
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 11,
-        "covered": 5
+        "covered": 11
       }
     }
   ],

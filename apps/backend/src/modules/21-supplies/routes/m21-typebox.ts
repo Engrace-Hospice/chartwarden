@@ -26,6 +26,26 @@
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import type {
+  ComfortKitReturnDetail as ServiceComfortKitReturnDetail,
+  ComfortKitReturnListItem as ServiceComfortKitReturnListItem,
+  ComfortKitReturnedLineView as ServiceComfortKitReturnedLineView,
+  ComfortKitTemplateMedicationView as ServiceComfortKitTemplateMedicationView,
+  ComfortKitTemplateView as ServiceComfortKitTemplateView,
+  DispatchDetail as ServiceDispatchDetail,
+  DispatchListItem as ServiceDispatchListItem,
+  ParStockView as ServiceParStockView,
+  PerpetualLogLineView as ServicePerpetualLogLineView,
+  PerpetualLogView as ServicePerpetualLogView,
+  SupplyItemView as ServiceSupplyItemView,
+  SupplyRequestDetail as ServiceSupplyRequestDetail,
+  SupplyRequestListItem as ServiceSupplyRequestListItem,
+  VendorRoutingRuleView as ServiceVendorRoutingRuleView,
+} from "./read-service";
+import type {
+  CreateSupplyRequestResult as ServiceCreateSupplyRequestResult,
+  ReconcileReturnResult as ServiceReconcileReturnResult,
+} from "./write-service";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
@@ -549,3 +569,445 @@ export type ListSupplyItemsQuery = Static<typeof ListSupplyItemsQuery>;
 export type ListTemplatesQuery = Static<typeof ListTemplatesQuery>;
 export type ListRoutingRulesQuery = Static<typeof ListRoutingRulesQuery>;
 export type ListParStockQuery = Static<typeof ListParStockQuery>;
+
+// ── §4.2 RESPONSE DTOs (M21-T06 OpenAPI enrichment) ─────────────────────────────────────────────────
+// The §4.1 read + write routes returned typed service views (`SupplyRequestDetail`, `CursorPage<…>`, …)
+// but published NO response contract, so the generated client typed every M21 body as `never`. These DTOs
+// mirror the read-/write-service views 1:1 and are pinned to them by the compile-time `Conforms` aliases at
+// the foot of this section, so a view field added or renamed breaks `bun run build` rather than silently
+// drifting from the client. Every enum-shaped field reuses the frozen union declared above — a DTO that
+// widened one to `Type.String()` is the "silent lie" the read-service header warns about. `*_pct` fields
+// mirror the column type EXACTLY: the dispatched-content one is a FRACTION-valued `number` (§2.5), the
+// template/returned-line ones are decimal STRINGS — published as-is, never re-shaped.
+import type {
+  ComfortKitDispatchedContentPayload as TComfortKitDispatchedContentPayload,
+  DeaPerpetualLogEntry as TDeaPerpetualLogEntry,
+  RoutingRuleResolved as TRoutingRuleResolved,
+} from "@wardenx/types";
+
+const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
+const Str = Type.String();
+const NStr = Nullable(Type.String());
+const Bool = Type.Boolean();
+const Int = Type.Integer();
+const Num = Type.Number();
+
+/** The §2.4 D4 routing record frozen onto a request (`routing_rule_resolved_jsonb`). */
+export const RoutingRuleResolvedSchema = Type.Object({
+  resolverVersion: Str,
+  resolvedAt: Str,
+  precedenceLevelUsed: VendorRoutingScopeKind,
+  matchedRuleId: NStr,
+  assignedVendorId: NStr,
+  assignedFulfillmentMode: SupplyFulfillmentMode,
+  defaultPharmacyDispatchMode: Nullable(PharmacyDispatchMode),
+  candidatesEvaluated: Type.Array(
+    Type.Object({
+      precedenceLevel: VendorRoutingScopeKind,
+      ruleId: NStr,
+      matched: Bool,
+      reason: Str,
+    }),
+  ),
+  routingPolicyDigest: Str,
+});
+
+/** §4.1 rows 2 / 3 — one supply request on the dashboard list (no D13 free text). */
+export const SupplyRequestListItemSchema = Type.Object({
+  supplyRequestId: Str,
+  patientId: Str,
+  locationId: Str,
+  kind: SupplyRequestKind,
+  status: SupplyRequestStatus,
+  assignedVendorId: NStr,
+  vendorOrderReference: NStr,
+  trackingNumber: NStr,
+  carrier: NStr,
+  orderedAt: NStr,
+  deliveredAt: NStr,
+  createdAt: Str,
+  updatedAt: Str,
+});
+
+/** §4.1 row 3 — the full request, with the D13 free text and the frozen D4 routing record. */
+export const SupplyRequestDetailSchema = Type.Object({
+  ...SupplyRequestListItemSchema.properties,
+  admissionId: Str,
+  providerEntityId: Str,
+  sourceOrderId: NStr,
+  sourceReplenishmentEventId: NStr,
+  requestedByMembershipId: NStr,
+  data: Type.Unknown(),
+  routingRuleResolved: Nullable(RoutingRuleResolvedSchema),
+  pharmacyPartnerId: NStr,
+  documentId: NStr,
+  deliveryInstructions: NStr,
+  deliveryMethod: Nullable(SupplyDeliveryMethod),
+  deliveredByMembershipId: NStr,
+  deliveryEvidenceDocumentId: NStr,
+  receivedConfirmedAt: NStr,
+  receivedConfirmedActor: Nullable(
+    Type.Union([...SupplyReceivedConfirmedActor.anyOf, Type.Literal("system_auto_confirm")]),
+  ),
+  completedAt: NStr,
+  cancelledAt: NStr,
+  cancellationPendingAt: NStr,
+  cancellationReason: NStr,
+  shippedAt: NStr,
+  invoiceTotalCents: Nullable(Num),
+  invoiceAccruedAt: NStr,
+  invoiceReconciledAt: NStr,
+  invoiceVarianceCents: Nullable(Num),
+  dispatchId: NStr,
+});
+
+/** §4.2.1's create response — the created request plus the D4 resolution the router froze onto it. */
+export const CreateSupplyRequestResultSchema = Type.Object({
+  supplyRequestId: Str,
+  status: Type.Literal("requested"),
+  routingRuleResolved: Nullable(RoutingRuleResolvedSchema),
+  updatedAt: Str,
+});
+
+/** §4.1 rows 11 / 13 — a catalog SKU (platform row or tenant overlay). */
+export const SupplyItemViewSchema = Type.Object({
+  supplyItemId: Str,
+  isPlatform: Bool,
+  hcpcs: NStr,
+  rxnorm: NStr,
+  ndc: NStr,
+  name: Str,
+  skuClass: SupplySkuClass,
+  defaultUnit: Str,
+  isBillable: Bool,
+  isActive: Bool,
+  isControlledSubstance: Nullable(Bool),
+  requiresLotTracking: Nullable(Bool),
+  requiresExpirationTracking: Nullable(Bool),
+  isSerializedAsset: Nullable(Bool),
+  effectiveFrom: Str,
+  effectiveTo: NStr,
+  localSkuCode: NStr,
+  updatedAt: Str,
+});
+
+/** One line of a §2.3 comfort-kit template. `replenishmentThresholdPct` is a decimal STRING here. */
+export const ComfortKitTemplateMedicationViewSchema = Type.Object({
+  templateMedicationId: Str,
+  rxnorm: Str,
+  ndc: NStr,
+  drugName: Str,
+  strength: Str,
+  dosageForm: Str,
+  routeOfAdministration: Str,
+  isControlledSubstance: Bool,
+  controlledSubstanceSchedule: Nullable(ControlledSubstanceSchedule),
+  expectedQuantity: Str,
+  expectedUnit: Str,
+  replenishmentThresholdPct: Str,
+  systemLocked: Bool,
+  displayOrder: Int,
+});
+
+/** §4.1 row 17 — a comfort-kit template with its lines. */
+export const ComfortKitTemplateViewSchema = Type.Object({
+  comfortKitTemplateId: Str,
+  name: Str,
+  isPlatformFloor: Bool,
+  systemLocked: Bool,
+  effectiveFrom: Str,
+  effectiveTo: NStr,
+  replacesTemplateId: NStr,
+  medications: Type.Array(ComfortKitTemplateMedicationViewSchema),
+  updatedAt: Str,
+});
+
+/** One dispatched line on the DEA 1304 manifest. `replenishmentThresholdPct` is a FRACTION-valued number. */
+export const ComfortKitDispatchedContentSchema = Type.Object({
+  dispatchedContentId: Str,
+  comfortKitTemplateMedicationId: Str,
+  medicationOrderId: NStr,
+  rxnorm: Str,
+  ndc: NStr,
+  drugName: Str,
+  strength: Str,
+  dosageForm: Str,
+  routeOfAdministration: Str,
+  isControlledSubstance: Bool,
+  controlledSubstanceSchedule: Nullable(ControlledSubstanceSchedule),
+  dispatchedQuantity: Str,
+  dispatchedUnit: Str,
+  lotNumber: NStr,
+  expirationDate: NStr,
+  manufacturerNdc: NStr,
+  replenishmentThresholdPct: Num,
+});
+
+/** §4.1 rows 21 / 22 — one comfort-kit dispatch on the list (no free text). */
+export const DispatchListItemSchema = Type.Object({
+  dispatchId: Str,
+  supplyRequestId: Str,
+  patientId: Str,
+  locationId: Str,
+  comfortKitTemplateId: Str,
+  kitSerialNumber: Str,
+  deploymentSite: ComfortKitDeploymentSite,
+  dispatchStatus: Type.Union([
+    Type.Literal("dispatched"),
+    Type.Literal("deployed_at_patient"),
+    Type.Literal("partially_returned"),
+    Type.Literal("fully_returned"),
+    Type.Literal("reconciled"),
+    Type.Literal("reconciled_with_discrepancy"),
+  ]),
+  ipuRoomId: NStr,
+  dispatchedAt: Str,
+  deployedAtPatientAt: NStr,
+  containsControlledSubstance: Bool,
+  updatedAt: Str,
+});
+
+/** §4.1 row 22 — the full dispatch, incl. the per-line DEA 1304 outbound manifest. */
+export const DispatchDetailSchema = Type.Object({
+  ...DispatchListItemSchema.properties,
+  admissionId: Str,
+  providerEntityId: Str,
+  dispatchSource: ComfortKitDispatchSource,
+  pharmacyDispatchMode: PharmacyDispatchMode,
+  pharmacyPartnerId: NStr,
+  dispatchedByMembershipId: Str,
+  deployedByMembershipId: NStr,
+  bolDocumentId: NStr,
+  m13DeploymentId: NStr,
+  controlledSubstanceHandlingPolicyDigest: Str,
+  facilityIdentifier: Type.Unknown(),
+  specialHandlingNotes: NStr,
+  contents: Type.Array(ComfortKitDispatchedContentSchema),
+});
+
+/** §4.1 rows 25 / 26 — one comfort-kit return on the reconciliation worklist. */
+export const ComfortKitReturnListItemSchema = Type.Object({
+  returnId: Str,
+  dispatchId: Str,
+  patientId: Str,
+  locationId: Str,
+  state: Type.Union([
+    Type.Literal("requested"),
+    Type.Literal("assigned"),
+    Type.Literal("retrieving"),
+    Type.Literal("retrieved"),
+    Type.Literal("reconciled"),
+    Type.Literal("overdue"),
+    Type.Literal("unreturnable"),
+  ]),
+  returnRequiredAt: Str,
+  returnDueAt: Str,
+  assignedRetrievingMembershipId: NStr,
+  reconciledAt: NStr,
+  containsControlledSubstance: Bool,
+  daysOverdue: Num,
+  updatedAt: Str,
+});
+
+/** One reconciled line — the D8 discrepancy columns are trigger-computed decimal STRINGS (read, never sent). */
+export const ComfortKitReturnedLineViewSchema = Type.Object({
+  returnedContentId: Str,
+  dispatchedContentId: Str,
+  drugName: Str,
+  lotNumber: NStr,
+  isControlledSubstance: Bool,
+  controlledSubstanceSchedule: Nullable(ControlledSubstanceSchedule),
+  dispatchedQuantity: Str,
+  quantityReturned: Str,
+  quantityDisposedAtHome: Str,
+  quantityUnaccounted: Str,
+  discrepancyPct: Str,
+  discrepancyFlagged: Bool,
+});
+
+/** §4.1 row 26 — the full return with per-line accounting and the disposal record. */
+export const ComfortKitReturnDetailSchema = Type.Object({
+  ...ComfortKitReturnListItemSchema.properties,
+  admissionId: Str,
+  providerEntityId: Str,
+  m13DeploymentId: Str,
+  retrievingAt: NStr,
+  retrievedAt: NStr,
+  returnedToHubAt: NStr,
+  disposalMethod: Nullable(ComfortKitDisposalMethod),
+  disposalWitnessMembershipId: NStr,
+  disposalMethodJurisdictionPolicyDigest: NStr,
+  reconciledByMembershipId: NStr,
+  receiptDocumentId: NStr,
+  disposalNotes: NStr,
+  discrepancyNotes: NStr,
+  unreturnableReason: NStr,
+  unreturnableAttestedByMembershipId: NStr,
+  lines: Type.Array(ComfortKitReturnedLineViewSchema),
+  discrepancyDetected: Bool,
+});
+
+/** §4.2.2's reconcile response — the verdict, with the per-line accounting the DEA log records. */
+export const ReconcileReturnResultSchema = Type.Object({
+  returnId: Str,
+  state: Type.Literal("reconciled"),
+  discrepancyDetected: Bool,
+  perMedication: Type.Array(ComfortKitReturnedLineViewSchema),
+  updatedAt: Str,
+});
+
+/** §4.1 row 28 — a D4 routing rule. */
+export const VendorRoutingRuleViewSchema = Type.Object({
+  ruleId: Str,
+  isPlatform: Bool,
+  scopeKind: VendorRoutingScopeKind,
+  scopeId: NStr,
+  skuClassPattern: NStr,
+  assignedVendorId: NStr,
+  assignedFulfillmentMode: SupplyFulfillmentMode,
+  defaultPharmacyDispatchMode: Nullable(PharmacyDispatchMode),
+  precedencePriority: Num,
+  isActive: Bool,
+  effectiveFrom: Str,
+  effectiveTo: NStr,
+  updatedAt: Str,
+});
+
+/** §4.1 row 32 — one shelf row plus its DERIVED severity band. */
+export const ParStockViewSchema = Type.Object({
+  parStockId: Str,
+  locationId: Str,
+  skuId: NStr,
+  tenantSkuExtensionId: NStr,
+  skuName: Str,
+  currentQuantity: Str,
+  unit: Str,
+  reorderPoint: Str,
+  reorderQuantity: Str,
+  minSafetyStock: Str,
+  severity: Type.Union([
+    Type.Literal("ok"),
+    Type.Literal("below_threshold"),
+    Type.Literal("critical_low"),
+    Type.Literal("depleted"),
+  ]),
+  isActive: Bool,
+  lastParReviewAt: NStr,
+  lastParReviewedByMembershipId: NStr,
+  reorderNotes: NStr,
+  updatedAt: Str,
+});
+
+/** §8.1 — the DEA 21 CFR §1304 perpetual-log entry for one dispatched line. */
+export const DeaPerpetualLogEntrySchema = Type.Object({
+  transactionKind: Type.Union([
+    Type.Literal("dispense"),
+    Type.Literal("administer_drawdown"),
+    Type.Literal("return"),
+    Type.Literal("disposal"),
+    Type.Literal("adjustment"),
+  ]),
+  quantityDelta: Str,
+  balanceAfterQuantity: Str,
+  unit: Str,
+  recordedByMembershipId: Str,
+  witnessMembershipId: NStr,
+  occurredAt: Str,
+  sourceReference: NStr,
+});
+
+/** §8.1 — the perpetual log for one dispatched line, oldest entry first. */
+export const PerpetualLogLineViewSchema = Type.Object({
+  dispatchedContentId: Str,
+  drugName: Str,
+  lotNumber: NStr,
+  controlledSubstanceSchedule: Nullable(ControlledSubstanceSchedule),
+  dispatchedQuantity: Str,
+  dispatchedUnit: Str,
+  expirationDate: NStr,
+  entries: Type.Array(DeaPerpetualLogEntrySchema),
+});
+
+/** §8.1 — the whole kit's perpetual log, the unit an inspector actually asks for. */
+export const PerpetualLogViewSchema = Type.Object({
+  dispatchId: Str,
+  kitSerialNumber: Str,
+  dispatchedAt: Str,
+  dispatchedByMembershipId: Str,
+  lines: Type.Array(PerpetualLogLineViewSchema),
+});
+
+/** The cursor-paginated envelope the list reads return (`concurrency.ts` `CursorPage<T>`). */
+const Page = <T extends TSchema>(item: T) =>
+  Type.Object({
+    data: Type.Array(item),
+    next_cursor: NStr,
+    has_more: Bool,
+    total_count: Type.Optional(Int),
+  });
+
+export const SupplyRequestListResponseSchema = Page(SupplyRequestListItemSchema);
+export const SupplyItemListResponseSchema = Page(SupplyItemViewSchema);
+export const ComfortKitTemplateListResponseSchema = Page(ComfortKitTemplateViewSchema);
+export const DispatchListResponseSchema = Page(DispatchListItemSchema);
+export const ComfortKitReturnListResponseSchema = Page(ComfortKitReturnListItemSchema);
+export const VendorRoutingRuleListResponseSchema = Page(VendorRoutingRuleViewSchema);
+export const ParStockListResponseSchema = Page(ParStockViewSchema);
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _RoutingRuleResolved = Conforms<Static<typeof RoutingRuleResolvedSchema>, TRoutingRuleResolved>;
+type _DispatchedContent = Conforms<
+  Static<typeof ComfortKitDispatchedContentSchema>,
+  TComfortKitDispatchedContentPayload
+>;
+type _PerpetualEntry = Conforms<Static<typeof DeaPerpetualLogEntrySchema>, TDeaPerpetualLogEntry>;
+type _SupplyRequestListItem = Conforms<
+  Static<typeof SupplyRequestListItemSchema>,
+  ServiceSupplyRequestListItem
+>;
+type _SupplyRequestDetail = Conforms<
+  Static<typeof SupplyRequestDetailSchema>,
+  ServiceSupplyRequestDetail
+>;
+type _CreateSupplyRequestResult = Conforms<
+  Static<typeof CreateSupplyRequestResultSchema>,
+  ServiceCreateSupplyRequestResult
+>;
+type _SupplyItemView = Conforms<Static<typeof SupplyItemViewSchema>, ServiceSupplyItemView>;
+type _ComfortKitTemplateMedicationView = Conforms<
+  Static<typeof ComfortKitTemplateMedicationViewSchema>,
+  ServiceComfortKitTemplateMedicationView
+>;
+type _ComfortKitTemplateView = Conforms<
+  Static<typeof ComfortKitTemplateViewSchema>,
+  ServiceComfortKitTemplateView
+>;
+type _DispatchListItem = Conforms<Static<typeof DispatchListItemSchema>, ServiceDispatchListItem>;
+type _DispatchDetail = Conforms<Static<typeof DispatchDetailSchema>, ServiceDispatchDetail>;
+type _ComfortKitReturnListItem = Conforms<
+  Static<typeof ComfortKitReturnListItemSchema>,
+  ServiceComfortKitReturnListItem
+>;
+type _ComfortKitReturnedLineView = Conforms<
+  Static<typeof ComfortKitReturnedLineViewSchema>,
+  ServiceComfortKitReturnedLineView
+>;
+type _ComfortKitReturnDetail = Conforms<
+  Static<typeof ComfortKitReturnDetailSchema>,
+  ServiceComfortKitReturnDetail
+>;
+type _ReconcileReturnResult = Conforms<
+  Static<typeof ReconcileReturnResultSchema>,
+  ServiceReconcileReturnResult
+>;
+type _VendorRoutingRuleView = Conforms<
+  Static<typeof VendorRoutingRuleViewSchema>,
+  ServiceVendorRoutingRuleView
+>;
+type _ParStockView = Conforms<Static<typeof ParStockViewSchema>, ServiceParStockView>;
+type _PerpetualLogLineView = Conforms<
+  Static<typeof PerpetualLogLineViewSchema>,
+  ServicePerpetualLogLineView
+>;
+type _PerpetualLogView = Conforms<Static<typeof PerpetualLogViewSchema>, ServicePerpetualLogView>;

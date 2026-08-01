@@ -84,6 +84,8 @@ export function TenantOverview(): JSX.Element {
   const rotateDek = useCallback(async () => {
     const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
       params: { path: { orgSlug } },
+      // TODO(M34 web): this stub screen should collect the rotation reason from an operator input.
+      body: { reason: "Manual DEK rotation via platform console" },
     });
     if (!err) void load();
   }, [client, orgSlug, load]);
@@ -91,6 +93,8 @@ export function TenantOverview(): JSX.Element {
   const confirmShred = useCallback(async () => {
     await client.POST("/api/v1/platform/tenants/{orgSlug}/shred", {
       params: { path: { orgSlug } },
+      // TODO(M34 web): this stub screen should collect the transition reason + destruction-certificate id.
+      body: { transitionReason: "Tenant offboarding via platform console", destructionCertificateId: "" },
     });
     setShredOpen(false);
     void load();

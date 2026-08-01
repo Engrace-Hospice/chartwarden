@@ -204,3 +204,135 @@ export const M25ListQuerySchema = Type.Object({
   cursor: Type.Optional(Type.String({ minLength: 1 })),
   pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
 });
+
+// ── §4.1 RESPONSE DTOs (F0 enrichment, part 2) ───────────────────────────────────────────────────
+//
+// The remaining M25 read/detail/mutation responses the earlier DTO block did not cover: the singular
+// detail GETs (advice/line/denial/appeal), the merged taxonomy view, the two internal seam reads, and
+// the versioned mutation result every write route returns. Each is pinned to its `read-service.ts` /
+// `write-service.ts` view by the compile-time `Conforms` alias below, so a view field added or renamed
+// breaks `bun run build` rather than silently drifting from the generated client. Money stays a decimal
+// STRING on the wire (numeric columns), never an IEEE float.
+import type {
+  AppealDetail as ServiceAppealDetail,
+  AppealEventView as ServiceAppealEventView,
+  DenialMetricsView as ServiceDenialMetricsView,
+  PrLedgerRow as ServicePrLedgerRow,
+  RemittanceAdviceSummary as ServiceRemittanceAdviceSummary,
+  TaxonomyMergedView as ServiceTaxonomyMergedView,
+} from "./read-service";
+import type { VersionedResult as ServiceVersionedResult } from "./write-service";
+
+/** `write-service.ts` → `VersionedResult`: the `{ id, version }` every mutation returns for the next If-Match. */
+export const VersionedResultSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  version: Type.Integer(),
+});
+
+/** One row of the appeal timeline (`read-service.ts` → `AppealEventView`). */
+export const AppealEventViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  eventKind: Type.String(),
+  occurredAt: Type.String({ format: "date-time" }),
+});
+
+/** `read-service.ts` → `AppealDetail` (the appeal summary + packet/dates + event timeline). */
+export const AppealDetailSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  denialCaseId: Type.String({ format: "uuid" }),
+  claimId: Type.String({ format: "uuid" }),
+  tier: Type.String(),
+  state: Type.String(),
+  decisionOutcome: nullableString(),
+  tierDeadlineAt: Type.String({ format: "date-time" }),
+  version: Type.Integer(),
+  appealPacketDocumentId: nullableString(),
+  submittedAt: nullableString(),
+  decidedAt: nullableString(),
+  events: Type.Array(AppealEventViewSchema),
+});
+
+/** `read-service.ts` → `TaxonomyMergedView` (the M38 regulatory floor + the tenant overlay merge). */
+export const TaxonomyMergedViewSchema = Type.Object({
+  carcCode: Type.String(),
+  rarcCode: nullableString(),
+  category: Type.String(),
+  plainLanguage: Type.String(),
+  suggestedAction: nullableString(),
+  ownerRole: nullableString(),
+  severity: nullableString(),
+  hasOverlay: Type.Boolean(),
+  overlayVersion: Type.Union([Type.Integer(), Type.Null()]),
+});
+
+/** `read-service.ts` → `DenialMetricsView` (the DenialMetricsProvider seam projection). */
+export const DenialMetricsViewSchema = Type.Object({
+  agingBucketCounts: Type.Object({
+    "0-7": Type.Integer(),
+    "8-15": Type.Integer(),
+    "16-30": Type.Integer(),
+    "31-60": Type.Integer(),
+    "61-90": Type.Integer(),
+    "91+": Type.Integer(),
+  }),
+  openCount: Type.Integer(),
+  totalDollarOpen: Type.String({ description: "Decimal string — never a float" }),
+});
+
+/** `read-service.ts` → `PrLedgerRow` (one patient-responsibility ledger row). */
+export const PrLedgerRowSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  prAmount: Type.String({ description: "Decimal string — never a float" }),
+  status: Type.String(),
+  recordedAt: Type.String({ format: "date-time" }),
+});
+
+/** The §17 internal RemittanceReader seam envelope (`{ advice }`, nullable). */
+export const RemittanceAdviceReaderResponseSchema = Type.Object({
+  advice: Type.Union([RemittanceAdviceSummarySchema, Type.Null()]),
+});
+
+/** The §17 internal PatientResponsibilityReader seam envelope (`{ items }`, no cursor). */
+export const PrLedgerItemsResponseSchema = Type.Object({
+  items: Type.Array(PrLedgerRowSchema),
+});
+
+/** POST /remittance/advices/:id/replay — the 202 queue receipt (ad-hoc handler literal). */
+export const ReplayQueuedResponseSchema = Type.Object({
+  id: Type.String(),
+  status: Type.Literal("queued"),
+});
+
+/** POST /remittance/lines/:id/manual-match — the ad-hoc handler literal. */
+export const ManualMatchResponseSchema = Type.Object({
+  id: Type.String(),
+  matchState: Type.Literal("manual_matched"),
+});
+
+/** POST /remittance/adjustments/:id/override — the ad-hoc handler literal (echoes the new post-action). */
+export const AdjustmentOverrideResponseSchema = Type.Object({
+  id: Type.String(),
+  postAction: Type.Union([
+    Type.Literal("auto_posted"),
+    Type.Literal("ledger_recorded"),
+    Type.Literal("denial_seeded"),
+  ]),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _VersionedResult = Conforms<Static<typeof VersionedResultSchema>, ServiceVersionedResult>;
+type _AppealEventView = Conforms<Static<typeof AppealEventViewSchema>, ServiceAppealEventView>;
+type _AppealDetail = Conforms<Static<typeof AppealDetailSchema>, ServiceAppealDetail>;
+type _TaxonomyMergedView = Conforms<Static<typeof TaxonomyMergedViewSchema>, ServiceTaxonomyMergedView>;
+type _DenialMetricsView = Conforms<Static<typeof DenialMetricsViewSchema>, ServiceDenialMetricsView>;
+type _PrLedgerRow = Conforms<Static<typeof PrLedgerRowSchema>, ServicePrLedgerRow>;
+type _RemittanceAdviceReader = Conforms<
+  Static<typeof RemittanceAdviceReaderResponseSchema>,
+  { readonly advice: ServiceRemittanceAdviceSummary | null }
+>;
+type _PrLedgerItems = Conforms<
+  Static<typeof PrLedgerItemsResponseSchema>,
+  { readonly items: readonly ServicePrLedgerRow[] }
+>;

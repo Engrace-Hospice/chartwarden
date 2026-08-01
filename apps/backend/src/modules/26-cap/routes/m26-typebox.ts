@@ -133,3 +133,200 @@ export const ProjectionSnapshotDto = contracts.ProjectionSnapshotDto;
 export const ProjectionListResponse = Type.Array(contracts.ProjectionSnapshotDto);
 export const InpatientProjectionDto = contracts.InpatientProjectionDto;
 export const SettlementDto = contracts.SettlementDto;
+
+// ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
+// The handlers do not return the `contracts.*` DTOs above; they return the READ/WRITE-service VIEW
+// interfaces (`PeriodView`, `ProjectionView`, `SettlementView`, …) verbatim. Those views published NO
+// response contract, so the generated client typed every read body as `never`. The DTOs below mirror the
+// service views 1:1 and are pinned to them by the compile-time `Conforms` aliases at the end of the file,
+// so a view field added or renamed breaks `bun run build` rather than drifting silently from the client.
+// Money crosses as integer cents; scope/status/band/methodology are open `string` in the view, so they are
+// published as `Type.String()` (the view does not narrow them to a closed set here).
+import type {
+  AccrualLineView as ServiceAccrualLineView,
+  DashboardView as ServiceDashboardView,
+  InpatientAccrualView as ServiceInpatientAccrualView,
+  PatientAccrualView as ServicePatientAccrualView,
+  PeriodView as ServicePeriodView,
+  PlatformConstantView as ServicePlatformConstantView,
+  ProjectionView as ServiceProjectionView,
+  PsrImportView as ServicePsrImportView,
+  PsrVarianceView as ServicePsrVarianceView,
+  SettlementView as ServiceSettlementView,
+  ThresholdEventView as ServiceThresholdEventView,
+} from "./read-service";
+import type { CursorPage as ServiceCursorPage } from "./concurrency";
+
+const Nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
+const NullStr = () => Nullable(Type.String());
+const NullInt = () => Nullable(Type.Integer());
+const NullNum = () => Nullable(Type.Number());
+
+export const CapPeriodViewDto = Type.Object({
+  id: Type.String(),
+  capYear: Type.String(),
+  ccn: Type.String(),
+  startDate: Type.String(),
+  endDate: Type.String(),
+  status: Type.String(),
+  methodology: NullStr(),
+  methodologyLockedAt: NullStr(),
+  graceWindowDays: Type.Integer(),
+  aggregateCapAmountCents: Type.Integer(),
+  inpatientCapPct: Type.Number(),
+  openedAt: Type.String(),
+});
+export const CapPeriodViewListResponse = Type.Array(CapPeriodViewDto);
+
+export const CapProjectionViewDto = Type.Object({
+  id: Type.String(),
+  capPeriodId: Type.String(),
+  scope: Type.String(),
+  patientId: NullStr(),
+  methodology: Type.String(),
+  paidYtdCents: Type.Integer(),
+  outstandingBilledCents: Type.Integer(),
+  projectedYearEndCents: Type.Integer(),
+  capAmountCents: NullInt(),
+  inpatientDaysYtd: NullInt(),
+  inpatientPctYtd: NullNum(),
+  pctOfCap: Type.Number(),
+  alertBand: Type.String(),
+  beneficiaryCount: NullInt(),
+  computedAt: Type.String(),
+  computedBy: Type.String(),
+});
+export const CapProjectionViewListResponse = Type.Array(CapProjectionViewDto);
+
+export const CapPatientAccrualViewDto = Type.Object({
+  patientId: Type.String(),
+  capPeriodId: Type.String(),
+  paidCents: Type.Integer(),
+  outstandingBilledCents: Type.Integer(),
+  firstElectionInPeriod: Type.String(),
+  lastPaidThrough: NullStr(),
+});
+
+export const CapAccrualLineViewDto = Type.Object({
+  id: Type.String(),
+  sourceKind: Type.String(),
+  sourceId: Type.String(),
+  amountCents: Type.Integer(),
+  serviceFrom: Type.String(),
+  serviceTo: Type.String(),
+  postedAt: Type.String(),
+});
+export const CapAccrualLinePageResponse = Type.Object({
+  items: Type.Array(CapAccrualLineViewDto),
+  nextCursor: NullStr(),
+});
+
+export const CapInpatientAccrualViewDto = Type.Object({
+  capPeriodId: Type.String(),
+  gipDays: Type.Integer(),
+  ircDays: Type.Integer(),
+  totalPatientDays: Type.Integer(),
+  inpatientPct: Type.Number(),
+});
+
+export const CapThresholdEventViewDto = Type.Object({
+  id: Type.String(),
+  capPeriodId: Type.String(),
+  scope: Type.String(),
+  patientId: NullStr(),
+  priorBand: Type.String(),
+  currentBand: Type.String(),
+  raisedAt: Type.String(),
+  acknowledgedAt: NullStr(),
+  resolvedAt: NullStr(),
+});
+export const CapThresholdEventViewListResponse = Type.Array(CapThresholdEventViewDto);
+
+export const CapPsrImportViewDto = Type.Object({
+  id: Type.String(),
+  capPeriodId: Type.String(),
+  macRegion: Type.String(),
+  psrPeriodFrom: Type.String(),
+  psrPeriodTo: Type.String(),
+  parseStatus: Type.String(),
+  parseError: NullStr(),
+  beneficiaryCountPsr: NullInt(),
+  paidTotalCentsPsr: NullInt(),
+  importedAt: Type.String(),
+});
+
+export const CapPsrVarianceViewDto = Type.Object({
+  id: Type.String(),
+  scope: Type.String(),
+  patientId: NullStr(),
+  m26AccrualCents: NullInt(),
+  psrAmountCents: NullInt(),
+  varianceCents: NullInt(),
+  varianceReason: NullStr(),
+  status: Type.String(),
+});
+export const CapPsrVarianceViewListResponse = Type.Array(CapPsrVarianceViewDto);
+
+/** POST psr-imports returns `{ ...{ importId }, status: "queued" }` (202) — an ad-hoc envelope, not a view. */
+export const CapPsrImportQueuedResponse = Type.Object({
+  importId: Type.String(),
+  status: Type.String(),
+});
+
+export const CapSettlementViewDto = Type.Object({
+  id: Type.String(),
+  capPeriodId: Type.String(),
+  status: Type.String(),
+  paidTotalCents: Type.Integer(),
+  beneficiaryCount: Type.Integer(),
+  aggregateCapAmountCents: Type.Integer(),
+  aggregateOverageCents: Type.Integer(),
+  inpatientTotalDays: Type.Integer(),
+  inpatientOverageDays: Type.Integer(),
+  inpatientOverageCents: Type.Integer(),
+  proposedAt: Type.String(),
+  finalizedAt: NullStr(),
+});
+
+export const CapPlatformConstantViewDto = Type.Object({
+  capYear: Type.String(),
+  aggregateCapAmountCents: NullInt(),
+  inpatientCapPct: Type.Number(),
+  sourceUrl: NullStr(),
+  firstTenantUseAt: NullStr(),
+  recordedAt: Type.String(),
+});
+export const CapPlatformConstantViewListResponse = Type.Array(CapPlatformConstantViewDto);
+
+/** POST platform constants returns `{ capYear }` (201). */
+export const CapPublishConstantAckResponse = Type.Object({ capYear: Type.String() });
+
+export const CapDashboardViewDto = Type.Object({
+  period: Nullable(CapPeriodViewDto),
+  agency: Nullable(CapProjectionViewDto),
+  inpatient: Nullable(CapProjectionViewDto),
+  topPatients: Type.Array(CapProjectionViewDto),
+  recentEvents: Type.Array(CapThresholdEventViewDto),
+  openVarianceCount: Type.Integer(),
+});
+
+// Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
+type Conforms<T extends V, V> = T;
+type _Period = Conforms<Static<typeof CapPeriodViewDto>, ServicePeriodView>;
+type _Projection = Conforms<Static<typeof CapProjectionViewDto>, ServiceProjectionView>;
+type _PatientAccrual = Conforms<Static<typeof CapPatientAccrualViewDto>, ServicePatientAccrualView>;
+type _AccrualLine = Conforms<Static<typeof CapAccrualLineViewDto>, ServiceAccrualLineView>;
+type _AccrualPage = Conforms<
+  Static<typeof CapAccrualLinePageResponse>,
+  ServiceCursorPage<ServiceAccrualLineView>
+>;
+type _InpatientAccrual = Conforms<Static<typeof CapInpatientAccrualViewDto>, ServiceInpatientAccrualView>;
+type _ThresholdEvent = Conforms<Static<typeof CapThresholdEventViewDto>, ServiceThresholdEventView>;
+type _PsrImport = Conforms<Static<typeof CapPsrImportViewDto>, ServicePsrImportView>;
+type _PsrVariance = Conforms<Static<typeof CapPsrVarianceViewDto>, ServicePsrVarianceView>;
+type _Settlement = Conforms<Static<typeof CapSettlementViewDto>, ServiceSettlementView>;
+type _PlatformConstant = Conforms<
+  Static<typeof CapPlatformConstantViewDto>,
+  ServicePlatformConstantView
+>;
+type _Dashboard = Conforms<Static<typeof CapDashboardViewDto>, ServiceDashboardView>;

@@ -62,6 +62,9 @@ jobs:
           - { name: "baseline M1-M14", script: "test:rls:live" }
           - { name: "M4 Audit", script: "test:rls:live:m4" }
           - { name: "M5 Patient", script: "test:rls:live:m5" }
+          - { name: "M1 Foundation", script: "test:rls:live:m1" }
+          - { name: "M2 Identity", script: "test:rls:live:m2" }
+          - { name: "M3 Authorization", script: "test:rls:live:m3" }
           - { name: "M6 Admission", script: "test:rls:live:m6" }
           - { name: "M7 Care Plan", script: "test:rls:live:m7" }
           - { name: "M8 Encounters", script: "test:rls:live:m8" }
@@ -74,6 +77,11 @@ jobs:
           - { name: "M17 Scheduling", script: "test:rls:live:m17" }
           - { name: "M18 EVV", script: "test:rls:live:m18" }
           - { name: "M22 Documents", script: "test:rls:live:m22" }
+          - { name: "M27 Cost Report", script: "test:rls:live:m27" }
+          - { name: "M36 Messaging", script: "test:rls:live:m36" }
+          - { name: "M38 Terminology", script: "test:rls:live:m38" }
+          - { name: "M39 Consent", script: "test:rls:live:m39" }
+          - { name: "M40 MDM", script: "test:rls:live:m40" }
           - { name: "M15 Discipline Plans", script: "test:rls:live:m15" }
           - { name: "M16 Bereavement", script: "test:rls:live:m16" }
           - { name: "M19 On-Call Triage", script: "test:rls:live:m19" }

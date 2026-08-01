@@ -93,6 +93,8 @@ export function Signups(): JSX.Element {
     setBusy(true);
     const { error: err } = await client.POST("/api/v1/platform/signup-intents/{id}/qualify", {
       params: { path: { id: intent.id } },
+      // TODO(M34 web): this stub screen should collect the assigned plan from an operator control.
+      body: { planLabel: "standard" },
     });
     setBusy(false);
     if (err) {
@@ -108,6 +110,8 @@ export function Signups(): JSX.Element {
     setBusy(true);
     const { error: err } = await client.POST("/api/v1/platform/signup-intents/{id}/reject", {
       params: { path: { id: intent.id } },
+      // TODO(M34 web): this stub screen should collect the rejection reason from an operator input.
+      body: { rejectionReason: "Rejected via platform console" },
     });
     setBusy(false);
     if (err) {

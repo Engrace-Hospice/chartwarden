@@ -102,7 +102,10 @@ export function SupportSessions(): JSX.Element {
   // step-up credential ride the POST; the route enforces distinct-actor + freshness server-side.
   async function startSession(stepUpValue?: string): Promise<void> {
     setCeremonyOpen(false);
-    const { error: err } = await client.POST("/api/v1/platform/support-sessions");
+    // TODO(M34 web): this stub screen should pass the selected support_consent_grant id.
+    const { error: err } = await client.POST("/api/v1/platform/support-sessions", {
+      body: { supportConsentGrantId: "" },
+    });
     if (err) {
       setBanner("Start session failed — the step-up or consent grant was rejected.");
       return;
