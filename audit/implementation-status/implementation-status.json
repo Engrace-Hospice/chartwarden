@@ -279,7 +279,7 @@
       "schema": true,
       "migration": true,
       "routes": true,
-      "enriched": false,
+      "enriched": true,
       "screens": true,
       "tests": true,
       "adapter": null,

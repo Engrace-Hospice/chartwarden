@@ -11533,6 +11533,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Record a check-in against an obligation — the attribution column is stamped from the SESSION (routes/actor.ts), so a caller cannot post an attestation as somebody else whatever they send (§4.1 #1) */
         post: operations["postApiV1SafetyCheckins"];
         delete?: never;
         options?: never;
@@ -11553,6 +11554,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Amend within the 5-minute grace — a correction is a NEW row that supersedes (§2.2.1); the original stays readable because it is what the supervisor may already have acted on (§4.1 #3) */
         patch: operations["patchApiV1SafetyCheckinsByCheckInId"];
         trace?: never;
     };
@@ -11563,6 +11565,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The clinician's own day — what she owes and what she has posted. Scoped to the SESSION's membership inside the read service, so `/me/today` cannot be pointed at a colleague (§4.1 #4) */
         get: operations["getApiV1SafetyCheckinsMeToday"];
         put?: never;
         post?: never;
@@ -11579,6 +11582,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** My own consents — the three §M20-F16 purposes and their current state (§4.1 #27) */
         get: operations["getApiV1SafetyConsent"];
         put?: never;
         post?: never;
@@ -11597,6 +11601,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Grant one purpose — the three are separately grantable (M20-F16): declining `sos_coordinates` never disables SOS, and `continuous_location_during_sos` additionally needs the TENANT's `sosContinuousLocationEnabled` before a stream row may exist (§4.1 #28) */
         post: operations["postApiV1SafetyConsentGrant"];
         delete?: never;
         options?: never;
@@ -11613,6 +11618,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29) */
         post: operations["postApiV1SafetyConsentRevoke"];
         delete?: never;
         options?: never;
@@ -11627,6 +11633,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The live-awareness board — open obligations, active alerts, and the coverage gaps behind them (§4.1 #26) */
         get: operations["getApiV1SafetyDashboard"];
         put?: never;
         post?: never;
@@ -11643,8 +11650,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23) */
         get: operations["getApiV1SafetyHighriskareas"];
         put?: never;
+        /** Draw one (§7.6) — M20-F07: no PostGIS, so ring closure and the ≥4-point minimum are validated in app code the moment the Compliance Officer draws it, not on the night a clinician is standing in it (§4.1 #24) */
         post: operations["postApiV1SafetyHighriskareas"];
         delete?: never;
         options?: never;
@@ -11665,6 +11674,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit or retire one — retiring is `effectiveTo`, never a delete: an incident review has to be able to ask what advisory was in force on the day (§4.1 #25) */
         patch: operations["patchApiV1SafetyHighriskareasByAreaId"];
         trace?: never;
     };
@@ -11675,8 +11685,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The review queue — narrowed to the caller's own incidents inside the read service when they hold no oversight role: the guard admits them to the route, the service decides which rows (§4.1 #13) */
         get: operations["getApiV1SafetyIncidents"];
         put?: never;
+        /** Open a draft — `affectedClinicianMembershipId` is the ONE membership a caller may name (the §2.2.3 supervisor-opens-on-behalf-of path), and `incident_subject_or_supervisor` is what keeps naming somebody else a supervisor-only act (§4.1 #12) */
         post: operations["postApiV1SafetyIncidents"];
         delete?: never;
         options?: never;
@@ -11697,6 +11709,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit a draft — the `(draft)` qualifier is enforced by the service, not the shape (§4.1 #14) */
         patch: operations["patchApiV1SafetyIncidentsByIncidentId"];
         trace?: never;
     };
@@ -11709,6 +11722,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** §7.6 / D9's OSHA-equivalent sign-off — step-up asserted at the route (§4.1 #17) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdOshasignoff"];
         delete?: never;
         options?: never;
@@ -11725,6 +11739,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdState"];
         delete?: never;
         options?: never;
@@ -11741,6 +11756,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Submit for review — D9's gate: `oshaReportable: true` without the signed-off pair is a 422 that NAMES the fix, not a constraint violation surfacing on a clinician's Submit button (§4.1 #15) */
         post: operations["postApiV1SafetyIncidentsByIncidentIdSubmit"];
         delete?: never;
         options?: never;
@@ -11755,12 +11771,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18) */
         get: operations["getApiV1SafetyPolicy"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
+        /** Edit the policy — step-up asserted at the route (§4.1 #19) */
         patch: operations["patchApiV1SafetyPolicy"];
         trace?: never;
     };
@@ -11773,6 +11791,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The press — deliberately NO idempotency key: a duplicate alert is recoverable, a swallowed one is not. `field_eligible_for_sos` gates who may PRESS; nothing downstream of the row gates the fan-out (M20-F05 / S13, §4.1 #5) */
         post: operations["postApiV1SafetySos"];
         delete?: never;
         options?: never;
@@ -11805,6 +11824,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** A responder answers — the §2.2.6 acknowledgment row is written in the SAME transaction, so an `acknowledged` alert nobody signed is unrepresentable (§4.1 #7) */
         post: operations["postApiV1SafetySosBySosAlertIdAcknowledge"];
         delete?: never;
         options?: never;
@@ -11821,6 +11841,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6) */
         post: operations["postApiV1SafetySosBySosAlertIdCancel"];
         delete?: never;
         options?: never;
@@ -11835,6 +11856,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** The D6 coordinate stream — readable only while the consent that produced it stands; `continuous_location_during_sos` additionally requires the TENANT flag before a single row may exist (§4.1 #10) */
         get: operations["getApiV1SafetySosBySosAlertIdLocationstream"];
         put?: never;
         post?: never;
@@ -11853,6 +11875,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Resolve, or convert into an incident — `openIncidentFromOutcome` dispatches to a DIFFERENT §2.2.2 command (`openIncident`, not `resolve`) because they are different terminal states (§4.1 #8) */
         post: operations["postApiV1SafetySosBySosAlertIdResolve"];
         delete?: never;
         options?: never;
@@ -11883,8 +11906,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20) */
         get: operations["getApiV1SafetySupervisorsubscriptions"];
         put?: never;
+        /** Add one — the scope-selector pairing (§3.3's `m20_sss_scope_integrity`) and the vacation-forward pairing are re-checked in the service so the DON is told WHICH selector is missing rather than shown a constraint name (§4.1 #21) */
         post: operations["postApiV1SafetySupervisorsubscriptions"];
         delete?: never;
         options?: never;
@@ -36303,7 +36328,26 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    visitId?: string;
+                    /** Format: uuid */
+                    scheduleId?: string;
+                    kind: "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+                    status: "ok" | "concerned_continue" | "concerned_stop";
+                    concernNote?: string;
+                    postedCoordinates?: {
+                        latitude: number;
+                        longitude: number;
+                        accuracyM: number;
+                    };
+                    /** Format: uuid */
+                    postedViaDeviceId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36347,7 +36391,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    status?: "ok" | "concerned_continue" | "concerned_stop";
+                    concernNote?: string;
+                    amendmentReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36362,7 +36414,12 @@ export interface operations {
     };
     getApiV1SafetyCheckinsMeToday: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                cursor?: string;
+                from?: string;
+                to?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36382,7 +36439,9 @@ export interface operations {
     };
     getApiV1SafetyConsent: {
         parameters: {
-            query?: never;
+            query?: {
+                purpose?: "sos_coordinates" | "continuous_location_during_sos" | "emergency_contact_call";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36407,7 +36466,21 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    purpose: "sos_coordinates" | "continuous_location_during_sos" | "emergency_contact_call";
+                    acknowledgmentTextSnapshot: string;
+                    /** Format: date-time */
+                    expiresAt?: string;
+                    contact?: {
+                        name: string;
+                        phone: string;
+                        relationship?: string;
+                    };
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36427,7 +36500,14 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    purpose: "sos_coordinates" | "continuous_location_during_sos" | "emergency_contact_call";
+                    reason?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36442,7 +36522,12 @@ export interface operations {
     };
     getApiV1SafetyDashboard: {
         parameters: {
-            query?: never;
+            query?: {
+                locationId?: string;
+                supervisorMembershipId?: string;
+                asOf?: string;
+                patientId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36462,7 +36547,11 @@ export interface operations {
     };
     getApiV1SafetyHighriskareas: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                cursor?: string;
+                includeExpired?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36487,7 +36576,23 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    riskCategory: "documented_prior_incident" | "community_self_reported_unsafe" | "nighttime_only_advisory" | "weather_advisory_seasonal" | "general_caution";
+                    advisoryMessage: string;
+                    polygon: [
+                        number,
+                        number
+                    ][][];
+                    policyForVisitsToArea?: "advisory_only" | "requires_pre_visit_check_in" | "requires_buddy_visit";
+                    /** Format: date-time */
+                    effectiveFrom?: string;
+                    /** Format: date-time */
+                    effectiveTo?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36509,7 +36614,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    riskCategory?: "documented_prior_incident" | "community_self_reported_unsafe" | "nighttime_only_advisory" | "weather_advisory_seasonal" | "general_caution";
+                    advisoryMessage?: string;
+                    polygon?: [
+                        number,
+                        number
+                    ][][];
+                    policyForVisitsToArea?: "advisory_only" | "requires_pre_visit_check_in" | "requires_buddy_visit";
+                    /** Format: date-time */
+                    effectiveTo?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36524,7 +36643,12 @@ export interface operations {
     };
     getApiV1SafetyIncidents: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                cursor?: string;
+                lifecycleState?: "draft" | "submitted" | "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                oshaReportable?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36549,7 +36673,29 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    affectedClinicianMembershipId: string;
+                    category: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                    severity: "minor" | "moderate" | "serious" | "life_threatening";
+                    /** Format: uuid */
+                    visitId?: string;
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: date-time */
+                    occurredAt: string;
+                    locationDescription?: string;
+                    narrative: string;
+                    witnesses?: string;
+                    /** Format: uuid */
+                    linkedSosAlertId?: string;
+                    workersCompClaimInitiated?: boolean;
+                    workersCompClaimReference?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36593,7 +36739,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    category?: "physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other";
+                    severity?: "minor" | "moderate" | "serious" | "life_threatening";
+                    /** Format: date-time */
+                    occurredAt?: string;
+                    locationDescription?: string;
+                    narrative?: string;
+                    witnesses?: string;
+                    workersCompClaimInitiated?: boolean;
+                    workersCompClaimReference?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36615,7 +36775,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    oshaReportable: boolean;
+                    reason: string;
+                    stateCode: string;
+                    reportingWindowHours: number;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36637,7 +36806,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    toState: "under_review" | "returned_to_clinician" | "closed_with_action_plan" | "closed_no_action" | "reopened";
+                    reason: string;
+                    actionPlan?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36659,7 +36836,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    oshaReportable: boolean;
+                    finalNarrative?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36674,7 +36858,9 @@ export interface operations {
     };
     getApiV1SafetyPolicy: {
         parameters: {
-            query?: never;
+            query?: {
+                asOf?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36699,7 +36885,33 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    midVisitCadenceMinutes?: number;
+                    midVisitMinVisitDurationMinutes?: number;
+                    preVisitWindowMinutes?: number;
+                    postVisitWindowMinutes?: number;
+                    gentleReminderMinutes?: number;
+                    supervisorAlertMinutes?: number;
+                    escalationMinutes?: number;
+                    sosEquivalentMinutes?: number;
+                    sosCancelWindowSeconds?: number;
+                    sosCancelRequiresBiometric?: boolean;
+                    sosContinuousLocationEnabled?: boolean;
+                    sosContinuousLocationSampleSeconds?: number;
+                    sosContinuousLocationMaxDurationHours?: number;
+                    sosTier1SlaSeconds?: number;
+                    sosTier2SlaSeconds?: number;
+                    sosTier3SlaSeconds?: number;
+                    subscriptionModel?: "location_scoped" | "provider_entity_scoped" | "role_scoped" | "explicit_only";
+                    afterHoursStartHour?: number;
+                    afterHoursEndHour?: number;
+                    oshaReportableAutoFlagCategories?: ("physical_assault" | "verbal_assault" | "threatened" | "dog_bite" | "animal_other" | "vehicle_accident_on_duty" | "theft_during_visit" | "medical_emergency_clinician_self" | "weather_emergency" | "environmental_hazard" | "near_miss" | "other")[];
+                    editReason: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36719,7 +36931,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    postedViaDeviceId?: string;
+                    postedCoordinates?: {
+                        latitude: number;
+                        longitude: number;
+                        accuracyM: number;
+                    };
+                    /** Format: uuid */
+                    lastKnownVisitId?: string;
+                    /** Format: date-time */
+                    capturedAt?: string;
+                    localIdempotencyKey?: string;
+                    offlineSync?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36763,7 +36993,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    actionTaken: string;
+                    outcome?: "reached_clinician_by_phone" | "dispatched_supervisor" | "911_called" | "no_action_needed" | "other";
+                    outreachPhoneNumberMasked?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36785,7 +37023,13 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    biometricVerificationToken?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36800,7 +37044,11 @@ export interface operations {
     };
     getApiV1SafetySosBySosAlertIdLocationstream: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                cursor?: string;
+                accessReason?: string;
+            };
             header?: never;
             path: {
                 sosAlertId: string;
@@ -36829,7 +37077,15 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    resolutionNarrative: string;
+                    outcome: "no_action_needed" | "clinician_safe_continued" | "visit_cancelled" | "incident_opened" | "911_called" | "other";
+                    openIncidentFromOutcome?: boolean;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -36864,7 +37120,12 @@ export interface operations {
     };
     getApiV1SafetySupervisorsubscriptions: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+                cursor?: string;
+                clinicianMembershipId?: string;
+                supervisorMembershipId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -36889,7 +37150,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    supervisorMembershipId: string;
+                    scopeKind: "explicit" | "location" | "provider_entity" | "role";
+                    /** Format: uuid */
+                    clinicianMembershipId?: string;
+                    /** Format: uuid */
+                    locationId?: string;
+                    /** Format: uuid */
+                    providerEntityId?: string;
+                    alertKinds: ("sos" | "overdue" | "incident" | "high_risk_area")[];
+                    isVacationForwarding?: boolean;
+                    /** Format: uuid */
+                    vacationForwardToMembershipId?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
