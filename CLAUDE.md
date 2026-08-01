@@ -13,7 +13,10 @@ M34 SaaS Platform, plus the platform services M36/M38/M39/M40. The generated **i
 matrix** (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`)
 is the per-module truth — currently **🟢 35 · 🟡 0 · ⚪ 5**. The **5 remaining placeholders (⚪)** are
 M28 FHIR Gateway, M29 External Interfaces, M31 Patient/Family Portal & Telehealth, M35 Subscription
-Billing, and M37 Inpatient Unit (IPU) Management. **M30 is merged (PR #106)**: 18 frozen
+Billing, and M37 Inpatient Unit (IPU) Management. As of the **2026-08-01 sweep every 🟢 module is
+enrichment-complete (matrix `Enriched` full-ratio ✅, corpus 989/995 routes carry request/response
+contracts) and live-RLS-proven (matrix `Live` full-ratio ✅, 20 executed cross-tenant suites)** — the
+only ⚠️ Live/Enriched rows left belong to the 5 ⚪ placeholders. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
 47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
@@ -112,10 +115,15 @@ the prose docs in `docs/architecture/`.
   progress. Regenerate with `bun run status:matrix`; `arch:fitness` runs it in `--check` mode
   (`arch:status-matrix`) to keep `audit/implementation-status/` fresh and to hard-fail on orphan
   (unowned) schema/migration tables. Writes `audit/implementation-status/IMPLEMENTATION_STATUS.md` (+ `.json`).
-  The **`Enriched` column is a ratio** (`6/46 ⚠️`), joined route-by-route against the enrichment
-  registry. It used to be a per-module boolean that flipped ✅ on a single entry anywhere in the
-  module, so it read ❌ only at *exactly zero* — M06 sat at 6-of-46 showing ✅. It is still
-  advisory; `arch:openapi-coverage` is what fails the build.
+  The **`Enriched` column is a ratio** (`n/m`), joined route-by-route against the enrichment
+  registry — it used to be a per-module boolean that flipped ✅ on a single entry anywhere in the
+  module (M06 once sat at 6-of-46 showing ✅). As of the **2026-08-01 enrichment sweep every 🟢
+  *feature* module reads a full-ratio ✅** (0 unenriched routes; M01 Foundation reads ❌ because it
+  owns tables but no feature routes). The **`Live` column** (owned tables named in a
+  `*.live.test.ts`) is likewise full-ratio ✅ for every 🟢 module now — **20 modules carry executed
+  cross-tenant RLS suites** (M1–M14, M17, M18, M22, M27, M34, M36, M38, M39, M40, plus M4/M5/M7/
+  M15/M16/M19–M21/M23–M26/M30/M32/M33). Both columns are advisory; `arch:openapi-coverage` is what
+  fails the build.
 - `scripts/report-openapi-coverage.ts` — **OpenAPI enrichment-coverage report + ratchet**
   (`bun run openapi:coverage`; `arch:openapi-coverage` runs `--check`). `openapi:check` proves
   openapi.json was *regenerated* and that no enrichment targets a dead route — it says nothing
@@ -128,8 +136,10 @@ the prose docs in `docs/architecture/`.
   ship their contracts), and when it **falls** the baseline must be re-tightened
   (`bun run openapi:coverage --update`) so progress is locked in. A module absent from the
   baseline has an implied floor of **0** — a brand-new module's first unenriched route fails.
-  Retro-enriching the 478 already-unenriched routes (330 of them mutating) is deliberately *not*
-  required by this gate. Writes `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
+  The 2026-08-01 sweep retro-enriched the corpus from **478 unenriched → 6** (currently **989/995
+  enriched**; only bootstrap's health/infra routes remain) and re-tightened the baseline — the gate
+  never *required* that backfill, but the progress is now locked in. Writes
+  `audit/openapi-coverage/OPENAPI_COVERAGE.md` (+ `.json`).
   `client:check` (generated typed client ↔ openapi.json) is now in `arch:fitness` too.
 - `scripts/report-ui-parity.ts` — **UI implementation-parity report**: bridges the documented
   screen-spec corpus (`docs/design`) and the implemented web surface (registered `screens.ts`), so a
