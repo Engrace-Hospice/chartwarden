@@ -64,6 +64,7 @@ import {
 } from "./modules/05-patient/index";
 import {
   createInMemoryAdmissionBackend,
+  mountAdmissionRoutes,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
@@ -1276,6 +1277,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
+          mountAdmissionRoutes(app, dbHandle.db); // M6 — admission census/detail/referral/compliance READS on real tables under RLS (M6L-T01; writes → M6L-T02+)
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
@@ -1667,10 +1669,9 @@ if ((import.meta as { main?: boolean }).main) {
           if (clinicalCoreScaffoldEnabled) {
             const core = getClinicalCoreBackends();
 
-            // M6 Admission (46 routes). `isInCaseload` stays on its default → M5's LIVE CaseloadProvider
-            // seam, so the caseload arm is real even though the admission rows are not.
-            registerAdmissionAbacPredicates({ resolver: core.m6.resolver });
-            registerAdmissionRoutes(app, { service: core.m6.service });
+            // M6 Admission is NO LONGER mounted here — it moved to the db branch above over the real
+            // Drizzle route service (`mountAdmissionRoutes`), so its reads are RLS-scoped and it runs in
+            // production too. `core.m6` stays built only as the behavioral reference for the write lifecycle.
 
             // M7 Care Plan (19 routes). `dpoaConsentActive` / `sudDisclosureAllowed` stay on their
             // fail-closed `async () => false` defaults, so §7.6 SUD-flagged problems remain omitted
