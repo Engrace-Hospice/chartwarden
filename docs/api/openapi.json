@@ -52608,6 +52608,2198 @@
         }
       }
     },
+    "/api/v1/safety/check-ins": {
+      "post": {
+        "operationId": "postApiV1SafetyCheckins",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Record a check-in against an obligation — the attribution column is stamped from the SESSION (routes/actor.ts), so a caller cannot post an attestation as somebody else whatever they send (§4.1 #1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "status"
+                ],
+                "properties": {
+                  "visitId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "scheduleId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "pre_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mid_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "post_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "between_visits",
+                        "type": "string"
+                      },
+                      {
+                        "const": "ad_hoc",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "ok",
+                        "type": "string"
+                      },
+                      {
+                        "const": "concerned_continue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "concerned_stop",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "concernNote": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "postedCoordinates": {
+                    "type": "object",
+                    "required": [
+                      "latitude",
+                      "longitude",
+                      "accuracyM"
+                    ],
+                    "properties": {
+                      "latitude": {
+                        "minimum": -90,
+                        "maximum": 90,
+                        "type": "number"
+                      },
+                      "longitude": {
+                        "minimum": -180,
+                        "maximum": 180,
+                        "type": "number"
+                      },
+                      "accuracyM": {
+                        "minimum": 0,
+                        "maximum": 10000,
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "postedViaDeviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/check-ins/{checkInId}": {
+      "get": {
+        "operationId": "getApiV1SafetyCheckinsByCheckInId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "checkInId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1SafetyCheckinsByCheckInId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Amend within the 5-minute grace — a correction is a NEW row that supersedes (§2.2.1); the original stays readable because it is what the supervisor may already have acted on (§4.1 #3)",
+        "parameters": [
+          {
+            "name": "checkInId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "amendmentReason"
+                ],
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "ok",
+                        "type": "string"
+                      },
+                      {
+                        "const": "concerned_continue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "concerned_stop",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "concernNote": {
+                    "minLength": 20,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "amendmentReason": {
+                    "minLength": 10,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/check-ins/me/today": {
+      "get": {
+        "operationId": "getApiV1SafetyCheckinsMeToday",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The clinician's own day — what she owes and what she has posted. Scoped to the SESSION's membership inside the read service, so `/me/today` cannot be pointed at a colleague (§4.1 #4)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/consent": {
+      "get": {
+        "operationId": "getApiV1SafetyConsent",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "My own consents — the three §M20-F16 purposes and their current state (§4.1 #27)",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "sos_coordinates",
+                  "type": "string"
+                },
+                {
+                  "const": "continuous_location_during_sos",
+                  "type": "string"
+                },
+                {
+                  "const": "emergency_contact_call",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/consent/grant": {
+      "post": {
+        "operationId": "postApiV1SafetyConsentGrant",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Grant one purpose — the three are separately grantable (M20-F16): declining `sos_coordinates` never disables SOS, and `continuous_location_during_sos` additionally needs the TENANT's `sosContinuousLocationEnabled` before a stream row may exist (§4.1 #28)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "purpose",
+                  "acknowledgmentTextSnapshot"
+                ],
+                "properties": {
+                  "purpose": {
+                    "anyOf": [
+                      {
+                        "const": "sos_coordinates",
+                        "type": "string"
+                      },
+                      {
+                        "const": "continuous_location_during_sos",
+                        "type": "string"
+                      },
+                      {
+                        "const": "emergency_contact_call",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "acknowledgmentTextSnapshot": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "expiresAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "contact": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "phone"
+                    ],
+                    "properties": {
+                      "name": {
+                        "minLength": 1,
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      "phone": {
+                        "minLength": 1,
+                        "maxLength": 40,
+                        "type": "string"
+                      },
+                      "relationship": {
+                        "maxLength": 100,
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/consent/revoke": {
+      "post": {
+        "operationId": "postApiV1SafetyConsentRevoke",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "purpose"
+                ],
+                "properties": {
+                  "purpose": {
+                    "anyOf": [
+                      {
+                        "const": "sos_coordinates",
+                        "type": "string"
+                      },
+                      {
+                        "const": "continuous_location_during_sos",
+                        "type": "string"
+                      },
+                      {
+                        "const": "emergency_contact_call",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/dashboard": {
+      "get": {
+        "operationId": "getApiV1SafetyDashboard",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The live-awareness board — open obligations, active alerts, and the coverage gaps behind them (§4.1 #26)",
+        "parameters": [
+          {
+            "name": "locationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "supervisorMembershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/high-risk-areas": {
+      "get": {
+        "operationId": "getApiV1SafetyHighriskareas",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeExpired",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SafetyHighriskareas",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Draw one (§7.6) — M20-F07: no PostGIS, so ring closure and the ≥4-point minimum are validated in app code the moment the Compliance Officer draws it, not on the night a clinician is standing in it (§4.1 #24)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "riskCategory",
+                  "advisoryMessage",
+                  "polygon"
+                ],
+                "properties": {
+                  "riskCategory": {
+                    "anyOf": [
+                      {
+                        "const": "documented_prior_incident",
+                        "type": "string"
+                      },
+                      {
+                        "const": "community_self_reported_unsafe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nighttime_only_advisory",
+                        "type": "string"
+                      },
+                      {
+                        "const": "weather_advisory_seasonal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general_caution",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "advisoryMessage": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "polygon": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "minItems": 4,
+                      "maxItems": 2000,
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": [
+                          {
+                            "minimum": -180,
+                            "maximum": 180,
+                            "type": "number"
+                          },
+                          {
+                            "minimum": -90,
+                            "maximum": 90,
+                            "type": "number"
+                          }
+                        ],
+                        "additionalItems": false,
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    }
+                  },
+                  "policyForVisitsToArea": {
+                    "anyOf": [
+                      {
+                        "const": "advisory_only",
+                        "type": "string"
+                      },
+                      {
+                        "const": "requires_pre_visit_check_in",
+                        "type": "string"
+                      },
+                      {
+                        "const": "requires_buddy_visit",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/high-risk-areas/{areaId}": {
+      "patch": {
+        "operationId": "patchApiV1SafetyHighriskareasByAreaId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Edit or retire one — retiring is `effectiveTo`, never a delete: an incident review has to be able to ask what advisory was in force on the day (§4.1 #25)",
+        "parameters": [
+          {
+            "name": "areaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "riskCategory": {
+                    "anyOf": [
+                      {
+                        "const": "documented_prior_incident",
+                        "type": "string"
+                      },
+                      {
+                        "const": "community_self_reported_unsafe",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nighttime_only_advisory",
+                        "type": "string"
+                      },
+                      {
+                        "const": "weather_advisory_seasonal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "general_caution",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "advisoryMessage": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "polygon": {
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "minItems": 4,
+                      "maxItems": 2000,
+                      "type": "array",
+                      "items": {
+                        "type": "array",
+                        "items": [
+                          {
+                            "minimum": -180,
+                            "maximum": 180,
+                            "type": "number"
+                          },
+                          {
+                            "minimum": -90,
+                            "maximum": 90,
+                            "type": "number"
+                          }
+                        ],
+                        "additionalItems": false,
+                        "minItems": 2,
+                        "maxItems": 2
+                      }
+                    }
+                  },
+                  "policyForVisitsToArea": {
+                    "anyOf": [
+                      {
+                        "const": "advisory_only",
+                        "type": "string"
+                      },
+                      {
+                        "const": "requires_pre_visit_check_in",
+                        "type": "string"
+                      },
+                      {
+                        "const": "requires_buddy_visit",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveTo": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents": {
+      "get": {
+        "operationId": "getApiV1SafetyIncidents",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The review queue — narrowed to the caller's own incidents inside the read service when they hold no oversight role: the guard admits them to the route, the service decides which rows (§4.1 #13)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "lifecycleState",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "under_review",
+                  "type": "string"
+                },
+                {
+                  "const": "returned_to_clinician",
+                  "type": "string"
+                },
+                {
+                  "const": "closed_with_action_plan",
+                  "type": "string"
+                },
+                {
+                  "const": "closed_no_action",
+                  "type": "string"
+                },
+                {
+                  "const": "reopened",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "oshaReportable",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SafetyIncidents",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Open a draft — `affectedClinicianMembershipId` is the ONE membership a caller may name (the §2.2.3 supervisor-opens-on-behalf-of path), and `incident_subject_or_supervisor` is what keeps naming somebody else a supervisor-only act (§4.1 #12)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "affectedClinicianMembershipId",
+                  "category",
+                  "severity",
+                  "occurredAt",
+                  "narrative"
+                ],
+                "properties": {
+                  "affectedClinicianMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "physical_assault",
+                        "type": "string"
+                      },
+                      {
+                        "const": "verbal_assault",
+                        "type": "string"
+                      },
+                      {
+                        "const": "threatened",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dog_bite",
+                        "type": "string"
+                      },
+                      {
+                        "const": "animal_other",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vehicle_accident_on_duty",
+                        "type": "string"
+                      },
+                      {
+                        "const": "theft_during_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_emergency_clinician_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "weather_emergency",
+                        "type": "string"
+                      },
+                      {
+                        "const": "environmental_hazard",
+                        "type": "string"
+                      },
+                      {
+                        "const": "near_miss",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "serious",
+                        "type": "string"
+                      },
+                      {
+                        "const": "life_threatening",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "visitId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "locationDescription": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "narrative": {
+                    "minLength": 200,
+                    "maxLength": 16000,
+                    "type": "string"
+                  },
+                  "witnesses": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "linkedSosAlertId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "workersCompClaimInitiated": {
+                    "type": "boolean"
+                  },
+                  "workersCompClaimReference": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}": {
+      "get": {
+        "operationId": "getApiV1SafetyIncidentsByIncidentId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1SafetyIncidentsByIncidentId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Edit a draft — the `(draft)` qualifier is enforced by the service, not the shape (§4.1 #14)",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "physical_assault",
+                        "type": "string"
+                      },
+                      {
+                        "const": "verbal_assault",
+                        "type": "string"
+                      },
+                      {
+                        "const": "threatened",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dog_bite",
+                        "type": "string"
+                      },
+                      {
+                        "const": "animal_other",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vehicle_accident_on_duty",
+                        "type": "string"
+                      },
+                      {
+                        "const": "theft_during_visit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_emergency_clinician_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "weather_emergency",
+                        "type": "string"
+                      },
+                      {
+                        "const": "environmental_hazard",
+                        "type": "string"
+                      },
+                      {
+                        "const": "near_miss",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "minor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "serious",
+                        "type": "string"
+                      },
+                      {
+                        "const": "life_threatening",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "occurredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "locationDescription": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "narrative": {
+                    "minLength": 200,
+                    "maxLength": 16000,
+                    "type": "string"
+                  },
+                  "witnesses": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "workersCompClaimInitiated": {
+                    "type": "boolean"
+                  },
+                  "workersCompClaimReference": {
+                    "maxLength": 200,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}/osha-signoff": {
+      "post": {
+        "operationId": "postApiV1SafetyIncidentsByIncidentIdOshasignoff",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "§7.6 / D9's OSHA-equivalent sign-off — step-up asserted at the route (§4.1 #17)",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "oshaReportable",
+                  "reason",
+                  "stateCode",
+                  "reportingWindowHours"
+                ],
+                "properties": {
+                  "oshaReportable": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "stateCode": {
+                    "minLength": 2,
+                    "maxLength": 2,
+                    "type": "string"
+                  },
+                  "reportingWindowHours": {
+                    "minimum": 1,
+                    "maximum": 720,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}/state": {
+      "post": {
+        "operationId": "postApiV1SafetyIncidentsByIncidentIdState",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16)",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "toState",
+                  "reason"
+                ],
+                "properties": {
+                  "toState": {
+                    "anyOf": [
+                      {
+                        "const": "under_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "returned_to_clinician",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed_with_action_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed_no_action",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reopened",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 30,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "actionPlan": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/incidents/{incidentId}/submit": {
+      "post": {
+        "operationId": "postApiV1SafetyIncidentsByIncidentIdSubmit",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Submit for review — D9's gate: `oshaReportable: true` without the signed-off pair is a 422 that NAMES the fix, not a constraint violation surfacing on a clinician's Submit button (§4.1 #15)",
+        "parameters": [
+          {
+            "name": "incidentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "oshaReportable"
+                ],
+                "properties": {
+                  "oshaReportable": {
+                    "type": "boolean"
+                  },
+                  "finalNarrative": {
+                    "minLength": 200,
+                    "maxLength": 16000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/policy": {
+      "get": {
+        "operationId": "getApiV1SafetyPolicy",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18)",
+        "parameters": [
+          {
+            "name": "asOf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiV1SafetyPolicy",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Edit the policy — step-up asserted at the route (§4.1 #19)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "editReason"
+                ],
+                "properties": {
+                  "midVisitCadenceMinutes": {
+                    "type": "integer"
+                  },
+                  "midVisitMinVisitDurationMinutes": {
+                    "type": "integer"
+                  },
+                  "preVisitWindowMinutes": {
+                    "type": "integer"
+                  },
+                  "postVisitWindowMinutes": {
+                    "type": "integer"
+                  },
+                  "gentleReminderMinutes": {
+                    "type": "integer"
+                  },
+                  "supervisorAlertMinutes": {
+                    "type": "integer"
+                  },
+                  "escalationMinutes": {
+                    "type": "integer"
+                  },
+                  "sosEquivalentMinutes": {
+                    "type": "integer"
+                  },
+                  "sosCancelWindowSeconds": {
+                    "type": "integer"
+                  },
+                  "sosCancelRequiresBiometric": {
+                    "type": "boolean"
+                  },
+                  "sosContinuousLocationEnabled": {
+                    "type": "boolean"
+                  },
+                  "sosContinuousLocationSampleSeconds": {
+                    "type": "integer"
+                  },
+                  "sosContinuousLocationMaxDurationHours": {
+                    "type": "integer"
+                  },
+                  "sosTier1SlaSeconds": {
+                    "type": "integer"
+                  },
+                  "sosTier2SlaSeconds": {
+                    "type": "integer"
+                  },
+                  "sosTier3SlaSeconds": {
+                    "type": "integer"
+                  },
+                  "subscriptionModel": {
+                    "anyOf": [
+                      {
+                        "const": "location_scoped",
+                        "type": "string"
+                      },
+                      {
+                        "const": "provider_entity_scoped",
+                        "type": "string"
+                      },
+                      {
+                        "const": "role_scoped",
+                        "type": "string"
+                      },
+                      {
+                        "const": "explicit_only",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "afterHoursStartHour": {
+                    "minimum": 0,
+                    "maximum": 23,
+                    "type": "integer"
+                  },
+                  "afterHoursEndHour": {
+                    "minimum": 0,
+                    "maximum": 23,
+                    "type": "integer"
+                  },
+                  "oshaReportableAutoFlagCategories": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "physical_assault",
+                          "type": "string"
+                        },
+                        {
+                          "const": "verbal_assault",
+                          "type": "string"
+                        },
+                        {
+                          "const": "threatened",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dog_bite",
+                          "type": "string"
+                        },
+                        {
+                          "const": "animal_other",
+                          "type": "string"
+                        },
+                        {
+                          "const": "vehicle_accident_on_duty",
+                          "type": "string"
+                        },
+                        {
+                          "const": "theft_during_visit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "medical_emergency_clinician_self",
+                          "type": "string"
+                        },
+                        {
+                          "const": "weather_emergency",
+                          "type": "string"
+                        },
+                        {
+                          "const": "environmental_hazard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "near_miss",
+                          "type": "string"
+                        },
+                        {
+                          "const": "other",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "editReason": {
+                    "minLength": 30,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos": {
+      "post": {
+        "operationId": "postApiV1SafetySos",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The press — deliberately NO idempotency key: a duplicate alert is recoverable, a swallowed one is not. `field_eligible_for_sos` gates who may PRESS; nothing downstream of the row gates the fan-out (M20-F05 / S13, §4.1 #5)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "postedViaDeviceId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "postedCoordinates": {
+                    "type": "object",
+                    "required": [
+                      "latitude",
+                      "longitude",
+                      "accuracyM"
+                    ],
+                    "properties": {
+                      "latitude": {
+                        "minimum": -90,
+                        "maximum": 90,
+                        "type": "number"
+                      },
+                      "longitude": {
+                        "minimum": -180,
+                        "maximum": 180,
+                        "type": "number"
+                      },
+                      "accuracyM": {
+                        "minimum": 0,
+                        "maximum": 10000,
+                        "type": "integer"
+                      }
+                    }
+                  },
+                  "lastKnownVisitId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "capturedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "localIdempotencyKey": {
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "offlineSync": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}": {
+      "get": {
+        "operationId": "getApiV1SafetySosBySosAlertId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/acknowledge": {
+      "post": {
+        "operationId": "postApiV1SafetySosBySosAlertIdAcknowledge",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "A responder answers — the §2.2.6 acknowledgment row is written in the SAME transaction, so an `acknowledged` alert nobody signed is unrepresentable (§4.1 #7)",
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "actionTaken"
+                ],
+                "properties": {
+                  "actionTaken": {
+                    "minLength": 40,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "reached_clinician_by_phone",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dispatched_supervisor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "911_called",
+                        "type": "string"
+                      },
+                      {
+                        "const": "no_action_needed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "outreachPhoneNumberMasked": {
+                    "maxLength": 40,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/cancel": {
+      "post": {
+        "operationId": "postApiV1SafetySosBySosAlertIdCancel",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6)",
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "biometricVerificationToken": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/location-stream": {
+      "get": {
+        "operationId": "getApiV1SafetySosBySosAlertIdLocationstream",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "The D6 coordinate stream — readable only while the consent that produced it stands; `continuous_location_during_sos` additionally requires the TENANT flag before a single row may exist (§4.1 #10)",
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "accessReason",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 40,
+              "maxLength": 1000,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/{sosAlertId}/resolve": {
+      "post": {
+        "operationId": "postApiV1SafetySosBySosAlertIdResolve",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Resolve, or convert into an incident — `openIncidentFromOutcome` dispatches to a DIFFERENT §2.2.2 command (`openIncident`, not `resolve`) because they are different terminal states (§4.1 #8)",
+        "parameters": [
+          {
+            "name": "sosAlertId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resolutionNarrative",
+                  "outcome"
+                ],
+                "properties": {
+                  "resolutionNarrative": {
+                    "minLength": 100,
+                    "maxLength": 8000,
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "no_action_needed",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinician_safe_continued",
+                        "type": "string"
+                      },
+                      {
+                        "const": "visit_cancelled",
+                        "type": "string"
+                      },
+                      {
+                        "const": "incident_opened",
+                        "type": "string"
+                      },
+                      {
+                        "const": "911_called",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "openIncidentFromOutcome": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/sos/active": {
+      "get": {
+        "operationId": "getApiV1SafetySosActive",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/safety/supervisor-subscriptions": {
+      "get": {
+        "operationId": "getApiV1SafetySupervisorsubscriptions",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
+            "name": "clinicianMembershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "supervisorMembershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1SafetySupervisorsubscriptions",
+        "tags": [
+          "20-field-safety"
+        ],
+        "summary": "Add one — the scope-selector pairing (§3.3's `m20_sss_scope_integrity`) and the vacation-forward pairing are re-checked in the service so the DON is told WHICH selector is missing rather than shown a constraint name (§4.1 #21)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "supervisorMembershipId",
+                  "scopeKind",
+                  "alertKinds"
+                ],
+                "properties": {
+                  "supervisorMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "scopeKind": {
+                    "anyOf": [
+                      {
+                        "const": "explicit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "location",
+                        "type": "string"
+                      },
+                      {
+                        "const": "provider_entity",
+                        "type": "string"
+                      },
+                      {
+                        "const": "role",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "clinicianMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "alertKinds": {
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "const": "sos",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overdue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "incident",
+                          "type": "string"
+                        },
+                        {
+                          "const": "high_risk_area",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "isVacationForwarding": {
+                    "type": "boolean"
+                  },
+                  "vacationForwardToMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/safety/supervisor-subscriptions/{subscriptionId}": {
+      "delete": {
+        "operationId": "deleteApiV1SafetySupervisorsubscriptionsBySubscriptionId",
+        "tags": [
+          "20-field-safety"
+        ],
+        "parameters": [
+          {
+            "name": "subscriptionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/scheduled-doses": {
       "get": {
         "operationId": "getApiV1Scheduleddoses",

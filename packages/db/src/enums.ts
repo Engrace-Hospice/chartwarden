@@ -2707,3 +2707,161 @@ export const triageRiskBand = pgEnum("triage_risk_band", ["low", "medium", "high
 /** `triage_ai_confidence` — D12. The band M32's protocol suggestion arrived with. Below the governance
  *  floor the suggestion is still SHOWN (de-emphasized) and still never auto-applied. */
 export const triageAiConfidence = pgEnum("triage_ai_confidence", ["low", "medium", "high"]);
+
+// ── Module 20 — Field Safety (§3.2 Phase A, M20-T01) ─────────────────────────────────────────────────
+//
+// NAMING: like M19's, M20's §3.2 Phase-A `CREATE TYPE` block spells its SQL type names WITHOUT a module
+// prefix (unlike M21's §3.1.1, which spells `m21_` into the normative DDL). The block is followed
+// verbatim — none of the twelve names collides with an existing type in this file.
+//
+// §3.3 declares the COLUMNS that carry these vocabularies as `text` with a trailing comment naming the
+// enum. §3.2 Phase A is the authority for which vocabularies become a real pg type; M20-T02 binds the
+// columns to the types below. The seven vocabularies §3.3 spells inline and Phase A does NOT create
+// (`cancel_biometric_result`, the SOS `outcome`, the acknowledgment `outcome`, `scope_kind`,
+// `alert_kinds`, `policy_for_visits_to_area`, `consent_purpose`) stay text + CHECK, and live as leaf
+// unions in `@wardenx/types`' `safety.ts` — adding pg types the spec never declared would be this
+// module inventing DDL.
+
+/** `safety_check_in_kind` — §1.1 / D2. The discriminator that makes a check-in a discrete EVENT rather
+ *  than a timer state: `pre_visit` / `mid_visit` / `post_visit` bracket a visit (and REQUIRE a
+ *  `visit_id`), `between_visits` and `ad_hoc` stand alone. */
+export const safetyCheckInKind = pgEnum("safety_check_in_kind", [
+  "pre_visit",
+  "mid_visit",
+  "post_visit",
+  "between_visits",
+  "ad_hoc",
+]);
+
+/** `safety_check_in_status` — the clinician's own attestation. The two `concerned_*` values require a
+ *  `concern_note` ≥20 chars (§2.3 CHECK) and route the row to `compliance` retention (§3.7) — the
+ *  routine "I'm OK" is `operational` and is purged. */
+export const safetyCheckInStatus = pgEnum("safety_check_in_status", [
+  "ok",
+  "concerned_continue",
+  "concerned_stop",
+]);
+
+/** `safety_check_in_state` — §2.2.1. The state lives on the SCHEDULE row for `proposed`/`overdue`/
+ *  `escalated` and on the check-in row for `recorded`/`superseded`; `incident_opened` is the terminus
+ *  where a supervisor opened an incident on the clinician's behalf. */
+export const safetyCheckInState = pgEnum("safety_check_in_state", [
+  "proposed",
+  "recorded",
+  "overdue",
+  "escalated",
+  "superseded",
+  "incident_opened",
+]);
+
+/**
+ * `safety_sos_lifecycle_state` — §2.2.2.
+ *
+ * `emergency_terminus` is ADDED to the spec's §3.2 Phase-A block. §2.2.2 and the M20-F05 / S13 /
+ * INT-031 remediation make it the mandated end of the life-safety chain — the state a tier-3 SLA breach
+ * with no acknowledgment enters, which auto-dials the consented emergency contact, surfaces the M40 PSAP
+ * number to every recipient, pages WardenX ops, and KEEPS re-escalating until a human acknowledges. The
+ * amendment added the state to the state machine, §8.8's audit catalog and the `m20_sos_terminus_reached_total`
+ * metric, and never updated the `CREATE TYPE` block it came from. Following Phase A verbatim would leave
+ * the terminus unwritable and an unacknowledged 3 a.m. SOS sitting in `escalation_tier_3` forever, which
+ * is the exact failure S13 exists to close.
+ */
+export const safetySosLifecycleState = pgEnum("safety_sos_lifecycle_state", [
+  "raised",
+  "cancel_window_open",
+  "acknowledging",
+  "acknowledged",
+  "escalation_tier_1",
+  "escalation_tier_2",
+  "escalation_tier_3",
+  "emergency_terminus",
+  "resolving",
+  "resolved",
+  "cancelled_in_window",
+  "cancel_attempted_but_rejected",
+  "incident_opened",
+]);
+
+/** `safety_sos_cancel_status` — D5. `cancel_attempted_but_rejected` is the hostile-actor signal: the
+ *  cancel was pressed, the biometric did not pass, and the alert PROCEEDS as if no cancel happened. */
+export const safetySosCancelStatus = pgEnum("safety_sos_cancel_status", [
+  "not_cancelled",
+  "cancelled_in_window",
+  "cancel_attempted_but_rejected",
+]);
+
+/** `safety_incident_category` — §1.1. The structured taxonomy an OSHA-equivalent state filing and a
+ *  workers-comp carrier both read; `near_miss` is deliberately in the same enum as `physical_assault`
+ *  because the near-miss is the one a safety program is supposed to act on BEFORE the assault. */
+export const safetyIncidentCategory = pgEnum("safety_incident_category", [
+  "physical_assault",
+  "verbal_assault",
+  "threatened",
+  "dog_bite",
+  "animal_other",
+  "vehicle_accident_on_duty",
+  "theft_during_visit",
+  "medical_emergency_clinician_self",
+  "weather_emergency",
+  "environmental_hazard",
+  "near_miss",
+  "other",
+]);
+
+/** `safety_incident_severity` — clinician-attested at report, supervisor-adjustable while `under_review`
+ *  (§2.2.3). Feeds the D9 `osha_reportable` default heuristic, which a supervisor must still sign off. */
+export const safetyIncidentSeverity = pgEnum("safety_incident_severity", [
+  "minor",
+  "moderate",
+  "serious",
+  "life_threatening",
+]);
+
+/** `safety_incident_state` — §2.2.3. `reopened` exists so new evidence does not force a second incident
+ *  row that breaks the workers-comp timeline; it re-enters `under_review`. */
+export const safetyIncidentState = pgEnum("safety_incident_state", [
+  "draft",
+  "submitted",
+  "under_review",
+  "returned_to_clinician",
+  "closed_with_action_plan",
+  "closed_no_action",
+  "reopened",
+]);
+
+/** `safety_high_risk_category` — D12. The polygon is ADVISORY in every category: it never blocks a
+ *  visit, it surfaces a warning and (per tenant policy) makes the pre-visit check-in mandatory. */
+export const safetyHighRiskCategory = pgEnum("safety_high_risk_category", [
+  "documented_prior_incident",
+  "community_self_reported_unsafe",
+  "nighttime_only_advisory",
+  "weather_advisory_seasonal",
+  "general_caution",
+]);
+
+/** `safety_subscription_model` — D8. The TENANT-WIDE default model on `safety_policy_version`. Distinct
+ *  from a subscription row's own `scope_kind`: the model says how rows are generated by default, the
+ *  scope kind says what one existing row covers. */
+export const safetySubscriptionModel = pgEnum("safety_subscription_model", [
+  "location_scoped",
+  "provider_entity_scoped",
+  "role_scoped",
+  "explicit_only",
+]);
+
+/** `safety_acknowledgment_target_kind` — §2.2.6. Exactly one of the three target FK columns is non-null,
+ *  and this column says which (the CHECK and the reader both key off it). */
+export const safetyAcknowledgmentTargetKind = pgEnum("safety_acknowledgment_target_kind", [
+  "sos_alert",
+  "incident",
+  "overdue_check_in",
+]);
+
+/** `safety_emergency_contact_consent_status` — §2.2.8 / D10. `expired` is a tenant consent-rotation
+ *  outcome and is NOT `revoked`: the clinician never withdrew consent, the acknowledgment aged out, and
+ *  the two must stay distinguishable in a coercion review. */
+export const safetyEmergencyContactConsentStatus = pgEnum("safety_emergency_contact_consent_status", [
+  "granted",
+  "revoked",
+  "expired",
+]);

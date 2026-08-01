@@ -631,3 +631,25 @@ export * from "./supplies/index";
 // (full reasoning in oncall/triage-calls.ts). Enums land in M19-T01; the ten tables migration 0107;
 // RLS/grants + the ten M4 write-audit triggers + the §2.3 forward-transition guard 0108.
 export * from "./oncall/index";
+
+// M20 Field Safety: 13 owned tables (§3.3) in five layers — POLICY (safety_policy + safety_policy_version,
+// §2.2.4/D4's per-tenant posture with the tighten-only bands as CHECKs and the overdue ladder ordered, every
+// other row pinning the version it was written under), OBLIGATION+ATTESTATION (safety_check_in_schedule, what
+// the 30-second overdue detector scans, keyed M20-F04 on (visit_id, kind, expected_at) so a 2-hour visit can
+// carry several mid-visit rows; safety_check_in, the clinician's own statement, coordinates OFF by default
+// per D11 and the three coordinate columns moving together), SOS (safety_sos_alert — the press, never
+// deduplicated per §2.6, with `emergency_terminus` IN the SLA-watchdog index because M20-F05/S13 makes it an
+// OPEN state that re-escalates until acknowledged; safety_sos_location_stream, self-limiting by the D6/§8.7
+// 4-hour sunset and the §3.7 resolve+90d delete; safety_sos_alert_state_history), INCIDENT+ACT
+// (safety_incident with D9's OSHA sign-off pair enforced at the DB, safety_incident_state_history, and
+// safety_acknowledgment whose exactly-one-target CHECK runs in both directions so the discriminator cannot
+// disagree with the FK it names), and CONFIG (safety_supervisor_subscription — the paging layer, whose active
+// -pair unique index is NULLS NOT DISTINCT or three-of-four nullable columns make the rule vacuous;
+// safety_high_risk_area, advisory jsonb polygon rings with NO PostGIS per M20-F07 and organization_id NOT
+// NULL per M20-F03; safety_emergency_contact_consent, the clinician's own three separately-revocable
+// purposes). All thirteen are org-scoped NOT NULL on canonical app.org_id RLS and there is NO org-NULL row
+// anywhere in the module; eight also carry provider_entity_id NOT NULL + location_id nullable (the
+// three-column rule the §3.3 block omits). NOTHING is partitioned. Enums + the thirteen tables land in
+// migration 0110; RLS/grants + the thirteen M4 write-audit triggers + the §2.3 active-SOS guard on the
+// location stream in 0111.
+export * from "./safety/index";

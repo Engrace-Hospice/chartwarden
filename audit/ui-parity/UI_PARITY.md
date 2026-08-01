@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 32 module screen-sets registered · 212 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 33 module screen-sets registered · 226 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -146,6 +146,20 @@
 | 19-oncall | `oncall.vendors` | `/triage/vendors` | `oncall.read_policy` | ✅ |
 | 19-oncall | `triage.paper_reentry` | `/triage/paper-reentry` | `triage.paper_reentry` | ✅ |
 | 19-oncall | `triage.metrics` | `/triage/metrics` | `triage.read` | ✅ |
+| 20-field-safety | `safety.dashboard` | `/safety` | `safety.dashboard.read` | ✅ |
+| 20-field-safety | `safety.sos.active` | `/safety/sos` | `safety.sos.read` | ✅ |
+| 20-field-safety | `safety.sos.detail` | `/safety/sos/:sosAlertId` | `safety.sos.read` | ✅ |
+| 20-field-safety | `safety.incidents` | `/safety/incidents` | `safety_incident.read` | ✅ |
+| 20-field-safety | `safety.incident.new` | `/safety/incidents/new` | `safety_incident.create` | ✅ |
+| 20-field-safety | `safety.incident.detail` | `/safety/incidents/:incidentId` | `safety_incident.read` | ✅ |
+| 20-field-safety | `safety.check_ins` | `/safety/check-ins` | `safety.dashboard.read` | ✅ |
+| 20-field-safety | `safety.policy` | `/safety/policy` | `safety_policy.read` | ✅ |
+| 20-field-safety | `safety.subscriptions` | `/safety/supervisor-subscriptions` | `safety_supervisor.read` | ✅ |
+| 20-field-safety | `safety.high_risk_areas` | `/safety/high-risk-areas` | `safety.high_risk_area.read` | ✅ |
+| 20-field-safety | `safety.metrics` | `/safety/metrics` | `safety.dashboard.read` | ✅ |
+| 20-field-safety | `safety.me` | `/me/safety` | `safety.sos.raise` | ✅ |
+| 20-field-safety | `safety.me.check_ins` | `/me/safety/check-ins` | `safety.check_in.read` | ✅ |
+| 20-field-safety | `safety.me.consent` | `/me/safety/consent` | `safety.consent.read_self` | ✅ |
 | 21-supplies | `supplies.dashboard` | `/supplies` | `supplies.request.read` | ✅ |
 | 21-supplies | `supplies.request` | `/supplies/requests/:supplyRequestId` | `supplies.request.read` | ✅ |
 | 21-supplies | `supplies.dispatch.new` | `/supplies/dispatches/new` | `comfort_kit.dispatch.create` | ✅ |

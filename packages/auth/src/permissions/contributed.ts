@@ -4229,6 +4229,220 @@ export function m30ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M30_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * Module 20 — Field Safety: the §4.6 permission keys the module contributes to this M3-owned catalog
+ * (M20-T06). Twenty-five keys, verbatim from §4.6's table, in that table's order. §4.6 closes with "the
+ * platform-floor 25 keys above are `is_system_locked=true`" — the count is the spec's own.
+ *
+ * THE `abac` FIELD IS THE CATALOG DEFAULT, NOT THE ROUTE BINDING (the M19 posture). §4.1 binds a
+ * predicate per ROW, and four keys carry different predicates on different rows: `safety.check_in.read`
+ * is `clinician_self` on `/me/today` and `clinician_self ∨ supervises_clinician` on the detail;
+ * `safety.sos.read` adds `safety_supervisor_or_above` on the active list; `safety.sos.read_coords` is
+ * `active_sos_responder` DURING and `safety_supervisor_or_above` AFTER; `safety_incident.edit_draft` is
+ * `clinician_self` on a draft and `safety_supervisor_or_above` otherwise. The default recorded here is
+ * the one an admin granting the key should assume; the route guard is the authority.
+ *
+ * FIVE CATALOG DECISIONS WORTH STATING, because each is easy to get backwards:
+ *
+ *   1. `safety.sos.read_coords` IS A SEPARATE KEY FROM `safety.sos.read`, and §4.6 says so in bold. The
+ *      board answers "when did we last hear from her"; the coordinates answer "exactly where she is".
+ *      §8.7's whole boundary is that the second is a distinct grant with a warn-severity read-audit and a
+ *      self-service surface the clinician can review. Folding it into the read key would put a live map
+ *      of a clinician's position behind the same grant as a dashboard tile.
+ *   2. `org_scope` IS NOT A CATALOG DEFAULT ANYWHERE HERE — the two rows §4.1 marks `org_scope`
+ *      (`GET /policy`, `GET /high-risk-areas`) default to M3's intrinsic `inOrg`, which is the SAME rule
+ *      ("session.organization_id === target.organization_id") already registered platform-wide. M20
+ *      registering a second name for it would create two predicates that must never disagree, and
+ *      `arch:abac-predicates` would be satisfied by either. See ../../../apps/backend/src/modules/
+ *      20-field-safety/abac-predicates.ts for the same decision at the route layer.
+ *   3. THE THREE CONSENT KEYS ARE `self_service`, NOT `compliance`. `safety.consent.read_self` /
+ *      `edit_self` govern the CLINICIAN's own consent row (§2.2.8: the workforce member is the data
+ *      subject). A compliance-category grant would sweep them into the Compliance Officer template and
+ *      make one person able to grant another's consent to be located — the coercion §2.2.8's
+ *      `expired`-vs-`revoked` split exists to make visible.
+ *   4. `safety.dashboard.read` IS `caseload_or_scope`, NOT `safety_supervisor_or_above`. §6's row grants
+ *      every field discipline a SELF-ONLY view of the board; defaulting to the supervisor predicate would
+ *      make an RN's own safety status unreadable to her. The route ORs the supervisor arm on top.
+ *   5. `safety_incident.osha_signoff` AND `safety_policy.edit` ARE `compliance`, and both carry step-up
+ *      at the route. Each is a write whose consequence leaves the platform — a state OSHA-equivalent
+ *      filing, and the thresholds that decide how long a clinician in distress goes unwatched.
+ */
+export const M20_CONTRIBUTED_PERMISSIONS = {
+  // ── check-ins (§4.1 rows 1-4) ───────────────────────────────────────────────────────────────────────
+  "safety.check_in.create": {
+    resource: "safety_check_in",
+    action: "create",
+    category: "field_safety",
+    abac: "clinician_self",
+  },
+  "safety.check_in.read": {
+    resource: "safety_check_in",
+    action: "read",
+    category: "field_safety",
+    abac: "clinician_self",
+  },
+  "safety.check_in.amend": {
+    resource: "safety_check_in",
+    action: "amend",
+    category: "field_safety",
+    abac: "clinician_self",
+  },
+  // ── SOS (§4.1 rows 5-11) ────────────────────────────────────────────────────────────────────────────
+  "safety.sos.raise": {
+    resource: "safety_sos_alert",
+    action: "raise",
+    category: "field_safety",
+    abac: "field_eligible_for_sos",
+  },
+  "safety.sos.cancel": {
+    resource: "safety_sos_alert",
+    action: "cancel",
+    category: "field_safety",
+    abac: "clinician_self",
+  },
+  "safety.sos.acknowledge": {
+    resource: "safety_sos_alert",
+    action: "acknowledge",
+    category: "field_safety",
+    abac: "active_sos_responder",
+  },
+  "safety.sos.resolve": {
+    resource: "safety_sos_alert",
+    action: "resolve",
+    category: "field_safety",
+    abac: "active_sos_responder",
+  },
+  "safety.sos.read": {
+    resource: "safety_sos_alert",
+    action: "read",
+    category: "field_safety",
+    abac: "clinician_self",
+  },
+  // Decision 1 — separate from `safety.sos.read`; §8.7's warn-severity read boundary.
+  "safety.sos.read_coords": {
+    resource: "safety_sos_alert",
+    action: "read_coords",
+    category: "field_safety",
+    abac: "active_sos_responder",
+  },
+  // ── incidents (§4.1 rows 12-17) ─────────────────────────────────────────────────────────────────────
+  "safety_incident.create": {
+    resource: "safety_incident",
+    action: "create",
+    category: "field_safety",
+    abac: "incident_subject_or_supervisor",
+  },
+  "safety_incident.read": {
+    resource: "safety_incident",
+    action: "read",
+    category: "field_safety",
+    abac: "incident_subject_or_supervisor",
+  },
+  "safety_incident.edit_draft": {
+    resource: "safety_incident",
+    action: "edit_draft",
+    category: "field_safety",
+    abac: "clinician_self",
+  },
+  "safety_incident.submit": {
+    resource: "safety_incident",
+    action: "submit",
+    category: "field_safety",
+    abac: "incident_subject_or_supervisor",
+  },
+  "safety_incident.transition": {
+    resource: "safety_incident",
+    action: "transition",
+    category: "field_safety",
+    abac: "safety_supervisor_or_above",
+  },
+  // Decision 5 — `compliance`, plus step-up at the route (§4.1 / §7.6).
+  "safety_incident.osha_signoff": {
+    resource: "safety_incident",
+    action: "osha_signoff",
+    category: "compliance",
+    abac: "safety_supervisor_or_above",
+  },
+  // ── policy (§4.1 rows 18-19) ────────────────────────────────────────────────────────────────────────
+  // Decision 2 — `inOrg`, not a second `org_scope` name.
+  "safety_policy.read": {
+    resource: "safety_policy",
+    action: "read",
+    category: "field_safety",
+    abac: "inOrg",
+  },
+  // Decision 5 — `compliance` + step-up: this edits how long a clinician in distress goes unwatched.
+  "safety_policy.edit": {
+    resource: "safety_policy",
+    action: "edit",
+    category: "compliance",
+    abac: "safety_supervisor_or_above",
+  },
+  // ── supervisor subscriptions (§4.1 rows 20-22) ──────────────────────────────────────────────────────
+  "safety_supervisor.read": {
+    resource: "safety_supervisor_subscription",
+    action: "read",
+    category: "field_safety",
+    abac: "safety_supervisor_or_above",
+  },
+  "safety_supervisor.edit": {
+    resource: "safety_supervisor_subscription",
+    action: "edit",
+    category: "field_safety",
+    abac: "safety_supervisor_or_above",
+  },
+  // ── high-risk areas (§4.1 rows 23-25) ───────────────────────────────────────────────────────────────
+  // Decision 2 again — §4.1's `org_scope` cell is M3's `inOrg`.
+  "safety.high_risk_area.read": {
+    resource: "safety_high_risk_area",
+    action: "read",
+    category: "field_safety",
+    abac: "inOrg",
+  },
+  "safety.high_risk_area.create": {
+    resource: "safety_high_risk_area",
+    action: "create",
+    category: "field_safety",
+    abac: "safety_supervisor_or_above",
+  },
+  "safety.high_risk_area.edit": {
+    resource: "safety_high_risk_area",
+    action: "edit",
+    category: "field_safety",
+    abac: "safety_supervisor_or_above",
+  },
+  // ── dashboard (§4.1 row 26) ─────────────────────────────────────────────────────────────────────────
+  // Decision 4 — `caseload_or_scope`; the supervisor arm is ORed at the route, not defaulted here.
+  "safety.dashboard.read": {
+    resource: "safety_dashboard",
+    action: "read",
+    category: "field_safety",
+    abac: "caseload_or_scope",
+  },
+  // ── the clinician's own consent surface (§4.1 rows 27-29) ───────────────────────────────────────────
+  // Decision 3 — `self_service`: the workforce member is the data subject (§2.2.8).
+  "safety.consent.read_self": {
+    resource: "safety_emergency_contact_consent",
+    action: "read_self",
+    category: "self_service",
+    abac: "clinician_self",
+  },
+  "safety.consent.edit_self": {
+    resource: "safety_emergency_contact_consent",
+    action: "edit_self",
+    category: "self_service",
+    abac: "clinician_self",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M20 contributed permission keys (twenty-five). */
+export type M20ContributedPermissionKey = keyof typeof M20_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M20 contributed keys into `permission`-table mirror rows (M20 §4.6). */
+export function m20ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M20_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -4263,5 +4477,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m16ContributedPermissionMirrorRows(),
     ...m21ContributedPermissionMirrorRows(),
     ...m19ContributedPermissionMirrorRows(),
+    ...m20ContributedPermissionMirrorRows(),
   ];
 }

@@ -443,6 +443,38 @@ import {
   SelectDispositionBody as M19SelectDispositionBody,
   ShiftTransitionBody as M19ShiftTransitionBody,
 } from "../../apps/backend/src/modules/19-oncall/routes/m19-typebox";
+// M20 Field Safety — the §4.2 request bodies + list queries the §4.1 handlers `parse(...)` /
+// `parseQuery(...)`. Same exported schemas as the validator, so the published contract cannot drift
+// from what the boundary actually enforces. Only the 25 routes that take a body or a query appear
+// below; the five that carry neither (the by-id reads and `/sos/active`) are path-params only and
+// the emitter derives those from the path.
+import {
+  AcknowledgeSosBody as M20AcknowledgeSosBody,
+  AmendCheckInBody as M20AmendCheckInBody,
+  CancelSosBody as M20CancelSosBody,
+  CheckInListQuery as M20CheckInListQuery,
+  ConsentQuery as M20ConsentQuery,
+  CreateHighRiskAreaBody as M20CreateHighRiskAreaBody,
+  CreateIncidentBody as M20CreateIncidentBody,
+  CreateSubscriptionBody as M20CreateSubscriptionBody,
+  DashboardQuery as M20DashboardQuery,
+  GrantConsentBody as M20GrantConsentBody,
+  HighRiskAreaListQuery as M20HighRiskAreaListQuery,
+  IncidentListQuery as M20IncidentListQuery,
+  LocationStreamQuery as M20LocationStreamQuery,
+  OshaSignoffBody as M20OshaSignoffBody,
+  PatchHighRiskAreaBody as M20PatchHighRiskAreaBody,
+  PatchIncidentBody as M20PatchIncidentBody,
+  PatchPolicyBody as M20PatchPolicyBody,
+  PolicyQuery as M20PolicyQuery,
+  RaiseSosBody as M20RaiseSosBody,
+  RecordCheckInBody as M20RecordCheckInBody,
+  ResolveSosBody as M20ResolveSosBody,
+  RevokeConsentBody as M20RevokeConsentBody,
+  SubmitIncidentBody as M20SubmitIncidentBody,
+  SubscriptionListQuery as M20SubscriptionListQuery,
+  TransitionIncidentBody as M20TransitionIncidentBody,
+} from "../../apps/backend/src/modules/20-field-safety/routes/m20-typebox";
 // M21 Supplies / DME / Comfort Kits — the §4.2 request bodies + list queries the §4.1 route handlers
 // `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator;
 // the M21-T06 web screens call the surface these type. Note the decimal-STRING quantities: §4.2.2's sketch
@@ -3404,3 +3436,136 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: M21ObserveParStockBody,
   },
 };
+
+// ---------------------------------------------------------------------------
+// M20 Field Safety — §4.2 request contracts for the §4.1 surface (M20-T06).
+// Each summary states what the boundary REFUSES, not just what it accepts: the
+// generated client is the only place a web caller sees why a shape is illegal.
+// ---------------------------------------------------------------------------
+Object.assign(ROUTE_ENRICHMENTS, {
+  // --- §7.1 check-ins (§4.1 #1-#4) ---
+  "POST /api/v1/safety/check-ins": {
+    summary:
+      "Record a check-in against an obligation — the attribution column is stamped from the SESSION (routes/actor.ts), so a caller cannot post an attestation as somebody else whatever they send (§4.1 #1)",
+    body: M20RecordCheckInBody,
+  },
+  "PATCH /api/v1/safety/check-ins/:checkInId": {
+    summary:
+      "Amend within the 5-minute grace — a correction is a NEW row that supersedes (§2.2.1); the original stays readable because it is what the supervisor may already have acted on (§4.1 #3)",
+    body: M20AmendCheckInBody,
+  },
+  "GET /api/v1/safety/check-ins/me/today": {
+    summary:
+      "The clinician's own day — what she owes and what she has posted. Scoped to the SESSION's membership inside the read service, so `/me/today` cannot be pointed at a colleague (§4.1 #4)",
+    query: M20CheckInListQuery,
+  },
+  // --- §2.2.2 SOS (§4.1 #5-#11) ---
+  "POST /api/v1/safety/sos": {
+    summary:
+      "The press — deliberately NO idempotency key: a duplicate alert is recoverable, a swallowed one is not. `field_eligible_for_sos` gates who may PRESS; nothing downstream of the row gates the fan-out (M20-F05 / S13, §4.1 #5)",
+    body: M20RaiseSosBody,
+  },
+  "POST /api/v1/safety/sos/:sosAlertId/cancel": {
+    summary:
+      "The D5 mid-visit cancel (biometric). A REJECTED cancel is a 200 carrying `cancel_attempted_but_rejected`, never a 4xx — an error would tell a hostile actor holding the device that their tap did something (§4.1 #6)",
+    body: M20CancelSosBody,
+  },
+  "POST /api/v1/safety/sos/:sosAlertId/acknowledge": {
+    summary:
+      "A responder answers — the §2.2.6 acknowledgment row is written in the SAME transaction, so an `acknowledged` alert nobody signed is unrepresentable (§4.1 #7)",
+    body: M20AcknowledgeSosBody,
+  },
+  "POST /api/v1/safety/sos/:sosAlertId/resolve": {
+    summary:
+      "Resolve, or convert into an incident — `openIncidentFromOutcome` dispatches to a DIFFERENT §2.2.2 command (`openIncident`, not `resolve`) because they are different terminal states (§4.1 #8)",
+    body: M20ResolveSosBody,
+  },
+  "GET /api/v1/safety/sos/:sosAlertId/location-stream": {
+    summary:
+      "The D6 coordinate stream — readable only while the consent that produced it stands; `continuous_location_during_sos` additionally requires the TENANT flag before a single row may exist (§4.1 #10)",
+    query: M20LocationStreamQuery,
+  },
+  // --- §2.2.3 incidents (§4.1 #12-#17) ---
+  "POST /api/v1/safety/incidents": {
+    summary:
+      "Open a draft — `affectedClinicianMembershipId` is the ONE membership a caller may name (the §2.2.3 supervisor-opens-on-behalf-of path), and `incident_subject_or_supervisor` is what keeps naming somebody else a supervisor-only act (§4.1 #12)",
+    body: M20CreateIncidentBody,
+  },
+  "GET /api/v1/safety/incidents": {
+    summary:
+      "The review queue — narrowed to the caller's own incidents inside the read service when they hold no oversight role: the guard admits them to the route, the service decides which rows (§4.1 #13)",
+    query: M20IncidentListQuery,
+  },
+  "PATCH /api/v1/safety/incidents/:incidentId": {
+    summary: "Edit a draft — the `(draft)` qualifier is enforced by the service, not the shape (§4.1 #14)",
+    body: M20PatchIncidentBody,
+  },
+  "POST /api/v1/safety/incidents/:incidentId/submit": {
+    summary:
+      "Submit for review — D9's gate: `oshaReportable: true` without the signed-off pair is a 422 that NAMES the fix, not a constraint violation surfacing on a clinician's Submit button (§4.1 #15)",
+    body: M20SubmitIncidentBody,
+  },
+  "POST /api/v1/safety/incidents/:incidentId/state": {
+    summary:
+      "The supervisor state machine (§2.2.3) — `reopened` re-enters review on the SAME row, because a second row would break the workers-comp timeline an insurer reads (§4.1 #16)",
+    body: M20TransitionIncidentBody,
+  },
+  "POST /api/v1/safety/incidents/:incidentId/osha-signoff": {
+    summary: "§7.6 / D9's OSHA-equivalent sign-off — step-up asserted at the route (§4.1 #17)",
+    body: M20OshaSignoffBody,
+  },
+  // --- §2.2.4 policy + §2.2.5/D8 subscriptions + §7.6 areas (§4.1 #18-#25) ---
+  "GET /api/v1/safety/policy": {
+    summary:
+      "The effective policy — §2.2.4's `asOf` is the REPLAY arm: a 2031 review of a 2026 incident has to read the 2026 thresholds, and reading today's would turn a policy that tightened into a regression that never happened (§4.1 #18)",
+    query: M20PolicyQuery,
+  },
+  "PATCH /api/v1/safety/policy": {
+    summary: "Edit the policy — step-up asserted at the route (§4.1 #19)",
+    body: M20PatchPolicyBody,
+  },
+  "GET /api/v1/safety/supervisor-subscriptions": {
+    summary:
+      "Who watches whom (§2.2.5 / D8) — dashboard VISIBILITY is RBAC+ABAC and deliberately independent: a supervisor may SEE a board she is not paged for, and D8 exists because the inverse (visible to everyone, paged by nobody) is the §7.8 failure (§4.1 #20)",
+    query: M20SubscriptionListQuery,
+  },
+  "POST /api/v1/safety/supervisor-subscriptions": {
+    summary:
+      "Add one — the scope-selector pairing (§3.3's `m20_sss_scope_integrity`) and the vacation-forward pairing are re-checked in the service so the DON is told WHICH selector is missing rather than shown a constraint name (§4.1 #21)",
+    body: M20CreateSubscriptionBody,
+  },
+  "GET /api/v1/safety/high-risk-areas": {
+    summary:
+      "The advisory polygons in force — `includeExpired` defaults FALSE so the pre-visit advisory never surfaces a polygon retired last winter; the editor asks for history explicitly (§4.1 #23)",
+    query: M20HighRiskAreaListQuery,
+  },
+  "POST /api/v1/safety/high-risk-areas": {
+    summary:
+      "Draw one (§7.6) — M20-F07: no PostGIS, so ring closure and the ≥4-point minimum are validated in app code the moment the Compliance Officer draws it, not on the night a clinician is standing in it (§4.1 #24)",
+    body: M20CreateHighRiskAreaBody,
+  },
+  "PATCH /api/v1/safety/high-risk-areas/:areaId": {
+    summary:
+      "Edit or retire one — retiring is `effectiveTo`, never a delete: an incident review has to be able to ask what advisory was in force on the day (§4.1 #25)",
+    body: M20PatchHighRiskAreaBody,
+  },
+  // --- §7.8 dashboard + M20-F16 consent (§4.1 #26-#29) ---
+  "GET /api/v1/safety/dashboard": {
+    summary: "The live-awareness board — open obligations, active alerts, and the coverage gaps behind them (§4.1 #26)",
+    query: M20DashboardQuery,
+  },
+  "GET /api/v1/safety/consent": {
+    summary: "My own consents — the three §M20-F16 purposes and their current state (§4.1 #27)",
+    query: M20ConsentQuery,
+  },
+  "POST /api/v1/safety/consent/grant": {
+    summary:
+      "Grant one purpose — the three are separately grantable (M20-F16): declining `sos_coordinates` never disables SOS, and `continuous_location_during_sos` additionally needs the TENANT's `sosContinuousLocationEnabled` before a stream row may exist (§4.1 #28)",
+    body: M20GrantConsentBody,
+  },
+  "POST /api/v1/safety/consent/revoke": {
+    summary:
+      "Revoke one purpose — writes `revoked`, never `expired`: the rotation sweep owns the second, and a coercion review reads exactly that difference (§2.2.8, §4.1 #29)",
+    body: M20RevokeConsentBody,
+  },
+});

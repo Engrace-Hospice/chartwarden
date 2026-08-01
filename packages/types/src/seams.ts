@@ -77,6 +77,15 @@ import type { PatientCoverageReader, PatientMutator, PatientReader } from "./pat
 // bootstrap registry needs to compile and self-validate.
 import type { StepUpFactor } from "./policy/step-up-policy";
 import type {
+  SafetyCheckInProvider,
+  SafetyContextReader,
+  SafetyDashboardProvider,
+  SafetyIncidentReader,
+  SafetyMetricsProvider,
+  SafetyPolicyProvider,
+  SafetySupervisorProvider,
+} from "./safety";
+import type {
   PortalVisitReader,
   SupervisoryCadenceReader,
   VisitAssignmentReader,
@@ -305,7 +314,19 @@ export type SeamName =
   // deny-stubs answer `unavailable` rather than throwing: an advisory that gates nothing must not take
   // down the intake path — see the fail-posture note above the interfaces.
   | "ProtocolSuggestionProvider" // M32 — D12 protocol suggestion (advisory; never auto-applied)
-  | "HospitalizationRiskProvider"; // M32 — D11 30-day risk band (advisory; excluded from the portal projection)
+  | "HospitalizationRiskProvider" // M32 — D11 30-day risk band (advisory; excluded from the portal projection)
+  // M20 (Field Safety) §4.3 PUBLISHED seams (M20-T05). Seven read surfaces over M20's thirteen
+  // `safety_*` tables that M8 (encounter-authoring safety context), M17 (visit-day badging + the board
+  // embed), M19 (after-hours window default), M30/M33 (operational dashboards), M32 (the future
+  // high-risk-area suggestion model) and M36 (the §4.5 `field_safety_composed` recipient resolver)
+  // attach to instead of importing M20's schema (architecture §25.15).
+  | "SafetyDashboardProvider" // M20 — the supervisor live-awareness board, also embedded by M17's day view
+  | "SafetyContextReader" // M20 — M8's "did something happen during this visit?" encounter-authoring read
+  | "SafetyIncidentReader" // M20 — M32's minimum-necessary incident projection (§8.6 rounded coordinates)
+  | "SafetyMetricsProvider" // M20 — M30/M33 aggregates, every rate WITH its denominator
+  | "SafetyCheckInProvider" // M20 — M17's per-visit pre/mid/post check-in badge trio
+  | "SafetyPolicyProvider" // M20 — the ONLY read path to the effective policy (§2.2.4), incl. the replay arm
+  | "SafetySupervisorProvider"; // M20 — who gets paged + the §7.8 coverage gaps (M36's composed resolver)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -689,6 +710,25 @@ export interface SeamContracts {
   // rather than throwing; see the fail-posture note above the interfaces.
   ProtocolSuggestionProvider: ProtocolSuggestionProvider;
   HospitalizationRiskProvider: HospitalizationRiskProvider;
+  // M20's owned seams (§4.3) — interfaces live in ./safety (this package), so the registry is statically
+  // typed against the real contract. M20-T05 registers the real Drizzle-backed impls over the deny-stubs;
+  // consumers (M8 / M17 / M19 / M30 / M32 / M33 / M36) resolve them through the typed accessors with no
+  // schema import edge. All seven are READ-only — M20 owns the SOS / check-in / incident lifecycles
+  // internally and no seam can move a row.
+  //
+  // NO CIPHER COLUMN CROSSES ANY OF THEM. `posted_coordinates_cipher`, `resolution_narrative_cipher`,
+  // `acknowledger_dispatch_payload_cipher`, `narrative_cipher`, `witnesses_cipher` and
+  // `action_plan_cipher` are §3.6-denylisted and the per-tenant DEK never leaves M20's boundary. The one
+  // geography that crosses does so ROUNDED to three decimals (~110 m), computed inside M20 (§8.6), and
+  // `SafetyLastKnownLocationDto` carries no coordinates at all — a source and an age, so rendering the
+  // board never trips the §8.2 warn-severity coordinate-read audit.
+  SafetyDashboardProvider: SafetyDashboardProvider;
+  SafetyContextReader: SafetyContextReader;
+  SafetyIncidentReader: SafetyIncidentReader;
+  SafetyMetricsProvider: SafetyMetricsProvider;
+  SafetyCheckInProvider: SafetyCheckInProvider;
+  SafetyPolicyProvider: SafetyPolicyProvider;
+  SafetySupervisorProvider: SafetySupervisorProvider;
 }
 
 /**
@@ -935,4 +975,21 @@ export type DataClass =
   // and leaves the PLATFORM catalogs (report_base_catalog/report_metric_catalog/materialized_view_metadata)
   // untouched (shared reference data, migration-retired only). Like M34, `subjectId` here is the ORG being
   // offboarded. Registered by M33's eraseFn over the Phase-0 deny-stub via the composition-root hook.
-  | "reporting_class";
+  | "reporting_class"
+  // M20 (Field Safety) per-patient safety footprint. Registered in M20-T02 (the schema task) so the contract
+  // is present from the moment the tables exist; the REAL eraser binds through the composition-root hook
+  // over the Phase-0 deny-stub. UNLIKE almost every class above this erase DELETES NOTHING (§3.7): ten of
+  // M20's thirteen tables are filed "structural row retained with redacted markers", because the SOS
+  // event-of-record IS the row, an incident's `category`/`severity` are what a 2031 review of a 2025 assault
+  // reads, and a consent row's existence is the proof a coercion review turns on. M20 is a WORKFORCE-safety
+  // module, so its patient surface is exactly two logical M5 references — `safety_incident.patient_id` and
+  // `safety_sos_alert.last_known_patient_id`. The eraseFn redacts the free text that §3.5 says may describe
+  // the patient (incident narrative/witnesses/action plan/location description/reopen reason/WC reference;
+  // SOS resolution narrative + dispatch payload), redacts `action_taken` on the attached acknowledgments,
+  // and LAST severs the linkage itself. The clinician's own coordinates, the whole
+  // `safety_sos_location_stream` (whose destruction path is the §3.7 resolve+90d sweep), both check-in
+  // tables (no patient column at all — their only linkage is M17's `visit_id`), the policy/version replay
+  // rows, the supervisor subscriptions, the advisory polygons and the clinician's own emergency-contact
+  // consent are NEVER touched: they are a different data subject's record, and a patient's right to erasure
+  // does not reach the clinician's workers-comp evidence. `subjectId` is the patient being destroyed.
+  | "safety_record";

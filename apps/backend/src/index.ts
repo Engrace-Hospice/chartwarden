@@ -111,6 +111,19 @@ import {
   registerTriageErasers,
 } from "./modules/19-oncall/index";
 import {
+  M20_OUTBOX_EVENTS,
+  buildDrizzleM20ReadService,
+  buildDrizzleM20WriteService,
+  buildDrizzleSafetyAbacResolver,
+  buildDrizzleSafetySeamStore,
+  createDrizzleSafetyEraseStore,
+  denyStubSafetyAbacResolver,
+  mountM20Routes,
+  registerFieldSafetyAbacPredicates,
+  registerFieldSafetySeams,
+  registerSafetyErasers,
+} from "./modules/20-field-safety/index";
+import {
   M21_OUTBOX_EVENTS,
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
@@ -513,6 +526,29 @@ export function wireModuleSeams(
   // watchdog act on. A DB-less boot must not manufacture a coverage gap; a throwing stub says "M19 cannot
   // answer", which is the truth.
   if (deps.db) registerOncallSeams({ store: buildDrizzleOncallSeamStore(deps.db) });
+  // M20-T05 — the SEVEN §4.3 seams M20 publishes: `SafetyDashboardProvider` (the supervisor
+  // live-awareness board, also embedded by M17's visit-day view), `SafetyContextReader` (M8's "was there
+  // an incident during the visit I am documenting?"), `SafetyIncidentReader` (M32's §8.6
+  // minimum-necessary projection), `SafetyMetricsProvider` (M30/M33 aggregates, every rate WITH its
+  // denominator), `SafetyCheckInProvider` (M17's per-visit badge trio), `SafetyPolicyProvider` (the ONLY
+  // read path to the effective policy, §2.2.4) and `SafetySupervisorProvider` (who gets paged + the §7.8
+  // coverage gaps). All seven share the Drizzle store, which reads under the CONSUMER's ambient request
+  // context, so a seam call is RLS-scoped to the caller's org without M20 comparing anything.
+  //
+  // WITHOUT a DB client this registers NOTHING, for the same reason as M19 above and with a sharper edge:
+  // an in-memory slice answers the board with an empty `clinicians` array and `coverageGapsForOrg` with
+  // `[]`, which read as "nobody is in the field" and "everybody is covered". A DB-less boot must not
+  // manufacture "everyone is fine" on a safety surface; a throwing stub says "M20 cannot answer".
+  //
+  // THREE OPTIONAL DEPS ARE DELIBERATELY UNBOUND HERE. The §8.6 tenant-DEK coordinate decipher lands with
+  // M20's write path (T06) — until then `SafetyIncidentReader` refuses with
+  // `SAFETY_COORDINATE_DECIPHER_UNBOUND` rather than reporting every incident as having no geography. The
+  // org IANA time zone lands with the same task — until then `getAfterHoursSosCount` refuses rather than
+  // counting a Pacific agency's 22:30 presses as business hours. The §7.7 GPS-spoof signal cache is
+  // process-local and is bound by the consumer that fills it (T06's `m18.evv.gps_spoof_suspected`
+  // subscriber); absent, the board shows no spoof badge, which is the documented cost of holding that
+  // suspicion in memory (a MISSING caveat, never a missing alert).
+  if (deps.db) registerFieldSafetySeams({ store: buildDrizzleSafetySeamStore(deps.db) });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
   // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is
@@ -547,6 +583,33 @@ export function wireModuleSeams(
           roleGrants: createDbEffectivePermissionStore(deps.db),
         })
       : denyStubOncallAbacResolver,
+  });
+  // M20-T06 — the six §4.7 ABAC predicates M20 OWNS (`clinician_self`, `supervises_clinician`,
+  // `safety_supervisor_or_above`, `incident_subject_or_supervisor`, `active_sos_responder`,
+  // `field_eligible_for_sos`) into M3's named-predicate registry.
+  //
+  // §4.7 ALSO NAMES `org_scope` AND `caseload_or_scope`, AND M20 REGISTERS NEITHER, deliberately.
+  // `caseload_or_scope` is M7's and M20 binds it by name on the dashboard row; `org_scope` is M3's
+  // intrinsic `inOrg` VERBATIM ("session.organization_id === target.organization_id"), and registering a
+  // second name for the same rule would create two predicates that must never disagree while satisfying
+  // `arch:abac-predicates` either way. See the module's abac-predicates.ts header.
+  //
+  // Every one of the six is an AUTHORIZATION read, so the fail direction is UNIFORM: unreadable resolver,
+  // unknown target, absent row, cross-tenant id and thrown error all DENY. §2.4's "a coverage gap must
+  // ALERT rather than block" governs the WATCHDOG, not who may acknowledge a life-safety alert.
+  //
+  // ONE cross-module read deliberately does NOT collapse its error into a boolean: the M19 `OnCallProvider`
+  // arm of `active_sos_responder` answers `memberships` / `[]` / `null`, so "nobody is on call" stays
+  // distinct from "M19 did not answer" (the M20-T04 rule). A `null` lets the SUBSCRIPTION arm still speak —
+  // a subscribed supervisor can acknowledge a 3 a.m. SOS while M19 is down — while an on-call nurse with no
+  // subscription is still refused, because guessing in her favour would let any session that reached the
+  // route acknowledge any alert.
+  registerFieldSafetyAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleSafetyAbacResolver(deps.db, {
+          roleGrants: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubSafetyAbacResolver,
   });
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
@@ -791,6 +854,15 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // / protocol catalog and the CoP 418.100(c)(2) `on_call_shift` roster evidence are never touched, §3.7).
   // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
   registerTriageErasers(deps.db ? { store: createDrizzleTriageEraseStore(deps.db) } : {});
+  // M20-T02 — `safety_record` (per-PATIENT destruction-cert callback that DELETES NOTHING: §3.7 files ten
+  // of M20's thirteen tables as "structural row retained with redacted markers". It redacts the free text
+  // §3.5 says may describe the patient on the incidents and SOS alerts linked to them, redacts `action_taken`
+  // on the attached acknowledgments, and LAST severs the patient/visit linkage. The clinician's own SOS
+  // coordinates and location stream, both check-in tables, the policy-version replay rows, the supervisor
+  // subscriptions, the advisory polygons and the clinician's emergency-contact consent are never touched —
+  // that is a different data subject's workers-comp evidence.) The Drizzle store binds when a DB client is
+  // present; without one the slice's in-memory store stands.
+  registerSafetyErasers(deps.db ? { store: createDrizzleSafetyEraseStore(deps.db) } : {});
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -838,6 +910,11 @@ if ((import.meta as { main?: boolean }).main) {
     M30_OUTBOX_EVENTS,
     M33_OUTBOX_EVENTS,
     M34_OUTBOX_EVENTS,
+    // M20-T06 — the §4.10 `m20.safety.*` catalog. REQUIRED for the routes to work at all, not
+    // documentation: `publishOutboxEvent` throws `unknown_event` for a name the catalog does not carry,
+    // and the throw rolls back the caller's transaction. Without this entry every §4.1 mutation that
+    // declares an outbox effect — which is nearly all of them — would fail at the moment of the write.
+    M20_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -847,6 +924,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
+  const m20OutboxPublisher = bindCallerModule(txOutboxPublisher, "m20");
   const m21OutboxPublisher = bindCallerModule(txOutboxPublisher, "m21");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
@@ -1184,6 +1262,35 @@ if ((import.meta as { main?: boolean }).main) {
             readService: m19ReadService,
             writeService: buildDrizzleM19WriteService(dbHandle.db, m19ReadService, {
               outbox: m19OutboxPublisher,
+            }),
+          });
+          // M20 (Field Safety) — mount the §4.1 route plugins over the Drizzle READ + WRITE services.
+          // Every read opens its own withOrgContext (RLS scopes each statement to app.org_id); every
+          // mutation runs the pure §2.2 machines and emits its §4.10 `m20.safety.*` event through the
+          // catalog-validating tx publisher (callerModule `m20`) on the mutation's own transaction — which
+          // is how M36 learns an SOS was raised, M17 learns a visit needs cancelling, and M22 learns an
+          // incident report needs rendering.
+          //
+          // THE DEK CIPHER PORT IS DELIBERATELY UNBOUND, and the two halves of M20 answer that DIFFERENTLY:
+          //   • the SOS PRESS never refuses for it. M20-F16 / S13: the coordinate is replaced by the
+          //     recognisable `routes/coordinates.ts` sentinel, a warning rides the response, and the alert
+          //     fans out. Refusing a call for help because a key is missing is the one failure this module
+          //     must not have.
+          //   • the INCIDENT CREATE refuses with 503 `SAFETY_CIPHER_UNBOUND`. `narrative_cipher` is NOT
+          //     NULL and holds the substance of a workers-comp record; writing it in the clear into a
+          //     column named `_cipher` would make the §3.7 erasure report a destruction that never
+          //     happened. Every other incident route — submit, transition, the D9 OSHA sign-off — works
+          //     without a cipher, because none of them writes prose.
+          //
+          // `recipientCountFor` is likewise unbound, so `RaiseSosResponse.acknowledgersDispatched` answers
+          // `null` rather than `0`: "we could not ask the §4.5 composed resolver" is what the mobile client
+          // renders as the D15 `tel:` direct-dial fallback, and "0 recipients" would instead read as a
+          // genuine coverage gap the tenant caused.
+          const m20ReadService = buildDrizzleM20ReadService(dbHandle.db);
+          mountM20Routes(app, {
+            readService: m20ReadService,
+            writeService: buildDrizzleM20WriteService(dbHandle.db, m20ReadService, {
+              outbox: m20OutboxPublisher,
             }),
           });
         }

@@ -21,6 +21,7 @@ export * from "./discipline-plans";
 export * from "./bereavement";
 export * from "./supplies";
 export * from "./oncall";
+export * from "./safety";
 export * from "./scheduling";
 export * from "./evv";
 export * from "./documents";

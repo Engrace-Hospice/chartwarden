@@ -586,8 +586,13 @@ exports.MODULES = [
   {
     id: 20,
     name: "Field Safety",
-    codePaths: ["apps/backend/src/modules/20-field-safety"],
-    dependsOn: [17, 36],
+    codePaths: [
+      "apps/backend/src/modules/20-field-safety",
+      "apps/web/src/modules/20-field-safety",
+    ], // +web: Track B in-task screens (ADR-0030), land in M20-T07. `packages/safety-client` (spec §3.1)
+    // is NOT adopted — see the .ts manifest for the full read.
+    dependsOn: [1, 17, 36], // +M1 (M20-T02): @wardenx/db + tenancy + the bootstrap eraser registry the
+    // §3.7 `safety_record` eraser registers into — the same foundation edge M15/M16/M18/M19/M21 carry.
     ownedTables: [
       "safety_acknowledgment",
       "safety_check_in",

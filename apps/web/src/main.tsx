@@ -31,6 +31,7 @@ import { bereavementScreens } from "./modules/16-bereavement";
 import { schedulingScreens } from "./modules/17-scheduling";
 import { evvScreens } from "./modules/18-evv";
 import { oncallScreens } from "./modules/19-oncall";
+import { fieldSafetyScreens } from "./modules/20-field-safety";
 import { supplyScreens } from "./modules/21-supplies";
 import { documentScreens } from "./modules/22-documents";
 import { billingScreens } from "./modules/23-billing-medicare";
@@ -74,6 +75,7 @@ registry.register(bereavementScreens); // M16 Bereavement (Track B, M16-T07)
 registry.register(schedulingScreens); // M17 Scheduling & Route Optimization (Track B, M17-T08)
 registry.register(evvScreens); // M18 Electronic Visit Verification (Track B, M18-T07)
 registry.register(oncallScreens); // M19 On-Call Triage (Track B, M19-T08)
+registry.register(fieldSafetyScreens); // M20 Field Safety (Track B, M20-T07)
 registry.register(supplyScreens); // M21 Supplies, DME & Comfort Kits (Track B, M21-T06)
 registry.register(documentScreens); // M22 Document Management (Track B, M22-T10)
 registry.register(billingScreens); // M23 Billing — Medicare (R2, ADR-0030, §10 PR-J)
