@@ -89,7 +89,13 @@ describe.skipIf(!DB_URL)(
       const handle = mkDb({ connectionString: DB_URL as string });
       close = handle.close;
       auth = createIdentityAuth(handle.db as never);
-    });
+      // 120s, matching every *-rls-isolation.live.test.ts. This hook REPLAYS ALL 119 MIGRATIONS, and
+      // it was the only live suite relying on Vitest's 10s default — so it sat just under the limit
+      // and failed as "Hook timed out in 10000ms" (11 tests SKIPPED, which reads like a config problem
+      // rather than a slow hook) whenever a runner was cold or the corpus grew. Migrations 0117-0119
+      // grew it: 0118 alone walks the catalog and issues ~800 ALTER TABLE statements. A replay-the-
+      // world hook must not be governed by the default meant for a unit test.
+    }, 120_000);
 
     afterAll(async () => {
       await close?.();
