@@ -2260,6 +2260,60 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
   // querying a live catalog rather than by reading migration text, and neither would fail any other
   // test in this repo.
   describe("§3.3 structural RLS coverage (migration 0118)", () => {
+    it("EVERY table carrying organization_id has RLS enabled (migration 0120)", async () => {
+      // THE GATE THAT DID NOT EXIST. check-tenancy.ts validates the SHAPE of policies that exist —
+      // canonical app.org_id, no OR-ing FOR ALL pair, the three-column rule — and never asks whether a
+      // policy exists AT ALL. So an org-scoped table could ship with zero RLS and every gate stayed
+      // green. `feature_flag_evaluation` did exactly that: created in 0000 with organization_id,
+      // granted 4 DML privileges to wardenx_app in 0001, and never given a policy — a per-tenant,
+      // per-user record of which capabilities a named user was served, readable by every tenant.
+      //
+      // Asserted against pg_class, NOT by grepping the migrations, for two reasons: M36 enables RLS
+      // through a `DO` loop (`EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t)`) that no
+      // text scan can see, and the catalog is the only thing that knows what actually happened.
+      const r = await db.query<{ relname: string }>(
+        `SELECT c.relname
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'organization_id'
+                              AND NOT a.attisdropped
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r','p')
+            AND NOT c.relrowsecurity
+            -- partition leaves inherit their parent's governance and are covered by the case below
+            AND NOT EXISTS (SELECT 1 FROM pg_inherits i WHERE i.inhrelid = c.oid)
+          ORDER BY c.relname`,
+      );
+      expect(
+        r.rows.map((x) => x.relname),
+        "org-scoped table(s) with organization_id and NO row-level security",
+      ).toEqual([]);
+    });
+
+    it("every org-scoped table also has at least one policy (RLS on + no policy = silently deny-all)", async () => {
+      // RLS enabled with zero policies is default-deny, which is safe but usually means someone
+      // enabled it and forgot the policy — the table then fails closed at runtime in a way that reads
+      // like a permissions bug. Partition leaves are the ONE legitimate case (0118 leaves them
+      // policy-less on purpose so the parent governs), so they are excluded here.
+      const r = await db.query<{ relname: string }>(
+        `SELECT c.relname
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'organization_id'
+                              AND NOT a.attisdropped
+          WHERE n.nspname = 'public'
+            AND c.relkind IN ('r','p')
+            AND c.relrowsecurity
+            AND NOT EXISTS (SELECT 1 FROM pg_inherits i WHERE i.inhrelid = c.oid)
+            AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid)
+          ORDER BY c.relname`,
+      );
+      expect(
+        r.rows.map((x) => x.relname),
+        "org-scoped table(s) with RLS enabled but NO policy — deny-all by accident",
+      ).toEqual([]);
+    });
+
     it("every RLS table is FORCEd — ownership is not a bypass", async () => {
       // ENABLE does not apply to the table's OWNER. scripts/db/migrate.ts connects as
       // `DATABASE_ADMIN_URL ?? DATABASE_URL`, so one run with only DATABASE_URL makes `wardenx_app`
