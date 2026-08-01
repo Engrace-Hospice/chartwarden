@@ -466,7 +466,7 @@ per-screen status. Examples:
 Care Plan (M7 done; M15 discipline plans + volunteer management done²⁴), Orders (M11; done¹⁸),
 eMAR administration (M13; done²⁰; M12 prescribing is done¹⁹),
 IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), EVV (M18; done²³),
-On-Call Triage + On-Call Roster & Protocols (M19; done²⁷),
+On-Call Triage + On-Call Roster & Protocols (M19; done²⁷), Field Safety (M20; done²⁸),
 Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
 Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
@@ -642,6 +642,84 @@ Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the 
 > call") rather than the grey OFF banner — the M19-T04/T06 lesson that an outage rendered as an empty result
 > is how a clinician turns their phone face-down. The same rule governs the roster's coverage banner and the
 > panel's D15 medication slices, each of which distinguishes "unavailable" from "none" per surface.
+
+> ²⁸ **M20 Field Safety now LIVE (Wave P2-2, M20-T07).** Fourteen screens under
+> `apps/web/src/modules/20-field-safety`, registered into the M1 shell via `fieldSafetyScreens`
+> (`main.tsx`) under a new "Field safety" nav group, over the live 30-route M20 backend. They cover the
+> §5.1 inventory and `WARDENX_UI_FIELD_SAFETY.md`'s Dashboard + Mobile Task Flow pattern: the supervisor
+> live-awareness board; the active-SOS centre with the §2.2.6 acknowledgment ceremony; one alert end to end
+> (the §2.2.2 ledger, the acknowledgment chain, the resolve/open-an-incident fork, and the D6 coordinate
+> stream); the incident register, the report form and the §2.2.3 lifecycle with §7.6/D9's step-up'd OSHA
+> sign-off; the check-in status ledger; the D4 policy editor with its per-knob bands and §2.2.4 replay
+> read; D8's supervisor subscriptions with the §2.2.5 coverage-gap report; D12's advisory polygons; the
+> metrics census; and the clinician's own §5.2 surface — `/me/safety` (the SOS control and its D5 cancel
+> window), `/me/safety/check-ins` (90 days + the five-minute amendment grace) and `/me/safety/consent`.
+> Built to Lantern: the §6.6 StatusPill taxonomy through a per-module `safety-status.ts` keyed on the
+> frozen `packages/types/src/safety.ts` unions, No-Line tables (§6.7), CSS-var tokens only (zero hex), and
+> §5.4's 44×44 SC 2.5.5 floor on every control — the SOS button is the largest target on its screen, its
+> countdown carries BOTH a red ring and the words "N seconds to cancel" (SC 1.4.1), and every SOS state
+> change announces through an assertive live region (SC 4.1.3). §5's ceremonies are not separate registry
+> entries — each lives in the parent that already read the row's **integer `version`** (§2.5); the
+> active-SOS board's acknowledge modal reads the row on OPEN precisely because the list projection carries
+> no version, so "somebody else answered while you were typing" is a real 409 rather than a silent
+> overwrite. Nav visibility is gated by the real §4.6 keys; the SERVER stays the only enforcement point.
+> `/me/safety` is gated on `safety.sos.raise` — §6 gives that key to the six field disciplines and to no
+> supervisor role — so the button appears for exactly the people who can press it.
+>
+> **The coordinate boundary is the shape of this build.** No M20 screen shows a latitude except one, and
+> reaching it is a deliberate act: the stream is NOT fetched on page load (a tab left open on a second
+> monitor would otherwise write a warn-severity audit row every refresh), the §5.4 error-prevention banner
+> precedes the request rather than captioning the result, a closed alert demands §6's ≥40-character reason
+> BEFORE anything is decrypted, and the banner rendered above the samples is the response's own
+> `auditWarningBanner` verbatim — so the promise the screen makes and the audit row the server writes are
+> one decision. There is no map anywhere in the module, on the board or on the polygon editor: a basemap
+> means tile requests, and a tile request sends a clinician's position (or an agency's risk geography) to a
+> third party with no agreement covering it, by merely OPENING the page.
+>
+> **The SOS press never refuses, and every branch preserves that (S13 / M20-F16).** The browser geolocation
+> attempt is bounded at 3 s and resolves `null` on denial, timeout or absence — the press goes without a
+> coordinate rather than waiting on one; no `Idempotency-Key` is sent (§4.1's Idempotent column says `no`,
+> because collapsing two presses onto one alert IS the suppression S13 forbids); and the button is disabled
+> only when the SERVER has said the membership is not field-eligible, never for want of consent.
+> `acknowledgersDispatched` is rendered **three ways**, which is the whole M20-F01 degraded path: `n > 0`
+> = "n people were paged", `0` = "the resolver answered and nobody is subscribed" (a configuration gap),
+> `null` = "we could not ask at all" — and only the last two tell her to dial instead of waiting.
+>
+> **Four refusals worth stating, because each was a place the spec asked for something the server cannot
+> back.** §5.1's org-wide **check-in ledger** does not exist as a route — §4.1's four check-in rows are
+> post, read-one, amend and *her own* day — so `/safety/check-ins` is built from the board's current-state
+> columns plus a by-id lookup, and says so: a snapshot rendered under a "history" heading is how a reviewer
+> concludes somebody posted nothing last Tuesday when in fact nobody asked. §5.1's **trend charts** are not
+> drawn: the six series live on the `SafetyMetricsProvider` SEAM (M30/M33 consume it server-side) and §4.1
+> publishes no aggregate route, so a rate over "the pages this browser fetched" would be a different number
+> wearing the real one's clothes — and on a safety dashboard, a flattering one; the page shows the server's
+> own census and names the M33-report-over-the-seam that a real trend needs. §5.1's **subscription matrix**
+> is a ledger plus the coverage-gap report, because a clinicians × supervisors grid needs rosters M2/M40
+> own and M20 cannot read — and its axes would then contain only people who already appear in a row, making
+> the clinician nobody is subscribed to (the entire point of D8 and the §7.8 watchdog) the one name the
+> grid cannot show. And D15's **one-tap `tel:` dial** is described rather than wired: no M20 route returns
+> a phone number (§8.2 keeps numbers off every DTO, §9.5 forbids a hard-coded fallback), so the degraded
+> banner names the agency's own emergency line and 911 instead of putting an invented number under her
+> thumb at the worst possible moment.
+>
+> Further honest gaps, stated on the screens themselves: the board POLLS every 30 s and stamps the server's
+> `fetchedAt` on every render rather than claiming §5.1's Socket.IO realtime SLA it does not meet, and a
+> FAILED refresh renders amber over the last good snapshot — an empty safety board reads identically to
+> "everyone is fine", which is the one wrong answer the surface must never give; the incident ledger's
+> category, severity and date filters are labelled **"this page"** because §4.1's list query takes only
+> `lifecycleState` and `oshaReportable`, and every tile says "on this page" because §4.1.1 publishes no
+> total (a count is an enumeration oracle); the cipher-backed narratives render a THIRD state — "stored,
+> but not readable here" — distinct from "nothing recorded", so an unopenable incident is never read as an
+> empty one; the affected clinician's §6 acknowledgment of a supervisor-filed incident is shown as an
+> outstanding obligation with no button, because §4.1 publishes no route for it and one person posting
+> another's acknowledgment is precisely what §6 forbids; §8.7's "who has read my coordinates" list is named
+> as a gap on the consent page rather than rendered empty; the polygon editor takes lon,lat rings as text
+> and validates closure and the ≥4-point floor client-side and server-side; and the §5.2 Capacitor
+> capabilities — the always-on-top FAB, the SQLCipher offline queue, background sync and the D5 biometric
+> verdict — stay owned by the native shell (ADR-0035), with `/me/safety` stating plainly that a web cancel
+> sends no biometric token and will therefore be recorded as attempted-and-rejected on a tenant that
+> requires one, the alert continuing. §5.3 confirms M20 has **no portal variant at all**: field safety is
+> staff-side, and a family member does not learn that the clinician pressed SOS during their visit.
 
 ---
 

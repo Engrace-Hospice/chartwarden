@@ -31,6 +31,7 @@
     "17-scheduling",
     "18-evv",
     "19-oncall",
+    "20-field-safety",
     "21-supplies",
     "22-documents",
     "23-billing-medicare",
@@ -893,6 +894,104 @@
       "id": "triage.metrics",
       "path": "/triage/metrics",
       "permission": "triage.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.dashboard",
+      "path": "/safety",
+      "permission": "safety.dashboard.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.sos.active",
+      "path": "/safety/sos",
+      "permission": "safety.sos.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.sos.detail",
+      "path": "/safety/sos/:sosAlertId",
+      "permission": "safety.sos.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.incidents",
+      "path": "/safety/incidents",
+      "permission": "safety_incident.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.incident.new",
+      "path": "/safety/incidents/new",
+      "permission": "safety_incident.create"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.incident.detail",
+      "path": "/safety/incidents/:incidentId",
+      "permission": "safety_incident.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.check_ins",
+      "path": "/safety/check-ins",
+      "permission": "safety.dashboard.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.policy",
+      "path": "/safety/policy",
+      "permission": "safety_policy.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.subscriptions",
+      "path": "/safety/supervisor-subscriptions",
+      "permission": "safety_supervisor.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.high_risk_areas",
+      "path": "/safety/high-risk-areas",
+      "permission": "safety.high_risk_area.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.metrics",
+      "path": "/safety/metrics",
+      "permission": "safety.dashboard.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.me",
+      "path": "/me/safety",
+      "permission": "safety.sos.raise"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.me.check_ins",
+      "path": "/me/safety/check-ins",
+      "permission": "safety.check_in.read"
+    },
+    {
+      "module": "20-field-safety",
+      "moduleId": 20,
+      "id": "safety.me.consent",
+      "path": "/me/safety/consent",
+      "permission": "safety.consent.read_self"
     },
     {
       "module": "21-supplies",
