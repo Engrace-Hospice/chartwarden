@@ -13,4 +13,4 @@ Module 32 AI Platform.
 State: PROPOSED. Disabled by default until M32 governance and storage controls land.
 
 ## Controls
-Kill switch: `ai.embeddings_generation_kill`. PHI minimization, approved model/provider posture, audit events, drift monitoring, and deterministic search fallback are required before activation.
+Kill switch: activate an `ai_kill_switch_state` row for capability_key `embeddings_clinical` — platform-wide (`organization_id IS NULL`) or for one tenant. The platform row and a tenant row OR together: neither overrides the other, so lifting one does not resume a capability the other still stops. PHI minimization, approved model/provider posture, audit events, drift monitoring, and deterministic search fallback are required before activation.

@@ -13,4 +13,4 @@ Module 19 On-Call Triage; Module 32 AI Platform. M19-T01 declares the `ProtocolS
 State: PROPOSED. Module 32's Phase-1 inventory seeds it DESIGN_REVIEW; that advance is not ratified here and requires the section 5 approval workflow. The M19 seam stays a deny-stub until it is.
 
 ## Controls
-Kill switch: `ai.protocol_suggestion_oncall_kill`. Human-in-the-loop is mandatory — the suggestion is advisory and the clinician's selected protocol is what is recorded. The deterministic M19 protocol list remains the fallback and must stay fully usable with the capability off.
+Kill switch: activate an `ai_kill_switch_state` row for capability_key `protocol_suggestion_oncall` — platform-wide (`organization_id IS NULL`) or for one tenant. The platform row and a tenant row OR together: neither overrides the other, so lifting one does not resume a capability the other still stops. Human-in-the-loop is mandatory — the suggestion is advisory and the clinician's selected protocol is what is recorded. The deterministic M19 protocol list remains the fallback and must stay fully usable with the capability off.

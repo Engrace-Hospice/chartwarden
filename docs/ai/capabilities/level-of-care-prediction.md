@@ -19,4 +19,4 @@ Module 32 AI Platform; consumed at the care plan and IDG surfaces. Tabular ML (X
 State: PROPOSED. Phase 2 or later; no Phase-1 consumer surface.
 
 ## Controls
-Kill switch: `ai.level_of_care_prediction_kill`. Level of care determines both what the patient receives and what is billed, so human-in-the-loop is mandatory and the prediction must never populate a level-of-care field directly. Calibration evidence, deterministic fallback to clinician determination, and periodic re-evaluation are required before activation.
+Kill switch: activate an `ai_kill_switch_state` row for capability_key `level_of_care_prediction` — platform-wide (`organization_id IS NULL`) or for one tenant. The platform row and a tenant row OR together: neither overrides the other, so lifting one does not resume a capability the other still stops. Level of care determines both what the patient receives and what is billed, so human-in-the-loop is mandatory and the prediction must never populate a level-of-care field directly. Calibration evidence, deterministic fallback to clinician determination, and periodic re-evaluation are required before activation.
