@@ -14,7 +14,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 10/14 ⚠️ | ✅ | ✅ | — | 1/4 ⚠️ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 9/17 ⚠️ | ✅ | ❌ | — | 5/6 ⚠️ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 1/4 ⚠️ | ✅ | ✅ | — | 7/7 ✅ |
-| M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/14 ⚠️ | ✅ | ✅ | — | 2/16 ⚠️ |
+| M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/14 ⚠️ | ✅ | ✅ | — | 16/16 ✅ |
 | M06 Admission, Election & Certification | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 6/46 ⚠️ | ✅ | ✅ | — | 2/12 ⚠️ |
 | M07 Care Plan (IPOC) | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 3/19 ⚠️ | ✅ | ✅ | — | 6/6 ✅ |
 | M08 Encounters & Visit Notes | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 4/31 ⚠️ | ✅ | ✅ | — | 1/10 ⚠️ |
@@ -32,7 +32,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/30 ⚠️ | ✅ | ✅ | — | 13/13 ✅ |
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/37 ⚠️ | ✅ | ✅ | — | 11/11 ✅ |
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 6/35 ⚠️ | ✅ | ✅ | — | 2/17 ⚠️ |
-| M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 43/43 ✅ | ✅ | ✅ | ✅ | 2/17 ⚠️ |
+| M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 43/43 ✅ | ✅ | ✅ | ✅ | 17/17 ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
 | M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 18/31 ⚠️ | ✅ | ✅ | ✅ | 11/11 ✅ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/27 ⚠️ | ✅ | ✅ | — | 12/12 ✅ |
