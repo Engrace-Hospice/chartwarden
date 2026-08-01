@@ -305,6 +305,19 @@
     overflow: auto;
   }
 
+  /* The right-hand context rail (patterns.tsx: WorkQueue `detail`, DetailPage `aside`,
+     ConversationView/AdminSplit `detail`). Two kinds of child land here and they want opposite
+     treatment, which is why this is a rule rather than an inline style:
+       • `RightDetailPanel` (.wx-right-panel) is a full-bleed panel — it carries its own padding and a
+         `borderLeft` that is MEANT to meet the shell edge. Padding the rail would detach that border
+         and double the inset.
+       • ~12 screens (M15 volunteer-compliance, most of M24's queues, M34 onboarding-templates …) pass
+         a bare <div>/<span> instead, which then sits flush against the viewport with no chrome at all.
+     `:has()` distinguishes them, so the gutter is applied only where it is missing. */
+  .wx-context-rail:not(:has(> .wx-right-panel)) {
+    padding: var(--space-4) var(--space-5) var(--space-4) 0;
+  }
+
   /* ---- Light polish on regions/patterns (these already have inline structure) ---- */
   .wx-auth-brand {
     font-family: var(--font-display);
