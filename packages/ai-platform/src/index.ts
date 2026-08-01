@@ -14,6 +14,8 @@
 // Layout (M32-T01 lays it out; later tasks fill it in):
 //   · ./lifecycle   §2.2 — D2's eight-state governance FSM and the consumer posture each state implies
 //   · ./inventory   §2.3/§2.4 — the backend and capability rows registered at lock time
+//   · ./governance  §2.2/§3.2.3/§5.3/§5.4 — the lifecycle gate, calibration publication, tenant opt-in
+//                   and clinician opt-out rules, plus the three of them composed (plan T03)
 //   · ./schemas     §2.5 — per-capability TypeBox input/output schemas          (spec T07)
 //   · ./seams       §4.2 — the twelve published seam contracts                  (plan T06)
 //   · ./prompts     §4.5 — AIPromptRegistry (git resolution + content hash)     (plan T05)
@@ -24,3 +26,4 @@
 // module can speak M32's contracts with no `dependsOn` edge (ADR-0005 D1).
 export * from "./lifecycle";
 export * from "./inventory";
+export * from "./governance";

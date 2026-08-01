@@ -1,8 +1,12 @@
 // apps/backend/src/modules/32-ai-platform — M32 AI Platform's backend surface.
 //
-// M32-T02 ships the §3.7 destruction contract only: the two AI-provenance erasers. Routes (§4.1), the
+// M32-T02 shipped the §3.7 destruction contract (the two AI-provenance erasers); M32-T03 adds the
+// governance layer — the §2.2 capability lifecycle, §3.2.3 calibration publication, §5.3/W4 tenant
+// opt-in and §5.4 clinician opt-out — over `@wardenx/ai-platform`'s pure rules. Routes (§4.1), the
 // published/consumed seams (§4.2–§4.4), the permission keys (§4.6) and the ABAC predicates (§4.7) land
 // in M32-T06/T07; Phase 1 keeps every capability behind `ai.full` OFF, so nothing here executes a model.
+export * from "./governance/index";
+export { M32_PLATFORM_JOB_ID, wireM32Tenancy } from "./wiring";
 export {
   AI_INTAKE_CAPABILITY_PREFIX,
   AI_PROVENANCE_ERASE_ZERO,
