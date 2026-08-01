@@ -13,6 +13,27 @@
 // `pollSubmissionOnce` orchestration, the §4.6 permission keys (`M18_CONTRIBUTED_PERMISSIONS` → M3), the two
 // §4.7 ABAC predicates (`assigned_clinician_for_visit` / `evv_within_visit_window` → M3), and the §4.1 route
 // inventory behind the M3 Authorization Contract over the in-memory `EvvRouteService` slice.
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { createDbEvvBackend } from "./evv-route-service-db";
+import { registerEvvAbacPredicates as _registerM18Abac } from "./abac-predicates";
+import { registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
+
+/**
+ * Mount the M18 EVV routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`), mirroring
+ * `mountAdmissionRoutes`. The SAME backend object is the route service AND the §4.7 ABAC resolver (the
+ * predicates read the same dataset the handlers do). Reads are live (event ledger/detail, per-visit bracket,
+ * device roster, geofence policy, missing-resolution queue, aggregator submissions, metrics, team location,
+ * portal arrival); writes fail-closed 501 until the Drizzle write lifecycle lands. Replaces the in-memory
+ * clinical-core scaffold mount for M18.
+ */
+export function mountEvvRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbEvvBackend(db);
+  _registerM18Abac({ resolver: backend });
+  _registerM18Routes(app, { service: backend });
+}
+
+export { createDbEvvBackend } from "./evv-route-service-db";
 export {
   type EvvAbacDeps,
   type EvvAbacResolver,

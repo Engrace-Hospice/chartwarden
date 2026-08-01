@@ -25,6 +25,26 @@
 // until Phase 2. It also lands the §4.9 M36 typed alert payloads (`alerts-by-m17.ts`; registered onto M36's
 // Foundation registry at boot, composition + recipient resolution is M36's per ADR-0024) and the Track B §5.1
 // web screens (apps/web/src/modules/17-scheduling, ADR-0030).
+import type { DbClient } from "@wardenx/db";
+import type { FastifyInstance } from "fastify";
+import { registerSchedulingAbacPredicates as _registerM17Abac } from "./abac-predicates";
+import { registerSchedulingRoutes as _registerM17Routes } from "./routes/scheduling-routes";
+import { createDbSchedulingBackend } from "./scheduling-route-service-db";
+
+/**
+ * M17L — mount the M17 scheduling routes over the PRODUCTION Drizzle backend (RLS-scoped under
+ * `withOrgContext`). The scaffold uses ONE object as BOTH the route service AND the §4.7 ABAC resolver, so a
+ * single `createDbSchedulingBackend(db)` serves both registrations. Reads are live (visit lists / day-week-map
+ * views, proposal inbox, recurring cadences, availability, time-off, portal upcoming, metrics); writes fail-
+ * closed 501 until the M17L write lifecycle lands. Replaces the in-memory clinical-core scaffold mount for M17.
+ */
+export function mountSchedulingRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbSchedulingBackend(db);
+  _registerM17Abac({ resolver: backend });
+  _registerM17Routes(app, { service: backend });
+}
+
+export { createDbSchedulingBackend } from "./scheduling-route-service-db";
 export { M17_OUTBOX_EVENTS } from "./events-by-m17";
 export { M17_ALERT_PAYLOADS } from "./alerts-by-m17";
 export {

@@ -18,6 +18,50 @@
 // The pure pipeline (classify → extract → discrepancy → review → decide → provenance) lives in
 // @wardenx/intake-extraction; the M32 classifier/extractor/vision capability is consumed OPAQUELY as a
 // deny-stub via getSeam (the M22-T06 consent-gate precedent), so M22 deps stay [1, 5] (no M32 edge).
+import type { DbClient } from "@wardenx/db";
+import { DegradedError } from "@wardenx/types";
+import type { FastifyInstance } from "fastify";
+import { createDbDocumentBackend } from "./documents-route-service-db";
+import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
+import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
+import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
+
+/**
+ * M22L-T01 — mount the M22 document routes over the PRODUCTION Drizzle read backend + ABAC/object
+ * resolvers (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are
+ * live (document library + detail, version ledger, intake batch/classification/job/candidate/review,
+ * form-template catalog + overlays + fills); writes fail-closed 501 until the M22L-T02+ Drizzle write
+ * lifecycle lands. The signed-URL presigner stays the throwing `DegradedError` stub — M22's object-storage
+ * adapter is unwired, and a presign resolving to a URL nothing can serve is a download failure a clinician
+ * reads as data loss (a WORKING one would hand out PHI from a store with no BAA gate). Replaces the
+ * in-memory clinical-core scaffold mount for M22.
+ */
+export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
+  const backend = createDbDocumentBackend(db);
+  _registerM22Abac({ resolver: backend.abacResolver });
+  _registerM22Routes(app, {
+    service: backend.service,
+    signedUrl: _createSignedUrlService({
+      storage: {
+        presignDownload: () => {
+          throw new DegradedError(
+            "document-storage",
+            "no object-storage presigner is bound (M22 storage adapter not wired)",
+          );
+        },
+      },
+      resolver: backend.objectResolver,
+    }),
+  });
+}
+
+export {
+  createDbDocumentBackend,
+  createDbDocumentRouteService,
+  createDbDocumentAbacResolver,
+  createDbSignedUrlObjectResolver,
+} from "./documents-route-service-db";
+
 export * from "./lifecycle/index";
 export * from "./seams/index";
 export * from "./outbox-consumers/index";

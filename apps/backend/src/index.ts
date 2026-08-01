@@ -76,6 +76,7 @@ import {
   registerCarePlanErasers,
   registerCarePlanRoutes,
   registerCarePlanSeams,
+  mountCarePlanRoutes,
 } from "./modules/07-care-plan/index";
 import {
   createDrizzleEncounterReaderStore,
@@ -84,6 +85,7 @@ import {
   registerEncounterErasers,
   registerEncounterRoutes,
   registerEncounterSeams,
+  mountEncounterRoutes,
 } from "./modules/08-encounters/index";
 import {
   createInMemoryAssessmentBackend,
@@ -91,6 +93,7 @@ import {
   registerAssessmentErasers,
   registerAssessmentRoutes,
   registerAssessmentSeams,
+  mountAssessmentRoutes,
 } from "./modules/09-assessments/index";
 import {
   createInMemoryHopeBackend,
@@ -98,6 +101,7 @@ import {
   registerHopeErasers,
   registerHopeRoutes,
   registerHopeSeams,
+  mountHopeRoutes,
 } from "./modules/10-hope/index";
 import {
   createInMemoryOrderBackend,
@@ -105,6 +109,7 @@ import {
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
+  mountOrderRoutes,
 } from "./modules/11-orders/index";
 import {
   createInMemoryDoseSpotBackend,
@@ -112,6 +117,7 @@ import {
   registerDoseSpotErasers,
   registerDoseSpotRoutes,
   registerDoseSpotSeams,
+  mountDoseSpotRoutes,
 } from "./modules/12-dosespot/index";
 import {
   createInMemoryEmarBackend,
@@ -119,6 +125,7 @@ import {
   registerEmarErasers,
   registerEmarRoutes,
   registerEmarSeams,
+  mountEmarRoutes,
 } from "./modules/13-emar/index";
 import {
   createInMemoryIdgBackend,
@@ -126,6 +133,7 @@ import {
   registerIdgErasers,
   registerIdgRoutes,
   registerIdgSeams,
+  mountIdgRoutes,
 } from "./modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
@@ -156,12 +164,14 @@ import {
   registerSchedulingAbacPredicates,
   registerSchedulingRoutes,
   registerSchedulingSeams,
+  mountSchedulingRoutes,
 } from "./modules/17-scheduling/index";
 import {
   EvvRouteService,
   registerEvvAbacPredicates,
   registerEvvRoutes,
   registerEvvSeams,
+  mountEvvRoutes,
 } from "./modules/18-evv/index";
 import {
   buildDrizzleM19ReadService,
@@ -209,6 +219,7 @@ import {
   registerDocumentErasers,
   registerDocumentRoutes,
   registerDocumentSeams,
+  mountDocumentRoutes,
 } from "./modules/22-documents/index";
 import {
   buildDrizzleM33ExportDrilldownService,
@@ -1278,6 +1289,20 @@ if ((import.meta as { main?: boolean }).main) {
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           mountAdmissionRoutes(app, dbHandle.db); // M6 — admission census/detail/referral/compliance READS on real tables under RLS (M6L-T01; writes → M6L-T02+)
+          // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
+          // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
+          // lifecycle lands. See each module's `*-route-service-db.ts`.
+          mountCarePlanRoutes(app, dbHandle.db); // M7 reads
+          mountEncounterRoutes(app, dbHandle.db); // M8 reads
+          mountAssessmentRoutes(app, dbHandle.db); // M9 reads
+          mountHopeRoutes(app, dbHandle.db); // M10 reads
+          mountOrderRoutes(app, dbHandle.db); // M11 reads
+          mountDoseSpotRoutes(app, dbHandle.db); // M12 reads
+          mountEmarRoutes(app, dbHandle.db); // M13 reads
+          mountIdgRoutes(app, dbHandle.db); // M14 reads
+          mountSchedulingRoutes(app, dbHandle.db); // M17 reads
+          mountEvvRoutes(app, dbHandle.db); // M18 reads
+          mountDocumentRoutes(app, dbHandle.db); // M22 reads
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
@@ -1656,110 +1681,6 @@ if ((import.meta as { main?: boolean }).main) {
             promptRegistry: m32PromptRegistry,
           });
 
-          // ══════════════════════════════════════════════════════════════════════════════════════════
-          // M6–M14 / M17 / M18 / M22 — the clinical-core route mount. See `clinicalCoreScaffoldEnabled`
-          // above for what this is and, more importantly, what it is NOT: these twelve modules serve an
-          // in-memory Map, with no write-audit trigger and no RLS behind them. Hard-off in production.
-          //
-          // The ABAC predicates register HERE, next to the routes, rather than in wireModuleSeams():
-          // abacRegistry.evaluate() resolves by NAME at request time, and the registry explicitly
-          // supports post-install registration. Registering beside the mount is what keeps each
-          // resolver and its route service the same instance. (M7 is the one exception — its registrar
-          // also owns the shared `caseload_or_scope` name and must run at boot; see wireModuleSeams.)
-          if (clinicalCoreScaffoldEnabled) {
-            const core = getClinicalCoreBackends();
-
-            // M6 Admission is NO LONGER mounted here — it moved to the db branch above over the real
-            // Drizzle route service (`mountAdmissionRoutes`), so its reads are RLS-scoped and it runs in
-            // production too. `core.m6` stays built only as the behavioral reference for the write lifecycle.
-
-            // M7 Care Plan (19 routes). `dpoaConsentActive` / `sudDisclosureAllowed` stay on their
-            // fail-closed `async () => false` defaults, so §7.6 SUD-flagged problems remain omitted
-            // from every read — the correct direction to fail.
-            registerCarePlanRoutes(app, { service: core.m7.service });
-
-            // M8 Encounters (31 routes). MOUNTED BEFORE M9 AND M11 DELIBERATELY.
-            //
-            // ⚠ KNOWN DEFECT, not introduced here: M8, M9 and M11 each register the SAME predicate name
-            // `cosigner_role_match` with three INCOMPATIBLE target contracts — M8 reads `encounterId`
-            // and loads an encounter, M9 reads `id`/`assessmentId` and loads an assessment, M11 reads
-            // `id`/`orderId` and loads an order. Every registrar skips a name already taken, so this is
-            // silent FIRST-WINS, not a boot crash, and cross-lookup is worse than useless (M9-first
-            // would have M11's cosign call loadAssessment(orderId)). Exactly ONE of the three clinical
-            // cosignature surfaces can work at a time. M8's encounter cosignature is the highest-traffic
-            // surface, so it takes the name; M9's POST /assessments/:id/cosignatures and M11's
-            // POST /orders/:id/cosign are therefore 403 FOR EVERY CALLER. Ordering cannot fix this —
-            // the name must be split three ways (or keyed on which id the target carries).
-            registerEncounterAbacPredicates({ resolver: core.m8.resolver });
-            registerEncounterRoutes(app, { service: core.m8.service });
-
-            // M9 Assessments (18 routes). `discipline_can_record_scale` registers cleanly and works;
-            // the cosignature route is knowingly dead (see M8).
-            registerAssessmentAbacPredicates({ resolver: core.m9.resolver });
-            registerAssessmentRoutes(app, { service: core.m9.service });
-
-            // M10 HOPE (20 routes) — the backend IS its own HopeAbacResolver.
-            registerHopeAbacPredicates({ resolver: core.m10 });
-            registerHopeRoutes(app, { service: core.m10 });
-
-            // M11 Orders (28 routes). `discipline_can_order` + `signer_eligible` are M11's alone and
-            // work; the cosign route is dead (see M8).
-            registerOrderAbacPredicates({ resolver: core.m11 });
-            registerOrderRoutes(app, { service: core.m11 });
-
-            // M12 DoseSpot prescribing (31 routes). EPCS stays off; there is no webhook route mounted.
-            registerDoseSpotAbacPredicates({ resolver: core.m12 });
-            registerDoseSpotRoutes(app, { service: core.m12 });
-
-            // M13 eMAR (28 routes). NOTE the witness-token HMAC key falls back to the literal
-            // "test-witness-secret" when `witnessSecret` is unset — controlled-substance witness
-            // attestation is FORGEABLE in this slice. Another reason this never reaches production.
-            registerEmarAbacPredicates({ resolver: core.m13 });
-            registerEmarRoutes(app, { service: core.m13 });
-
-            // M14 IDG (26 routes).
-            registerIdgAbacPredicates({ resolver: core.m14 });
-            registerIdgRoutes(app, { service: core.m14 });
-
-            // M17 Scheduling (29 routes). Route optimization stays off — the OSRM adapter has no boot
-            // binding, and the §7.9 degraded path is the documented Phase-1 posture.
-            registerSchedulingAbacPredicates({ resolver: core.m17 });
-            registerSchedulingRoutes(app, { service: core.m17 });
-
-            // M18 EVV (25 routes). Its two capture predicates read the SAME empty visit map its routes
-            // read, so with a bare seed every check-in 403s on `assigned_clinician_for_visit`. That is
-            // the correct fail direction but it reads like an authz bug — and note M17's visits live in
-            // a DIFFERENT process-local Map that M18 cannot see, so a scheduling→EVV flow cannot be
-            // demonstrated end to end until both sit on the database.
-            registerEvvAbacPredicates({ resolver: core.m18 });
-            registerEvvRoutes(app, { service: core.m18 });
-
-            // M22 Documents (31 routes). The signed-URL STORAGE PORT HAS NO IMPLEMENTATION anywhere in
-            // src/ — only the interface and a test fake. Rather than fabricate a URL, it is bound to an
-            // explicit refusal: a presign resolving to a URL nothing can serve is a download failure a
-            // clinician reads as data loss, and one that WORKED would hand out PHI from a store with no
-            // BAA gate behind it. Swap in the real presigner when M22's storage adapter lands.
-            registerDocumentAbacPredicates({ resolver: core.m22.abacResolver });
-            registerDocumentRoutes(app, {
-              service: core.m22.service,
-              signedUrl: createSignedUrlService({
-                storage: {
-                  presignDownload: () => {
-                    throw new DegradedError(
-                      "document-storage",
-                      "no object-storage presigner is bound (M22 storage adapter not wired)",
-                    );
-                  },
-                },
-                resolver: core.m22.objectResolver,
-              }),
-            });
-
-            app.log.warn(
-              { modules: "M6-M14,M17,M18,M22", routes: 336 },
-              "clinical-core route scaffold MOUNTED over in-memory stores — no write-audit trigger, no RLS, data lost on restart. Never production.",
-            );
-          }
         }
       : undefined,
     registerModuleSeams: () =>
