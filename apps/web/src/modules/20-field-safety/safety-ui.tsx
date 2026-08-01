@@ -342,7 +342,11 @@ export function TextField({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        style={mono ? { ...inputStyle, fontFamily: t.fontMono } : inputStyle}
+        // A mono field needs its own floor: every glyph is wider, so `inputStyle`'s 9rem clipped the
+        // placeholder that tells the caller what happens if they leave it blank ("all locations in
+        // reach" wanted 180px of a 170px content box). These fields take UUIDs, so 14rem is the
+        // useful minimum rather than a round number.
+        style={mono ? { ...inputStyle, fontFamily: t.fontMono, minWidth: "14rem" } : inputStyle}
       />
       {hint ? (
         <span id={hintId} style={mutedStyle}>
