@@ -31,9 +31,38 @@
 //   • THE TERMINUS LOOP WRITES NO STATE-HISTORY ROW: §3.3's `m20_ssash_no_self` CHECK refuses `from = to`,
 //     so a loop that emitted one would die on a constraint at the moment nobody is answering.
 //
-// Still to land: the M17/M18/M19 consumed seams (T04), the seven §4.3 published seams (T05), the §4.1
-// routes + §4.6 keys + §4.7 ABAC (T06), and the §5 screens (T07).
+// M20-T04 lands the §4.4 upstream bindings: `seams/consumed.ts` (M17 `VisitReader` /
+// `VisitAssignmentReader`, M18 `EvvLocationProvider`, M19 `OnCallProvider`, M5 `PatientReader`) and the
+// `consumers/` deciders they feed — the §7.1 cadence materializer, the EVV bracket re-anchors, the §4.8
+// no-show inquiry, the §7.7 GPS-spoof badge and the §7.5 D14 after-hours parallel set. Binding
+// `EvvLocationProvider` closes M18's Wave-F last-known-location deny-stub; binding `OnCallProvider`
+// replaces the Phase-1 SOS degraded fallback (Wave P2-2 acceptance #2 and #3).
+//
+// SIX THINGS T04 DECIDED THAT ARE NOT OBVIOUS FROM THE SPEC:
+//   • §4.4's `PatientAddressReader.geocodedAddressFor` DOES NOT EXIST anywhere on the platform, so D12's
+//     pre-visit high-risk-area evaluation has NO address source and none is invented: there is no
+//     accessor and no polygon evaluator. Fail-closed means the advisory is absent, never guessed.
+//   • THE MID-VISIT CADENCE IS MEASURED FROM THE EVV ARRIVAL, not from the scheduled start (§7.1's own
+//     arithmetic: 10:02 arrival → 11:02 prompt). Anchoring to the schedule prompts a late clinician at
+//     minute twenty and then leaves her alone for the rest of the visit.
+//   • AN EVV CHECK-IN CANNOT CLOSE AN UNANSWERED PRE-VISIT OBLIGATION: `m20_scis_recorded_fulfilled`
+//     refuses `recorded` without a fulfilling check-in row, and minting one would forge an attestation.
+//     D2 asks "are you OK", not "are you there", so the ladder keeps running.
+//   • A NO-SHOW INQUIRY WITH NO SCHEDULE ROW IS UNEMITTABLE (`scheduleId` is non-nullable on both the
+//     §4.10 payload and the §4.9 alert), so the consumer keeps ONE genuinely-overdue obligation as the
+//     anchor, retires the rest, and emits nothing at all when every prompt was answered.
+//   • RETIRING AN OBLIGATION IS A DELETE, because no member of `safety_check_in_state` can say "this plan
+//     was invalidated" without lying — `recorded` is refused by a CHECK and `superseded` means
+//     correction-of-record. The M4 write-audit trigger is what keeps the retirement on the record.
+//   • THE D14 SET IS THREE-VALUED and carries external triage vendors on their own field: an
+//     `OnCallProvider` outage is `unavailable` (never `[]`, which reads as a real coverage gap), and a
+//     vendor-covered Saturday night has no membership to page but is NOT an uncovered night.
+//
+// Still to land: the seven §4.3 published seams + the §4.5 composed resolver (T05), the §4.1 routes +
+// §4.6 keys + §4.7 ABAC (T06), and the §5 screens (T07).
+export * from "./consumers";
 export * from "./lifecycle";
+export * from "./seams";
 export {
   type InMemorySafetyEraseSeed,
   type SafetyEraseCounts,
