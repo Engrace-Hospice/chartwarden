@@ -76,8 +76,10 @@ export function createDbIdgBackend(db: DbClient): IdgRouteService & IdgAbacResol
           .where(
             and(
               eq(MTG.locationId, q.location),
-              gte(MTG.scheduledStart, q.from as never),
-              lte(MTG.scheduledStart, q.to as never),
+              // scheduledStart is a `timestamp` column (drizzle date-mode) → bind Date objects, not the
+              // raw ISO strings the query carries (a string reaches mapToDriverValue and throws).
+              gte(MTG.scheduledStart, new Date(q.from)),
+              lte(MTG.scheduledStart, new Date(q.to)),
             ),
           )
           .orderBy(asc(MTG.scheduledStart));
