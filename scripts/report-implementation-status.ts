@@ -26,6 +26,8 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { MODULES } from "../architecture/module-manifest";
+import { ROUTE_ENRICHMENTS } from "./openapi/enrichments";
+import { routeKey, scanRoutes } from "./openapi/scan-routes";
 
 const ROOT = process.cwd();
 const CHECK = process.argv.includes("--check");
@@ -108,11 +110,21 @@ const specFiles = (() => {
 })();
 const hasSpec = (id: number) => specFiles.some((f) => f.startsWith(`WARDENX_MODULE_${pad(id)}_`));
 
-// OpenAPI enrichment: which module typebox files are imported by enrichments.ts
-const enrichSrc = read("scripts/openapi/enrichments.ts");
-const enrichedModules = new Set<number>();
-for (const m of enrichSrc.matchAll(/modules\/(\d\d)-[\w-]+\/routes/g))
-  enrichedModules.add(Number(m[1]));
+// OpenAPI enrichment: real per-route coverage, joined route-by-route against the
+// enrichment registry. This was previously a per-module BOOLEAN derived by regexing
+// enrichments.ts for a `modules/NN-*/routes` import — which flipped ✅ on a single
+// entry anywhere in the module, so it only ever read ❌ at exactly zero. M06 sat at
+// 6 enriched of 46 routes showing ✅. A ratio cannot hide that; the ratchet gate
+// (scripts/report-openapi-coverage.ts) is what actually fails the build.
+const enrichmentByModule = new Map<number, { routes: number; enriched: number }>();
+for (const r of scanRoutes(ROOT)) {
+  const id = Number(r.module.match(/^(\d\d)-/)?.[1]);
+  if (!Number.isFinite(id)) continue; // "bootstrap" host routes belong to no feature module
+  const cur = enrichmentByModule.get(id) ?? { routes: 0, enriched: 0 };
+  cur.routes++;
+  if (ROUTE_ENRICHMENTS[routeKey(r)]) cur.enriched++;
+  enrichmentByModule.set(id, cur);
+}
 
 // Web screens: modules whose screens.ts declares a moduleId AND is wired into main.tsx
 const mainTsx = read("apps/web/src/main.tsx");
@@ -154,7 +166,8 @@ type Row = {
   schema: boolean;
   migration: boolean;
   routes: boolean;
-  enriched: boolean;
+  /** real per-route OpenAPI enrichment coverage; null = module registers no routes */
+  enriched: { routes: number; enriched: number } | null;
   screens: boolean;
   tests: boolean;
   adapter: boolean | null; // null = N/A (module owns no adapter package)
@@ -245,7 +258,7 @@ const rows: Row[] = mods.map((m) => {
     schema,
     migration,
     routes,
-    enriched: enrichedModules.has(m.id),
+    enriched: enrichmentByModule.get(m.id) ?? null,
     screens,
     tests,
     adapter,
@@ -275,6 +288,14 @@ const counts = {
   Placeholder: rows.filter((r) => r.status === "Placeholder").length,
 };
 const yn = (b: boolean | null) => (b === null ? "—" : b ? "✅" : "❌");
+/**
+ * Enrichment is a RATIO, never a tick. A ✅ here used to mean "≥1 route enriched",
+ * which read identically at 46/46 and 6/46 — the failure the M20-T06 post-mortem hit.
+ * ⚠️ marks any module still carrying unenriched routes; the ratchet gate
+ * (`arch:openapi-coverage`) is what makes a REGRESSION fail the build.
+ */
+const enr = (e: Row["enriched"]) =>
+  e === null ? "—" : `${e.enriched}/${e.routes}${e.enriched < e.routes ? " ⚠️" : " ✅"}`;
 const badge = (s: Row["status"]) =>
   s === "Implemented" ? "🟢 Implemented" : s === "Partial" ? "🟡 Partial" : "⚪ Placeholder";
 
@@ -298,7 +319,9 @@ function renderMarkdown(): string {
   lines.push("");
   lines.push(
     "Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · " +
-      "Routes (non-placeholder backend `routes/`) · Enriched (OpenAPI bodies, *heuristic*) · Screens (registered web `screens.ts`) · " +
+      "Routes (non-placeholder backend `routes/`) · Enriched (routes carrying an OpenAPI contract / routes scanned — " +
+      "a RATIO, not a tick; ⚠️ = some route publishes no request/response schema. `arch:openapi-coverage` ratchets it) · " +
+      "Screens (registered web `screens.ts`) · " +
       "Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · " +
       "Live (owned table named in a `*.live.test.ts`, *heuristic*). Headline status keys off the placeholder marker + schema + routes only.",
   );
@@ -309,7 +332,7 @@ function renderMarkdown(): string {
   lines.push("|---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|");
   for (const r of rows)
     lines.push(
-      `| ${r.module} | ${badge(r.status)} | ${yn(r.spec)} | ${yn(r.schema)} | ${yn(r.migration)} | ${yn(r.routes)} | ${yn(r.enriched)} | ${yn(r.screens)} | ${yn(r.tests)} | ${yn(r.adapter)} | ${yn(r.liveInfra)} |`,
+      `| ${r.module} | ${badge(r.status)} | ${yn(r.spec)} | ${yn(r.schema)} | ${yn(r.migration)} | ${yn(r.routes)} | ${enr(r.enriched)} | ${yn(r.screens)} | ${yn(r.tests)} | ${yn(r.adapter)} | ${yn(r.liveInfra)} |`,
     );
   lines.push("");
   if (warnings.length) {

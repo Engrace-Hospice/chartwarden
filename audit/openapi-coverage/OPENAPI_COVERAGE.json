@@ -1,0 +1,353 @@
+{
+  "totals": {
+    "routes": 963,
+    "enriched": 485,
+    "deficit": 478,
+    "mutating": 563,
+    "mutatingNoBody": 330,
+    "gets": 378,
+    "getsNoResponse": 211
+  },
+  "modules": [
+    {
+      "module": "02-identity",
+      "routes": 14,
+      "enriched": 10,
+      "deficit": 4,
+      "mutating": 9,
+      "mutatingNoBody": 3,
+      "gets": 3,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "03-authorization",
+      "routes": 17,
+      "enriched": 9,
+      "deficit": 8,
+      "mutating": 9,
+      "mutatingNoBody": 2,
+      "gets": 6,
+      "getsNoResponse": 4
+    },
+    {
+      "module": "04-audit",
+      "routes": 4,
+      "enriched": 1,
+      "deficit": 3,
+      "mutating": 0,
+      "mutatingNoBody": 0,
+      "gets": 4,
+      "getsNoResponse": 3
+    },
+    {
+      "module": "05-patient",
+      "routes": 14,
+      "enriched": 13,
+      "deficit": 1,
+      "mutating": 5,
+      "mutatingNoBody": 1,
+      "gets": 9,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "06-admission",
+      "routes": 46,
+      "enriched": 6,
+      "deficit": 40,
+      "mutating": 34,
+      "mutatingNoBody": 34,
+      "gets": 12,
+      "getsNoResponse": 6
+    },
+    {
+      "module": "07-care-plan",
+      "routes": 19,
+      "enriched": 3,
+      "deficit": 16,
+      "mutating": 13,
+      "mutatingNoBody": 13,
+      "gets": 6,
+      "getsNoResponse": 3
+    },
+    {
+      "module": "08-encounters",
+      "routes": 31,
+      "enriched": 4,
+      "deficit": 27,
+      "mutating": 22,
+      "mutatingNoBody": 22,
+      "gets": 8,
+      "getsNoResponse": 4
+    },
+    {
+      "module": "09-assessments",
+      "routes": 18,
+      "enriched": 6,
+      "deficit": 12,
+      "mutating": 7,
+      "mutatingNoBody": 7,
+      "gets": 11,
+      "getsNoResponse": 5
+    },
+    {
+      "module": "10-hope",
+      "routes": 20,
+      "enriched": 10,
+      "deficit": 10,
+      "mutating": 10,
+      "mutatingNoBody": 10,
+      "gets": 10,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "11-orders",
+      "routes": 28,
+      "enriched": 9,
+      "deficit": 19,
+      "mutating": 18,
+      "mutatingNoBody": 18,
+      "gets": 10,
+      "getsNoResponse": 1
+    },
+    {
+      "module": "12-dosespot",
+      "routes": 31,
+      "enriched": 10,
+      "deficit": 21,
+      "mutating": 21,
+      "mutatingNoBody": 21,
+      "gets": 10,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "13-emar",
+      "routes": 28,
+      "enriched": 10,
+      "deficit": 18,
+      "mutating": 18,
+      "mutatingNoBody": 18,
+      "gets": 10,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "14-idg",
+      "routes": 26,
+      "enriched": 6,
+      "deficit": 20,
+      "mutating": 17,
+      "mutatingNoBody": 17,
+      "gets": 6,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "routes": 28,
+      "enriched": 23,
+      "deficit": 5,
+      "mutating": 17,
+      "mutatingNoBody": 2,
+      "gets": 11,
+      "getsNoResponse": 11
+    },
+    {
+      "module": "16-bereavement",
+      "routes": 33,
+      "enriched": 31,
+      "deficit": 2,
+      "mutating": 26,
+      "mutatingNoBody": 0,
+      "gets": 7,
+      "getsNoResponse": 7
+    },
+    {
+      "module": "17-scheduling",
+      "routes": 29,
+      "enriched": 11,
+      "deficit": 18,
+      "mutating": 17,
+      "mutatingNoBody": 17,
+      "gets": 12,
+      "getsNoResponse": 1
+    },
+    {
+      "module": "18-evv",
+      "routes": 25,
+      "enriched": 7,
+      "deficit": 18,
+      "mutating": 15,
+      "mutatingNoBody": 15,
+      "gets": 10,
+      "getsNoResponse": 3
+    },
+    {
+      "module": "19-oncall",
+      "routes": 38,
+      "enriched": 31,
+      "deficit": 7,
+      "mutating": 26,
+      "mutatingNoBody": 2,
+      "gets": 12,
+      "getsNoResponse": 12
+    },
+    {
+      "module": "20-field-safety",
+      "routes": 30,
+      "enriched": 25,
+      "deficit": 5,
+      "mutating": 17,
+      "mutatingNoBody": 0,
+      "gets": 12,
+      "getsNoResponse": 12
+    },
+    {
+      "module": "21-supplies",
+      "routes": 37,
+      "enriched": 31,
+      "deficit": 6,
+      "mutating": 24,
+      "mutatingNoBody": 0,
+      "gets": 12,
+      "getsNoResponse": 12
+    },
+    {
+      "module": "22-documents",
+      "routes": 35,
+      "enriched": 6,
+      "deficit": 29,
+      "mutating": 19,
+      "mutatingNoBody": 19,
+      "gets": 15,
+      "getsNoResponse": 9
+    },
+    {
+      "module": "23-billing-medicare",
+      "routes": 43,
+      "enriched": 43,
+      "deficit": 0,
+      "mutating": 17,
+      "mutatingNoBody": 4,
+      "gets": 24,
+      "getsNoResponse": 22
+    },
+    {
+      "module": "24-billing-medicaid",
+      "routes": 39,
+      "enriched": 39,
+      "deficit": 0,
+      "mutating": 20,
+      "mutatingNoBody": 4,
+      "gets": 17,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "25-remittance",
+      "routes": 31,
+      "enriched": 18,
+      "deficit": 13,
+      "mutating": 18,
+      "mutatingNoBody": 5,
+      "gets": 13,
+      "getsNoResponse": 8
+    },
+    {
+      "module": "26-cap",
+      "routes": 27,
+      "enriched": 19,
+      "deficit": 8,
+      "mutating": 12,
+      "mutatingNoBody": 2,
+      "gets": 15,
+      "getsNoResponse": 8
+    },
+    {
+      "module": "27-cost-report",
+      "routes": 45,
+      "enriched": 11,
+      "deficit": 34,
+      "mutating": 28,
+      "mutatingNoBody": 18,
+      "gets": 16,
+      "getsNoResponse": 16
+    },
+    {
+      "module": "30-quality",
+      "routes": 60,
+      "enriched": 57,
+      "deficit": 3,
+      "mutating": 36,
+      "mutatingNoBody": 3,
+      "gets": 24,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "33-reporting",
+      "routes": 42,
+      "enriched": 4,
+      "deficit": 38,
+      "mutating": 22,
+      "mutatingNoBody": 21,
+      "gets": 20,
+      "getsNoResponse": 20
+    },
+    {
+      "module": "34-saas-tenant-platform",
+      "routes": 48,
+      "enriched": 9,
+      "deficit": 39,
+      "mutating": 30,
+      "mutatingNoBody": 27,
+      "gets": 17,
+      "getsNoResponse": 17
+    },
+    {
+      "module": "36-messaging",
+      "routes": 22,
+      "enriched": 4,
+      "deficit": 18,
+      "mutating": 13,
+      "mutatingNoBody": 12,
+      "gets": 6,
+      "getsNoResponse": 3
+    },
+    {
+      "module": "38-terminology",
+      "routes": 8,
+      "enriched": 1,
+      "deficit": 7,
+      "mutating": 1,
+      "mutatingNoBody": 1,
+      "gets": 6,
+      "getsNoResponse": 5
+    },
+    {
+      "module": "39-consent",
+      "routes": 27,
+      "enriched": 17,
+      "deficit": 10,
+      "mutating": 13,
+      "mutatingNoBody": 3,
+      "gets": 13,
+      "getsNoResponse": 9
+    },
+    {
+      "module": "40-mdm",
+      "routes": 14,
+      "enriched": 1,
+      "deficit": 13,
+      "mutating": 8,
+      "mutatingNoBody": 8,
+      "gets": 6,
+      "getsNoResponse": 5
+    },
+    {
+      "module": "bootstrap",
+      "routes": 6,
+      "enriched": 0,
+      "deficit": 6,
+      "mutating": 1,
+      "mutatingNoBody": 1,
+      "gets": 5,
+      "getsNoResponse": 5
+    }
+  ]
+}
