@@ -667,10 +667,22 @@ export const M32_IMMUTABILITY_RULE: { readonly [K in M32TableName]: M32Immutabil
  * §3.5 — the columns a `column_restricted` table's trigger refuses to UPDATE.
  *
  * `ai_invocation`'s list is §3.5 verbatim. Note what is ABSENT: `hitl_outcome` (the one column
- * `recordHitlOutcome` writes), `status`, `completed_at`, `duration_ms`, `error_class`, `error_message`
- * and `response_payload_cipher` — an invocation row is INSERTed before the backend answers, so the
- * response side must remain writable exactly once. §3.5's phrase "append-only post-status='completed'"
- * is the intent; the column list is the mechanism, and the mechanism is what a trigger can enforce.
+ * `recordHitlOutcome` writes), `status`, `completed_at`, `duration_ms`, `error_class` and
+ * `error_message`. §3.5's phrase "append-only post-status='completed'" is the intent; the column list
+ * is the mechanism, and the mechanism is what a trigger can enforce.
+ *
+ * M32-T02 correction — an earlier draft of this comment also named `response_payload_cipher` as absent,
+ * on the reading that the row is INSERTed before the backend answers. The ARRAY (which is §3.5 verbatim,
+ * and which the 0116 trigger now enforces column-for-column) freezes it, and the array is right: the
+ * response side is written ONCE, at insert, from the completed call — including a call that failed,
+ * timed out or was refused, each of which is a terminal status known before the row exists. Only
+ * `hitl_outcome` and the operational status columns change afterwards. The two readings differ in what
+ * a partially-written invocation row can look like, and the frozen one has no such state.
+ *
+ * ONE EXCEPTION the trigger admits and this list cannot express: §3.7's destruction path may replace a
+ * cipher with the SHRED SENTINEL (the empty bytea for the NOT NULL `prompt_payload_cipher`, NULL for the
+ * two optional ones). A cipher may be DESTROYED, never replaced — which is what lets the eraser run with
+ * no privileged bypass and no new session variable.
  */
 export const M32_IMMUTABLE_COLUMNS: {
   readonly [K in M32TableName]: readonly string[];

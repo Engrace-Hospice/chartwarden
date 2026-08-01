@@ -1,2 +1,20 @@
-// apps/backend/src/modules/32-ai-platform — Phase 0 placeholder owned per module-manifest.ts. No business logic yet.
-export {};
+// apps/backend/src/modules/32-ai-platform — M32 AI Platform's backend surface.
+//
+// M32-T02 ships the §3.7 destruction contract only: the two AI-provenance erasers. Routes (§4.1), the
+// published/consumed seams (§4.2–§4.4), the permission keys (§4.6) and the ABAC predicates (§4.7) land
+// in M32-T06/T07; Phase 1 keeps every capability behind `ai.full` OFF, so nothing here executes a model.
+export {
+  AI_INTAKE_CAPABILITY_PREFIX,
+  AI_PROVENANCE_ERASE_ZERO,
+  type AiProvenanceEraseCounts,
+  type AiProvenanceEraseOptions,
+  type AiProvenanceEraseStore,
+  type AiProvenanceEraserDeps,
+  type AiProvenanceScope,
+  type InMemoryAiProvenanceEraseSeed,
+  createAiProvenanceEraser,
+  createDrizzleAiProvenanceEraseStore,
+  createInMemoryAiProvenanceEraseStore,
+  eraseAiProvenance,
+  registerAiProvenanceErasers,
+} from "./erasers/ai-provenance-eraser";

@@ -992,4 +992,28 @@ export type DataClass =
   // rows, the supervisor subscriptions, the advisory polygons and the clinician's own emergency-contact
   // consent are NEVER touched: they are a different data subject's record, and a patient's right to erasure
   // does not reach the clinician's workers-comp evidence. `subjectId` is the patient being destroyed.
-  | "safety_record";
+  | "safety_record"
+  // M32 (AI Platform) per-patient AI PROVENANCE, in two halves (§3.7). Registered in M32-T02 (the schema
+  // task) so the contract exists from the moment the tables do; the REAL erasers bind through the
+  // composition-root hook over the Phase-0 deny-stubs. NEITHER DELETES A ROW. `ai_invocation` is the
+  // §164.528 disclosure ledger — its token counts, model version pin, ZDR flag and timestamps ARE the
+  // evidence that a disclosure to a model vendor happened, or (for a `capability_unavailable` row) that
+  // it did not — so destroying the rows would destroy the record THAT the disclosure occurred, which is
+  // the opposite of what a destruction certificate is for. The erase destroys the CIPHERTEXT on that
+  // patient's invocation rows instead: the NOT NULL `prompt_payload_cipher` is overwritten with the empty
+  // -bytea shred sentinel and the two optional ciphers are nulled, which is the OUTCOME §3.7 specifies
+  // ("the rows remain; the encrypted payloads become unreadable") by the only means a PER-PATIENT
+  // certificate has — shredding the per-tenant DEK would destroy every other patient's rows too, and that
+  // whole-org path is M34's tenant-offboarding operation, not this one. The 0116 immutability trigger
+  // permits exactly this edit and no other cipher write, so the destruction path needs no privileged
+  // bypass. TWO classes because M4's registry is single-keyed and §3.7 maps M32's provenance onto the
+  // distinct classes M22 (intake) and M8 (clinical record) already use; the split is by capability, and
+  // the halves are disjoint, so running both is not a double-shred. NEVER touched: `ai_token_ledger`
+  // (no PHI, append-only, and erasing it would corrupt the tenant's own billing history),
+  // `ai_hallucination_report` (deliberately carries no patient column — a per-patient certificate cannot
+  // identify the report, and joining through `invocation_id` would reach reports it never named) and the
+  // platform-shared governance surface. `subjectId` is the patient being destroyed.
+  /** `doclens_*` invocations — the patient's INTAKE documents (the M22 half). */
+  | "intake_ai_provenance"
+  /** Every other capability — the patient's CHART (the M8 half). */
+  | "clinical_record_ai_provenance";

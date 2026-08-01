@@ -171,6 +171,12 @@ import {
   scheduleM30Jobs,
   wireM30Tenancy,
 } from "./modules/30-quality/index";
+// M32 (AI Platform) boot surface — M32-T02 ships only the §3.7 destruction contract; the seams, routes,
+// permission keys and ABAC predicates land in M32-T06/T07 with `ai.full` still OFF.
+import {
+  createDrizzleAiProvenanceEraseStore,
+  registerAiProvenanceErasers,
+} from "./modules/32-ai-platform/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -863,6 +869,18 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // that is a different data subject's workers-comp evidence.) The Drizzle store binds when a DB client is
   // present; without one the slice's in-memory store stands.
   registerSafetyErasers(deps.db ? { store: createDrizzleSafetyEraseStore(deps.db) } : {});
+  // M32-T02 — `clinical_record_ai_provenance` + `intake_ai_provenance` (per-PATIENT destruction-cert
+  // callbacks that DELETE NOTHING: `ai_invocation` is the §164.528 disclosure ledger, so the rows survive
+  // with their token counts, model pin, ZDR flag and timestamps — the evidence that a disclosure to a
+  // model vendor happened, or that it did not — while the CIPHERTEXT on that patient's rows is destroyed
+  // in place. The per-tenant DEK shred §3.7 describes is the whole-org offboarding path and belongs to
+  // M34; a per-patient certificate cannot shred a key that protects every other patient. Split by
+  // capability: `doclens_*` = the patient's intake documents, everything else = the chart. The token
+  // ledger, the hallucination reports and the platform-shared governance surface are never touched.)
+  // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
+  registerAiProvenanceErasers(
+    deps.db ? { store: createDrizzleAiProvenanceEraseStore(deps.db) } : {},
+  );
   // Phase-1 data-class owners append here as they land.
 }
 

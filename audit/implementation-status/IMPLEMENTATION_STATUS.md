@@ -41,7 +41,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ❌ |
 | M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | M31 Patient/Family Portal & Telehealth | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| M32 AI Platform | 🟡 Partial | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | — | ❌ |
+| M32 AI Platform | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | — | ❌ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | M35 Subscription Billing | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | — | ✅ |

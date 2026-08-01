@@ -176,6 +176,31 @@ const NON_ORG_SCOPED = new Set<string>([
   // / platform-scope row, paired with a discriminator column and a CHECK pair, so the column is present and
   // the tenant rows are org-scoped. The other seven M21 tables carry organization_id NOT NULL.
   "supply_item",
+  // M32 AI Platform (§3.3): SIX of the thirteen tables are the platform's AI-GOVERNANCE surface and
+  // carry NO organization_id BY DESIGN. `ai_capability` is the capability registry — a tenant that
+  // cannot SEE a capability cannot opt in to it (§5.3/W4), so read-all is the point, not a concession;
+  // `ai_capability_lifecycle_event` is the append-only D2 approval ledger (a transition is a fact about
+  // the capability, not about any tenant); `ai_capability_calibration` is the per-(capability, backend)
+  // threshold + drift baseline; `ai_model_backend` is the version-pinned model registry, where a
+  // per-tenant copy would let two tenants disagree about which model version answered; `ai_prompt_template`
+  // is the versioned prompt registry and the D18 prohibited-zone key; `ai_evaluation_run` is governance
+  // evaluation evidence run against the model on a held-out set, not inside a tenant. All six get
+  // read-all `USING (true)` TO wardenx_app with writes only via wardenx_admin in 0116 (the M38
+  // code_system / M22 form_template / M21 supply_item precedent); the four with an empty §3.4 denylist
+  // audit through M1's baseline `wardenx_audit_trigger()`, and the two with a denylist get generated
+  // scrubbing functions that resolve organization_id from the SESSION because the column does not exist.
+  //
+  // The other seven are intentionally NOT listed. Six carry organization_id NOT NULL under canonical
+  // app.org_id RLS (ai_tenant_opt_in_record, ai_clinician_opt_out, ai_invocation, ai_token_ledger,
+  // ai_hallucination_report, ai_routing_override), and `ai_kill_switch_state`'s organization_id is
+  // NULLABLE only on the platform-wide kill row — the column is present and its RLS splits by COMMAND so
+  // a tenant reads the platform row and can never write one.
+  "ai_capability",
+  "ai_capability_lifecycle_event",
+  "ai_capability_calibration",
+  "ai_model_backend",
+  "ai_prompt_template",
+  "ai_evaluation_run",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
