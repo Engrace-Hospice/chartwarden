@@ -138,7 +138,7 @@ export function QapiIncidents(): JSX.Element {
         <KpiCard label="Total reported" value={loading ? "—" : String(incidents.length)} />
       </KpiStrip>
 
-      <section style={cardSurface}>
+      <section style={{ ...cardSurface, marginInline: t.space5 }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Incident register</h2>
         <FilterBar>
           {STATE_FILTERS.map((f) => (
@@ -212,7 +212,7 @@ export function QapiIncidents(): JSX.Element {
         )}
       </section>
 
-      <section style={{ ...cardSurface, marginTop: "1rem" }}>
+      <section style={{ ...cardSurface, marginTop: "1rem", marginInline: t.space5 }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>QAPI projects</h2>
         {projects.length === 0 ? (
           <EmptyState

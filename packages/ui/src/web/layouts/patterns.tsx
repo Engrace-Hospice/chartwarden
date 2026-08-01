@@ -181,7 +181,9 @@ export function WorkQueueLayout({
       {header}
       {kpis}
       {filters}
-      <div style={splitRow}>
+      {/* `wx-work-split` marks the region that must NOT be padded by the bare-slot rule in index.css:
+          the table and the context rail each own their inset. */}
+      <div className="wx-work-split" style={splitRow}>
         <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>
           {table}
         </div>
