@@ -5,11 +5,13 @@
 // throws OrganizationSettingsCollisionError rather than letting one silently shadow
 // the other (W-M1-08, application-layer half of the collision guard — the database
 // trigger in migration 0003 guards the cross-tenant VALUE collision).
+import { M3_ORGANIZATION_SETTINGS } from "./settings-by-m3";
 import { M5_ORGANIZATION_SETTINGS } from "./settings-by-m5";
 import type { ModuleSettingsContribution, OrganizationSettingEntry } from "./types";
 
 // Every module that registers organization-settings keys appends its contribution here.
 const CONTRIBUTIONS: readonly ModuleSettingsContribution[] = [
+  M3_ORGANIZATION_SETTINGS,
   M5_ORGANIZATION_SETTINGS,
   // future module contributions append here
 ];

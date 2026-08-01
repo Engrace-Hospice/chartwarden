@@ -307,8 +307,13 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
       const body = parse(InvokeBreakGlassBody, request.body);
       const reason = body.reason;
       const targetPatientId = body.targetPatientId ?? null;
-      // Tenant policy may require a non-emergency co-sign (→ status cosign_pending).
-      const cosignRequired = body.cosignRequired === true;
+      // audit C2 — TENANT POLICY decides whether this grant opens `cosign_pending`, never the
+      // caller. Reading it from the body let one permission (`breakglass.invoke`) self-issue an
+      // un-cosigned, scope-level grant that satisfies every ABAC predicate AND every step-up
+      // ceremony in the org. `breakglass_cosign_required` defaults to false (see the registry
+      // entry: `cosign_pending` grants no access, so a true default would withhold emergency
+      // chart access). Any `cosignRequired` in the body is ignored — the schema no longer accepts it.
+      const cosignRequired = await deps.cosignPolicy(organizationId);
 
       const event = await deps.breakGlass.invoke({
         organizationId,

@@ -143,6 +143,13 @@ export interface RequireAbacOptions {
    * object-level checks where a 403 would reveal a resource the actor may not know exists.
    */
   readonly notFoundOnDeny?: boolean;
+  /**
+   * Whether an active §2.2 break-glass grant may satisfy this guard. Defaults to `true` (the
+   * emergency-access contract). Set `false` for gates a grant must NOT stand in for — the
+   * step-up ceremonies, where break-glass proves emergency but not the live second factor the
+   * ceremony exists to demand. See `requireStepUp`.
+   */
+  readonly breakGlassBypassable?: boolean;
 }
 
 function defaultTarget(request: GuardRequest): AbacTarget {
@@ -172,11 +179,18 @@ export function requireAbac(
     if (await abacEvaluator(predicate, abacContext, target)) return; // predicate true → allow
 
     // predicate false → break-glass branch (§2.2): allow + flag + audit critical if active.
-    const grant = await breakGlassChecker(abacContext, action, target);
-    if (grant) {
-      ctx.attributes[BREAK_GLASS_ATTRIBUTE] = grant.eventId;
-      await breakGlassAuditHook({ grant, action, context: abacContext, target });
-      return;
+    // audit C2 — unless the guard opts out. Break-glass is proof of EMERGENCY; it is not proof of
+    // PRESENCE. Because `requireStepUp` is itself a `requireAbac`, an active grant used to satisfy
+    // every step-up ceremony in the org — including `support_session.elevate_phi_read` and the
+    // device-attestation gate on bulk PHI export, i.e. the ceremonies that exist precisely to
+    // require a second, live human factor. A grant cannot substitute for one.
+    if (options.breakGlassBypassable !== false) {
+      const grant = await breakGlassChecker(abacContext, action, target);
+      if (grant) {
+        ctx.attributes[BREAK_GLASS_ATTRIBUTE] = grant.eventId;
+        await breakGlassAuditHook({ grant, action, context: abacContext, target });
+        return;
+      }
     }
 
     if (options.notFoundOnDeny) throw new NotFoundError("resource");
@@ -192,6 +206,9 @@ export function requireAbac(
 export function requireStepUp(operationKey: string): GuardHandler {
   return requireAbac(operationKey, "step_up_recent", {
     getTarget: () => ({ operationKey }),
+    // audit C2 — a step-up ceremony is never satisfiable by an emergency grant. See the
+    // break-glass branch in `requireAbac`: this is the one guard that opts out of it.
+    breakGlassBypassable: false,
   });
 }
 

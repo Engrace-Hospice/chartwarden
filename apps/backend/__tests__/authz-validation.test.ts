@@ -87,6 +87,8 @@ function makeServer() {
     notifier: notifier.notifier,
     effectivePermissions: perms.resolver,
     audit: auditSink.executor,
+    // audit C2 — tenant policy, not the request body. The slice pins the registered default.
+    cosignPolicy: async () => false,
   };
   registerAuthorizationRoutes(app, deps);
   return { app, roles, membershipRoles, engagements, auditSink };

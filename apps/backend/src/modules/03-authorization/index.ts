@@ -65,7 +65,10 @@ export { createDbRoleStore } from "./role-store";
 export { createDbMembershipRoleStore } from "./membership-role-store";
 export { createDbBreakGlassStore } from "./break-glass-store";
 
+import { organizationSettingsReader, schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
+import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { createInMemoryAuditExecutor } from "../02-identity/index";
 import {
@@ -104,6 +107,27 @@ export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): vo
     notifier: _notifier().notifier,
     effectivePermissions: _fixedPerms([]).resolver,
     audit: createInMemoryAuditExecutor().executor,
+    // audit C2 — tenant policy for the break-glass co-sign requirement, read server-side from the
+    // M1 organization-settings registry (`breakglass_cosign_required`, M3's key). Fail CLOSED to the
+    // registered default (false) if the row is absent or unreadable: `cosign_pending` grants no
+    // access, so a read failure must not silently withhold emergency chart access.
+    cosignPolicy: async (organizationId) => {
+      try {
+        const rows = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+          tx
+            .select({ settings: schema.organizations.settings })
+            .from(schema.organizations)
+            .where(eq(schema.organizations.id, organizationId))
+            .limit(1),
+        );
+        const settings = rows[0]?.settings as Record<string, unknown> | undefined;
+        return (
+          organizationSettingsReader.get<boolean>(settings, "breakglass_cosign_required") === true
+        );
+      } catch {
+        return false;
+      }
+    },
   };
   _registerAuthzRoutes(app, deps);
 }

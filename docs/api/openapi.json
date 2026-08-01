@@ -10562,9 +10562,6 @@
                         "type": "null"
                       }
                     ]
-                  },
-                  "cosignRequired": {
-                    "type": "boolean"
                   }
                 }
               }

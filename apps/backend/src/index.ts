@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { audit } from "@wardenx/audit";
+import { sql } from "drizzle-orm";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -998,6 +999,26 @@ if ((import.meta as { main?: boolean }).main) {
   const dbHandle = process.env.DATABASE_URL
     ? createDbClient({ connectionString: process.env.DATABASE_URL })
     : undefined;
+  // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
+  // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
+  // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
+  // cluster directly and refuse to serve. Dev/test only warn — the local single-org demo needs the
+  // bypass for pre-org reads until the platform pool lands.
+  if (dbHandle) {
+    const bypassing = await dbHandle.db.execute(
+      sql`SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user`,
+    );
+    const row = (bypassing as unknown as { rows?: Array<{ rolbypassrls?: boolean }> }).rows?.[0];
+    if (row?.rolbypassrls === true) {
+      const message =
+        `the database role this process connects as (current_user) has BYPASSRLS: ` +
+        "row-level security is NOT enforced for any query, on any table.";
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(`Refusing to boot — ${message} Revoke it (ALTER ROLE … NOBYPASSRLS).`);
+      }
+      console.warn(`⚠️  ${message} (permitted outside production)`);
+    }
+  }
   // Phase 2D — the Valkey/Redis connection the M34 §4.3 BullMQ Queue producers + Workers open over. Parsed
   // from REDIS_URL (the same env M1 infra wires the rate-limit store from). Absent → the M34 command routes'
   // enqueue ports + the worker construction stay fail-closed (a typed throw), never a silent drop. The M4-T11

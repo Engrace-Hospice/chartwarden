@@ -180,7 +180,9 @@ export const InvokeBreakGlassBody = Type.Object(
     reason: Type.String({ minLength: 10, maxLength: 2000 }),
     /** `break_glass_event.target_patient_id` is uuid; null/absent = scope-level glass. */
     targetPatientId: Type.Optional(Type.Union([uuid(), Type.Null()])),
-    cosignRequired: Type.Optional(Type.Boolean()),
+    // audit C2 — `cosignRequired` REMOVED. Whether a grant needs a co-signer is tenant policy
+    // (`breakglass_cosign_required`), resolved server-side; a caller that supplies it now gets a
+    // 422 from `additionalProperties: false` rather than silently choosing its own oversight.
   },
   { additionalProperties: false },
 );

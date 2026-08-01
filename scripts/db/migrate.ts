@@ -21,10 +21,20 @@ import { Client } from "pg";
 const here = dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = join(here, "..", "..", "packages", "db", "migrations");
 const APP_ROLE = "wardenx_app";
+/** BYPASSRLS is an explicit, development-only opt-in — see the grant block below. */
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const BYPASSRLS_REQUESTED = process.env.WARDENX_DEV_BYPASSRLS === "1";
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  // A guessable default password on a LOGIN role is only tolerable on a throwaway local cluster.
+  if (IS_PRODUCTION && !process.env.WARDENX_APP_PASSWORD) {
+    throw new Error(
+      "WARDENX_APP_PASSWORD is required when NODE_ENV=production — refusing to set the default " +
+        `login password on ${APP_ROLE}.`,
+    );
+  }
   const appPassword = process.env.WARDENX_APP_PASSWORD ?? "wardenx_app";
 
   const db = new Client({ connectionString: url });
@@ -50,16 +60,38 @@ async function main(): Promise<void> {
   }
 
   // Make the RLS app role connectable so DATABASE_URL can be wardenx_app directly.
+  // Both the role name and the password are escaped BY POSTGRES (`%I` / `%L`) rather than
+  // interpolated: ALTER ROLE takes no bind parameters, so the statement is built with `format()`
+  // server-side and then executed. A password containing a quote is a broken migration at best.
   console.log(`Enabling LOGIN on ${APP_ROLE} …`);
-  await db.query(`ALTER ROLE ${APP_ROLE} WITH LOGIN PASSWORD '${appPassword}'`);
+  const { rows } = await db.query<{ stmt: string }>(
+    "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', $1::text, $2::text) AS stmt",
+    [APP_ROLE, appPassword],
+  );
+  await db.query(rows[0].stmt);
   // CONNECT on the database (PUBLIC has it by default, but be explicit/idempotent).
   await db.query(`GRANT CONNECT ON DATABASE ${db.database} TO ${APP_ROLE}`);
-  // LOCAL-DEV ONLY: let wardenx_app bypass RLS. The app's queries already scope explicitly by
-  // org/user (RLS is defense-in-depth here), and several pre-org / cross-org reads (e.g.
-  // /auth/memberships — see membership-repository.ts) are documented to require a BYPASSRLS/platform
-  // connection. For a single-org local demo this makes the whole surface work. NOT for production
-  // (prod uses a dedicated platform pool for cross-org reads); the live RLS suite uses its own DB.
-  await db.query(`ALTER ROLE ${APP_ROLE} WITH BYPASSRLS`);
+
+  // BYPASSRLS makes all 357 RLS policies decorative for the connecting role, so it is opt-in and
+  // refused outside development. Several pre-org / cross-org reads (`/auth/memberships` —
+  // membership-repository.ts; M26 cap) genuinely need a connection RLS cannot scope; the production
+  // answer is a SECOND pooled credential for those reads, not a blanket bypass on the app role.
+  // Until that pool exists, a local single-org demo opts in explicitly with WARDENX_DEV_BYPASSRLS=1.
+  if (BYPASSRLS_REQUESTED && !IS_PRODUCTION) {
+    console.log(`⚠️  DEV ONLY: granting BYPASSRLS to ${APP_ROLE} (RLS is not enforced for this role)`);
+    await db.query(`ALTER ROLE ${APP_ROLE} WITH BYPASSRLS`);
+  } else {
+    // Idempotent and safe to run against a cluster where a previous migrate granted it.
+    await db.query(`ALTER ROLE ${APP_ROLE} WITH NOBYPASSRLS`);
+    if (BYPASSRLS_REQUESTED) {
+      console.log("✗ WARDENX_DEV_BYPASSRLS ignored: NODE_ENV=production. BYPASSRLS revoked.");
+    } else {
+      console.log(
+        `RLS enforced for ${APP_ROLE} (set WARDENX_DEV_BYPASSRLS=1 for the local single-org demo;\n` +
+          "  without it, pre-org reads such as /auth/memberships return no rows and org-select is empty).",
+      );
+    }
+  }
 
   await db.end();
   console.log("✓ migrations complete; wardenx_app is LOGIN-enabled.");
