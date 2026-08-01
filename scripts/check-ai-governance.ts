@@ -25,6 +25,15 @@ const REQUIRED = [
   "mortality-decline-prediction",
   "falls-risk-prediction",
   "aggregate-cap-projection",
+  // Added from Module 32's §2.4 Phase-1 inventory. Enforced on the same terms as the original
+  // twelve — a cataloged capability whose doc the gate does not check is a second-class entry,
+  // and the whole point of adding these was that an uncataloged capability is invisible.
+  "doclens-sud-detection",
+  "protocol-suggestion-oncall",
+  "hospitalization-risk-30d",
+  "bereavement-risk-narrative",
+  "denial-outcome-prediction",
+  "level-of-care-prediction",
 ] as const;
 
 const violations: string[] = [];

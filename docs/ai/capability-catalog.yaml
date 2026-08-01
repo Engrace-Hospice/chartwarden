@@ -111,3 +111,65 @@ capabilities:
     enabled_by_default: false
     kill_switch_flag: ai.aggregate_cap_projection_kill
     doc: docs/ai/capabilities/aggregate-cap-projection.md
+
+  # Added from Module 32's section 2.4 Phase-1 capability inventory, which registered these six
+  # with `governanceCatalogId: null` — registrable, and (once `ai.full` allows) servable, with no
+  # governance doc, no risk class, and no kill-switch flag name. `lifecycle_state` is `proposed`
+  # for all six: M32's inventory seeds four of them DESIGN_REVIEW, but advancing a lifecycle state
+  # is what the section 5 approval workflow is for, not a side effect of cataloging.
+
+  - id: doclens-sud-detection
+    name: DocLens SUD indicator detection
+    module: 22
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.doclens_sud_detect_kill
+    doc: docs/ai/capabilities/doclens-sud-detection.md
+
+  - id: protocol-suggestion-oncall
+    name: On-call triage protocol suggestion
+    module: 19
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.protocol_suggestion_oncall_kill
+    doc: docs/ai/capabilities/protocol-suggestion-oncall.md
+
+  - id: hospitalization-risk-30d
+    name: 30-day hospitalization risk prediction
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.hospitalization_risk_30d_kill
+    doc: docs/ai/capabilities/hospitalization-risk-30d.md
+
+  - id: bereavement-risk-narrative
+    name: Bereavement risk narrative augmentation
+    module: 16
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.bereavement_risk_narrative_kill
+    doc: docs/ai/capabilities/bereavement-risk-narrative.md
+
+  - id: denial-outcome-prediction
+    name: Denial outcome / appeal probability prediction
+    module: 25
+    risk_class: medium
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.denial_outcome_prediction_kill
+    doc: docs/ai/capabilities/denial-outcome-prediction.md
+
+  # risk_class ASSIGNED, not inherited — no prior source states one. See the doc's Risk
+  # Classification section; ratify or revise before this advances past PROPOSED.
+  - id: level-of-care-prediction
+    name: Level of care prediction
+    module: 32
+    risk_class: high
+    lifecycle_state: proposed
+    enabled_by_default: false
+    kill_switch_flag: ai.level_of_care_prediction_kill
+    doc: docs/ai/capabilities/level-of-care-prediction.md
