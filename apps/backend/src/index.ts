@@ -171,11 +171,17 @@ import {
   scheduleM30Jobs,
   wireM30Tenancy,
 } from "./modules/30-quality/index";
-// M32 (AI Platform) boot surface — M32-T02 ships only the §3.7 destruction contract; the seams, routes,
-// permission keys and ABAC predicates land in M32-T06/T07 with `ai.full` still OFF.
+// M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract plus M32-T06's §4.4 seam
+// registration. Routes, permission keys and ABAC predicates land in M32-T07 with `ai.full` still OFF.
 import {
+  M32_PLATFORM_JOB_ID,
+  createAiPromptRegistry,
   createDrizzleAiProvenanceEraseStore,
+  createDrizzleAiPromptTemplateStore,
+  createUnresolvableAiPromptArtifactReader,
+  registerAiPlatformSeams,
   registerAiProvenanceErasers,
+  wireM32Tenancy,
 } from "./modules/32-ai-platform/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
@@ -703,6 +709,39 @@ export function wireModuleSeams(
   // empty; without this the platform-ops seam reads + the platform-scoped workers are REFUSED entry to
   // withPlatformContext — fail-closed). Must run before any registerLiveM34Seams read or worker run.
   wireM34Tenancy();
+  // M32-T06 (§4.4 steps 4–5) — publish M32's seams over their boot deny-stubs.
+  //
+  // ONLY THE `AIPromptRegistry` BINDS LIVE HERE, and the asymmetry is deliberate. It is not an inference
+  // surface: it is the D18/§8.5 query M12, M13, M18, M21, M27 and M28 each run at their own boot to prove
+  // no active prompt template targets their AI-prohibited zone. Its deny-stub THROWS — an unwired registry
+  // answering `[]` would hand six boot validators a clean bill of health minted from nothing — so leaving
+  // it unregistered is not a neutral default. The artifact reader stays UNRESOLVABLE (there is no
+  // `/srv/prompts` mount and no authored template this wave), which is fail-closed in the right direction:
+  // the D18 prefix queries answer from the TABLE alone and need no reader, while any attempt to resolve a
+  // template BODY refuses rather than serving an unpinned prompt.
+  //
+  // The ten §4.2 INFERENCE seams stay on their refusing deny-stubs, which is the Wave-H posture ("M32 —
+  // capability shell only, `ai.full` OFF"). Standing them up needs an `AiInvocationPipeline`, and that
+  // needs a per-tenant DEK envelope cipher that no module on this platform has yet (M20's write path
+  // refuses for the same reason). A pipeline built without one could write plaintext PHI into a column
+  // named `prompt_payload_cipher`; a deny-stub that answers `{ available: false }` costs M8 nothing,
+  // because M8's Layer-1 path is what runs today either way.
+  wireM32Tenancy();
+  registerAiPlatformSeams(
+    deps.db
+      ? {
+          promptRegistry: createAiPromptRegistry({
+            store: createDrizzleAiPromptTemplateStore({
+              db: deps.db,
+              platformDb: deps.db,
+              auditBypass: m34PlatformBypassAuditor,
+              jobId: M32_PLATFORM_JOB_ID,
+            }),
+            artifacts: createUnresolvableAiPromptArtifactReader(),
+          }),
+        }
+      : {},
+  );
   // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
   // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
   // `TenantKeyProvider` interface, so the live-impl home is the package, not the M1 registry).

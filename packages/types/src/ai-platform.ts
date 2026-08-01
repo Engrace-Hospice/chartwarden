@@ -381,6 +381,15 @@ export type AiCapabilityUnavailableReason =
   // module that supplied the disallowed field) to go look at a vendor outage instead.
   | "phi_minimization_failure"
   | "backend_unhealthy"
+  // M32-T06. The answer a §4.2 seam's BOOT DENY-STUB gives: no M32 implementation is registered under
+  // that seam name at all. Deliberately distinct from `phase_1_capability_shell`, which the REGISTERED
+  // seam gives while `ai.full` is off. In Phase 1 the two are behaviourally identical, so collapsing
+  // them looks free — it stops being free the moment Phase 2 flips the flag on, when
+  // `phase_1_capability_shell` becomes unreachable and this one starts meaning "the boot forgot to wire
+  // M32". One reason for both would report a wiring fault as a policy decision and send the operator to
+  // read the flag table instead of the boot log. M19's own `TriageAiUnavailableReason` already carries
+  // this exact member for this exact case; this is the platform-wide spelling of it.
+  | "provider_unregistered"
   | "output_validation_failed_after_retry";
 
 /**

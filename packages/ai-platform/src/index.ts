@@ -24,7 +24,7 @@
 //                   §3.2.11's evaluation runs and D10's evidence check           (plan T05)
 //   · ./prompts     §4.5 — AIPromptRegistry (D18 prefix query + content hash)    (plan T05)
 //   · ./schemas     §2.5 — per-capability TypeBox input/output schemas          (spec T07)
-//   · ./seams       §4.2 — the twelve published seam contracts                  (plan T06)
+//   · ./seams       §4.2 — the published seam contracts + D18's zone registry   (plan T06)
 //
 // The TYPE surface (enum mirrors, table descriptors, the `capability_unavailable` envelope, the
 // invocation context) lives in the leaf `@wardenx/types` `ai-platform.ts`, not here, so a consumer
@@ -36,3 +36,4 @@ export * from "./invocation";
 export * from "./backends";
 export * from "./safety";
 export * from "./prompts";
+export * from "./seams";

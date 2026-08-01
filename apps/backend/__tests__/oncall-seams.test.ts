@@ -145,12 +145,17 @@ describe("M19 §4.3 — registry wiring", () => {
 
 describe("M32 §8.6 — the two ADVISORY seams (D11 / D12)", () => {
   it("owns them at M32 and declares them PHI-bearing", () => {
-    const m32 = REQUIRED_SEAMS.filter((s) => s.ownerModule === 32);
-    expect(m32.map((s) => s.key).sort()).toEqual([
-      "HospitalizationRiskProvider",
-      "ProtocolSuggestionProvider",
-    ]);
-    for (const seam of m32) expect(seam.phi).toBe(true);
+    // M32-T06 published the rest of §4.2, so M32 now owns more than these two. What this test still
+    // guards is the part M19 depends on: each of these names appears EXACTLY ONCE and is owned by M32.
+    // A second entry under a second name is the M15/M17 `VolunteerComplianceProvider` failure — two
+    // interfaces for one seam, one of them permanently unbound. The full M32-owned set is asserted in
+    // `ai-platform-seams.test.ts`, which is where it belongs.
+    for (const key of ["HospitalizationRiskProvider", "ProtocolSuggestionProvider"] as const) {
+      const entries = REQUIRED_SEAMS.filter((s) => s.key === key);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.ownerModule).toBe(32);
+      expect(entries[0]?.phi).toBe(true);
+    }
   });
 
   it("answers `unavailable` instead of throwing — an advisory must not fail the intake path", async () => {
