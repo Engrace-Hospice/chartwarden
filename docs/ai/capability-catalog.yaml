@@ -163,8 +163,10 @@ capabilities:
     kill_switch_flag: ai.denial_outcome_prediction_kill
     doc: docs/ai/capabilities/denial-outcome-prediction.md
 
-  # risk_class ASSIGNED, not inherited — no prior source states one. See the doc's Risk
-  # Classification section; ratify or revise before this advances past PROPOSED.
+  # risk_class RATIFIED 2026-08-01 — high. Originated here (neither M32 §2.4 nor Architecture §10
+  # classified this capability) and is now decided, not provisional. It gates the Clinical Reviewer
+  # on approval, a 12-month re-approval cadence, and the §164.528 acknowledgment on tenant opt-in.
+  # See the capability doc's Risk Classification section.
   - id: level-of-care-prediction
     name: Level of care prediction
     module: 32
