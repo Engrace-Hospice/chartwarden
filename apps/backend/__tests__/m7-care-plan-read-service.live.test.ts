@@ -5,8 +5,8 @@
  * RLS-isolation suite drives the raw policies as `wardenx_app`. Neither proves the PRODUCTION read
  * SERVICE — the one the composition root mounts — returns the right rows through `withOrgContext`.
  * This drives that service over the real M7 tables: the care-plan aggregate / version-ledger reads
- * surface the seeded chain, RLS scopes every read by tenant (org B is denied org A's plan), and every
- * write fail-closes 501.
+ * surface the seeded chain, RLS scopes every read by tenant (org B is denied org A's plan), and the
+ * bootstrap write drives a real insert (the full write lifecycle lives in m7-care-plan-write.live).
  *
  * As the template M6 suite notes: prod connects as the NOBYPASSRLS `wardenx_app` role (a login role
  * SET ROLEs to it) and `withOrgContext` deliberately does NOT SET ROLE, so the read client here
@@ -17,6 +17,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -186,9 +187,15 @@ describe.skipIf(!DB_URL)("M7 Drizzle read service — LIVE Postgres (M7L-T01)", 
     expect(bPlan?.id).not.toBe(seeded[ORG_A].carePlan);
   });
 
-  it("writes fail-closed 501 until the M7L-T02+ Drizzle write lifecycle lands", async () => {
-    await expect(
-      service.bootstrapCarePlan(ORG_A, PATIENT, ADMISSION),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("bootstrapCarePlan opens a plan (T02 — the M7 write lifecycle is now live; full coverage in m7-care-plan-write.live)", async () => {
+    // Every M7 write is live now (T02); prove the bootstrap path drives a real insert under the
+    // unprivileged role. The version/sign/authoring lifecycle is exercised in the dedicated write suite.
+    // Fresh patient + admission — the seeded chain already owns ADMISSION's one-per-admission slot.
+    const boot = (await service.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as {
+      id: string;
+      status: string;
+    };
+    expect(boot.status).toBe("draft");
+    expect(boot.id).toBeTruthy();
   });
 });

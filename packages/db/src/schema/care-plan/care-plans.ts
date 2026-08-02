@@ -7,7 +7,7 @@
 // (no FK — supersession is via the version status enum). RLS + the M4 write-audit trigger land in
 // migration 0029 (M7-T02, §3.4–3.6).
 import { sql } from "drizzle-orm";
-import { index, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { carePlanStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -20,15 +20,16 @@ export const carePlans = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // provider_entity_id / location_id are denormalized siting; nullable since the bootstrap route
+    // carries only patient + admission and the admission itself may not be sited yet (mig 0127, M6 0123).
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     patientId: uuid("patient_id").notNull(), // M5 patient (app-validated; no cross-module FK)
     admissionId: uuid("admission_id").notNull(), // M6 admission (app-validated; no cross-module FK)
     status: carePlanStatus("status").notNull().default("draft"),
+    version: integer("version").notNull().default(1), // §7.7 optimistic concurrency (mig 0127)
     initialDueAt: timestamp("initial_due_at", { withTimezone: true }).notNull(),
     initialSignedAt: timestamp("initial_signed_at", { withTimezone: true }),
     nextReviewDueAt: timestamp("next_review_due_at", { withTimezone: true }),

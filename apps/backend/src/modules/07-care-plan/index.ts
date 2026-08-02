@@ -2,21 +2,33 @@
 // lifecycle core (M7-T03) and the published §7.8 CarePlanReader seam + its registration hook (M7-T04).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { createDbCarePlanRouteService } from "./care-plan-route-service-db";
+import {
+  type CarePlanWriteOutboxPort,
+  createDbCarePlanRouteService,
+} from "./care-plan-route-service-db";
 import { registerCarePlanRoutes as _registerM7Routes } from "./routes/care-plan-routes";
 
-export { createDbCarePlanRouteService } from "./care-plan-route-service-db";
+export {
+  type CarePlanWriteOutboxPort,
+  createDbCarePlanRouteService,
+} from "./care-plan-route-service-db";
 
 /**
- * M7L-T01 — mount the M7 care-plan routes over the PRODUCTION Drizzle route service (RLS-scoped under
+ * M7L-T01/T02 — mount the M7 care-plan routes over the PRODUCTION Drizzle route service (RLS-scoped under
  * `withOrgContext`). Called from the composition root's db branch. Reads are live (the patient care-plan
  * aggregate, the §7.5 summary, the version ledger + a single version, all §7.6 SUD-filtered per-caller);
- * writes fail-closed 501 until the M7L-T02+ Drizzle write lifecycle lands. Replaces the in-memory
- * clinical-core scaffold mount for M7. M7's route surface carries no scaffold ABAC predicates that need a
- * resolver here — the §6 authoring predicates register separately via registerCarePlanAbacPredicates.
+ * the WRITE lifecycle (bootstrap → version draft/finalize/sign/return → problem/goal/intervention
+ * authoring) is live too, driving the pure §2.2/§2.3 core with §7.7 optimistic concurrency and emitting
+ * `m7.*` on the transactional outbox (the composition root binds the catalog-validating publisher). No
+ * route is left at 501. M7's route surface carries no scaffold ABAC predicates that need a resolver here
+ * — the §6 authoring predicates register separately via registerCarePlanAbacPredicates.
  */
-export function mountCarePlanRoutes(app: FastifyInstance, db: DbClient): void {
-  _registerM7Routes(app, { service: createDbCarePlanRouteService(db) });
+export function mountCarePlanRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: CarePlanWriteOutboxPort,
+): void {
+  _registerM7Routes(app, { service: createDbCarePlanRouteService(db, outbox) });
 }
 
 export * from "./lifecycle/index";

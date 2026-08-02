@@ -29,16 +29,16 @@ export const carePlanVersions = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // Denormalized siting; nullable — the version inherits it from the plan, which may be unsited (mig 0127).
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     carePlanId: uuid("care_plan_id")
       .notNull()
       .references(() => carePlans.id, { onDelete: "restrict" }),
     sequence: integer("sequence").notNull(),
+    version: integer("version").notNull().default(1), // §7.7 optimistic concurrency (mig 0127)
     status: carePlanVersionStatus("status").notNull().default("draft"),
     kind: carePlanVersionKind("kind").notNull(),
     idgMeetingId: uuid("idg_meeting_id"), // M14 soft-ref (app-validated; no cross-module FK)
