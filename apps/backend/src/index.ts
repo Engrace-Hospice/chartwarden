@@ -63,7 +63,6 @@ import {
   registerPatientSeams,
 } from "./modules/05-patient/index";
 import {
-  createInMemoryAdmissionBackend,
   mountAdmissionRoutes,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
@@ -71,7 +70,6 @@ import {
   registerAdmissionSeams,
 } from "./modules/06-admission/index";
 import {
-  createInMemoryCarePlanBackend,
   M7_OUTBOX_EVENTS,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
@@ -82,7 +80,6 @@ import {
 import {
   M8_OUTBOX_EVENTS,
   createDrizzleEncounterReaderStore,
-  createInMemoryEncounterBackend,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
   registerEncounterRoutes,
@@ -91,7 +88,6 @@ import {
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
-  createInMemoryAssessmentBackend,
   registerAssessmentAbacPredicates,
   registerAssessmentErasers,
   registerAssessmentRoutes,
@@ -100,7 +96,6 @@ import {
 } from "./modules/09-assessments/index";
 import {
   M10_OUTBOX_EVENTS,
-  createInMemoryHopeBackend,
   registerHopeAbacPredicates,
   registerHopeErasers,
   registerHopeRoutes,
@@ -109,7 +104,6 @@ import {
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
-  createInMemoryOrderBackend,
   registerOrderAbacPredicates,
   registerOrderErasers,
   registerOrderRoutes,
@@ -118,7 +112,6 @@ import {
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
-  createInMemoryDoseSpotBackend,
   registerDoseSpotAbacPredicates,
   registerDoseSpotErasers,
   registerDoseSpotRoutes,
@@ -127,7 +120,6 @@ import {
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
-  createInMemoryEmarBackend,
   registerEmarAbacPredicates,
   registerEmarErasers,
   registerEmarRoutes,
@@ -136,7 +128,6 @@ import {
 } from "./modules/13-emar/index";
 import {
   M14_OUTBOX_EVENTS,
-  createInMemoryIdgBackend,
   registerIdgAbacPredicates,
   registerIdgErasers,
   registerIdgRoutes,
@@ -169,14 +160,12 @@ import {
 } from "./modules/16-bereavement/index";
 import {
   M17_OUTBOX_EVENTS,
-  SchedulingRouteService,
   registerSchedulingAbacPredicates,
   registerSchedulingRoutes,
   registerSchedulingSeams,
   mountSchedulingRoutes,
 } from "./modules/17-scheduling/index";
 import {
-  EvvRouteService,
   M18_OUTBOX_EVENTS,
   registerEvvAbacPredicates,
   registerEvvRoutes,
@@ -223,7 +212,6 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
-  createInMemoryDocumentBackend,
   createSignedUrlService,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
@@ -442,60 +430,15 @@ export { buildServer };
 export * from "./bootstrap/index";
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-// M6–M14 / M17 / M18 / M22 — THE CLINICAL-CORE ROUTE SCAFFOLD. READ THIS BEFORE YOU BELIEVE A SCREEN.
+// M6–M14 / M17 / M18 / M22 — THE CLINICAL CORE IS LIVE OVER DRIZZLE.
 //
-// These twelve modules ship route plugins and a §4.1 route inventory, but NOT ONE of them has a
-// Drizzle route service: every `routes/service.ts` exports exactly one backend factory and it is
-// `createInMemory*Backend` (M17/M18 hand-construct a class over a seed literal). The `seams/drizzle-
-// store.ts` files in M7/M8/M11/M13/M14 are narrow cross-module SEAM readers, not route services.
-//
-// Mounting them therefore turns ~336 endpoints from 404 into 200-with-an-empty-array over a
-// per-process `Map`. That is a UI-development scaffold, and it is NOT the database:
-//   • M4's WRITE-AUDIT TRIGGERS NEVER FIRE. They are Postgres triggers; an in-memory mutation touches
-//     no table. A signed encounter, an administered controlled substance and a discharge would all
-//     commit with NO audit row. (The PHI READ-audit hook still fires — it is a Fastify
-//     preSerialization hook — so you get read rows for data that was never written.)
-//   • RLS NEVER RUNS. Tenancy on these paths is a JS `organizationId` comparison inside each slice,
-//     not a policy. There is no second line of defence behind a missed check.
-//   • Every row is lost on restart and invisible to every other replica.
-//
-// So this is HARD-OFF IN PRODUCTION and cannot be re-enabled by an env var: a clinical record that
-// silently evaporates and audits nothing is worse than a 404, which at least tells the truth. Set
-// WARDENX_CLINICAL_CORE_SCAFFOLD=0 to opt out in dev too (restoring the 404s).
-//
-// The backends are constructed ONCE and shared: each module's ABAC resolver MUST be the same instance
-// its routes mutate, or the predicate reads a different dataset than the handler.
+// Every one of these twelve modules now mounts a PRODUCTION Drizzle route service under `withOrgContext`
+// (see the `mount*Routes(app, dbHandle.db, …)` calls in registerModuleRoutes): reads AND the full write
+// lifecycle run as real Postgres statements, so RLS scopes every row by `app.org_id` and the M4 write-audit
+// triggers fire on every mutation. The former in-memory `createInMemory*Backend` route scaffold (a per-process
+// `Map` with no RLS and no audit) has been removed — the in-memory backends survive only as the behavioral
+// reference in each module's `routes/service.ts` (used by the pure route/acceptance suites), never mounted here.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-export const clinicalCoreScaffoldEnabled =
-  process.env.NODE_ENV !== "production" && process.env.WARDENX_CLINICAL_CORE_SCAFFOLD !== "0";
-
-let clinicalCoreBackends: ReturnType<typeof buildClinicalCoreBackends> | undefined;
-
-function buildClinicalCoreBackends() {
-  return {
-    m6: createInMemoryAdmissionBackend({}),
-    m7: createInMemoryCarePlanBackend({}),
-    m8: createInMemoryEncounterBackend({}),
-    m9: createInMemoryAssessmentBackend({}),
-    m10: createInMemoryHopeBackend({}),
-    m11: createInMemoryOrderBackend({}),
-    m12: createInMemoryDoseSpotBackend({}),
-    m13: createInMemoryEmarBackend({}),
-    m14: createInMemoryIdgBackend({}),
-    m17: new SchedulingRouteService({
-      now: () => new Date().toISOString(),
-      newId: () => randomUUID(),
-    }),
-    m18: new EvvRouteService({}),
-    m22: createInMemoryDocumentBackend({}),
-  };
-}
-
-/** Memoized so the ABAC resolvers registered at boot are the SAME instances the routes later mutate. */
-function getClinicalCoreBackends(): ReturnType<typeof buildClinicalCoreBackends> {
-  clinicalCoreBackends ??= buildClinicalCoreBackends();
-  return clinicalCoreBackends;
-}
 
 /**
  * Register every Phase-1 producer module's real seams into the M1 registry. Passed to
@@ -815,28 +758,23 @@ export function wireModuleSeams(
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
   registerConsentAbacPredicates(); // M39 — the 11 §4.8 ABAC predicate resolvers (resolve via the seam)
   // M7 — the five §6 predicate resolvers. `caseload_or_scope` is the SHARED patient-scope predicate that
-  // M9-M15/M19-M26/M34 bind BY NAME, so it must be registered even while M7's own routes are unmounted:
-  // M3's registry denies on an unregistered name, which made every consumer's guard a permanent 403
-  // (GET /api/v1/triage-calls being the visible one). Registered after the M5 `CaseloadProvider` / M39
-  // `ConsentEvaluator` seams above, as the registrar's contract requires. M7 has no Drizzle resolver yet
-  // (its routes are unmounted, so no plan/problem/version row is reachable) — the deny-stub resolver keeps
-  // the `planId`-keyed arms and the M7-owned predicates fail-closed, while the `patientId` and collection
-  // arms resolve through the live caseload seam. Swap for a Drizzle resolver when M7's routes mount.
-  // M7's predicates MUST be registered here rather than beside its route mount: bootSeams() runs before
-  // registerModuleRoutes(), and every registrar skips a name the registry already holds, so a later
-  // re-registration is silently ignored. When the clinical-core scaffold is on, hand it the SAME backend
-  // instance the routes get, so the `planId`-keyed arms resolve against the store the handlers mutate
-  // instead of a permanent null. NOTE this registrar also owns `caseload_or_scope`, the shared predicate
-  // M9–M15/M19–M26/M34 bind BY NAME — its `patientId`/collection arms resolve through the live M5
-  // CaseloadProvider either way, so consumers keep the behaviour they had.
+  // M9-M15/M19-M26/M34 bind BY NAME — M3's registry denies on an unregistered name, so it must be registered
+  // here (after the M5 `CaseloadProvider` / M39 `ConsentEvaluator` seams above, as the registrar's contract
+  // requires), or every consumer's guard is a permanent 403. It MUST be registered at boot rather than beside
+  // M7's route mount: bootSeams() runs before registerModuleRoutes(), and every registrar skips a name the
+  // registry already holds, so a later re-registration is silently ignored.
+  //
+  // The `patientId`/collection arms resolve through the live M5 CaseloadProvider. The `planId`-keyed arms use
+  // the deny-stub below: M7's routes mount over Drizzle (createDbCarePlanRouteService), but that service does
+  // not yet expose the §6 `CarePlanAbacResolver` (loadPlan/loadProblem/loadVersion over the ABAC facts DTOs),
+  // so the plan-scoped predicates fail-closed. TODO(M7L): bind a Drizzle CarePlanAbacResolver so the plan-arms
+  // resolve real rows.
   registerCarePlanAbacPredicates({
-    resolver: clinicalCoreScaffoldEnabled
-      ? getClinicalCoreBackends().m7.resolver
-      : {
-          loadPlan: async () => null,
-          loadProblem: async () => null,
-          loadVersion: async () => null,
-        },
+    resolver: {
+      loadPlan: async () => null,
+      loadProblem: async () => null,
+      loadVersion: async () => null,
+    },
   });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
   // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
@@ -1360,7 +1298,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
-          mountDocumentRoutes(app, dbHandle.db); // M22 reads
+          mountDocumentRoutes(app, dbHandle.db); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake)
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db); // M39 — consent catalog/records/decision-audit reads (FB-T03)
