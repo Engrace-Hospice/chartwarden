@@ -51,8 +51,24 @@ function minutesBetween(fromIso: string | null, toIso: string | null): number | 
  * measures), M31 (portal summary), M33 (dashboards), and M37 (IPU IV-pump overlay) consume. Pure projection +
  * the derived read-side measure inputs; RLS pins the tenant.
  */
+/**
+ * Was a reassessment of `scaleType` captured for `patientId` at or before `dueIso` (and after the PRN was
+ * administered)? Injected so M13 consumes M9's ScaleSeriesProvider OPAQUELY (no schema import, no dependsOn
+ * edge) — see seams/index.ts, which binds it to the M1 registry. Absent → the prn-effectiveness measure
+ * suppresses (the provider throws) rather than scoring a fabricated zero (D6/D13).
+ */
+export interface ReassessmentCoverageReader {
+  wasReassessed(
+    patientId: string,
+    scaleType: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<boolean>;
+}
+
 export function createMedicationAdministrationProvider(
   store: EmarSeamStore,
+  deps: { readonly reassessmentCoverage?: ReassessmentCoverageReader } = {},
 ): MedicationAdministrationProvider {
   return {
     async getAdministration(_orgId, administrationId) {
@@ -100,6 +116,26 @@ export function createMedicationAdministrationProvider(
     },
     async getMissedDoseCountsForOrg(organizationId, window) {
       return store.missedDoseCountsForOrg(organizationId, window);
+    },
+    async getPrnEffectivenessCountsForOrg(organizationId, window) {
+      const obligations = await store.prnReassessmentObligationsForOrg(organizationId, window);
+      const coverage = deps.reassessmentCoverage;
+      if (coverage === undefined) {
+        // No M9 coverage seam bound → the measure cannot be computed. Suppress (do NOT score 0/N as if
+        // every PRN went un-reassessed — that would publish a fabricated failing rate, D6/D13).
+        throw new Error(
+          "prn_effectiveness: reassessment-coverage reader (M9 ScaleSeriesProvider) is unbound",
+        );
+      }
+      let numerator = 0;
+      for (const o of obligations) {
+        // "Documented" = an M9 assessment of the recommended scale captured between the administration and
+        // the reassessment-due instant. Aggregate only — no obligation row leaves M13 (D6).
+        if (await coverage.wasReassessed(o.patientId, o.scaleType, o.administeredAt, o.reassessmentDueAt)) {
+          numerator++;
+        }
+      }
+      return { numerator, denominator: obligations.length };
     },
     async getMissedDoseSummary(_orgId, patientId, windowIso) {
       const rows = await store.doseScheduleRowsForPatient(patientId);

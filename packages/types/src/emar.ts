@@ -463,6 +463,17 @@ export interface MedicationAdministrationProvider {
     orgId: string,
     window: { from: string; to: string },
   ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+  /**
+   * ORG-LEVEL PRN-effectiveness population over a due-at window — M30's `prn_effectiveness_documented_rate`
+   * input. Denominator = PRN administrations with a recommended reassessment scale whose reassessment fell
+   * due inside the window; numerator = those with a matching M9 assessment captured before the due instant.
+   * The provider joins M13's PRN rows against M9's ScaleSeriesProvider internally, so only the aggregate
+   * PAIR crosses (D6). Suppresses (throws) when the M9 coverage seam is unbound rather than scoring zero.
+   */
+  getPrnEffectivenessCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
+  ): Promise<{ readonly numerator: number; readonly denominator: number }>;
   getMissedDoseSummary(
     orgId: string,
     patientId: string,

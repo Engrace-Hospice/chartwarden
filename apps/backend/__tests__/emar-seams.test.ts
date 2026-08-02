@@ -168,6 +168,51 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
     expect(out).toEqual({ prnCount: 3, prnWithReassessmentCount: 2, reassessmentRate: 2 / 3 });
   });
 
+  it("getPrnEffectivenessCountsForOrg joins in-window obligations against the M9 coverage reader (aggregate only)", async () => {
+    const store = createInMemoryEmarSeamStore({
+      prnObligations: [
+        { patientId: PAT, scaleType: "esas_r", administeredAt: "2026-03-02T08:00:00.000Z", reassessmentDueAt: "2026-03-02T09:00:00.000Z" },
+        { patientId: PAT, scaleType: "painad", administeredAt: "2026-03-03T08:00:00.000Z", reassessmentDueAt: "2026-03-03T09:00:00.000Z" },
+        { patientId: "pat-2", scaleType: "esas_r", administeredAt: "2026-03-04T08:00:00.000Z", reassessmentDueAt: "2026-03-04T09:00:00.000Z" },
+        // due in April — outside the window, so it is NOT part of the denominator.
+        { patientId: PAT, scaleType: "esas_r", administeredAt: "2026-04-02T08:00:00.000Z", reassessmentDueAt: "2026-04-02T09:00:00.000Z" },
+      ],
+    }).store;
+    // The reader marks the two esas_r obligations covered, the painad one not.
+    const covered = new Set([
+      "esas_r|2026-03-02T09:00:00.000Z",
+      "esas_r|2026-03-04T09:00:00.000Z",
+    ]);
+    const provider = createMedicationAdministrationProvider(store, {
+      reassessmentCoverage: {
+        async wasReassessed(_patientId, scaleType, _from, to) {
+          return covered.has(`${scaleType}|${to}`);
+        },
+      },
+    });
+    const counts = await provider.getPrnEffectivenessCountsForOrg(ORG, {
+      from: "2026-03-01T00:00:00.000Z",
+      to: "2026-04-01T00:00:00.000Z",
+    });
+    // 3 obligations in window (the April one excluded); 2 covered.
+    expect(counts).toEqual({ numerator: 2, denominator: 3 });
+  });
+
+  it("getPrnEffectivenessCountsForOrg SUPPRESSES (throws) when the M9 coverage reader is unbound", async () => {
+    const store = createInMemoryEmarSeamStore({
+      prnObligations: [
+        { patientId: PAT, scaleType: "esas_r", administeredAt: "2026-03-02T08:00:00.000Z", reassessmentDueAt: "2026-03-02T09:00:00.000Z" },
+      ],
+    }).store;
+    const provider = createMedicationAdministrationProvider(store); // no coverage reader bound
+    await expect(
+      provider.getPrnEffectivenessCountsForOrg(ORG, {
+        from: "2026-03-01T00:00:00.000Z",
+        to: "2026-04-01T00:00:00.000Z",
+      }),
+    ).rejects.toThrow();
+  });
+
   it("getMissedDoseSummary excludes cancelled doses from the denominator (D14)", async () => {
     const out = await provider().getMissedDoseSummary(ORG, PAT, {
       from: "2026-03-01T00:00:00.000Z",

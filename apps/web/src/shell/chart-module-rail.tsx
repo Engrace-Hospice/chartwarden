@@ -51,7 +51,7 @@ const ITEMS: { key: ChartSection; label: string; icon: NavIconName; route: ((id:
   { key: "medications", label: "Medications", icon: "pill", route: (id) => `/patients/${id}/emar` },
   { key: "documents", label: "Documents", icon: "folder", route: (id) => `/patients/${id}/documents` },
   { key: "election", label: "Election & Certification", icon: "cert", route: (id) => `/patients/${id}/election-certification` },
-  { key: "idg", label: "IDG History", icon: "idg", route: null },
+  { key: "idg", label: "IDG History", icon: "idg", route: (id) => `/patients/${id}/idg-history` },
 ];
 
 export function ChartModuleRail({ patientId, current }: { patientId: string; current: ChartSection }): JSX.Element {

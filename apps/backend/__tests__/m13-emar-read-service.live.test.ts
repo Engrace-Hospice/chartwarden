@@ -19,6 +19,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbEmarBackend } from "../src/modules/13-emar/emar-route-service-db";
+import { createDrizzleEmarSeamStore } from "../src/modules/13-emar/seams/drizzle-store";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -169,5 +170,53 @@ describe.skipIf(!DB_URL)("M13 Drizzle read service — LIVE Postgres (M13L-T01)"
     expect(put.graceWindowMinutes).toBe(45);
     const back = await service.getPolicy(ORG_A);
     expect(back.graceWindowMinutes).toBe(45);
+  });
+
+  it("seam store prnReassessmentObligationsForOrg: window + null-scale filtering, RLS-scoped (prn_effectiveness input)", async () => {
+    // `administration_record_id` carries NO FK (§3.3), so a synthetic id is fine; the unique key is per-row.
+    async function seedPrn(
+      org: string,
+      scale: string | null,
+      dueAtIso: string,
+      recordId: string,
+    ) {
+      const pe = (
+        await admin.query("SELECT id FROM provider_entity WHERE organization_id=$1 LIMIT 1", [org])
+      ).rows[0].id as string;
+      const loc = (
+        await admin.query(
+          "SELECT l.id FROM location l JOIN provider_entity pe ON l.provider_entity_id=pe.id WHERE pe.organization_id=$1 LIMIT 1",
+          [org],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO prn_administration (organization_id, provider_entity_id, location_id,
+           administration_record_id, patient_id, admission_id, medication_order_id, triggering_prn_reason,
+           requested_by_kind, reassessment_window_minutes, reassessment_due_at, recommended_reassessment_scale)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'pain','clinician_observed',60,$8,$9)`,
+        [org, pe, loc, recordId, PATIENT, ADMISSION, MED_ORDER, dueAtIso, scale],
+      );
+    }
+    // ORG A: two in-window obligations (with scales), one in-window but NULL scale (no obligation), one
+    // with a scale but due OUTSIDE the window. ORG B: one in-window (must never surface for ORG A).
+    await seedPrn(ORG_A, "esas_r", "2026-03-10T09:00:00Z", "aaaa0001-0000-4000-8000-000000000001");
+    await seedPrn(ORG_A, "painad", "2026-03-20T09:00:00Z", "aaaa0002-0000-4000-8000-000000000002");
+    await seedPrn(ORG_A, null, "2026-03-15T09:00:00Z", "aaaa0003-0000-4000-8000-000000000003");
+    await seedPrn(ORG_A, "esas_r", "2026-05-15T09:00:00Z", "aaaa0004-0000-4000-8000-000000000004");
+    await seedPrn(ORG_B, "esas_r", "2026-03-12T09:00:00Z", "bbbb0001-0000-4000-8000-000000000001");
+
+    const seamStore = createDrizzleEmarSeamStore(handle.db);
+    const window = { from: "2026-03-01T00:00:00Z", to: "2026-04-01T00:00:00Z" };
+
+    const aObligations = await seamStore.prnReassessmentObligationsForOrg(ORG_A, window);
+    // Only the two in-window, scale-bearing rows — the null-scale + out-of-window rows are excluded.
+    expect(aObligations.length).toBe(2);
+    expect([...aObligations.map((o) => o.scaleType)].sort()).toEqual(["esas_r", "painad"]);
+    expect(aObligations.every((o) => o.patientId === PATIENT)).toBe(true);
+
+    // RLS: ORG B sees only its own in-window obligation, never ORG A's.
+    const bObligations = await seamStore.prnReassessmentObligationsForOrg(ORG_B, window);
+    expect(bObligations.length).toBe(1);
+    expect(bObligations[0].scaleType).toBe("esas_r");
   });
 });

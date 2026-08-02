@@ -9,7 +9,11 @@
 // wireModuleSeams(). Both share ONE injected EmarSeamStore (in-memory slice here; Drizzle in prod, reads under
 // the consumer's RLS) — mirrors the M9/M10/M11/M12 seams/index.ts precedents. Neither seam is a mutate path: M13
 // owns the administration + reconciliation lifecycle internally.
-import type { MedicationAdministrationProvider, ReconciliationProvider } from "@wardenx/types";
+import type {
+  MedicationAdministrationProvider,
+  ReconciliationProvider,
+  ScaleType,
+} from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createMedicationAdministrationProvider, createReconciliationProvider } from "./providers";
 import { type EmarSeamStore, createInMemoryEmarSeamStore } from "./store";
@@ -52,7 +56,26 @@ export interface EmarSeamDeps {
  */
 export function registerEmarSeams(deps: EmarSeamDeps = {}): void {
   const store = deps.store ?? createInMemoryEmarSeamStore().store;
-  registerSeam("MedicationAdministrationProvider", createMedicationAdministrationProvider(store));
+  // M13 consumes M9's ScaleSeriesProvider OPAQUELY (getSeam, no schema import / no dependsOn edge) to decide
+  // whether a PRN reassessment was documented — resolved LAZILY per call so seam-registration order is
+  // irrelevant and an unbound M9 (boot deny-stub) throws → the prn-effectiveness measure suppresses.
+  const reassessmentCoverage = {
+    async wasReassessed(patientId: string, scaleType: string, fromIso: string, toIso: string) {
+      // `scaleType` is one of M13's recommended reassessment scales (a ScaleType value); the obligation
+      // query only surfaces rows that carry one, so the cast is sound.
+      const series = await getSeam("ScaleSeriesProvider").series(
+        patientId,
+        scaleType as ScaleType,
+        fromIso,
+        toIso,
+      );
+      return series.points.length > 0;
+    },
+  };
+  registerSeam(
+    "MedicationAdministrationProvider",
+    createMedicationAdministrationProvider(store, { reassessmentCoverage }),
+  );
   registerSeam("ReconciliationProvider", createReconciliationProvider(store));
 }
 
