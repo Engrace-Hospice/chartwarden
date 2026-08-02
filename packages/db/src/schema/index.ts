@@ -676,3 +676,9 @@ export * from "./safety/index";
 // in M32-T01; tables in migrations 0113–0115; RLS/grants + the thirteen M4 write-audit triggers + the
 // §3.5 immutability triggers in 0116.
 export * from "./ai-platform/index";
+// Module 28 (FHIR Gateway) — the eight §3.3 owned tables. Seven tenant-scoped (canonical app.org_id RLS)
+// + the platform-shared `fhir_capability_snapshot` (read-all, writes via wardenx_admin). Two are
+// partitioned monthly (`fhir_client_session` on issued_at, `fhir_inbound_resource` on proposed_at) with
+// composite PKs declared in SQL. Enums land in M28-T01; tables in migrations 0134–0136; RLS/grants + the
+// M4 write-audit triggers in 0137.
+export * from "./fhir/index";

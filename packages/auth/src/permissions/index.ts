@@ -234,3 +234,10 @@ export {
   M32_CONTRIBUTED_PERMISSIONS,
   m32ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M28 — Module 28's twelve FHIR Gateway admin permission keys (§4.6 handshake).
+export {
+  type M28ContributedPermissionKey,
+  M28_CONTRIBUTED_PERMISSIONS,
+  m28ContributedPermissionMirrorRows,
+} from "./contributed";

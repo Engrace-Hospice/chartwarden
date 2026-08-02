@@ -60,6 +60,11 @@ import {
   evvVerificationProviderDenyStub,
   extractionProvenanceReaderDenyStub,
   faceToFaceReaderDenyStub,
+  fhirClientReaderDenyStub,
+  fhirGatewayMetricsProviderDenyStub,
+  fhirInboundProposalReaderDenyStub,
+  claimReaderDenyStub,
+  labObservationReaderDenyStub,
   hopeJ2051ProviderDenyStub,
   hopeOrgRollupProviderDenyStub,
   hopeSubmissionProviderDenyStub,
@@ -377,6 +382,42 @@ export const REQUIRED_SEAMS = [
     ownerModule: 40,
     phi: false,
     denyStub: baaStatusProviderDenyStub,
+  },
+  // M28 (FHIR Gateway) §4.3 — the three PUBLISHED read seams M28 registers into the M1 registry (M28-T06).
+  // Until these entries existed, M28 was reachable cross-module ONLY through its §4.10 outbox events: M33's
+  // utilization dashboards, M30's §164.528 disclosure scorecard, M34's SaaS-console client registry, and
+  // M5/M12's inbound-proposal review queues had no read path to M28's utilization, client-registry or
+  // staged-proposal rows at all. M28 registers the real Drizzle-backed impls over the deny-stubs when its
+  // routes/repos land (M28-T08); until then `validateSeams()` applies the fail-closed deny-stub.
+  //
+  // `FhirInboundProposalReader` reaches the raw FHIR payload before an owner module accepts it → phi:true.
+  // The other two are aggregate utilization / client-registry metadata (NO patient row) → phi:false.
+  {
+    key: "FhirGatewayMetricsProvider",
+    ownerModule: 28,
+    phi: false,
+    denyStub: fhirGatewayMetricsProviderDenyStub,
+  },
+  { key: "FhirClientReader", ownerModule: 28, phi: false, denyStub: fhirClientReaderDenyStub },
+  {
+    key: "FhirInboundProposalReader",
+    ownerModule: 28,
+    phi: true,
+    denyStub: fhirInboundProposalReaderDenyStub,
+  },
+  // M28 §4.4 forward-seams — the two CONSUMED reader seams M28 requires but whose owner modules do not
+  // publish them yet. Both stay on the fail-closed deny-stub the whole of Phase 1.
+  //   · `ClaimReader` (M23) — the W-FHIR-07 Claim/ClaimResponse/EOB projection. `fhir.write` OFF ⇒ the M28
+  //     route returns 404 (§7.7) before reaching this seam; declaring it REQUIRED makes a boot without M23's
+  //     D1 unlock fail CLOSED rather than serving a Phase-2 resource. PHI (a claim is patient-linked).
+  //   · `LabObservationReader` (M29) — the §4.11 DiagnosticReport result-value source. M29 is a Phase-1
+  //     placeholder, so M28's DiagnosticReport projection refuses at egress until M29 registers it. PHI.
+  { key: "ClaimReader", ownerModule: 23, phi: true, denyStub: claimReaderDenyStub },
+  {
+    key: "LabObservationReader",
+    ownerModule: 29,
+    phi: true,
+    denyStub: labObservationReaderDenyStub,
   },
   // M6 (Admission, Election & Certification) reader seams (§4.7). Each is a read-only DTO surface over
   // M6's PHI tables (admission/election/CTI/F2F/LOC status), consumed by M14/M22/M23/M26/M30 in later

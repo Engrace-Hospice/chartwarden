@@ -280,6 +280,20 @@ import {
   registerAiProvenanceErasers,
   wireM32Tenancy,
 } from "./modules/32-ai-platform/index";
+// M28 (FHIR Gateway) boot surface — the §4.3 published read seams (M28-T06). The three impls register over
+// their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
+// T08, so the store is unbound this wave and the fail-closed deny-stubs stand (the M19/M20 posture).
+import {
+  buildDrizzleFhirGatewayAbacResolver,
+  createDrizzleFhirGatewayEraseStore,
+  createDrizzleFhirGatewayStore,
+  createDrizzleFhirPublishedSeamStore,
+  denyStubFhirGatewayAbacResolver,
+  mountM28Routes,
+  registerFhirGatewayAbacPredicates,
+  registerFhirGatewayEraser,
+  registerFhirPublishedSeams,
+} from "./modules/28-fhir/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -895,6 +909,30 @@ export function wireModuleSeams(
         })
       : denyStubAiPlatformAbacResolver,
   });
+  // M28-T06 (§4.3) — publish M28's three read seams (FhirGatewayMetricsProvider / FhirClientReader /
+  // FhirInboundProposalReader) over their M1 deny-stubs so M33 (utilization) / M30 (§164.528 disclosure
+  // scorecard) / M34 (SaaS console) / M5 + M12 (inbound-proposal review queues) can resolve them via
+  // getSeam. Registration is STORE-GATED: M28's Drizzle store lands with its routes/repos (T08), so this
+  // wave passes NO store and the call is a no-op — the fail-closed deny-stubs stand, exactly like M19/M20's
+  // db-less boot. A consumer reaching an unbound M28 seam denies LOUDLY rather than reading a fabricated
+  // empty projection (a zero-disclosure scorecard minted from an unwired store).
+  registerFhirPublishedSeams(
+    deps.db ? { store: createDrizzleFhirPublishedSeamStore(deps.db) } : {},
+  );
+  // M28-T08 (§4.7) — the six named ABAC predicate resolvers. Registered beside the seam wiring; the
+  // db-less path binds the deny-stub resolver, which refuses for a STATED reason a boot log can carry
+  // (M3 denies an unregistered name too, but indistinguishably from a typo — the confusion
+  // `arch:abac-predicates` exists to remove). The consent/BAA ports stay unbound this wave, so
+  // `fhir_export_recipient_authorized` and `fhir_client_active` deny fail-closed — both are route-unbound
+  // in Phase 1 (the FHIR-spec bearer surface enforces them in the handler).
+  registerFhirGatewayAbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleFhirGatewayAbacResolver({
+          db: deps.db,
+          permissions: createDbEffectivePermissionStore(deps.db),
+        })
+      : denyStubFhirGatewayAbacResolver,
+  });
   // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
   // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
   // `TenantKeyProvider` interface, so the live-impl home is the package, not the M1 registry).
@@ -1072,6 +1110,13 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // The Drizzle store binds when a DB client is present; without one the slice's in-memory store stands.
   registerAiProvenanceErasers(
     deps.db ? { store: createDrizzleAiProvenanceEraseStore(deps.db) } : {},
+  );
+  // M28-T08 — the §3.7 `fhir_gateway` eraser (org-offboarding destruction: subjectId=org). NOT a delete of
+  // the §164.528 disclosure record — a targeted shred of the cursor-signing key, the credential ciphers,
+  // the export/session rows and the inbound payloads, while every accounting row survives. The Drizzle
+  // store binds when a DB client is present; without one the in-memory slice store stands.
+  registerFhirGatewayEraser(
+    deps.db ? { store: createDrizzleFhirGatewayEraseStore(deps.db) } : {},
   );
   // Phase-1 data-class owners append here as they land.
 }
@@ -1678,6 +1723,13 @@ if ((import.meta as { main?: boolean }).main) {
             cipher: null,
             promptRegistry: m32PromptRegistry,
           });
+          // M28 (FHIR Gateway) — mount the thirty-nine §4.1 routes over the Drizzle route store. The
+          // FHIR-spec bearer surface (R1-R22) resolves its own SMART token; the admin console (R23-R39)
+          // composes the §4.6 permission + §4.7 ABAC preHandlers. `fhir.write` stays OFF: read-only US
+          // Core R4. The disclosure-audit sink stays unbound this wave (no served-read log table yet), so
+          // the bearer read path runs its scope-enforcement + OperationOutcome shape without persisting a
+          // row — the fail-closed Phase-1 posture (no external client is provisioned).
+          mountM28Routes(app, { store: createDrizzleFhirGatewayStore(dbHandle.db) });
 
         }
       : undefined,

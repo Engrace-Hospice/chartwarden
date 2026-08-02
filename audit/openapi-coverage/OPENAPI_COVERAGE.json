@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 995,
-    "enriched": 989,
+    "routes": 1030,
+    "enriched": 1024,
     "deficit": 6,
-    "mutating": 574,
-    "mutatingNoBody": 68,
-    "gets": 395,
-    "getsNoResponse": 46
+    "mutating": 592,
+    "mutatingNoBody": 76,
+    "gets": 411,
+    "getsNoResponse": 62
   },
   "modules": [
     {
@@ -268,6 +268,16 @@
       "mutatingNoBody": 9,
       "gets": 16,
       "getsNoResponse": 0
+    },
+    {
+      "module": "28-fhir",
+      "routes": 35,
+      "enriched": 35,
+      "deficit": 0,
+      "mutating": 18,
+      "mutatingNoBody": 8,
+      "gets": 16,
+      "getsNoResponse": 16
     },
     {
       "module": "30-quality",

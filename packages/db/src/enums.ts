@@ -3093,3 +3093,77 @@ export const aiLifecycleApprovalKind = pgEnum("ai_lifecycle_approval_kind", [
   "retirement",
   "incident_demotion",
 ]);
+
+// ── Module 28 (FHIR Gateway) — §3.2 Phase-A enums (M28-T01) ────────────────────────────────────────
+//
+// The spec's §3.3 code block imports these from `packages/db/src/schema/fhir/enums.ts`; the repo defines
+// every pgEnum exactly once HERE (the file header's ADR-0022 D1.3 rule that `check-ddl-legality.ts`
+// enforces), so they resolve on the path the gates govern. M28-T02 binds the eight owned tables' enum
+// columns to these and emits the `CREATE TYPE` statements in `0028_fhir_gateway.sql` Phase A; the value
+// mirrors a consumer reads live in `@wardenx/types`' `fhir.ts`, kept in lock-step by an M28-T01 test.
+//
+// §3.2 declares TEN enums. Vocabularies the spec spells inline on `text` columns — the SMART/OAuth
+// `scopes` (`fhir_client.allowed_scopes[]`, whose closed set is `SUPPORTED_SCOPES` in
+// `packages/fhir/src/auth/scopes.ts`, not a pg type), the FHIR `resource_type` on projections, and the
+// `owner_module`-agnostic search parameters — stay text and live as leaf unions in `@wardenx/types`.
+
+/** `fhir_client_type` — the credential family a client authenticates with. Phase 1 onboards both, but
+ *  §2.2 ships only `api_key` credential rows; `smart_backend_services` pins a `jwks_uri` (§2.3). */
+export const fhirClientType = pgEnum("fhir_client_type", ["smart_backend_services", "api_key"]);
+
+/** `fhir_client_tier` — the rate-limit class. The platform floor is per-tier (tier-1 100 / tier-2 10 /
+ *  tier-3 1 RPS, §2.3); a tenant may TIGHTEN below the floor, never loosen above it. */
+export const fhirClientTier = pgEnum("fhir_client_tier", ["tier-1", "tier-2", "tier-3"]);
+
+/** `fhir_client_status` — the §2.2 onboarding FSM. `pending_approval → active` needs TWO distinct
+ *  memberships (Org Admin + Compliance Officer, D12); `revoked` is terminal + tombstoned in audit. */
+export const fhirClientStatus = pgEnum("fhir_client_status", [
+  "pending_approval",
+  "active",
+  "suspended",
+  "revoked",
+  "rejected",
+]);
+
+/** `fhir_client_credential_kind` — `api_key` ships in Phase 1; `jwks_pin` is the future option to pin a
+ *  specific JWK by `kid` rather than rely on `jwks_uri` rotation (§2.2). */
+export const fhirClientCredentialKind = pgEnum("fhir_client_credential_kind", ["api_key", "jwks_pin"]);
+
+/** `fhir_client_credential_status` — rotation retires the prior row and opens a 30-day overlap window in
+ *  which both verify, then the prior is destruction-erased per M4 (§2.2). */
+export const fhirClientCredentialStatus = pgEnum("fhir_client_credential_status", ["active", "retired"]);
+
+/** `fhir_bulk_export_status` — the §2.2 async-export FSM. `completed` mints output URLs with a 24h TTL;
+ *  a sweeper walks `completed → expired` and purges the MinIO NDJSON. */
+export const fhirBulkExportStatus = pgEnum("fhir_bulk_export_status", [
+  "accepted",
+  "in_progress",
+  "completed",
+  "failed",
+  "cancelled",
+  "expired",
+]);
+
+/** `fhir_bulk_export_request_kind` — which `$export` variant the job serves (system / Group / Patient). */
+export const fhirBulkExportRequestKind = pgEnum("fhir_bulk_export_request_kind", [
+  "system",
+  "group",
+  "patient",
+]);
+
+/** `fhir_inbound_status` — the §2.2 staged-proposal FSM. The owner module's reviewer is the only actor
+ *  authorized to accept/reject (D8); SLA breach walks `pending → expired` and fires an M36 alert (D12). */
+export const fhirInboundStatus = pgEnum("fhir_inbound_status", [
+  "pending",
+  "accepted",
+  "rejected",
+  "expired",
+]);
+
+/** `fhir_inbound_owner_module` — the WardenX module that owns the native write on acceptance. Phase 1
+ *  routes Patient demographics → M5 and MedicationStatement → M12 (§2.3 `KNOWN_OWNER_MODULES`). */
+export const fhirInboundOwnerModule = pgEnum("fhir_inbound_owner_module", ["m5", "m12"]);
+
+/** `fhir_version_enum` — the FHIR release a capability snapshot advertises. Phase 1 serves `4.0.1`
+ *  (US Core R4); `5.0.0`/`6.0.0` are the compile-shell targets that ship at their respective locks. */
+export const fhirVersionEnum = pgEnum("fhir_version_enum", ["4.0.1", "5.0.0", "6.0.0"]);

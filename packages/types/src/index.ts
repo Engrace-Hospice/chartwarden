@@ -23,6 +23,7 @@ export * from "./supplies";
 export * from "./oncall";
 export * from "./safety";
 export * from "./ai-platform";
+export * from "./fhir";
 export * from "./scheduling";
 export * from "./evv";
 export * from "./documents";

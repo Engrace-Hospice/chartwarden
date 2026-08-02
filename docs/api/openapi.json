@@ -60237,6 +60237,850 @@
         }
       }
     },
+    "/api/v1/fhir/bulk-export-jobs": {
+      "get": {
+        "operationId": "getApiV1FhirBulkexportjobs",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "List the org's bulk-export jobs (R31)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "cancelled",
+                  "type": "string"
+                },
+                {
+                  "const": "expired",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "clientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1FhirBulkexportjobs",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Operator-initiated bulk export (R32). The acting membership is stamped as the initiator, which is what `bulk_export_initiator_or_admin` reads at cancel time",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "clientId",
+                  "requestKind",
+                  "resourceTypes"
+                ],
+                "properties": {
+                  "clientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "requestKind": {
+                    "anyOf": [
+                      {
+                        "const": "system",
+                        "type": "string"
+                      },
+                      {
+                        "const": "group",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "groupId": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "patientIds": {
+                    "maxItems": 5000,
+                    "type": "array",
+                    "items": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "resourceTypes": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 60,
+                      "type": "string"
+                    }
+                  },
+                  "since": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/bulk-export-jobs/{id}/cancel": {
+      "post": {
+        "operationId": "postApiV1FhirBulkexportjobsByIdCancel",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Cancel a job (R33). Gated on `bulk_export_initiator_or_admin` (§4.7) — the initiator, the bearer client, or a cancel-permitted operator",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients": {
+      "get": {
+        "operationId": "getApiV1FhirClients",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "List the org's registered FHIR clients (R23)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending_approval",
+                  "type": "string"
+                },
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "suspended",
+                  "type": "string"
+                },
+                {
+                  "const": "revoked",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1FhirClients",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Propose a new FHIR client (R24, D12). The proposing Org Admin is stamped as the FIRST of the two DISTINCT dual-approval approvers; `rate_limit_rps` is platform-floor / tighten-only and an override may only LOWER the tier floor",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "type",
+                  "allowedScopes",
+                  "tier",
+                  "baaContractReference"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 3,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "type": {
+                    "anyOf": [
+                      {
+                        "const": "smart_backend_services",
+                        "type": "string"
+                      },
+                      {
+                        "const": "api_key",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "jwksUri": {
+                    "format": "uri",
+                    "pattern": "^https://",
+                    "type": "string"
+                  },
+                  "allowedScopes": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^system/[A-Z][A-Za-z]+\\.(read|write)$",
+                      "type": "string"
+                    }
+                  },
+                  "tier": {
+                    "anyOf": [
+                      {
+                        "const": "tier-1",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tier-2",
+                        "type": "string"
+                      },
+                      {
+                        "const": "tier-3",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "rateLimitRpsOverride": {
+                    "minimum": 1,
+                    "maximum": 100,
+                    "type": "integer"
+                  },
+                  "ipAllowlist": {
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 64,
+                      "type": "string"
+                    }
+                  },
+                  "baaContractReference": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients/{id}/approve": {
+      "post": {
+        "operationId": "postApiV1FhirClientsByIdApprove",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "The Compliance Officer co-approves (R25, D12). The store refuses self-approval — the two approver memberships must be DISTINCT",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rationale"
+                ],
+                "properties": {
+                  "rationale": {
+                    "minLength": 20,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients/{id}/credentials/rotate": {
+      "post": {
+        "operationId": "postApiV1FhirClientsByIdCredentialsRotate",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Rotate the API-key credential (R28). The prior credential is retired with a 30-day overlap; the plaintext secret is returned ONCE and never persisted in the clear",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1FhirClientsByIdRevoke",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Revoke a client (R26). Terminal; runs the W-FHIR-12 cascade — every live session is revoked and every in-flight export cancelled inside the same transaction. Rationale ≥40 chars",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rationale"
+                ],
+                "properties": {
+                  "rationale": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients/{id}/sessions": {
+      "get": {
+        "operationId": "getApiV1FhirClientsByIdSessions",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "List a client's active bearer sessions (R29)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients/{id}/sessions/{jti}/revoke": {
+      "post": {
+        "operationId": "postApiV1FhirClientsByIdSessionsByJtiRevoke",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Manually revoke one session (R30) — a leaked bearer token dies immediately",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "jti",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/clients/{id}/suspend": {
+      "post": {
+        "operationId": "postApiV1FhirClientsByIdSuspend",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Suspend a client (R27). Reversible, but also runs the cascade — a suspended client's live bearer tokens must die now, not at their TTL",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/config": {
+      "get": {
+        "operationId": "getApiV1FhirConfig",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Read the tenant's FHIR config (R37)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "putApiV1FhirConfig",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Upsert the tenant's FHIR host + identifier-URI base + review/dedup knobs (R38)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantFhirHost",
+                  "identifierUriBase"
+                ],
+                "properties": {
+                  "tenantFhirHost": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "identifierUriBase": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "inboundReviewSlaHours": {
+                    "minimum": 1,
+                    "maximum": 720,
+                    "type": "integer"
+                  },
+                  "exportDedupWindowMinutes": {
+                    "minimum": 1,
+                    "maximum": 1440,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/config/rotate-cursor-key": {
+      "post": {
+        "operationId": "postApiV1FhirConfigRotatecursorkey",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Rotate the per-tenant HMAC cursor-signing key (R39). STEP-UP required — the rotation invalidates every outstanding signed search cursor, so a stolen session must not be able to do it. The key never leaves the server",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/inbound-proposals": {
+      "get": {
+        "operationId": "getApiV1FhirInboundproposals",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "The operator review queue of staged inbound proposals (R34)",
+        "parameters": [
+          {
+            "name": "ownerModule",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "m5",
+                  "type": "string"
+                },
+                {
+                  "const": "m12",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "expired",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/inbound-proposals/{id}/accept": {
+      "post": {
+        "operationId": "postApiV1FhirInboundproposalsByIdAccept",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Accept a staged proposal (R35, D8). Gated on `fhir_inbound_owner_module_match` — only a reviewer holding the owner module's native write path may decide it. The owner module now owns the native record it created",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "acceptedAggregateId"
+                ],
+                "properties": {
+                  "acceptedAggregateId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "rationale": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/fhir/inbound-proposals/{id}/reject": {
+      "post": {
+        "operationId": "postApiV1FhirInboundproposalsByIdReject",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Reject a staged proposal (R36, D8). Gated on `fhir_inbound_owner_module_match`; the rationale must be ≥40 chars and the payload is destruction-scheduled at +30 days (§3.7)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rationale"
+                ],
+                "properties": {
+                  "rationale": {
+                    "minLength": 40,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/form-templates": {
       "get": {
         "operationId": "getApiV1Formtemplates",
@@ -169354,6 +170198,681 @@
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/.well-known/smart-configuration": {
+      "get": {
+        "operationId": "getFhirWellknownSmartconfiguration",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "SMART Backend Services well-known config (R2). Anonymous; advertises the client-credentials + private_key_jwt token endpoint and the system/*.read scope model",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/oauth2/token": {
+      "post": {
+        "operationId": "postFhirOauth2Token",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "SMART Backend Services token mint (R3). Verifies the client_assertion JWT against the client's jwks_uri. Phase-1 fail-closed (`invalid_client`) until the platform-bypass client-resolution path is bound — no external client is provisioned yet",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "grant_type",
+                  "scope",
+                  "client_assertion_type",
+                  "client_assertion"
+                ],
+                "properties": {
+                  "grant_type": {
+                    "const": "client_credentials",
+                    "type": "string"
+                  },
+                  "scope": {
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "client_assertion_type": {
+                    "const": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+                    "type": "string"
+                  },
+                  "client_assertion": {
+                    "minLength": 1,
+                    "maxLength": 8192,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fhir/r4/{resourceType}": {
+      "get": {
+        "operationId": "getFhirR4ByResourceType",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Type-level search (R5). `patient` is the W-FHIR-14 US Core parameter. Returns a well-formed empty searchset Bundle in Phase 1; the scope check + disclosure audit are real",
+        "parameters": [
+          {
+            "name": "resourceType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "patient",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "_since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postFhirR4ByResourceType",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Inbound staging (R16, D8). Requires `system/{ResourceType}.write`. M28 NEVER writes a native record — it stages the resource as a PROPOSAL the owner module (m5/m12) reviews; an unsupported resource type is a 501",
+        "parameters": [
+          {
+            "name": "resourceType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/{resourceType}/{id}": {
+      "get": {
+        "operationId": "getFhirR4ByResourceTypeById",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Single-resource read (R4). Bearer scope `system/{ResourceType}.read` required; the disclosure is D15-audited. Phase 1 returns a well-formed not-found OperationOutcome — the projection reader seams are fail-closed deny-stubs this wave",
+        "parameters": [
+          {
+            "name": "resourceType",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/$export": {
+      "post": {
+        "operationId": "postFhirR4Export",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "System-level bulk export (R7, D4). 202 + Content-Location; the requested `_type` set must be a subset of the client's granted scopes or the deviating type is named in a 403 OperationOutcome",
+        "parameters": [
+          {
+            "name": "_outputFormat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 2000,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/$export-poll-status/{jobId}": {
+      "delete": {
+        "operationId": "deleteFhirR4ExportpollstatusByJobId",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Cancel a bulk-export job (R11). 202 Accepted; the job's in-flight status is closed",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "getFhirR4ExportpollstatusByJobId",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Poll a bulk-export job (R10). 202 In-Progress | 200 Completed (with the output manifest) | 410 Expired once the 24h NDJSON TTL has passed",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/CodeSystem/{system}": {
+      "get": {
+        "operationId": "getFhirR4CodeSystemBySystem",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "CodeSystem read (R12). Requires `system/CodeSystem.read`. Not served in Phase 1 (a warning OperationOutcome), which the terminology seam fills when M38 binds live",
+        "parameters": [
+          {
+            "name": "system",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/CodeSystem/$validate-code": {
+      "post": {
+        "operationId": "postFhirR4CodeSystemValidatecode",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "resourceType",
+                  "parameter"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "const": "Parameters",
+                    "type": "string"
+                  },
+                  "parameter": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name"
+                      ],
+                      "properties": {
+                        "name": {
+                          "minLength": 1,
+                          "maxLength": 60,
+                          "type": "string"
+                        },
+                        "valueString": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        },
+                        "valueUri": {
+                          "maxLength": 2000,
+                          "type": "string"
+                        },
+                        "valueCode": {
+                          "maxLength": 200,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fhir/r4/Group/{id}/$export": {
+      "post": {
+        "operationId": "postFhirR4GroupByIdExport",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Group-scoped bulk export (R8). Same scope + concurrency posture as the system export",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "_outputFormat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 2000,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/metadata": {
+      "get": {
+        "operationId": "getFhirR4Metadata",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "The deterministic US Core R4 CapabilityStatement (R1). Anonymous per FHIR convention, rate-limited per-IP; the signed checksum is the survey-defense artifact (D11)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/Patient/{id}/$everything": {
+      "get": {
+        "operationId": "getFhirR4PatientByIdEverything",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "Patient $everything (R6, D5). Requires read scope for every linked resource type; D15-audited. Returns a well-formed empty Bundle in Phase 1",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/Patient/$export": {
+      "post": {
+        "operationId": "postFhirR4PatientExport",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "All-patient bulk export (R9). Same scope + concurrency posture as the system export",
+        "parameters": [
+          {
+            "name": "_outputFormat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 2000,
+              "type": "string"
+            }
+          },
+          {
+            "name": "_since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/ValueSet/{vs}": {
+      "get": {
+        "operationId": "getFhirR4ValueSetByVs",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "ValueSet read (R14). Requires `system/ValueSet.read`; not served in Phase 1",
+        "parameters": [
+          {
+            "name": "vs",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r4/ValueSet/{vs}/$expand": {
+      "get": {
+        "operationId": "getFhirR4ValueSetByVsExpand",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "ValueSet $expand (R15). Requires `system/ValueSet.read`; returns a well-formed empty expansion in Phase 1",
+        "parameters": [
+          {
+            "name": "vs",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r5/*": {
+      "get": {
+        "operationId": "getFhirR5",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "FHIR R5 is not supported (R17, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/fhir/r6/*": {
+      "get": {
+        "operationId": "getFhirR6",
+        "tags": [
+          "28-fhir"
+        ],
+        "summary": "FHIR R6 is not supported (R18, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

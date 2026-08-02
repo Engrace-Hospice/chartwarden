@@ -1,0 +1,58 @@
+// apps/backend/src/modules/28-fhir/routes/index.ts — M28 route surface barrel.
+export {
+  mountM28Routes,
+  registerAdminClientRoutes,
+  registerAdminConfigRoutes,
+  registerAdminExportRoutes,
+  registerAdminInboundRoutes,
+  registerFhirR4Routes,
+  type AdminClientsRouteDeps,
+  type AdminConfigRouteDeps,
+  type AdminExportRouteDeps,
+  type AdminInboundRouteDeps,
+  type FhirR4RouteDeps,
+  type FhirDisclosureAuditPort,
+  type M28RouteServices,
+} from "./mount";
+export {
+  type M28ReadActor,
+  type M28WriteActor,
+  type PreHandler,
+  actorOf,
+  writeActorOf,
+} from "./actor";
+export {
+  ABAC_BULK_EXPORT_CANCEL,
+  ABAC_CLIENT_ORG,
+  ABAC_INBOUND_OWNER_MATCH,
+  ABAC_IN_ORG,
+  P,
+  STEP_UP,
+} from "./guards";
+export {
+  FHIR_JSON_CONTENT_TYPE,
+  operationOutcome,
+  sendOutcome,
+  type FhirOperationOutcome,
+} from "./operation-outcome";
+export {
+  cascadeClientRevocation,
+  type FhirRevocationCascadePort,
+  type FhirRevocationCascadeResult,
+} from "./revocation-cascade";
+export {
+  FhirStoreError,
+  createInMemoryFhirGatewayStore,
+  type CreateClientArgs,
+  type FhirBearerContext,
+  type FhirBulkExportJobView,
+  type FhirClientCreateResult,
+  type FhirCredentialRotationResult,
+  type FhirGatewayStore,
+  type FhirInboundProposalView,
+  type FhirSessionSummary,
+  type FhirTenantConfigView,
+  type InMemoryFhirGatewaySeed,
+} from "./store";
+export { createDrizzleFhirGatewayStore, mintFhirJti } from "./store-drizzle";
+export { parse, parseQuery } from "./m28-typebox";
