@@ -9,11 +9,20 @@ import type { ComponentType } from "react";
 import { CosignatureQueue } from "./cosignature-queue";
 import { EncounterRead } from "./encounter-read";
 import { MyDrafts } from "./my-drafts";
+import { PatientEncounters } from "./patient-encounters";
 
 export const encounterScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 8,
   slug: "08-encounters",
   screens: [
+    {
+      // Patient encounters list — reached from the patient chart "Encounters / Visits" tab; param path (no nav).
+      id: "encounter.patient-list",
+      path: "/patients/:patientId/encounters",
+      title: "Encounters",
+      requiredPermission: "encounter.read",
+      screen: PatientEncounters,
+    },
     {
       // Patient-scoped Encounter Read — reached from the patient chart / a queue row; param path (no nav).
       id: "encounter.read",

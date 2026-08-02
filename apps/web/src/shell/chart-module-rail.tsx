@@ -43,7 +43,7 @@ const ITEMS: { key: ChartSection; label: string; icon: NavIconName; route: ((id:
   { key: "summary", label: "Summary", icon: "summary", route: null },
   { key: "care-plan", label: "Care Plan", icon: "carePlan", route: (id) => `/patients/${id}/care-plan` },
   { key: "discipline-plans", label: "Discipline Plans", icon: "checklist", route: (id) => `/patients/${id}/discipline-plans` },
-  { key: "encounters", label: "Encounters", icon: "stethoscope", route: null },
+  { key: "encounters", label: "Encounters", icon: "stethoscope", route: (id) => `/patients/${id}/encounters` },
   { key: "assessments", label: "Assessments", icon: "checklist", route: (id) => `/patients/${id}/assessments` },
   { key: "orders", label: "Orders", icon: "orders", route: (id) => `/patients/${id}/orders` },
   { key: "medications", label: "Medications", icon: "pill", route: (id) => `/patients/${id}/emar` },

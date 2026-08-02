@@ -198,6 +198,13 @@
     {
       "module": "08-encounters",
       "moduleId": 8,
+      "id": "encounter.patient-list",
+      "path": "/patients/:patientId/encounters",
+      "permission": "encounter.read"
+    },
+    {
+      "module": "08-encounters",
+      "moduleId": 8,
       "id": "encounter.read",
       "path": "/patients/:patientId/encounters/:encounterId",
       "permission": "encounter.read"
