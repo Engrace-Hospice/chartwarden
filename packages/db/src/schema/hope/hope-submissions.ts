@@ -25,8 +25,10 @@ export const hopeSubmissions = pgTable(
     submissionPeriod: text("submission_period").notNull(), // e.g. "2026-Q2" or "2026-06"
     status: hopeSubmissionStatus("status").notNull().default("queued"),
     iqiesBatchId: text("iqies_batch_id"), // iQIES-assigned, nullable until in_flight
-    envelopeStorageUri: text("envelope_storage_uri").notNull(), // MinIO encrypted-at-rest
-    envelopeSha256: text("envelope_sha256").notNull(),
+    // NOT NULL relaxed in mig 0130 (M10L): a `queued` submission has no envelope yet — the transmit
+    // worker (§4.10) populates the URI + digest at assembly/transmit time.
+    envelopeStorageUri: text("envelope_storage_uri"), // MinIO encrypted-at-rest (null until transmit)
+    envelopeSha256: text("envelope_sha256"),
     itemCount: integer("item_count").notNull(),
     acceptedCount: integer("accepted_count").notNull().default(0),
     rejectedCount: integer("rejected_count").notNull().default(0),

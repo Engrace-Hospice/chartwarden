@@ -99,6 +99,7 @@ import {
   mountAssessmentRoutes,
 } from "./modules/09-assessments/index";
 import {
+  M10_OUTBOX_EVENTS,
   createInMemoryHopeBackend,
   registerHopeAbacPredicates,
   registerHopeErasers,
@@ -1191,6 +1192,9 @@ if ((import.meta as { main?: boolean }).main) {
     // M9L — the `m9.*` assessment catalog. REQUIRED for the write pipeline's `m9.assessment.recorded` /
     // `m9.assessment.amended` emits to validate against the bound `m9OutboxPublisher`.
     M9_OUTBOX_EVENTS,
+    // M10L — the `m10.hope.*` catalog. REQUIRED for the HOPE write lifecycle's sign/correct/SFV/submission
+    // emits to validate against the bound `m10OutboxPublisher`.
+    M10_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
     // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
@@ -1230,6 +1234,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m7OutboxPublisher = bindCallerModule(txOutboxPublisher, "m7");
   const m8OutboxPublisher = bindCallerModule(txOutboxPublisher, "m8");
   const m9OutboxPublisher = bindCallerModule(txOutboxPublisher, "m9");
+  const m10OutboxPublisher = bindCallerModule(txOutboxPublisher, "m10");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -1314,7 +1319,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountCarePlanRoutes(app, dbHandle.db, m7OutboxPublisher); // M7 — reads + the T02 write lifecycle over Drizzle+RLS, m7.* transactional outbox
           mountEncounterRoutes(app, dbHandle.db, m8OutboxPublisher); // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
-          mountHopeRoutes(app, dbHandle.db); // M10 reads
+          mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
           mountOrderRoutes(app, dbHandle.db); // M11 reads
           mountDoseSpotRoutes(app, dbHandle.db); // M12 reads
           mountEmarRoutes(app, dbHandle.db); // M13 reads
