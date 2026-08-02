@@ -13,6 +13,7 @@ import type { ComponentType } from "react";
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { DocumentExplorer } from "./document-explorer";
 import { IntakeBatchDetail } from "./intake-batch-detail";
+import { PatientDocuments } from "./patient-documents";
 import { TemplateLibrary } from "./template-library";
 import { VersionHistory } from "./version-history";
 
@@ -28,6 +29,14 @@ export const documentScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Clinical",
       requiredPermission: "documents.read",
       screen: DocumentExplorer,
+    },
+    {
+      // DOC.PatientDocuments — per-patient document slice; reached from the patient chart "Documents" tab (param path, no nav).
+      id: "documents.patient-list",
+      path: "/patients/:patientId/documents",
+      title: "Documents",
+      requiredPermission: "documents.read",
+      screen: PatientDocuments,
     },
     {
       // DOC.VersionHistory — per-document version chain; reached from the Explorer row (param path, no nav).

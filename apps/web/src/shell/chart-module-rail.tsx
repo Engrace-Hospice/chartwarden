@@ -47,7 +47,7 @@ const ITEMS: { key: ChartSection; label: string; icon: NavIconName; route: ((id:
   { key: "assessments", label: "Assessments", icon: "checklist", route: (id) => `/patients/${id}/assessments` },
   { key: "orders", label: "Orders", icon: "orders", route: (id) => `/patients/${id}/orders` },
   { key: "medications", label: "Medications", icon: "pill", route: (id) => `/patients/${id}/emar` },
-  { key: "documents", label: "Documents", icon: "folder", route: null },
+  { key: "documents", label: "Documents", icon: "folder", route: (id) => `/patients/${id}/documents` },
   { key: "idg", label: "IDG History", icon: "idg", route: null },
 ];
 

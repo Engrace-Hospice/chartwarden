@@ -123,7 +123,7 @@ const NAV_SECTIONS: {
   },
   { label: "Orders", ready: false, icon: "orders", route: (id) => `/patients/${id}/orders` },
   { label: "Medications / eMAR", ready: false, icon: "pill", route: (id) => `/patients/${id}/emar` },
-  { label: "Documents", ready: false, icon: "folder" },
+  { label: "Documents", ready: false, icon: "folder", route: (id) => `/patients/${id}/documents` },
   { label: "Election & Certification", ready: false, icon: "cert" },
   { label: "IDG History", ready: false, icon: "idg" },
 ];
