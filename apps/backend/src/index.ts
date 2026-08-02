@@ -126,6 +126,7 @@ import {
   mountDoseSpotRoutes,
 } from "./modules/12-dosespot/index";
 import {
+  M13_OUTBOX_EVENTS,
   createInMemoryEmarBackend,
   registerEmarAbacPredicates,
   registerEmarErasers,
@@ -1203,6 +1204,10 @@ if ((import.meta as { main?: boolean }).main) {
     // M12L — the `m12.*` catalog. REQUIRED for the DoseSpot write lifecycle's draft/sign/verbal/discontinue/
     // complete + refill approve-deny + prescriber enroll/revoke emits to validate against `m12OutboxPublisher`.
     M12_OUTBOX_EVENTS,
+    // M13L — the `m13.*` catalog. REQUIRED for the eMAR write lifecycle's record/correct/void/refuse +
+    // caregiver ack/dispute + missed-dose ack + reconciliation decision/finalize/void + comfort-kit return +
+    // policy emits to validate against `m13OutboxPublisher`.
+    M13_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
     // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
@@ -1245,6 +1250,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m10OutboxPublisher = bindCallerModule(txOutboxPublisher, "m10");
   const m11OutboxPublisher = bindCallerModule(txOutboxPublisher, "m11");
   const m12OutboxPublisher = bindCallerModule(txOutboxPublisher, "m12");
+  const m13OutboxPublisher = bindCallerModule(txOutboxPublisher, "m13");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -1332,7 +1338,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
           mountOrderRoutes(app, dbHandle.db, m11OutboxPublisher); // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
-          mountEmarRoutes(app, dbHandle.db); // M13 reads
+          mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db); // M14 reads
           mountSchedulingRoutes(app, dbHandle.db); // M17 reads
           mountEvvRoutes(app, dbHandle.db); // M18 reads

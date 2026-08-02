@@ -1,22 +1,51 @@
-// apps/backend/src/modules/13-emar — PRODUCTION EmarRouteService, READ-first (M13L-T01, mirrors M6L-T01).
+// apps/backend/src/modules/13-emar — PRODUCTION EmarRouteService + §4.7 ABAC resolver (M13L reads + writes
+// over Drizzle+RLS). No route is left at 501.
 //
 // The screen-driving READS (administration record + census, IV-continuous session, scheduled/missed doses,
 // reconciliation worksheets + decisions, comfort-kit deployments, administration policy) run as real Drizzle
 // queries over the M13-owned `emar/*` tables inside `withOrgContext`, so RLS scopes every row by `app.org_id`
 // as the unprivileged `wardenx_app` role. `administration_record` is PARTITIONED BY RANGE(administered_at);
-// reads query the parent. The full WRITE lifecycle (record/correct/void administration, witness token mint,
-// caregiver-attested capture, missed-dose ack, reconciliation decisions/finalize, comfort-kit return, policy
-// put) is the M13L-T02+ follow-up; every write here fail-closes 501 (`NOT_IMPLEMENTED`). The in-memory
-// `createInMemoryEmarBackend` (`routes/service.ts`) stays the behavioral reference for those writes.
+// reads query the parent, inserts route to the current-month leaf.
 //
-// The backend is ALSO the {@link EmarAbacResolver} (the M12-T08 precedent): the §4.7 predicate facts resolve
-// over the same dataset. `loadWorksheetTriggerKind` reads the M13-owned worksheet; the witness/caregiver
-// facts depend on M2 membership / M5 caseload data outside M13's tables and fail closed until wired (they gate
-// write routes that already 501).
+// Like M12, M13 has NO state-transition triggers (only the M4 audit triggers) — the service does every
+// administration/worksheet/deployment transition itself via INSERT/UPDATE, composing the PURE `@wardenx/emar`
+// deciders: the §2.5 D8 late-entry tier (`resolveLateEntryTier`), the §2.6 D7 witness-attestation token
+// (`buildWitnessAttestationToken`/`verifyWitnessAttestationToken`, HMAC + scope-bound), and the §2.9 BCMA
+// verifier (`evaluateBarcodeScan`/`barcodeScanBlocks`). Every mutation emits its strict `m13.*` catalog
+// payload on the bound transactional outbox (the publisher Value.Checks each and rolls back on mismatch), so
+// the payloads here are the exact events-by-m13.ts shapes.
+//
+// Documented compromises (the M8–M12 convention; the interface threads no seams into the DB backend):
+//   (1) `withOrgContext` runs with `userId:""` → the M4 write-audit trigger fires with a NULL actor (the
+//       acting membership is the passed `userId`, stored where a column exists);
+//   (2) siting (provider_entity_id + location_id) is sourced from the `scheduled_dose` when a scheduledDoseId
+//       is supplied, else null (mig 0133); patient/admission fall back to the in-mem sentinels;
+//   (3) the M12 `MedicationOrderProvider` seam is NOT threaded, so the §2.9 D6 order-context gates
+//       (administerable / five-rights) are skipped (fail-open, §7.13, mirroring the in-mem unseeded-order
+//       default); a supplied barcodeScan is still evaluated + persisted, but against a permissive order
+//       context (an honest scan reads `match`; an expired scan still hard-blocks);
+//   (4) the M8 `SignedEncountersReader` is NOT threaded → encounter auto-linkage is skipped (the caller may
+//       still pass an explicit encounterId);
+//   (5) the witness-attestation token is a process-fixed HMAC secret and the single-use Valkey burn is
+//       deferred (the token's HMAC + 60s TTL + scope binding are enforced; replay-burn lands with Valkey);
+//   (6) the PRN wrapper row (`prn_administration`) is materialized by M9's reassessment consumer in prod —
+//       the write path emits `m13.prn_administration_recorded` with a fresh id (the in-mem posture);
+//   (7) the reconciliation worksheet stores no expected-line count, so `finalize` requires ≥1 recorded
+//       decision rather than the in-mem's all-lines-decided gate (the per-line completeness set is deferred).
+import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
-import type { BarcodeMatchResult } from "@wardenx/emar";
+import {
+  AdministrationStateError,
+  type BarcodeMatchResult,
+  barcodeScanBlocks,
+  buildWitnessAttestationToken,
+  evaluateBarcodeScan,
+  resolveLateEntryTier,
+  verifyWitnessAttestationToken,
+  witnessTokenDigest,
+} from "@wardenx/emar";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@wardenx/types";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import type {
   CaregiverReviewAbacFacts,
@@ -29,10 +58,38 @@ import type {
   EmarRouteService,
   IvSessionView,
   MissedDoseView,
+  RecordAdministrationArgs,
+  RecordCaregiverAttestedArgs,
+  RecordDecisionArgs,
+  RecordRefusalArgs,
   ReconciliationDecisionView,
   ScheduledDoseView,
+  WitnessAttestArgs,
   WorksheetView,
 } from "./routes/service";
+
+/** Sentinel patient/admission anchors when no scheduled dose supplies them (the in-mem `findPatient` values). */
+const PATIENT_SENTINEL = "00000000-0000-4000-8000-0000000000aa";
+const ADMISSION_SENTINEL = "00000000-0000-4000-8000-0000000000bb";
+/** Process-fixed witness-token secret (compromise #5): mint + verify share it in-process so tokens round-trip. */
+const WITNESS_SECRET = "wardenx-m13-witness-secret";
+
+/** The transactional-outbox port (§4.4): the bound publisher validates every emit against the boot catalog
+ * and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests commit without
+ * a dispatcher. Mirrors M7/M8/M9/M10/M11/M12. */
+export interface EmarWriteOutboxPort {
+  publish(
+    tx: unknown,
+    emission: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+const NOOP_OUTBOX: EmarWriteOutboxPort = { async publish() {} };
 
 const ADM = schema.administrationRecords;
 const SD = schema.scheduledDoses;
@@ -48,15 +105,6 @@ const DEFAULT_POLICY: AdministrationPolicyView = {
   graceWindowMinutes: 30,
   prnMinimumIntervalMinutes: 60,
   emarPdfOnCommit: false,
-};
-
-/** A never-returning stub for the write lifecycle still owed by M13L-T02+. */
-const notImpl = (): never => {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    "eMAR writes arrive in M13L-T02+ (the Drizzle write lifecycle)",
-    501,
-  );
 };
 
 const iso = (d: Date | string | null): string | null =>
@@ -110,12 +158,61 @@ const toDecisionView = (d: typeof RD.$inferSelect): ReconciliationDecisionView =
 });
 
 /**
- * The production, RLS-backed EmarRouteService + EmarAbacResolver. Reads are real; writes fail-closed 501.
- * Org is bound from the request context by the caller and passed as `orgId` — never the body.
+ * The production, RLS-backed EmarRouteService + EmarAbacResolver. Reads + the write lifecycle are live over
+ * Drizzle+RLS; every mutation emits `m13.*` on the bound transactional `outbox`. Org is bound from the request
+ * context by the caller and passed as `orgId` — never the body.
  */
-export function createDbEmarBackend(db: DbClient): EmarRouteService {
+export function createDbEmarBackend(
+  db: DbClient,
+  outbox: EmarWriteOutboxPort = NOOP_OUTBOX,
+): EmarRouteService {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, fn as never) as Promise<T>;
+
+  /** Emit one `m13.*` event on the caller's tx (validated + persisted by the bound publisher). */
+  async function emit(
+    tx: unknown,
+    orgId: string,
+    eventName: string,
+    aggregateKind: string,
+    aggregateId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await outbox.publish(tx, { eventName, payload, organizationId: orgId, aggregateKind, aggregateId });
+  }
+
+  /** Load a single administration_record (RLS-scoped) or the non-leaking 404. */
+  async function loadAdmin(tx: DbClient, id: string): Promise<AdminRow> {
+    const [r] = await tx.select().from(ADM).where(eq(ADM.id, id)).limit(1);
+    if (!r) throw new NotFoundError("administration not found");
+    return r;
+  }
+  /** Re-read one administration (post-write) as the wire view (with its captured barcode match). */
+  async function readAdmin(tx: DbClient, id: string): Promise<AdministrationView> {
+    const r = await loadAdmin(tx, id);
+    const m = await matchResults(tx, [r.id]);
+    return toAdminView(r, m.get(r.id) ?? null);
+  }
+  /** Load the worksheet (RLS-scoped) or the non-leaking 404. */
+  async function loadWorksheet(tx: DbClient, id: string): Promise<typeof WS.$inferSelect> {
+    const [w] = await tx.select().from(WS).where(eq(WS.id, id)).limit(1);
+    if (!w) throw new NotFoundError("reconciliation worksheet not found");
+    return w;
+  }
+  /** Re-read one worksheet (post-write) as the wire view (with its decision lines). */
+  async function readWorksheet(tx: DbClient, id: string): Promise<WorksheetView> {
+    const w = await loadWorksheet(tx, id);
+    const decisions = await tx.select().from(RD).where(eq(RD.worksheetId, id));
+    return toWorksheetView(w, decisions.map(toDecisionView));
+  }
+  /** The scheduled_dose row as the wire view. */
+  const toScheduledView = (s: typeof SD.$inferSelect): ScheduledDoseView => ({
+    id: s.id,
+    patientId: s.patientId,
+    medicationOrderId: s.medicationOrderId,
+    dueAt: iso(s.dueAt)!,
+    status: s.status,
+  });
 
   /** Batch-load the captured barcode `match_result` for a set of administration ids. */
   async function matchResults(
@@ -335,26 +432,560 @@ export function createDbEmarBackend(db: DbClient): EmarRouteService {
       });
     },
 
-    // ── writes — the M13L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ────────────────────────────
-    recordAdministration: async () => notImpl(),
-    mintWitnessToken: async () => notImpl(),
-    recordCaregiverAttested: async () => notImpl(),
-    acknowledgeCaregiver: async () => notImpl(),
-    disputeCaregiver: async () => notImpl(),
-    correctAdministration: async () => notImpl(),
-    voidAdministration: async () => notImpl(),
-    recordRefusal: async () => notImpl(),
-    offlineSync: async () => notImpl(),
-    intentionalHold: async () => notImpl(),
-    acknowledgeMissed: async () => notImpl(),
-    recordDecision: async () => notImpl(),
-    updateDecision: async () => notImpl(),
-    addCaregiverReportedLine: async () => notImpl(),
-    finalizeReconciliation: async () => notImpl(),
-    voidWorksheet: async () => notImpl(),
-    acknowledgeReturn: async () => notImpl(),
-    putPolicy: async () => notImpl(),
-    // No outbox events are emitted on the read path.
+    // ── administration writes (§2.2 lifecycle; the service does the transitions, no DB triggers) ─────────
+    async recordAdministration(orgId, userId, args: RecordAdministrationArgs): Promise<AdministrationView> {
+      return withOrg(orgId, async (tx) => {
+        const recordedAt = new Date();
+        const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt.toISOString());
+        const isControlled = args.medClass === "controlled_substance";
+        const isComfortKitDrawdown = Boolean(args.comfortKitDeploymentId);
+
+        // Siting + patient/admission anchor come from the scheduled dose when named; else null siting +
+        // sentinels (compromise #2). The M12 order-context gates (D6/five-rights) are skipped (compromise #3).
+        const sched = args.scheduledDoseId
+          ? (await tx.select().from(SD).where(eq(SD.id, args.scheduledDoseId)).limit(1))[0]
+          : undefined;
+        const patientId = sched?.patientId ?? PATIENT_SENTINEL;
+        const admissionId = sched?.admissionId ?? ADMISSION_SENTINEL;
+
+        // D7 — a controlled administration requires a valid, in-scope, unexpired witness-attestation token.
+        let witnessMembershipId: string | null = null;
+        let witnessDigest: string | null = null;
+        if (isControlled) {
+          const verify = args.witnessToken
+            ? verifyWitnessAttestationToken({
+                token: args.witnessToken,
+                secret: WITNESS_SECRET,
+                expectedScope: {
+                  patientId,
+                  medicationOrderId: args.medicationOrderId,
+                  administeringClinicianMembershipId: userId,
+                },
+                nowMs: Date.now(),
+              })
+            : ({ ok: false, reason: "WITNESS_TOKEN_INVALID" } as const);
+          if (!verify.ok)
+            throw new ValidationError(
+              "a controlled-substance administration requires a witness attestation",
+              [{ field: "X-Witness-Attestation", code: "WITNESS_REQUIRED", message: `witness attestation ${verify.reason}` }],
+            );
+          witnessMembershipId = verify.claims.witnessMembershipId;
+          witnessDigest = verify.digest;
+        }
+
+        // §2.9 BCMA — evaluate the scan against a permissive order context (compromise #3); a wrong/expired
+        // scan still hard-blocks. Persisted after the administration row (it back-refs the new id).
+        let barcodeMatchResult: BarcodeMatchResult | null = null;
+        if (args.barcodeScan) {
+          barcodeMatchResult = evaluateBarcodeScan(
+            args.barcodeScan,
+            { orderActive: true, rxnormRxcui: null, ndc: null },
+            { wristbandPayloadDigest: null },
+            args.administeredAt.slice(0, 10),
+          );
+          if (barcodeScanBlocks(barcodeMatchResult))
+            throw new AdministrationStateError("BARCODE_VERIFICATION_FAILED", `barcode verification failed: ${barcodeMatchResult}`);
+        }
+
+        const inserted = (
+          await tx
+            .insert(ADM)
+            .values({
+              organizationId: orgId,
+              providerEntityId: sched?.providerEntityId ?? null,
+              locationId: sched?.locationId ?? null,
+              patientId,
+              admissionId,
+              medicationOrderId: args.medicationOrderId,
+              scheduledDoseId: args.scheduledDoseId ?? null,
+              encounterId: args.encounterId ?? null,
+              comfortKitDeploymentId: args.comfortKitDeploymentId ?? null,
+              mode: args.mode,
+              status: "committed",
+              data: {},
+              drugNameSnapshot: "",
+              routeSnapshot: args.route ?? "",
+              doseAmountSnapshot: args.doseAmount != null ? String(args.doseAmount) : null,
+              doseUnitSnapshot: args.doseUnit ?? null,
+              isControlledSubstance: isControlled,
+              isComfortKitDrawdown,
+              administeredAt: new Date(args.administeredAt),
+              recordedAt,
+              actorKind: "clinician",
+              administeringClinicianMembershipId: userId,
+              witnessMembershipId,
+              witnessAttestationTokenDigest: witnessDigest,
+              witnessAttestedAt: witnessMembershipId ? recordedAt : null,
+              lateEntryTier,
+              lateEntryReason: args.lateEntryReason ?? null,
+              offlineCapture: Boolean(args.offlineCapture),
+              deviceId: args.offlineCapture?.deviceId ?? null,
+              localId: args.offlineCapture?.localId ?? null,
+            })
+            .returning()
+        )[0]!;
+
+        if (args.scheduledDoseId)
+          await tx
+            .update(SD)
+            .set({ status: "administered", administeredAt: new Date(args.administeredAt) })
+            .where(eq(SD.id, args.scheduledDoseId));
+
+        if (isControlled && witnessMembershipId)
+          await tx.insert(schema.administrationWitnesses).values({
+            organizationId: orgId,
+            administrationRecordId: inserted.id,
+            witnessMembershipId,
+            witnessesScope: "administration_only",
+            attestationText: "I attest I observed the controlled-substance administration (§2.6 D7).",
+            attestationTokenDigest: witnessDigest ?? "",
+          });
+
+        if (args.barcodeScan)
+          await tx.insert(BSE).values({
+            organizationId: orgId,
+            administrationRecordId: inserted.id,
+            scannedNdc: args.barcodeScan.scannedNdc ?? null,
+            scannedRxnormRxcui: args.barcodeScan.scannedRxnormRxcui ?? null,
+            scannedExpirationDate: args.barcodeScan.scannedExpirationDate ?? null,
+            patientWristbandPayloadDigest: args.barcodeScan.patientWristbandPayloadDigest ?? null,
+            matchResult: barcodeMatchResult ?? "match",
+          });
+
+        await emit(tx, orgId, "m13.administration.recorded", "administration_record", inserted.id, {
+          administrationRecordId: inserted.id,
+          patientId,
+          admissionId,
+          medicationOrderId: args.medicationOrderId,
+          mode: args.mode,
+          administeredAt: args.administeredAt,
+          isControlled,
+          isComfortKitDrawdown,
+          encounterId: args.encounterId ?? null,
+          scheduledDoseId: args.scheduledDoseId ?? null,
+        });
+        if (isControlled && witnessMembershipId)
+          await emit(tx, orgId, "m13.administration.controlled_witnessed", "administration_record", inserted.id, {
+            administrationRecordId: inserted.id,
+            witnessMembershipId,
+            witnessesScope: "administration_only",
+          });
+        if (args.prn)
+          await emit(tx, orgId, "m13.prn_administration_recorded", "administration_record", inserted.id, {
+            prnAdministrationId: randomUUID(),
+            administrationRecordId: inserted.id,
+            patientId,
+            medicationOrderId: args.medicationOrderId,
+            administeredAt: args.administeredAt,
+            reassessmentDueAt: new Date(Date.parse(args.administeredAt) + 60 * 60000).toISOString(),
+            recommendedReassessmentScale: "esas_r",
+          });
+        return toAdminView(inserted, barcodeMatchResult);
+      });
+    },
+
+    async mintWitnessToken(orgId, userId, args: WitnessAttestArgs): Promise<{ token: string; expiresInSeconds: number }> {
+      // Stateless HMAC token (compromise #5): mint + verify share the process-fixed secret; the witness's
+      // membership is the passed `userId`. No DB write (the single-use Valkey burn is deferred).
+      const token = buildWitnessAttestationToken(
+        {
+          patientId: args.patientId,
+          medicationOrderId: args.medicationOrderId,
+          administeringClinicianMembershipId: args.administeringClinicianMembershipId,
+          witnessMembershipId: userId,
+          issuedAtMs: Date.now(),
+          nonce: randomUUID(),
+        },
+        WITNESS_SECRET,
+      );
+      return { token, expiresInSeconds: 60 };
+    },
+
+    async recordCaregiverAttested(orgId, args: RecordCaregiverAttestedArgs): Promise<AdministrationView> {
+      // §2.9 D10 — the caregiver path records pending_caregiver_review (requires_rn_review=true); the double-
+      // witness rule does not apply and encounter_id stays null (D9). The M12 five-rights gate is skipped
+      // (compromise #3, no order projection threaded).
+      return withOrg(orgId, async (tx) => {
+        const inserted = (
+          await tx
+            .insert(ADM)
+            .values({
+              organizationId: orgId,
+              patientId: args.patientId,
+              admissionId: ADMISSION_SENTINEL,
+              medicationOrderId: args.medicationOrderId,
+              mode: "single_dose",
+              status: "pending_caregiver_review",
+              data: {},
+              drugNameSnapshot: "",
+              routeSnapshot: args.route,
+              doseAmountSnapshot: String(args.doseAmount),
+              doseUnitSnapshot: args.doseUnit,
+              administeredAt: new Date(args.administeredAt),
+              actorKind: "caregiver_attested",
+              actorCaregiverSessionId: args.caregiverSessionId,
+              requiresRnReview: true,
+            })
+            .returning()
+        )[0]!;
+        await emit(tx, orgId, "m13.administration.recorded_caregiver_attested", "administration_record", inserted.id, {
+          administrationRecordId: inserted.id,
+          patientId: args.patientId,
+          medicationOrderId: args.medicationOrderId,
+          caregiverSessionId: args.caregiverSessionId,
+          requiresRnReview: true,
+        });
+        return toAdminView(inserted, null);
+      });
+    },
+
+    async acknowledgeCaregiver(orgId, userId, id): Promise<AdministrationView> {
+      return withOrg(orgId, async (tx) => {
+        await loadAdmin(tx, id);
+        await tx
+          .update(ADM)
+          .set({ requiresRnReview: false, status: "committed", acknowledgedByMembershipId: userId, acknowledgedAt: new Date(), updatedAt: new Date() })
+          .where(eq(ADM.id, id));
+        await emit(tx, orgId, "m13.caregiver_administration.acknowledged", "administration_record", id, {
+          administrationRecordId: id,
+          acknowledgedBy: userId,
+        });
+        return readAdmin(tx, id);
+      });
+    },
+
+    async disputeCaregiver(orgId, userId, id, reason): Promise<AdministrationView> {
+      return withOrg(orgId, async (tx) => {
+        await loadAdmin(tx, id);
+        await tx
+          .update(ADM)
+          .set({ requiresRnReview: false, disputed: true, disputeReason: reason, updatedAt: new Date() })
+          .where(eq(ADM.id, id));
+        await emit(tx, orgId, "m13.caregiver_administration.disputed", "administration_record", id, {
+          administrationRecordId: id,
+          disputedBy: userId,
+          disputeReason: reason,
+        });
+        return readAdmin(tx, id);
+      });
+    },
+
+    async correctAdministration(orgId, userId, id, reason): Promise<AdministrationView> {
+      return withOrg(orgId, async (tx) => {
+        const orig = await loadAdmin(tx, id);
+        const inserted = (
+          await tx
+            .insert(ADM)
+            .values({
+              organizationId: orgId,
+              providerEntityId: orig.providerEntityId,
+              locationId: orig.locationId,
+              patientId: orig.patientId,
+              admissionId: orig.admissionId,
+              medicationOrderId: orig.medicationOrderId,
+              scheduledDoseId: orig.scheduledDoseId,
+              encounterId: orig.encounterId,
+              comfortKitDeploymentId: orig.comfortKitDeploymentId,
+              mode: orig.mode,
+              status: "committed",
+              data: orig.data,
+              drugNameSnapshot: orig.drugNameSnapshot,
+              rxnormRxcuiSnapshot: orig.rxnormRxcuiSnapshot,
+              routeSnapshot: orig.routeSnapshot,
+              doseAmountSnapshot: orig.doseAmountSnapshot,
+              doseUnitSnapshot: orig.doseUnitSnapshot,
+              isControlledSubstance: orig.isControlledSubstance,
+              isComfortKitDrawdown: orig.isComfortKitDrawdown,
+              administeredAt: orig.administeredAt,
+              actorKind: orig.actorKind,
+              administeringClinicianMembershipId: orig.administeringClinicianMembershipId,
+              witnessMembershipId: orig.witnessMembershipId,
+              lateEntryTier: orig.lateEntryTier,
+              correctsAdministrationId: id,
+              correctionReason: reason,
+            })
+            .returning()
+        )[0]!;
+        await tx.update(ADM).set({ status: "superseded", updatedAt: new Date() }).where(eq(ADM.id, id));
+        await emit(tx, orgId, "m13.administration.corrected", "administration_record", inserted.id, {
+          originalAdministrationId: id,
+          newAdministrationId: inserted.id,
+          reason,
+        });
+        return toAdminView(inserted, null);
+      });
+    },
+
+    async voidAdministration(orgId, userId, id, reason): Promise<AdministrationView> {
+      return withOrg(orgId, async (tx) => {
+        await loadAdmin(tx, id);
+        await tx
+          .update(ADM)
+          .set({ status: "voided", voidedAt: new Date(), voidedBy: userId, voidReason: reason, updatedAt: new Date() })
+          .where(eq(ADM.id, id));
+        await emit(tx, orgId, "m13.administration.voided", "administration_record", id, {
+          administrationRecordId: id,
+          voidReason: reason,
+          voidedBy: userId,
+        });
+        return readAdmin(tx, id);
+      });
+    },
+
+    async recordRefusal(orgId, userId, args: RecordRefusalArgs): Promise<AdministrationView> {
+      return withOrg(orgId, async (tx) => {
+        const inserted = (
+          await tx
+            .insert(ADM)
+            .values({
+              organizationId: orgId,
+              patientId: args.patientId,
+              admissionId: ADMISSION_SENTINEL,
+              medicationOrderId: args.medicationOrderId,
+              scheduledDoseId: args.scheduledDoseId ?? null,
+              mode: "single_dose",
+              status: "committed",
+              data: {},
+              drugNameSnapshot: "",
+              routeSnapshot: "",
+              isControlledSubstance: args.medClass === "controlled_substance",
+              refused: true,
+              administeredAt: new Date(args.refusedAt),
+              actorKind: "clinician",
+              administeringClinicianMembershipId: userId,
+            })
+            .returning()
+        )[0]!;
+        await emit(tx, orgId, "m13.administration.refused", "administration_record", inserted.id, {
+          administrationRecordId: inserted.id,
+          patientId: args.patientId,
+          medicationOrderId: args.medicationOrderId,
+          refusalAt: args.refusedAt,
+        });
+        return toAdminView(inserted, null);
+      });
+    },
+
+    async offlineSync(orgId, userId, rows): Promise<{ synced: number; results: AdministrationView[] }> {
+      const results: AdministrationView[] = [];
+      for (const r of rows) results.push(await this.recordAdministration(orgId, userId, r));
+      return { synced: results.length, results };
+    },
+
+    // ── scheduled / missed dose writes ────────────────────────────────────────────────────────────────
+    async intentionalHold(orgId, userId, id): Promise<ScheduledDoseView> {
+      return withOrg(orgId, async (tx) => {
+        const [s] = await tx.select().from(SD).where(eq(SD.id, id)).limit(1);
+        if (!s) throw new NotFoundError("scheduled dose not found");
+        await tx.update(SD).set({ status: "intentionally_held" }).where(eq(SD.id, id));
+        await emit(tx, orgId, "m13.scheduled_dose.intentionally_held", "scheduled_dose", id, {
+          scheduledDoseId: id,
+          recordedBy: userId,
+          missedKind: "intentionally_held",
+        });
+        return toScheduledView({ ...s, status: "intentionally_held" });
+      });
+    },
+
+    async acknowledgeMissed(orgId, userId, id): Promise<MissedDoseView> {
+      return withOrg(orgId, async (tx) => {
+        const [m] = await tx
+          .select({
+            id: MD.id,
+            patientId: MD.patientId,
+            scheduledDoseId: MD.scheduledDoseId,
+            medicationOrderId: MD.medicationOrderId,
+            dueAt: SD.dueAt,
+          })
+          .from(MD)
+          .innerJoin(SD, eq(MD.scheduledDoseId, SD.id))
+          .where(eq(MD.id, id))
+          .limit(1);
+        if (!m) throw new NotFoundError("missed dose not found");
+        const acknowledgedAt = new Date();
+        await tx
+          .update(MD)
+          .set({ acknowledgedAt, acknowledgedByMembershipId: userId })
+          .where(eq(MD.id, id));
+        await emit(tx, orgId, "m13.missed_dose.acknowledged", "missed_dose", id, {
+          missedDoseId: id,
+          acknowledgedBy: userId,
+        });
+        return {
+          id: m.id,
+          patientId: m.patientId,
+          scheduledDoseId: m.scheduledDoseId,
+          medicationOrderId: m.medicationOrderId,
+          dueAt: iso(m.dueAt)!,
+          acknowledgedAt: iso(acknowledgedAt),
+        };
+      });
+    },
+
+    // ── reconciliation worksheet writes ───────────────────────────────────────────────────────────────
+    async recordDecision(orgId, userId, id, args: RecordDecisionArgs): Promise<WorksheetView> {
+      return withOrg(orgId, async (tx) => {
+        await loadWorksheet(tx, id);
+        const decision = (
+          await tx
+            .insert(RD)
+            .values({
+              organizationId: orgId,
+              worksheetId: id,
+              lineKind: args.lineKind,
+              m12MedicationOrderId: args.lineKind === "m12_active" ? args.sourceId : null,
+              m12MedicationHistoryRecordId: args.lineKind === "m12_medhx" ? args.sourceId : null,
+              decisionKind: args.decision,
+              decisionMadeByMembershipId: userId,
+            })
+            .returning({ id: RD.id })
+        )[0]!;
+        await tx.update(WS).set({ status: "in_progress" }).where(eq(WS.id, id));
+        if (args.decision === "carry_forward" || args.decision === "new_order")
+          await emit(tx, orgId, "m13.reconciliation.draft_order_requested", "reconciliation_worksheet", id, {
+            worksheetId: id,
+            decisionId: decision.id,
+            medicationOrderDraftPayload: {},
+            lineKind: args.lineKind,
+          });
+        if (args.decision === "discontinue")
+          await emit(tx, orgId, "m13.reconciliation.discontinue_requested", "reconciliation_worksheet", id, {
+            worksheetId: id,
+            decisionId: decision.id,
+            medicationOrderId: args.sourceId,
+            reason: "reconciled_discontinue",
+          });
+        return readWorksheet(tx, id);
+      });
+    },
+
+    async updateDecision(orgId, userId, id, lineId, decision): Promise<WorksheetView> {
+      return withOrg(orgId, async (tx) => {
+        await loadWorksheet(tx, id);
+        const updated = await tx
+          .update(RD)
+          .set({ decisionKind: decision })
+          .where(and(eq(RD.id, lineId), eq(RD.worksheetId, id)))
+          .returning({ id: RD.id });
+        if (updated.length === 0) throw new NotFoundError("decision line not found");
+        return readWorksheet(tx, id);
+      });
+    },
+
+    async addCaregiverReportedLine(orgId, id, drugName): Promise<WorksheetView> {
+      // A caregiver-reported home med becomes a decision line. The DB decision row is NOT NULL on
+      // decision_kind, so it records as `document_only` (a recorded-but-no-action placeholder) until a
+      // clinician updates it (compromise #7 — no separate undecided-line state).
+      return withOrg(orgId, async (tx) => {
+        await loadWorksheet(tx, id);
+        await tx.insert(RD).values({
+          organizationId: orgId,
+          worksheetId: id,
+          lineKind: "caregiver_reported",
+          caregiverReportedSnapshot: { drugName },
+          decisionKind: "document_only",
+          decisionMadeByMembershipId: PATIENT_SENTINEL,
+        });
+        return readWorksheet(tx, id);
+      });
+    },
+
+    async finalizeReconciliation(orgId, userId, id): Promise<WorksheetView> {
+      return withOrg(orgId, async (tx) => {
+        const w = await loadWorksheet(tx, id);
+        const decisions = await tx.select({ id: RD.id }).from(RD).where(eq(RD.worksheetId, id));
+        if (decisions.length === 0)
+          throw new ValidationError("reconciliation incomplete", [
+            { field: "decisions", code: "RECONCILIATION_INCOMPLETE", message: "no reconciliation decision recorded" },
+          ]);
+        const finalizedAt = new Date();
+        await tx
+          .update(WS)
+          .set({ status: "finalized", finalizedAt, finalizedByMembershipId: userId })
+          .where(eq(WS.id, id));
+        await emit(tx, orgId, "m13.reconciliation.completed", "reconciliation_worksheet", id, {
+          worksheetId: id,
+          triggerKind: w.triggerKind,
+          patientId: w.patientId,
+          admissionId: w.admissionId,
+          finalizedAt: finalizedAt.toISOString(),
+          finalizedBy: userId,
+          lineSummary: {},
+        });
+        await emit(tx, orgId, "m13.reconciliation.document_requested", "reconciliation_worksheet", id, {
+          worksheetId: id,
+          formTemplate: "reconciliation_worksheet_v1",
+          renderPayload: {},
+        });
+        return readWorksheet(tx, id);
+      });
+    },
+
+    async voidWorksheet(orgId, userId, id, reason): Promise<WorksheetView> {
+      return withOrg(orgId, async (tx) => {
+        await loadWorksheet(tx, id);
+        await tx.update(WS).set({ status: "voided", voidReason: reason }).where(eq(WS.id, id));
+        await emit(tx, orgId, "m13.reconciliation.voided", "reconciliation_worksheet", id, {
+          worksheetId: id,
+          voidReason: reason,
+        });
+        return readWorksheet(tx, id);
+      });
+    },
+
+    // ── comfort-kit deployment writes ─────────────────────────────────────────────────────────────────
+    async acknowledgeReturn(orgId, userId, id): Promise<DeploymentView> {
+      return withOrg(orgId, async (tx) => {
+        const [d] = await tx.select().from(CKD).where(eq(CKD.id, id)).limit(1);
+        if (!d) throw new NotFoundError("comfort-kit deployment not found");
+        const returnedAt = new Date();
+        await tx
+          .update(CKD)
+          .set({ disposalStatus: "returned", returnedAt, disposalReconciliationStatus: "reconciled" })
+          .where(eq(CKD.id, id));
+        await emit(tx, orgId, "m13.comfort_kit.returned", "comfort_kit_deployment", id, {
+          deploymentId: id,
+          returnedAt: returnedAt.toISOString(),
+          finalRemainingByMedication: {},
+          disposalReconciliationStatus: "reconciled",
+        });
+        return { id: d.id, patientId: d.patientId, admissionId: d.admissionId, disposalStatus: "returned" };
+      });
+    },
+
+    // ── administration policy write (org singleton; UPSERT) ───────────────────────────────────────────
+    async putPolicy(orgId, patch): Promise<AdministrationPolicyView> {
+      return withOrg(orgId, async (tx) => {
+        const [existing] = await tx.select().from(POL).where(eq(POL.organizationId, orgId)).limit(1);
+        const next: AdministrationPolicyView = {
+          graceWindowMinutes: patch.graceWindowMinutes ?? existing?.defaultGraceWindowMinutes ?? DEFAULT_POLICY.graceWindowMinutes,
+          prnMinimumIntervalMinutes:
+            patch.prnMinimumIntervalMinutes ?? existing?.defaultPrnReassessmentWindowMinutes ?? DEFAULT_POLICY.prnMinimumIntervalMinutes,
+          emarPdfOnCommit: patch.emarPdfOnCommit ?? existing?.emarPerAdministrationPdfEnabled ?? DEFAULT_POLICY.emarPdfOnCommit,
+        };
+        await tx
+          .insert(POL)
+          .values({
+            organizationId: orgId,
+            defaultGraceWindowMinutes: next.graceWindowMinutes,
+            defaultPrnReassessmentWindowMinutes: next.prnMinimumIntervalMinutes,
+            emarPerAdministrationPdfEnabled: next.emarPdfOnCommit,
+          })
+          .onConflictDoUpdate({
+            target: POL.organizationId,
+            set: {
+              defaultGraceWindowMinutes: next.graceWindowMinutes,
+              defaultPrnReassessmentWindowMinutes: next.prnMinimumIntervalMinutes,
+              emarPerAdministrationPdfEnabled: next.emarPdfOnCommit,
+              updatedAt: new Date(),
+            },
+          });
+        await emit(tx, orgId, "m13.policy.changed", "administration_policy", orgId, { policyDeltaSummary: patch });
+        return next;
+      });
+    },
+
+    // The prod outbox is the M1 transactional relay, not a drainable in-memory buffer.
     drainEvents: () => [],
   };
 }

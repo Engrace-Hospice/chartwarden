@@ -7,23 +7,22 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerEmarAbacPredicates as _registerM13Abac } from "./abac-predicates";
-import { createDbEmarBackend } from "./emar-route-service-db";
+import { type EmarWriteOutboxPort, createDbEmarBackend } from "./emar-route-service-db";
 import { registerEmarRoutes as _registerM13Routes } from "./routes/emar-routes";
 
 /**
- * M13L-T01 — mount the M13 eMAR routes over the PRODUCTION Drizzle backend (route service + ABAC resolver in
- * one object, RLS-scoped under `withOrgContext`; mirrors M6L-T01 / M12-T08). Called from the composition
- * root's db branch. Reads are live (administration record + census, IV session, scheduled/missed doses,
- * reconciliation worksheets, comfort-kit deployments, policy); writes fail-closed 501 until the M13L-T02+
- * Drizzle write lifecycle lands. Replaces the in-memory clinical-core scaffold mount for M13.
+ * M13L — mount the M13 eMAR routes over the PRODUCTION Drizzle backend (route service + §4.7 ABAC resolver in
+ * one object, RLS-scoped under `withOrgContext`; mirrors M6L / M12L). Called from the composition root's db
+ * branch. Reads + the full write lifecycle are live over Drizzle+RLS; every mutation emits `m13.*` on the
+ * bound transactional `outbox`. Replaces the in-memory clinical-core scaffold mount for M13.
  */
-export function mountEmarRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbEmarBackend(db);
+export function mountEmarRoutes(app: FastifyInstance, db: DbClient, outbox?: EmarWriteOutboxPort): void {
+  const backend = createDbEmarBackend(db, outbox);
   _registerM13Abac({ resolver: backend });
   _registerM13Routes(app, { service: backend });
 }
 
-export { createDbEmarBackend } from "./emar-route-service-db";
+export { type EmarWriteOutboxPort, createDbEmarBackend } from "./emar-route-service-db";
 export {
   type ComfortKitAdministrationTimeline,
   type DoseScheduleRow,
