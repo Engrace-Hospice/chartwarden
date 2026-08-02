@@ -171,28 +171,19 @@ describe.skipIf(!DB_URL)("M18 EVV Drizzle read service — LIVE Postgres", () =>
     });
   });
 
-  it("writes fail-closed 501 until the Drizzle write lifecycle lands (deny-stub throws SYNCHRONOUSLY)", () => {
-    // The write stubs throw synchronously (not a rejected Promise), so `.rejects.toThrow()` would false-pass;
-    // assert the throw at call time and read the WardenXError.statusCode off the caught value.
-    let caught: unknown;
-    expect(() =>
-      service.recordCapture(ORG_A, USER, "check_in", {
-        visitId: VISIT,
-        coords: { lat: 45.5, lng: -122.6 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      }),
-    ).toThrow();
-    try {
-      service.recordCapture(ORG_A, USER, "check_in", {
-        visitId: VISIT,
-        coords: { lat: 45.5, lng: -122.6 },
-        accuracyM: 4.5,
-        capturedAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toMatchObject({ statusCode: 501 });
+  it("the M18L write lifecycle persists over RLS: selfRegisterDevice round-trips through listDevices", async () => {
+    // The write lifecycle is live (no route at 501). A device self-register needs only a membership (no M17
+    // visit), so it is the read-suite's persistence smoke-check; the full write suite (m18-evv-write) exhausts
+    // capture / geofence / resolution / aggregator. Prove one mutation commits under RLS and reads back scoped.
+    const created = await service.selfRegisterDevice(ORG_A, seeded[ORG_A].membership, {
+      platform: "android",
+      modelDescription: "Pixel 8",
+    });
+    expect(created.status).toBe("pending_approval");
+    const devices = await service.listDevices(ORG_A, seeded[ORG_A].membership);
+    expect(devices.some((d) => d.id === created.id && d.platform === "android")).toBe(true);
+    // RLS: org B cannot see org A's freshly-written device.
+    const bDevices = await service.listDevices(ORG_B);
+    expect(bDevices.every((d) => d.id !== created.id)).toBe(true);
   });
 });

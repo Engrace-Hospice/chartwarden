@@ -15,25 +15,25 @@
 // inventory behind the M3 Authorization Contract over the in-memory `EvvRouteService` slice.
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { createDbEvvBackend } from "./evv-route-service-db";
+import { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
 import { registerEvvAbacPredicates as _registerM18Abac } from "./abac-predicates";
 import { registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
 
 /**
  * Mount the M18 EVV routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`), mirroring
  * `mountAdmissionRoutes`. The SAME backend object is the route service AND the §4.7 ABAC resolver (the
- * predicates read the same dataset the handlers do). Reads are live (event ledger/detail, per-visit bracket,
- * device roster, geofence policy, missing-resolution queue, aggregator submissions, metrics, team location,
- * portal arrival); writes fail-closed 501 until the Drizzle write lifecycle lands. Replaces the in-memory
- * clinical-core scaffold mount for M18.
+ * predicates read the same dataset the handlers do). Reads AND the full write lifecycle (capture, device
+ * lifecycle, geofence policy, missing-resolution + aggregator-submission machines) are live over Drizzle+RLS;
+ * every mutation emits its strict `m18.evv.*` catalog payload on the bound transactional `outbox`. Replaces the
+ * in-memory clinical-core scaffold mount for M18.
  */
-export function mountEvvRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbEvvBackend(db);
+export function mountEvvRoutes(app: FastifyInstance, db: DbClient, outbox?: EvvWriteOutboxPort): void {
+  const backend = createDbEvvBackend(db, outbox);
   _registerM18Abac({ resolver: backend });
   _registerM18Routes(app, { service: backend });
 }
 
-export { createDbEvvBackend } from "./evv-route-service-db";
+export { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
 export {
   type EvvAbacDeps,
   type EvvAbacResolver,
