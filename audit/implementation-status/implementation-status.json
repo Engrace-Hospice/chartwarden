@@ -559,7 +559,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 8,
-        "covered": 0
+        "covered": 8
       }
     },
     {
