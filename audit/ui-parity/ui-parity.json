@@ -42,6 +42,7 @@
     "30-quality",
     "33-reporting",
     "34-saas",
+    "35-subscription",
     "36-messaging",
     "38-terminology",
     "39-consent",
@@ -1608,6 +1609,62 @@
       "id": "saas.support-grants",
       "path": "/admin/support-grants",
       "permission": "support_consent_grant.list_own"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.overview",
+      "path": "/subscription",
+      "permission": "subscription.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.plan",
+      "path": "/subscription/plan",
+      "permission": "subscription.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.payment-methods",
+      "path": "/subscription/payment_methods",
+      "permission": "payment_method.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.invoices",
+      "path": "/subscription/invoices",
+      "permission": "invoice.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.invoice-detail",
+      "path": "/subscription/invoices/:id",
+      "permission": "invoice.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.usage",
+      "path": "/subscription/usage",
+      "permission": "usage.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.dunning",
+      "path": "/subscription/dunning",
+      "permission": "subscription.read"
+    },
+    {
+      "module": "35-subscription",
+      "moduleId": 35,
+      "id": "billing.promos",
+      "path": "/subscription/promos",
+      "permission": "subscription.read"
     },
     {
       "module": "36-messaging",

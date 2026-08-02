@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 37,
+    "Implemented": 38,
     "Partial": 0,
-    "Placeholder": 3
+    "Placeholder": 2
   },
   "rows": [
     {
@@ -682,14 +682,17 @@
     {
       "id": 35,
       "module": "M35 Subscription Billing",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": null,
-      "screens": false,
-      "tests": false,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": {
+        "routes": 50,
+        "enriched": 50
+      },
+      "screens": true,
+      "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 21,

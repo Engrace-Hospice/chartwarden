@@ -345,6 +345,9 @@
     "packages/subscription-billing": {
       "name": "@wardenx/subscription-billing",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/supplies": {
       "name": "@wardenx/supplies",

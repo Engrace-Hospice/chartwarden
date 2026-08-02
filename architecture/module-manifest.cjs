@@ -949,8 +949,15 @@ exports.MODULES = [
   {
     id: 35,
     name: "Subscription Billing",
-    codePaths: ["apps/backend/src/modules/35-subscription", "packages/subscription-billing"],
-    dependsOn: [],
+    codePaths: [
+      "apps/backend/src/modules/35-subscription",
+      "apps/web/src/modules/35-subscription", // Track B web slice (ADR-0030, M35-T01) — scaffolded 1:1
+      "packages/subscription-billing",
+    ],
+    // M1 foundation edge (withOrgContext + @wardenx/db + outbox + bootstrap seam/route wiring) — the
+    // standard backend-owning-module dependency (M27/M28 precedent). M34↔M35 stays seam-both-ways NO
+    // edge either direction (ADR-0025); no feature-module edge is added.
+    dependsOn: [1],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
         "dunning_state",

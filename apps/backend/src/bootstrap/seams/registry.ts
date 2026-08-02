@@ -65,6 +65,15 @@ import {
   fhirInboundProposalReaderDenyStub,
   claimReaderDenyStub,
   labObservationReaderDenyStub,
+  subscriptionStateProviderDenyStub,
+  billingStatusProviderDenyStub,
+  usageMeteringIngestDenyStub,
+  patientCounterProviderDenyStub,
+  revenueMetricsProviderDenyStub,
+  planCatalogReaderDenyStub,
+  onboardingStatusProviderDenyStub,
+  externalInterfaceMetricsProviderDenyStub,
+  aiTokenMeterProviderDenyStub,
   hopeJ2051ProviderDenyStub,
   hopeOrgRollupProviderDenyStub,
   hopeSubmissionProviderDenyStub,
@@ -418,6 +427,71 @@ export const REQUIRED_SEAMS = [
     ownerModule: 29,
     phi: true,
     denyStub: labObservationReaderDenyStub,
+  },
+  // M35 (Subscription Billing) §4.5 — the SIX published read seams M35 registers into the M1 registry
+  // (M35-T05). Until these entries existed, M35 was reachable cross-module ONLY through its §4.11 outbox
+  // events: M33's revenue/subscription dashboards and M34's SaaS console (ADR-0025: seam-both-ways, NO edge
+  // either direction) had no read path to the subscription header, the billing-block gate, the MRR/ARR
+  // snapshots, or the plan catalog at all. M35 registers the real Drizzle-backed impls over the deny-stubs
+  // when its routes/stores land (M35-T06); until then `validateSeams()` applies the fail-closed deny-stub.
+  //
+  // All SIX are aggregate/subscription-header/catalog metadata — no patient row crosses (usage counts are
+  // pseudonymized, D6/§8.5) → phi:false throughout.
+  {
+    key: "SubscriptionStateProvider",
+    ownerModule: 35,
+    phi: false,
+    denyStub: subscriptionStateProviderDenyStub,
+  },
+  {
+    key: "BillingStatusProvider",
+    ownerModule: 35,
+    phi: false,
+    denyStub: billingStatusProviderDenyStub,
+  },
+  {
+    key: "UsageMeteringIngest",
+    ownerModule: 35,
+    phi: false,
+    denyStub: usageMeteringIngestDenyStub,
+  },
+  {
+    key: "PatientCounterProvider",
+    ownerModule: 35,
+    phi: false,
+    denyStub: patientCounterProviderDenyStub,
+  },
+  {
+    key: "RevenueMetricsProvider",
+    ownerModule: 35,
+    phi: false,
+    denyStub: revenueMetricsProviderDenyStub,
+  },
+  { key: "PlanCatalogReader", ownerModule: 35, phi: false, denyStub: planCatalogReaderDenyStub },
+  // M35 §4.6 — the THREE forward-seam consumer views M35 CONSUMES but whose owner modules do not publish
+  // them yet. Each stays on the fail-closed deny-stub the whole of Phase 1; M35's metering/billing paths
+  // (M35-T06) resolve them via `getSeam` + the interim fallback. `OnboardingStatusProvider` is M34's
+  // (ADR-0025 no-edge, interface home is packages/types); the other two are M29/M32 placeholders.
+  //   · `OnboardingStatusProvider` (M34) — billability metadata, not a patient record → phi:false.
+  //   · `ExternalInterfaceMetricsProvider` (M29) — aggregate HL7 message COUNTS, no message body → phi:false.
+  //   · `AITokenMeterProvider` (M32) — aggregate token COUNT per org, PHI-free by construction → phi:false.
+  {
+    key: "OnboardingStatusProvider",
+    ownerModule: 34,
+    phi: false,
+    denyStub: onboardingStatusProviderDenyStub,
+  },
+  {
+    key: "ExternalInterfaceMetricsProvider",
+    ownerModule: 29,
+    phi: false,
+    denyStub: externalInterfaceMetricsProviderDenyStub,
+  },
+  {
+    key: "AITokenMeterProvider",
+    ownerModule: 32,
+    phi: false,
+    denyStub: aiTokenMeterProviderDenyStub,
   },
   // M6 (Admission, Election & Certification) reader seams (§4.7). Each is a read-only DTO surface over
   // M6's PHI tables (admission/election/CTI/F2F/LOC status), consumed by M14/M22/M23/M26/M30 in later

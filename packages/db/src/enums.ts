@@ -3218,3 +3218,120 @@ export const telehealthVendor = pgEnum("telehealth_vendor", [
   "twilio_video",
   "native_webrtc",
 ]);
+
+// ── Module 35 (Subscription Billing) — §3.3 the fourteen enum types (M35-T02) ──────────────────────────
+//
+// The spec §3.3 code block imports these from `packages/subscription-billing/src/schema/enums.ts`; the
+// repo defines every pgEnum ONCE in this central @wardenx/db enums surface (check-ddl-legality bans
+// duplicate pgEnum definitions, ADR-0022 D1.3), so they resolve on the path the gates govern. The value
+// tuples MIRROR `@wardenx/subscription-billing`'s `enums.ts` (each pinned there with
+// `as const satisfies readonly <LeafUnion>[]` against `@wardenx/types`), kept in lock-step so the two
+// definition sites cannot drift (the M30 "wire enum as Type.String()" precedent). Migrations 0140–0142
+// emit the matching `CREATE TYPE`s; RLS/grants + the M4 write-audit triggers land in 0143.
+
+/** `plan_tier` — the pricing tier a plan belongs to (§2.1). */
+export const planTier = pgEnum("plan_tier", ["starter", "professional", "enterprise"]);
+
+/** `billing_cadence` — monthly vs annual billing period. */
+export const billingCadence = pgEnum("billing_cadence", ["monthly", "annual"]);
+
+/** `subscription_status` — the §2.2 subscription lifecycle FSM. */
+export const subscriptionStatus = pgEnum("subscription_status", [
+  "trialing",
+  "active",
+  "past_due",
+  "at_risk",
+  "suspended",
+  "canceled",
+  "paused",
+]);
+
+/** `dunning_stage` — the §4.15 dunning state machine (D7). */
+export const dunningStage = pgEnum("dunning_stage", [
+  "none",
+  "day_1",
+  "day_7",
+  "day_14",
+  "day_21",
+  "day_28_suspend",
+  "day_60_cancel",
+  "resolved",
+]);
+
+/** `invoice_status` — mirrors Stripe's invoice lifecycle. */
+export const invoiceStatus = pgEnum("invoice_status", [
+  "draft",
+  "open",
+  "paid",
+  "void",
+  "uncollectible",
+]);
+
+/** `invoice_line_kind` — the category of an invoice line. */
+export const invoiceLineKind = pgEnum("invoice_line_kind", [
+  "subscription",
+  "metered",
+  "one_time",
+  "tax",
+  "discount",
+  "credit",
+  "proration",
+]);
+
+/** `refund_status` — the §D16 four-stage refund workflow FSM. */
+export const refundStatus = pgEnum("refund_status", [
+  "requested",
+  "approved",
+  "denied",
+  "executed_success",
+  "executed_failed",
+]);
+
+/** `refund_kind` — the shape of a refund. */
+export const refundKind = pgEnum("refund_kind", ["full", "partial", "credit_only"]);
+
+/** `promo_kind` — how a promo code discounts. */
+export const promoKind = pgEnum("promo_kind", ["percent_off", "amount_off"]);
+
+/** `promo_duration` — how long a promo applies. */
+export const promoDuration = pgEnum("promo_duration", ["once", "repeating", "forever"]);
+
+/** `payment_method_kind` — the Stripe payment-method family. */
+export const paymentMethodKind = pgEnum("payment_method_kind", [
+  "card",
+  "us_bank_account",
+  "sepa_debit",
+  "other",
+]);
+
+/** `usage_event_type` — the metered usage dimensions (§4.4/§4.12). */
+export const usageEventType = pgEnum("usage_event_type", [
+  "active_patient",
+  "active_user",
+  "claim_submitted_medicare",
+  "claim_submitted_medicaid",
+  "ai_tokens_consumed",
+  "fhir_egress_request",
+  "hl7_message_inbound",
+  "hl7_message_outbound",
+]);
+
+/** `usage_event_source_module` — which WardenX module emitted a usage event. */
+export const usageEventSourceModule = pgEnum("usage_event_source_module", [
+  "m1",
+  "m2",
+  "m5",
+  "m23",
+  "m24",
+  "m28",
+  "m29",
+  "m32",
+]);
+
+/** `inactivity_reason` — why a patient/user active period ended (§3.3 patient_active_period). */
+export const inactivityReason = pgEnum("inactivity_reason", [
+  "discharged",
+  "died",
+  "revoked",
+  "transferred",
+]);

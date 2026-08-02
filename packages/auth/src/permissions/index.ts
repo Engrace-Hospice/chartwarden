@@ -244,4 +244,8 @@ export {
   type M31ContributedPermissionKey,
   M31_CONTRIBUTED_PERMISSIONS,
   m31ContributedPermissionMirrorRows,
+  // M35 — Module 35's twenty-five Subscription Billing permission keys (§4.7 handshake).
+  type M35ContributedPermissionKey,
+  M35_CONTRIBUTED_PERMISSIONS,
+  m35ContributedPermissionMirrorRows,
 } from "./contributed";

@@ -4,6 +4,468 @@
  */
 
 export interface paths {
+    "/api/admin/dunning/{subscriptionId}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reset dunning */
+        post: operations["postApiAdminDunningBySubscriptionIdReset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/dunning/{subscriptionId}/skip_stage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Skip dunning stage */
+        post: operations["postApiAdminDunningBySubscriptionIdSkipstage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all plans (admin) */
+        get: operations["getApiAdminPlans"];
+        put?: never;
+        /** Create draft plan */
+        post: operations["postApiAdminPlans"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/plans/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update draft plan */
+        patch: operations["patchApiAdminPlansById"];
+        trace?: never;
+    };
+    "/api/admin/plans/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate plan */
+        post: operations["postApiAdminPlansByIdActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/plans/{id}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deprecate plan */
+        post: operations["postApiAdminPlansByIdDeprecate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/plans/{id}/meters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add meter */
+        post: operations["postApiAdminPlansByIdMeters"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/plans/{id}/meters/{meterId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update meter */
+        patch: operations["patchApiAdminPlansByIdMetersByMeterId"];
+        trace?: never;
+    };
+    "/api/admin/promos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List promos */
+        get: operations["getApiAdminPromos"];
+        put?: never;
+        /** Create promo */
+        post: operations["postApiAdminPromos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/promos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update promo */
+        patch: operations["patchApiAdminPromosById"];
+        trace?: never;
+    };
+    "/api/admin/promos/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate promo */
+        post: operations["postApiAdminPromosByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/refunds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List refunds */
+        get: operations["getApiAdminRefunds"];
+        put?: never;
+        /** Request refund */
+        post: operations["postApiAdminRefunds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/refunds/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve refund */
+        post: operations["postApiAdminRefundsByIdApprove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/refunds/{id}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deny refund */
+        post: operations["postApiAdminRefundsByIdDeny"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/revenue/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live MRR estimate */
+        get: operations["getApiAdminRevenueCurrent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/revenue/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List MRR/ARR snapshots */
+        get: operations["getApiAdminRevenueSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/revenue/snapshots/compute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recompute MRR/ARR */
+        post: operations["postApiAdminRevenueSnapshotsCompute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List subscriptions (admin) */
+        get: operations["getApiAdminSubscriptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read any subscription */
+        get: operations["getApiAdminSubscriptionsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/apply_promo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply promo (admin) */
+        post: operations["postApiAdminSubscriptionsByIdApplypromo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel immediately */
+        post: operations["postApiAdminSubscriptionsByIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause subscription */
+        post: operations["postApiAdminSubscriptionsByIdPause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume subscription (admin) */
+        post: operations["postApiAdminSubscriptionsByIdResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/revoke_promo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke applied promo */
+        post: operations["postApiAdminSubscriptionsByIdRevokepromo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/usage/{organizationId}/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant usage drill-down */
+        get: operations["getApiAdminUsageByOrganizationIdCurrent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/webhooks/stripe/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent webhook receipts */
+        get: operations["getApiAdminWebhooksStripeRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/webhooks/stripe/replay/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replay a webhook */
+        post: operations["postApiAdminWebhooksStripeReplayByEventId"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/administration-policy": {
         parameters: {
             query?: never;
@@ -2876,6 +3338,23 @@ export interface paths {
         };
         /** The active-on-now sequestration policy for a ProviderEntity (or null, §4.1) */
         get: operations["getApiV1BillingSequestrationpoliciesActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lightweight billing status */
+        get: operations["getApiV1BillingStatus"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8044,6 +8523,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List invoices */
+        get: operations["getApiV1Invoices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read invoice detail */
+        get: operations["getApiV1InvoicesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/hosted_url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stripe-hosted invoice url */
+        get: operations["getApiV1InvoicesByIdHostedurl"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/invoices/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Invoice PDF url */
+        get: operations["getApiV1InvoicesByIdPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/level-of-care/{id}": {
         parameters: {
             query?: never;
@@ -10260,6 +10807,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/payment_methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List payment methods */
+        get: operations["getApiV1Paymentmethods"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment_methods/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Detach payment method */
+        delete: operations["deleteApiV1PaymentmethodsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment_methods/{id}/set_default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set default payment method */
+        patch: operations["patchApiV1PaymentmethodsByIdSetdefault"];
+        trace?: never;
+    };
+    "/api/v1/payment_methods/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach payment method */
+        post: operations["postApiV1PaymentmethodsAttach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payment_methods/setup_intent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Stripe SetupIntent */
+        post: operations["postApiV1PaymentmethodsSetupintent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/permissions": {
         parameters: {
             query?: never;
@@ -10269,6 +10901,23 @@ export interface paths {
         };
         /** The permission catalog (mirror rows, §6) */
         get: operations["getApiV1Permissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List active plans */
+        get: operations["getApiV1Plans"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14040,6 +14689,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read current subscription */
+        get: operations["getApiV1Subscription"];
+        put?: never;
+        /** Create subscription */
+        post: operations["postApiV1Subscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change plan */
+        patch: operations["patchApiV1Subscription"];
+        trace?: never;
+    };
+    "/api/v1/subscription/apply_promo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply promo code */
+        post: operations["postApiV1SubscriptionApplypromo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscription/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel at period end */
+        post: operations["postApiV1SubscriptionCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/subscription/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume subscription */
+        post: operations["postApiV1SubscriptionResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplies/comfort-kit-dispatches": {
         parameters: {
             query?: never;
@@ -15582,6 +16301,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/usage/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current-period usage */
+        get: operations["getApiV1UsageCurrent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/usage/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Historical usage */
+        get: operations["getApiV1UsageHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{id}/deactivate": {
         parameters: {
             query?: never;
@@ -15851,6 +16604,23 @@ export interface paths {
         get: operations["getApiV1Volunteerhourratio"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/stripe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Stripe webhook (HMAC-verified) */
+        post: operations["postApiV1WebhooksStripe"];
         delete?: never;
         options?: never;
         head?: never;
@@ -16344,6 +17114,1306 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    postApiAdminDunningBySubscriptionIdReset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscriptionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        stage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                        /** Format: date-time */
+                        enteredAt: string;
+                        nextAttemptAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminDunningBySubscriptionIdSkipstage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                subscriptionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        stage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                        /** Format: date-time */
+                        enteredAt: string;
+                        nextAttemptAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": ({
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    } & {
+                        /** Format: uuid */
+                        id: string;
+                        isActive: boolean;
+                        deprecatedAt: string | null;
+                        stripeProductId: string | null;
+                        stripePriceId: string | null;
+                    })[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPlans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    slug: string;
+                    name: string;
+                    description?: string;
+                    tier: "starter" | "professional" | "enterprise";
+                    cadence: "monthly" | "annual";
+                    basePriceCents: number;
+                    currencyCode: string;
+                    trialPeriodDays: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    } & {
+                        /** Format: uuid */
+                        id: string;
+                        isActive: boolean;
+                        deprecatedAt: string | null;
+                        stripeProductId: string | null;
+                        stripePriceId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiAdminPlansById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    description?: string;
+                    basePriceCents?: number;
+                    trialPeriodDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    } & {
+                        /** Format: uuid */
+                        id: string;
+                        isActive: boolean;
+                        deprecatedAt: string | null;
+                        stripeProductId: string | null;
+                        stripePriceId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPlansByIdActivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    } & {
+                        /** Format: uuid */
+                        id: string;
+                        isActive: boolean;
+                        deprecatedAt: string | null;
+                        stripeProductId: string | null;
+                        stripePriceId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPlansByIdDeprecate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    } & {
+                        /** Format: uuid */
+                        id: string;
+                        isActive: boolean;
+                        deprecatedAt: string | null;
+                        stripeProductId: string | null;
+                        stripePriceId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPlansByIdMeters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    eventType: string;
+                    label: string;
+                    inclusiveQuantity: number;
+                    overageUnitPriceCents: number;
+                    billingAggregation: "sum" | "last" | "count";
+                    warningThresholdPercent?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        planId: string;
+                        eventType: string;
+                        label: string;
+                        inclusiveQuantity: number;
+                        overageUnitPriceCents: number;
+                        billingAggregation: string;
+                        warningThresholdPercent: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiAdminPlansByIdMetersByMeterId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                meterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    inclusiveQuantity?: number;
+                    overageUnitPriceCents?: number;
+                    warningThresholdPercent?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        planId: string;
+                        eventType: string;
+                        label: string;
+                        inclusiveQuantity: number;
+                        overageUnitPriceCents: number;
+                        billingAggregation: string;
+                        warningThresholdPercent: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPromos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        code: string;
+                        kind: string;
+                        percentOff: number | null;
+                        fixedOffCents: number | null;
+                        duration: string;
+                        durationInMonths: number | null;
+                        validFrom: string | null;
+                        validTo: string | null;
+                        maxRedemptions: number | null;
+                        redemptionCount: number;
+                        isActive: boolean;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPromos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    stripeCouponId: string;
+                    stripePromotionCodeId: string;
+                    kind: "percent_off" | "amount_off";
+                    percentOff?: number;
+                    fixedOffCents?: number;
+                    duration: "once" | "repeating" | "forever";
+                    durationInMonths?: number;
+                    /** Format: date-time */
+                    validFrom?: string;
+                    /** Format: date-time */
+                    validTo?: string;
+                    maxRedemptions?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        code: string;
+                        kind: string;
+                        percentOff: number | null;
+                        fixedOffCents: number | null;
+                        duration: string;
+                        durationInMonths: number | null;
+                        validFrom: string | null;
+                        validTo: string | null;
+                        maxRedemptions: number | null;
+                        redemptionCount: number;
+                        isActive: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiAdminPromosById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    validTo?: string;
+                    maxRedemptions?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        code: string;
+                        kind: string;
+                        percentOff: number | null;
+                        fixedOffCents: number | null;
+                        duration: string;
+                        durationInMonths: number | null;
+                        validFrom: string | null;
+                        validTo: string | null;
+                        maxRedemptions: number | null;
+                        redemptionCount: number;
+                        isActive: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminPromosByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        code: string;
+                        kind: string;
+                        percentOff: number | null;
+                        fixedOffCents: number | null;
+                        duration: string;
+                        durationInMonths: number | null;
+                        validFrom: string | null;
+                        validTo: string | null;
+                        maxRedemptions: number | null;
+                        redemptionCount: number;
+                        isActive: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminRefunds: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            invoiceId: string;
+                            amountCents: number;
+                            kind: "full" | "partial" | "credit_only";
+                            reasonCode: string;
+                            status: "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+                            /** Format: uuid */
+                            requestedByMembershipId: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            approvedByMembershipId: string | null;
+                            approvedAt: string | null;
+                            deniedReason: string | null;
+                            executedAt: string | null;
+                            stripeRefundId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminRefunds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    invoiceId: string;
+                    amountCents: number;
+                    kind: "full" | "partial" | "credit_only";
+                    reasonCode: "duplicate" | "fraudulent" | "requested_by_customer" | "other";
+                    reasonDetail: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        invoiceId: string;
+                        amountCents: number;
+                        kind: "full" | "partial" | "credit_only";
+                        reasonCode: string;
+                        status: "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+                        /** Format: uuid */
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedByMembershipId: string | null;
+                        approvedAt: string | null;
+                        deniedReason: string | null;
+                        executedAt: string | null;
+                        stripeRefundId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminRefundsByIdApprove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        invoiceId: string;
+                        amountCents: number;
+                        kind: "full" | "partial" | "credit_only";
+                        reasonCode: string;
+                        status: "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+                        /** Format: uuid */
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedByMembershipId: string | null;
+                        approvedAt: string | null;
+                        deniedReason: string | null;
+                        executedAt: string | null;
+                        stripeRefundId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminRefundsByIdDeny: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        invoiceId: string;
+                        amountCents: number;
+                        kind: "full" | "partial" | "credit_only";
+                        reasonCode: string;
+                        status: "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+                        /** Format: uuid */
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedByMembershipId: string | null;
+                        approvedAt: string | null;
+                        deniedReason: string | null;
+                        executedAt: string | null;
+                        stripeRefundId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminRevenueCurrent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mrrCents: number;
+                        arrCents: number;
+                        activeSubscriptions: number;
+                        /** Format: date-time */
+                        asOf: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminRevenueSnapshots: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            snapshotMonth: string;
+                            mrrCents: number;
+                            arrCents: number;
+                            newMrrCents: number;
+                            expansionMrrCents: number;
+                            contractionMrrCents: number;
+                            churnMrrCents: number;
+                            activeSubscriptions: number;
+                            trialingSubscriptions: number;
+                            pastDueSubscriptions: number;
+                            /** Format: date-time */
+                            computedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminRevenueSnapshotsCompute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        snapshotMonth: string;
+                        mrrCents: number;
+                        arrCents: number;
+                        newMrrCents: number;
+                        expansionMrrCents: number;
+                        contractionMrrCents: number;
+                        churnMrrCents: number;
+                        activeSubscriptions: number;
+                        trialingSubscriptions: number;
+                        pastDueSubscriptions: number;
+                        /** Format: date-time */
+                        computedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminSubscriptions: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                status?: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                organizationId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: ({
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            planSlug: string;
+                            planName: string;
+                            status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                            trialEndsAt: string | null;
+                            currentPeriodStart: string | null;
+                            currentPeriodEnd: string | null;
+                            cancelAtPeriodEnd: boolean;
+                            canceledAt: string | null;
+                            defaultPaymentMethodLast4: string | null;
+                            defaultPaymentMethodBrand: string | null;
+                            defaultPaymentMethodExpiresAt: string | null;
+                            dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                        } & {
+                            planTier: "starter" | "professional" | "enterprise";
+                            stripeSubscriptionId: string | null;
+                            /** Format: date-time */
+                            startedAt: string;
+                        })[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminSubscriptionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    } & {
+                        planTier: "starter" | "professional" | "enterprise";
+                        stripeSubscriptionId: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdApplypromo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    promoCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        applicationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        promoCode: string;
+                        applied: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    } & {
+                        planTier: "starter" | "professional" | "enterprise";
+                        stripeSubscriptionId: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    pausedUntil?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    } & {
+                        planTier: "starter" | "professional" | "enterprise";
+                        stripeSubscriptionId: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    } & {
+                        planTier: "starter" | "professional" | "enterprise";
+                        stripeSubscriptionId: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdRevokepromo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    applicationId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminUsageByOrganizationIdCurrent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        periodStart: string;
+                        /** Format: date-time */
+                        periodEnd: string;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            totalQuantity: number;
+                            inclusiveQuantity: number;
+                            overageQuantity: number;
+                            overageUnitPriceCents: number;
+                            projectedOverageCostCents: number;
+                            thresholdState: "ok" | "warning" | "breached";
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminWebhooksStripeRecent: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            stripeEventId: string;
+                            eventType: string;
+                            /** Format: date-time */
+                            receivedAt: string;
+                            processedAt: string | null;
+                            processingAttemptCount: number;
+                            derivedOrganizationId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminWebhooksStripeReplayByEventId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AdminAdministrationpolicy: {
         parameters: {
             query?: never;
@@ -23343,6 +25413,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: string;
+                        isBlockedByBilling: boolean;
+                        dunningStage: string;
+                        daysUntilSuspension: number | null;
+                        hasValidPaymentMethod: boolean;
+                        paymentMethodExpiresAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36051,6 +38150,148 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Invoices: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            invoiceNumber: string | null;
+                            status: "draft" | "open" | "paid" | "void" | "uncollectible";
+                            totalCents: number;
+                            currencyCode: string;
+                            periodStart: string | null;
+                            periodEnd: string | null;
+                            issuedAt: string | null;
+                            dueAt: string | null;
+                            paidAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InvoicesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        invoiceNumber: string | null;
+                        status: "draft" | "open" | "paid" | "void" | "uncollectible";
+                        totalCents: number;
+                        currencyCode: string;
+                        periodStart: string | null;
+                        periodEnd: string | null;
+                        issuedAt: string | null;
+                        dueAt: string | null;
+                        paidAt: string | null;
+                    } & {
+                        subtotalCents: number;
+                        taxCents: number;
+                        amountPaidCents: number;
+                        lines: {
+                            /** Format: uuid */
+                            id: string;
+                            kind: string;
+                            description: string;
+                            quantity: number;
+                            unitAmountCents: number;
+                            totalCents: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InvoicesByIdHostedurl: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InvoicesByIdPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        url: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     patchApiV1LevelofcareById: {
         parameters: {
             query?: never;
@@ -42246,6 +44487,159 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Paymentmethods: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        kind: string;
+                        brand: string | null;
+                        last4: string | null;
+                        expiresAt: string | null;
+                        isDefault: boolean;
+                        isActive: boolean;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1PaymentmethodsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PaymentmethodsByIdSetdefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        kind: string;
+                        brand: string | null;
+                        last4: string | null;
+                        expiresAt: string | null;
+                        isDefault: boolean;
+                        isActive: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PaymentmethodsAttach: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    stripePaymentMethodId: string;
+                    setAsDefault?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        kind: string;
+                        brand: string | null;
+                        last4: string | null;
+                        expiresAt: string | null;
+                        isDefault: boolean;
+                        isActive: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PaymentmethodsSetupintent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        clientSecret: string | null;
+                        status: "pending" | "ready";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Permissions: {
         parameters: {
             query?: never;
@@ -42271,6 +44665,44 @@ export interface operations {
                             description: string;
                         }[];
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Plans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    }[];
                 };
             };
             "4XX": components["responses"]["Error"];
@@ -52453,6 +54885,252 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    planSlug: string;
+                    /** Format: uuid */
+                    paymentMethodId?: string;
+                    promoCode?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1Subscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    newPlanSlug: string;
+                    prorationBehavior: "create_prorations" | "always_invoice" | "none";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SubscriptionApplypromo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    promoCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        applicationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        promoCode: string;
+                        applied: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SubscriptionCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SubscriptionResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        planSlug: string;
+                        planName: string;
+                        status: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                        trialEndsAt: string | null;
+                        currentPeriodStart: string | null;
+                        currentPeriodEnd: string | null;
+                        cancelAtPeriodEnd: boolean;
+                        canceledAt: string | null;
+                        defaultPaymentMethodLast4: string | null;
+                        defaultPaymentMethodBrand: string | null;
+                        defaultPaymentMethodExpiresAt: string | null;
+                        dunningStage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1SuppliesComfortkitdispatches: {
         parameters: {
             query?: {
@@ -58590,6 +61268,80 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1UsageCurrent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        periodStart: string;
+                        /** Format: date-time */
+                        periodEnd: string;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            totalQuantity: number;
+                            inclusiveQuantity: number;
+                            overageQuantity: number;
+                            overageUnitPriceCents: number;
+                            projectedOverageCostCents: number;
+                            thresholdState: "ok" | "warning" | "breached";
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1UsageHistory: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            totalQuantity: number;
+                            inclusiveQuantity: number;
+                            overageQuantity: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1UsersByIdDeactivate: {
         parameters: {
             query?: never;
@@ -59496,6 +62248,26 @@ export interface operations {
                 providerEntityId: string;
                 fiscalYear: number;
             };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksStripe: {
+        parameters: {
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;

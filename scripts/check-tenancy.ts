@@ -208,6 +208,33 @@ const NON_ORG_SCOPED = new Set<string>([
   // baseline `wardenx_audit_trigger()`, which resolves the (absent) org from the session. The other seven
   // M28 tables carry organization_id and get standard app.org_id RLS.
   "fhir_capability_snapshot",
+  // M35 Subscription Billing (§3.3 / §3.5): NINE tables carry no tenant-RLS organization_id BY DESIGN.
+  //   • `plan` / `plan_meter` / `promo_code` — the platform-owned pricing + coupon catalog (D11). The
+  //     same offer for every tenant, so read-all `USING (true)` TO wardenx_app, writes only via
+  //     wardenx_admin (0143; the M38 code_system / M28 fhir_capability_snapshot precedent).
+  //   • `revenue_recognition_snapshot` — the cross-tenant MRR/ARR aggregate (W-SB-15): platform-only
+  //     read+write, never exposed to tenant queries.
+  //   • `patient_pseudonym_key` — the M35-private HMAC key catalog: platform-only read+write; §3.6 grants
+  //     it FULL audit exclusion (the key-rotation timeline must not enter the audit log), so it is the one
+  //     M35 table with no write-audit trigger.
+  //   • `stripe_webhook_event` / `stripe_api_call_audit` — a single Stripe webhook / API call may carry
+  //     data spanning multiple tenants, so these ledgers are platform-only. `stripe_webhook_event` carries
+  //     a best-effort `derived_organization_id` (NOT the RLS org column — no `\borganization_id\b` word
+  //     boundary); `stripe_api_call_audit` DOES have a nullable `organization_id` column and is therefore
+  //     NOT listed here (it satisfies the column-presence rule directly).
+  //   • `platform_retained_invoice` / `platform_retained_invoice_line` — M35-F06 (ARCH-186/085/251): the
+  //     7-year invoice-retention tables that receive invoice rows COPIED out of the tenant-scoped
+  //     `invoice` table on offboarding (copy-then-delete). They carry `original_organization_id` for
+  //     forensic traceability only (again, no `\borganization_id\b` word boundary), never a tenant RLS
+  //     column. The twelve tenant-scoped M35 tables carry organization_id and get standard app.org_id RLS.
+  "plan",
+  "plan_meter",
+  "promo_code",
+  "revenue_recognition_snapshot",
+  "patient_pseudonym_key",
+  "stripe_webhook_event",
+  "platform_retained_invoice",
+  "platform_retained_invoice_line",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =

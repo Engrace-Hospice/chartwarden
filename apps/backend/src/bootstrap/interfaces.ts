@@ -6,9 +6,18 @@
 // (interface in @wardenx/consent; `SeamContracts["ConsentEvaluator"] = unknown`), same as
 // TerminologyProvider / MdmEntityProvider / AlertEmitter.
 export type {
+  AITokenMeterProvider,
   AdmissionCensusReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
+  BillingStatusProvider,
+  ExternalInterfaceMetricsProvider,
+  OnboardingStatusProvider,
+  PatientCounterProvider,
+  PlanCatalogReader,
+  RevenueMetricsProvider,
+  SubscriptionStateProvider,
+  UsageMeteringIngest,
   BereavedPortalScopeProvider,
   BereavementAssignmentReader,
   BereavementComplianceProvider,

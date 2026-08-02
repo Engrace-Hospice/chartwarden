@@ -470,7 +470,7 @@ On-Call Triage + On-Call Roster & Protocols (M19; done²⁷), Field Safety (M20;
 Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
 Portal/Telehealth (M31; done²⁹), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
-Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
+Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 
 > ²⁴ **M15 Discipline Care Plans + Volunteer Management now LIVE (Wave P2-1, M15-T07).** Twelve screens under
 > `apps/web/src/modules/15-discipline-care-plans`, registered into the M1 shell via `disciplinePlanScreens`
@@ -752,6 +752,39 @@ Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the 
 > is excluded by design (§5.2 — a caregiver must be online for the M13 outbox emit). The portal's Lantern
 > token layer is a documented LOCAL copy in `apps/portal/src/index.css` (consumed only via `t.*`, so it
 > lives in `:root`, not `@theme`), pending the shared `@wardenx/ui` stylesheet lift apps/web's header plans.
+>
+> ³⁰ **M35 Subscription Billing (tenant) now LIVE (Wave P2-3, M35-T07).** The eight §5.1 tenant screens
+> under `apps/web/src/modules/35-subscription`, registered into the M1 shell via `subscriptionScreens`
+> (`main.tsx`) under a "Subscription" navGroup, over the live 45-route M35 backend and the module's
+> generated client. They cover the org-admin/billing-admin journey: the subscription overview
+> (`/subscription` — plan/status/current period + the §5.5 dunning banner composed from
+> `GET /api/v1/subscription` + `/billing/status`), the plan picker with per-meter included/overage
+> comparison (`/subscription/plan`), stored payment methods (`/subscription/payment_methods` — the Stripe
+> Payment Element is the only iframe-mounted WCAG-AA component; the raw PAN never touches WardenX per
+> §4.13), the status-filtered invoice list + line-item detail with "Download PDF"/"View on Stripe"
+> (`/subscription/invoices` + `/subscription/invoices/:id`), current-period meter usage with progress bars
+> over included quantity + historical periods (`/subscription/usage`, aggregate counts only — usage is
+> metered on pseudonymized keys server-side, never patient identity), the dunning remediation screen
+> (`/subscription/dunning`, `role="alert"`/`aria-live` per §5.5), and the promo-code apply surface
+> (`/subscription/promos`). Nav gating uses the real §4.7 tenant keys (`subscription.read`/
+> `payment_method.read`/`invoice.read`/`usage.read`); the SERVER stays the only enforcement point. Built to
+> Lantern (CSS-var tokens, tabular-nums, the §6.6 StatusPill taxonomy resolved once through
+> `billing-status.ts`, unit-tested).
+>
+> **Route namespace.** The spec §5.1 proposes `/billing/*`, but `/billing` (+ `/billing/claims`, `/noe`,
+> `/notr`, `/eligibility`, …) is already owned by **M23** (revenue-cycle Medicare billing) in the live
+> shell registry — a distinct actor and concern. Architecture wins over the spec proposal on conflict, so
+> M35's SaaS-subscription surfaces are namespaced under `/subscription/*` to stay cleanly separate from the
+> clinical revenue cycle (the `arch:ui-parity` duplicate-path gate is what surfaced the collision).
+>
+> **Honest gaps, stated rather than faked.** The platform-ops **§5.2 admin console** (`/admin/plans`,
+> `/admin/subscriptions`, `/admin/refunds`, `/admin/revenue`, `/admin/webhooks/stripe`, …) is a separate
+> forward surface — it belongs to `apps/admin` and is NOT registered here. There is no tenant-facing
+> `promo`/`dunning` **read** key, so those two screens gate nav on `subscription.read` (server-authoritative
+> as always); the promo screen applies a code but the read DTO does not return the list of already-applied
+> promos, so that is stated on the screen rather than fabricated. Mutating actions (change plan, add/detach
+> card, apply promo) present the entry and surface the server's outcome; the card-entry Stripe Element +
+> setup-intent handshake is wired against the live routes but the vendor SDK mounts in the running app.
 
 ---
 

@@ -11,9 +11,18 @@
 // wireSeams() is where boot invokes those Phase-1 registrations.
 
 import type {
+  AITokenMeterProvider,
   AdmissionCensusReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
+  BillingStatusProvider,
+  ExternalInterfaceMetricsProvider,
+  OnboardingStatusProvider,
+  PatientCounterProvider,
+  PlanCatalogReader,
+  RevenueMetricsProvider,
+  SubscriptionStateProvider,
+  UsageMeteringIngest,
   BereavedPortalScopeProvider,
   BereavementAssignmentReader,
   BereavementComplianceProvider,
@@ -1421,6 +1430,103 @@ export const copilotProviderDenyStub: unknown = refusingAiSeamProxy("CopilotProv
  * would be a no-op nobody could see. Throwing makes those boots fail — loudly, and in the right place.
  */
 export const aiPromptRegistryDenyStub: unknown = denyingSeamProxy("AIPromptRegistry");
+
+// ── M35 (Subscription Billing) §4.5 published + §4.6 forward-consumed deny-stubs (M35-T05) ───────────────
+// All LEAF-TYPED (interfaces in @wardenx/types), so — like M6/M28's readers — each gets a concrete typed
+// deny-stub whose every method throws. M35 registers the real Drizzle-backed impls over these when its
+// routes/stores land (M35-T06); until then `validateSeams()` leaves them wired FAIL-CLOSED. A subscription
+// header, an MRR number, and a plan catalog entry are never fabricated when the seam is unbound.
+
+/** M35 §4.5 — subscription header + state-history read (M33/M34). Denies until M35-T06 registers the real reader. */
+export const subscriptionStateProviderDenyStub: SubscriptionStateProvider = {
+  async subscriptionForOrg() {
+    throw new NotImplementedError("SubscriptionStateProvider");
+  },
+  async stateHistoryForSubscription() {
+    throw new NotImplementedError("SubscriptionStateProvider");
+  },
+  async subscriptionsForTenants() {
+    throw new NotImplementedError("SubscriptionStateProvider");
+  },
+};
+
+/** M35 §4.5 — the billing-block gate + Phase-1 open quota check. Denies until M35-T06 registers the real provider. */
+export const billingStatusProviderDenyStub: BillingStatusProvider = {
+  async statusForOrg() {
+    throw new NotImplementedError("BillingStatusProvider");
+  },
+  async statusForOrgs() {
+    throw new NotImplementedError("BillingStatusProvider");
+  },
+  async isQuotaAvailable() {
+    throw new NotImplementedError("BillingStatusProvider");
+  },
+};
+
+/** M35 §4.5 — PHI-free usage-event ingest (M23/M24/M28/M29/M32). Denies until M35-T06 registers the real ingest. */
+export const usageMeteringIngestDenyStub: UsageMeteringIngest = {
+  async ingest() {
+    throw new NotImplementedError("UsageMeteringIngest");
+  },
+  async ingestBatch() {
+    throw new NotImplementedError("UsageMeteringIngest");
+  },
+};
+
+/** M35 §4.5 — pseudonymized active-patient count for a period. Denies until M35-T06 registers the real counter. */
+export const patientCounterProviderDenyStub: PatientCounterProvider = {
+  async activePatientCountForPeriod() {
+    throw new NotImplementedError("PatientCounterProvider");
+  },
+};
+
+/** M35 §4.5 — platform-shared MRR/ARR snapshots + status counts (M33). Denies until M35-T06 registers the reader. */
+export const revenueMetricsProviderDenyStub: RevenueMetricsProvider = {
+  async currentMonthMrrCents() {
+    throw new NotImplementedError("RevenueMetricsProvider");
+  },
+  async mrrSnapshotForMonth() {
+    throw new NotImplementedError("RevenueMetricsProvider");
+  },
+  async mrrSnapshotsForRange() {
+    throw new NotImplementedError("RevenueMetricsProvider");
+  },
+  async subscriptionStatusCounts() {
+    throw new NotImplementedError("RevenueMetricsProvider");
+  },
+};
+
+/** M35 §4.5 — public (unauthenticated) plan catalog read. Denies until M35-T06 registers the real reader. */
+export const planCatalogReaderDenyStub: PlanCatalogReader = {
+  async listActivePlans() {
+    throw new NotImplementedError("PlanCatalogReader");
+  },
+  async planBySlug() {
+    throw new NotImplementedError("PlanCatalogReader");
+  },
+};
+
+/** M34 §4.6 — SaaS-onboarding billability gate M35 CONSUMES (ADR-0025 forward-seam). Denies until M34 locks;
+ *  M35's `BillingStatusProvider` folds a caught deny into the interim "active-org = billable" default. */
+export const onboardingStatusProviderDenyStub: OnboardingStatusProvider = {
+  async isBillableForOrg() {
+    throw new NotImplementedError("OnboardingStatusProvider");
+  },
+};
+
+/** M29 §4.6 — HL7 feed-health message counts M35 CONSUMES (`hl7_message` meter). Denies until M29 lands. */
+export const externalInterfaceMetricsProviderDenyStub: ExternalInterfaceMetricsProvider = {
+  async feedHealthForOrg() {
+    throw new NotImplementedError("ExternalInterfaceMetricsProvider");
+  },
+};
+
+/** M32 §4.6 — AI-token consumption M35 CONSUMES (`ai_token` meter). Denies until M32 locks the real meter. */
+export const aiTokenMeterProviderDenyStub: AITokenMeterProvider = {
+  async tokensConsumedForOrg() {
+    throw new NotImplementedError("AITokenMeterProvider");
+  },
+};
 
 /**
  * Boot hook for Phase-1 seam registration. Each producer module registers its REAL seam
