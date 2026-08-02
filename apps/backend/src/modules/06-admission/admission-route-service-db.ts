@@ -9,8 +9,8 @@
 // the D11 for-cause file → medical-director cosign cascade, death → bereavement). Each write drives the
 // §2.3.1/2.3.4/2.3.5 pure state machines, enforces optimistic concurrency (stale `ifVersion` → 409),
 // executes the §2.5 declarative effects (windows open/close, LOC + election-period end cascades), and
-// emits `m6.*` on the transactional outbox. Only the compliance-window close/override writes fail-closed
-// 501 until M6L-T05.
+// emits `m6.*` on the transactional outbox. T05 (compliance-window close/override) completes the surface:
+// the WHOLE M6 write lifecycle is now real Drizzle — no route left at 501.
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -150,15 +150,6 @@ const toSummary = (r: { id: string; state: string; version: number }): SummaryRo
   version: Number(r.version),
 });
 
-/** A never-returning stub for the write lifecycle still owed by M6L-T02+. */
-const notImpl = (): never => {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    "admission writes arrive in M6L-T02+ (the Drizzle write lifecycle)",
-    501,
-  );
-};
-
 /** Org-TZ for the D4 written-cert deadline until a per-org TZ is threaded through the write path. */
 const DEFAULT_ORG_TZ = "America/Los_Angeles";
 const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
@@ -172,10 +163,10 @@ const WINDOW_HOURS: Record<string, number> = {
 };
 
 /**
- * The production, RLS-backed AdmissionRouteService. Reads are real; the T02 referral + admission write
- * lifecycle (referral intake → draft-from-referral cascade → NOR ack → activate, with optimistic
- * concurrency + the `m6.*` transactional outbox) is real; election/CTI/F2F/LOC/discharge/compliance
- * writes fail-closed 501 until M6L-T03+. Org is bound from the request context, never the body.
+ * The production, RLS-backed AdmissionRouteService. Every read and every write is real Drizzle over
+ * `withOrgContext` (referral/admission [T02], election/CTI [T03], F2F/LOC/discharge/transfer/revocation
+ * [T04], compliance-window close/override [T05]) — each write state-machine-driven, optimistic-locked,
+ * and emitting `m6.*` on the transactional outbox. Org is bound from the request context, never the body.
  */
 export function createDbAdmissionRouteService(
   db: DbClient,
@@ -1642,8 +1633,72 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    closeComplianceWindow: async () => notImpl(),
-    overrideComplianceWindow: async () => notImpl(),
+    // ── M6L-T05: compliance-window close / override ───────────────────────────────────────────────
+    async closeComplianceWindow(organizationId, id, ifVersion): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: CW.status, version: CW.version })
+          .from(CW)
+          .where(eq(CW.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status === "closed") throw conflict(`compliance window ${id} is already closed`);
+        const r = firstOrThrow(
+          await tx
+            .update(CW)
+            .set({ status: "closed", closedAt: now(), version: sql`${CW.version} + 1`, updatedAt: now() })
+            .where(and(eq(CW.id, id), eq(CW.version, ifVersion)))
+            .returning({ id: CW.id, status: CW.status, version: CW.version }),
+          "compliance window not found",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.compliance.window.closed",
+          payload: { complianceWindowId: id },
+          organizationId,
+          aggregateKind: "compliance_window",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async overrideComplianceWindow(organizationId, id, reason, ifVersion, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: CW.status, version: CW.version })
+          .from(CW)
+          .where(eq(CW.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status === "closed") throw conflict(`compliance window ${id} is already closed`);
+        // §2.2 override — closes the window early with the captured reason + the overriding staff member
+        // (whose role the route's ABAC preHandler gates); the reason is the audit-bearing evidence.
+        const r = firstOrThrow(
+          await tx
+            .update(CW)
+            .set({
+              status: "closed",
+              closedAt: now(),
+              overrideReason: reason,
+              closedBy: actorUserId || null,
+              version: sql`${CW.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(CW.id, id), eq(CW.version, ifVersion)))
+            .returning({ id: CW.id, status: CW.status, version: CW.version }),
+          "compliance window not found",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.compliance.window.overridden",
+          payload: { complianceWindowId: id, reason },
+          organizationId,
+          aggregateKind: "compliance_window",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
   };
 }
 
