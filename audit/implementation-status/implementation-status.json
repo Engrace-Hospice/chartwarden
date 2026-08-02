@@ -1,8 +1,8 @@
 {
   "totals": {
     "Implemented": 35,
-    "Partial": 0,
-    "Placeholder": 5
+    "Partial": 1,
+    "Placeholder": 4
   },
   "rows": [
     {
@@ -545,14 +545,14 @@
     {
       "id": 28,
       "module": "M28 FHIR Gateway",
-      "status": "Placeholder",
+      "status": "Partial",
       "spec": true,
       "schema": false,
       "migration": false,
       "routes": false,
       "enriched": null,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 8,
