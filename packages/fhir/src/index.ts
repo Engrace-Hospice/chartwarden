@@ -27,6 +27,15 @@
 // `evaluateForDisclosure` per resource to include/redact/filter and folds an `OperationOutcome` warning
 // into the Bundle; and the D14 AI-prohibited-zone boot validator (`ai-block`, §8.6/W-FHIR-11) that
 // refuses M28 boot if any active M32 prompt targets a FHIR output-entity zone.
+//
+// M28-T07 adds the async-pipeline decision cores over T01's FSMs, plus the §4.10 outbox catalog — all
+// PURE with time/keys INJECTED (the T08 workers/routes own the MinIO/BullMQ/Drizzle IO): the bulk-export
+// worker+sweeper core (`lifecycle/bulk-export-plan`, §D4/W-FHIR-04 — object keying, deterministic NDJSON
+// + sha256, the 24h `expires_at` completion math, the sweeper expiry predicate); the inbound proposal
+// stage→accept/reject/expiry core (`lifecycle/inbound-plan`, §D8/W-FHIR-05/06 — owner-module resolution,
+// `payload_sha256`, the D8 owner-match + ≥40-char-rationale + FSM guards, the SLA-breach expiry + M36
+// overdue alert + payload-erase schedule); and the HMAC-signed opaque cursor (`r4/search/signed-cursor`,
+// §D13/W-FHIR-10) that makes a `Bundle.link` `next` token unforgeable and non-replayable cross-tenant.
 
 export * from "./lifecycle";
 export * from "./auth/scopes";
@@ -41,3 +50,4 @@ export * from "./interfaces/search-translator";
 export * from "./r4";
 export * from "./egress/consent-gate";
 export * from "./ai-block";
+export * from "./outbox-events";

@@ -2,4 +2,5 @@
 
 export * from "./parameters";
 export * from "./cursor";
+export * from "./signed-cursor";
 export * from "./translator";

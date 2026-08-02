@@ -502,6 +502,24 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+// M28 FHIR Gateway — the §4.2 request bodies + list queries the §4.1 route handlers validate against.
+import {
+  AcceptProposalBody as M28AcceptProposalBody,
+  ApproveClientBody as M28ApproveClientBody,
+  BulkExportListQuery as M28BulkExportListQuery,
+  ClientListQuery as M28ClientListQuery,
+  CreateClientBody as M28CreateClientBody,
+  ExportQuery as M28ExportQuery,
+  InboundListQuery as M28InboundListQuery,
+  InitiateBulkExportBody as M28InitiateBulkExportBody,
+  PutConfigBody as M28PutConfigBody,
+  RejectProposalBody as M28RejectProposalBody,
+  ResourceSearchQuery as M28ResourceSearchQuery,
+  RevokeClientBody as M28RevokeClientBody,
+  SuspendClientBody as M28SuspendClientBody,
+  TokenFormBody as M28TokenFormBody,
+  ValidateCodeBody as M28ValidateCodeBody,
+} from "../../apps/backend/src/modules/28-fhir/routes/m28-typebox";
 // M21 Supplies / DME / Comfort Kits — the §4.2 request bodies + list queries the §4.1 route handlers
 // `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator;
 // the M21-T06 web screens call the surface these type. Note the decimal-STRING quantities: §4.2.2's sketch
@@ -7483,3 +7501,163 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
 });
 
+
+// ---------------------------------------------------------------------------
+// M28 FHIR Gateway — §4.1 request contracts for the thirty-nine-route surface
+// (M28-T08). The FHIR-spec surface (R1-R22) authenticates with a SMART bearer
+// token and returns `application/fhir+json` / OperationOutcome; the admin
+// surface (R23-R39) uses the WardenX envelope. Phase 1 is READ-ONLY US Core
+// R4 (`fhir.write` OFF), so every write-facing summary states what the
+// boundary refuses.
+// ---------------------------------------------------------------------------
+Object.assign(ROUTE_ENRICHMENTS, {
+  // --- FHIR-spec surface (R1-R18) ---
+  "GET /fhir/r4/metadata": {
+    summary:
+      "The deterministic US Core R4 CapabilityStatement (R1). Anonymous per FHIR convention, rate-limited per-IP; the signed checksum is the survey-defense artifact (D11)",
+  },
+  "GET /fhir/.well-known/smart-configuration": {
+    summary:
+      "SMART Backend Services well-known config (R2). Anonymous; advertises the client-credentials + private_key_jwt token endpoint and the system/*.read scope model",
+  },
+  "POST /fhir/oauth2/token": {
+    summary:
+      "SMART Backend Services token mint (R3). Verifies the client_assertion JWT against the client's jwks_uri. Phase-1 fail-closed (`invalid_client`) until the platform-bypass client-resolution path is bound — no external client is provisioned yet",
+    body: M28TokenFormBody,
+  },
+  "GET /fhir/r4/:resourceType/:id": {
+    summary:
+      "Single-resource read (R4). Bearer scope `system/{ResourceType}.read` required; the disclosure is D15-audited. Phase 1 returns a well-formed not-found OperationOutcome — the projection reader seams are fail-closed deny-stubs this wave",
+  },
+  "GET /fhir/r4/:resourceType": {
+    summary:
+      "Type-level search (R5). `patient` is the W-FHIR-14 US Core parameter. Returns a well-formed empty searchset Bundle in Phase 1; the scope check + disclosure audit are real",
+    query: M28ResourceSearchQuery,
+  },
+  "GET /fhir/r4/Patient/:id/$everything": {
+    summary:
+      "Patient $everything (R6, D5). Requires read scope for every linked resource type; D15-audited. Returns a well-formed empty Bundle in Phase 1",
+  },
+  "POST /fhir/r4/$export": {
+    summary:
+      "System-level bulk export (R7, D4). 202 + Content-Location; the requested `_type` set must be a subset of the client's granted scopes or the deviating type is named in a 403 OperationOutcome",
+    query: M28ExportQuery,
+  },
+  "POST /fhir/r4/Patient/$export": {
+    summary: "All-patient bulk export (R9). Same scope + concurrency posture as the system export",
+    query: M28ExportQuery,
+  },
+  "POST /fhir/r4/Group/:id/$export": {
+    summary: "Group-scoped bulk export (R8). Same scope + concurrency posture as the system export",
+    query: M28ExportQuery,
+  },
+  "GET /fhir/r4/$export-poll-status/:jobId": {
+    summary:
+      "Poll a bulk-export job (R10). 202 In-Progress | 200 Completed (with the output manifest) | 410 Expired once the 24h NDJSON TTL has passed",
+  },
+  "DELETE /fhir/r4/$export-poll-status/:jobId": {
+    summary: "Cancel a bulk-export job (R11). 202 Accepted; the job's in-flight status is closed",
+  },
+  "GET /fhir/r4/CodeSystem/:system": {
+    summary:
+      "CodeSystem read (R12). Requires `system/CodeSystem.read`. Not served in Phase 1 (a warning OperationOutcome), which the terminology seam fills when M38 binds live",
+  },
+  "POST /fhir/r4/CodeSystem/$validate-code": {
+    summary:
+      "CodeSystem $validate-code (R13). Requires `system/CodeSystem.read`; returns a well-formed Parameters result",
+    body: M28ValidateCodeBody,
+  },
+  "GET /fhir/r4/ValueSet/:vs": {
+    summary: "ValueSet read (R14). Requires `system/ValueSet.read`; not served in Phase 1",
+  },
+  "GET /fhir/r4/ValueSet/:vs/$expand": {
+    summary:
+      "ValueSet $expand (R15). Requires `system/ValueSet.read`; returns a well-formed empty expansion in Phase 1",
+  },
+  "POST /fhir/r4/:resourceType": {
+    summary:
+      "Inbound staging (R16, D8). Requires `system/{ResourceType}.write`. M28 NEVER writes a native record — it stages the resource as a PROPOSAL the owner module (m5/m12) reviews; an unsupported resource type is a 501",
+  },
+  "GET /fhir/r5/*": {
+    summary: "FHIR R5 is not supported (R17, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
+  },
+  "GET /fhir/r6/*": {
+    summary: "FHIR R6 is not supported (R18, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
+  },
+  // --- client registry admin (R23-R30) ---
+  "GET /api/v1/fhir/clients": {
+    summary: "List the org's registered FHIR clients (R23)",
+    query: M28ClientListQuery,
+  },
+  "POST /api/v1/fhir/clients": {
+    summary:
+      "Propose a new FHIR client (R24, D12). The proposing Org Admin is stamped as the FIRST of the two DISTINCT dual-approval approvers; `rate_limit_rps` is platform-floor / tighten-only and an override may only LOWER the tier floor",
+    body: M28CreateClientBody,
+  },
+  "POST /api/v1/fhir/clients/:id/approve": {
+    summary:
+      "The Compliance Officer co-approves (R25, D12). The store refuses self-approval — the two approver memberships must be DISTINCT",
+    body: M28ApproveClientBody,
+  },
+  "POST /api/v1/fhir/clients/:id/revoke": {
+    summary:
+      "Revoke a client (R26). Terminal; runs the W-FHIR-12 cascade — every live session is revoked and every in-flight export cancelled inside the same transaction. Rationale ≥40 chars",
+    body: M28RevokeClientBody,
+  },
+  "POST /api/v1/fhir/clients/:id/suspend": {
+    summary:
+      "Suspend a client (R27). Reversible, but also runs the cascade — a suspended client's live bearer tokens must die now, not at their TTL",
+    body: M28SuspendClientBody,
+  },
+  "POST /api/v1/fhir/clients/:id/credentials/rotate": {
+    summary:
+      "Rotate the API-key credential (R28). The prior credential is retired with a 30-day overlap; the plaintext secret is returned ONCE and never persisted in the clear",
+  },
+  "GET /api/v1/fhir/clients/:id/sessions": {
+    summary: "List a client's active bearer sessions (R29)",
+  },
+  "POST /api/v1/fhir/clients/:id/sessions/:jti/revoke": {
+    summary: "Manually revoke one session (R30) — a leaked bearer token dies immediately",
+  },
+  // --- bulk export admin (R31-R33) ---
+  "GET /api/v1/fhir/bulk-export-jobs": {
+    summary: "List the org's bulk-export jobs (R31)",
+    query: M28BulkExportListQuery,
+  },
+  "POST /api/v1/fhir/bulk-export-jobs": {
+    summary:
+      "Operator-initiated bulk export (R32). The acting membership is stamped as the initiator, which is what `bulk_export_initiator_or_admin` reads at cancel time",
+    body: M28InitiateBulkExportBody,
+  },
+  "POST /api/v1/fhir/bulk-export-jobs/:id/cancel": {
+    summary:
+      "Cancel a job (R33). Gated on `bulk_export_initiator_or_admin` (§4.7) — the initiator, the bearer client, or a cancel-permitted operator",
+  },
+  // --- inbound proposal review (R34-R36) ---
+  "GET /api/v1/fhir/inbound-proposals": {
+    summary: "The operator review queue of staged inbound proposals (R34)",
+    query: M28InboundListQuery,
+  },
+  "POST /api/v1/fhir/inbound-proposals/:id/accept": {
+    summary:
+      "Accept a staged proposal (R35, D8). Gated on `fhir_inbound_owner_module_match` — only a reviewer holding the owner module's native write path may decide it. The owner module now owns the native record it created",
+    body: M28AcceptProposalBody,
+  },
+  "POST /api/v1/fhir/inbound-proposals/:id/reject": {
+    summary:
+      "Reject a staged proposal (R36, D8). Gated on `fhir_inbound_owner_module_match`; the rationale must be ≥40 chars and the payload is destruction-scheduled at +30 days (§3.7)",
+    body: M28RejectProposalBody,
+  },
+  // --- tenant config (R37-R39) ---
+  "GET /api/v1/fhir/config": {
+    summary: "Read the tenant's FHIR config (R37)",
+  },
+  "PUT /api/v1/fhir/config": {
+    summary: "Upsert the tenant's FHIR host + identifier-URI base + review/dedup knobs (R38)",
+    body: M28PutConfigBody,
+  },
+  "POST /api/v1/fhir/config/rotate-cursor-key": {
+    summary:
+      "Rotate the per-tenant HMAC cursor-signing key (R39). STEP-UP required — the rotation invalidates every outstanding signed search cursor, so a stolen session must not be able to do it. The key never leaves the server",
+  },
+});

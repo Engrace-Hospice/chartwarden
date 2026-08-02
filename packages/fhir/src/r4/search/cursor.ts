@@ -12,6 +12,10 @@
 export interface CursorPayload {
   /** The last resource id served on the previous page — the seam's `afterId`. */
   readonly lastId: string;
+  /** The last resource's `meta.lastUpdated` (ISO-8601). D13 encodes it alongside `lastId` so the reader
+   *  seam's `searchAfter` can order stably by `(lastUpdated, id)` under concurrent writes (W-FHIR-10).
+   *  Optional so the T04 `?patient` search (which pages purely on `lastId`) stays wire-compatible. */
+  readonly lastUpdated?: string;
 }
 
 /** Base64url-encode a cursor payload. Opaque to the consumer; not yet signed (see the phase note). */
@@ -30,7 +34,10 @@ export function decodeCursor(cursor: string | undefined): CursorPayload | null {
       parsed !== null &&
       typeof (parsed as { lastId?: unknown }).lastId === "string"
     ) {
-      return { lastId: (parsed as { lastId: string }).lastId };
+      const p = parsed as { lastId: string; lastUpdated?: unknown };
+      return typeof p.lastUpdated === "string"
+        ? { lastId: p.lastId, lastUpdated: p.lastUpdated }
+        : { lastId: p.lastId };
     }
     return null;
   } catch {

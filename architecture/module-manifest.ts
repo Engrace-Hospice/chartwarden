@@ -884,7 +884,9 @@ export const MODULES: ModuleDef[] = [
     id: 28,
     name: "FHIR Gateway",
     codePaths: ["packages/fhir", "apps/backend/src/modules/28-fhir"],
-    dependsOn: [5, 6, 7, 8, 11, 12, 13, 38, 40],
+    // +M1: the bootstrap seam registry (registerSeam/getSeam) M28's backend module wires its §4.3 published
+    // seams into + resolves its §4.4 consumed seams through (M28-T06; the M6..M20/M32 seam-task precedent).
+    dependsOn: [1, 5, 6, 7, 8, 11, 12, 13, 38, 40],
     ownedTables: [
       "fhir_bulk_export_artifact",
       "fhir_bulk_export_job",

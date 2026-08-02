@@ -42,6 +42,9 @@ import type {
   EvvVerificationProvider,
   ExtractionProvenanceReader,
   FaceToFaceReader,
+  FhirClientReader,
+  FhirGatewayMetricsProvider,
+  FhirInboundProposalReader,
   HopeJ2051Provider,
   HopeOrgRollupProvider,
   HopeSubmissionProvider,
@@ -334,6 +337,49 @@ export const baaStatusProviderDenyStub: unknown = denyingSeamProxy("BaaStatusPro
 /** M39 — the §4.3 disclosure/redaction gate. Rich-seam pattern (interface in @wardenx/consent).
  *  Denies until M39 registers the real evaluator (M39-T05). Every PHI-egress module consumes it. */
 export const consentEvaluatorDenyStub: unknown = denyingSeamProxy("ConsentEvaluator");
+
+// ── M28 (FHIR Gateway) §4.3 published + §4.4 forward-consumed deny-stubs (M28-T06) ──────────────────────
+
+/** M28 §4.3 — per-tenant utilization + the §164.528 disclosure metric. Leaf-typed; denies until M28
+ *  registers the real Drizzle-backed provider over its own tables (M28-T08). */
+export const fhirGatewayMetricsProviderDenyStub: FhirGatewayMetricsProvider = {
+  async metricsForOrg() {
+    throw new NotImplementedError("FhirGatewayMetricsProvider");
+  },
+  async disclosureMetricsForOrg() {
+    throw new NotImplementedError("FhirGatewayMetricsProvider");
+  },
+};
+
+/** M28 §4.3 — the FHIR client registry read (M34 SaaS console). Denies until M28 registers the real reader. */
+export const fhirClientReaderDenyStub: FhirClientReader = {
+  async clientsForOrg() {
+    throw new NotImplementedError("FhirClientReader");
+  },
+  async clientDetail() {
+    throw new NotImplementedError("FhirClientReader");
+  },
+};
+
+/** M28 §4.3 — the staged inbound-proposal review queue (M5/M12). Denies until M28 registers the real reader. */
+export const fhirInboundProposalReaderDenyStub: FhirInboundProposalReader = {
+  async pendingForOwnerModule() {
+    throw new NotImplementedError("FhirInboundProposalReader");
+  },
+  async proposalDetail() {
+    throw new NotImplementedError("FhirInboundProposalReader");
+  },
+};
+
+/** M23 — the W-FHIR-07 Claim/ClaimResponse/EOB FHIR projection M28 CONSUMES. Opaque rich-seam; the M28
+ *  Claim/EOB routes short-circuit to 404 (§7.7) while `fhir.write` is OFF and never reach it, but the seam
+ *  is required so a boot without M23's D1 unlock fails CLOSED rather than serving a Phase-2 resource. */
+export const claimReaderDenyStub: unknown = denyingSeamProxy("ClaimReader");
+
+/** M29 — the §4.11 DiagnosticReport result-value read M28 CONSUMES. Opaque rich-seam; M29 is a Phase-1
+ *  placeholder, so this stays fail-closed and M28's DiagnosticReport projection refuses at egress until
+ *  M29 registers the real reader. */
+export const labObservationReaderDenyStub: unknown = denyingSeamProxy("LabObservationReader");
 
 // M6 (Admission) reader seams (§4.7). These are LEAF-TYPED (interfaces in @wardenx/types), so —
 // unlike the opaque rich-seams above — they get concrete typed deny-stubs (like CaseloadProvider /

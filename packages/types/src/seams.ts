@@ -34,6 +34,11 @@ import type {
   RenderedDocumentProvider,
 } from "./documents";
 import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
+import type {
+  FhirClientReader,
+  FhirGatewayMetricsProvider,
+  FhirInboundProposalReader,
+} from "./fhir";
 import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
 import type {
   BillableEncounterReader,
@@ -351,7 +356,27 @@ export type SeamName =
   | "EmbeddingsProvider" // M32 — §4.2.6 tenant-scoped embedding vectors (contract locked, no Phase-1 consumer)
   | "SemanticSearchProvider" // M32 — §4.2.6 chart-scoped semantic search (contract locked, no Phase-1 consumer)
   | "CopilotProvider" // M32 — §4.2.6 chart copilot Q&A (contract locked, no Phase-1 consumer)
-  | "AIPromptRegistry"; // M32 — §4.5 the D18 prompt-registry query API M12/M13/M18/M21/M27/M28 boot on
+  | "AIPromptRegistry" // M32 — §4.5 the D18 prompt-registry query API M12/M13/M18/M21/M27/M28 boot on
+  // M28 (FHIR Gateway) §4.3 PUBLISHED seams (M28-T06) — leaf-typed (interfaces in ./fhir, this leaf), so
+  // they are typed here like M6..M20's readers. All three are READ-only projections over M28's own
+  // `fhir_client` / `fhir_inbound_resource` / disclosure-audit rows that M33 (utilization dashboards) /
+  // M30 (§164.528 disclosure scorecard) / M34 (SaaS console client registry) / M5 + M12 (inbound-proposal
+  // review queues) consume instead of importing M28's schema. M28 registers the real Drizzle-backed impls
+  // over the deny-stubs when its routes/repos land (M28-T08); until then the fail-closed deny-stub stands.
+  | "FhirGatewayMetricsProvider" // M28 — per-tenant utilization + the §164.528 disclosure metric (aggregate COUNTS, no PHI)
+  | "FhirClientReader" // M28 — FHIR client registry read (M34 SaaS console; registry metadata, no PHI)
+  | "FhirInboundProposalReader" // M28 — staged inbound-proposal review queue (M5/M12; PHI — raw FHIR payload)
+  // Two §4.4 CONSUMED forward-seams M28 requires but whose owner modules do not publish them yet. OPAQUE
+  // rich-seams (their rich interfaces live in @wardenx/billing / @wardenx/external-interfaces, which this
+  // leaf may not import), so the registry holds each as `unknown` and M28 resolves via `getSeam` + a cast
+  // to its own consumer view. Both stay on the fail-closed deny-stub the whole of Phase 1:
+  //   · `ClaimReader` (M23) — the W-FHIR-07 Claim/ClaimResponse/EOB projection. `fhir.write` OFF ⇒ the
+  //     route returns 404 (§7.7) and never reaches this seam; it is required so a boot without M23's D1
+  //     unlock fails CLOSED rather than serving a Phase-2 resource.
+  //   · `LabObservationReader` (M29) — the §4.11 DiagnosticReport result-value source. M29 is a Phase-1
+  //     placeholder; the seam is required so M28's DiagnosticReport projection ships only once M29 does.
+  | "ClaimReader" // M23 — §4.4 Claim/EOB FHIR projection (W-FHIR-07 forward-seam; 404 until fhir.write/D1 unlock)
+  | "LabObservationReader"; // M29 — §4.11 DiagnosticReport result-value read (forward-seam until M29 lands)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -775,6 +800,20 @@ export interface SeamContracts {
   SemanticSearchProvider: unknown;
   CopilotProvider: unknown;
   AIPromptRegistry: unknown;
+  // M28's three §4.3 published seams are LEAF-TYPED — their interfaces live in ./fhir (this package), so the
+  // registry is statically typed against the real contract. M28 registers the real Drizzle-backed impls over
+  // the deny-stubs (M28-T08); consumers that list `28` in their manifest `dependsOn` (M30/M33/M34/M5/M12)
+  // resolve them through the typed accessors with no schema import edge. `FhirInboundProposalReader` reaches
+  // the raw FHIR payload (PHI); the other two are aggregate/registry metadata only.
+  FhirGatewayMetricsProvider: FhirGatewayMetricsProvider;
+  FhirClientReader: FhirClientReader;
+  FhirInboundProposalReader: FhirInboundProposalReader;
+  // M23's `ClaimReader` + M29's `LabObservationReader` are the two §4.4 forward-seams M28 CONSUMES. OPAQUE
+  // rich-seam pattern (interfaces in @wardenx/billing / @wardenx/external-interfaces, not importable by this
+  // leaf), so the registry holds each as `unknown` and M28 resolves via `getSeam` + a cast to its own view.
+  // Both stay on the fail-closed deny-stub the whole of Phase 1 (see the SeamName comments above).
+  ClaimReader: unknown;
+  LabObservationReader: unknown;
 }
 
 /**

@@ -431,3 +431,123 @@ export interface FhirReadDisclosureEnvelope {
    *  when the FHIR client itself is the actor. */
   readonly initiatedByMembershipId?: MembershipId;
 }
+
+// ── §4.3 published seam interfaces (M28-T06) ───────────────────────────────────────────────────────────
+//
+// The three READ-ONLY seams M28 publishes into the M1 registry. They live in this leaf — not
+// `packages/fhir/src/seams.ts` where §4.3 sketches them — so every downstream consumer imports the
+// contract with NO `dependsOn` edge onto M28: M33 reporting / M30 quality / M35 subscription billing
+// (`FhirGatewayMetricsProvider`), the M34 SaaS console (`FhirClientReader`), and M5's demographic-
+// proposal / M12's medhx-proposal review queues (`FhirInboundProposalReader`). The IMPLEMENTATIONS are
+// injected at boot over a Drizzle store (M28's routes/repos land in T08); until then `validateSeams()`
+// applies the fail-closed deny-stub, so an unregistered seam denies LOUDLY rather than serving an empty
+// projection minted from nothing (the M19/M20 "no store ⇒ register nothing" posture).
+
+/** §4.3 — per-tenant FHIR utilization + the §164.528 disclosure metric. Aggregate COUNTS only, NO PHI. */
+export interface FhirGatewayMetricsProvider {
+  /** Per-tenant FHIR utilization over a window. Returns aggregated counters; NO PHI. */
+  metricsForOrg(args: {
+    organizationId: OrgId;
+    from: IsoInstant;
+    to: IsoInstant;
+  }): Promise<FhirGatewayMetrics>;
+
+  /** Per-quarter disclosure metric the M30 HIPAA §164.528 scorecard reads. */
+  disclosureMetricsForOrg(args: {
+    organizationId: OrgId;
+    /** 'YYYY-Q[1234]'. */
+    quarter: string;
+  }): Promise<FhirDisclosureMetrics>;
+}
+
+export interface FhirGatewayMetrics {
+  readonly requestsByHour: ReadonlyArray<{ hour: string; count: number }>;
+  readonly topResourceTypes: ReadonlyArray<{ resourceType: string; count: number }>;
+  readonly topClients: ReadonlyArray<{ clientId: FhirClientId; clientName: string; count: number }>;
+  readonly bulkExportJobsAccepted: number;
+  readonly bulkExportJobsCompleted: number;
+  readonly bulkExportJobsFailed: number;
+  readonly inboundProposalsPending: number;
+  readonly inboundProposalsAccepted: number;
+  readonly inboundProposalsRejected: number;
+  readonly inboundProposalReviewSlaP50Hours: number;
+  readonly inboundProposalReviewSlaP95Hours: number;
+  readonly errorRateByCode: ReadonlyArray<{ code: string; count: number }>;
+}
+
+export interface FhirDisclosureMetrics {
+  readonly quarter: string;
+  readonly totalDisclosures: number;
+  readonly distinctRecipientClients: number;
+  readonly byResourceType: ReadonlyArray<{ resourceType: string; disclosures: number }>;
+  readonly byClient: ReadonlyArray<{
+    clientId: FhirClientId;
+    clientName: string;
+    baaReference: M34ContractReference;
+    disclosures: number;
+  }>;
+}
+
+/** §4.3 — the FHIR client registry read seam the M34 SaaS console embeds. Registry metadata, NO PHI. */
+export interface FhirClientReader {
+  clientsForOrg(args: { organizationId: OrgId }): Promise<ReadonlyArray<FhirClientSummary>>;
+  clientDetail(args: {
+    organizationId: OrgId;
+    clientId: FhirClientId;
+  }): Promise<FhirClientDetail | null>;
+}
+
+export interface FhirClientSummary {
+  readonly id: FhirClientId;
+  readonly name: string;
+  readonly type: FhirClientType;
+  readonly tier: FhirClientTier;
+  readonly status: FhirClientStatus;
+  readonly baaContractReference: M34ContractReference;
+  readonly approvedAt: IsoInstant | null;
+  readonly createdAt: IsoInstant;
+}
+
+export interface FhirClientDetail extends FhirClientSummary {
+  readonly allowedScopes: ReadonlyArray<string>;
+  readonly rateLimitRps: number;
+  readonly ipAllowlist: ReadonlyArray<string>;
+  readonly jwksUri: string | null;
+  /** First 8 chars of the secret digest for `api_key` clients; null for SMART Backend Services. */
+  readonly fingerprint: string | null;
+  readonly lastSuccessfulRequestAt: IsoInstant | null;
+  readonly activeSessionCount: number;
+}
+
+/**
+ * §4.3 — the staged-inbound-proposal read seam M5 (Patient demographic proposals) and M12
+ * (MedicationStatement medhx proposals) resolve their review queues from. PHI: `payload` carries the
+ * raw FHIR resource until the owner module accepts it.
+ */
+export interface FhirInboundProposalReader {
+  pendingForOwnerModule(args: {
+    organizationId: OrgId;
+    ownerModule: FhirInboundOwnerModule;
+  }): Promise<ReadonlyArray<FhirInboundProposalSummary>>;
+
+  proposalDetail(args: {
+    organizationId: OrgId;
+    proposalId: FhirInboundResourceId;
+  }): Promise<FhirInboundProposalDetail | null>;
+}
+
+export interface FhirInboundProposalSummary {
+  readonly id: FhirInboundResourceId;
+  readonly resourceType: string;
+  readonly sourceClientId: FhirClientId;
+  readonly sourceClientName: string;
+  readonly sourceFhirId: string | null;
+  readonly proposedAt: IsoInstant;
+  readonly slaDueAt: IsoInstant;
+}
+
+export interface FhirInboundProposalDetail extends FhirInboundProposalSummary {
+  /** The raw FHIR resource (after JSON-schema validation). PHI. */
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly validationErrors: ReadonlyArray<{ path: string; message: string }> | null;
+}

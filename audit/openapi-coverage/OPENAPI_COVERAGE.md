@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 989/995 routes enriched (99%) · **68/574 mutating routes carry no request-body schema** · 46/395 GETs carry no response schema
+**Totals:** 1024/1030 routes enriched (99%) · **76/592 mutating routes carry no request-body schema** · 62/411 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. no body` is the sharpest signal — a POST that validates a TypeBox body in its handler but publishes none is a contract that lies by omission.
 
@@ -37,6 +37,7 @@
 | 25-remittance | 31 | 31 (100%) | 0 | 18 | 5 | 13 | 0 |
 | 26-cap | 27 | 27 (100%) | 0 | 12 | 3 | 15 | 0 |
 | 27-cost-report | 45 | 45 (100%) | 0 | 28 | 9 | 16 | 0 |
+| 28-fhir | 35 | 35 (100%) | 0 | 18 | 8 | 16 | 16 |
 | 30-quality | 60 | 60 (100%) | 0 | 36 | 3 | 24 | 0 |
 | 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 17 |
 | 33-reporting | 42 | 42 (100%) | 0 | 22 | 10 | 20 | 0 |

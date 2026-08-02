@@ -4623,6 +4623,105 @@ export function m32ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M32_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * Module 28 (FHIR Gateway) §4.6 — the twelve admin-surface permission keys the M28 routes gate on.
+ *
+ * The FHIR-spec surface (routes 1–22) authenticates with a SMART bearer token, not an M3 permission, so
+ * NO key here governs it — these twelve gate the admin console (routes 23–39) only. The `abac` default is
+ * `inOrg` for every org-scoped read/write; three rows name an M28-registered predicate instead:
+ * `fhir_inbound_owner_module_match` (accept/reject a staged proposal only through the owner module's
+ * native write path, D8) and `bulk_export_initiator_or_admin` (cancel/read a job by its initiator, the
+ * bearer client, or a cancel-permitted operator). Every named default resolves to a predicate
+ * `../../../apps/backend/src/modules/28-fhir/abac-predicates.ts` registers (M3 fails closed on an unknown
+ * name — the `arch:abac-predicates` invariant).
+ */
+export const M28_CONTRIBUTED_PERMISSIONS = {
+  // ── client registry + lifecycle (§4.1 R23-R30) ──────────────────────────────────────────────────────
+  "fhir.client.read": {
+    resource: "fhir_client",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "fhir.client.admin": {
+    resource: "fhir_client",
+    action: "admin",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "fhir.client.session.read": {
+    resource: "fhir_client_session",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── inbound staged-proposal review (§4.1 R34-R36, D8) ───────────────────────────────────────────────
+  "fhir.inbound.review": {
+    resource: "fhir_inbound_resource",
+    action: "review",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "fhir.inbound.accept": {
+    resource: "fhir_inbound_resource",
+    action: "accept",
+    category: "clinical",
+    abac: "fhir_inbound_owner_module_match",
+  },
+  "fhir.inbound.reject": {
+    resource: "fhir_inbound_resource",
+    action: "reject",
+    category: "admin",
+    abac: "fhir_inbound_owner_module_match",
+  },
+  // ── bulk export operations (§4.1 R31-R33) ───────────────────────────────────────────────────────────
+  "fhir.export.bulk.read": {
+    resource: "fhir_bulk_export_job",
+    action: "read",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "fhir.export.bulk.initiate": {
+    resource: "fhir_bulk_export_job",
+    action: "initiate",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "fhir.export.bulk.cancel": {
+    resource: "fhir_bulk_export_job",
+    action: "cancel",
+    category: "compliance",
+    abac: "bulk_export_initiator_or_admin",
+  },
+  // ── tenant config + capability (§4.1 R37-R39, R1) ───────────────────────────────────────────────────
+  "fhir.config.read": {
+    resource: "tenant_fhir_config",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "fhir.config.write": {
+    resource: "tenant_fhir_config",
+    action: "write",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "fhir.capability.read": {
+    resource: "fhir_capability_snapshot",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M28 contributed permission keys (twelve). */
+export type M28ContributedPermissionKey = keyof typeof M28_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M28 contributed keys into `permission`-table mirror rows (M28 §4.6). */
+export function m28ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M28_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -4659,5 +4758,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m19ContributedPermissionMirrorRows(),
     ...m20ContributedPermissionMirrorRows(),
     ...m32ContributedPermissionMirrorRows(),
+    ...m28ContributedPermissionMirrorRows(),
   ];
 }
