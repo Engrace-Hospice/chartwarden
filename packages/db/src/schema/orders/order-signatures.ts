@@ -21,12 +21,11 @@ export const orderSignatures = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0131 (M11L): denormalized siting backfills from the signed order/admission.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
 
     // Polymorphic target (D4) — NO SQL FK across discriminator.
     targetKind: orderSignatureTargetKind("target_kind").notNull(),

@@ -21,12 +21,11 @@ export const standingOrders = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0131 (M11L): denormalized siting backfills from the M6 admission when threaded.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     patientId: uuid("patient_id").notNull(), // M5 patient (app-validated; no cross-module FK)
     admissionId: uuid("admission_id").notNull(), // M6 admission (app-validated; no cross-module FK)
 

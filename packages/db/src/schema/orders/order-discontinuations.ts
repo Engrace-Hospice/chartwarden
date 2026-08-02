@@ -20,12 +20,12 @@ export const orderDiscontinuations = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0131 (M11L): the supersede trigger + discontinue route source PE/location
+    // from the (now-nullable) order_record, so this ledger's siting must relax with it.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     orderRecordId: uuid("order_record_id").notNull(), // order_record is partitioned → no single-col SQL FK
 
     actorMembershipId: uuid("actor_membership_id").references(() => memberships.id, {

@@ -19,12 +19,11 @@ export const orderVerbalPolicies = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0131 (M11L): org-level config; siting is nominal (ARCH-011 uniformity only).
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
 
     windowHours: integer("window_hours").notNull().default(48),
     businessHoursOnly: boolean("business_hours_only").notNull().default(false),
@@ -38,9 +37,10 @@ export const orderVerbalPolicies = pgTable(
     policyVersion: text("policy_version").notNull().default("v1"),
 
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedByMembershipId: uuid("updated_by_membership_id")
-      .notNull()
-      .references(() => memberships.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0131 (M11L): `putVerbalPolicy(organizationId, args)` threads no actor.
+    updatedByMembershipId: uuid("updated_by_membership_id").references(() => memberships.id, {
+      onDelete: "restrict",
+    }),
   },
   (t) => ({
     perOrgUq: uniqueIndex("order_verbal_policy_per_org_uq").on(t.organizationId),

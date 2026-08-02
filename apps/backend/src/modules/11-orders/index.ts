@@ -2,19 +2,21 @@
 //
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { createDbOrderBackend } from "./orders-route-service-db";
+import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
+
+export type { OrderWriteOutboxPort } from "./orders-route-service-db";
 
 /**
  * M11L — mount the M11 order routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
  * Called from the composition root's db branch. The single backend object is BOTH the OrderRouteService the
- * routes compose over AND the §4.7 OrderAbacResolver the predicates read through. Reads are live (order
- * worklists + queues, standing orders, verbal policy); writes fail-closed 501 until the M11L write lifecycle
- * lands. Replaces the in-memory clinical-core scaffold mount for M11.
+ * routes compose over AND the §4.7 OrderAbacResolver the predicates read through. Reads + the full write
+ * lifecycle are live over Drizzle+RLS; every mutation emits `m11.order.*` on the bound transactional
+ * `outbox`. Replaces the in-memory clinical-core scaffold mount for M11.
  */
-export function mountOrderRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbOrderBackend(db);
+export function mountOrderRoutes(app: FastifyInstance, db: DbClient, outbox?: OrderWriteOutboxPort): void {
+  const backend = createDbOrderBackend(db, outbox);
   _registerM11Abac({ resolver: backend });
   _registerM11Routes(app, { service: backend });
 }
