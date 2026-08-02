@@ -1,18 +1,48 @@
-// apps/backend/src/modules/11-orders — PRODUCTION OrderRouteService + OrderAbacResolver, READ-first (M11L).
+// apps/backend/src/modules/11-orders — PRODUCTION OrderRouteService + OrderAbacResolver (M11L reads +
+// writes over Drizzle+RLS). No route is left at 501.
 //
 // The screen-driving READS (order worklists by patient/admission/kind/status, the pending-signature /
 // verbal-expiring / cosign-pending / results-review queues, standing-order lists + detail, and the per-org
 // verbal-order policy) run as real Drizzle queries over the M11-owned tables inside `withOrgContext`, so RLS
 // scopes every row by `app.org_id` as the unprivileged `wardenx_app` role. `order_record` is PARTITION BY
-// RANGE(created_at) — reads query the parent (partition pruning happens in PG). The full WRITE lifecycle
-// (draft → sign / verbal / cosign → discontinue / complete, standing-order spawn, verbal-policy edit) is the
-// M11L write follow-up; every write here fail-closes 501 (`NOT_IMPLEMENTED`) so the interface is satisfied and
-// the mount is real. The in-memory `createInMemoryOrderBackend` (`routes/service.ts`) stays the behavioral
-// reference for those writes. The returned object IS BOTH the OrderRouteService AND the §4.7 AbacResolver
-// (`loadOrder`), mirroring the scaffold's `registerOrderRoutes({ service })` + `registerOrderAbacPredicates(
-// { resolver })` both binding `core.m11`.
+// RANGE(created_at) with a DEFAULT partition — reads query the parent, inserts always land.
+//
+// The WRITE lifecycle is now real and heavily TRIGGER-DRIVEN — the §3.4 migration (0037) triggers do the
+// state work the service must NOT duplicate:
+//   * `verbal_order_set_target_pending_trg` — inserting a `verbal_order` flips the linked order
+//     pending_signature → verbal_pending (RAISES `TARGET_NOT_PENDING_SIGNATURE` otherwise). `recordVerbal`
+//     inserts the receipt; the pure machine is the pre-check.
+//   * `order_signature_apply_to_target_trg` — inserting a primary `signature` flips the order to `active`
+//     (WHERE cosign prerequisites met). This trigger is SILENT on an unmet cosign, so the pure
+//     `transitionOrder({type:'sign', cosignAttached})` guard is the real 409 (`COSIGN_PENDING`) path.
+//   * `order_record_replace_supersede_trg` — inserting a correcting order (replaces_order_id set)
+//     discontinues the original + writes its `order_discontinuation` ledger row (RAISES
+//     `REPLACED_ORDER_NOT_REPLACEABLE` if the original is not replaceable). `correctOrder` just inserts.
+//   * `trg_m11_lab_initial_states` — a lab order becoming `active` sets its transmission/results states.
+//
+// Every mutation emits its `m11.order.*` event on the caller's transactional outbox (the bound publisher
+// Value.Checks each payload against the boot catalog — events-by-m11.ts — and rolls back on mismatch), so
+// the payloads here are the STRICT catalog shapes, not the loose in-memory-slice shapes. The downstream
+// kind-specific signed fan-out (`hl7_orm_requested` / `supply_fulfillment_requested` / …) is the M29/M21/M6
+// forward-seam consumers' concern and is NOT emitted here — mirroring the in-memory reference, which emits
+// only `m11.order.signed`. The returned object IS BOTH the OrderRouteService AND the §4.7 AbacResolver.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import {
+  DEFAULT_COSIGN_POLICY,
+  type OrderCosignPolicy,
+  computeVerbalDeadline,
+  disciplineCanOrder,
+  lpnCosignRequired,
+  planCosignAttest,
+  planStandingCreation,
+  planStandingDiscontinuation,
+  planStandingSpawn,
+  resolveCosignRequirement,
+  signerEligible,
+  transitionOrder,
+  validateVerbalWindowHours,
+} from "@wardenx/orders";
 import {
   NotFoundError,
   type OrderDiscontinuationReason,
@@ -21,11 +51,10 @@ import {
   type OrderStatus,
   type StandingOrderCadence,
   type StandingOrderStatus,
-  WardenXError,
 } from "@wardenx/types";
 import { type SQL, and, desc, eq } from "drizzle-orm";
-import { DEFAULT_COSIGN_POLICY } from "@wardenx/orders";
 import type {
+  CreateOrderArgs,
   OrderAbacFacts,
   OrderRouteService,
   OrderView,
@@ -35,20 +64,40 @@ import type {
 
 const OR = schema.orderRecords;
 const SO = schema.standingOrders;
+const SOI = schema.standingOrderInstances;
 const OS = schema.orderSignatures;
 const VO = schema.verbalOrders;
 const VP = schema.orderVerbalPolicies;
+const OD = schema.orderDiscontinuations;
 
-/** A never-returning stub for the write lifecycle still owed by the M11L write follow-up. */
-const notImpl = (): never => {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    "order writes arrive in the M11L write follow-up (the Drizzle write lifecycle)",
-    501,
-  );
-};
+/** The M40 ordering-physician sentinel used when the route/standing-spawn threads none (app-validated, no FK). */
+const PHYSICIAN_SENTINEL = "00000000-0000-4000-8000-0000000000ff";
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+
+/** The transactional-outbox port (§4.4): the bound publisher validates every emit against the boot catalog
+ * and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests commit
+ * without a dispatcher. Mirrors M7/M8/M9/M10. */
+export interface OrderWriteOutboxPort {
+  publish(
+    tx: unknown,
+    emission: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+const NOOP_OUTBOX: OrderWriteOutboxPort = { async publish() {} };
+
+/** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
+function firstOrThrow<T>(rows: readonly T[], msg: string): T {
+  const r = rows[0];
+  if (!r) throw new NotFoundError(msg);
+  return r;
+}
 
 /** The default per-org verbal policy the read returns when no `order_verbal_policy` row exists (mirrors the slice). */
 const DEFAULT_POLICY: VerbalPolicyView = {
@@ -103,7 +152,7 @@ const toOrderView = (r: OrderRow): OrderView => ({
   resultsStatus: r.resultsStatus,
   verbalDeadlineAt: iso(r.verbalDeadlineAt),
   // The discontinuation reason lives in `order_discontinuation` (no uniqueness → not joined to avoid
-  // row-multiplication in the worklists); the M11L write follow-up projects it. Reads null for now.
+  // row-multiplication in the worklists); read null here — `getOrder` is the single-row detail read.
   discontinuationReason: null as OrderDiscontinuationReason | null,
   replacesOrderId: r.replacesOrderId,
   triggeringAssessmentId: r.triggeringAssessmentId,
@@ -137,10 +186,26 @@ const toStandingView = (r: {
 });
 
 /**
- * The production, RLS-backed OrderRouteService + §4.7 OrderAbacResolver. Reads are real; writes fail-closed
- * 501. Org is bound from the request context by the caller and passed as `organizationId` — never the body.
+ * The production, RLS-backed OrderRouteService + §4.7 OrderAbacResolver. Reads + writes are live. Org is
+ * bound from the request context by the caller and passed as `organizationId` — never the body. Every
+ * operation runs under `withOrgContext` so RLS scopes rows to the active org; writes go through the DB
+ * state-transition triggers (0037) and emit `m11.order.*` on the bound transactional outbox.
  */
-export function createDbOrderBackend(db: DbClient): OrderRouteService {
+export function createDbOrderBackend(
+  db: DbClient,
+  outbox: OrderWriteOutboxPort = NOOP_OUTBOX,
+): OrderRouteService {
+  /** Emit one `m11.order.*` event on the caller's tx (validated + persisted by the bound publisher). */
+  async function emit(
+    tx: unknown,
+    org: string,
+    eventName: string,
+    aggregateId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind: "order", aggregateId });
+  }
+
   /** The reusable order-record select — parent partition, left-joined to its unique verbal-order + primary signature. */
   const selectOrders = (tx: DbClient, where: SQL | undefined) =>
     tx
@@ -183,6 +248,217 @@ export function createDbOrderBackend(db: DbClient): OrderRouteService {
       return { orders: rows.map(toOrderView) };
     });
 
+  /** Re-read one order (post-write, RLS-scoped) as the joined view or a non-leaking 404. */
+  async function readOrder(tx: DbClient, id: string): Promise<OrderView> {
+    const rows = (await selectOrders(tx, eq(OR.id, id)).limit(1)) as unknown as OrderRow[];
+    return toOrderView(firstOrThrow(rows, `order ${id} not found`));
+  }
+
+  /** The standing-order view projection reused by every standing read/write (same-tx, RLS-scoped). */
+  const standingCols = {
+    id: SO.id,
+    patientId: SO.patientId,
+    admissionId: SO.admissionId,
+    kind: SO.kind,
+    cadence: SO.cadence,
+    status: SO.status,
+    nextSpawnAt: SO.nextSpawnAt,
+    spawnCount: SO.spawnCount,
+    maxSpawns: SO.maxSpawns,
+  };
+
+  /** Re-read one standing order WITHIN the caller's tx (a nested `withOrgContext` would not see the write). */
+  async function readStanding(tx: DbClient, id: string): Promise<StandingOrderView> {
+    const [r] = await tx.select(standingCols).from(SO).where(eq(SO.id, id)).limit(1);
+    if (!r) throw new NotFoundError(`standing order ${id} not found`);
+    return toStandingView(r);
+  }
+
+  /** Read the verbal policy WITHIN the caller's tx as the view (default when unseeded). */
+  async function readPolicy(tx: DbClient): Promise<VerbalPolicyView> {
+    const [r] = (await tx
+      .select({
+        windowHours: VP.windowHours,
+        businessHoursOnly: VP.businessHoursOnly,
+        lpnCosignRequiredKinds: VP.lpnCosignRequiredKinds,
+        npCosignRequiredKinds: VP.npCosignRequiredKinds,
+        platformFloorWindowHours: VP.platformFloorWindowHours,
+        policyVersion: VP.policyVersion,
+      })
+      .from(VP)
+      .limit(1)) as VerbalPolicyView[];
+    if (!r) return DEFAULT_POLICY;
+    return {
+      windowHours: Number(r.windowHours),
+      businessHoursOnly: r.businessHoursOnly,
+      lpnCosignRequiredKinds: (r.lpnCosignRequiredKinds as OrderKind[]) ?? [],
+      npCosignRequiredKinds: (r.npCosignRequiredKinds as OrderKind[]) ?? [],
+      platformFloorWindowHours: Number(r.platformFloorWindowHours),
+      policyVersion: r.policyVersion,
+    };
+  }
+
+  /** Load the raw order row (RLS-scoped) for the write guards, or the non-leaking 404. */
+  async function loadOrderRow(tx: DbClient, id: string) {
+    const [r] = (await tx.select().from(OR).where(eq(OR.id, id)).limit(1)) as (typeof OR.$inferSelect)[];
+    if (!r) throw new NotFoundError(`order ${id} not found`);
+    return r;
+  }
+
+  /** Load the per-org cosign policy (the projection the cosign rules consume), default-filled when unseeded. */
+  async function cosignPolicyOf(tx: DbClient): Promise<OrderCosignPolicy> {
+    const [r] = (await tx
+      .select({ lpn: VP.lpnCosignRequiredKinds, np: VP.npCosignRequiredKinds })
+      .from(VP)
+      .limit(1)) as { lpn: unknown; np: unknown }[];
+    if (!r) return DEFAULT_COSIGN_POLICY;
+    return {
+      lpnCosignRequiredKinds: (r.lpn as OrderKind[]) ?? DEFAULT_COSIGN_POLICY.lpnCosignRequiredKinds,
+      npCosignRequiredKinds: (r.np as OrderKind[]) ?? [],
+    };
+  }
+
+  /** Load the full verbal policy view (for the deadline window), default when unseeded. */
+  async function verbalPolicyOf(tx: DbClient): Promise<VerbalPolicyView> {
+    const [r] = (await tx
+      .select({
+        windowHours: VP.windowHours,
+        businessHoursOnly: VP.businessHoursOnly,
+        lpnCosignRequiredKinds: VP.lpnCosignRequiredKinds,
+        npCosignRequiredKinds: VP.npCosignRequiredKinds,
+        platformFloorWindowHours: VP.platformFloorWindowHours,
+        policyVersion: VP.policyVersion,
+      })
+      .from(VP)
+      .limit(1)) as VerbalPolicyView[];
+    return r ?? DEFAULT_POLICY;
+  }
+
+  /** Insert a draft `order_record` (shared by createDraft + correctOrder), emitting `draft_created`. */
+  async function insertDraft(
+    tx: DbClient,
+    organizationId: string,
+    userId: string,
+    args: CreateOrderArgs,
+    replacesOrderId: string | null,
+  ): Promise<string> {
+    // §2.1 / §4.7 author floor (defense-in-depth on top of the route's `discipline_can_order` ABAC).
+    if (!disciplineCanOrder(args.drafterDiscipline, args.kind))
+      throw new NotFoundError(`discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`);
+    const isLab = args.kind === "lab";
+    const row = firstOrThrow(
+      await tx
+        .insert(OR)
+        .values({
+          organizationId,
+          patientId: args.patientId,
+          admissionId: args.admissionId,
+          kind: args.kind,
+          kindVersion: `${args.kind}.v1`,
+          data: args.data ?? {},
+          priority: args.priority ?? "routine",
+          status: "draft",
+          version: 1,
+          drafterMembershipId: userId,
+          drafterDiscipline: args.drafterDiscipline,
+          orderingPhysicianMdmId: args.orderingPhysicianMdmId,
+          sourceEncounterId: args.sourceEncounterId ?? null,
+          triggeringAssessmentId: args.triggeringAssessmentId ?? null,
+          triggeringHopeAssessmentId: args.triggeringHopeAssessmentId ?? null,
+          replacesOrderId, // the AFTER-INSERT supersede trigger fires when this is set
+          cosignRequired: false,
+          cosignStatus: null,
+          transmissionStatus: isLab ? "pending" : "not_required",
+          resultsStatus: isLab ? "awaiting_results" : "not_expected",
+        })
+        .returning({ id: OR.id }),
+      "order_record insert returned no row",
+    );
+    await emit(tx, organizationId, "m11.order.draft_created", row.id, {
+      orderId: row.id,
+      patientId: args.patientId,
+      admissionId: args.admissionId,
+      kind: args.kind,
+      drafterMembershipId: userId,
+    });
+    return row.id;
+  }
+
+  /** Shared sign path (§2.2 sign from pending_signature or verbal_pending). Inserts the primary signature
+   * (the DB apply-trigger flips the order to `active`); the pure machine is the cosign/onBehalf guard. */
+  async function signInternal(
+    tx: DbClient,
+    organizationId: string,
+    userId: string,
+    id: string,
+    signerDiscipline: string,
+    onBehalf: boolean,
+    onBehalfArgs?: { onBehalfOf: string; reason: string },
+  ): Promise<OrderView> {
+    const r = await loadOrderRow(tx, id);
+    if (!signerEligible(signerDiscipline, r.kind))
+      throw new NotFoundError(`discipline '${signerDiscipline}' is not eligible to sign a '${r.kind}' order`);
+    const fromVerbal = r.status === "verbal_pending";
+    // Throws COSIGN_PENDING / ILLEGAL_ORDER_TRANSITION — the DB apply-trigger is silent on an unmet cosign.
+    transitionOrder(r.status, {
+      type: "sign",
+      kind: r.kind as OrderKind,
+      cosignAttached: r.cosignStatus !== "pending",
+      onBehalf,
+    });
+    const at = new Date();
+    const sig = firstOrThrow(
+      await tx
+        .insert(OS)
+        .values({
+          organizationId,
+          targetKind: "order",
+          targetId: id,
+          signatureKind: "signature",
+          signerMembershipId: userId,
+          signerDiscipline,
+          onBehalfOfMembershipId: onBehalf ? (onBehalfArgs?.onBehalfOf ?? null) : null,
+          onBehalfReason: onBehalf ? (onBehalfArgs?.reason ?? null) : null,
+          signedAt: at,
+        })
+        .returning({ id: OS.id }),
+      "order_signature insert returned no row",
+    );
+    await emit(tx, organizationId, "m11.order.signed", id, {
+      orderId: id,
+      kind: r.kind,
+      signatureId: sig.id,
+      signerMembershipId: userId,
+      signedAt: at.toISOString(),
+      viaVerbal: fromVerbal,
+    });
+    if (onBehalf && onBehalfArgs) {
+      await emit(tx, organizationId, "m11.order.signed_on_behalf", id, {
+        orderId: id,
+        signerMembershipId: userId,
+        onBehalfOfMembershipId: onBehalfArgs.onBehalfOf,
+        reason: onBehalfArgs.reason,
+      });
+    }
+    if (fromVerbal) {
+      const [v] = (await tx
+        .select({ id: VO.id, deadlineAt: VO.deadlineAt })
+        .from(VO)
+        .where(and(eq(VO.targetKind, "order"), eq(VO.targetId, id)))
+        .limit(1)) as { id: string; deadlineAt: Date }[];
+      if (v) {
+        await tx.update(VO).set({ status: "signed_in_time", signedAt: at }).where(eq(VO.id, v.id));
+        await emit(tx, organizationId, "m11.order.verbal_signed_in_time", id, {
+          orderId: id,
+          verbalOrderId: v.id,
+          signedAt: at.toISOString(),
+          hoursBeforeDeadline: Math.max(0, (v.deadlineAt.getTime() - at.getTime()) / 3_600_000),
+        });
+      }
+    }
+    return readOrder(tx, id);
+  }
+
   return {
     // ── Order reads ────────────────────────────────────────────────────────────────────────────────
     async listOrders(organizationId, filter) {
@@ -213,8 +489,259 @@ export function createDbOrderBackend(db: DbClient): OrderRouteService {
       return listWhere(organizationId, and(eq(OR.kind, "lab"), eq(OR.resultsStatus, "results_received")));
     },
     async suggestions(_organizationId, patientId) {
-      // §2.7 assessment/HOPE order suggestions are event-driven projections owed to the write follow-up.
+      // §2.7 assessment/HOPE order suggestions are event-driven projections owed to the consumers track.
       return { patientId, suggestions: [] };
+    },
+
+    // ── Order writes (§2.2 lifecycle; the DB triggers do the state transitions) ──────────────────────
+    async createDraft(organizationId, userId, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const id = await insertDraft(t, organizationId, userId, args, args.replacesOrderId ?? null);
+        return readOrder(t, id);
+      });
+    },
+
+    async editDraft(organizationId, id, data, priority) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        if (r.status !== "draft") throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
+        await t
+          .update(OR)
+          .set({ data: data ?? {}, priority: priority ?? r.priority, version: r.version + 1, updatedAt: new Date() })
+          .where(eq(OR.id, id));
+        return readOrder(t, id);
+      });
+    },
+
+    async requestSignature(organizationId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        const requirement = resolveCosignRequirement({
+          kind: r.kind as OrderKind,
+          drafterDiscipline: r.drafterDiscipline,
+          signerDiscipline: args.signerDiscipline,
+          levelChange: args.levelChange,
+          policy: await cosignPolicyOf(t),
+        });
+        // Validates ORDER_REQUIRED_FIELDS_INCOMPLETE / ILLEGAL_ORDER_TRANSITION.
+        transitionOrder(r.status, {
+          type: "requestSignature",
+          requiredFieldsComplete: true,
+          cosignRequired: requirement != null,
+          cosignerRoleNeeded: requirement?.cosignerRoleNeeded,
+        });
+        await t
+          .update(OR)
+          .set({
+            status: "pending_signature",
+            cosignRequired: requirement != null,
+            cosignStatus: requirement != null ? "pending" : "attached",
+            version: r.version + 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.signature_requested", id, {
+          orderId: id,
+          kind: r.kind,
+          orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+        });
+        if (requirement)
+          await emit(t, organizationId, "m11.order.cosign_requested", id, {
+            orderId: id,
+            kind: r.kind,
+            cosignerRoleNeeded: requirement.cosignerRoleNeeded,
+          });
+        return readOrder(t, id);
+      });
+    },
+
+    async signOrder(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        signInternal(tx as unknown as DbClient, organizationId, userId, id, args.signerDiscipline, false),
+      );
+    },
+    async signOnBehalf(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        signInternal(tx as unknown as DbClient, organizationId, userId, id, args.signerDiscipline, true, {
+          onBehalfOf: args.onBehalfOf,
+          reason: args.reason,
+        }),
+      );
+    },
+
+    async recordVerbal(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        // Validates VERBAL_NOT_ALLOWED_FOR_KIND / VERBAL_ATTESTATION_REQUIRED / ILLEGAL_ORDER_TRANSITION.
+        transitionOrder(r.status, {
+          type: "recordVerbal",
+          kind: r.kind as OrderKind,
+          attestationRecorded: args.verbalAttestation.length >= 100,
+          recorderEligible: true,
+        });
+        const policy = await verbalPolicyOf(t);
+        const deadlineIso = computeVerbalDeadline(args.receivedAt, {
+          windowHours: policy.windowHours,
+          businessHoursOnly: policy.businessHoursOnly,
+          policyVersion: policy.policyVersion,
+        });
+        // Inserting the verbal_order fires `verbal_order_set_target_pending_trg` → order → verbal_pending
+        // (RAISES TARGET_NOT_PENDING_SIGNATURE if the order is not pending_signature).
+        const v = firstOrThrow(
+          await t
+            .insert(VO)
+            .values({
+              organizationId,
+              targetKind: "order",
+              targetId: id,
+              recordingMembershipId: userId,
+              orderingPhysicianMdmId: args.orderingPhysicianMdmId,
+              verbalAttestation: args.verbalAttestation,
+              receivedAt: new Date(args.receivedAt),
+              deadlineAt: new Date(deadlineIso),
+              deadlinePolicyVersion: policy.policyVersion,
+              status: "pending",
+            })
+            .returning({ id: VO.id }),
+          "verbal_order insert returned no row",
+        );
+        // Reflect the physician the RN attributed the verbal order to (the trigger already bumped version).
+        await t
+          .update(OR)
+          .set({ orderingPhysicianMdmId: args.orderingPhysicianMdmId, updatedAt: new Date() })
+          .where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.verbal_received", id, {
+          orderId: id,
+          verbalOrderId: v.id,
+          deadlineAt: deadlineIso,
+          orderingPhysicianMdmId: args.orderingPhysicianMdmId,
+          recordingMembershipId: userId,
+        });
+        return readOrder(t, id);
+      });
+    },
+
+    async cosignOrder(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        // `order_record` carries no cosigner_role_needed column; re-derive it from the persisted facts:
+        // the LPN axis (drafter+kind driven) demands an RN; the escalation-jump / NP axes both demand MD.
+        const cosignerRoleNeeded = lpnCosignRequired(r.drafterDiscipline, r.kind as OrderKind, await cosignPolicyOf(t))
+          ? "rn_case_manager"
+          : "medical_director";
+        // Validates COSIGN_NOT_REQUIRED / ALREADY_COSIGNED / COSIGNER_NOT_ELIGIBLE (incl. self-cosign).
+        planCosignAttest({
+          orderId: id,
+          cosignRequired: r.cosignRequired,
+          alreadyCosigned: r.cosignStatus === "attached",
+          cosignerRole: args.cosignerRole,
+          cosignerRoleNeeded,
+          cosignerIsAuthor: r.drafterMembershipId === userId,
+        });
+        const cosig = firstOrThrow(
+          await t
+            .insert(OS)
+            .values({
+              organizationId,
+              targetKind: "order",
+              targetId: id,
+              signatureKind: "cosignature",
+              signerMembershipId: userId,
+              signerDiscipline: args.cosignerRole,
+              cosignerRole: args.cosignerRole,
+              attestationText: args.attestationText,
+              signedAt: new Date(),
+            })
+            .returning({ id: OS.id }),
+          "order_signature (cosignature) insert returned no row",
+        );
+        await t.update(OR).set({ cosignStatus: "attached", updatedAt: new Date() }).where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.cosigned", id, {
+          orderId: id,
+          cosignatureId: cosig.id,
+          cosignerRole: args.cosignerRole,
+          cosignerMembershipId: userId,
+        });
+        return readOrder(t, id);
+      });
+    },
+
+    async discontinueOrder(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        // Validates ILLEGAL_ORDER_TRANSITION for a terminal order.
+        transitionOrder(r.status, {
+          type: "discontinue",
+          kind: r.kind as OrderKind,
+          reason: args.reason,
+          fulfillmentInFlight: false,
+        });
+        const disc = firstOrThrow(
+          await t
+            .insert(OD)
+            .values({
+              organizationId,
+              orderRecordId: id,
+              actorMembershipId: userId,
+              reason: args.reason,
+              notes: args.notes ?? null,
+              effectiveAt: new Date(args.effectiveAt),
+            })
+            .returning({ id: OD.id }),
+          "order_discontinuation insert returned no row",
+        );
+        await t
+          .update(OR)
+          .set({ status: "discontinued", discontinuedAt: new Date(), version: r.version + 1, updatedAt: new Date() })
+          .where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.discontinued", id, {
+          orderId: id,
+          discontinuationId: disc.id,
+          reason: args.reason,
+          actorMembershipId: userId,
+          effectiveAt: new Date(args.effectiveAt).toISOString(),
+        });
+        return readOrder(t, id);
+      });
+    },
+
+    async correctOrder(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
+        // Inserting the correcting draft fires `order_record_replace_supersede_trg` → discontinues the
+        // original + writes its ledger row (RAISES REPLACED_ORDER_NOT_REPLACEABLE if not replaceable).
+        const newId = await insertDraft(t, organizationId, userId, args, id);
+        await emit(t, organizationId, "m11.order.corrected", newId, {
+          newOrderId: newId,
+          replacedOrderId: id,
+          kind: args.kind,
+          drafterMembershipId: userId,
+        });
+        return readOrder(t, newId);
+      });
+    },
+
+    async completeOrder(organizationId, userId, id, _reason) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        transitionOrder(r.status, { type: "complete", criterionMet: true });
+        const at = new Date();
+        await t.update(OR).set({ status: "completed", completedAt: at, updatedAt: at }).where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.completed", id, {
+          orderId: id,
+          completedAt: at.toISOString(),
+          kindAutoOrManual: "manual",
+        });
+        return readOrder(t, id);
+      });
     },
 
     // ── Standing-order reads ─────────────────────────────────────────────────────────────────────────
@@ -261,7 +788,168 @@ export function createDbOrderBackend(db: DbClient): OrderRouteService {
       });
     },
 
-    // ── Verbal-order policy read (one row per org; default when unseeded) ────────────────────────────
+    // ── Standing-order writes (§2.4 D5) ──────────────────────────────────────────────────────────────
+    async createStandingOrder(organizationId, userId, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        planStandingCreation({ kind: args.kind, signerDiscipline: args.signerDiscipline }); // §2.4 D5 guards
+        const at = new Date();
+        const row = firstOrThrow(
+          await t
+            .insert(SO)
+            .values({
+              organizationId,
+              patientId: args.patientId,
+              admissionId: args.admissionId,
+              kind: args.kind,
+              kindVersion: `${args.kind}.v1`,
+              templateData: args.data ?? {},
+              cadence: args.cadence,
+              effectiveFrom: at,
+              maxSpawns: args.maxSpawns ?? null,
+              spawnCount: 0,
+              orderingPhysicianMdmId: PHYSICIAN_SENTINEL,
+              signedByMembershipId: userId,
+              signedAt: at,
+              status: "active",
+            })
+            .returning({
+              id: SO.id,
+              patientId: SO.patientId,
+              admissionId: SO.admissionId,
+              kind: SO.kind,
+              cadence: SO.cadence,
+              status: SO.status,
+              nextSpawnAt: SO.nextSpawnAt,
+              spawnCount: SO.spawnCount,
+              maxSpawns: SO.maxSpawns,
+            }),
+          "standing_order insert returned no row",
+        );
+        await emit(t, organizationId, "m11.order.standing_created", row.id, {
+          standingOrderId: row.id,
+          patientId: args.patientId,
+          admissionId: args.admissionId,
+          kind: args.kind,
+          cadence: args.cadence,
+        });
+        return toStandingView(row);
+      });
+    },
+    async editStandingOrder(organizationId, id, patch) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [existing] = (await t.select().from(SO).where(eq(SO.id, id)).limit(1)) as (typeof SO.$inferSelect)[];
+        if (!existing) throw new NotFoundError(`standing order ${id} not found`);
+        if (patch.maxSpawns != null)
+          await t.update(SO).set({ maxSpawns: patch.maxSpawns, updatedAt: new Date() }).where(eq(SO.id, id));
+        return readStanding(t, id);
+      });
+    },
+    async pauseStandingOrder(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await readStanding(t, id); // 404 if absent/cross-tenant
+        await t.update(SO).set({ status: "paused", updatedAt: new Date() }).where(eq(SO.id, id));
+        return readStanding(t, id);
+      });
+    },
+    async resumeStandingOrder(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await readStanding(t, id); // 404 if absent/cross-tenant
+        await t.update(SO).set({ status: "active", updatedAt: new Date() }).where(eq(SO.id, id));
+        return readStanding(t, id);
+      });
+    },
+    async discontinueStandingOrder(organizationId, id, alsoDiscontinueInstances) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await readStanding(t, id); // 404 if absent/cross-tenant
+        planStandingDiscontinuation(alsoDiscontinueInstances); // §2.4 — active spawned instances continue (D-loop deferred)
+        await t
+          .update(SO)
+          .set({ status: "discontinued", discontinuedAt: new Date(), updatedAt: new Date() })
+          .where(eq(SO.id, id));
+        await emit(t, organizationId, "m11.order.standing_discontinued", id, {
+          standingOrderId: id,
+          reason: "template_discontinued",
+        });
+        return readStanding(t, id);
+      });
+    },
+    async spawnStandingOrder(organizationId, userId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [tmpl] = (await t.select().from(SO).where(eq(SO.id, id)).limit(1)) as (typeof SO.$inferSelect)[];
+        if (!tmpl) throw new NotFoundError(`standing order ${id} not found`);
+        if (tmpl.status !== "active")
+          throw new NotFoundError(`standing order ${id} is ${tmpl.status}; only an active template may spawn`);
+        const plan = planStandingSpawn({
+          kind: tmpl.kind as OrderKind,
+          cadence: tmpl.cadence as StandingOrderCadence,
+          cadenceDetail: {},
+          spawnedBy: "clinician_request",
+          now: new Date().toISOString(),
+        });
+        const isLab = tmpl.kind === "lab";
+        const at = new Date();
+        // The spawned order is born `active` (signature inherited from the template anchor, §2.4 D5); the
+        // BEFORE lab-initial-states trigger sets its transmission/results states on the active insert.
+        const spawned = firstOrThrow(
+          await t
+            .insert(OR)
+            .values({
+              organizationId,
+              patientId: tmpl.patientId,
+              admissionId: tmpl.admissionId,
+              kind: tmpl.kind as OrderKind,
+              kindVersion: tmpl.kindVersion,
+              data: tmpl.templateData,
+              priority: "routine",
+              status: plan.spawnedOrderStatus,
+              version: 1,
+              drafterMembershipId: userId,
+              drafterDiscipline: "rn_case_manager",
+              orderingPhysicianMdmId: tmpl.orderingPhysicianMdmId,
+              standingOrderId: id,
+              cosignRequired: false,
+              cosignStatus: "attached",
+              transmissionStatus: isLab ? "pending" : "not_required",
+              resultsStatus: isLab ? "awaiting_results" : "not_expected",
+              signedAt: at,
+            })
+            .returning({ id: OR.id }),
+          "spawned order_record insert returned no row",
+        );
+        const inst = firstOrThrow(
+          await t
+            .insert(SOI)
+            .values({
+              organizationId,
+              standingOrderId: id,
+              orderRecordId: spawned.id,
+              spawnedBy: "clinician_request",
+              spawnedByMembershipId: userId,
+            })
+            .returning({ id: SOI.id }),
+          "standing_order_instance insert returned no row",
+        );
+        await t
+          .update(SO)
+          .set({ spawnCount: tmpl.spawnCount + 1, nextSpawnAt: plan.nextSpawnAt ? new Date(plan.nextSpawnAt) : tmpl.nextSpawnAt, updatedAt: at })
+          .where(eq(SO.id, id));
+        await emit(t, organizationId, "m11.order.standing_spawned", spawned.id, {
+          standingOrderId: id,
+          instanceId: inst.id,
+          orderId: spawned.id,
+          spawnedBy: "clinician_request",
+        });
+        return { orderId: spawned.id };
+      });
+    },
+
+    // ── Verbal-order policy (one row per org; upsert on the per-org unique index) ─────────────────────
     async getVerbalPolicy(organizationId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
@@ -286,6 +974,63 @@ export function createDbOrderBackend(db: DbClient): OrderRouteService {
         };
       });
     },
+    async putVerbalPolicy(organizationId, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        validateVerbalWindowHours(args.windowHours); // §2.3 D3 tighten-only floor guard (≤ 48h, ≥ 1h)
+        const current = await verbalPolicyOf(t);
+        await t
+          .insert(VP)
+          .values({
+            organizationId,
+            windowHours: args.windowHours,
+            businessHoursOnly: args.businessHoursOnly ?? current.businessHoursOnly,
+            lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ?? current.lpnCosignRequiredKinds) as OrderKind[],
+            npCosignRequiredKinds: (args.npCosignRequiredKinds ?? current.npCosignRequiredKinds) as OrderKind[],
+            platformFloorWindowHours: 48,
+            policyVersion: current.policyVersion,
+          })
+          .onConflictDoUpdate({
+            target: VP.organizationId,
+            set: {
+              windowHours: args.windowHours,
+              businessHoursOnly: args.businessHoursOnly ?? current.businessHoursOnly,
+              lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ?? current.lpnCosignRequiredKinds) as OrderKind[],
+              npCosignRequiredKinds: (args.npCosignRequiredKinds ?? current.npCosignRequiredKinds) as OrderKind[],
+              updatedAt: new Date(),
+            },
+          });
+        return readPolicy(t);
+      });
+    },
+    async regenerateVerbalTimer(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadOrderRow(t, id);
+        if (r.status !== "verbal_pending") throw new NotFoundError(`order ${id} is not verbal_pending`);
+        const [v] = (await t
+          .select({ id: VO.id, orderingPhysicianMdmId: VO.orderingPhysicianMdmId, recordingMembershipId: VO.recordingMembershipId })
+          .from(VO)
+          .where(and(eq(VO.targetKind, "order"), eq(VO.targetId, id)))
+          .limit(1)) as { id: string; orderingPhysicianMdmId: string; recordingMembershipId: string }[];
+        if (!v) throw new NotFoundError(`order ${id} has no verbal-order receipt`);
+        const policy = await verbalPolicyOf(t);
+        const deadlineIso = computeVerbalDeadline(new Date().toISOString(), {
+          windowHours: policy.windowHours,
+          businessHoursOnly: policy.businessHoursOnly,
+          policyVersion: policy.policyVersion,
+        });
+        await t.update(VO).set({ deadlineAt: new Date(deadlineIso) }).where(eq(VO.id, v.id));
+        await emit(t, organizationId, "m11.order.verbal_received", id, {
+          orderId: id,
+          verbalOrderId: v.id,
+          deadlineAt: deadlineIso,
+          orderingPhysicianMdmId: v.orderingPhysicianMdmId,
+          recordingMembershipId: v.recordingMembershipId,
+        });
+        return readOrder(t, id);
+      });
+    },
 
     // ── §4.7 ABAC resolver (loadOrder) — org-scoped, RLS-backstopped; null fails the predicate closed ──
     async loadOrder(organizationId, orderId): Promise<OrderAbacFacts | null> {
@@ -294,6 +1039,7 @@ export function createDbOrderBackend(db: DbClient): OrderRouteService {
           .select({
             kind: OR.kind,
             drafterMembershipId: OR.drafterMembershipId,
+            drafterDiscipline: OR.drafterDiscipline,
             cosignRequired: OR.cosignRequired,
             cosignStatus: OR.cosignStatus,
           })
@@ -301,40 +1047,24 @@ export function createDbOrderBackend(db: DbClient): OrderRouteService {
           .where(eq(OR.id, orderId))
           .limit(1);
         if (!r) return null;
-        // `order_record` carries no explicit cosigner-role column; the resolved axis is derived by the write
-        // path. Reads surface `null` (the predicate defaults it to 'rn_case_manager'), matching the slice
-        // for records that have not yet requested signature.
+        // Re-derive the resolved cosigner axis from the persisted facts (order_record has no explicit
+        // column): the LPN axis demands an RN, the escalation-jump / NP axes demand a medical_director.
+        const cosignerRoleNeeded = r.cosignRequired
+          ? lpnCosignRequired(r.drafterDiscipline, r.kind as OrderKind)
+            ? "rn_case_manager"
+            : "medical_director"
+          : null;
         return {
           kind: r.kind as OrderKind,
           drafterMembershipId: r.drafterMembershipId,
-          cosignerRoleNeeded: null,
+          cosignerRoleNeeded,
           cosignRequired: r.cosignRequired,
           alreadyCosigned: r.cosignStatus === "attached",
         };
       });
     },
 
-    // ── Writes — the M11L Drizzle write lifecycle. Fail-closed 501 until then. ──────────────────────
-    createDraft: async () => notImpl(),
-    editDraft: async () => notImpl(),
-    requestSignature: async () => notImpl(),
-    signOrder: async () => notImpl(),
-    signOnBehalf: async () => notImpl(),
-    recordVerbal: async () => notImpl(),
-    cosignOrder: async () => notImpl(),
-    discontinueOrder: async () => notImpl(),
-    correctOrder: async () => notImpl(),
-    completeOrder: async () => notImpl(),
-    createStandingOrder: async () => notImpl(),
-    editStandingOrder: async () => notImpl(),
-    pauseStandingOrder: async () => notImpl(),
-    resumeStandingOrder: async () => notImpl(),
-    discontinueStandingOrder: async () => notImpl(),
-    spawnStandingOrder: async () => notImpl(),
-    putVerbalPolicy: async () => notImpl(),
-    regenerateVerbalTimer: async () => notImpl(),
-
-    // No events are buffered on the read path (writes are 501); drain is a no-op.
+    // No events are buffered in-process (the transactional outbox persists them); drain is a no-op.
     drainEvents: () => [],
   };
 }
