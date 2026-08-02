@@ -16,6 +16,7 @@
     "db:up": "docker start wardenx-postgres 2>/dev/null || docker run -d --name wardenx-postgres -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx -p 5440:5432 -v wardenx-pgdata:/var/lib/postgresql pgvector/pgvector:pg18",
     "db:down": "docker stop wardenx-postgres",
     "db:migrate": "bun run scripts/db/migrate.ts",
+    "db:migrate:baseline": "bun run scripts/db/migrate.ts --baseline",
     "db:seed": "bun run scripts/db/seed.ts",
     "db:seed:org-admin": "bun run scripts/db/seed-org-admin.ts",
     "db:sync:permissions": "bun --env-file=.env run scripts/db/sync-permission-catalog.ts",
