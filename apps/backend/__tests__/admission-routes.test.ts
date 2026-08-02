@@ -57,7 +57,7 @@ const PERMISSION_SEED = [
   },
   {
     userId: "rn_1",
-    permissions: ["admission.read", "cti.read", "f2f.read", "f2f.attest"],
+    permissions: ["admission.read", "cti.read", "f2f.read", "f2f.attest", "election.read"],
   },
   {
     userId: "md_1",
@@ -203,6 +203,33 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe(ADMISSION);
+    await app.close();
+  });
+
+  it("GET /patients/:patientId/election-certification assembles the aggregate for a reader (200)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/pat_1/election-certification",
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.admission?.id).toBe(ADMISSION);
+    expect(Array.isArray(body.periods)).toBe(true);
+    // The seeded admission has an open compliance window → it surfaces on the aggregate.
+    expect(body.complianceWindows.some((w: { id: string }) => w.id === WINDOW)).toBe(true);
+    await app.close();
+  });
+
+  it("denies /patients/:patientId/election-certification without election.read (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/pat_1/election-certification",
+      headers: INTAKE,
+    });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 

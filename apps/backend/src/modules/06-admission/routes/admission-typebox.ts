@@ -10,6 +10,7 @@ import { ValidationError } from "@wardenx/types";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
   Page as ServicePage,
+  PatientElectionCertificationView as ServicePatientElectionCert,
   SummaryRow as ServiceSummaryRow,
 } from "./service";
 
@@ -31,6 +32,11 @@ if (!FormatRegistry.Has("uuid")) {
 // Slice ids are non-uuid synthetic (`adm_1`); routes accept a loose id param. Cross-module ids
 // (patientId, physicianId) are validated as uuids per §4.2.
 export const IdParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
+// Loose string (matches IdParamsSchema, not uuid-format) so the param convention is uniform across M6
+// routes; the service resolves a non-existent patient to a truthful empty aggregate, never an error.
+export const PatientIdParamsSchema = Type.Object({
+  patientId: Type.String({ minLength: 1, maxLength: 64 }),
+});
 
 const Uuid = () => Type.String({ format: "uuid" });
 const Reason = (min = 10, max = 4000) => Type.String({ minLength: min, maxLength: max });
@@ -323,6 +329,39 @@ export const SummaryItemsResponseSchema = Type.Object({
   items: Type.Array(SummaryRowResponseSchema),
 });
 
+// Patient-scoped Election & Certification aggregate (patient-chart tab). `admission` is null when the
+// patient has no admission yet; the ladders are then empty. Dates are ISO strings (timestamps) or date
+// strings. NOTE: `periods` is published as a loose record array on purpose — each period item nests three
+// sub-objects (election statement / CTI / F2F), and publishing that full depth makes openapi-fetch's
+// generated client type instantiate past TypeScript's depth limit (TS2589) once it is one operation among
+// 1000+. The rich per-period shape is the `PatientElectionCertificationView.periods` service type, which
+// the screen casts to; the live-RLS suite is the correctness proof for the assembled shape.
+const NullableStr = Type.Union([Type.String(), Type.Null()]);
+export const PatientElectionCertificationResponseSchema = Type.Object({
+  admission: Type.Union([
+    Type.Object({
+      id: Type.String(),
+      state: Type.String(),
+      admissionAt: NullableStr,
+      activatedAt: NullableStr,
+      dischargedAt: NullableStr,
+      version: Type.Integer(),
+    }),
+    Type.Null(),
+  ]),
+  periods: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+  complianceWindows: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      windowKind: Type.String(),
+      severity: Type.String(),
+      status: Type.String(),
+      mustCompleteBy: Type.String(),
+      closedAt: NullableStr,
+    }),
+  ),
+});
+
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _SummaryRow = Conforms<Static<typeof SummaryRowResponseSchema>, ServiceSummaryRow>;
@@ -331,6 +370,12 @@ type _SummaryPage = Conforms<Static<typeof SummaryPageResponseSchema>, ServicePa
 type _SummaryItems = Conforms<
   Static<typeof SummaryItemsResponseSchema>,
   { readonly items: readonly ServiceSummaryRow[] }
+>;
+// The published election/cert schema keeps `admission` + `complianceWindows` pinned to the service view;
+// `periods` is intentionally loose (see the schema note), so we pin only the flat, non-nested slices.
+type _PatientElectionCertFlat = Conforms<
+  Pick<Static<typeof PatientElectionCertificationResponseSchema>, "admission" | "complianceWindows">,
+  Pick<ServicePatientElectionCert, "admission" | "complianceWindows">
 >;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */

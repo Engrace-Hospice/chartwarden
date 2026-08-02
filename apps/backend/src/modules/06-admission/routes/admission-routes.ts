@@ -44,6 +44,7 @@ import {
   LocChangeSchema,
   LocPatchSchema,
   NorAcknowledgeSchema,
+  PatientIdParamsSchema,
   ReferralAcceptSchema,
   ReferralCreateSchema,
   ReferralDeclineSchema,
@@ -220,6 +221,22 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     const row = await service.getAdmission(organizationId, idOf(request));
     return row ?? notFound(idOf(request));
   });
+
+  // Patient-scoped Election & Certification aggregate — the patient-chart "Election & Certification"
+  // tab. Gated by `election.read`; a patient with no admission returns a truthful empty (admission null),
+  // never a 404. RLS scopes every underlying read to the caller's org.
+  app.get(
+    "/api/v1/patients/:patientId/election-certification",
+    {
+      preHandler: [ELECTION_READ],
+      config: { auditRead: { resourceKind: "election_certification", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientIdParamsSchema, request.params);
+      return service.getPatientElectionCertification(organizationId, patientId);
+    },
+  );
 
   app.patch("/api/v1/admissions/:id", { preHandler: [ADMISSION_UPDATE] }, async (request) => {
     const { organizationId } = actorOf(request);

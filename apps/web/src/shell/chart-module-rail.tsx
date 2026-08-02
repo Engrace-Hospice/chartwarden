@@ -16,9 +16,10 @@ export type ChartSection =
   | "orders"
   | "medications"
   | "documents"
+  | "election"
   | "idg";
 
-type NavIconName = "summary" | "carePlan" | "stethoscope" | "checklist" | "orders" | "pill" | "folder" | "idg";
+type NavIconName = "summary" | "carePlan" | "stethoscope" | "checklist" | "orders" | "pill" | "folder" | "cert" | "idg";
 const NAV_ICON_PATHS: Record<NavIconName, string> = {
   summary: "M4 4h7v7H4z M13 4h7v7h-7z M4 13h7v7H4z M13 13h7v7h-7z",
   carePlan: "M9 4h6v3H9z M7 5H5v15h14V5h-2 M9 11h6 M9 15h4",
@@ -27,6 +28,7 @@ const NAV_ICON_PATHS: Record<NavIconName, string> = {
   orders: "M7 3h7l4 4v14H7z M14 3v4h4 M10 13h5 M10 17h5",
   pill: "M5 13l8-8a4 4 0 0 1 6 6l-8 8a4 4 0 0 1-6-6z M9 9l6 6",
   folder: "M3 6h6l2 2h10v11H3z",
+  cert: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18z M8.5 12l2.5 2.5 4.5-5",
   idg: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z M3 19c0-3 2.7-5 6-5s6 2 6 5 M16 11a3 3 0 0 0 0-6 M15 14c3 .2 5 2.2 5 5",
 };
 function NavIcon({ name }: { name: NavIconName }): JSX.Element {
@@ -48,6 +50,7 @@ const ITEMS: { key: ChartSection; label: string; icon: NavIconName; route: ((id:
   { key: "orders", label: "Orders", icon: "orders", route: (id) => `/patients/${id}/orders` },
   { key: "medications", label: "Medications", icon: "pill", route: (id) => `/patients/${id}/emar` },
   { key: "documents", label: "Documents", icon: "folder", route: (id) => `/patients/${id}/documents` },
+  { key: "election", label: "Election & Certification", icon: "cert", route: (id) => `/patients/${id}/election-certification` },
   { key: "idg", label: "IDG History", icon: "idg", route: null },
 ];
 

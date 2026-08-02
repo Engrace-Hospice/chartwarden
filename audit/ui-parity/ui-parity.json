@@ -175,6 +175,13 @@
       "permission": "admission.read"
     },
     {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.patient-election-cert",
+      "path": "/patients/:patientId/election-certification",
+      "permission": "election.read"
+    },
+    {
       "module": "07-care-plan",
       "moduleId": 7,
       "id": "care-plan.view",

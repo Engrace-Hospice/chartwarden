@@ -633,6 +633,7 @@ import {
   LocChangeSchema,
   LocPatchSchema,
   NorAcknowledgeSchema,
+  PatientElectionCertificationResponseSchema,
   ReferralAcceptSchema,
   ReferralCreateSchema,
   ReferralDeclineSchema,
@@ -5281,6 +5282,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions/:id/election-periods": {
     summary: "The admission's benefit-period ladder",
     response: M6SummaryItemsResponseSchema,
+  },
+  "GET /api/v1/patients/:patientId/election-certification": {
+    summary: "The patient's Election & Certification aggregate (admission + period ladder + windows)",
+    response: PatientElectionCertificationResponseSchema,
   },
   "POST /api/v1/admissions/:id/election-periods": {
     summary: "Open the next benefit period",

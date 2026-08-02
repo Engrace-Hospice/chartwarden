@@ -8,6 +8,7 @@ import type { ComponentType } from "react";
 import { AdmissionCensus } from "./admission-census";
 import { AdmissionDetail } from "./admission-detail";
 import { ComplianceDashboard } from "./compliance-dashboard";
+import { PatientElectionCert } from "./patient-election-cert";
 import { ReferralInbox } from "./referral-inbox";
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
@@ -45,6 +46,14 @@ export const admissionScreens: ScreenRegistryModule<ComponentType> = {
       title: "Admission",
       requiredPermission: "admission.read",
       screen: AdmissionDetail,
+    },
+    {
+      // Patient-scoped Election & Certification — reached from the patient chart tab (param path, no nav).
+      id: "admission.patient-election-cert",
+      path: "/patients/:patientId/election-certification",
+      title: "Election & Certification",
+      requiredPermission: "election.read",
+      screen: PatientElectionCert,
     },
   ],
 };
