@@ -110,8 +110,9 @@ export function parseTrustedProxies(raw: string | undefined): string[] | false {
  * The list is deliberately explicit rather than "/api/v1": the M6–M14/M17/M18/M22 clinical-core
  * prefixes are NOT here yet, because those routes carry no `config.auditRead` and adding their
  * prefixes would only fail the boot. They are the remaining widening work, and they matter most —
- * see `clinicalCoreScaffoldEnabled` in index.ts. Prefixes are matched with startsWith, so
- * "/api/v1/claims" also governs "/api/v1/claims/:id/validation-runs".
+ * now that the clinical core mounts live Drizzle route services (see registerModuleRoutes in index.ts),
+ * annotating their reads with `config.auditRead` is the follow-up. Prefixes are matched with startsWith,
+ * so "/api/v1/claims" also governs "/api/v1/claims/:id/validation-runs".
  */
 export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   // M5 patient chart (the original covered surface) + the patient-scoped reads M7/M9/M10/M12/M39 hang off it.
