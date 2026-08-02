@@ -5044,6 +5044,164 @@ export function m31ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M31_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * Module 35 (Subscription Billing) — the twenty-five §4.7 permission keys registered into M3's catalog
+ * (M35-T06). Two surfaces: the tenant `subscription`/`payment_method`/`invoice`/`usage` keys held by an
+ * agency's `org_admin` / `billing_admin` / `accounts_receivable` roles (org-scoped by `inOrg` or the
+ * M35-owned `billing_scope_matches_org`), and the platform-ops `plan`/`subscription.admin`/`dunning`/
+ * `refund`/`promo`/`revenue`/`usage.admin`/`stripe` keys held by the platform-billing roles (guarded by
+ * the M35-owned `platform_billing_scope`, plus `refund_requires_step_up_approval` on refund approval and
+ * `promo_applicable_to_subscription` on promo apply). The `abac` cell is CATALOG METADATA (mirrored to the
+ * DB `permission` row) naming the DEFAULT predicate; the route layer composes the explicit §4.8 chain
+ * (./abac-predicates) plus the §D14 step-up assertion on the mutating platform actions.
+ */
+export const M35_CONTRIBUTED_PERMISSIONS = {
+  // ── tenant surface (§4.1) ───────────────────────────────────────────────────────────────────────────
+  "subscription.read": { resource: "subscription", action: "read", category: "billing", abac: "inOrg" },
+  "subscription.create": {
+    resource: "subscription",
+    action: "create",
+    category: "billing",
+    abac: "billing_scope_matches_org",
+  },
+  "subscription.update": {
+    resource: "subscription",
+    action: "update",
+    category: "billing",
+    abac: "billing_scope_matches_org",
+  },
+  "subscription.cancel": {
+    resource: "subscription",
+    action: "cancel",
+    category: "billing",
+    abac: "billing_scope_matches_org",
+  },
+  "payment_method.read": {
+    resource: "payment_method",
+    action: "read",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "payment_method.write": {
+    resource: "payment_method",
+    action: "write",
+    category: "billing",
+    abac: "billing_scope_matches_org",
+  },
+  "invoice.read": { resource: "invoice", action: "read", category: "billing", abac: "inOrg" },
+  "usage.read": { resource: "usage", action: "read", category: "billing", abac: "inOrg" },
+  // ── platform-ops surface (§4.2) ─────────────────────────────────────────────────────────────────────
+  "plan.admin.read": {
+    resource: "plan",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "plan.admin.write": {
+    resource: "plan",
+    action: "admin_write",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "subscription.admin.read": {
+    resource: "subscription",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "subscription.admin.write": {
+    resource: "subscription",
+    action: "admin_write",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "dunning.admin.override": {
+    resource: "dunning",
+    action: "override",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "refund.request": {
+    resource: "refund",
+    action: "request",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "refund.approve": {
+    resource: "refund",
+    action: "approve",
+    category: "billing_admin",
+    abac: "refund_requires_step_up_approval",
+  },
+  "refund.read": {
+    resource: "refund",
+    action: "read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "promo.admin.read": {
+    resource: "promo",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "promo.admin.write": {
+    resource: "promo",
+    action: "admin_write",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "promo.admin.apply": {
+    resource: "promo",
+    action: "apply",
+    category: "billing_admin",
+    abac: "promo_applicable_to_subscription",
+  },
+  "promo.admin.revoke": {
+    resource: "promo",
+    action: "revoke",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "revenue.admin.read": {
+    resource: "revenue",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "revenue.admin.write": {
+    resource: "revenue",
+    action: "admin_write",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "usage.admin.read": {
+    resource: "usage",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "stripe.admin.read": {
+    resource: "stripe_webhook",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+  "stripe.admin.replay": {
+    resource: "stripe_webhook",
+    action: "admin_replay",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+export type M35ContributedPermissionKey = keyof typeof M35_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M35 contributed keys into `permission`-table mirror rows (M35 §4.7). */
+export function m35ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M35_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -5082,5 +5240,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m32ContributedPermissionMirrorRows(),
     ...m28ContributedPermissionMirrorRows(),
     ...m31ContributedPermissionMirrorRows(),
+    ...m35ContributedPermissionMirrorRows(),
   ];
 }

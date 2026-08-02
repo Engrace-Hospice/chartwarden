@@ -1806,6 +1806,55 @@ import {
   WithinQuery as M31WithinQuery,
 } from "../../apps/backend/src/modules/31-portal/routes/portal-typebox";
 
+// M35 Subscription Billing — the §4.4 request/response wire contracts the §4.1–4.3 handlers `parse(...)` /
+// return (subscription-typebox.ts). Reused verbatim so the published contract cannot drift from the
+// validator (the M30/M31 precedent).
+import {
+  AckResponseDto as M35AckResponseDto,
+  AddMeterBodySchema as M35AddMeterBody,
+  AdminSubscriptionListQuerySchema as M35AdminSubscriptionListQuery,
+  ApplyPromoBodySchema as M35ApplyPromoBody,
+  AttachPaymentMethodBodySchema as M35AttachPaymentMethodBody,
+  BillingStatusDto as M35BillingStatusDto,
+  ChangePlanBodySchema as M35ChangePlanBody,
+  CreatePlanBodySchema as M35CreatePlanBody,
+  CreatePromoBodySchema as M35CreatePromoBody,
+  CreateSubscriptionBodySchema as M35CreateSubscriptionBody,
+  CurrentRevenueResponseDto as M35CurrentRevenueResponseDto,
+  DenyRefundBodySchema as M35DenyRefundBody,
+  DunningDto as M35DunningDto,
+  InvoiceDetailDto as M35InvoiceDetailDto,
+  InvoiceListResponseDto as M35InvoiceListResponseDto,
+  ListQuerySchema as M35ListQuery,
+  MeterAdminDto as M35MeterAdminDto,
+  PaymentMethodDto as M35PaymentMethodDto,
+  PaymentMethodListResponseDto as M35PaymentMethodListResponseDto,
+  PauseSubscriptionBodySchema as M35PauseSubscriptionBody,
+  PlanAdminDto as M35PlanAdminDto,
+  PlanAdminListResponseDto as M35PlanAdminListResponseDto,
+  PlanCatalogListResponseDto as M35PlanCatalogListResponseDto,
+  PromoApplicationDto as M35PromoApplicationDto,
+  PromoDto as M35PromoDto,
+  PromoListResponseDto as M35PromoListResponseDto,
+  RedirectUrlDto as M35RedirectUrlDto,
+  RefundDto as M35RefundDto,
+  RefundListResponseDto as M35RefundListResponseDto,
+  RequestRefundBodySchema as M35RequestRefundBody,
+  RevenueSnapshotDto as M35RevenueSnapshotDto,
+  RevenueSnapshotListResponseDto as M35RevenueSnapshotListResponseDto,
+  RevokePromoBodySchema as M35RevokePromoBody,
+  SetupIntentResponseDto as M35SetupIntentResponseDto,
+  SubscriptionAdminListResponseDto as M35SubscriptionAdminListResponseDto,
+  SubscriptionAdminResponseDto as M35SubscriptionAdminResponseDto,
+  SubscriptionResponseDto as M35SubscriptionResponseDto,
+  UpdateMeterBodySchema as M35UpdateMeterBody,
+  UpdatePlanBodySchema as M35UpdatePlanBody,
+  UpdatePromoBodySchema as M35UpdatePromoBody,
+  UsageCurrentResponseDto as M35UsageCurrentResponseDto,
+  UsageHistoryResponseDto as M35UsageHistoryResponseDto,
+  WebhookReceiptListResponseDto as M35WebhookReceiptListResponseDto,
+} from "../../apps/backend/src/modules/35-subscription/routes/subscription-typebox";
+
 // M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
 // routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
 const ChannelSummarySchema = Type.Object({
@@ -2409,6 +2458,60 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
+  // ── M35 Subscription Billing (§4.1 tenant + §4.2 platform-ops + §4.3 webhook). 51 routes; every one
+  // ships its request/response contract (subscription-typebox.ts) so the generated client is fully typed
+  // and the new-module deficit floor stays 0. Money is INTEGER CENTS; no PHI (§8.5).
+  "GET /api/v1/plans": { response: M35PlanCatalogListResponseDto, summary: "List active plans" },
+  "GET /api/v1/subscription": { response: M35SubscriptionResponseDto, summary: "Read current subscription" },
+  "POST /api/v1/subscription": { body: M35CreateSubscriptionBody, response: M35SubscriptionResponseDto, summary: "Create subscription" },
+  "PATCH /api/v1/subscription": { body: M35ChangePlanBody, response: M35SubscriptionResponseDto, summary: "Change plan" },
+  "POST /api/v1/subscription/cancel": { response: M35SubscriptionResponseDto, summary: "Cancel at period end" },
+  "POST /api/v1/subscription/resume": { response: M35SubscriptionResponseDto, summary: "Resume subscription" },
+  "POST /api/v1/subscription/apply_promo": { body: M35ApplyPromoBody, response: M35PromoApplicationDto, summary: "Apply promo code" },
+  "GET /api/v1/payment_methods": { response: M35PaymentMethodListResponseDto, summary: "List payment methods" },
+  "POST /api/v1/payment_methods/setup_intent": { response: M35SetupIntentResponseDto, summary: "Create Stripe SetupIntent" },
+  "POST /api/v1/payment_methods/attach": { body: M35AttachPaymentMethodBody, response: M35PaymentMethodDto, summary: "Attach payment method" },
+  "PATCH /api/v1/payment_methods/:id/set_default": { response: M35PaymentMethodDto, summary: "Set default payment method" },
+  "DELETE /api/v1/payment_methods/:id": { response: M35AckResponseDto, summary: "Detach payment method" },
+  "GET /api/v1/invoices": { query: M35ListQuery, response: M35InvoiceListResponseDto, summary: "List invoices" },
+  "GET /api/v1/invoices/:id": { response: M35InvoiceDetailDto, summary: "Read invoice detail" },
+  "GET /api/v1/invoices/:id/hosted_url": { response: M35RedirectUrlDto, summary: "Stripe-hosted invoice url" },
+  "GET /api/v1/invoices/:id/pdf": { response: M35RedirectUrlDto, summary: "Invoice PDF url" },
+  "GET /api/v1/usage/current": { response: M35UsageCurrentResponseDto, summary: "Current-period usage" },
+  "GET /api/v1/usage/history": { query: M35ListQuery, response: M35UsageHistoryResponseDto, summary: "Historical usage" },
+  "GET /api/v1/billing/status": { response: M35BillingStatusDto, summary: "Lightweight billing status" },
+  "GET /api/admin/plans": { response: M35PlanAdminListResponseDto, summary: "List all plans (admin)" },
+  "POST /api/admin/plans": { body: M35CreatePlanBody, response: M35PlanAdminDto, summary: "Create draft plan" },
+  "PATCH /api/admin/plans/:id": { body: M35UpdatePlanBody, response: M35PlanAdminDto, summary: "Update draft plan" },
+  "POST /api/admin/plans/:id/activate": { response: M35PlanAdminDto, summary: "Activate plan" },
+  "POST /api/admin/plans/:id/deprecate": { response: M35PlanAdminDto, summary: "Deprecate plan" },
+  "POST /api/admin/plans/:id/meters": { body: M35AddMeterBody, response: M35MeterAdminDto, summary: "Add meter" },
+  "PATCH /api/admin/plans/:id/meters/:meterId": { body: M35UpdateMeterBody, response: M35MeterAdminDto, summary: "Update meter" },
+  "GET /api/admin/subscriptions": { query: M35AdminSubscriptionListQuery, response: M35SubscriptionAdminListResponseDto, summary: "List subscriptions (admin)" },
+  "GET /api/admin/subscriptions/:id": { response: M35SubscriptionAdminResponseDto, summary: "Read any subscription" },
+  "POST /api/admin/subscriptions/:id/pause": { body: M35PauseSubscriptionBody, response: M35SubscriptionAdminResponseDto, summary: "Pause subscription" },
+  "POST /api/admin/subscriptions/:id/resume": { response: M35SubscriptionAdminResponseDto, summary: "Resume subscription (admin)" },
+  "POST /api/admin/subscriptions/:id/cancel": { response: M35SubscriptionAdminResponseDto, summary: "Cancel immediately" },
+  "POST /api/admin/subscriptions/:id/apply_promo": { body: M35ApplyPromoBody, response: M35PromoApplicationDto, summary: "Apply promo (admin)" },
+  "POST /api/admin/subscriptions/:id/revoke_promo": { body: M35RevokePromoBody, response: M35AckResponseDto, summary: "Revoke applied promo" },
+  "POST /api/admin/dunning/:subscriptionId/skip_stage": { response: M35DunningDto, summary: "Skip dunning stage" },
+  "POST /api/admin/dunning/:subscriptionId/reset": { response: M35DunningDto, summary: "Reset dunning" },
+  "POST /api/admin/refunds": { body: M35RequestRefundBody, response: M35RefundDto, summary: "Request refund" },
+  "POST /api/admin/refunds/:id/approve": { response: M35RefundDto, summary: "Approve refund" },
+  "POST /api/admin/refunds/:id/deny": { body: M35DenyRefundBody, response: M35RefundDto, summary: "Deny refund" },
+  "GET /api/admin/refunds": { query: M35ListQuery, response: M35RefundListResponseDto, summary: "List refunds" },
+  "GET /api/admin/promos": { response: M35PromoListResponseDto, summary: "List promos" },
+  "POST /api/admin/promos": { body: M35CreatePromoBody, response: M35PromoDto, summary: "Create promo" },
+  "PATCH /api/admin/promos/:id": { body: M35UpdatePromoBody, response: M35PromoDto, summary: "Update promo" },
+  "POST /api/admin/promos/:id/deactivate": { response: M35PromoDto, summary: "Deactivate promo" },
+  "GET /api/admin/revenue/snapshots": { query: M35ListQuery, response: M35RevenueSnapshotListResponseDto, summary: "List MRR/ARR snapshots" },
+  "GET /api/admin/revenue/current": { response: M35CurrentRevenueResponseDto, summary: "Live MRR estimate" },
+  "POST /api/admin/revenue/snapshots/compute": { response: M35RevenueSnapshotDto, summary: "Recompute MRR/ARR" },
+  "GET /api/admin/usage/:organizationId/current": { response: M35UsageCurrentResponseDto, summary: "Tenant usage drill-down" },
+  "GET /api/admin/webhooks/stripe/recent": { query: M35ListQuery, response: M35WebhookReceiptListResponseDto, summary: "Recent webhook receipts" },
+  "POST /api/admin/webhooks/stripe/replay/:eventId": { response: M35AckResponseDto, summary: "Replay a webhook" },
+  "POST /api/v1/webhooks/stripe": { summary: "Inbound Stripe webhook (HMAC-verified)" },
+
   // ── M30 HQRP & Quality (§4.1–4.2). 47 routes across seven sub-surfaces (CAHPS / CoP / incidents /
   // infection / measures / mortality / QAPI / SRA / risk register) published with NO request contract:
   // the generated client typed every body and query as `never`, so nothing could call M30 in a typed way.

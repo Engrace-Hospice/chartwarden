@@ -305,6 +305,18 @@ import {
   registerFhirGatewayEraser,
   registerFhirPublishedSeams,
 } from "./modules/28-fhir/index";
+// M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
+// §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
+// the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
+// injected platform runner (fail-closed until a platform credential binds — the M34 posture), and the §4.3
+// webhook ingest stays fail-closed (503) until the live Stripe transport binds. The §4.5/§4.6 seams were
+// bound as deny-stubs in T05 and stay so (M35's first consumer, M33, builds last in this wave).
+import {
+  M35_OUTBOX_EVENTS,
+  buildDrizzleM35RouteService,
+  mountM35Routes,
+  registerM35AbacPredicates,
+} from "./modules/35-subscription/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -840,6 +852,11 @@ export function wireModuleSeams(
   // `cost_report_approver_for_provider`, `cost_report_period_active`). Pass the DB handle so the real
   // Drizzle owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny).
   registerM27AbacPredicates({ db: deps.db });
+  // M35 — the five §4.8 ABAC resolvers (`billing_scope_matches_org`, `platform_billing_scope`,
+  // `refund_requires_step_up_approval`, `plan_change_within_period_grace`, `promo_applicable_to_subscription`).
+  // Pure over (context, target) — no DB handle needed; the resource-fact clauses the guard can't supply
+  // (a promo's redemption count, a refund's requester) are re-asserted server-side by the route service.
+  registerM35AbacPredicates();
   // M23 — the four §4.7 ABAC resolvers (`provider_entity_billing_scope`, `claim_in_billing_manager_caseload`,
   // `override_role_eligible`, `regulatory_required_rule_protected`). Pass the DB handle so the Drizzle
   // owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny). The M5
@@ -1273,6 +1290,7 @@ if ((import.meta as { main?: boolean }).main) {
     // T03-T05's shape rather than an addition to T07's. Catalogued now, bound when the emit can join the
     // write's own tx.
     M32_OUTBOX_EVENTS,
+    M35_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -1300,6 +1318,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
+  const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -1461,6 +1480,17 @@ if ((import.meta as { main?: boolean }).main) {
             writeService: buildDrizzleM27WriteService(dbHandle.db, {
               outbox: m27OutboxPublisher,
             }),
+          });
+          // M35 (Subscription Billing) — mount the §4.1 tenant + §4.2 platform-ops + §4.3 webhook route
+          // plugins over the single Drizzle route service. Tenant mutations open their own withOrgContext
+          // (RLS scopes every statement to app.org_id) and emit their §4.11 m35.* event through the
+          // catalog-validating tx publisher (callerModule `m35`) in the same unit of work (§4.13 outbox-only
+          // Stripe path). The platform-ops cross-tenant reads/writes run through the injected platform
+          // runner — left on its fail-closed default here (the M34 platform-credential bind is the follow-up),
+          // so the admin surface refuses (503) rather than reading nothing under tenant RLS. The §4.3 webhook
+          // stays fail-closed (503) until the live Stripe secret + DEK transport binds.
+          mountM35Routes(app, {
+            service: buildDrizzleM35RouteService(dbHandle.db, { outbox: m35OutboxPublisher }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every
