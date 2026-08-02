@@ -1062,4 +1062,12 @@ export type DataClass =
   /** `doclens_*` invocations — the patient's INTAKE documents (the M22 half). */
   | "intake_ai_provenance"
   /** Every other capability — the patient's CHART (the M8 half). */
-  | "clinical_record_ai_provenance";
+  | "clinical_record_ai_provenance"
+  // M31 (Patient/Family Portal & Telehealth) per-patient portal footprint: the patient's `telehealth_visit`
+  // rows (aborted + their vendor-room ciphers shredded), the `portal_access_grant` rows to the patient
+  // (revoked with `revoke_cascade_source='destruction'`), and any `portal_account` that the revocation left
+  // with no active grant to ANY patient (flipped to `revoked`, contact ciphers shredded). Erased by M31's
+  // registered eraser (M31-T06) under an M4 destruction certificate (§3.7 / D15); the recording BYTES in
+  // MinIO are crypto-erased by M22's own `telehealth_recording`/`documents` eraser — M31 stores only the
+  // refs, which it shreds. `subjectId` is the patient being destroyed.
+  | "portal_record";

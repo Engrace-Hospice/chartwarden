@@ -1,10 +1,10 @@
 // apps/backend/src/modules/31-portal/eraser.ts — M31-T06 the §3.7 / D15 portal destruction eraser.
 //
 // M31 registers a portal eraseFn with M4's destruction-cert workflow (§3.7). This file is the PURE
-// orchestration core + its data port (Drizzle deletes under RLS at boot; slice in tests), the care-plan /
-// document eraser precedent (pure `erase*` core + injected store; the composition-root `registerEraser` call
-// lands with the module mount in T07 — M31 is not yet in the boot graph, and there is no `portal` DataClass in
-// REQUIRED_ERASERS to register against until then).
+// orchestration core + its data port (`PortalEraseStore`), the care-plan / document eraser precedent (pure
+// `erase*` core + injected store), AND the Drizzle-backed store + `registerPortalErasers()` the composition
+// root wires over the Phase-0 `portal_record` deny-stub (M31 is mounted in the boot graph as of T08, and
+// `portal_record` is now in REQUIRED_ERASERS).
 //
 // §3.7 order of operations (the destruction certificate records affected-row counts per table, M4 §24.5):
 //   1. Halt active telehealth visits for the patient (force `lifecycle_state='ended_aborted'`).
@@ -16,7 +16,13 @@
 // The document-upload provenance step (§3.7 step 3) is a NO-OP in the reduced 3-table scope — M31 owns no
 // `portal_document_upload` table (M22 shreds the intake batch under its own `documents` eraser). PURE: no I/O
 // of its own; every effect is a port call.
-import type { PatientId } from "@wardenx/types";
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
+import type { DataEraser, PatientId } from "@wardenx/types";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import { registerEraser } from "../../bootstrap/index";
+
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 /** The per-table counts a portal destruction removed/flipped (recorded on the destruction certificate). */
 export interface PortalEraseCounts {
@@ -111,4 +117,152 @@ export function createInMemoryPortalEraseStore(seed: Partial<PortalEraseCounts> 
       },
     },
   };
+}
+
+// ── Drizzle-backed store + composition-root registration (M31-T06 boot wiring) ──────────────────────────
+
+/** The sentinel written over a NOT-NULL cipher column when it is shredded in place (the plaintext DEK-encrypted
+ * value is discarded; the row survives for FK integrity / the custody chain). */
+const SHRED = "";
+
+/**
+ * Build the Drizzle-backed {@link PortalEraseStore}. Every statement runs under the destruction cert's org
+ * context (`withOrgContext` pins app.org_id so RLS scopes the writes to the tenant being erased). Each step
+ * opens its OWN scoped transaction and commits before the next — the ordering in {@link erasePortalRecord} is
+ * load-bearing precisely because of that (a grant must be revoked-and-committed before an account can be judged
+ * to have no remaining active grant). The M6/M21 eraser precedent.
+ */
+export function buildDrizzlePortalEraseStore(db: DbClient): PortalEraseStore {
+  const ACCOUNT = schema.portalAccounts;
+  const GRANT = schema.portalAccessGrants;
+  const VISIT = schema.telehealthVisits;
+
+  const scoped = <T>(organizationId: string, fn: (tx: Tx) => Promise<T>): Promise<T> =>
+    withOrgContext(db, { organizationId, userId: "" }, fn);
+
+  return {
+    async abortActiveTelehealthVisits(organizationId, patientId) {
+      return scoped(organizationId, async (tx) => {
+        // §3.7 step 1 — a live video room for a destroyed patient must be halted. The CHECK
+        // `telehealth_visit_ended_requires_end_reason` forces an end_reason alongside the terminal state.
+        const rows = await tx
+          .update(VISIT)
+          .set({
+            lifecycleState: "ended_aborted",
+            endReason: "destruction",
+            visitEndedAt: sql`now()`,
+            updatedAt: sql`now()`,
+          })
+          .where(
+            and(
+              eq(VISIT.patientId, patientId),
+              sql`${VISIT.lifecycleState} not in ('ended_clean','ended_aborted','reconciled')`,
+            ),
+          )
+          .returning({ id: VISIT.id });
+        return rows.length;
+      });
+    },
+
+    async shredTelehealthRecordings(organizationId, patientId) {
+      return scoped(organizationId, async (tx) => {
+        // §3.7 step 2 — M31 stores only recording REFS (the two vendor-room ciphers + the end-reason detail).
+        // Shred them across ALL the patient's visits so the room is unreachable; the recording BYTES in MinIO
+        // are M22's to crypto-erase under its own `telehealth_recording`/`documents` class. The NOT-NULL room
+        // ciphers take the SHRED sentinel; the nullable detail cipher goes to NULL.
+        const rows = await tx
+          .update(VISIT)
+          .set({
+            vendorRoomIdCipher: SHRED,
+            vendorRoomUrlCipher: SHRED,
+            endReasonDetailCipher: null,
+            updatedAt: sql`now()`,
+          })
+          .where(eq(VISIT.patientId, patientId))
+          .returning({ id: VISIT.id });
+        return rows.length;
+      });
+    },
+
+    async revokeActiveGrantsForPatient(organizationId, patientId) {
+      return scoped(organizationId, async (tx) => {
+        // §3.7 step 3 — revoke every active grant to the patient. The CHECK
+        // `portal_access_grant_revoked_requires_source` forces `revoke_cascade_source` alongside `revoked_at`;
+        // the D13 free-text `revoke_reason_cipher` is shredded (nullable → NULL).
+        const rows = await tx
+          .update(GRANT)
+          .set({
+            revokedAt: sql`now()`,
+            revokeCascadeSource: "destruction",
+            revokeReasonCipher: null,
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(GRANT.patientId, patientId), isNull(GRANT.revokedAt)))
+          .returning({ id: GRANT.id });
+        return rows.length;
+      });
+    },
+
+    async revokeAccountsWithNoRemainingGrants(organizationId, patientId) {
+      return scoped(organizationId, async (tx) => {
+        // §3.7 step 4 — an account reaches patients ONLY through grants; once the patient's grants are revoked
+        // (step 3, already committed), any account left with no active grant to ANY patient is orphaned and is
+        // flipped to `revoked` with its contact ciphers shredded. The CHECK `portal_account_revoked_terminal`
+        // forces `status='revoked'` alongside `revoked_at`.
+        const candidates = await tx
+          .selectDistinct({ accountId: GRANT.portalAccountId })
+          .from(GRANT)
+          .where(eq(GRANT.patientId, patientId));
+        let flipped = 0;
+        for (const { accountId } of candidates) {
+          const remaining = await tx
+            .select({ n: sql<number>`count(*)::int` })
+            .from(GRANT)
+            .where(and(eq(GRANT.portalAccountId, accountId), isNull(GRANT.revokedAt)));
+          if ((remaining[0]?.n ?? 0) > 0) continue;
+          const res = await tx
+            .update(ACCOUNT)
+            .set({
+              status: "revoked",
+              revokedAt: sql`now()`,
+              displayNameCipher: SHRED,
+              emailCipher: SHRED,
+              phoneCipher: null,
+              updatedAt: sql`now()`,
+            })
+            .where(and(eq(ACCOUNT.id, accountId), isNull(ACCOUNT.revokedAt)))
+            .returning({ id: ACCOUNT.id });
+          flipped += res.length;
+        }
+        return flipped;
+      });
+    },
+
+    async emitShredEvents() {
+      // §3.7 step 5 — the shred-manifest outbox emit. NO registered eraser on the platform emits
+      // transactional-outbox events (the M6/M7/M21 precedent): the destruction itself is the DB disposition
+      // above, and the per-table affected-row counts are recorded on the M4 destruction certificate. The
+      // `m31.portal_account.shredded` / `m31.telehealth.recordings_shredded` notification emit binds when
+      // M31's outbox publisher lands; erasure correctness does not depend on it, so it is a no-op here rather
+      // than an un-runnable stub that would make a real destruction throw.
+    },
+  };
+}
+
+/**
+ * Register M31's REAL `portal_record` eraser over the Phase-0 deny-stub (M31-T06). Called by the composition
+ * root after `wireErasers()` and before `validateErasers()`. `subjectId` is the patient being destroyed; the
+ * `DataEraser` contract carries no certificate id, so the emit step (a no-op — see the store) takes none.
+ * The returned `erased` is the total count of dispositions (visits aborted + recording refs shredded + grants
+ * revoked + accounts revoked).
+ */
+export function registerPortalErasers(db: DbClient): void {
+  const store = buildDrizzlePortalEraseStore(db);
+  const eraser: DataEraser = {
+    async erase(scope, subjectId) {
+      const { erased } = await erasePortalRecord(scope.orgId, subjectId as PatientId, "", store);
+      return { erased };
+    },
+  };
+  registerEraser("portal_record", eraser);
 }

@@ -613,7 +613,7 @@
       "adapter": true,
       "liveInfra": {
         "tables": 3,
-        "covered": 0
+        "covered": 3
       }
     },
     {

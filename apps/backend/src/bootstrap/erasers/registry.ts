@@ -197,6 +197,13 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // are never touched. The `subjectId` is the patient.
   "intake_ai_provenance",
   "clinical_record_ai_provenance",
+  // M31-T06: a patient's portal footprint (telehealth_visit / portal_access_grant / portal_account across
+  // the three M31-owned tables). M31 registers the REAL eraser via the composition-root hook over this
+  // deny-stub — under an M4 destruction certificate (§3.7 / D15) it aborts active telehealth visits and
+  // shreds their vendor-room ciphers, revokes the patient's grants (`revoke_cascade_source='destruction'`),
+  // and flips any now-orphaned account to `revoked` with its contact ciphers shredded; the recording BYTES
+  // in MinIO are M22's to crypto-erase (M31 stores only refs). The `subjectId` is the patient.
+  "portal_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

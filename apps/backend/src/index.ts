@@ -229,6 +229,7 @@ import {
   mountM31Routes,
   registerM31PublishedSeams,
   registerPortalAbacPredicates,
+  registerPortalErasers,
 } from "./modules/31-portal/index";
 import {
   buildDrizzleM33ExportDrilldownService,
@@ -1101,6 +1102,13 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   registerAiProvenanceErasers(
     deps.db ? { store: createDrizzleAiProvenanceEraseStore(deps.db) } : {},
   );
+  // M31-T06 — `portal_record` (per-PATIENT destruction-cert callback, §3.7/D15): aborts the patient's active
+  // telehealth visits and shreds their vendor-room recording refs, revokes the patient's grants with
+  // `revoke_cascade_source='destruction'`, and flips any account the revocation left with no active grant to
+  // ANY patient to `revoked` (contact ciphers shredded). The recording BYTES in MinIO are M22's to
+  // crypto-erase — M31 owns only the refs. Registers only with a DB client (the shred is a privileged write);
+  // a slice boot keeps the deny-stub rather than report a destruction it did not perform.
+  if (deps.db) registerPortalErasers(deps.db);
   // Phase-1 data-class owners append here as they land.
 }
 
