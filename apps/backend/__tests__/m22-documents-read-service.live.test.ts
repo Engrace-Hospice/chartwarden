@@ -150,17 +150,24 @@ describe.skipIf(!DB_URL)("M22 Drizzle read service — LIVE Postgres (M22L-T01)"
     });
   });
 
-  it("writes fail-closed 501 until the M22L-T02+ Drizzle lifecycle lands", async () => {
-    await expect(
-      service.uploadDocument(ORG_A, USER, {
-        patientId: PATIENT,
-        admissionId: null,
-        retentionClass: "clinical_record",
-        aggregateType: "other",
-        aggregateId: null,
-        title: "X",
-        patientFacing: false,
-      }),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("the M22L write lifecycle persists over RLS: uploadDocument round-trips through listDocuments", async () => {
+    // The write lifecycle is live (no route at 501). uploadDocument INSERTs the document + its v1 version and
+    // sets the active head; it round-trips through the RLS-scoped read. The full write suite (m22-documents-write)
+    // exhausts version/tag/patch + intake + overlay/render.
+    const created = await service.uploadDocument(ORG_A, MEMBERSHIP, {
+      patientId: PATIENT,
+      admissionId: null,
+      retentionClass: "clinical_record",
+      aggregateType: "other",
+      aggregateId: null,
+      title: "Smoke upload",
+      patientFacing: false,
+    });
+    expect(created.versionsCount).toBe(1);
+    const page = await service.listDocuments(ORG_A, {}, undefined, 100);
+    expect(page.items.some((d) => d.id === created.id)).toBe(true);
+    // RLS: org B cannot see org A's freshly-written document.
+    const bPage = await service.listDocuments(ORG_B, {}, undefined, 100);
+    expect(bPage.items.every((d) => d.id !== created.id)).toBe(true);
   });
 });

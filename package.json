@@ -63,6 +63,7 @@
     "test:m17:write:live": "vitest run apps/backend/__tests__/m17-scheduling-write.live.test.ts",
     "test:m18:read:live": "vitest run apps/backend/__tests__/m18-evv-read-service.live.test.ts",
     "test:m18:write:live": "vitest run apps/backend/__tests__/m18-evv-write.live.test.ts",
+    "test:m22:write:live": "vitest run apps/backend/__tests__/m22-documents-write.live.test.ts",
     "test:m22:read:live": "vitest run apps/backend/__tests__/m22-documents-read-service.live.test.ts",
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",
     "test:rls:live:m8": "vitest run packages/db/migrations/__tests__/m8-rls-isolation.live.test.ts",
