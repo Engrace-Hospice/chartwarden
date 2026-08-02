@@ -23,9 +23,10 @@ export const scaleLicenses = pgTable(
     effectiveDate: date("effective_date").notNull(),
     expiresAt: date("expires_at").notNull(),
     status: scaleLicenseStatus("status").notNull().default("active"),
-    recordedByMembershipId: uuid("recorded_by_membership_id")
-      .notNull()
-      .references(() => memberships.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0129 (M9L): the license-admin route threads no acting membership.
+    recordedByMembershipId: uuid("recorded_by_membership_id").references(() => memberships.id, {
+      onDelete: "restrict",
+    }),
     recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

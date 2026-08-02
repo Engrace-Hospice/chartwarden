@@ -18,12 +18,11 @@ export const assessmentCosignatures = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0129 (M9L): denormalized siting backfills from the parent assessment.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
 
     clinicalAssessmentId: uuid("clinical_assessment_id").notNull(), // M9 clinical_assessment (logical; parent is partitioned)
     cosignerMembershipId: uuid("cosigner_membership_id")

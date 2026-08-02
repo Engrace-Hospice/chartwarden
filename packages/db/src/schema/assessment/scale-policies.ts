@@ -28,9 +28,10 @@ export const scalePolicies = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedByMembershipId: uuid("updated_by_membership_id")
-      .notNull()
-      .references(() => memberships.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0129 (M9L): the policy-admin route threads no acting membership.
+    updatedByMembershipId: uuid("updated_by_membership_id").references(() => memberships.id, {
+      onDelete: "restrict",
+    }),
   },
   (t) => ({
     perOrgScale: uniqueIndex("scale_policy_per_org_scale_uq").on(t.organizationId, t.scaleType),
