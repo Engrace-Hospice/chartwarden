@@ -28,6 +28,10 @@ version: 0.5.0
 
 nodes:
   - id: setup
+    # Baseline gate (bun install + build + arch:fitness + full vitest) exceeds the default
+    # 120000ms node timeout at current main (heavier tree + fresh-worktree install). The `timeout`
+    # value is MILLISECONDS (empirically: `timeout: 600` killed at 600ms). 10 min ceiling.
+    timeout: 600000
     bash: |
       set -euo pipefail
       # Resolve THIS run's task plan from the run message ($ARGUMENTS), else the slice default,
@@ -105,6 +109,9 @@ nodes:
 
   - id: validate
     depends_on: [implement]
+    # Same heavy gate as setup (build + arch:fitness + full vitest); raise above the 120000ms
+    # default. Value is MILLISECONDS. 10 min ceiling.
+    timeout: 600000
     bash: |
       set -euo pipefail
       bun run build
