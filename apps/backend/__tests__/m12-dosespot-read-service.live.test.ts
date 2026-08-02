@@ -181,9 +181,12 @@ describe.skipIf(!DB_URL)("M12 DoseSpot Drizzle read service — LIVE Postgres (M
     expect(refills.every((r) => r.id !== seeded[ORG_A].refillRequest)).toBe(true);
   });
 
-  it("writes fail-closed 501 until the M12L-T02+ lifecycle lands", async () => {
-    await expect(
-      service.enrollPrescriber(ORG_A, seeded[ORG_A].membership, []),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("writes are live (M12L): enrollPrescriber persists and reads back on the roster under RLS", async () => {
+    const enrolled = await service.enrollPrescriber(ORG_A, seeded[ORG_A].membership, ["III", "IV"]);
+    expect(enrolled.enrolled).toBe(true);
+    const { prescribers } = await service.listPrescribers(ORG_A);
+    const row = prescribers.find((p) => p.membershipId === seeded[ORG_A].membership);
+    expect(row).toBeDefined();
+    expect(row?.deaAuthorizedSchedules).toEqual(["III", "IV"]);
   });
 });
