@@ -691,7 +691,7 @@
         "routes": 50,
         "enriched": 50
       },
-      "screens": false,
+      "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {

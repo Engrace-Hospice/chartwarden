@@ -43,6 +43,7 @@ import { capScreens } from "./modules/26-cap";
 import { costReportScreens } from "./modules/27-cost-report";
 import { reportingScreens } from "./modules/33-reporting";
 import { saasScreens } from "./modules/34-saas";
+import { subscriptionScreens } from "./modules/35-subscription";
 import { messagingScreens } from "./modules/36-messaging";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
@@ -86,6 +87,7 @@ registry.register(costReportScreens); // M27 Cost Report (R2, ADR-0030, §5)
 registry.register(qualityScreens); // M30 HQRP & Quality (R2, ADR-0030, §5.1)
 registry.register(reportingScreens); // M33 Reporting & Analytics (R2, ADR-0030)
 registry.register(saasScreens); // M34 SaaS Tenant Platform (R2, ADR-0030)
+registry.register(subscriptionScreens); // M35 Subscription Billing — tenant §5.1 (R2, ADR-0030)
 registry.register(messagingScreens); // M36 Messaging (Track A)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
 registry.register(consentScreens); // M39 Consent & Authorization Management (R2, ADR-0030, §5.1)
