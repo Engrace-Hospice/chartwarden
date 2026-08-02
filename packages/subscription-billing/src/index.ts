@@ -16,8 +16,15 @@
 // metering + HMAC-pseudonymized active-period counters, the §D18 MRR/ARR monthly-snapshot computation,
 // and the §3.7/M35-F06 platform-retention copy-then-delete transfer. Every core is PURE (M28-T03 idiom):
 // the ports abstract the Drizzle stores + §2.5 row locks the routes/workers own; each mutation returns its
-// §2.4 outbox intents for the caller to publish. Still deferred: Stripe SDK (T04), seam registration (T05),
-// Fastify routes + eraser/store wiring (T06).
+// §2.4 outbox intents for the caller to publish.
+//
+// M35-T04 scope (adds `./stripe`): the §4.13 outbox-only Stripe dispatcher + the §4.14 HMAC webhook
+// ingestion core, both PURE over injected ports. The `stripe` SDK is NOT imported anywhere in the tree —
+// the SDK-free typed client (`@wardenx/xero-client` idiom) routes every call through an injected transport
+// (fail-closed by default), keeping the whole package inside the VENDOR_ADAPTERS boundary. Includes the
+// §8.7 audit-envelope redactor, the §4.13/§4.16 deterministic idempotency-key derivation, and the D15
+// envelope-encryption seam for `stripe_webhook_event`. Still deferred: seam registration (T05), Fastify
+// routes + the live transport/store/mirror wiring + eraser (T06).
 
 // §3.3 enum value tuples (pgEnum seeds + §2 domain iteration source of truth).
 export * from "./enums";
@@ -27,3 +34,6 @@ export * from "./domain";
 export * from "./pseudonym/hasher";
 // §2 pure lifecycle SERVICES over injected ports (M35-T03).
 export * from "./service";
+// §4.13/§4.14/§8.7 outbox-only Stripe adapter — SDK-free client, redactor, idempotency, HMAC webhook
+// verifier, dispatcher, webhook ingestion core (M35-T04). All pure over injected ports.
+export * from "./stripe";
