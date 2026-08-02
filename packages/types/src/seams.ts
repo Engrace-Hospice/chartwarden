@@ -1114,4 +1114,12 @@ export type DataClass =
   // which BAA, when). `fhir_client_session` rows are fully destructible (no PHI, routine-purged past 90
   // days) and `fhir_capability_snapshot` is never touched (platform-shared, no PHI). Unlike the per-patient
   // classes above, `subjectId` is the ORG being offboarded — the M28 named it `fhir_gateway` in M28-T01.
-  | "fhir_gateway";
+  | "fhir_gateway"
+  // M31 (Patient/Family Portal & Telehealth) per-patient portal footprint: the patient's `telehealth_visit`
+  // rows (aborted + their vendor-room ciphers shredded), the `portal_access_grant` rows to the patient
+  // (revoked with `revoke_cascade_source='destruction'`), and any `portal_account` that the revocation left
+  // with no active grant to ANY patient (flipped to `revoked`, contact ciphers shredded). Erased by M31's
+  // registered eraser (M31-T06) under an M4 destruction certificate (§3.7 / D15); the recording BYTES in
+  // MinIO are crypto-erased by M22's own `telehealth_recording`/`documents` eraser — M31 stores only the
+  // refs, which it shreds. `subjectId` is the patient being destroyed.
+  | "portal_record";

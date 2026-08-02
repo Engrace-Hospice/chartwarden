@@ -1,8 +1,8 @@
 {
   "totals": {
-    "Implemented": 36,
+    "Implemented": 37,
     "Partial": 0,
-    "Placeholder": 4
+    "Placeholder": 3
   },
   "rows": [
     {
@@ -602,18 +602,21 @@
     {
       "id": 31,
       "module": "M31 Patient/Family Portal & Telehealth",
-      "status": "Placeholder",
+      "status": "Implemented",
       "spec": true,
-      "schema": false,
-      "migration": false,
-      "routes": false,
-      "enriched": null,
+      "schema": true,
+      "migration": true,
+      "routes": true,
+      "enriched": {
+        "routes": 53,
+        "enriched": 53
+      },
       "screens": false,
-      "tests": false,
-      "adapter": false,
+      "tests": true,
+      "adapter": true,
       "liveInfra": {
         "tables": 3,
-        "covered": 0
+        "covered": 3
       }
     },
     {

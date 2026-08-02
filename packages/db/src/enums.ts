@@ -3167,3 +3167,54 @@ export const fhirInboundOwnerModule = pgEnum("fhir_inbound_owner_module", ["m5",
 /** `fhir_version_enum` — the FHIR release a capability snapshot advertises. Phase 1 serves `4.0.1`
  *  (US Core R4); `5.0.0`/`6.0.0` are the compile-shell targets that ship at their respective locks. */
 export const fhirVersionEnum = pgEnum("fhir_version_enum", ["4.0.1", "5.0.0", "6.0.0"]);
+// ── M31 Patient/Family Portal & Telehealth (§3.3, M31-T02) ──────────────────────────────────────────
+// The five pgEnums backing the manifest's THREE owned tables (portal_account, portal_access_grant,
+// telehealth_visit). The value lists mirror `@wardenx/types` `packages/types/src/portal.ts` (the T01
+// leaf contract) VERBATIM so the wire union and the DB enum cannot drift. The spec's text columns
+// (`revoke_cascade_source`, `scheduled_visit_setting`, `end_reason`) stay `text` — they are validated at
+// the write boundary against the corresponding T01 union, not pinned as pgEnums (§3.3).
+
+/** §2.1/§3.3 `portal_account_relationship` — who the account holder is to the patient (D2). */
+export const portalAccountRelationship = pgEnum("portal_account_relationship", [
+  "patient_self",
+  "family_caregiver",
+  "dpoa_healthcare_agent",
+  "personal_representative_post_death",
+  "bereaved_family_member",
+]);
+
+/** §2.2.1/§3.3 `portal_account_status` — the account lifecycle (`bereaved` is the D4 lateral flip). */
+export const portalAccountStatus = pgEnum("portal_account_status", [
+  "invited",
+  "active",
+  "suspended",
+  "revoked",
+  "bereaved",
+]);
+
+/** §2.2.2/§3.3 `portal_access_grant_kind` — the per-patient grant class (D5/D6/D7). */
+export const portalAccessGrantKind = pgEnum("portal_access_grant_kind", [
+  "family_caregiver",
+  "dpoa_healthcare",
+  "patient_self",
+  "personal_representative",
+  "bereaved_family",
+]);
+
+/** §2.2.3/§3.3 `telehealth_lifecycle_state` — the visit/room state machine (D8/D14). */
+export const telehealthLifecycleState = pgEnum("telehealth_lifecycle_state", [
+  "room_minted",
+  "patient_joined",
+  "clinician_joined",
+  "in_progress",
+  "ended_clean",
+  "ended_aborted",
+  "reconciled",
+]);
+
+/** §3.3 `telehealth_vendor` — the adapter behind a room (Daily.co default per D1). */
+export const telehealthVendor = pgEnum("telehealth_vendor", [
+  "daily_co",
+  "twilio_video",
+  "native_webrtc",
+]);

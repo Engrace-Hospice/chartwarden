@@ -236,8 +236,12 @@ export {
 } from "./contributed";
 
 // M28 — Module 28's twelve FHIR Gateway admin permission keys (§4.6 handshake).
+// M31 — Module 31's forty-seven Patient/Family Portal & Telehealth permission keys (§4.6 handshake).
 export {
   type M28ContributedPermissionKey,
   M28_CONTRIBUTED_PERMISSIONS,
   m28ContributedPermissionMirrorRows,
+  type M31ContributedPermissionKey,
+  M31_CONTRIBUTED_PERMISSIONS,
+  m31ContributedPermissionMirrorRows,
 } from "./contributed";

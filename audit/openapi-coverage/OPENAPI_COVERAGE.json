@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1030,
-    "enriched": 1024,
+    "routes": 1083,
+    "enriched": 1077,
     "deficit": 6,
-    "mutating": 592,
-    "mutatingNoBody": 76,
-    "gets": 411,
+    "mutating": 617,
+    "mutatingNoBody": 89,
+    "gets": 439,
     "getsNoResponse": 62
   },
   "modules": [
@@ -287,6 +287,16 @@
       "mutating": 36,
       "mutatingNoBody": 3,
       "gets": 24,
+      "getsNoResponse": 0
+    },
+    {
+      "module": "31-portal",
+      "routes": 53,
+      "enriched": 53,
+      "deficit": 0,
+      "mutating": 25,
+      "mutatingNoBody": 13,
+      "gets": 28,
       "getsNoResponse": 0
     },
     {

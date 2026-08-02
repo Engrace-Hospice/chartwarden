@@ -861,7 +861,7 @@ exports.MODULES = [
     id: 31,
     name: "Patient/Family Portal & Telehealth",
     codePaths: ["packages/telehealth-client", "apps/portal", "apps/backend/src/modules/31-portal"],
-    dependsOn: [5, 7, 8, 22, 36, 39],
+    dependsOn: [1, 5, 7, 8, 22, 36, 39], // +1: M31-T03 consumes the M39 ConsentEvaluator + M16 BereavedPortalScopeProvider seams OPAQUELY via the M1-owned bootstrap registry (getSeam); the seam-task precedent every consuming module carries
     ownedTables: ["portal_account", "portal_access_grant", "telehealth_visit"],
   },
   {
