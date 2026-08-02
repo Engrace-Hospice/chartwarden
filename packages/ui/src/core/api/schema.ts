@@ -10056,6 +10056,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{patientId}/election-certification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The patient's Election & Certification aggregate (admission + period ladder + windows) */
+        get: operations["getApiV1PatientsByPatientIdElectioncertification"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/expiring-consents": {
         parameters: {
             query?: never;
@@ -41738,6 +41755,50 @@ export interface operations {
                             removedAt: string | null;
                             active: boolean;
                         } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdElectioncertification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admission: {
+                            id: string;
+                            state: string;
+                            admissionAt: string | null;
+                            activatedAt: string | null;
+                            dischargedAt: string | null;
+                            version: number;
+                        } | null;
+                        periods: {
+                            [key: string]: unknown;
+                        }[];
+                        complianceWindows: {
+                            id: string;
+                            windowKind: string;
+                            severity: string;
+                            status: string;
+                            mustCompleteBy: string;
+                            closedAt: string | null;
+                        }[];
                     };
                 };
             };

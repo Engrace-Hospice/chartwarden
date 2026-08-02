@@ -159,6 +159,40 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(await service.listElectionPeriods(ORG_A, PATIENT /* not an admission id */)).toBeNull();
   });
 
+  it("getPatientElectionCertification assembles the patient's admission + period ladder + cert bundles", async () => {
+    const res = await service.getPatientElectionCertification(ORG_A, PATIENT);
+    expect(res.admission).not.toBeNull();
+    expect(res.admission?.id).toBe(seeded[ORG_A].admission);
+    expect(res.admission?.state).toBe("active");
+    expect(res.periods.length).toBe(1);
+    const p = res.periods[0];
+    expect(p.sequenceNumber).toBe(1);
+    expect(p.status).toBe("active");
+    // A signed election statement + hospice-signed CTI were seeded; the attending has not signed, and no
+    // F2F exists on period 1 → the bundle reflects exactly that.
+    expect(p.electionStatement?.signerKind).toBe("patient");
+    expect(p.cti?.hospiceMdSigned).toBe(true);
+    expect(p.cti?.attendingMdSigned).toBe(false);
+    expect(p.faceToFace).toBeNull();
+  });
+
+  it("getPatientElectionCertification is a truthful empty (admission null) for a patient with no admission", async () => {
+    const NO_ADMISSION_PATIENT = "99999999-9999-9999-9999-999999999999";
+    const res = await service.getPatientElectionCertification(ORG_A, NO_ADMISSION_PATIENT);
+    expect(res.admission).toBeNull();
+    expect(res.periods).toEqual([]);
+    expect(res.complianceWindows).toEqual([]);
+  });
+
+  it("RLS: getPatientElectionCertification scopes to the caller's org for a cross-tenant patient literal", async () => {
+    // Both orgs seeded an admission for the SAME patient id; each caller must resolve ONLY its own row.
+    const a = await service.getPatientElectionCertification(ORG_A, PATIENT);
+    const b = await service.getPatientElectionCertification(ORG_B, PATIENT);
+    expect(a.admission?.id).toBe(seeded[ORG_A].admission);
+    expect(b.admission?.id).toBe(seeded[ORG_B].admission);
+    expect(b.admission?.id).not.toBe(seeded[ORG_A].admission);
+  });
+
   it("closeComplianceWindow closes an open window (T05 — the whole M6 write lifecycle is now live)", async () => {
     // Every M6 write is live now (T02–T05); seed one open window and prove the close path drives it to
     // `closed` under the unprivileged role. Override is exercised in the dedicated T05 write suite.

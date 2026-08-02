@@ -218,6 +218,66 @@ export interface AdmissionDetail extends SummaryRow {
 }
 
 /**
+ * The patient-scoped Election & Certification aggregate — the read that backs the patient-chart
+ * "Election & Certification" tab (§5.2/§5.3). Resolves the patient's current admission, then its
+ * benefit-period ladder with each period's election statement / CTI / F2F recert bundle, plus the
+ * admission's compliance windows. `admission` is `null` (with empty ladders) when the patient has no
+ * admission yet — a truthful empty, never a 404. All fields are read-only projections (no PHI narrative);
+ * SUD/consent gating is not applicable here (election/cert metadata is not Part-2 content).
+ */
+export interface PatientElectionCertificationView {
+  readonly admission: {
+    readonly id: string;
+    readonly state: string;
+    readonly admissionAt: string | null;
+    readonly activatedAt: string | null;
+    readonly dischargedAt: string | null;
+    readonly version: number;
+  } | null;
+  readonly periods: readonly {
+    readonly id: string;
+    readonly sequenceNumber: number;
+    readonly periodKind: string;
+    readonly effectiveAt: string | null;
+    readonly scheduledEndAt: string | null;
+    readonly actualEndAt: string | null;
+    readonly status: string;
+    readonly electionStatement: {
+      readonly id: string;
+      readonly status: string;
+      readonly signerKind: string;
+      readonly signedAt: string | null;
+    } | null;
+    readonly cti: {
+      readonly id: string;
+      readonly status: string;
+      readonly hospiceMdSigned: boolean;
+      readonly attendingMdSigned: boolean;
+      readonly signedLate: boolean;
+      readonly periodStart: string | null;
+      readonly periodEnd: string | null;
+    } | null;
+    readonly faceToFace: {
+      readonly id: string;
+      readonly status: string;
+      readonly performerRole: string;
+      readonly encounterDate: string | null;
+      readonly withinWindow: boolean | null;
+      readonly windowOverride: boolean;
+      readonly attested: boolean;
+    } | null;
+  }[];
+  readonly complianceWindows: readonly {
+    readonly id: string;
+    readonly windowKind: string;
+    readonly severity: string;
+    readonly status: string;
+    readonly mustCompleteBy: string;
+    readonly closedAt: string | null;
+  }[];
+}
+
+/**
  * The §4.1 route surface. One method per state-change / read route; org binding is server-side
  * (`organizationId` is the request context, never the body). `actorUserId` is the staff member
  * capturing the action (D-AUTHZ-01: patient-side signatures are evidence on the row, not identities).
@@ -265,6 +325,11 @@ export interface AdmissionRouteService {
     query: { state?: string; cursor?: string; limit?: number },
   ): Promise<Page<SummaryRow>>;
   getAdmission(organizationId: string, id: string): Promise<AdmissionDetail | null>;
+  /** Patient-scoped Election & Certification aggregate (patient-chart tab); empty admission when none. */
+  getPatientElectionCertification(
+    organizationId: string,
+    patientId: string,
+  ): Promise<PatientElectionCertificationView>;
   updateAdmission(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
   holdAdmission(
     organizationId: string,
@@ -676,6 +741,89 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async getAdmission(organizationId, id) {
       const rec = get(organizationId, id, "admission");
       return rec ? { ...summary(rec), activationGate: gateFor(rec) } : null;
+    },
+    async getPatientElectionCertification(organizationId, patientId) {
+      // Newest admission for the patient (ids are monotonic in insert order → last is newest).
+      const admissions = listOfKind(organizationId, "admission").filter(
+        (r) => r.patientId === patientId,
+      );
+      const adm = admissions.length ? admissions[admissions.length - 1] : null;
+      if (!adm) return { admission: null, periods: [], complianceWindows: [] };
+      const childrenOf = (kind: string): Rec[] =>
+        listOfKind(organizationId, kind).filter((r) => r.admissionId === adm.id);
+      // Election statement / CTI / F2F link to a period via `electionPeriodId`.
+      const byPeriod = (kind: string): Map<string, Rec> => {
+        const m = new Map<string, Rec>();
+        for (const r of listOfKind(organizationId, kind)) {
+          if (r.electionPeriodId) m.set(r.electionPeriodId, r);
+        }
+        return m;
+      };
+      const esBy = byPeriod("election_statement");
+      const ctiBy = byPeriod("cti");
+      const f2fBy = byPeriod("face_to_face");
+      const periods = childrenOf("election_period")
+        .slice()
+        .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+        .map((p) => {
+          const es = esBy.get(p.id);
+          const cti = ctiBy.get(p.id);
+          const f2f = f2fBy.get(p.id);
+          return {
+            id: p.id,
+            sequenceNumber: p.sequence ?? 1,
+            periodKind: "initial",
+            effectiveAt: p.periodStartDate ?? null,
+            scheduledEndAt: null,
+            actualEndAt: null,
+            status: p.state,
+            electionStatement: es
+              ? { id: es.id, status: es.state, signerKind: "patient", signedAt: null }
+              : null,
+            cti: cti
+              ? {
+                  id: cti.id,
+                  status: cti.state,
+                  hospiceMdSigned: cti.state === "awaiting_attending" || cti.state === "signed",
+                  attendingMdSigned: cti.state === "signed",
+                  signedLate: false,
+                  periodStart: p.periodStartDate ?? null,
+                  periodEnd: null,
+                }
+              : null,
+            faceToFace: f2f
+              ? {
+                  id: f2f.id,
+                  status: f2f.state,
+                  performerRole: "hospice_physician",
+                  encounterDate: null,
+                  withinWindow: null,
+                  windowOverride: false,
+                  attested: f2f.state === "attested",
+                }
+              : null,
+          };
+        });
+      const complianceWindows = childrenOf("compliance_window").map((w) => ({
+        id: w.id,
+        windowKind: "recert",
+        severity: "warning",
+        status: w.state,
+        mustCompleteBy: new Date(0).toISOString(),
+        closedAt: null,
+      }));
+      return {
+        admission: {
+          id: adm.id,
+          state: adm.state,
+          admissionAt: null,
+          activatedAt: null,
+          dischargedAt: null,
+          version: adm.version,
+        },
+        periods,
+        complianceWindows,
+      };
     },
     async updateAdmission(organizationId, id, ifVersion) {
       const rec = get(organizationId, id, "admission") ?? notFound(id);

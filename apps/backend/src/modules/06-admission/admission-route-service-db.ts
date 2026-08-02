@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
-import { type AnyColumn, type SQL, and, desc, eq, ne, sql } from "drizzle-orm";
+import { type AnyColumn, type SQL, and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { computeActivationGate } from "./intake";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
@@ -51,6 +51,7 @@ import type {
   AdmissionRouteService,
   MutationResult,
   Page,
+  PatientElectionCertificationView,
   SummaryRow,
 } from "./routes/service";
 
@@ -513,6 +514,164 @@ export function createDbAdmissionRouteService(
           ctiAttendingSigned,
         });
         return { id: adm.id, state: adm.status, version: Number(adm.version), activationGate };
+      });
+    },
+    async getPatientElectionCertification(
+      organizationId,
+      patientId,
+    ): Promise<PatientElectionCertificationView> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+        // The patient's newest admission (RLS scopes to org). `patient_id` is NOT NULL, no FK.
+        const [adm] = await tx
+          .select({
+            id: ADM.id,
+            status: ADM.status,
+            admissionAt: ADM.admissionAt,
+            activatedAt: ADM.activatedAt,
+            dischargedAt: ADM.dischargedAt,
+            version: ADM.version,
+          })
+          .from(ADM)
+          .where(eq(ADM.patientId, patientId))
+          .orderBy(desc(ADM.admissionAt), desc(ADM.createdAt))
+          .limit(1);
+        if (!adm) return { admission: null, periods: [], complianceWindows: [] };
+
+        const periodRows = await tx
+          .select({
+            id: EP.id,
+            sequenceNumber: EP.sequenceNumber,
+            periodKind: EP.periodKind,
+            effectiveAt: EP.effectiveAt,
+            scheduledEndAt: EP.scheduledEndAt,
+            actualEndAt: EP.actualEndAt,
+            status: EP.status,
+          })
+          .from(EP)
+          .where(eq(EP.admissionId, adm.id))
+          .orderBy(EP.sequenceNumber);
+        const periodIds = periodRows.map((p) => p.id);
+
+        // One query each for the period-scoped bundles (avoids N+1 across the ladder).
+        const esRows = periodIds.length
+          ? await tx
+              .select({
+                id: ES.id,
+                electionPeriodId: ES.electionPeriodId,
+                status: ES.status,
+                signerKind: ES.signerKind,
+                signedAt: ES.signedAt,
+              })
+              .from(ES)
+              .where(inArray(ES.electionPeriodId, periodIds))
+          : [];
+        const ctiRows = periodIds.length
+          ? await tx
+              .select({
+                id: CTI.id,
+                electionPeriodId: CTI.electionPeriodId,
+                status: CTI.status,
+                hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+                attendingMdSignedAt: CTI.attendingMdSignedAt,
+                signedLate: CTI.signedLate,
+                periodStart: CTI.periodStart,
+                periodEnd: CTI.periodEnd,
+              })
+              .from(CTI)
+              .where(inArray(CTI.electionPeriodId, periodIds))
+          : [];
+        const f2fRows = periodIds.length
+          ? await tx
+              .select({
+                id: F2F.id,
+                electionPeriodId: F2F.electionPeriodId,
+                status: F2F.status,
+                performerRole: F2F.performerRole,
+                encounterDate: F2F.encounterDate,
+                withinWindow: F2F.withinWindow,
+                windowOverride: F2F.windowOverride,
+                attestationSignedAt: F2F.attestationSignedAt,
+              })
+              .from(F2F)
+              .where(inArray(F2F.electionPeriodId, periodIds))
+          : [];
+        const esBy = new Map(esRows.map((r) => [r.electionPeriodId, r]));
+        const ctiBy = new Map(ctiRows.map((r) => [r.electionPeriodId, r]));
+        const f2fBy = new Map(f2fRows.map((r) => [r.electionPeriodId, r]));
+
+        const periods = periodRows.map((p) => {
+          const es = esBy.get(p.id);
+          const cti = ctiBy.get(p.id);
+          const f2f = f2fBy.get(p.id);
+          return {
+            id: p.id,
+            sequenceNumber: p.sequenceNumber,
+            periodKind: p.periodKind,
+            effectiveAt: p.effectiveAt,
+            scheduledEndAt: p.scheduledEndAt,
+            actualEndAt: p.actualEndAt,
+            status: p.status,
+            electionStatement: es
+              ? { id: es.id, status: es.status, signerKind: es.signerKind, signedAt: es.signedAt }
+              : null,
+            cti: cti
+              ? {
+                  id: cti.id,
+                  status: cti.status,
+                  hospiceMdSigned: !!cti.hospiceMdSignedAt,
+                  attendingMdSigned: !!cti.attendingMdSignedAt,
+                  signedLate: cti.signedLate,
+                  periodStart: cti.periodStart,
+                  periodEnd: cti.periodEnd,
+                }
+              : null,
+            faceToFace: f2f
+              ? {
+                  id: f2f.id,
+                  status: f2f.status,
+                  performerRole: f2f.performerRole,
+                  encounterDate: f2f.encounterDate,
+                  withinWindow: f2f.withinWindow,
+                  windowOverride: f2f.windowOverride,
+                  attested: !!f2f.attestationSignedAt,
+                }
+              : null,
+          };
+        });
+
+        const cwRows = await tx
+          .select({
+            id: CW.id,
+            windowKind: CW.windowKind,
+            severity: CW.severity,
+            status: CW.status,
+            mustCompleteBy: CW.mustCompleteBy,
+            closedAt: CW.closedAt,
+          })
+          .from(CW)
+          .where(eq(CW.admissionId, adm.id))
+          .orderBy(desc(CW.mustCompleteBy));
+
+        return {
+          admission: {
+            id: adm.id,
+            state: adm.status,
+            admissionAt: iso(adm.admissionAt),
+            activatedAt: iso(adm.activatedAt),
+            dischargedAt: iso(adm.dischargedAt),
+            version: Number(adm.version),
+          },
+          periods,
+          complianceWindows: cwRows.map((w) => ({
+            id: w.id,
+            windowKind: w.windowKind,
+            severity: w.severity,
+            status: w.status,
+            mustCompleteBy: w.mustCompleteBy.toISOString(),
+            closedAt: iso(w.closedAt),
+          })),
+        };
       });
     },
 

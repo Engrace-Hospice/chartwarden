@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 33 module screen-sets registered · 228 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 33 module screen-sets registered · 229 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -43,6 +43,7 @@
 | 06-admission | `admission.census` | `/admissions` | `admission.read` | ✅ |
 | 06-admission | `admission.compliance` | `/compliance/admissions` | `compliance.read` | ✅ |
 | 06-admission | `admission.detail` | `/admissions/:id` | `admission.read` | ✅ |
+| 06-admission | `admission.patient-election-cert` | `/patients/:patientId/election-certification` | `election.read` | ✅ |
 | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |
 | 07-care-plan | `care-plan.summary` | `/care-plans/:planId/summary` | `care_plan.read_summary` | ✅ |
