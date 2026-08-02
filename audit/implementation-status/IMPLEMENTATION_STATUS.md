@@ -40,7 +40,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M28 FHIR Gateway | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/8 ⚠️ |
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/11 ⚠️ |
 | M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 60/60 ✅ | ✅ | ✅ | ✅ | 18/18 ✅ |
-| M31 Patient/Family Portal & Telehealth | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | — | ❌ | ❌ | ✅ | 0/3 ⚠️ |
+| M31 Patient/Family Portal & Telehealth | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | ✅ | 0/3 ⚠️ |
 | M32 AI Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ❌ | ✅ | — | 13/13 ✅ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 42/42 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 48/48 ✅ | ✅ | ✅ | — | 17/17 ✅ |

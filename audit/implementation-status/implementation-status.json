@@ -606,7 +606,7 @@
       "routes": false,
       "enriched": null,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": true,
       "liveInfra": {
         "tables": 3,
