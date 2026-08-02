@@ -469,7 +469,7 @@ IDG (M14; done²¹), Bereavement (M16; done²⁵), Scheduling (M17; done²²), E
 On-Call Triage + On-Call Roster & Protocols (M19; done²⁷), Field Safety (M20; done²⁸),
 Supplies/DME/Comfort Kits (M21; done²⁶), Claims (M23; done), Medicaid (M24; done),
 Remittance & Denials (M25; done), Cap (M26; done), Cost Report (M27), FHIR (M28), HQRP (M30),
-Portal/Telehealth (M31), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
+Portal/Telehealth (M31; done²⁹), Copilot (M32), Reporting (M33; done), Onboarding (M34; done),
 Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the authoritative owner.
 
 > ²⁴ **M15 Discipline Care Plans + Volunteer Management now LIVE (Wave P2-1, M15-T07).** Twelve screens under
@@ -720,6 +720,38 @@ Subscription (M35), IPU Bed Board (M37). See each spec's `Module:` line for the 
 > sends no biometric token and will therefore be recorded as attempted-and-rejected on a tenant that
 > requires one, the alert continuing. §5.3 confirms M20 has **no portal variant at all**: field safety is
 > staff-side, and a family member does not learn that the clinician pressed SOS during their visit.
+>
+> ²⁹ **M31 Patient/Family Portal now LIVE (Wave P2-3, M31-T08).** Thirteen §5.1 screens built into
+> **`apps/portal`** — the consumer-facing PWA, a distinct TanStack/react-router SPA at
+> `portal.<tenant>.wardenx.health` per §5.1, NOT a slice of the staff app — over the live 47-route M31
+> backend and the module's generated client. They cover the caregiver journey end to end: the magic-link
+> sign-in (`/`, the one chromeless surface), the patient picker over `sessions/current`, the dashboard
+> (`care-summary` counts + `upcoming`), the lay-language care-plan (`problems`/goals with the `redacted`
+> marker surfaced, not silently hidden), the visit list with the telehealth "Join" affordance, the
+> telehealth waiting room (pre-visit consent → `join`/`leave` over the M31-T05 adapter, recording-state
+> pill, audio-only fallback), the medication list with the **M13 caregiver-attested administration** write
+> (the panel is shown even to a non-primary caregiver and the server's ABAC 403 is surfaced plainly, not
+> hidden), the document library (M22 outbound download + the init→PUT→complete upload path), M36 secure
+> messaging (renderer + composer only — M36 owns the store), the §164.526 amendment request, notification
+> preferences, and the bereavement hub. Screens register through a portal-local registry
+> (`portalScreens`, the `@wardenx/types` ScreenRegistry contract) mounted by the portal's own composition
+> root (`apps/portal/src/main.tsx`), mirroring the M1 web-shell discipline (the shell reads the registry,
+> imports no screen). Nav gating uses the real §4.6 keys (`portal.*` + `telehealth.join_patient_or_caregiver`);
+> the SERVER stays the only enforcement point — an off-grant navigation 404s (§G), it does not 403. Built
+> to Lantern: the layout kit (`PortalDashboardLayout`, `CenteredCardLayout`), the §6.6 StatusPill taxonomy,
+> and CSS-var tokens only (zero hex).
+>
+> **Honest gaps, stated rather than faked.** The portal is a separate app, so it is invisible to the
+> `arch:ui-parity` matrix (which scans `apps/web` + `main.tsx` only) — the 226 registered count does not
+> include it; the portal carries its own registry-unit test instead. The **staff-admin §5.3 pane** (the
+> `portal.admin.*` roster/telehealth/audit surfaces) stays a forward-surface — it belongs to the staff app
+> and would need a `apps/web/src/modules/31-portal` codePath the wave acceptance explicitly withholds from
+> M31. Notification-preference **writes** (the PATCH needs a preference id the read DTO does not return) and
+> the disclosure-accounting §164.528 view are read-only/absent here; the telehealth room mounts the vendor
+> SDK in the running app (the join URL + token are held, never shown as a bypassable link); and offline-write
+> is excluded by design (§5.2 — a caregiver must be online for the M13 outbox emit). The portal's Lantern
+> token layer is a documented LOCAL copy in `apps/portal/src/index.css` (consumed only via `t.*`, so it
+> lives in `:root`, not `@theme`), pending the shared `@wardenx/ui` stylesheet lift apps/web's header plans.
 
 ---
 

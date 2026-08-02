@@ -4623,6 +4623,328 @@ export function m32ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M32_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * Module 31 (Patient/Family Portal & Telehealth) — the forty-seven §4.6 permission keys registered into
+ * M3's catalog (M31-T07). Two namespaces: the consumer-side `portal.*` keys held by portal accounts
+ * (caregivers, patients-self, DPOA agents, bereaved contacts), scoped to a single
+ * `(portal_account_id, patient_id)` pair by the §4.7 ABAC predicates M31 owns; and the `telehealth.*`
+ * keys, split across the portal (patient/caregiver join) and staff (clinician join / recording / admin)
+ * surfaces. The `abac` cell names the DEFAULT predicate the route composes — the six M31-owned predicates
+ * (`portal_grant_active_for_patient` / `portal_account_active` / `portal_caregiver_is_primary_or_dpoa` /
+ * `bereaved_portal_window_open` / `telehealth_consent_active` /
+ * `state_two_party_recording_consent_present`), M5/M17's `caseload_membership`, or M3's intrinsic `inOrg`
+ * for the org-scoped staff surfaces. It is CATALOG METADATA (mirrored to the DB `permission` row), not the
+ * route's whole gate: §4.1 spells several cells as disjunctions the route composes at the guard layer.
+ */
+export const M31_CONTRIBUTED_PERMISSIONS = {
+  // ── portal session (§4.1 rows 1-4; logout carries no key) ──────────────────────────────────────────
+  "portal.session.select_patient": {
+    resource: "portal_session",
+    action: "select_patient",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.session.read_own": {
+    resource: "portal_session",
+    action: "read_own",
+    category: "portal",
+    abac: "portal_account_active",
+  },
+  "portal.session.step_up_own": {
+    resource: "portal_session",
+    action: "step_up_own",
+    category: "portal",
+    abac: "portal_account_active",
+  },
+  // ── portal lay-language read surfaces (§4.1) — each scoped to one active grant ──────────────────────
+  "portal.care_summary.read": {
+    resource: "portal_care_summary",
+    action: "read",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.care_plan.read_summary": {
+    resource: "portal_care_plan",
+    action: "read_summary",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.discipline_plans.read_summary": {
+    resource: "portal_discipline_plan",
+    action: "read_summary",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.visits.read_upcoming": {
+    resource: "portal_visit",
+    action: "read_upcoming",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.visits.read_history": {
+    resource: "portal_visit",
+    action: "read_history",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.medications.read_summary": {
+    resource: "portal_medication",
+    action: "read_summary",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.administrations.read_summary": {
+    resource: "portal_administration",
+    action: "read_summary",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  // §4.1 — the only portal WRITE that touches a clinical record; TOTP step-up + the primary/DPOA gate.
+  "portal.administration.attest": {
+    resource: "portal_administration",
+    action: "attest",
+    category: "portal",
+    abac: "portal_caregiver_is_primary_or_dpoa",
+  },
+  "portal.assessments.read_trend": {
+    resource: "portal_assessment",
+    action: "read_trend",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.hope.read_summary": {
+    resource: "portal_hope",
+    action: "read_summary",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.orders.read_summary": {
+    resource: "portal_order",
+    action: "read_summary",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.supplies.read_upcoming": {
+    resource: "portal_supply",
+    action: "read_upcoming",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.triage.read_log": {
+    resource: "portal_triage",
+    action: "read_log",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.triage.read_own": {
+    resource: "portal_triage",
+    action: "read_own",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.documents.read_list": {
+    resource: "portal_document",
+    action: "read_list",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.documents.download": {
+    resource: "portal_document",
+    action: "download",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  // §4.1 rows — upload-init + upload-complete share one key (both are the caregiver staging intake bytes).
+  "portal.documents.upload": {
+    resource: "portal_document",
+    action: "upload",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  // §164.526 amendment request — TOTP step-up at the route.
+  "portal.amendment.submit": {
+    resource: "portal_amendment",
+    action: "submit",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.amendment.read_own": {
+    resource: "portal_amendment",
+    action: "read_own",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.messages.read_channel": {
+    resource: "portal_message",
+    action: "read_channel",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.messages.send": {
+    resource: "portal_message",
+    action: "send",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  // ── bereavement surface (§4.1) — gated on the 13-month window ───────────────────────────────────────
+  "portal.bereavement.read_program": {
+    resource: "portal_bereavement",
+    action: "read_program",
+    category: "portal",
+    abac: "bereaved_portal_window_open",
+  },
+  "portal.bereavement.read_resources": {
+    resource: "portal_bereavement",
+    action: "read_resources",
+    category: "portal",
+    abac: "bereaved_portal_window_open",
+  },
+  "portal.bereavement.opt_out_own": {
+    resource: "portal_bereavement",
+    action: "opt_out_own",
+    category: "portal",
+    abac: "bereaved_portal_window_open",
+  },
+  // ── notification preferences (§4.1) — the account's own settings ────────────────────────────────────
+  "portal.preferences.read_own": {
+    resource: "portal_preference",
+    action: "read_own",
+    category: "self_service",
+    abac: "portal_account_active",
+  },
+  "portal.preferences.write_own": {
+    resource: "portal_preference",
+    action: "write_own",
+    category: "self_service",
+    abac: "portal_account_active",
+  },
+  // ── telehealth — portal side (§4.1) join/leave share one key ────────────────────────────────────────
+  "telehealth.join_patient_or_caregiver": {
+    resource: "telehealth_visit",
+    action: "join_patient_or_caregiver",
+    category: "telehealth",
+    abac: "telehealth_consent_active",
+  },
+  // ── telehealth — staff side (§4.1) ──────────────────────────────────────────────────────────────────
+  "telehealth.join_clinician": {
+    resource: "telehealth_visit",
+    action: "join_clinician",
+    category: "telehealth",
+    abac: "caseload_membership",
+  },
+  // D9-gated: only when consent + recording-default + the §3.8 state rule allow. Step-up at the route.
+  "telehealth.record_start": {
+    resource: "telehealth_visit",
+    action: "record_start",
+    category: "telehealth",
+    abac: "state_two_party_recording_consent_present",
+  },
+  "telehealth.record_stop": {
+    resource: "telehealth_visit",
+    action: "record_stop",
+    category: "telehealth",
+    abac: "caseload_membership",
+  },
+  "telehealth.end_visit": {
+    resource: "telehealth_visit",
+    action: "end_visit",
+    category: "telehealth",
+    abac: "caseload_membership",
+  },
+  // Compliance-officer emergency stop — step-up at the route.
+  "telehealth.record_halt_admin": {
+    resource: "telehealth_visit",
+    action: "record_halt_admin",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "telehealth.read_list": {
+    resource: "telehealth_visit",
+    action: "read_list",
+    category: "telehealth",
+    abac: "inOrg",
+  },
+  "telehealth.read": {
+    resource: "telehealth_visit",
+    action: "read",
+    category: "telehealth",
+    abac: "inOrg",
+  },
+  // ── staff admin — invitations (§4.1) ────────────────────────────────────────────────────────────────
+  // Issue is on the patient's caseload (a clinician invites the family of a patient she serves).
+  "portal.invitation.issue": {
+    resource: "portal_invitation",
+    action: "issue",
+    category: "admin",
+    abac: "caseload_membership",
+  },
+  "portal.invitation.read": {
+    resource: "portal_invitation",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "portal.invitation.revoke": {
+    resource: "portal_invitation",
+    action: "revoke",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "portal.invitation.invite_bereaved": {
+    resource: "portal_invitation",
+    action: "invite_bereaved",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── staff admin — accounts (§4.1) — suspend/reinstate carry step-up at the route ────────────────────
+  "portal.account.suspend": {
+    resource: "portal_account",
+    action: "suspend",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "portal.account.reinstate": {
+    resource: "portal_account",
+    action: "reinstate",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "portal.account.read_list": {
+    resource: "portal_account",
+    action: "read_list",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "portal.account.read_grants": {
+    resource: "portal_account",
+    action: "read_grants",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // §164.528 disclosure-accounting view — Compliance / Privacy Officer.
+  "portal.account.read_audit": {
+    resource: "portal_account",
+    action: "read_audit",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  // Engagement-scoped auditor surface (M3 engagement scope resolves the row set).
+  "portal.engagement.read_auditor": {
+    resource: "portal_engagement",
+    action: "read_auditor",
+    category: "compliance",
+    abac: "inOrg",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M31 contributed permission keys (forty-seven). */
+export type M31ContributedPermissionKey = keyof typeof M31_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M31 contributed keys into `permission`-table mirror rows (M31 §4.6). */
+export function m31ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M31_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -4659,5 +4981,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m19ContributedPermissionMirrorRows(),
     ...m20ContributedPermissionMirrorRows(),
     ...m32ContributedPermissionMirrorRows(),
+    ...m31ContributedPermissionMirrorRows(),
   ];
 }

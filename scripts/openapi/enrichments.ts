@@ -1748,6 +1748,45 @@ import {
   VersionListResponseSchema as M22VersionListResponseSchema,
   VersionViewSchema as M22VersionViewSchema,
 } from "../../apps/backend/src/modules/22-documents/routes/documents-typebox";
+// M31 Portal/Telehealth (§4.2) — the request/response contracts the §4.1 route handlers parse/return.
+import {
+  AccountSuspendRequest as M31AccountSuspendRequest,
+  AckResponse as M31AckResponse,
+  AmendmentSubmitRequest as M31AmendmentSubmitRequest,
+  AmendmentSubmitResponse as M31AmendmentSubmitResponse,
+  CarePlanSummaryResponse as M31CarePlanSummaryResponse,
+  CareSummaryResponse as M31CareSummaryResponse,
+  CaregiverAttestedAdministrationRequest as M31CaregiverAttestRequest,
+  CaregiverAttestedAdministrationResponse as M31CaregiverAttestResponse,
+  DocumentDownloadUrlResponse as M31DocumentDownloadUrlResponse,
+  InviteBereavedRequest as M31InviteBereavedRequest,
+  LayListResponse as M31LayListResponse,
+  MessageSendRequest as M31MessageSendRequest,
+  MessageSendResponse as M31MessageSendResponse,
+  MessagesChannelResponse as M31MessagesChannelResponse,
+  NotificationPreferenceUpdateRequest as M31NotificationPreferenceUpdateRequest,
+  NotificationPreferencesResponse as M31NotificationPreferencesResponse,
+  PortalAccountGrantListResponse as M31PortalAccountGrantListResponse,
+  PortalAccountListResponse as M31PortalAccountListResponse,
+  PortalAuditViewResponse as M31PortalAuditViewResponse,
+  PortalDocumentUploadInitRequest as M31PortalDocumentUploadInitRequest,
+  PortalDocumentUploadInitResponse as M31PortalDocumentUploadInitResponse,
+  PortalEngagementResponse as M31PortalEngagementResponse,
+  PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
+  PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
+  PortalInvitationListResponse as M31PortalInvitationListResponse,
+  PortalSessionCurrentResponse as M31PortalSessionCurrentResponse,
+  SelectPatientRequest as M31SelectPatientRequest,
+  SelectPatientResponse as M31SelectPatientResponse,
+  StartRecordingRequest as M31StartRecordingRequest,
+  StepUpRequest as M31StepUpRequest,
+  TelehealthJoinResponse as M31TelehealthJoinResponse,
+  TelehealthVisitDetailResponse as M31TelehealthVisitDetailResponse,
+  TelehealthVisitListResponse as M31TelehealthVisitListResponse,
+  UploadCompleteResponse as M31UploadCompleteResponse,
+  WebhookAckResponse as M31WebhookAckResponse,
+  WithinQuery as M31WithinQuery,
+} from "../../apps/backend/src/modules/31-portal/routes/portal-typebox";
 
 // M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
 // routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
@@ -4625,6 +4664,237 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary:
       "Record an on-hand count — this SETS the shelf rather than adjusting it, and the nightly cron (not this route) is the canonical emitter of the below-threshold alert (§4.1 #34)",
     body: M21ObserveParStockBody,
+  },
+
+  // ── M31 Patient/Family Portal & Telehealth (§4.1–4.2). The lay-language reads publish a typed 2xx body;
+  // the writes reuse the SAME TypeBox schema the handler `parse`s (portal-typebox.ts), so the published
+  // contract cannot drift from the validator. Every lay read body is the D17-minimized projection. ──
+  "POST /api/v1/portal/sessions/select-patient": {
+    summary: "Bind the portal session to (patient, active grant) after login (D2)",
+    body: M31SelectPatientRequest,
+    response: M31SelectPatientResponse,
+  },
+  "GET /api/v1/portal/sessions/current": {
+    summary: "Current portal session context (account, active patient, scope set)",
+    response: M31PortalSessionCurrentResponse,
+  },
+  "POST /api/v1/portal/sessions/logout": {
+    summary: "Server-side portal session close",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/sessions/step-up": {
+    summary: "TOTP step-up for high-PHI portal actions",
+    body: M31StepUpRequest,
+    response: M31AckResponse,
+  },
+  "GET /api/v1/portal/care-summary": {
+    summary: "The portal home view — lay-language aggregate of the upstream reader seams",
+    response: M31CareSummaryResponse,
+  },
+  "GET /api/v1/portal/care-plan/summary": {
+    summary: "Lay-language care-plan summary (M7 §5.4)",
+    response: M31CarePlanSummaryResponse,
+  },
+  "GET /api/v1/portal/discipline-plans/summary": {
+    summary: "Discipline-plan lay summaries (M15 §5.3)",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/visits/upcoming": {
+    summary: "Upcoming visits (M17 PortalVisitReader), lay DTO",
+    query: M31WithinQuery,
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/visits/history": {
+    summary: "Visit history (M8 SignedEncountersReader), lay DTO",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/medications/active": {
+    summary: "Active medications (M12 portal summary), SUD-redacted",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/administrations/recent": {
+    summary: "Recent administrations (M13 portal summary), lay DTO",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/assessments/trend": {
+    summary: "Symptom-trend view (M9 ScaleSeriesProvider), lay transform",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/hope/timepoints": {
+    summary: "HOPE patient-facing subset (M10 HopeTimepointProvider)",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/orders/non-medication": {
+    summary: "Non-medication order summary (M11), lay DTO",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/supplies/upcoming": {
+    summary: "Upcoming supply deliveries (M21 portal view)",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/triage-entries": {
+    summary: "Triage call log, lay DTO (M19 portal reader)",
+    query: M31WithinQuery,
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/triage-entries/me": {
+    summary: "Own-initiated triage entries, lay DTO",
+    query: M31WithinQuery,
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/documents": {
+    summary: "Disclosed documents list (M22 PortalDocumentReader)",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/documents/:documentId/download-url": {
+    summary: "Mint a 60-min watermarked download URL (M22)",
+    response: M31DocumentDownloadUrlResponse,
+  },
+  "POST /api/v1/portal/documents/upload-init": {
+    summary: "Stage an M22 intake upload; returns a signed URL",
+    body: M31PortalDocumentUploadInitRequest,
+    response: M31PortalDocumentUploadInitResponse,
+  },
+  "POST /api/v1/portal/documents/upload-complete/:uploadId": {
+    summary: "Confirm the M22 intake batch received",
+    response: M31UploadCompleteResponse,
+  },
+  "POST /api/v1/portal/administrations/caregiver-attested": {
+    summary: "Caregiver-attested administration into M13 (D10); TOTP step-up",
+    body: M31CaregiverAttestRequest,
+    response: M31CaregiverAttestResponse,
+  },
+  "POST /api/v1/portal/amendments/submit": {
+    summary: "Submit a §164.526 amendment request to M5; TOTP step-up",
+    body: M31AmendmentSubmitRequest,
+    response: M31AmendmentSubmitResponse,
+  },
+  "GET /api/v1/portal/amendments": {
+    summary: "Own amendment requests (portal-submitted)",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/messages/channel": {
+    summary: "The care-team channel id + last-read pointer (M36)",
+    response: M31MessagesChannelResponse,
+  },
+  "POST /api/v1/portal/messages/send": {
+    summary: "Send to the care team (thin pass-through to M36)",
+    body: M31MessageSendRequest,
+    response: M31MessageSendResponse,
+  },
+  "GET /api/v1/portal/bereavement/program": {
+    summary: "Bereavement program overview (M16 publicView), window-gated",
+    response: M31LayListResponse,
+  },
+  "GET /api/v1/portal/bereavement/resources": {
+    summary: "External grief resources (M40) + tenant catalog (M22)",
+    response: M31LayListResponse,
+  },
+  "POST /api/v1/portal/bereavement/opt-out": {
+    summary: "Self opt-out of the bereavement program (M16)",
+    response: M31AckResponse,
+  },
+  "GET /api/v1/portal/notification-preferences": {
+    summary: "Per-channel + quiet-hours notification preferences",
+    response: M31NotificationPreferencesResponse,
+  },
+  "PATCH /api/v1/portal/notification-preferences/:id": {
+    summary: "Update a notification preference (optimistic concurrency)",
+    body: M31NotificationPreferenceUpdateRequest,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/telehealth/visits/:visitId/join": {
+    summary: "Portal-side telehealth join — mints a participant token (consent + ABAC gated)",
+    response: M31TelehealthJoinResponse,
+  },
+  "POST /api/v1/portal/telehealth/visits/:visitId/leave": {
+    summary: "Portal-side telehealth leave (idempotent)",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/join": {
+    summary: "Clinician-side telehealth join — mints a participant token",
+    response: M31TelehealthJoinResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/leave": {
+    summary: "Clinician-side telehealth leave",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/start-recording": {
+    summary: "Start recording — D9 state-aware gate + step-up",
+    body: M31StartRecordingRequest,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/stop-recording": {
+    summary: "Stop recording (idempotent)",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/end": {
+    summary: "Server-forced end of the telehealth visit",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/telehealth/webhooks/daily-co": {
+    summary: "Signature-verified Daily.co webhook ingest (D13)",
+    response: M31WebhookAckResponse,
+  },
+  "POST /api/v1/telehealth/webhooks/twilio-video": {
+    summary: "Signature-verified Twilio Video webhook ingest (vendor-pluggable)",
+    response: M31WebhookAckResponse,
+  },
+  "POST /api/v1/admin/portal-invitations": {
+    summary: "Issue a magic-link portal invite (D4)",
+    body: M31PortalInvitationIssueRequest,
+    response: M31PortalInvitationIssueResponse,
+  },
+  "GET /api/v1/admin/portal-invitations": {
+    summary: "Per-patient portal invite list",
+    response: M31PortalInvitationListResponse,
+  },
+  "POST /api/v1/admin/portal-invitations/:id/revoke": {
+    summary: "Revoke a portal invite before acceptance",
+    response: M31AckResponse,
+  },
+  "POST /api/v1/admin/portal-accounts/:id/invite-bereaved": {
+    summary: "Issue a post-death bereaved invite (M16-coordinated)",
+    body: M31InviteBereavedRequest,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/admin/portal-accounts/:id/suspend": {
+    summary: "Org-admin temporary disable of a portal account; step-up",
+    body: M31AccountSuspendRequest,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/admin/portal-accounts/:id/reinstate": {
+    summary: "Reverse a portal-account suspension; step-up",
+    body: M31AccountSuspendRequest,
+    response: M31AckResponse,
+  },
+  "GET /api/v1/admin/portal-accounts": {
+    summary: "Per-tenant portal account roster",
+    response: M31PortalAccountListResponse,
+  },
+  "GET /api/v1/admin/portal-accounts/:id/access-grants": {
+    summary: "Per-account grant list",
+    response: M31PortalAccountGrantListResponse,
+  },
+  "GET /api/v1/admin/portal-accounts/:id/audit-views": {
+    summary: "Per-account §164.528 disclosure-accounting view",
+    response: M31PortalAuditViewResponse,
+  },
+  "GET /api/v1/admin/telehealth/visits": {
+    summary: "Per-tenant telehealth visit roster",
+    response: M31TelehealthVisitListResponse,
+  },
+  "GET /api/v1/admin/telehealth/visits/:id": {
+    summary: "Per-visit telehealth detail",
+    response: M31TelehealthVisitDetailResponse,
+  },
+  "POST /api/v1/admin/telehealth/visits/:id/halt-recording": {
+    summary: "Compliance-officer emergency recording stop; step-up",
+    response: M31AckResponse,
+  },
+  "GET /api/v1/auditor/portal-engagement/:engagementId": {
+    summary: "Engagement-scoped auditor view of portal engagement",
+    response: M31PortalEngagementResponse,
   },
 };
 

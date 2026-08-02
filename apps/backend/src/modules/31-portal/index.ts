@@ -19,3 +19,22 @@ export * from "./telehealth/index";
 export * from "./write-paths/index";
 export * from "./seams/index";
 export * from "./eraser";
+// M31-T07 — the §4.1 route surface, the §4.6 permission keys, and the six §4.7 ABAC predicates.
+export * from "./permission-keys";
+export {
+  type PortalAbacDeps,
+  type PortalAbacResolver,
+  M31_ABAC_PREDICATES,
+  buildPortalAbacPredicates,
+  denyStubPortalAbacResolver,
+  registerPortalAbacPredicates,
+  seamPortalAbacPorts,
+} from "./abac-predicates";
+export {
+  type PortalRouteDeps,
+  type PortalStore,
+  type TelehealthAdapterPort,
+  buildDrizzlePortalStore,
+  buildPortalAbacResolverFromStore,
+} from "./routes/index";
+export { mountM31Routes } from "./routes/mount";

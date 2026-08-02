@@ -29,6 +29,7 @@ import {
   createSessionAuthenticate,
   getSeam,
   registerEraser,
+  registerSeam,
 } from "./bootstrap/index";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import {
@@ -220,6 +221,15 @@ import {
   registerDocumentSeams,
   mountDocumentRoutes,
 } from "./modules/22-documents/index";
+import {
+  buildDrizzlePortalStore,
+  buildPortalAbacResolverFromStore,
+  createM31PublishedSeamImpls,
+  denyStubPortalAbacResolver,
+  mountM31Routes,
+  registerM31PublishedSeams,
+  registerPortalAbacPredicates,
+} from "./modules/31-portal/index";
 import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
@@ -731,6 +741,24 @@ export function wireModuleSeams(
         })
       : denyStubSafetyAbacResolver,
   });
+  // M31-T07 — publish the SEVEN §4.3 portal/telehealth reader seams (PortalAccountReader,
+  // PortalAccessGrantReader, PortalEngagementProvider, TelehealthMetricsProvider, TelehealthVisitReader,
+  // PortalSessionMinter, PortalDisclosureAccountingProvider) into the M1 registry — the deny-stub closers
+  // for M28 SMART-launch, M30 engagement/telehealth measures, M33 dashboards, M34 onboarding, M35 metering —
+  // and register the SIX §4.7 ABAC predicates (`portal_account_active`, `portal_grant_active_for_patient`,
+  // `portal_caregiver_is_primary_or_dpoa`, `bereaved_portal_window_open`, `telehealth_consent_active`,
+  // `state_two_party_recording_consent_present`). Every predicate is an AUTHORIZATION read whose fail
+  // direction is UNIFORM: a non-portal session class, an unreadable resolver, an unknown target, an absent
+  // row, an unbound/erroring M39 and a thrown error all DENY (§8.2 — a portal surface that cannot prove
+  // consent must refuse). The subject facts load through the Drizzle store over M31's three owned tables when
+  // a DB client is present; without one the deny-stub resolver stands.
+  if (deps.db) {
+    const portalStore = buildDrizzlePortalStore(deps.db);
+    registerM31PublishedSeams({ registerSeam }, createM31PublishedSeamImpls(portalStore));
+    registerPortalAbacPredicates({ resolver: buildPortalAbacResolverFromStore(portalStore) });
+  } else {
+    registerPortalAbacPredicates({ resolver: denyStubPortalAbacResolver });
+  }
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
@@ -1602,6 +1630,13 @@ if ((import.meta as { main?: boolean }).main) {
               outbox: m20OutboxPublisher,
             }),
           });
+          // M31 (Patient/Family Portal & Telehealth) — mount the forty-seven §4.1 routes over the Drizzle
+          // store (the three owned tables) + the injected video adapter. The telehealth adapter is left
+          // UNBOUND here (a fail-closed NOOP): no per-tenant Daily.co API-key vault is wired yet, so the
+          // Record button denies and join mints an empty token rather than reaching a vendor with an
+          // unconfigured key. Every lay READ route composes the upstream portal-summary seams and fails
+          // CLOSED; the owned-table reads/writes (accounts, grants, telehealth lifecycle) are live over RLS.
+          mountM31Routes(app, { store: buildDrizzlePortalStore(dbHandle.db) });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
           // serving inference, which is the order §2.2 requires (a capability reaches APPROVED only

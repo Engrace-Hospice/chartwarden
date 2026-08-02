@@ -1680,6 +1680,670 @@
         }
       }
     },
+    "/api/v1/admin/portal-accounts": {
+      "get": {
+        "operationId": "getApiV1AdminPortalaccounts",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-tenant portal account roster",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "portalAccountId",
+                          "relationship",
+                          "status",
+                          "invitedAt",
+                          "activatedAt",
+                          "lastActiveAt"
+                        ],
+                        "properties": {
+                          "portalAccountId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "relationship": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "invitedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "activatedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastActiveAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-accounts/{id}/access-grants": {
+      "get": {
+        "operationId": "getApiV1AdminPortalaccountsByIdAccessgrants",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-account grant list",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "grantId",
+                          "patientId",
+                          "grantKind",
+                          "grantedAt",
+                          "revokedAt"
+                        ],
+                        "properties": {
+                          "grantId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "grantKind": {
+                            "type": "string"
+                          },
+                          "grantedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "revokedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-accounts/{id}/audit-views": {
+      "get": {
+        "operationId": "getApiV1AdminPortalaccountsByIdAuditviews",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-account §164.528 disclosure-accounting view",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientId",
+                          "routePath",
+                          "viewedAt"
+                        ],
+                        "properties": {
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "routePath": {
+                            "type": "string"
+                          },
+                          "viewedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-accounts/{id}/invite-bereaved": {
+      "post": {
+        "operationId": "postApiV1AdminPortalaccountsByIdInvitebereaved",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Issue a post-death bereaved invite (M16-coordinated)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "bereavedContactId",
+                  "inviteeDisplayName",
+                  "inviteeEmail"
+                ],
+                "properties": {
+                  "bereavedContactId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "inviteeDisplayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "inviteeEmail": {
+                    "format": "email",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-accounts/{id}/reinstate": {
+      "post": {
+        "operationId": "postApiV1AdminPortalaccountsByIdReinstate",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Reverse a portal-account suspension; step-up",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-accounts/{id}/suspend": {
+      "post": {
+        "operationId": "postApiV1AdminPortalaccountsByIdSuspend",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Org-admin temporary disable of a portal account; step-up",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-invitations": {
+      "get": {
+        "operationId": "getApiV1AdminPortalinvitations",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-patient portal invite list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "invitationId",
+                          "relationship",
+                          "status",
+                          "issuedAt",
+                          "expiresAt"
+                        ],
+                        "properties": {
+                          "invitationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "relationship": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "issuedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "expiresAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1AdminPortalinvitations",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Issue a magic-link portal invite (D4)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "invitationId",
+                    "portalAccountId",
+                    "status",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "invitationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "portalAccountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "relationship",
+                  "inviteeDisplayName",
+                  "inviteeEmail",
+                  "proposedScopeSet"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "relationship": {
+                    "anyOf": [
+                      {
+                        "const": "patient_self",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family_caregiver",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dpoa_healthcare_agent",
+                        "type": "string"
+                      },
+                      {
+                        "const": "personal_representative_post_death",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "caregiverId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "inviteeDisplayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "inviteeEmail": {
+                    "format": "email",
+                    "type": "string"
+                  },
+                  "inviteePhone": {
+                    "type": "string"
+                  },
+                  "proposedScopeSet": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-invitations/{id}/revoke": {
+      "post": {
+        "operationId": "postApiV1AdminPortalinvitationsByIdRevoke",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Revoke a portal invite before acceptance",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/refill-inbox-policy": {
       "get": {
         "operationId": "getApiV1AdminRefillinboxpolicy",
@@ -2320,6 +2984,237 @@
         "responses": {
           "200": {
             "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/telehealth/visits": {
+      "get": {
+        "operationId": "getApiV1AdminTelehealthVisits",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-tenant telehealth visit roster",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "telehealthVisitId",
+                          "m17VisitId",
+                          "patientId",
+                          "lifecycleState",
+                          "vendor",
+                          "audioOnlyFallbackActive",
+                          "visitStartedAt",
+                          "visitEndedAt"
+                        ],
+                        "properties": {
+                          "telehealthVisitId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "m17VisitId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "lifecycleState": {
+                            "type": "string"
+                          },
+                          "vendor": {
+                            "type": "string"
+                          },
+                          "audioOnlyFallbackActive": {
+                            "type": "boolean"
+                          },
+                          "visitStartedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "visitEndedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/telehealth/visits/{id}": {
+      "get": {
+        "operationId": "getApiV1AdminTelehealthVisitsById",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-visit telehealth detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "telehealthVisitId",
+                    "m17VisitId",
+                    "patientId",
+                    "lifecycleState",
+                    "vendor",
+                    "audioOnlyFallbackActive",
+                    "visitStartedAt",
+                    "visitEndedAt"
+                  ],
+                  "properties": {
+                    "telehealthVisitId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "m17VisitId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "lifecycleState": {
+                      "type": "string"
+                    },
+                    "vendor": {
+                      "type": "string"
+                    },
+                    "audioOnlyFallbackActive": {
+                      "type": "boolean"
+                    },
+                    "visitStartedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "visitEndedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/admin/telehealth/visits/{id}/halt-recording": {
+      "post": {
+        "operationId": "postApiV1AdminTelehealthVisitsByIdHaltrecording",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Compliance-officer emergency recording stop; step-up",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -10320,6 +11215,83 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/auditor/portal-engagement/{engagementId}": {
+      "get": {
+        "operationId": "getApiV1AuditorPortalengagementByEngagementId",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Engagement-scoped auditor view of portal engagement",
+        "parameters": [
+          {
+            "name": "engagementId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "hasActiveAccount",
+                    "daysActive",
+                    "lastViewedAt",
+                    "messagesSent",
+                    "documentsViewed",
+                    "amendmentsSubmitted",
+                    "administrationsAttested"
+                  ],
+                  "properties": {
+                    "hasActiveAccount": {
+                      "type": "boolean"
+                    },
+                    "daysActive": {
+                      "type": "integer"
+                    },
+                    "lastViewedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "messagesSent": {
+                      "type": "integer"
+                    },
+                    "documentsViewed": {
+                      "type": "integer"
+                    },
+                    "amendmentsSubmitted": {
+                      "type": "integer"
+                    },
+                    "administrationsAttested": {
+                      "type": "integer"
                     }
                   }
                 }
@@ -97892,6 +98864,1786 @@
         }
       }
     },
+    "/api/v1/portal/administrations/caregiver-attested": {
+      "post": {
+        "operationId": "postApiV1PortalAdministrationsCaregiverattested",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Caregiver-attested administration into M13 (D10); TOTP step-up",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "administrationId",
+                    "status"
+                  ],
+                  "properties": {
+                    "administrationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "medicationOrderId",
+                  "administeredAt",
+                  "administeredAmount",
+                  "administeredUnit",
+                  "route",
+                  "caregiverAttestationText"
+                ],
+                "properties": {
+                  "medicationOrderId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "administeredAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "administeredAmount": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "administeredUnit": {
+                    "type": "string"
+                  },
+                  "route": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "caregiverAttestationText": {
+                    "minLength": 5,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/administrations/recent": {
+      "get": {
+        "operationId": "getApiV1PortalAdministrationsRecent",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Recent administrations (M13 portal summary), lay DTO",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/amendments": {
+      "get": {
+        "operationId": "getApiV1PortalAmendments",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Own amendment requests (portal-submitted)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/amendments/submit": {
+      "post": {
+        "operationId": "postApiV1PortalAmendmentsSubmit",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Submit a §164.526 amendment request to M5; TOTP step-up",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "amendmentRequestRefId",
+                    "status"
+                  ],
+                  "properties": {
+                    "amendmentRequestRefId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "targetKind",
+                  "requestedChange"
+                ],
+                "properties": {
+                  "targetKind": {
+                    "anyOf": [
+                      {
+                        "const": "patient_demographic",
+                        "type": "string"
+                      },
+                      {
+                        "const": "encounter_narrative",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "targetRef": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "requestedChange": {
+                    "minLength": 5,
+                    "maxLength": 4000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/assessments/trend": {
+      "get": {
+        "operationId": "getApiV1PortalAssessmentsTrend",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Symptom-trend view (M9 ScaleSeriesProvider), lay transform",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/bereavement/opt-out": {
+      "post": {
+        "operationId": "postApiV1PortalBereavementOptout",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Self opt-out of the bereavement program (M16)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/bereavement/program": {
+      "get": {
+        "operationId": "getApiV1PortalBereavementProgram",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Bereavement program overview (M16 publicView), window-gated",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/bereavement/resources": {
+      "get": {
+        "operationId": "getApiV1PortalBereavementResources",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "External grief resources (M40) + tenant catalog (M22)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/care-plan/summary": {
+      "get": {
+        "operationId": "getApiV1PortalCareplanSummary",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Lay-language care-plan summary (M7 §5.4)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "problems",
+                    "redacted"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "problems": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "problemId",
+                          "label",
+                          "goals",
+                          "focus"
+                        ],
+                        "properties": {
+                          "problemId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "goals": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "focus": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "redacted": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/care-summary": {
+      "get": {
+        "operationId": "getApiV1PortalCaresummary",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "The portal home view — lay-language aggregate of the upstream reader seams",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patient",
+                    "upcomingVisitsCount",
+                    "recentVisitsCount",
+                    "activeMedicationsCount",
+                    "unreadMessagesCount",
+                    "pendingDocumentSharesCount"
+                  ],
+                  "properties": {
+                    "patient": {
+                      "type": "object",
+                      "required": [
+                        "layLabel"
+                      ],
+                      "properties": {
+                        "layLabel": {
+                          "type": "string"
+                        },
+                        "pronouns": {
+                          "type": "string"
+                        },
+                        "preferredName": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "upcomingVisitsCount": {
+                      "type": "integer"
+                    },
+                    "recentVisitsCount": {
+                      "type": "integer"
+                    },
+                    "activeMedicationsCount": {
+                      "type": "integer"
+                    },
+                    "unreadMessagesCount": {
+                      "type": "integer"
+                    },
+                    "pendingDocumentSharesCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/discipline-plans/summary": {
+      "get": {
+        "operationId": "getApiV1PortalDisciplineplansSummary",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Discipline-plan lay summaries (M15 §5.3)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/documents": {
+      "get": {
+        "operationId": "getApiV1PortalDocuments",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Disclosed documents list (M22 PortalDocumentReader)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/documents/{documentId}/download-url": {
+      "get": {
+        "operationId": "getApiV1PortalDocumentsByDocumentIdDownloadurl",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Mint a 60-min watermarked download URL (M22)",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "url",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "url": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/documents/upload-complete/{uploadId}": {
+      "post": {
+        "operationId": "postApiV1PortalDocumentsUploadcompleteByUploadId",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Confirm the M22 intake batch received",
+        "parameters": [
+          {
+            "name": "uploadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "uploadId",
+                    "status"
+                  ],
+                  "properties": {
+                    "uploadId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/documents/upload-init": {
+      "post": {
+        "operationId": "postApiV1PortalDocumentsUploadinit",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Stage an M22 intake upload; returns a signed URL",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "uploadId",
+                    "signedUploadUrl",
+                    "signedUploadUrlExpiresAt"
+                  ],
+                  "properties": {
+                    "uploadId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "signedUploadUrl": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "signedUploadUrlExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "purpose",
+                  "mimeType",
+                  "expectedByteSize"
+                ],
+                "properties": {
+                  "purpose": {
+                    "anyOf": [
+                      {
+                        "const": "insurance_card",
+                        "type": "string"
+                      },
+                      {
+                        "const": "prior_records",
+                        "type": "string"
+                      },
+                      {
+                        "const": "wound_photo",
+                        "type": "string"
+                      },
+                      {
+                        "const": "advance_directive_copy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "purposeDetail": {
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "mimeType": {
+                    "type": "string"
+                  },
+                  "expectedByteSize": {
+                    "minimum": 1,
+                    "maximum": 52428800,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/hope/timepoints": {
+      "get": {
+        "operationId": "getApiV1PortalHopeTimepoints",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "HOPE patient-facing subset (M10 HopeTimepointProvider)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/medications/active": {
+      "get": {
+        "operationId": "getApiV1PortalMedicationsActive",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Active medications (M12 portal summary), SUD-redacted",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/messages/channel": {
+      "get": {
+        "operationId": "getApiV1PortalMessagesChannel",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "The care-team channel id + last-read pointer (M36)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "lastReadPointer"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "lastReadPointer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/messages/send": {
+      "post": {
+        "operationId": "postApiV1PortalMessagesSend",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Send to the care team (thin pass-through to M36)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "body"
+                ],
+                "properties": {
+                  "body": {
+                    "minLength": 1,
+                    "maxLength": 8000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/notification-preferences": {
+      "get": {
+        "operationId": "getApiV1PortalNotificationpreferences",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Per-channel + quiet-hours notification preferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channels"
+                  ],
+                  "properties": {
+                    "channels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "channel",
+                          "enabled"
+                        ],
+                        "properties": {
+                          "channel": {
+                            "type": "string"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "quietHours": {
+                      "type": "object",
+                      "required": [
+                        "startHour",
+                        "endHour"
+                      ],
+                      "properties": {
+                        "startHour": {
+                          "type": "integer"
+                        },
+                        "endHour": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/notification-preferences/{id}": {
+      "patch": {
+        "operationId": "patchApiV1PortalNotificationpreferencesById",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Update a notification preference (optimistic concurrency)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "enabled"
+                ],
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "quietHoursStartHour": {
+                    "minimum": 0,
+                    "maximum": 23,
+                    "type": "integer"
+                  },
+                  "quietHoursEndHour": {
+                    "minimum": 0,
+                    "maximum": 23,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/orders/non-medication": {
+      "get": {
+        "operationId": "getApiV1PortalOrdersNonmedication",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Non-medication order summary (M11), lay DTO",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/sessions/current": {
+      "get": {
+        "operationId": "getApiV1PortalSessionsCurrent",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Current portal session context (account, active patient, scope set)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "portalAccountId",
+                    "activePatientId",
+                    "activeGrantId",
+                    "scopeSet",
+                    "relationship",
+                    "status"
+                  ],
+                  "properties": {
+                    "portalAccountId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "activePatientId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "activeGrantId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "scopeSet": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "relationship": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/sessions/logout": {
+      "post": {
+        "operationId": "postApiV1PortalSessionsLogout",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Server-side portal session close",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/sessions/select-patient": {
+      "post": {
+        "operationId": "postApiV1PortalSessionsSelectpatient",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Bind the portal session to (patient, active grant) after login (D2)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "sessionId",
+                    "activePatientId",
+                    "activeGrantId",
+                    "scopeSet",
+                    "layPatientLabel"
+                  ],
+                  "properties": {
+                    "sessionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "activePatientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "activeGrantId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "scopeSet": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "layPatientLabel": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/sessions/step-up": {
+      "post": {
+        "operationId": "postApiV1PortalSessionsStepup",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "TOTP step-up for high-PHI portal actions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "totpCode"
+                ],
+                "properties": {
+                  "totpCode": {
+                    "minLength": 6,
+                    "maxLength": 10,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/supplies/upcoming": {
+      "get": {
+        "operationId": "getApiV1PortalSuppliesUpcoming",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Upcoming supply deliveries (M21 portal view)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/telehealth/visits/{visitId}/join": {
+      "post": {
+        "operationId": "postApiV1PortalTelehealthVisitsByVisitIdJoin",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Portal-side telehealth join — mints a participant token (consent + ABAC gated)",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "vendorJoinUrl",
+                    "vendorParticipantToken",
+                    "tokenExpiresAt",
+                    "audioOnlyFallbackActive",
+                    "recordingActive"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "const": "daily_co",
+                          "type": "string"
+                        },
+                        {
+                          "const": "twilio_video",
+                          "type": "string"
+                        },
+                        {
+                          "const": "native_webrtc",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "vendorJoinUrl": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "vendorParticipantToken": {
+                      "type": "string"
+                    },
+                    "tokenExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "audioOnlyFallbackActive": {
+                      "type": "boolean"
+                    },
+                    "recordingActive": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/telehealth/visits/{visitId}/leave": {
+      "post": {
+        "operationId": "postApiV1PortalTelehealthVisitsByVisitIdLeave",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Portal-side telehealth leave (idempotent)",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/triage-entries": {
+      "get": {
+        "operationId": "getApiV1PortalTriageentries",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Triage call log, lay DTO (M19 portal reader)",
+        "parameters": [
+          {
+            "name": "within",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 8760,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/triage-entries/me": {
+      "get": {
+        "operationId": "getApiV1PortalTriageentriesMe",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Own-initiated triage entries, lay DTO",
+        "parameters": [
+          {
+            "name": "within",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 8760,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/portal/triage/recent": {
       "get": {
         "operationId": "getApiV1PortalTriageRecent",
@@ -98187,6 +100939,109 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/visits/history": {
+      "get": {
+        "operationId": "getApiV1PortalVisitsHistory",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Visit history (M8 SignedEncountersReader), lay DTO",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/visits/upcoming": {
+      "get": {
+        "operationId": "getApiV1PortalVisitsUpcoming",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Upcoming visits (M17 PortalVisitReader), lay DTO",
+        "parameters": [
+          {
+            "name": "within",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 8760,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "category",
+                    "items"
+                  ],
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
                     }
                   }
                 }
@@ -143015,6 +145870,362 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/visits/{visitId}/end": {
+      "post": {
+        "operationId": "postApiV1TelehealthVisitsByVisitIdEnd",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Server-forced end of the telehealth visit",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/visits/{visitId}/join": {
+      "post": {
+        "operationId": "postApiV1TelehealthVisitsByVisitIdJoin",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Clinician-side telehealth join — mints a participant token",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "vendor",
+                    "vendorJoinUrl",
+                    "vendorParticipantToken",
+                    "tokenExpiresAt",
+                    "audioOnlyFallbackActive",
+                    "recordingActive"
+                  ],
+                  "properties": {
+                    "vendor": {
+                      "anyOf": [
+                        {
+                          "const": "daily_co",
+                          "type": "string"
+                        },
+                        {
+                          "const": "twilio_video",
+                          "type": "string"
+                        },
+                        {
+                          "const": "native_webrtc",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "vendorJoinUrl": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "vendorParticipantToken": {
+                      "type": "string"
+                    },
+                    "tokenExpiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "audioOnlyFallbackActive": {
+                      "type": "boolean"
+                    },
+                    "recordingActive": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/visits/{visitId}/leave": {
+      "post": {
+        "operationId": "postApiV1TelehealthVisitsByVisitIdLeave",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Clinician-side telehealth leave",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/visits/{visitId}/start-recording": {
+      "post": {
+        "operationId": "postApiV1TelehealthVisitsByVisitIdStartrecording",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Start recording — D9 state-aware gate + step-up",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "acknowledgesStateRules",
+                  "acknowledgesPatientConsent"
+                ],
+                "properties": {
+                  "acknowledgesStateRules": {
+                    "const": true,
+                    "type": "boolean"
+                  },
+                  "acknowledgesPatientConsent": {
+                    "const": true,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/visits/{visitId}/stop-recording": {
+      "post": {
+        "operationId": "postApiV1TelehealthVisitsByVisitIdStoprecording",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Stop recording (idempotent)",
+        "parameters": [
+          {
+            "name": "visitId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/webhooks/daily-co": {
+      "post": {
+        "operationId": "postApiV1TelehealthWebhooksDailyco",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Signature-verified Daily.co webhook ingest (D13)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received"
+                  ],
+                  "properties": {
+                    "received": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/telehealth/webhooks/twilio-video": {
+      "post": {
+        "operationId": "postApiV1TelehealthWebhooksTwiliovideo",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Signature-verified Twilio Video webhook ingest (vendor-pluggable)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received"
+                  ],
+                  "properties": {
+                    "received": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

@@ -234,3 +234,10 @@ export {
   M32_CONTRIBUTED_PERMISSIONS,
   m32ContributedPermissionMirrorRows,
 } from "./contributed";
+
+// M31 — Module 31's forty-seven Patient/Family Portal & Telehealth permission keys (§4.6 handshake).
+export {
+  type M31ContributedPermissionKey,
+  M31_CONTRIBUTED_PERMISSIONS,
+  m31ContributedPermissionMirrorRows,
+} from "./contributed";

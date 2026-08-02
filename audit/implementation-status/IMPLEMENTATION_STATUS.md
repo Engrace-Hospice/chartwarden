@@ -4,7 +4,7 @@
 > architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.
 > Do not hand-edit — the `status:matrix --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Totals:** 🟢 35 Implemented · 🟡 1 Partial · ⚪ 4 Placeholder (of 40 modules)
+**Totals:** 🟢 36 Implemented · 🟡 0 Partial · ⚪ 4 Placeholder (of 40 modules)
 
 Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · Routes (non-placeholder backend `routes/`) · Enriched (routes carrying an OpenAPI contract / routes scanned — a RATIO, not a tick; ⚠️ = some route publishes no request/response schema. `arch:openapi-coverage` ratchets it) · Screens (registered web `screens.ts`) · Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · Live (owned tables NAMED in a `*.live.test.ts` / owned tables — a RATIO, and still a name match, not an executed proof; ⚠️ marks any module with an unproven table). This column was a boolean `some()` and read ✅ for M35, a placeholder with zero migrations. Headline status keys off the placeholder marker + schema + routes only.
 
@@ -40,7 +40,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M28 FHIR Gateway | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/8 ⚠️ |
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/11 ⚠️ |
 | M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 60/60 ✅ | ✅ | ✅ | ✅ | 18/18 ✅ |
-| M31 Patient/Family Portal & Telehealth | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | ✅ | 0/3 ⚠️ |
+| M31 Patient/Family Portal & Telehealth | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 53/53 ✅ | ❌ | ✅ | ✅ | 0/3 ⚠️ |
 | M32 AI Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ❌ | ✅ | — | 13/13 ✅ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 42/42 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 48/48 ✅ | ✅ | ✅ | — | 17/17 ✅ |
