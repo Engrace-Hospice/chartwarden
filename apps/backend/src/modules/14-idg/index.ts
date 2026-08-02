@@ -3,20 +3,23 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerIdgAbacPredicates as _registerM14Abac } from "./abac-predicates";
-import { createDbIdgBackend } from "./idg-route-service-db";
+import { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
 import { registerIdgRoutes as _registerM14Routes } from "./routes/idg-routes";
 
 /**
- * M14L — mount the M14 IDG routes over the PRODUCTION Drizzle route service + ABAC resolver (one object that
- * is both, RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
- * (schedule, meeting detail, packet digests, action-item worklist, minutes); writes fail-closed 501 until the
- * M14L write-lifecycle follow-up. Replaces the in-memory clinical-core scaffold mount for M14.
+ * M14L — mount the M14 IDG routes over the PRODUCTION Drizzle route service + §4.7 ABAC resolver (one object
+ * that is both, RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads + the
+ * full write lifecycle (meeting machine, attendance, agenda, decisions, action items, minutes/amendments,
+ * recurring policies) are live over Drizzle+RLS; every mutation emits `m14.*` / the canonical
+ * `idg.decision_recorded` on the bound transactional `outbox`. Replaces the in-memory scaffold mount for M14.
  */
-export function mountIdgRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbIdgBackend(db);
+export function mountIdgRoutes(app: FastifyInstance, db: DbClient, outbox?: IdgWriteOutboxPort): void {
+  const backend = createDbIdgBackend(db, outbox);
   _registerM14Abac({ resolver: backend });
   _registerM14Routes(app, { service: backend });
 }
+
+export { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
 
 // M14-T05 lands the three §4.8 owned seams (IdgPacketProvider — the packet-snapshot + M22 render handshake
 // M22/M33 consume — + IdgDecisionProvider — the decision read path M30/M33 consume — + IdgScheduleProvider —

@@ -135,6 +135,7 @@ import {
   mountEmarRoutes,
 } from "./modules/13-emar/index";
 import {
+  M14_OUTBOX_EVENTS,
   createInMemoryIdgBackend,
   registerIdgAbacPredicates,
   registerIdgErasers,
@@ -1208,6 +1209,10 @@ if ((import.meta as { main?: boolean }).main) {
     // caregiver ack/dispute + missed-dose ack + reconciliation decision/finalize/void + comfort-kit return +
     // policy emits to validate against `m13OutboxPublisher`.
     M13_OUTBOX_EVENTS,
+    // M14L — the `m14.*` catalog + the canonical `idg.decision_recorded` seam. REQUIRED for the IDG write
+    // lifecycle's meeting/attendance/decision/action-item/minutes emits to validate against `m14OutboxPublisher`
+    // — and it is `idg.decision_recorded` at ADJOURN that wires LIVE the M7/M11/M12 decision consumers.
+    M14_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
     // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
@@ -1251,6 +1256,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m11OutboxPublisher = bindCallerModule(txOutboxPublisher, "m11");
   const m12OutboxPublisher = bindCallerModule(txOutboxPublisher, "m12");
   const m13OutboxPublisher = bindCallerModule(txOutboxPublisher, "m13");
+  const m14OutboxPublisher = bindCallerModule(txOutboxPublisher, "m14");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -1339,7 +1345,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountOrderRoutes(app, dbHandle.db, m11OutboxPublisher); // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
-          mountIdgRoutes(app, dbHandle.db); // M14 reads
+          mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db); // M17 reads
           mountEvvRoutes(app, dbHandle.db); // M18 reads
           mountDocumentRoutes(app, dbHandle.db); // M22 reads
