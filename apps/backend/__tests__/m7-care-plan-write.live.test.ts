@@ -24,6 +24,7 @@ import {
 import {
   type CarePlanWriteOutboxPort,
   M7_OUTBOX_EVENTS,
+  createDbCarePlanAbacResolver,
   createDbCarePlanRouteService,
 } from "../src/modules/07-care-plan/index";
 
@@ -225,5 +226,40 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     await expect(
       svc.createVersion(ORG_B, boot.id, "interim_revision", null),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("the Drizzle CarePlanAbacResolver resolves real plan/problem/version facts and fails closed cross-tenant", async () => {
+    const resolver = createDbCarePlanAbacResolver(handle.db);
+    const patientId = randomUUID();
+    const boot = (await svc.bootstrapCarePlan(ORG_A, patientId, randomUUID())) as Boot & {
+      patientId: string;
+    };
+    const sudProblem = (await svc.addProblem(ORG_A, boot.id, {
+      description: "Opioid use disorder",
+      kind: "terminal",
+      source: "clinical",
+      sudRelated: true,
+    })) as Element;
+
+    // loadPlan → the plan's patient (the caseload_or_scope / dpoa_active plan-arm).
+    expect(await resolver.loadPlan(ORG_A, boot.id)).toEqual({ planId: boot.id, patientId });
+    // loadProblem → the §7.6 SUD facts (sud_disclosure_allowed).
+    expect(await resolver.loadProblem(ORG_A, sudProblem.id)).toEqual({
+      planId: boot.id,
+      patientId,
+      sudRelated: true,
+    });
+    // loadVersion → the D5 quorum the caller's signer roles must intersect (signer_role_match).
+    const version = await resolver.loadVersion(ORG_A, boot.initialVersionId);
+    expect(version?.planId).toBe(boot.id);
+    expect(Array.isArray(version?.requiredSignerSet)).toBe(true);
+    expect((version?.requiredSignerSet.length ?? 0)).toBeGreaterThan(0);
+
+    // Fail-closed: RLS hides org A's rows from org B → every loader returns null (never leaks existence).
+    expect(await resolver.loadPlan(ORG_B, boot.id)).toBeNull();
+    expect(await resolver.loadProblem(ORG_B, sudProblem.id)).toBeNull();
+    expect(await resolver.loadVersion(ORG_B, boot.initialVersionId)).toBeNull();
+    // A non-existent id (and a non-problem element id) also fails closed.
+    expect(await resolver.loadProblem(ORG_A, randomUUID())).toBeNull();
   });
 });

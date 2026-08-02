@@ -71,6 +71,7 @@ import {
 } from "./modules/06-admission/index";
 import {
   M7_OUTBOX_EVENTS,
+  createDbCarePlanAbacResolver,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
   registerCarePlanRoutes,
@@ -764,17 +765,18 @@ export function wireModuleSeams(
   // M7's route mount: bootSeams() runs before registerModuleRoutes(), and every registrar skips a name the
   // registry already holds, so a later re-registration is silently ignored.
   //
-  // The `patientId`/collection arms resolve through the live M5 CaseloadProvider. The `planId`-keyed arms use
-  // the deny-stub below: M7's routes mount over Drizzle (createDbCarePlanRouteService), but that service does
-  // not yet expose the §6 `CarePlanAbacResolver` (loadPlan/loadProblem/loadVersion over the ABAC facts DTOs),
-  // so the plan-scoped predicates fail-closed. TODO(M7L): bind a Drizzle CarePlanAbacResolver so the plan-arms
-  // resolve real rows.
+  // The `patientId`/collection arms resolve through the live M5 CaseloadProvider. The `planId`-keyed arms
+  // resolve real M7 rows through the Drizzle `CarePlanAbacResolver` (loadPlan/loadProblem/loadVersion under
+  // withOrgContext, RLS-scoped, fail-closed on absent/cross-tenant) when a DB is present; without one (the
+  // DB-less dev/degraded path) they fall back to the deny-stub.
   registerCarePlanAbacPredicates({
-    resolver: {
-      loadPlan: async () => null,
-      loadProblem: async () => null,
-      loadVersion: async () => null,
-    },
+    resolver: deps.db
+      ? createDbCarePlanAbacResolver(deps.db)
+      : {
+          loadPlan: async () => null,
+          loadProblem: async () => null,
+          loadVersion: async () => null,
+        },
   });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
   // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
