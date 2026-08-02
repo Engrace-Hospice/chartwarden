@@ -9,7 +9,11 @@
  *
  * This does the two additive halves and nothing else:
  *   1. UPSERT every key from `allPermissionMirrorRows()` into the read-only `permission` mirror.
- *   2. Grant any key the ADMINISTRATOR role is missing (`ON CONFLICT DO NOTHING`), per org.
+ *   2. Grant any key the full-catalog admin roles are missing (`ON CONFLICT DO NOTHING`), per org.
+ *
+ * The full-catalog roles are `administrator` AND `org_admin` — `org_admin` is the top role that
+ * SUPERSEDES `administrator` (a strict superset), so both must receive every new key or the sync would
+ * make administrator (widened here) outgrow org_admin and break the supersede invariant.
  *
  * It creates no users, deletes nothing, and touches no password. Reversing it is a DELETE of the rows
  * it added. The clinician/auditor roles are deliberately left alone — their grants are a curated
@@ -20,7 +24,8 @@
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 
-const ADMIN_ROLE_KEY = "administrator";
+/** Roles granted the ENTIRE catalog — kept in lockstep so `org_admin ⊇ administrator` always holds. */
+const GRANT_ALL_ROLE_KEYS = ["administrator", "org_admin"];
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -52,11 +57,11 @@ async function main(): Promise<void> {
     `permission catalog synced: ${rows.length} keys projected (${before.rows[0]!.n} -> ${after.rows[0]!.n} rows)`,
   );
 
-  // Grant every catalog key to each org's administrator role. ON CONFLICT DO NOTHING keeps it
-  // idempotent and preserves any abac_override already set on an existing grant.
-  const admins = await db.query<{ id: string; organization_id: string }>(
-    "SELECT id, organization_id FROM role WHERE key = $1 AND organization_id IS NOT NULL",
-    [ADMIN_ROLE_KEY],
+  // Grant every catalog key to each org's full-catalog admin roles (administrator + org_admin).
+  // ON CONFLICT DO NOTHING keeps it idempotent and preserves any abac_override already set on a grant.
+  const admins = await db.query<{ id: string; organization_id: string; key: string }>(
+    "SELECT id, organization_id, key FROM role WHERE key = ANY($1) AND organization_id IS NOT NULL",
+    [GRANT_ALL_ROLE_KEYS],
   );
   let granted = 0;
   for (const role of admins.rows) {
@@ -70,7 +75,7 @@ async function main(): Promise<void> {
     }
   }
   console.log(
-    `administrator grants: +${granted} new across ${admins.rowCount} org role(s) (existing left untouched)`,
+    `full-catalog admin grants (${GRANT_ALL_ROLE_KEYS.join(", ")}): +${granted} new across ${admins.rowCount} role(s) (existing left untouched)`,
   );
 
   await db.end();
