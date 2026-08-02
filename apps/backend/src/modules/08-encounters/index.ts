@@ -6,6 +6,7 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import {
+  type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
@@ -13,15 +14,20 @@ import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predi
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**
- * M8L-T01 — mount the M8 encounter routes over the PRODUCTION Drizzle route service + ABAC resolver
- * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
- * (encounter detail + list, cosignature queue, my drafts, billability, signed-since, cosignature status);
- * writes fail-closed 501 until the M8L-T02+ Drizzle write lifecycle lands. Replaces the in-memory
+ * M8L-T01/T02 — mount the M8 encounter routes over the PRODUCTION Drizzle route service + ABAC resolver
+ * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads and the full
+ * write lifecycle (draft → vitals/mileage → finalize → sign → cosign → addendum) are live over Drizzle;
+ * every mutation emits its `m8.*` event on the passed transactional-outbox publisher (the composition
+ * root binds M1's catalog-validating publisher pinned to caller-module `m8`). Replaces the in-memory
  * clinical-core scaffold mount for M8.
  */
-export function mountEncounterRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountEncounterRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: EncounterWriteOutboxPort,
+): void {
   _registerM8Abac({ resolver: createDbEncounterAbacResolver(db) });
-  _registerM8Routes(app, { service: createDbEncounterRouteService(db) });
+  _registerM8Routes(app, { service: createDbEncounterRouteService(db, outbox) });
 }
 
 export * from "./lifecycle/index";
@@ -41,6 +47,7 @@ export {
   registerEncounterRoutes,
 } from "./routes/encounters-routes";
 export {
+  type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";

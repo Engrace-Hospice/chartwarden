@@ -59,6 +59,7 @@
     "test:rls:live:m7": "vitest run packages/db/migrations/__tests__/m7-rls-isolation.live.test.ts",
     "test:rls:live:m8": "vitest run packages/db/migrations/__tests__/m8-rls-isolation.live.test.ts",
     "test:m8:read:live": "vitest run apps/backend/__tests__/m8-encounters-read-service.live.test.ts",
+    "test:m8:write:live": "vitest run apps/backend/__tests__/m8-encounters-write.live.test.ts",
     "test:rls:live:m9": "vitest run packages/db/migrations/__tests__/m9-rls-isolation.live.test.ts",
     "test:rls:live:m10": "vitest run packages/db/migrations/__tests__/m10-rls-isolation.live.test.ts",
     "test:rls:live:m11": "vitest run packages/db/migrations/__tests__/m11-rls-isolation.live.test.ts",

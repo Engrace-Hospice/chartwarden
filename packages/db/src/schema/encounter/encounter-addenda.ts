@@ -18,12 +18,11 @@ export const encounterAddenda = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // NOT NULL relaxed in mig 0128 (M8L-T02): denormalized siting backfills from the parent encounter.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     encounterId: uuid("encounter_id")
       .notNull()
       .references(() => encounters.id, { onDelete: "restrict" }),
@@ -43,9 +42,12 @@ export const encounterAddenda = pgTable(
   (t) => ({
     encounterIdx: index("encounter_addendum_encounter_idx").on(t.encounterId, t.createdAt),
     reasonLen: check("encounter_addendum_reason_len", sql`char_length(reason) >= 20`),
+    // Widened in mig 0128 (M8L-T02) to include 'finalized' — the §2.3 addendum machine is
+    // draft → finalized → signed, and the DB is the machine's store (the `sign` transitions from
+    // 'finalized', so it must be persistable). 'finalized' is already a legal encounter_status value.
     statusAllowed: check(
       "encounter_addendum_status_allowed",
-      sql`status IN ('draft','signed','voided')`,
+      sql`status IN ('draft','finalized','signed','voided')`,
     ),
     signedHasTime: check(
       "encounter_addendum_signed_has_time",
