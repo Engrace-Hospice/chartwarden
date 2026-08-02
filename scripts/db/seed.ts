@@ -37,9 +37,14 @@ interface SeedUser {
   roleName: string;
   roleCategory: string; // role_category enum
   permCats: Cat[]; // which catalog categories this role grants (ignored when grantAll)
-  /** The administrator is "every permission" — grant the entire catalog regardless of category, so newly
-   *  added modules (billing/revenue-cycle, reporting, …) are covered without editing this list. */
+  /** "every permission" — grant the entire catalog regardless of category, so newly added modules
+   *  (billing/revenue-cycle, reporting, …) are covered without editing this list. */
   grantAll?: boolean;
+  /** Extra role keys (defined by OTHER users below) to also bind to this membership. Used so the demo
+   *  admin holds `org_admin` — the top role that supersedes `administrator` (full catalog + the
+   *  `hasRole(ctx,"org_admin")` tenant-admin ABAC authority). Bindings resolve role-centrically, so the
+   *  single org-scoped `org_admin` role (unique on org+key) is SHARED, never duplicated. */
+  alsoRoleKeys?: readonly string[];
 }
 
 const USERS: SeedUser[] = [
@@ -48,6 +53,24 @@ const USERS: SeedUser[] = [
     name: "Ada Administrator",
     roleKey: "administrator",
     roleName: "Administrator",
+    roleCategory: "admin_executive",
+    permCats: [],
+    grantAll: true,
+    // The demo admin ALSO holds `org_admin`, the top role — so the primary admin login carries both the
+    // CoP-418.100 clinical authority AND the SaaS tenant-admin authority that supersedes it.
+    alsoRoleKeys: ["org_admin"],
+  },
+  {
+    // SaaS tenant/account administrator — the TOP role, superseding the CoP-418.100 `administrator`: it
+    // carries the FULL permission catalog (grantAll) PLUS the authority the platform keys on the role for —
+    // the `isAdmin` derivation (rbac/drizzle-store.ts), the M2 last-admin lockout guard, and the ~10
+    // `hasRole(ctx,"org_admin")` ABAC predicates across M20/M22/M23/M24/M25/M32/M33/M34 (tenant
+    // onboarding/account, feature flags, tenant export, DSAR, billing overrides). `administrator` remains a
+    // distinct clinical/regulatory role; `org_admin` ⊇ it in every permission.
+    email: "orgadmin@wardenx.local",
+    name: "Otto OrgAdmin",
+    roleKey: "org_admin",
+    roleName: "Organization Administrator",
     roleCategory: "admin_executive",
     permCats: [],
     grantAll: true,
@@ -155,27 +178,21 @@ async function main(): Promise<void> {
 
   const creds: Array<{ user: SeedUser; password: string; userId: string; perms: number }> = [];
 
+  // --- Pass 1: create each distinct org-scoped role once (a role is owned by the USER whose primary
+  // `roleKey` it is) and grant its permissions. `role` is unique on (organization_id, key), so a role a
+  // second user only references via `alsoRoleKeys` must be SHARED, not re-created — hence the role-centric
+  // pass. `permKeysByRole` lets the credentials summary report each membership's effective permission count.
+  const roleIdByKey = new Map<string, string>();
+  const permKeysByRole = new Map<string, Set<string>>();
   for (const u of USERS) {
-    const password = genPassword();
-    const userId = await signUp(u.email, password, u.name);
-
-    // membership (active)
-    const m = await db.query<{ id: string }>(
-      `INSERT INTO membership (user_id, organization_id, status, accepted_at)
-       VALUES ($1,$2,'active', now()) RETURNING id`,
-      [userId, orgId],
-    );
-    const membershipId = m.rows[0].id;
-
-    // role (org-scoped so grants are org-wide)
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
        VALUES ($1,$2,$3,$4::role_category,'organization', true, $5) RETURNING id`,
       [orgId, u.roleKey, u.roleName, u.roleCategory, `${u.roleName} (dev seed)`],
     );
     const roleId = r.rows[0].id;
+    roleIdByKey.set(u.roleKey, roleId);
 
-    // role_permission rows: the administrator grants the whole catalog; others by category.
     const keys = u.grantAll
       ? allRows.map((x) => x.key)
       : allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
@@ -185,15 +202,37 @@ async function main(): Promise<void> {
         [orgId, roleId, key],
       );
     }
+    permKeysByRole.set(u.roleKey, new Set(keys));
+  }
 
-    // bind membership → role
-    await db.query(
-      `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
-      [orgId, membershipId, roleId],
+  // --- Pass 2: create each user + membership and bind its primary role + any `alsoRoleKeys`. ---
+  for (const u of USERS) {
+    const password = genPassword();
+    const userId = await signUp(u.email, password, u.name);
+
+    const m = await db.query<{ id: string }>(
+      `INSERT INTO membership (user_id, organization_id, status, accepted_at)
+       VALUES ($1,$2,'active', now()) RETURNING id`,
+      [userId, orgId],
     );
+    const membershipId = m.rows[0].id;
 
-    creds.push({ user: u, password, userId, perms: keys.length });
-    console.log(`user ${u.email} (${u.roleName}, ${keys.length} perms) → ${userId}`);
+    const boundRoleKeys = [u.roleKey, ...(u.alsoRoleKeys ?? [])];
+    const effectivePerms = new Set<string>();
+    for (const key of boundRoleKeys) {
+      const roleId = roleIdByKey.get(key);
+      if (!roleId) throw new Error(`user ${u.email} references undefined role '${key}'`);
+      await db.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+        [orgId, membershipId, roleId],
+      );
+      for (const p of permKeysByRole.get(key) ?? []) effectivePerms.add(p);
+    }
+
+    creds.push({ user: u, password, userId, perms: effectivePerms.size });
+    console.log(
+      `user ${u.email} (roles: ${boundRoleKeys.join("+")}, ${effectivePerms.size} perms) → ${userId}`,
+    );
   }
 
   await db.end();

@@ -137,6 +137,23 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     floor: SYSTEM_LOCKED_FLOORS.administrator,
   },
   {
+    // SaaS tenant/account administrator — the operational org-admin the platform's
+    // authorization layer keys on: `isAdmin` derivation (rbac/drizzle-store.ts
+    // ORG_ADMIN_ROLE_KEY), the M2 last-admin lockout guard, tenant provisioning's
+    // first-admin, and the ~10 `hasRole(ctx,"org_admin")` ABAC predicates across
+    // M20/M22/M23/M24/M25/M32/M33/M34. Distinct from the CoP-418.100 `administrator`
+    // (clinical/regulatory) role: a tenant may hold either or both. Non-locked (no CoP
+    // permission floor); grantable as a `system_default` template.
+    key: "org_admin",
+    name: "Organization Administrator",
+    category: "admin_executive",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description: "SaaS tenant/account administrator (org-scoped platform authority).",
+    floor: [],
+  },
+  {
     key: "compliance_officer",
     name: "Compliance Officer",
     category: "compliance_quality",
