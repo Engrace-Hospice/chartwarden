@@ -155,14 +155,16 @@ describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () =
     expect(assessments[0]?.id).toBe(seeded[ORG_B].clinicalAssessment);
   });
 
-  it("writes fail-closed 501 until the M9L Drizzle write pipeline lands", async () => {
-    await expect(
-      service.createLicense(ORG_A, {
-        scaleType: "pps",
-        vendor: "New Vendor",
-        effectiveDate: new Date().toISOString().slice(0, 10),
-        expiresAt: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10),
-      }),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("createLicense now persists a real license (the M9L write pipeline; full coverage in the write suite)", async () => {
+    const created = await service.createLicense(ORG_A, {
+      scaleType: "morse",
+      vendor: "New Vendor",
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      expiresAt: new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10),
+    });
+    expect(created.vendor).toBe("New Vendor");
+    expect(created.status).toBe("active");
+    const { licenses } = await service.listLicenses(ORG_A);
+    expect(licenses.some((l) => l.scaleType === "morse" && l.vendor === "New Vendor")).toBe(true);
   });
 });

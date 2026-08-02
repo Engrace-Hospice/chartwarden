@@ -7,6 +7,7 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import {
+  type AssessmentWriteOutboxPort,
   createDbAssessmentAbacResolver,
   createDbAssessmentRouteService,
 } from "./assessments-route-service-db";
@@ -15,14 +16,19 @@ import { registerAssessmentRoutes as _registerM9Routes } from "./routes/assessme
 
 /**
  * M9L — mount the M9 assessment routes over the PRODUCTION Drizzle route service + ABAC resolver
- * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are live
- * (patient assessment list + detail, latest/summary/series/delta/batch trend, significant-change inbox,
- * scale licenses + policies); writes fail-closed 501 until the M9L §10 Drizzle write pipeline lands.
- * Replaces the in-memory clinical-core scaffold mount for M9.
+ * (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads and the §10
+ * write pipeline (record → correct → cosign → acknowledge → license/policy admin) are live over Drizzle;
+ * every scale insert emits its `m9.*` event on the passed transactional-outbox publisher (the composition
+ * root binds M1's catalog-validating publisher pinned to caller-module `m9`). Replaces the in-memory
+ * clinical-core scaffold mount for M9.
  */
-export function mountAssessmentRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountAssessmentRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: AssessmentWriteOutboxPort,
+): void {
   _registerM9Abac({ resolver: createDbAssessmentAbacResolver(db) });
-  _registerM9Routes(app, { service: createDbAssessmentRouteService(db) });
+  _registerM9Routes(app, { service: createDbAssessmentRouteService(db, outbox) });
 }
 
 export {
@@ -56,6 +62,11 @@ export {
   type AssessmentView,
   createInMemoryAssessmentBackend,
 } from "./routes/service";
+export {
+  type AssessmentWriteOutboxPort,
+  createDbAssessmentAbacResolver,
+  createDbAssessmentRouteService,
+} from "./assessments-route-service-db";
 // M9-T06 — the §2.4 outbox contract (the full `m9.*` taxonomy; check-fitness-gaps.ts scans events-by-m9.ts
 // for naming + ownership + declared consumers). `m9.assessment.significant_change` feeds the §4.9 alert.
 export { M9_OUTBOX_EVENTS } from "./events-by-m9";

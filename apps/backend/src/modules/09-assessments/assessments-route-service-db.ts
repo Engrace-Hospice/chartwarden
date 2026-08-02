@@ -1,24 +1,48 @@
-// apps/backend/src/modules/09-assessments — PRODUCTION AssessmentRouteService, READ-first (M9L).
+// apps/backend/src/modules/09-assessments — PRODUCTION AssessmentRouteService (M9L reads + writes).
 //
 // The screen-driving READS (patient assessment list + detail, latest/summary/series/delta/batch trend,
 // significant-change inbox, scale licenses + policies) run as real Drizzle queries over the M9-owned
 // tables inside `withOrgContext`, so RLS scopes every row by `app.org_id` as the unprivileged
 // `wardenx_app` role. `clinical_assessment` is PARTITION BY RANGE (captured_at) — reads query the parent
-// (the partition router picks leaves). The full §10 WRITE pipeline (record → correct → cosign →
-// acknowledge → license/policy admin, with the server-authoritative score + the `m9.*` outbox) is the
-// M9L follow-up; every write here fail-closes 501 (`NOT_IMPLEMENTED`) so the interface is satisfied and
-// the mount is real. The in-memory `createInMemoryAssessmentBackend` (`routes/service.ts`) stays the
-// behavioral reference for those writes.
-import { computeScaleLicenseStatus } from "@wardenx/assessments";
+// (the partition router picks leaves); a DEFAULT partition catches every captured_at so inserts always
+// land. The §10 WRITE pipeline is now real (M9L): record (policy/license/discipline gate → server-
+// authoritative score → insert) · correct (planCorrection → insert the amendment; the DB
+// correction-supersede trigger flips the target) · cosign (planCosignAttest → assessment_cosignature
+// row) · acknowledge-change · license/policy admin. Every scale insert emits `m9.assessment.recorded`
+// (and `m9.assessment.amended` on a correction) on the caller's transactional outbox. No route is at 501.
+//
+// Because the AssessmentRouteService interface threads no admission/consent facts nor an acting
+// membership beyond `actorUserId`, this slice makes documented compromises (the M7/M8 convention):
+// (1) writes envelope `withOrgContext` with `userId:""` → the M4 write-audit trigger fires with a NULL
+// actor; (2) the §10 admission-anchor gate (active admission + capturedAt ≥ activation, M6 facts) and the
+// DPOA proxy-attribution gate (M5/M39 consent) are NOT re-enforced here — they require cross-module reads
+// not threaded into the route service; the policy + license + discipline + server-score gates (all
+// resolvable from M9's own tables + the pure scorers) ARE enforced; (3) the cosignature attestation text
+// and the license/policy acting membership are a documented sentinel / NULL until the interface carries
+// them. The correction row REUSES the target's `captured_at` (the composite self-FK
+// `(corrects_assessment_id, captured_at) → (id, captured_at)` demands it).
+import {
+  cosignRequiredFor,
+  computeScaleLicenseStatus,
+  disciplineCanRecordScale,
+  isLicensedScale,
+  planCorrection,
+  planCosignAttest,
+  require_,
+  scoreAssessment,
+  transitionSignificantChange,
+} from "@wardenx/assessments";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { ScaleDelta, ScaleSeries, ScaleSeriesPoint, ScaleType } from "@wardenx/types";
-import { NotFoundError, WardenXError } from "@wardenx/types";
+import { NotFoundError } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
 import type {
   AssessmentAbacResolver,
   AssessmentRouteService,
   AssessmentView,
+  CorrectAssessmentArgs,
+  RecordAssessmentArgs,
   ScaleLicenseView,
   ScalePolicyView,
   SignificantChangeView,
@@ -30,14 +54,35 @@ const SCE = schema.significantChangeEvents;
 const LIC = schema.scaleLicenses;
 const POL = schema.scalePolicies;
 
-/** A never-returning stub for the §10 write pipeline still owed by the M9L write follow-up. */
-const notImpl = (): never => {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    "assessment writes arrive in the M9L Drizzle write pipeline (record/correct/cosign/admin)",
-    501,
-  );
-};
+/** The §7.4 cosignature attestation text the `cosign` route does not carry yet (a sentinel; the exact
+ * attestation language is threaded when the interface carries it — the M8 null-actor convention). */
+const COSIGN_ATTESTATION = "Reviewed and cosigned per the LPN-cosignature policy (attestation pending route capture).";
+
+const SCALE_VERSION = "v1";
+
+/** The transactional-outbox port (§2.8): the bound publisher validates every emit against the boot
+ * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
+ * commit without a dispatcher. Mirrors M7/M8. */
+export interface AssessmentWriteOutboxPort {
+  publish(
+    tx: unknown,
+    emission: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+const NOOP_OUTBOX: AssessmentWriteOutboxPort = { async publish() {} };
+
+/** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
+function firstOrThrow<T>(rows: readonly T[], msg: string): T {
+  const r = rows[0];
+  if (!r) throw new NotFoundError(msg);
+  return r;
+}
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const toIso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
@@ -126,7 +171,124 @@ const toView = (r: AssessmentRow, cosignedAt: string | null, redacted: boolean):
  * The production, RLS-backed AssessmentRouteService. Reads are real; writes fail-closed 501.
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
-export function createDbAssessmentRouteService(db: DbClient): AssessmentRouteService {
+export function createDbAssessmentRouteService(
+  db: DbClient,
+  outbox: AssessmentWriteOutboxPort = NOOP_OUTBOX,
+): AssessmentRouteService {
+  /** Emit one `m9.*` event on the caller's tx (validated + persisted by the bound publisher; no-op default). */
+  async function emit(
+    tx: unknown,
+    org: string,
+    eventName: string,
+    aggregateKind: string,
+    aggregateId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+  }
+
+  /** Is a scale enabled for this tenant? — the explicit `scale_policy.enabled` flag; absent ⇒ enabled. */
+  async function policyEnabled(tx: DbClient, org: string, scaleType: ScaleType): Promise<boolean> {
+    const [p] = await tx
+      .select({ enabled: POL.enabled })
+      .from(POL)
+      .where(and(eq(POL.organizationId, org), eq(POL.scaleType, scaleType)))
+      .limit(1);
+    return p ? p.enabled : true;
+  }
+
+  /** The §10 record/correct gate chain resolvable from M9's OWN data + the pure scorers (§4.4 codes). See
+   * the file header for the admission-anchor / DPOA gates deferred to seam-threading. Returns the score. */
+  async function scoredForWrite(
+    tx: DbClient,
+    org: string,
+    args: RecordAssessmentArgs,
+  ): Promise<{ score: number | null; interpretation: string | null }> {
+    // policy gate (D3) — tenant-disabled scale is a 403.
+    require_(
+      await policyEnabled(tx, org, args.scaleType),
+      "SCALE_NOT_ENABLED",
+      `Scale '${args.scaleType}' is disabled for this tenant.`,
+    );
+    // license gate (D3) — a licensed scale requires an active license row.
+    if (isLicensedScale(args.scaleType)) {
+      const [lic] = await tx
+        .select({ effectiveDate: LIC.effectiveDate, expiresAt: LIC.expiresAt })
+        .from(LIC)
+        .where(and(eq(LIC.organizationId, org), eq(LIC.scaleType, args.scaleType)))
+        .limit(1);
+      const status = lic
+        ? computeScaleLicenseStatus({ effectiveDate: lic.effectiveDate, expiresAt: lic.expiresAt }, today())
+        : null;
+      require_(
+        status === "active",
+        "SCALE_LICENSE_MISSING",
+        `Scale '${args.scaleType}' requires an active license.`,
+      );
+    }
+    // discipline gate (D8) — defense-in-depth behind the route's `discipline_can_record_scale` predicate.
+    require_(
+      disciplineCanRecordScale(args.recorderDiscipline, args.scaleType),
+      "DISCIPLINE_NOT_ELIGIBLE",
+      `Discipline '${args.recorderDiscipline}' cannot record '${args.scaleType}'.`,
+    );
+    // server-authoritative score (D6) — never trust a client-sent score.
+    return scoreAssessment(args.scaleType, args.data as never);
+  }
+
+  /** Insert one scale row (record or correction) + emit `m9.assessment.recorded`; returns the AssessmentView. */
+  async function insertScale(
+    tx: DbClient,
+    org: string,
+    actorUserId: string,
+    patientId: string,
+    args: RecordAssessmentArgs,
+    scored: { score: number | null; interpretation: string | null },
+    correction: { correctsAssessmentId: string; correctionReason: string; capturedAt: Date; version: number } | null,
+  ): Promise<AssessmentView> {
+    const row = firstOrThrow(
+      await tx
+        .insert(CA)
+        .values({
+          organizationId: org,
+          patientId,
+          admissionId: args.admissionId,
+          scaleType: args.scaleType,
+          scaleVersion: SCALE_VERSION,
+          data: args.data,
+          score: scored.score === null ? null : String(scored.score),
+          scoreInterpretation: scored.interpretation,
+          // A correction REUSES the target's captured_at (the composite self-FK demands it, §2.3).
+          capturedAt: correction ? correction.capturedAt : new Date(args.capturedAt),
+          capturedByMembershipId: actorUserId,
+          capturedByDiscipline: args.recorderDiscipline,
+          sourceEncounterId: args.sourceEncounterId ?? null,
+          cosignRequired: cosignRequiredFor(args.recorderDiscipline, args.scaleType),
+          sudContext: args.scaleType === "aims" ? args.sudContext === true : false,
+          actingAs: args.actingAs ?? "self",
+          actingConsentId: args.actingConsentId ?? null,
+          status: "active",
+          correctsAssessmentId: correction ? correction.correctsAssessmentId : null,
+          correctionReason: correction ? correction.correctionReason : null,
+          version: correction ? correction.version : 1,
+        })
+        .returning(),
+      "clinical_assessment insert returned no row",
+    );
+    await emit(tx, org, "m9.assessment.recorded", "clinical_assessment", row.id, {
+      assessmentId: row.id,
+      patientId,
+      admissionId: args.admissionId,
+      scaleType: args.scaleType,
+      score: scored.score,
+      capturedAt: toIso(row.capturedAt),
+      sourceEncounterId: args.sourceEncounterId ?? null,
+      isCorrection: correction !== null,
+    });
+    const map = await cosignedMap(tx, [row.id]);
+    return toView(row as unknown as AssessmentRow, map.get(row.id) ?? null, false);
+  }
+
   /** Earliest cosignature timestamp per assessment id (the AssessmentView carries a single `cosignedAt`). */
   async function cosignedMap(tx: DbClient, ids: readonly string[]): Promise<Map<string, string>> {
     const map = new Map<string, string>();
@@ -334,14 +496,182 @@ export function createDbAssessmentRouteService(db: DbClient): AssessmentRouteSer
       });
     },
 
-    // ── Writes — the M9L §10 Drizzle pipeline. Fail-closed 501 until then. ──────────────────────────
-    recordAssessment: async () => notImpl(),
-    correctAssessment: async () => notImpl(),
-    cosign: async () => notImpl(),
-    acknowledgeChange: async () => notImpl(),
-    createLicense: async () => notImpl(),
-    updateLicense: async () => notImpl(),
-    updatePolicy: async () => notImpl(),
+    // ── Record (§10 pipeline: policy/license/discipline gate → server score → insert) ────────────────
+    async recordAssessment(organizationId, actorUserId, patientId, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const scored = await scoredForWrite(t, organizationId, args);
+        return insertScale(t, organizationId, actorUserId, patientId, args, scored, null);
+      });
+    },
+
+    // ── Correct (§2.2.1 append-only amendment; the DB trigger supersedes the target) ─────────────────
+    async correctAssessment(organizationId, actorUserId, patientId, targetId, ifVersion, args: CorrectAssessmentArgs) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [target] = (await t.select(assessmentCols).from(CA).where(eq(CA.id, targetId)).limit(1)) as AssessmentRow[];
+        if (!target || target.patientId !== patientId) throw new NotFoundError("assessment");
+        // §2.3 — validate the correction against its target (active / mismatch / stale-version → §4.4 codes).
+        const plan = planCorrection(
+          {
+            id: target.id as never,
+            scaleType: target.scaleType,
+            patientId: target.patientId as never,
+            admissionId: target.admissionId as never,
+            status: target.status,
+            version: Number(target.version),
+          },
+          {
+            scaleType: args.scaleType,
+            patientId: patientId as never,
+            admissionId: args.admissionId as never,
+            expectedTargetVersion: ifVersion,
+          },
+        );
+        const scored = await scoredForWrite(t, organizationId, args);
+        // The AFTER-INSERT `clinical_assessment_supersede_on_correction_trg` flips the target to
+        // `superseded` + bumps its version; we only insert the amendment (reusing target.captured_at).
+        const view = await insertScale(t, organizationId, actorUserId, patientId, args, scored, {
+          correctsAssessmentId: plan.supersedeTargetId as string,
+          correctionReason: args.correctionReason,
+          capturedAt: new Date(toIso(target.capturedAt)),
+          version: plan.newVersion,
+        });
+        await emit(t, organizationId, "m9.assessment.amended", "clinical_assessment", target.id, {
+          supersededId: target.id,
+          correctingId: view.id,
+          scaleType: args.scaleType,
+          reason: args.correctionReason,
+        });
+        return view;
+      });
+    },
+
+    // ── Cosign (§7.4 LPN cosignature attest → assessment_cosignature row) ─────────────────────────────
+    async cosign(organizationId, actorUserId, id, cosignerDiscipline) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [r] = (await t.select(assessmentCols).from(CA).where(eq(CA.id, id)).limit(1)) as AssessmentRow[];
+        if (!r) throw new NotFoundError("assessment");
+        const [existing] = await t
+          .select({ id: COS.id })
+          .from(COS)
+          .where(eq(COS.clinicalAssessmentId, id))
+          .limit(1);
+        // §7.4 / §6 — requires-cosign / not-already / eligible-and-not-recorder (§4.4 codes).
+        planCosignAttest({
+          clinicalAssessmentId: r.id,
+          cosignRequired: r.cosignRequired,
+          alreadyCosigned: existing !== undefined,
+          cosignerDiscipline,
+          cosignerIsRecorder: r.capturedByMembershipId === actorUserId,
+        });
+        await t.insert(COS).values({
+          organizationId,
+          clinicalAssessmentId: id,
+          cosignerMembershipId: actorUserId,
+          cosignerRole: cosignerDiscipline,
+          attestationText: COSIGN_ATTESTATION,
+        });
+        return { assessmentId: id, cosigned: true };
+      });
+    },
+
+    // ── Acknowledge a significant-change event (§2.2.2) ───────────────────────────────────────────────
+    async acknowledgeChange(organizationId, eventId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [ev] = await t
+          .select({ status: SCE.status })
+          .from(SCE)
+          .where(eq(SCE.id, eventId))
+          .limit(1);
+        if (!ev) throw new NotFoundError("significant_change_event");
+        const status = transitionSignificantChange(ev.status, { type: "acknowledge" });
+        await t
+          .update(SCE)
+          .set({ status, acknowledgedAt: new Date() })
+          .where(eq(SCE.id, eventId));
+        return { status };
+      });
+    },
+
+    // ── License / policy admin (org-level config; no PHI) ─────────────────────────────────────────────
+    async createLicense(organizationId, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const row = firstOrThrow(
+          await t
+            .insert(LIC)
+            .values({
+              organizationId,
+              scaleType: args.scaleType,
+              licenseHolder: args.vendor,
+              effectiveDate: args.effectiveDate,
+              expiresAt: args.expiresAt,
+            })
+            .returning({ id: LIC.id, effectiveDate: LIC.effectiveDate, expiresAt: LIC.expiresAt }),
+          "scale_license insert returned no row",
+        );
+        return {
+          id: row.id,
+          scaleType: args.scaleType,
+          vendor: args.vendor,
+          effectiveDate: row.effectiveDate,
+          expiresAt: row.expiresAt,
+          seats: args.seats ?? null, // scale_license has no `seats` column — echo the input only
+          status: computeScaleLicenseStatus({ effectiveDate: row.effectiveDate, expiresAt: row.expiresAt }, today()),
+        };
+      });
+    },
+    async updateLicense(organizationId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [existing] = await t.select({ id: LIC.id }).from(LIC).where(eq(LIC.id, id)).limit(1);
+        if (!existing) throw new NotFoundError("scale_license");
+        const row = firstOrThrow(
+          await t
+            .update(LIC)
+            .set({
+              ...(args.vendor !== undefined ? { licenseHolder: args.vendor } : {}),
+              ...(args.effectiveDate !== undefined ? { effectiveDate: args.effectiveDate } : {}),
+              ...(args.expiresAt !== undefined ? { expiresAt: args.expiresAt } : {}),
+            })
+            .where(eq(LIC.id, id))
+            .returning({
+              id: LIC.id,
+              scaleType: LIC.scaleType,
+              licenseHolder: LIC.licenseHolder,
+              effectiveDate: LIC.effectiveDate,
+              expiresAt: LIC.expiresAt,
+            }),
+          "scale_license update matched no row",
+        );
+        return {
+          id: row.id,
+          scaleType: row.scaleType,
+          vendor: row.licenseHolder,
+          effectiveDate: row.effectiveDate,
+          expiresAt: row.expiresAt,
+          seats: args.seats ?? null,
+          status: computeScaleLicenseStatus({ effectiveDate: row.effectiveDate, expiresAt: row.expiresAt }, today()),
+        };
+      });
+    },
+    async updatePolicy(organizationId, scaleType, enabled) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        // One policy row per (org, scale) — upsert on the `scale_policy_per_org_scale_uq` unique.
+        await t
+          .insert(POL)
+          .values({ organizationId, scaleType, enabled })
+          .onConflictDoUpdate({
+            target: [POL.organizationId, POL.scaleType],
+            set: { enabled, updatedAt: new Date() },
+          });
+        return { scaleType, enabled };
+      });
+    },
   };
 }
 
