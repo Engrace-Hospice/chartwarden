@@ -29,22 +29,30 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerSchedulingAbacPredicates as _registerM17Abac } from "./abac-predicates";
 import { registerSchedulingRoutes as _registerM17Routes } from "./routes/scheduling-routes";
-import { createDbSchedulingBackend } from "./scheduling-route-service-db";
+import {
+  type SchedulingWriteOutboxPort,
+  createDbSchedulingBackend,
+} from "./scheduling-route-service-db";
 
 /**
  * M17L — mount the M17 scheduling routes over the PRODUCTION Drizzle backend (RLS-scoped under
  * `withOrgContext`). The scaffold uses ONE object as BOTH the route service AND the §4.7 ABAC resolver, so a
- * single `createDbSchedulingBackend(db)` serves both registrations. Reads are live (visit lists / day-week-map
- * views, proposal inbox, recurring cadences, availability, time-off, portal upcoming, metrics); writes fail-
- * closed 501 until the M17L write lifecycle lands. Replaces the in-memory clinical-core scaffold mount for M17.
+ * single `createDbSchedulingBackend(db, outbox)` serves both registrations. Reads AND the full write lifecycle
+ * (the visit machine, proposals, recurring policies, availability, time-off, route-optimisation degraded path)
+ * are live over Drizzle+RLS; every mutation emits its strict `m17.*` catalog payload on the bound transactional
+ * `outbox`. Replaces the in-memory clinical-core scaffold mount for M17.
  */
-export function mountSchedulingRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbSchedulingBackend(db);
+export function mountSchedulingRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: SchedulingWriteOutboxPort,
+): void {
+  const backend = createDbSchedulingBackend(db, outbox);
   _registerM17Abac({ resolver: backend });
   _registerM17Routes(app, { service: backend });
 }
 
-export { createDbSchedulingBackend } from "./scheduling-route-service-db";
+export { type SchedulingWriteOutboxPort, createDbSchedulingBackend } from "./scheduling-route-service-db";
 export { M17_OUTBOX_EVENTS } from "./events-by-m17";
 export { M17_ALERT_PAYLOADS } from "./alerts-by-m17";
 export {
