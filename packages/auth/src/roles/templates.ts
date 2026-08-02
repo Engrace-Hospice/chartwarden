@@ -51,7 +51,105 @@ export interface RoleTemplate {
   description: string;
   /** CoP-required permission floor (minimum — may not be stripped below). */
   floor: readonly string[];
+  /**
+   * The default permission keys this template GRANTS out of the box (the seed a fresh org/platform
+   * catalog materializes into `role_permission`). Distinct from `floor` (the un-strippable minimum a
+   * `system_locked` role must retain): a non-locked template carries no floor but may still carry a
+   * default grant — e.g. the §4.7 platform-ops roles below bind the M35 `billing_admin.*` keys here.
+   * Absent → the template grants nothing by default (the historical behavior for the ≈60
+   * `system_default` templates whose grants are assigned per-org at seed time). Every `grants` key is a
+   * permission-key string owned by some module's catalog fragment (typed `readonly string[]`, not the
+   * M3-only `PermissionKey` union), mirroring `floor`.
+   */
+  grants?: readonly string[];
 }
+
+// ── Platform-ops role catalog (§4.7, platform-owned) ───────────────────────────────────────────────────
+//
+// M35 (Subscription Billing) gates its cross-tenant `/api/admin` surface on the `platform_billing_scope`
+// ABAC predicate, which admits any caller carrying a platform-ops role. Those roles are platform-owned (they
+// live in the platform catalog, not a tenant's), so they are registered HERE — the single role catalog every
+// module binds to — and M35 re-derives its `PLATFORM_BILLING_ROLES` from `PLATFORM_OPS_ROLE_KEYS` so the ABAC
+// gate's role list and the catalog can never drift.
+
+/** The six §4.7 platform-ops role keys (the `platform_billing_scope` admit-set). */
+export const PLATFORM_OPS_ROLE_KEYS = [
+  "platform_owner",
+  "platform_admin",
+  "platform_billing_admin",
+  "platform_support_t2",
+  "platform_sales",
+  "platform_ops",
+] as const;
+
+/** Union of the platform-ops role keys. */
+export type PlatformOpsRoleKey = (typeof PLATFORM_OPS_ROLE_KEYS)[number];
+
+// The seventeen M35 `billing_admin.*` permission keys (catalog `category: "billing_admin"`), split by the
+// §4.7 binding rule this wave applies (see ADMIN-T02):
+//   • READ keys        → support / billing / admin / owner   (the read-only ops surface)
+//   • WRITE/step-up    → billing / admin / owner             (mutating ops, each also §D14 step-up-gated)
+//   • refund.approve   → admin / owner ONLY                  (kept DISJOINT from `refund.request` so the
+//                                                             §4.8 four-eyes approver ≠ requester rule stays
+//                                                             assignable — a `platform_billing_admin` may
+//                                                             REQUEST a refund but never self-APPROVE it)
+/** The 7 read keys of the M35 `billing_admin.*` surface. */
+export const M35_BILLING_ADMIN_READ_KEYS = [
+  "plan.admin.read",
+  "subscription.admin.read",
+  "refund.read",
+  "promo.admin.read",
+  "revenue.admin.read",
+  "usage.admin.read",
+  "stripe.admin.read",
+] as const;
+/** The 9 mutating (write / override / request / apply / revoke / replay) `billing_admin.*` keys. */
+export const M35_BILLING_ADMIN_WRITE_KEYS = [
+  "plan.admin.write",
+  "subscription.admin.write",
+  "dunning.admin.override",
+  "refund.request",
+  "promo.admin.write",
+  "promo.admin.apply",
+  "promo.admin.revoke",
+  "revenue.admin.write",
+  "stripe.admin.replay",
+] as const;
+/** The single four-eyes-gated approval key, kept disjoint from `refund.request`. */
+export const M35_REFUND_APPROVE_KEY = "refund.approve" as const;
+
+/** The role sets each key band binds to (owner ⊇ admin ⊇ billing ⊇ support in read reach). */
+const PLATFORM_READ_ROLES: readonly PlatformOpsRoleKey[] = [
+  "platform_support_t2",
+  "platform_billing_admin",
+  "platform_admin",
+  "platform_owner",
+];
+const PLATFORM_WRITE_ROLES: readonly PlatformOpsRoleKey[] = [
+  "platform_billing_admin",
+  "platform_admin",
+  "platform_owner",
+];
+const PLATFORM_APPROVE_ROLES: readonly PlatformOpsRoleKey[] = ["platform_admin", "platform_owner"];
+
+/** Build a platform-ops role's default `billing_admin.*` grant per the §4.7 binding rule above. */
+function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
+  const keys: string[] = [];
+  if (PLATFORM_READ_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_READ_KEYS);
+  if (PLATFORM_WRITE_ROLES.includes(role)) keys.push(...M35_BILLING_ADMIN_WRITE_KEYS);
+  if (PLATFORM_APPROVE_ROLES.includes(role)) keys.push(M35_REFUND_APPROVE_KEY);
+  return keys;
+}
+
+/**
+ * Default `billing_admin.*` grant per platform-ops role (§4.7). `platform_sales` and `platform_ops` carry
+ * NO `billing_admin.*` keys under this wave's binding rule — they are still registered (they satisfy the
+ * `platform_billing_scope` ABAC gate) but hold no RBAC grant here, so they fail closed at `requirePermission`
+ * until a later wave binds their surface. `platform_billing_admin` deliberately lacks `refund.approve`.
+ */
+export const PLATFORM_OPS_ROLE_GRANTS = Object.fromEntries(
+  PLATFORM_OPS_ROLE_KEYS.map((role) => [role, platformOpsGrantsFor(role)]),
+) as Record<PlatformOpsRoleKey, readonly string[]>;
 
 /**
  * The `system_locked` permission floor (spec §3.4.1, M03-F06). Each CoP-required role
@@ -183,6 +281,79 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     description: "§164.308(a)(2) security official.",
     floor: SYSTEM_LOCKED_FLOORS.hipaa_security_officer,
   },
+  // ── §4.7 platform-ops roles (platform_staff, category K). Non-locked (no CoP floor); each carries its
+  // default M35 `billing_admin.*` grant via `PLATFORM_OPS_ROLE_GRANTS`. `scopeLevel` is `organization` —
+  // the broadest `scope_level` enum value (there is no platform-wide scope), which the platform console's
+  // ABAC gate (`platform_billing_scope`) confines to the cross-tenant admin surface, not any one org.
+  {
+    key: "platform_owner",
+    name: "Platform Owner",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description: "Platform-ops owner — full billing-admin surface incl. refund approval and MRR/ARR.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_owner,
+  },
+  {
+    key: "platform_admin",
+    name: "Platform Admin",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description: "Platform-ops admin — full billing-admin surface incl. refund approval (four-eyes approver).",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_admin,
+  },
+  {
+    key: "platform_billing_admin",
+    name: "Platform Billing Admin",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description:
+      "Platform-ops billing admin — reads + mutates the billing surface and REQUESTS refunds; cannot self-approve them (§4.8 four-eyes).",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_billing_admin,
+  },
+  {
+    key: "platform_support_t2",
+    name: "Platform Support (Tier 2)",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description: "Platform-ops tier-2 support — read-only across the billing-admin surface.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_support_t2,
+  },
+  {
+    key: "platform_sales",
+    name: "Platform Sales",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description:
+      "Platform-ops sales — satisfies `platform_billing_scope`; no default `billing_admin.*` grant this wave.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_sales,
+  },
+  {
+    key: "platform_ops",
+    name: "Platform Operations",
+    category: "platform_staff",
+    scopeLevel: "organization",
+    systemDefault: true,
+    systemLocked: false,
+    description:
+      "Platform-ops operations — satisfies `platform_billing_scope`; no default `billing_admin.*` grant this wave.",
+    floor: [],
+    grants: PLATFORM_OPS_ROLE_GRANTS.platform_ops,
+  },
 ] as const;
 
 /** True when `roleKey` names a CoP-required `system_locked` role. */
@@ -214,4 +385,32 @@ export function floorViolations(
 /** True when `proposedKeys` retains every floor permission of `roleKey` (§3.4.1). */
 export function satisfiesFloor(roleKey: string, proposedKeys: readonly string[]): boolean {
   return floorViolations(roleKey, proposedKeys).length === 0;
+}
+
+/**
+ * The default role keys that GRANT `permissionKey` out of the box — the union of every template whose
+ * `grants` (or `system_locked` `floor`) includes it. Used to prove no permission key is orphaned (each
+ * `billing_admin.*` key must resolve to ≥1 role, else the whole surface is 403-for-all).
+ */
+export function rolesForPermission(permissionKey: string): readonly string[] {
+  return ROLE_TEMPLATES.filter(
+    (t) => (t.grants ?? []).includes(permissionKey) || t.floor.includes(permissionKey),
+  ).map((t) => t.key);
+}
+
+/** A single seedable `role_permission` grant row: which platform-ops role holds which permission key. */
+export interface RolePermissionSeedRow {
+  roleKey: PlatformOpsRoleKey;
+  permissionKey: string;
+}
+
+/**
+ * The platform-ops role→permission grant seed (§4.7). Flattens `PLATFORM_OPS_ROLE_GRANTS` into the
+ * `(roleKey, permissionKey)` rows a platform-catalog seed materializes into `role_permission` — the
+ * platform analogue of the per-org grant the dev seed writes for tenant roles.
+ */
+export function platformOpsRolePermissionSeedRows(): RolePermissionSeedRow[] {
+  return PLATFORM_OPS_ROLE_KEYS.flatMap((roleKey) =>
+    PLATFORM_OPS_ROLE_GRANTS[roleKey].map((permissionKey) => ({ roleKey, permissionKey })),
+  );
 }
