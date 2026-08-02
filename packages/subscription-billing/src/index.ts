@@ -10,9 +10,20 @@
 // M35-T01 scope: the §3.3 enum VALUE tuples (runtime source of truth, `satisfies`-pinned to the leaf
 // unions) + the pure §2 domain kernels (the subscription / dunning / refund / invoice transition graphs,
 // the §2.3 penny-exact validation predicates, and the §3.5 table-scope + §3.6 audit-posture catalogs).
-// No Drizzle schema (T02), no Stripe SDK (T04), no seams registration (T05), no Fastify routes (T06) yet.
+//
+// M35-T03 scope (adds `./pseudonym` + `./service`): the §2 lifecycle SERVICE cores over injected store
+// ports — the §2.2 D7 subscription status graph, the §2.2 Stripe-driven invoice mirror, the §D5/D6 usage-
+// metering + HMAC-pseudonymized active-period counters, the §D18 MRR/ARR monthly-snapshot computation,
+// and the §3.7/M35-F06 platform-retention copy-then-delete transfer. Every core is PURE (M28-T03 idiom):
+// the ports abstract the Drizzle stores + §2.5 row locks the routes/workers own; each mutation returns its
+// §2.4 outbox intents for the caller to publish. Still deferred: Stripe SDK (T04), seam registration (T05),
+// Fastify routes + eraser/store wiring (T06).
 
 // §3.3 enum value tuples (pgEnum seeds + §2 domain iteration source of truth).
 export * from "./enums";
 // §2 pure lifecycle/validation kernels + §3.5/§3.6 table catalogs.
 export * from "./domain";
+// §D6 HMAC pseudonym computation (M35-T03).
+export * from "./pseudonym/hasher";
+// §2 pure lifecycle SERVICES over injected ports (M35-T03).
+export * from "./service";
