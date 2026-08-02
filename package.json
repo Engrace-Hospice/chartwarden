@@ -46,6 +46,7 @@
     "test:m6:t4:write:live": "vitest run apps/backend/__tests__/m6-discharge-f2f-loc-write.live.test.ts",
     "test:m6:t5:write:live": "vitest run apps/backend/__tests__/m6-compliance-window-write.live.test.ts",
     "test:m7:read:live": "vitest run apps/backend/__tests__/m7-care-plan-read-service.live.test.ts",
+    "test:m7:write:live": "vitest run apps/backend/__tests__/m7-care-plan-write.live.test.ts",
     "test:m9:read:live": "vitest run apps/backend/__tests__/m9-assessments-read-service.live.test.ts",
     "test:m10:read:live": "vitest run apps/backend/__tests__/m10-hope-read-service.live.test.ts",
     "test:m11:read:live": "vitest run apps/backend/__tests__/m11-orders-read-service.live.test.ts",
