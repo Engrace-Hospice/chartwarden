@@ -7,23 +7,23 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerDoseSpotAbacPredicates as _registerM12Abac } from "./abac-predicates";
-import { createDbDoseSpotBackend } from "./dosespot-route-service-db";
+import { type DoseSpotWriteOutboxPort, createDbDoseSpotBackend } from "./dosespot-route-service-db";
 import { registerDoseSpotRoutes as _registerM12Routes } from "./routes/dosespot-routes";
 
 /**
- * M12L-T01 — mount the M12 DoseSpot routes over the PRODUCTION Drizzle backend (service + §4.7 ABAC resolver
- * in one object, RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are
- * live (order list + detail, active-medications, transmission status, refill inbox, prescriber roster);
- * writes fail-closed 501 until the M12L-T02+ Drizzle write lifecycle lands (EPCS stays OFF, D18). Replaces
+ * M12L — mount the M12 DoseSpot routes over the PRODUCTION Drizzle backend (service + §4.7 ABAC resolver in
+ * one object, RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads + the
+ * full write lifecycle are live over Drizzle+RLS; every mutation emits `m12.*` on the bound transactional
+ * `outbox`. EPCS stays OFF (D18) — the controlled-substance branch fail-closes at requestSignature. Replaces
  * the in-memory clinical-core scaffold mount for M12.
  */
-export function mountDoseSpotRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbDoseSpotBackend(db);
+export function mountDoseSpotRoutes(app: FastifyInstance, db: DbClient, outbox?: DoseSpotWriteOutboxPort): void {
+  const backend = createDbDoseSpotBackend(db, outbox);
   _registerM12Abac({ resolver: backend });
   _registerM12Routes(app, { service: backend });
 }
 
-export { createDbDoseSpotBackend } from "./dosespot-route-service-db";
+export { type DoseSpotWriteOutboxPort, createDbDoseSpotBackend } from "./dosespot-route-service-db";
 export {
   type ComfortKitTimeline,
   type CostBasisRow,

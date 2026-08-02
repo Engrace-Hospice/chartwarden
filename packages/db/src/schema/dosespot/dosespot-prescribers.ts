@@ -25,7 +25,8 @@ export const dosespotPrescribers = pgTable(
     externalPhysicianMdmId: uuid("external_physician_mdm_id"), // M40 (app-validated; no FK)
 
     dosespotPrescriberId: text("dosespot_prescriber_id"),
-    npi: text("npi").notNull(),
+    // NOT NULL relaxed in mig 0132 (M12L): `enrollPrescriber` threads no NPI (captured at IAL2 proofing).
+    npi: text("npi"),
     dea: text("dea"),
     deaAuthorizedSchedules: text("dea_authorized_schedules").array(),
 

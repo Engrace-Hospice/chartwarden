@@ -53,6 +53,7 @@
     "test:m10:write:live": "vitest run apps/backend/__tests__/m10-hope-write.live.test.ts",
     "test:m11:read:live": "vitest run apps/backend/__tests__/m11-orders-read-service.live.test.ts",
     "test:m11:write:live": "vitest run apps/backend/__tests__/m11-orders-write.live.test.ts",
+    "test:m12:write:live": "vitest run apps/backend/__tests__/m12-dosespot-write.live.test.ts",
     "test:m12:read:live": "vitest run apps/backend/__tests__/m12-dosespot-read-service.live.test.ts",
     "test:m13:read:live": "vitest run apps/backend/__tests__/m13-emar-read-service.live.test.ts",
     "test:m14:read:live": "vitest run apps/backend/__tests__/m14-idg-read-service.live.test.ts",
