@@ -200,9 +200,19 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
     expect(rows.every((r) => r.id !== seeded[ORG_A].meeting)).toBe(true);
   });
 
-  it("writes fail-closed 501 until the M14L write lifecycle lands", async () => {
-    await expect(
-      service.createRecurringPolicy(ORG_A, USER, { locationId: seeded[ORG_A].location, cadenceDays: 14 }),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("writes are live (M14L): createRecurringPolicy persists + updateRecurringPolicy round-trips", async () => {
+    const created = await service.createRecurringPolicy(ORG_A, MEMBERSHIP, {
+      locationId: seeded[ORG_A].location,
+      cadenceDays: 14,
+    });
+    expect(created.cadenceDays).toBe(14);
+    expect(created.active).toBe(true);
+    const updated = await service.updateRecurringPolicy(ORG_A, MEMBERSHIP, created.id, {
+      locationId: seeded[ORG_A].location,
+      cadenceDays: 7,
+      active: false,
+    });
+    expect(updated.cadenceDays).toBe(7);
+    expect(updated.active).toBe(false);
   });
 });
