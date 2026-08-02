@@ -28,6 +28,7 @@ export * from "./scheduling";
 export * from "./evv";
 export * from "./documents";
 export * from "./portal";
+export * from "./subscription-billing";
 export * from "./screen-registry";
 export * from "./errors";
 export * from "./http-context";

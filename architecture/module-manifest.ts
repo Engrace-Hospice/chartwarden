@@ -1046,7 +1046,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 35,
     name: "Subscription Billing",
-    codePaths: ["apps/backend/src/modules/35-subscription", "packages/subscription-billing"],
+    codePaths: [
+      "apps/backend/src/modules/35-subscription",
+      "apps/web/src/modules/35-subscription", // Track B web slice (ADR-0030, M35-T01) — scaffolded 1:1
+      "packages/subscription-billing",
+    ],
     dependsOn: [],
     /* ADR-0025: M34<->M35 seam-based both ways (no edge); minimal edge set finalized in M35's ADR-0005 D5 pass */ ownedTables:
       [
