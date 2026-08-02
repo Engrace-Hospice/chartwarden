@@ -13,9 +13,13 @@
 // core with `nowMs`/keys INJECTED (the M13 witness-token / M12 webhook-verify idiom) — the routes (T08)
 // own the JWKS fetch, the Valkey counting, the tenant-DEK decrypt, and the snapshot persistence.
 //
-// Later M28 tasks add over this base: the `FhirMapper`/`FhirSearchTranslator` projections (T04), the
-// SUD/AI-boundary enforcement (T05), the published/consumed seams (T06), and the bulk-export/inbound
-// workers (T07). Each extends the vocabulary this file re-exports.
+// M28-T04 adds the read-only US Core R4 PROJECTION layer over this base: the `FhirMapper` /
+// `FhirSearchTranslator` contracts (§4.5 D6), the single-entity mappers (Patient/Encounter/Condition/
+// Goal/CarePlan + MedicationRequest/MedicationStatement) and the multi-source `DiagnosticReport`
+// projector with its child-Observation + D20 SUD-redaction pieces (§4.11), and the `?patient=:id` search
+// (W-FHIR-14). Every projection is PURE with its reader deps INJECTED — the routes (T08) supply the real
+// seam adapters; T05 adds the SUD/AI-boundary egress enforcement, T06 the published/consumed seam bind,
+// T07 the bulk-export/inbound workers + HMAC-signed cursor.
 
 export * from "./lifecycle";
 export * from "./auth/scopes";
@@ -25,3 +29,6 @@ export * from "./auth/session";
 export * from "./capability/statement";
 export * from "./rate-limit/sliding-window";
 export * from "./domain/validation";
+export * from "./interfaces/mapper";
+export * from "./interfaces/search-translator";
+export * from "./r4";
