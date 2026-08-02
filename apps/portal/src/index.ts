@@ -1,2 +1,3 @@
-// @wardenx/portal — Phase 0 placeholder (no business logic; see PHASE_0_SCAFFOLD_PLAN.md).
-export {};
+// @wardenx/portal — Module 31 Patient/Family Portal PWA (M31-T01 layout).
+// Domain-contract re-exports; the §5.1 screens land in M31-T08.
+export * from "./domain";
