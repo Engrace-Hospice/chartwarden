@@ -189,26 +189,21 @@ describe.skipIf(!DB_URL)("M17 Drizzle read service — LIVE Postgres (M17L)", ()
     expect(await service.getAvailability(ORG_B, seeded[ORG_A].membership)).toBeNull();
   });
 
-  it("writes fail-closed 501 until the M17L write lifecycle lands", async () => {
-    expect(() =>
-      service.createVisit(ORG_A, "", {
-        patientId: PATIENT,
-        admissionId: ADMISSION,
-        patientAddressId: null,
-        externalFacilityId: null,
-        assignedMembershipId: seeded[ORG_A].membership,
-        visitPurpose: "routine_visit",
-        visitSetting: "patient_home",
-        scheduledStartedAt: new Date().toISOString(),
-        scheduledEndedAt: new Date(Date.now() + 3_600_000).toISOString(),
-      } as never),
-    ).toThrow(expect.objectContaining({ statusCode: 501 }));
-
-    await expect(
-      service.optimizeDay(ORG_A, "", {
-        membershipId: seeded[ORG_A].membership,
-        serviceDate: new Date().toISOString().slice(0, 10),
-      }),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("the M17L write lifecycle persists over RLS: requestTimeOff round-trips through listTimeOff", async () => {
+    // The write lifecycle is live (no route at 501). A `time_off` write is clinician-scoped (nullable siting),
+    // so it needs no membership tenancy defaults — the smoke check the full write suite (m17-scheduling-write)
+    // exhausts. Prove one mutation commits under RLS and reads back scoped to the tenant.
+    const created = await service.requestTimeOff(ORG_A, seeded[ORG_A].membership, {
+      membershipId: seeded[ORG_A].membership,
+      kind: "sick",
+      startsAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+      endsAt: new Date(Date.now() + 8 * 86_400_000).toISOString(),
+    });
+    expect(created.state).toBe("requested");
+    const listed = await service.listTimeOff(ORG_A, { membership: seeded[ORG_A].membership });
+    expect(listed.some((t) => t.id === created.id && t.kind === "sick")).toBe(true);
+    // RLS: org B cannot see org A's freshly-written PTO row.
+    const bList = await service.listTimeOff(ORG_B, {});
+    expect(bList.every((t) => t.id !== created.id)).toBe(true);
   });
 });
