@@ -17,6 +17,7 @@ import {
   computeIdgCadenceAdherence,
   computeLateEncounterEntryRate,
   computeMissedDoseRate,
+  computePrnEffectivenessDocumentedRate,
   computeVerbalOrderSignatureOnTime,
   computeVisitOnTimeRate,
 } from "@wardenx/quality";
@@ -40,7 +41,10 @@ const seamsWith = (
   signedEncounters: { async lateEntryCountsForOrg() { return lateEntry; } },
   orders: { async getVerbalTimelinessCountsForOrg() { return lateEntry; } },
   carePlan: { async fifteenDayCycleCountsForOrg() { return lateEntry; } },
-  administrations: { async getMissedDoseCountsForOrg() { return lateEntry; } },
+  administrations: {
+    async getMissedDoseCountsForOrg() { return lateEntry; },
+    async getPrnEffectivenessCountsForOrg() { return lateEntry; },
+  },
   idg: { async getCadenceCountsForOrg() { return lateEntry; } },
 });
 
@@ -176,10 +180,32 @@ describe("M30 operational measure inputs — counts, not rates", () => {
     expect(result.bandColor).not.toBe("insufficient_n");
   });
 
+  it("shapes M13's org-level PRN-effectiveness tally (M9-reassessment join) into its calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("prn_effectiveness_documented_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 42, denominator: 50 }),
+    );
+    expect(input).toMatchObject({ prnAdministrations: 50, prnWithEffectivenessDocumented: 42 });
+    expect(computePrnEffectivenessDocumentedRate(input as never).rate).toBeCloseTo(42 / 50);
+  });
+
+  it("PRN-effectiveness with no obligations in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("prn_effectiveness_documented_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computePrnEffectivenessDocumentedRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.bandColor).toBe("insufficient_n");
+    expect(result.rate).toBeNull();
+  });
+
   it("refuses a measure code it does not shape rather than computing on an empty input", async () => {
+    // `opioid_on_admission_rate` is a real operational measure that is NOT wired here (M38 terminology gap),
+    // so the resolver must refuse it rather than fabricate an input.
     await expect(
       resolveOperationalMeasureInput(
-        REQUEST("prn_effectiveness_documented_rate"),
+        REQUEST("opioid_on_admission_rate"),
         seamsWith({ numerator: 1, denominator: 2 }),
       ),
     ).rejects.toThrow();

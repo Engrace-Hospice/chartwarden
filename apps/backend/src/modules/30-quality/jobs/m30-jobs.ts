@@ -339,6 +339,12 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "lte",
     label: "missed scheduled-dose rate (platform default; lower is better)",
   },
+  // §2.6 — a PRN administration should carry a follow-up effectiveness reassessment; higher is better.
+  prn_effectiveness_documented_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "PRN effectiveness-documented rate (platform default)",
+  },
   // CoP 418.56 — the IDG must meet on its scheduled cadence.
   idg_cadence_adherence: {
     value: 0.95,
@@ -379,9 +385,13 @@ interface CarePlanCycleCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
-/** The M13 org-level missed-dose tally, as this resolver uses it. */
+/** The M13 org-level administration tallies this resolver uses (missed-dose + PRN-effectiveness). */
 interface MissedDoseCountsView {
   getMissedDoseCountsForOrg(
+    orgId: string,
+    window: { from: string; to: string },
+  ): Promise<{ numerator: number; denominator: number }>;
+  getPrnEffectivenessCountsForOrg(
     orgId: string,
     window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
@@ -411,6 +421,7 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "verbal_order_signature_on_time",
   "care_plan_15_day_adherence",
   "missed_dose_rate",
+  "prn_effectiveness_documented_rate",
   "idg_cadence_adherence",
 ]);
 
@@ -478,6 +489,15 @@ export async function resolveOperationalMeasureInput(
     case "missed_dose_rate": {
       const c = await seams.administrations.getMissedDoseCountsForOrg(organizationId, window);
       return { ...base, scheduledDoses: c.denominator, missedDoses: c.numerator, threshold };
+    }
+    case "prn_effectiveness_documented_rate": {
+      const c = await seams.administrations.getPrnEffectivenessCountsForOrg(organizationId, window);
+      return {
+        ...base,
+        prnAdministrations: c.denominator,
+        prnWithEffectivenessDocumented: c.numerator,
+        threshold,
+      };
     }
     case "care_plan_15_day_adherence": {
       const c = await seams.carePlan.fifteenDayCycleCountsForOrg(organizationId, window);

@@ -16,6 +16,7 @@ import type {
   AdmissionId,
   PatientId,
   ReconciliationWorksheetDto,
+  ScaleType,
   ScheduledDoseStatus,
 } from "@wardenx/types";
 
@@ -24,6 +25,17 @@ import type {
 export interface PrnEffectivenessRow {
   readonly administeredAt: string;
   readonly hasReassessment: boolean;
+}
+
+/** One PRN administration that CARRIES a reassessment obligation (a recommended scale + a due-at), over an
+ * org window. This is M13-internal data (patient rows) the PROVIDER joins against M9's ScaleSeriesProvider to
+ * decide `hasReassessment` — only the aggregate count crosses the M1 seam to M30 (D6). `administeredAt` is the
+ * coverage-window START, `reassessmentDueAt` its END (and the obligation timestamp the org window keys on). */
+export interface PrnReassessmentObligation {
+  readonly patientId: PatientId;
+  readonly scaleType: ScaleType;
+  readonly administeredAt: string;
+  readonly reassessmentDueAt: string;
 }
 
 /** One materialized `scheduled_dose` row's outcome (the missed-dose-rate-by-shift measure input). `cancelled`
@@ -90,6 +102,17 @@ export interface EmarSeamStore {
     organizationId: string,
     window: { from: string; to: string },
   ): Promise<{ numerator: number; denominator: number }>;
+  /**
+   * ORG-LEVEL PRN reassessment obligations over a DUE-AT window — the raw M13 rows behind M30's
+   * `prn_effectiveness_documented_rate` (a PRN administration with a recommended reassessment scale, whose
+   * reassessment falls due inside the window). The PROVIDER joins each against M9's ScaleSeriesProvider to
+   * decide coverage, so ONLY the aggregate count crosses the M1 seam (D6). Rows with no recommended scale
+   * carry no obligation and are excluded (they can never be "documented").
+   */
+  prnReassessmentObligationsForOrg(
+    organizationId: string,
+    window: { from: string; to: string },
+  ): Promise<ReadonlyArray<PrnReassessmentObligation>>;
   comfortKitTimelineForAdmission(
     admissionId: AdmissionId,
   ): Promise<ComfortKitAdministrationTimeline | null>;
@@ -120,6 +143,8 @@ export interface EmarSeamSeed {
   readonly administrations?: readonly AdministrationDto[];
   /** PRN-effectiveness rows (the measure numerator/denominator inputs), keyed by `patientId`. */
   readonly prnEffectiveness?: readonly PrnEffectivenessSeedRow[];
+  /** PRN reassessment obligations (the provider joins these vs M9 to produce the org counts). */
+  readonly prnObligations?: readonly PrnReassessmentObligation[];
   /** Materialized scheduled-dose outcomes (the missed-dose-rate inputs), keyed by `patientId`. */
   readonly doseSchedule?: readonly DoseScheduleSeedRow[];
   /** Comfort-kit timelines keyed by their `admissionId`. */
@@ -145,6 +170,7 @@ export function createInMemoryEmarSeamStore(seed: EmarSeamSeed = {}): {
     list.push({ administeredAt: r.administeredAt, hasReassessment: r.hasReassessment });
     prnByPatient.set(r.patientId, list);
   }
+  const prnObligations = [...(seed.prnObligations ?? [])];
   const scheduleByPatient = new Map<PatientId, DoseScheduleRow[]>();
   for (const r of seed.doseSchedule ?? []) {
     const list = scheduleByPatient.get(r.patientId) ?? [];
@@ -186,6 +212,12 @@ export function createInMemoryEmarSeamStore(seed: EmarSeamSeed = {}): {
       /** Slice default: 0/0 — M30's kernel SUPPRESSES rather than scoring zero missed doses. */
       async missedDoseCountsForOrg() {
         return { numerator: 0, denominator: 0 };
+      },
+      async prnReassessmentObligationsForOrg(_organizationId, window) {
+        // Obligation keys on the reassessment-due instant falling inside [from, to).
+        return prnObligations.filter(
+          (o) => o.reassessmentDueAt >= window.from && o.reassessmentDueAt < window.to,
+        );
       },
       async comfortKitTimelineForAdmission(admissionId) {
         return comfortKitTimelines.get(admissionId) ?? null;
