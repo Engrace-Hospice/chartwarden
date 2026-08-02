@@ -159,9 +159,10 @@ describe.skipIf(!DB_URL)("M10 Drizzle read service — LIVE Postgres (M10L)", ()
     await expect(service.getAssessment(ORG_B, a.assessment)).rejects.toThrow();
   });
 
-  it("writes fail-closed 501 until the M10L follow-up Drizzle lifecycle lands", async () => {
-    await expect(service.skipSchedule(ORG_A, a.schedule, "patient_declined")).rejects.toMatchObject({
-      statusCode: 501,
-    });
+  it("skipSchedule now persists (the M10L write lifecycle; full coverage in the write suite)", async () => {
+    const skipped = await service.skipSchedule(ORG_A, a.schedule, "patient_declined");
+    expect(skipped.status).toBe("skipped");
+    const back = await service.getSchedule(ORG_A, a.schedule);
+    expect(back.status).toBe("skipped");
   });
 });

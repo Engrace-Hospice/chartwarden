@@ -1,31 +1,48 @@
-// apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService, READ-first (M10L wiring, mirrors M6L-T01).
+// apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
 //
 // The screen-driving READS (timepoint-schedule worklist, HOPE assessment chart + detail, SFV worklist,
 // iQIES submission list/detail, pre-submission validation findings, the compliance dashboard) run as real
 // Drizzle queries over the M10-owned tables inside `withOrgContext`, so RLS scopes every row by
 // `app.org_id` as the unprivileged `wardenx_app` role. `hope_assessment` is PARTITION BY RANGE
-// (target_date) — reads query the parent table. The full WRITE lifecycle (record/sign/correct timepoint,
-// SFV completion, submission assemble/retry, summary-PDF request, schedule skip, with the `m10.hope.*`
-// outbox) is the follow-up; every write here fail-closes 501 (`NOT_IMPLEMENTED`) so the interface is
-// satisfied and the mount is real. `createInMemoryHopeBackend` (`routes/service.ts`) stays the behavioral
-// reference for those writes.
+// (target_date) with a DEFAULT partition so inserts always land. The WRITE lifecycle is now real (M10L):
+// record (draft insert, linked to the open schedule) · sign (server-authoritative J2051 verdict → the DB
+// schedule-mark-completed trigger closes the schedule; a fired trigger opens the SFV) · correct (the
+// append-only amendment whose insert fires the DB supersede trigger) · SFV completion · schedule skip ·
+// submission assemble/retry · summary-PDF request. Every state transition emits its `m10.hope.*` event on
+// the caller's transactional outbox. No route is left at 501.
 //
-// The backend object IS BOTH the HopeRouteService AND the §4.7 HopeAbacResolver (the scaffold mounts M10
-// as `registerHopeRoutes(app, { service })` + `registerHopeAbacPredicates({ resolver })` over one object):
-// `loadAssessment` reads the corrected-of-record signer facts org-scoped (RLS-backstopped), returning
-// `null` on an absent / cross-tenant row so the correction predicate fails closed.
+// The backend object IS BOTH the HopeRouteService AND the §4.7 HopeAbacResolver. Because the interface
+// threads no siting nor an M9 snapshot into the DB backend, this slice makes documented compromises (the
+// M8/M9 convention): (1) writes envelope `withOrgContext` with `userId:""` → the M4 write-audit trigger
+// fires with a NULL actor (the acting membership is the passed `userId`, stored as created/signed_by);
+// (2) the D8 PPS/ESAS-r snapshot is skipped (null) — it needs M9's LatestAssessmentProvider, not threaded
+// here (§7.13: no external dependency blocks the write path); (3) provider/location siting is null; the
+// SFV `alert_cadence` is a minimal default until the alert planner is threaded. A correction REUSES the
+// original's `target_date` (the composite self-FK `(corrects_assessment_id, target_date) → (id,
+// target_date)` demands it); the DB supersede trigger flips the original.
+import {
+  type J2051SymptomReading,
+  evaluateJ2051Trigger,
+  planSfvCompletion,
+  planSfvCreation,
+  require_,
+} from "@wardenx/hope";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
+import type { J2051Severity } from "@wardenx/types";
+import { NotFoundError } from "@wardenx/types";
+import { and, desc, eq } from "drizzle-orm";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
 import type {
+  CorrectTimepointArgs,
   HopeAssessmentView,
   HopeComplianceView,
   HopeRouteService,
   HopeScheduleView,
   HopeSfvView,
   HopeSubmissionView,
+  RecordSfvArgs,
+  RecordTimepointArgs,
 } from "./routes/service";
 
 const ASSESS = schema.hopeAssessments;
@@ -41,12 +58,38 @@ type SubmissionRow = typeof SUB.$inferSelect;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
-/** A never-returning stub for the M10 write lifecycle still owed by the follow-up Drizzle wiring. */
-const notImpl = (): never => {
-  throw new WardenXError(
-    "NOT_IMPLEMENTED",
-    "HOPE writes arrive in the M10L follow-up (the Drizzle write lifecycle)",
-    501,
+/** The transactional-outbox port (§2.4): the bound publisher validates every emit against the boot
+ * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
+ * commit without a dispatcher. Mirrors M7/M8/M9. */
+export interface HopeWriteOutboxPort {
+  publish(
+    tx: unknown,
+    emission: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+const NOOP_OUTBOX: HopeWriteOutboxPort = { async publish() {} };
+
+/** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
+function firstOrThrow<T>(rows: readonly T[], msg: string): T {
+  const r = rows[0];
+  if (!r) throw new NotFoundError(msg);
+  return r;
+}
+
+/** The §D8 scales snapshotted at HOPE sign — skipped in the DB backend (M9 seam not threaded; §7.13). */
+const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] => {
+  const j = (data as { J?: { J2051?: { entries?: unknown } } }).J?.J2051?.entries;
+  if (!Array.isArray(j)) return [];
+  return j.flatMap((e) =>
+    e && typeof e === "object" && typeof (e as { severity?: unknown }).severity === "string"
+      ? [{ symptomCode: String((e as { symptomCode?: unknown }).symptomCode ?? "other"), severity: (e as { severity: J2051Severity }).severity }]
+      : [],
   );
 };
 
@@ -111,7 +154,29 @@ const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
  * fail-closed 501. Org is bound from the request context by the caller and passed as `organizationId` —
  * never the body. Every read runs under `withOrgContext` so RLS scopes rows to the active org.
  */
-export function createDbHopeBackend(db: DbClient): HopeRouteService {
+export function createDbHopeBackend(
+  db: DbClient,
+  outbox: HopeWriteOutboxPort = NOOP_OUTBOX,
+): HopeRouteService {
+  /** Emit one `m10.hope.*` event on the caller's tx (validated + persisted by the bound publisher). */
+  async function emit(
+    tx: unknown,
+    org: string,
+    eventName: string,
+    aggregateKind: string,
+    aggregateId: string,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+  }
+
+  /** Load a tenant-scoped assessment row (RLS-scoped) or raise the non-leaking 404. */
+  async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
+    const [r] = (await t.select().from(ASSESS).where(eq(ASSESS.id, id)).limit(1)) as AssessmentRow[];
+    if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
+    return r;
+  }
+
   return {
     // ── Timepoint-schedule reads (§2.2.1 window ledger) ────────────────────────────────────────────
     async listSchedules(organizationId, filter) {
@@ -251,16 +316,290 @@ export function createDbHopeBackend(db: DbClient): HopeRouteService {
       });
     },
 
-    // ── Writes — the M10L follow-up Drizzle lifecycle. Fail-closed 501 until then. ──────────────────
-    skipSchedule: async () => notImpl(),
-    recordTimepoint: async () => notImpl(),
-    recordSfv: async () => notImpl(),
-    updateDraft: async () => notImpl(),
-    signTimepoint: async () => notImpl(),
-    correctTimepoint: async () => notImpl(),
-    requestSummaryPdf: async () => notImpl(),
-    retrySubmission: async () => notImpl(),
-    assembleSubmission: async () => notImpl(),
+    // ── Schedule skip (§2.2.1) ────────────────────────────────────────────────────────────────────
+    async skipSchedule(organizationId, id, reasonCode) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [existing] = (await t.select().from(SCHED).where(eq(SCHED.id, id)).limit(1)) as ScheduleRow[];
+        if (!existing) throw new NotFoundError(`HOPE schedule ${id} not found`);
+        const rows = (await t
+          .update(SCHED)
+          .set({ status: "skipped", skipReasonCode: reasonCode, updatedAt: new Date() })
+          .where(eq(SCHED.id, id))
+          .returning()) as ScheduleRow[];
+        return toScheduleView(firstOrThrow(rows, "schedule skip matched no row"));
+      });
+    },
+
+    // ── Record a draft timepoint (§2.2.1 — linked to its open schedule if one exists) ───────────────
+    async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        // Link the draft to the open schedule for (admission, rfa) so the sign trigger can close it.
+        const [sched] = (await t
+          .select()
+          .from(SCHED)
+          .where(
+            and(
+              eq(SCHED.admissionId, admissionId),
+              eq(SCHED.rfaKind, args.rfaKind),
+              eq(SCHED.status, "open"),
+            ),
+          )
+          .limit(1)) as ScheduleRow[];
+        const row = firstOrThrow(
+          await t
+            .insert(ASSESS)
+            .values({
+              organizationId,
+              patientId: sched?.patientId ?? admissionId,
+              admissionId,
+              scheduleId: sched?.id ?? null,
+              rfaKind: args.rfaKind,
+              status: "draft",
+              data: args.data,
+              targetDate: new Date(args.targetDate),
+              sourceEncounterId: args.sourceEncounterId ?? null,
+              createdByMembershipId: userId,
+            })
+            .returning(),
+          "hope_assessment insert returned no row",
+        );
+        return toAssessmentView(row);
+      });
+    },
+
+    // ── Record an RFA-04 SFV completion (§2.2.3) ─────────────────────────────────────────────────────
+    async recordSfv(organizationId, userId, admissionId, args: RecordSfvArgs) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [sfv] = (await t
+          .select()
+          .from(SFV)
+          .where(eq(SFV.triggeringAssessmentId, args.triggeringAssessmentId))
+          .limit(1)) as SfvRow[];
+        require_(sfv != null, "M10_SFV_NO_TRIGGER", `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`);
+        const at = new Date();
+        // Insert the signed RFA-04 row, then complete the open SFV (the §4.4 guards live in planSfvCompletion).
+        const row = firstOrThrow(
+          await t
+            .insert(ASSESS)
+            .values({
+              organizationId,
+              patientId: sfv.patientId,
+              admissionId,
+              rfaKind: "04_sfv",
+              status: "signed",
+              data: args.data,
+              targetDate: new Date(args.targetDate),
+              signedAt: at,
+              signedByMembershipId: userId,
+              createdByMembershipId: userId,
+            })
+            .returning(),
+          "hope_assessment (sfv) insert returned no row",
+        );
+        const plan = planSfvCompletion(
+          { id: sfv.id, status: sfv.status, dueAt: iso(sfv.dueAt) ?? at.toISOString() },
+          row.id,
+          args.targetDate,
+          { adminOverride: args.adminOverride },
+        );
+        await t
+          .update(SFV)
+          .set({ status: "completed", completingAssessmentId: plan.completingAssessmentId, completedAt: at, updatedAt: at })
+          .where(eq(SFV.id, sfv.id));
+        await emit(t, organizationId, "m10.hope.sfv_completed", "symptom_follow_up_visit", sfv.id, {
+          sfvId: sfv.id,
+          completingAssessmentId: row.id,
+          completedAt: at.toISOString(),
+        });
+        return toAssessmentView(row);
+      });
+    },
+
+    // ── Update a draft's payload (§2.2.2 — draft only) ───────────────────────────────────────────────
+    async updateDraft(organizationId, id, data) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadA(t, id);
+        require_(r.status === "draft", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} is not a draft.`);
+        const merged = { ...(r.data as Record<string, unknown>), ...data };
+        const rows = (await t
+          .update(ASSESS)
+          .set({ data: merged, updatedAt: new Date() })
+          .where(eq(ASSESS.id, id))
+          .returning()) as AssessmentRow[];
+        return toAssessmentView(firstOrThrow(rows, "updateDraft matched no row"));
+      });
+    },
+
+    // ── Sign a draft (§2.2.2 — server-authoritative J2051 verdict; triggers close the schedule + open the SFV) ─
+    async signTimepoint(organizationId, userId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadA(t, id);
+        require_(r.status === "draft", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} is not a draft and cannot be signed.`);
+        const at = new Date();
+        const verdict = evaluateJ2051Trigger({ entries: j2051EntriesOf(r.data as Record<string, unknown>) }); // D4
+        // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
+        const signed = firstOrThrow(
+          await t
+            .update(ASSESS)
+            .set({
+              status: "signed",
+              signedAt: at,
+              signedByMembershipId: userId,
+              j2051MaxSeverity: verdict.maxSeverity ?? "none",
+              j2051TriggerFired: verdict.triggerFired,
+              updatedAt: at,
+            })
+            .where(eq(ASSESS.id, id))
+            .returning(),
+          "signTimepoint matched no row",
+        );
+        await emit(t, organizationId, "m10.hope.timepoint_signed", "hope_assessment", id, {
+          assessmentId: id,
+          rfaKind: r.rfaKind,
+          signedAt: at.toISOString(),
+          signedBy: userId,
+          j2051TriggerFired: verdict.triggerFired,
+          wasLate: r.wasLate,
+        });
+        if (verdict.triggerFired) {
+          // D4 — exactly one SFV per source timepoint; D3 anchored to signed_at (org TZ defaults to UTC here).
+          const descriptor = planSfvCreation({ triggeringAssessmentId: id, signedAt: at.toISOString(), timeZone: "UTC" });
+          const sfv = firstOrThrow(
+            await t
+              .insert(SFV)
+              .values({
+                organizationId,
+                patientId: r.patientId,
+                admissionId: r.admissionId,
+                triggeringAssessmentId: id,
+                status: "open",
+                triggeredAt: new Date(descriptor.triggeredAt),
+                dueAt: new Date(descriptor.dueAt),
+                alertCadence: {}, // minimal default until the §4.9 alert planner is threaded
+              })
+              .returning({ id: SFV.id }),
+            "symptom_follow_up_visit insert returned no row",
+          );
+          await emit(t, organizationId, "m10.hope.j2051_trigger_fired", "hope_assessment", id, {
+            assessmentId: id,
+            sfvId: sfv.id,
+            maxSeverity: verdict.maxSeverity ?? "none",
+            triggeredAt: descriptor.triggeredAt,
+            dueAt: descriptor.dueAt,
+          });
+          await emit(t, organizationId, "m10.hope.sfv_created", "symptom_follow_up_visit", sfv.id, {
+            sfvId: sfv.id,
+            triggeringAssessmentId: id,
+            dueAt: descriptor.dueAt,
+          });
+        }
+        return toAssessmentView(signed);
+      });
+    },
+
+    // ── Correct a signed timepoint (§2.4 / D7 — append-only; the DB supersede trigger flips the original) ─
+    async correctTimepoint(organizationId, userId, id, args: CorrectTimepointArgs) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const original = await loadA(t, id);
+        require_(original.status === "signed", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} must be signed to correct (edit the draft instead).`);
+        require_(original.supersededById == null, "M10_CORRECTION_TARGET_SUPERSEDED", `Assessment ${id} is already superseded; correct the latest instead.`);
+        const at = new Date();
+        const correction = firstOrThrow(
+          await t
+            .insert(ASSESS)
+            .values({
+              organizationId,
+              patientId: original.patientId,
+              admissionId: original.admissionId,
+              rfaKind: original.rfaKind,
+              status: "signed",
+              data: args.data,
+              // The composite self-FK forces the correction to REUSE the original's target_date.
+              targetDate: original.targetDate,
+              j2051MaxSeverity: original.j2051MaxSeverity,
+              j2051TriggerFired: original.j2051TriggerFired,
+              wasLate: original.wasLate,
+              clinicalContextSnapshot: original.clinicalContextSnapshot,
+              signedAt: at,
+              signedByMembershipId: userId,
+              createdByMembershipId: userId,
+              correctsAssessmentId: id, // the AFTER-INSERT supersede trigger flips the original
+            })
+            .returning(),
+          "hope_assessment (correction) insert returned no row",
+        );
+        await emit(t, organizationId, "m10.hope.correction_submitted", "hope_assessment", correction.id, {
+          correctionAssessmentId: correction.id,
+          originalAssessmentId: id,
+        });
+        return toAssessmentView(correction);
+      });
+    },
+
+    // ── Request the printable HOPE summary (§4.5 — emits summary_requested; M22 renders) ─────────────
+    async requestSummaryPdf(organizationId, userId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadA(t, id); // 404 before emit if absent/cross-tenant
+        await emit(t, organizationId, "m10.hope.summary_requested", "hope_assessment", id, {
+          assessmentId: id,
+          requestedBy: userId,
+        });
+        return { assessmentId: id, requested: true as const };
+      });
+    },
+
+    // ── iQIES submission retry / assemble (§2.2.4) ───────────────────────────────────────────────────
+    async retrySubmission(organizationId, id) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
+        if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
+        require_(r.status === "rejected", "M10_SUBMISSION_RETRY_NOT_REJECTED", `Submission ${id} is ${r.status}; only a rejected submission can be retried.`);
+        const rows = (await t
+          .update(SUB)
+          .set({ status: "queued", updatedAt: new Date() })
+          .where(eq(SUB.id, id))
+          .returning()) as SubmissionRow[];
+        await emit(t, organizationId, "m10.hope.submission_queued", "hope_submission", id, {
+          submissionId: id,
+          providerEntityId: r.providerEntityId,
+          itemCount: r.itemCount,
+        });
+        return toSubmissionView(firstOrThrow(rows, "retrySubmission matched no row"));
+      });
+    },
+    async assembleSubmission(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const period = new Date().toISOString().slice(0, 7);
+        const row = firstOrThrow(
+          await t
+            .insert(SUB)
+            .values({
+              organizationId,
+              providerEntityId,
+              submissionPeriod: period,
+              status: "queued",
+              itemCount: 0,
+            })
+            .returning(),
+          "hope_submission insert returned no row",
+        );
+        await emit(t, organizationId, "m10.hope.submission_queued", "hope_submission", row.id, {
+          submissionId: row.id,
+          providerEntityId,
+          itemCount: 0,
+        });
+        return toSubmissionView(row);
+      });
+    },
 
     // No in-process outbox buffer in the DB backend (the transactional relay owns emission) — drain empty.
     drainEvents() {

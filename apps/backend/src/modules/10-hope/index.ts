@@ -8,23 +8,28 @@
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerHopeAbacPredicates as _registerM10Abac } from "./abac-predicates";
-import { createDbHopeBackend } from "./hope-route-service-db";
+import { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
 import { registerHopeRoutes as _registerM10Routes } from "./routes/hope-routes";
 
 /**
  * M10L — mount the M10 HOPE routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
  * One object satisfies BOTH the §4.1 HopeRouteService and the §4.7 HopeAbacResolver, so it registers as the
- * route service AND the ABAC resolver. Reads are live (schedule/SFV worklists, assessment chart + detail,
- * submissions, validation findings, compliance dashboard); writes fail-closed 501 until the M10L write
- * lifecycle lands. Replaces the in-memory clinical-core scaffold mount for M10.
+ * route service AND the ABAC resolver. Reads and the write lifecycle (record → sign → correct, SFV
+ * completion, schedule skip, submission assemble/retry) are live over Drizzle; every state transition emits
+ * its `m10.hope.*` event on the passed transactional-outbox publisher (the composition root binds M1's
+ * catalog-validating publisher pinned to caller-module `m10`). Replaces the in-memory scaffold mount for M10.
  */
-export function mountHopeRoutes(app: FastifyInstance, db: DbClient): void {
-  const backend = createDbHopeBackend(db);
+export function mountHopeRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: HopeWriteOutboxPort,
+): void {
+  const backend = createDbHopeBackend(db, outbox);
   _registerM10Abac({ resolver: backend });
   _registerM10Routes(app, { service: backend });
 }
 
-export { createDbHopeBackend } from "./hope-route-service-db";
+export { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
 export {
   type HopeOrgRollupSeed,
   type HopeOrgRollupStore,
