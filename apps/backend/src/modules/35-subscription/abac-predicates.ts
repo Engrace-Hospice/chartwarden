@@ -22,7 +22,13 @@
 // route can cheaply put them on the ABAC target, checked here too; otherwise the write service re-asserts
 // the same invariant. Default-deny throughout: a missing role, a stale step-up, an inapplicable promo all
 // resolve to deny. Registration is idempotent (single-owner registry; the M27/M30 `has()` guard).
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  PLATFORM_OPS_ROLE_KEYS,
+  abacRegistry,
+  registerPredicate,
+} from "@wardenx/auth";
 
 /** The §4.8 predicate names M35 OWNS and registers into M3 (five). `inOrg` (M3) is excluded — re-used. */
 export const M35_REGISTERED_ABAC_PREDICATES = [
@@ -36,15 +42,12 @@ export const M35_REGISTERED_ABAC_PREDICATES = [
 /** Union of the predicate names M35 registers. */
 export type M35RegisteredAbacPredicate = (typeof M35_REGISTERED_ABAC_PREDICATES)[number];
 
-/** The platform-ops roles that satisfy `platform_billing_scope` (§4.7 role catalog is platform-owned). */
-const PLATFORM_BILLING_ROLES: readonly string[] = [
-  "platform_owner",
-  "platform_admin",
-  "platform_billing_admin",
-  "platform_support_t2",
-  "platform_sales",
-  "platform_ops",
-];
+/**
+ * The platform-ops roles that satisfy `platform_billing_scope`. RE-DERIVED from the platform-owned role
+ * catalog (`@wardenx/auth` `PLATFORM_OPS_ROLE_KEYS`, registered as `platform_staff` templates in ADMIN-T02)
+ * so the ABAC gate's admit-set and the role catalog are a single source and can never drift.
+ */
+const PLATFORM_BILLING_ROLES: readonly string[] = PLATFORM_OPS_ROLE_KEYS;
 
 /** Read a string field off the ABAC target; null when absent/empty (fail-closed on a missing fact). */
 const targetStr = (target: AbacTarget, field: string): string | null => {

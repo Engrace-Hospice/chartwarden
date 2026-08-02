@@ -6,6 +6,9 @@
   },
   "references": [
     {
+      "path": "./apps/admin"
+    },
+    {
       "path": "./apps/backend"
     },
     {

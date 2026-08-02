@@ -1,0 +1,113 @@
+/* apps/admin — global stylesheet for the Platform-Ops console SPA (M34 §5.1 / M35 §5.2, Lantern).
+ *
+ * Two jobs, mirroring apps/web/src/index.css + apps/portal/src/index.css:
+ *   1. Pull in Tailwind v4 (Preflight reset + the utility engine) via the @tailwindcss/vite plugin.
+ *   2. Define the Lantern design tokens the admin screens + @wardenx/admin-ui-shell chrome consume.
+ *
+ * SOURCE OF TRUTH is packages/ui/src/core/theme/colors.ts + apps/web/src/index.css; this is the admin
+ * app's LOCAL token layer, kept until the shared `@wardenx/ui` stylesheet lift that apps/web/index.css's
+ * header anticipates. It cannot @import apps/web's sheet (cross-app boundary) and must not move apps/web's
+ * tokens out of its @theme (the arch:design-tokens colors.ts↔index.css sync check reads them there). Keep
+ * the hex values in sync with colors.ts if they change.
+ *
+ * Every token here is consumed ONLY through the `t.*` map (inline `var(--…)` references), never as a
+ * Tailwind utility — so, per the "@theme drops unrecognised namespaces" gotcha, they live in a plain
+ * `:root` (emitted verbatim) rather than `@theme` (which would silently drop the non-namespaced vars).
+ */
+@import "tailwindcss";
+
+:root {
+  /* Brand — twilight indigo */
+  --color-primary: #3b45a8;
+  --color-primary-strong: #2b338a;
+  --color-primary-tint: #ecedfb;
+  --color-on-primary: #ffffff;
+  --color-accent: #c98a1f;
+  --color-accent-tint: #fbf1dd;
+
+  /* Semantic status */
+  --color-success: #1f8a5b;
+  --color-warning: #9a5b00;
+  --color-error: #c12b3b;
+  --color-alert: #e0413f;
+
+  /* Surfaces — warm paper hierarchy */
+  --color-background: #f6f5f2;
+  --color-surface: #f6f5f2;
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f1f0ec;
+  --color-surface-container: #eceae5;
+  --color-surface-high: #e5e3dd;
+  --color-surface-highest: #dedbd4;
+
+  /* Text & line */
+  --color-on-surface: #1c1b1a;
+  --color-on-surface-variant: #56524c;
+  --color-muted: #8c877f;
+  --color-outline: #6e6a62;
+  --color-outline-variant: #d7d3cb;
+
+  /* On-emphasis + scrim */
+  --color-on-emphasis: #ffffff;
+  --color-scrim: rgba(17, 24, 39, 0.55);
+
+  /* Type — Lantern trio (system fallbacks; the admin app does not self-host the variable faces yet) */
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  /* Elevation */
+  --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
+  --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
+  --shadow-ambient: 0 8px 32px rgba(59, 69, 168, 0.06);
+
+  /* Spacing scale (4px base) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 1.75rem;
+  --space-7: 2rem;
+  --space-8: 2.5rem;
+  --space-9: 3rem;
+
+  color: var(--color-on-surface);
+  background: var(--color-background);
+  font-family: var(--font-sans);
+}
+
+/* Twilight dark mode (class strategy on <html>). Designed, not inverted. */
+.dark {
+  --color-primary: #aeb4f0;
+  --color-primary-strong: #8e95e0;
+  --color-primary-tint: #262a52;
+  --color-on-primary: #13163a;
+  --color-accent: #e7b35a;
+  --color-accent-tint: #3a2f16;
+  --color-success: #5fd6a0;
+  --color-warning: #e0a24a;
+  --color-error: #f2939e;
+  --color-alert: #ff6b68;
+  --color-background: #15151b;
+  --color-surface: #15151b;
+  --color-surface-lowest: #1c1c24;
+  --color-surface-low: #21212b;
+  --color-surface-container: #272732;
+  --color-surface-high: #30303c;
+  --color-surface-highest: #3a3a47;
+  --color-on-surface: #eceae6;
+  --color-on-surface-variant: #b8b4ad;
+  --color-muted: #7e7a72;
+  --color-outline: #8a857c;
+  --color-outline-variant: #45444e;
+  --color-on-emphasis: #15151b;
+  --color-scrim: rgba(0, 0, 0, 0.62);
+}

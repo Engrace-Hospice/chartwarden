@@ -295,7 +295,9 @@ function templateView(t: RoleTemplate): RoleView {
     systemLocked: t.systemLocked,
     enabled: true,
     customized: false,
-    permissionKeys: [...t.floor],
+    // Default grant surfaced to the role listing: a template's explicit `grants` (e.g. the §4.7
+    // platform-ops roles' `billing_admin.*` keys) when present, else its `system_locked` floor.
+    permissionKeys: [...(t.grants ?? t.floor)],
   };
 }
 
