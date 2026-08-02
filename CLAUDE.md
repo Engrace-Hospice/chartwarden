@@ -4,19 +4,19 @@ Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + archite
 
 **
 
-**kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **35 of 40 modules
+**kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **37 of 40 modules
 now have real implementation on `main`** — the clinical core (M1–M14, M17, M18, M22), the field/ops
 tier (M15 Discipline Plans · M16 Bereavement · M19 On-Call Triage · M20 Field Safety · M21 Supplies/DME),
 the **complete revenue cycle (M23 Billing-Medicare · M24 Billing-Medicaid · M25 Remittance & Denials ·
-M26 Cap Management · M27 Cost Report)**, **M30 HQRP & Quality**, **M32 AI Platform**, M33 Reporting &
+M26 Cap Management · M27 Cost Report)**, **M28 FHIR Gateway**, **M30 HQRP & Quality**,
+**M31 Patient/Family Portal & Telehealth**, **M32 AI Platform**, M33 Reporting &
 M34 SaaS Platform, plus the platform services M36/M38/M39/M40. The generated **implementation-status
 matrix** (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`)
-is the per-module truth — currently **🟢 35 · 🟡 0 · ⚪ 5**. The **5 remaining placeholders (⚪)** are
-M28 FHIR Gateway, M29 External Interfaces, M31 Patient/Family Portal & Telehealth, M35 Subscription
-Billing, and M37 Inpatient Unit (IPU) Management. As of the **2026-08-01 sweep every 🟢 module is
+is the per-module truth — currently **🟢 37 · 🟡 0 · ⚪ 3**. The **3 remaining placeholders (⚪)** are
+M29 External Interfaces, M35 Subscription Billing, and M37 Inpatient Unit (IPU) Management. As of the **2026-08-01 sweep every 🟢 module is
 enrichment-complete (matrix `Enriched` full-ratio ✅, corpus 989/995 routes carry request/response
 contracts) and live-RLS-proven (matrix `Live` full-ratio ✅, 20 executed cross-tenant suites)** — the
-only ⚠️ Live/Enriched rows left belong to the 5 ⚪ placeholders. **M30 is merged (PR #106)**: 18 frozen
+only ⚠️ Live/Enriched rows left belong to the 3 ⚪ placeholders. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
 47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
