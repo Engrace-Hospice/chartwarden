@@ -164,9 +164,10 @@ describe.skipIf(!DB_URL)("M13 Drizzle read service — LIVE Postgres (M13L-T01)"
     expect(own.map((d) => d.id)).toContain(seeded[ORG_B].comfortKitDeployment);
   });
 
-  it("writes fail-closed 501 until the M13L-T02+ Drizzle lifecycle lands", async () => {
-    await expect(
-      service.putPolicy(ORG_A, { graceWindowMinutes: 45 }),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("writes are live (M13L): putPolicy persists + round-trips through getPolicy", async () => {
+    const put = await service.putPolicy(ORG_A, { graceWindowMinutes: 45 });
+    expect(put.graceWindowMinutes).toBe(45);
+    const back = await service.getPolicy(ORG_A);
+    expect(back.graceWindowMinutes).toBe(45);
   });
 });
