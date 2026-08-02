@@ -23,8 +23,15 @@
 // the SDK-free typed client (`@wardenx/xero-client` idiom) routes every call through an injected transport
 // (fail-closed by default), keeping the whole package inside the VENDOR_ADAPTERS boundary. Includes the
 // §8.7 audit-envelope redactor, the §4.13/§4.16 deterministic idempotency-key derivation, and the D15
-// envelope-encryption seam for `stripe_webhook_event`. Still deferred: seam registration (T05), Fastify
-// routes + the live transport/store/mirror wiring + eraser (T06).
+// envelope-encryption seam for `stripe_webhook_event`.
+//
+// M35-T05 scope (adds `./service/dunning-service`): the §4.15 D7 dunning STATE MACHINE over the injected
+// {@link DunningStore} — `payment_failed → day_1`, the time-based ladder advance (`tick`), successful-
+// payment `resolve`, and the admin `skip_stage`/`reset` overrides — returning the `m35.dunning.*` outbox
+// intents + the `suspend`/`cancel` side-effect signal the T06 caller drives onto the subscription. The
+// §4.5 six PUBLISHED seams + the §4.6 three forward-seam CONSUMER VIEWS are bound into the M1 SeamRegistry
+// this task too (leaf interfaces in `@wardenx/types`, deny-stubs in the bootstrap; M34↔M35 no-edge per
+// ADR-0025). Still deferred: the Fastify routes + the live transport/store/mirror wiring + eraser (T06).
 
 // §3.3 enum value tuples (pgEnum seeds + §2 domain iteration source of truth).
 export * from "./enums";

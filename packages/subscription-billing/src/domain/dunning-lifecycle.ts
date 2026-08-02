@@ -41,6 +41,22 @@ export function nextDunningStage(stage: DunningStage): DunningStage | null {
   return DUNNING_LADDER[idx + 1] ?? null;
 }
 
+/** §4.15 the retry cadence: how many days after ENTERING a stage the next Stripe payment retry is scheduled
+ *  (`m35.dunning.entered_stage.nextAttemptAt`). Distinct from {@link DUNNING_ADVANCE_AFTER_DAYS} — day_1
+ *  retries at +24h but only ADVANCES to day_7 after +6 days. Stages with no retry (`none` is the resting
+ *  state; `day_28_suspend`/`day_60_cancel` no longer retry the card) are absent → `nextAttemptDays` = null. */
+export const DUNNING_RETRY_AFTER_DAYS: Partial<Record<DunningStage, number>> = {
+  day_1: 1,
+  day_7: 7,
+  day_14: 7,
+  day_21: 7,
+};
+
+/** Days until the next scheduled card retry after entering `stage`, or `null` when the stage does not retry. */
+export function dunningRetryDelayDays(stage: DunningStage): number | null {
+  return DUNNING_RETRY_AFTER_DAYS[stage] ?? null;
+}
+
 /** The dunning stage at which the subscription is suspended (M35 emits `m35.tenant.billing_blocked`). */
 export const DUNNING_SUSPEND_STAGE: DunningStage = "day_28_suspend";
 

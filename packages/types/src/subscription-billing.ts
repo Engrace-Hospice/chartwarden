@@ -644,11 +644,48 @@ export interface PlanCatalogReader {
   planBySlug(slug: string): Promise<PlanCatalogEntry | null>;
 }
 
-// ── §4.6 consumed seams — DEFERRED to M35-T05 ──────────────────────────────────────────────────────────
-// M35's consumed-seam interfaces belong to their SOURCE modules, not this file: `FhirGatewayMetricsProvider`
-// is already declared by M28 (`./fhir`); M29 `ExternalInterfaceMetricsProvider`, M32 `AITokenMeterProvider`,
-// and M34 `OnboardingStatusProvider` are wired as forward-seam deny-stubs when M35-T05 binds the consumed
-// seams into M1. Re-declaring them here would collide (the M28 case) or prematurely claim ownership.
+// ── §4.6 consumed forward-seam CONSUMER VIEWS (M35-T05) ─────────────────────────────────────────────────
+// M35 consumes four upstream seams. `FhirGatewayMetricsProvider` (M28, §4.11 disclosure metrics) is ALREADY
+// declared by its source module (`./fhir`) and M35 reads it as-is — it is NOT re-declared here (that would
+// collide, TS2308). The remaining three source modules (M29/M32/M34) are Phase-1 placeholders that publish
+// no leaf contract yet, so — following the M8→`EvvBracketResolver` / M28→`ClaimReader` forward-seam
+// precedent — M35 carries the minimal CONSUMER VIEW its metering/billing paths need here. Each is registered
+// into the M1 registry at boot as a fail-closed deny-stub (ADR-0025 mandates `OnboardingStatusProvider`'s
+// interface live in `packages/types`); the real impls land when M29/M32/M34 lock. Leaf-safe (ids + counts).
+
+/** §4.6 (M34) — the SaaS-onboarding billability gate M35 folds into `BillingStatusProvider`. Interim posture
+ *  (ADR-0025): every org with `Organization.status='active'` is billable — a strictly SAFER default than the
+ *  eventual M34-aware behavior, which will NARROW billability to "active AND onboarding-complete". */
+export interface OnboardingStatusProvider {
+  isBillableForOrg(organizationId: OrgId): Promise<{ billable: boolean; reason?: string }>;
+}
+
+/** §4.6 (M29) — the HL7 feed-health message counts M35 meters as `hl7_message` usage over a period. */
+export interface ExternalInterfaceFeedHealth {
+  readonly organizationId: OrgId;
+  readonly inboundMessageCount: number;
+  readonly outboundMessageCount: number;
+  readonly periodStart: IsoInstant;
+  readonly periodEnd: IsoInstant;
+}
+
+/** §4.6 (M29) — external-interface feed-health read (HL7 message counts), the M35 `hl7_message` meter input. */
+export interface ExternalInterfaceMetricsProvider {
+  feedHealthForOrg(input: {
+    organizationId: OrgId;
+    periodStart: IsoInstant;
+    periodEnd: IsoInstant;
+  }): Promise<ExternalInterfaceFeedHealth>;
+}
+
+/** §4.6 (M32) — the AI-token consumption M35 meters as `ai_token` usage (PHI-free aggregate token count). */
+export interface AITokenMeterProvider {
+  tokensConsumedForOrg(input: {
+    organizationId: OrgId;
+    periodStart: IsoInstant;
+    periodEnd: IsoInstant;
+  }): Promise<number>;
+}
 
 // ── §4.10 typed M36 alert taxonomy (the discriminated shape M35 emits to M36's AlertEmitter) ────────────
 

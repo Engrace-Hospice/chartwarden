@@ -6,6 +6,7 @@
 // and the M35-F06 platform-retention transfer (§3.7).
 export * from "./ports";
 export * from "./subscription-service";
+export * from "./dunning-service";
 export * from "./invoice-service";
 export * from "./usage-metering-service";
 export * from "./revenue-recognition-service";

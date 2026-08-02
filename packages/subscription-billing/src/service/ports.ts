@@ -293,6 +293,42 @@ export interface PlatformRetentionStore {
   deleteTenantInvoice(input: { organizationId: OrgId; invoiceId: string }): Promise<void>;
 }
 
+// ── Dunning store port (§4.15 D7 dunning ladder; §2.5 open-row lock owned by the impl) ───────────────────
+
+/** The lean open `dunning_state` row the §4.15 engine reads/writes (a subset of the T02 `dunning_state`
+ *  table — the `exited_at IS NULL` open row per subscription). */
+export interface DunningStateRecord {
+  readonly id: string;
+  readonly organizationId: OrgId;
+  readonly subscriptionId: SubscriptionId;
+  readonly stage: DunningStage;
+  readonly attemptCount: number;
+  readonly enteredAt: Date;
+  readonly triggerInvoiceId: string | null;
+}
+
+export interface DunningStore {
+  /** The OPEN (`exited_at IS NULL`) dunning row for a subscription under the §2.5 lock, or null if none. */
+  openForSubscription(subscriptionId: SubscriptionId): Promise<DunningStateRecord | null>;
+  /** Close the current open row (`exited_at = now`, `exit_reason`) AND insert the new-stage open row in one
+   *  step (the impl owns the transaction). Returns the newly-inserted open row. */
+  enterStage(input: {
+    organizationId: OrgId;
+    subscriptionId: SubscriptionId;
+    fromRowId: string | null;
+    toStage: DunningStage;
+    enteredAt: Date;
+    nextAttemptAt: Date | null;
+    attemptCount: number;
+    triggerInvoiceId: string | null;
+    lastAttemptFailureCode: string | null;
+    /** The reason stamped on the CLOSED prior row's `exit_reason` (`advanced`/`skipped`/`reset`). */
+    exitReason: string | null;
+  }): Promise<DunningStateRecord>;
+  /** Close the open row without opening a new one (payment succeeded / admin reset). */
+  closeOpen(input: { rowId: string; exitedAt: Date; exitReason: string }): Promise<void>;
+}
+
 // ── Re-export the leaf usage-input shape so the metering service's signature is a single import site ─────
 export type { UsageEventInput };
 

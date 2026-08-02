@@ -103,6 +103,17 @@ import type {
   SupplyCostProvider,
   SupplyFulfillmentProvider,
 } from "./supplies";
+import type {
+  AITokenMeterProvider,
+  BillingStatusProvider,
+  ExternalInterfaceMetricsProvider,
+  OnboardingStatusProvider,
+  PatientCounterProvider,
+  PlanCatalogReader,
+  RevenueMetricsProvider,
+  SubscriptionStateProvider,
+  UsageMeteringIngest,
+} from "./subscription-billing";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -376,7 +387,26 @@ export type SeamName =
   //   · `LabObservationReader` (M29) — the §4.11 DiagnosticReport result-value source. M29 is a Phase-1
   //     placeholder; the seam is required so M28's DiagnosticReport projection ships only once M29 does.
   | "ClaimReader" // M23 — §4.4 Claim/EOB FHIR projection (W-FHIR-07 forward-seam; 404 until fhir.write/D1 unlock)
-  | "LabObservationReader"; // M29 — §4.11 DiagnosticReport result-value read (forward-seam until M29 lands)
+  | "LabObservationReader" // M29 — §4.11 DiagnosticReport result-value read (forward-seam until M29 lands)
+  // M35 (Subscription Billing) §4.5 — the SIX PUBLISHED seams M35 registers into the M1 registry (M35-T05).
+  // Leaf-typed (interfaces in ./subscription-billing, this leaf), so — like M6..M20's readers — the registry
+  // is statically typed against the real contract. M35 registers the real Drizzle-backed impls over the
+  // deny-stubs when its routes/stores land (M35-T06); until then `validateSeams()` applies the fail-closed
+  // deny-stub. M33 (revenue/subscription dashboards) + M34 (SaaS console, ADR-0025 no-edge) consume them.
+  // All aggregate/subscription-header metadata — no patient row crosses (D18/§8.5) → phi:false throughout.
+  | "SubscriptionStateProvider" // M35 — subscription header + state-history read (M33/M34; ADR-0025)
+  | "BillingStatusProvider" // M35 — the billing-block gate + Phase-1 open quota check (M28/M29/M32/M34)
+  | "UsageMeteringIngest" // M35 — PHI-free usage-event ingest (M23/M24/M28/M29/M32; redactor-enforced)
+  | "PatientCounterProvider" // M35 — pseudonymized active-patient count for a period (reconciles vs M5)
+  | "RevenueMetricsProvider" // M35 — platform-shared MRR/ARR snapshots + status counts (M33 revenue dashboard)
+  | "PlanCatalogReader" // M35 — public (unauthenticated) plan catalog read (marketing pages + onboarding)
+  // M35 §4.6 — the THREE forward-seam CONSUMER VIEWS M35 requires but whose owner modules do not publish them
+  // yet. Leaf-typed (M35's consumer view in ./subscription-billing). Each stays on the fail-closed deny-stub
+  // until its source module locks; M35's metering/billing paths (M35-T06) resolve them via `getSeam`.
+  // (M35 also consumes M28's `FhirGatewayMetricsProvider` above — declared by M28, NOT re-declared here.)
+  | "OnboardingStatusProvider" // M34 — SaaS-onboarding billability gate (ADR-0025; interim: active-org = billable)
+  | "ExternalInterfaceMetricsProvider" // M29 — HL7 feed-health message counts (M35 `hl7_message` meter input)
+  | "AITokenMeterProvider"; // M32 — AI-token consumption per org (M35 `ai_token` meter input; PHI-free count)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -814,6 +844,24 @@ export interface SeamContracts {
   // Both stay on the fail-closed deny-stub the whole of Phase 1 (see the SeamName comments above).
   ClaimReader: unknown;
   LabObservationReader: unknown;
+  // M35's six §4.5 published seams are LEAF-TYPED — their interfaces live in ./subscription-billing (this
+  // package), so the registry is statically typed against the real contract. M35 registers the real
+  // Drizzle-backed impls over the deny-stubs (M35-T06); consumers that list `35` in `dependsOn` (M33) —
+  // and M34, which consumes via seam with NO edge either way (ADR-0025) — resolve them through the typed
+  // accessors with no schema import edge. All aggregate/subscription-header metadata (no patient row).
+  SubscriptionStateProvider: SubscriptionStateProvider;
+  BillingStatusProvider: BillingStatusProvider;
+  UsageMeteringIngest: UsageMeteringIngest;
+  PatientCounterProvider: PatientCounterProvider;
+  RevenueMetricsProvider: RevenueMetricsProvider;
+  PlanCatalogReader: PlanCatalogReader;
+  // M35's three §4.6 forward-seam consumer views are LEAF-TYPED too (M35's minimal view in
+  // ./subscription-billing). Each stays on the fail-closed deny-stub until M29/M32/M34 register the real
+  // impl; M35 resolves them through the typed accessor. `OnboardingStatusProvider`'s home is packages/types
+  // per ADR-0025. (M28's `FhirGatewayMetricsProvider`, M35's fourth consumed seam, is declared above.)
+  OnboardingStatusProvider: OnboardingStatusProvider;
+  ExternalInterfaceMetricsProvider: ExternalInterfaceMetricsProvider;
+  AITokenMeterProvider: AITokenMeterProvider;
 }
 
 /**
