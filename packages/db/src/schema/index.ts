@@ -695,3 +695,14 @@ export * from "./fhir/index";
 // are partitioned. Enums + the three tables 0138; RLS/grants + the three M4 write-audit triggers (D11
 // §3.6 denylists) 0139.
 export * from "./portal/index";
+
+// M35 Subscription Billing (Stripe): 21 owned tables (§3.3). Twelve tenant-scoped (canonical app.org_id
+// RLS) — subscription/_state_history, payment_method, invoice/_line, usage_event (monthly-PARTITIONED by
+// recorded_at, composite PK in SQL), usage_period_aggregate, patient/user_active_period (pseudonymized —
+// no raw patient/membership id), dunning_state, promo_code_application, refund. Nine platform-shared /
+// platform-only (NON_ORG_SCOPED) — plan/_meter + promo_code (read-all catalog), revenue_recognition_snapshot
+// (cross-tenant aggregate), patient_pseudonym_key (M35-private HMAC keys, full audit exclusion — no trigger),
+// stripe_webhook_event/_api_call_audit (may span tenants), platform_retained_invoice/_line (M35-F06 7-year
+// invoice retention, copy-then-delete on offboarding). NONE are PHI-bearing by the tenancy heuristic. Enums
+// in enums.ts (M35-T02); tables 0140–0142; RLS/grants + M4 write-audit triggers 0143.
+export * from "./subscription-billing/index";
