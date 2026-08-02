@@ -19,7 +19,7 @@
 // follow-up threads the membership when the interface carries it).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, type RequiredSignerSet } from "@wardenx/types";
 import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import {
   type AuthoringDisciplineScope,
@@ -39,6 +39,7 @@ import {
 } from "./lifecycle/validation";
 import {
   CarePlanAlreadyExistsError,
+  type CarePlanAbacResolver,
   type CarePlanRouteService,
   type CarePlanViewer,
   type CreateGoalInput,
@@ -858,6 +859,62 @@ export function createDbCarePlanRouteService(
           discipline: updated.discipline,
         });
         return { id: updated.id, status: updated.status, version: Number(updated.version) };
+      });
+    },
+  };
+}
+
+/**
+ * The production, RLS-backed {@link CarePlanAbacResolver} — the §6 owner-fact loaders M7's ABAC predicates
+ * (`caseload_or_scope` plan-arm, `dpoa_active`, `sud_disclosure_allowed`, `signer_role_match`) resolve a
+ * plan/problem/version's org-scoped facts through. Each load runs under `withOrgContext` (RLS scopes every
+ * statement by `app.org_id` as the unprivileged `wardenx_app` role) and FAILS CLOSED — a missing or
+ * cross-tenant id returns `null`, so the predicate denies rather than leaking existence. Mirrors the in-memory
+ * `createInMemoryDocumentBackend`-style resolver in `routes/service.ts` (a non-problem `problemId`, e.g. a
+ * goal/intervention element id, resolves to `null` — the same fail-closed posture the slice takes).
+ */
+export function createDbCarePlanAbacResolver(db: DbClient): CarePlanAbacResolver {
+  const withOrg = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+    withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
+
+  return {
+    async loadPlan(organizationId, planId) {
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ patientId: CP.patientId })
+          .from(CP)
+          .where(eq(CP.id, planId))
+          .limit(1);
+        return row ? { planId, patientId: row.patientId } : null;
+      });
+    },
+    async loadProblem(organizationId, problemId) {
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ carePlanId: PROB.carePlanId, sudRelated: PROB.sudRelated })
+          .from(PROB)
+          .where(eq(PROB.id, problemId))
+          .limit(1);
+        if (!row) return null;
+        const [plan] = await tx
+          .select({ patientId: CP.patientId })
+          .from(CP)
+          .where(eq(CP.id, row.carePlanId))
+          .limit(1);
+        if (!plan) return null;
+        return { planId: row.carePlanId, patientId: plan.patientId, sudRelated: row.sudRelated };
+      });
+    },
+    async loadVersion(organizationId, versionId) {
+      return withOrg(organizationId, async (tx) => {
+        const [row] = await tx
+          .select({ carePlanId: CPV.carePlanId, requiredSignerSet: CPV.requiredSignerSet })
+          .from(CPV)
+          .where(eq(CPV.id, versionId))
+          .limit(1);
+        return row
+          ? { planId: row.carePlanId, requiredSignerSet: row.requiredSignerSet as RequiredSignerSet }
+          : null;
       });
     },
   };

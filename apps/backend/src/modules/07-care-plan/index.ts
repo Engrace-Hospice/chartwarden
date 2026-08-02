@@ -11,6 +11,7 @@ import { registerCarePlanRoutes as _registerM7Routes } from "./routes/care-plan-
 export {
   type CarePlanWriteOutboxPort,
   createDbCarePlanRouteService,
+  createDbCarePlanAbacResolver,
 } from "./care-plan-route-service-db";
 
 /**
