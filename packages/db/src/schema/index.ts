@@ -676,3 +676,16 @@ export * from "./safety/index";
 // in M32-T01; tables in migrations 0113–0115; RLS/grants + the thirteen M4 write-audit triggers + the
 // §3.5 immutability triggers in 0116.
 export * from "./ai-platform/index";
+
+// M31 Patient/Family Portal & Telehealth: 3 owned tables (§3.3, ADR-0005 — the manifest is authoritative
+// over the spec §2 15-entity ERD, which proposes a wider model that never materializes as M31 tables).
+// portal_account is D2's account root (one per org × M2 user × relationship) — NOT patient-scoped, since
+// per-patient reach is a separate portal_access_grant, so it carries organization_id but no PE/location;
+// its display-name/email/phone ciphers are envelope-encrypted + §3.6 audit-denylisted. portal_access_grant
+// is D5/D6/D7's per-patient authorization (the resolved scope_set_jsonb + M39 consent provenance);
+// telehealth_visit is D8/D14's video-visit root, unique per M17 visit, whose encounter M8 attaches on
+// visit_ended. Both patient-bearing tables carry provider_entity_id NOT NULL + location_id (ARCH-011's
+// three-column rule, which the spec §3.3 sketch omits) and RLS keys on canonical app.org_id ALONE. None
+// are partitioned. Enums + the three tables 0138; RLS/grants + the three M4 write-audit triggers (D11
+// §3.6 denylists) 0139.
+export * from "./portal/index";
