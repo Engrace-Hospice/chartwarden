@@ -24,11 +24,11 @@ export const levelOfCarePeriods = pgTable(
     levelOfCare: levelOfCare("level_of_care").notNull(),
     effectiveAt: timestamp("effective_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
-    assignedBy: uuid("assigned_by")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    reason: text("reason").notNull(),
-    qCode: text("q_code").notNull(), // Q5001..Q5010 — derived (M38)
+    // Nullable at create (M6L-T04): changeLoc (route 33) carries only the new level; assigned_by + reason
+    // are filled on patchLoc, and q_code is derived from M38 once wired.
+    assignedBy: uuid("assigned_by").references(() => users.id, { onDelete: "restrict" }),
+    reason: text("reason"),
+    qCode: text("q_code"), // Q5001..Q5010 — derived (M38)
     facilityId: uuid("facility_id"), // M40 facility (app-validated)
     ipuBedAssignmentId: uuid("ipu_bed_assignment_id"), // M37 bed assignment (logical)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

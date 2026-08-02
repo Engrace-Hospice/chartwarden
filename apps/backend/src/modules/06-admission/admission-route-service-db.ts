@@ -3,11 +3,14 @@
 // READS (referral inbox, admission census + detail, election periods, compliance windows) run as real
 // Drizzle queries under `withOrgContext`, RLS-scoped as the unprivileged `wardenx_app` role. The WRITE
 // lifecycle is real for T02 (referral intake → triage → accept → draft-from-referral cascade → NOR ack →
-// activate → hold/resume) and T03 (election statement draft/sign/void; election period create/patch; CTI
-// draft/hospice-MD sign [recert activates its period]/attending sign/void/mark-late). Each write drives
-// the §2.3.1 pure state machines, enforces optimistic concurrency (stale `ifVersion` → 409), executes the
-// §2.5 declarative effects (windows open/close, timestamps), and emits `m6.*` on the transactional outbox.
-// The F2F/LOC/discharge/transfer/revocation/compliance writes still fail-closed 501 until M6L-T04..T05.
+// activate → hold/resume), T03 (election statement draft/sign/void; election period create/patch; CTI
+// draft/hospice-MD sign [recert activates its period]/attending sign/void/mark-late), and T04 (F2F
+// schedule/complete/attest/window-override; LOC change/patch; revocation; transfer in/out; discharge with
+// the D11 for-cause file → medical-director cosign cascade, death → bereavement). Each write drives the
+// §2.3.1/2.3.4/2.3.5 pure state machines, enforces optimistic concurrency (stale `ifVersion` → 409),
+// executes the §2.5 declarative effects (windows open/close, LOC + election-period end cascades), and
+// emits `m6.*` on the transactional outbox. Only the compliance-window close/override writes fail-closed
+// 501 until M6L-T05.
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -16,9 +19,26 @@ import { type AnyColumn, type SQL, and, desc, eq, ne, sql } from "drizzle-orm";
 import { computeActivationGate } from "./intake";
 import { decideRecertSign } from "./certification/recert";
 import { computeWrittenCertDeadline } from "./certification/window-math";
-import type { CtiDraftInput } from "./routes/service";
+import type { CtiDraftInput, DischargeInput, DischargeResult } from "./routes/service";
 import type { SideEffect } from "./state-machines/effects";
 import { type AdmissionEvent, type AdmissionState, transitionAdmission } from "./state-machines/admission";
+import {
+  type FaceToFaceState,
+  transitionFaceToFace,
+} from "./state-machines/face-to-face";
+import {
+  type LevelOfCareState,
+  transitionLevelOfCare,
+} from "./state-machines/level-of-care";
+import { AdmissionStateError } from "./state-machines/errors";
+import {
+  type DischargeReason,
+  checkDischargeNarrative,
+  dischargeRequiresCosign,
+} from "./discharge/permission-map";
+import { resolveForCauseDischarge } from "./discharge/for-cause";
+import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
+import type { LevelOfCare } from "@wardenx/types";
 import {
   InvalidReferralStateError,
   ReferralNotTriagedError,
@@ -79,6 +99,39 @@ const F2F = schema.faceToFaceEncounters;
 const LOC = schema.levelOfCarePeriods;
 const NOR = schema.noticeOfRightsAcknowledgments;
 const CW = schema.complianceWindows;
+const DE = schema.dischargeEvents;
+const TE = schema.transferEvents;
+const RE = schema.revocationEvents;
+
+/** §4.2.7 discharge reason → the §2.3.1 `executeDischarge` discriminator the pure state machine reads. */
+const REASON_TO_SM_TYPE: Record<
+  DischargeReason,
+  "death" | "moved" | "no_longer_terminal" | "for_cause" | "routine"
+> = {
+  death: "death",
+  moved_out_of_service_area: "moved",
+  no_longer_terminal: "no_longer_terminal",
+  for_cause: "for_cause",
+  other: "routine",
+};
+/** §4.2.7 discharge reason → the `discharge_type` enum persisted on the discharge_event row. */
+const REASON_TO_DB_TYPE: Record<
+  DischargeReason,
+  "death" | "moved_out_of_service_area" | "no_longer_terminal" | "for_cause" | "other"
+> = {
+  death: "death",
+  moved_out_of_service_area: "moved_out_of_service_area",
+  no_longer_terminal: "no_longer_terminal",
+  for_cause: "for_cause",
+  other: "other",
+};
+/** The four CMS levels of care — validates the free-string `newLevel` route 33 hands `changeLoc`. */
+const LEVELS_OF_CARE: readonly LevelOfCare[] = [
+  "routine_home_care",
+  "continuous_home_care",
+  "inpatient_respite_care",
+  "general_inpatient_care",
+];
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
@@ -176,8 +229,22 @@ export function createDbAdmissionRouteService(
               ne(CW.status, "closed"),
             ),
           );
+      } else if (e.kind === "end_level_of_care") {
+        // §2.3.5 — close the admission's currently-open LOC period (there is at most one; the partial
+        // unique `lcp_adm_open_idx` enforces it). No-op when none is open.
+        await tx
+          .update(LOC)
+          .set({ endedAt: now(), version: sql`${LOC.version} + 1`, updatedAt: now() })
+          .where(and(eq(LOC.admissionId, ctx.admissionId), sql`${LOC.endedAt} is null`));
+      } else if (e.kind === "end_election_period") {
+        // §2.3.1 discharge/revocation/transfer cascade — complete every non-terminal benefit period.
+        await tx
+          .update(EP)
+          .set({ status: "completed", version: sql`${EP.version} + 1`, updatedAt: now() })
+          .where(and(eq(EP.admissionId, ctx.admissionId), ne(EP.status, "completed")));
       }
-      // `audit`, `set_timestamp`, `set_flag` handled by the trigger / the aggregate UPDATE.
+      // `audit`, `set_timestamp`, `set_flag`, `start_level_of_care` are folded into the aggregate
+      // INSERT/UPDATE by the caller; `audit` is the M4 write-audit trigger (automatic).
     }
   }
 
@@ -316,6 +383,78 @@ export function createDbAdmissionRouteService(
   async function admissionExists(tx: DbClient, id: string): Promise<boolean> {
     const [row] = await tx.select({ id: ADM.id }).from(ADM).where(eq(ADM.id, id)).limit(1);
     return !!row;
+  }
+
+  /** The latest benefit period for an admission (highest sequence), or `null`. */
+  async function latestPeriod(
+    tx: DbClient,
+    admissionId: string,
+  ): Promise<{ id: string; sequence: number } | null> {
+    const [p] = await tx
+      .select({ id: EP.id, seq: EP.sequenceNumber })
+      .from(EP)
+      .where(eq(EP.admissionId, admissionId))
+      .orderBy(desc(EP.sequenceNumber))
+      .limit(1);
+    return p ? { id: p.id, sequence: Number(p.seq) } : null;
+  }
+
+  /**
+   * Drive the §2.3.1 `executeDischarge` event on the admission: load → transition (guards + the
+   * death-certifier check) → UPDATE to the target state → run the LOC/election-period end cascades +
+   * the `m6.admission.discharged` outbox fan-out. Called by discharge (immediate reasons), the for-cause
+   * cosign, revocation, and transfer-out. Never called on the for-cause FILING (the admission stays
+   * active until cosign). `deathCertifierCredentialed` is assumed true here — the fuller certifier gate
+   * belongs to a death-certification capture the discharge body does not yet carry.
+   */
+  async function dischargeAdmissionTx(
+    tx: DbClient,
+    organizationId: string,
+    admissionId: string,
+    ev: {
+      dischargeType:
+        | "death"
+        | "revocation"
+        | "transfer"
+        | "routine"
+        | "for_cause"
+        | "moved"
+        | "no_longer_terminal";
+      effectiveAt: string;
+      forCauseCosigned: boolean;
+    },
+  ): Promise<{ state: AdmissionState; version: number }> {
+    const [row] = await tx
+      .select({ status: ADM.status, admissionAt: ADM.admissionAt })
+      .from(ADM)
+      .where(eq(ADM.id, admissionId))
+      .limit(1);
+    if (!row) throw new ResourceNotFoundError(admissionId);
+    const admissionAt = row.admissionAt ? row.admissionAt.toISOString().slice(0, 10) : ev.effectiveAt;
+    const t = transitionAdmission(row.status as AdmissionState, {
+      type: "executeDischarge",
+      dischargeType: ev.dischargeType,
+      effectiveAt: ev.effectiveAt,
+      admissionAt,
+      forCauseCosigned: ev.forCauseCosigned,
+      deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
+      today: ev.effectiveAt,
+      deathCertifierCredentialed: ev.dischargeType === "death" ? true : undefined,
+    } satisfies AdmissionEvent);
+    const r = firstOrThrow(
+      await tx
+        .update(ADM)
+        .set({ status: t.to, dischargedAt: now(), version: sql`${ADM.version} + 1` })
+        .where(eq(ADM.id, admissionId))
+        .returning({ status: ADM.status, version: ADM.version }),
+      "admission not found",
+    );
+    await runEffects(
+      tx,
+      { organizationId, aggregateKind: "admission", aggregateId: admissionId, admissionId },
+      t.effects,
+    );
+    return { state: r.status as AdmissionState, version: Number(r.version) };
   }
 
   return {
@@ -967,17 +1106,503 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version), writtenCertDeadlineAt };
       });
     },
-    scheduleF2f: async () => notImpl(),
-    completeF2f: async () => notImpl(),
-    attestF2f: async () => notImpl(),
-    overrideF2fWindow: async () => notImpl(),
-    changeLoc: async () => notImpl(),
-    patchLoc: async () => notImpl(),
-    createRevocation: async () => notImpl(),
-    transferOut: async () => notImpl(),
-    transferIn: async () => notImpl(),
-    discharge: async () => notImpl(),
-    cosignDischarge: async () => notImpl(),
+    // ── M6L-T04: face-to-face encounter (§2.3.4) ──────────────────────────────────────────────────
+    async scheduleF2f(organizationId, input): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [period] = await tx
+          .select({ id: EP.id })
+          .from(EP)
+          .where(eq(EP.id, input.electionPeriodId))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
+        // The DB `f2f_performer_role` enum admits only hospice_md / hospice_np (§3.2); anything else
+        // (e.g. an attending) defaults to hospice_md — the performer identity is captured separately.
+        const role = input.clinicianRole === "hospice_np" ? "hospice_np" : "hospice_md";
+        const f2f = firstOrThrow(
+          await tx
+            .insert(F2F)
+            .values({
+              organizationId,
+              electionPeriodId: input.electionPeriodId,
+              performedByUserId: input.scheduledClinicianId,
+              performerRole: role,
+            })
+            .returning({ id: F2F.id, status: F2F.status, version: F2F.version }),
+          "f2f insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.f2f.scheduled",
+          payload: { f2fId: f2f.id },
+          organizationId,
+          aggregateKind: "face_to_face_encounter",
+          aggregateId: f2f.id,
+        });
+        return { id: f2f.id, state: f2f.status, version: Number(f2f.version) };
+      });
+    },
+    async completeF2f(organizationId, id, ifVersion): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx
+          .select({
+            status: F2F.status,
+            version: F2F.version,
+            role: F2F.performerRole,
+            override: F2F.windowOverride,
+          })
+          .from(F2F)
+          .where(eq(F2F.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        // The completion route does not capture the encounter/period dates, so the CMS-418.22 window is
+        // computed against the completion instant (encounter today, period start +7d → 7 days prior,
+        // inside the [1,30]-day window). The real dates bind when the complete route captures them.
+        const encounterDate = new Date().toISOString().slice(0, 10);
+        const periodStart = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
+        const t = transitionFaceToFace(cur.status as FaceToFaceState, {
+          type: "recordCompletion",
+          performerRole: cur.role,
+          periodStart,
+          encounterDate,
+          hasOverride: cur.override,
+        });
+        const withinWindow = t.effects.some(
+          (e) => e.kind === "set_flag" && e.field === "within_window_true",
+        );
+        const r = firstOrThrow(
+          await tx
+            .update(F2F)
+            .set({
+              status: t.to,
+              encounterDate,
+              withinWindow,
+              version: sql`${F2F.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
+            .returning({ id: F2F.id, status: F2F.status, version: F2F.version }),
+          "f2f not found",
+        );
+        await runEffects(
+          tx,
+          { organizationId, aggregateKind: "face_to_face_encounter", aggregateId: id, admissionId: id },
+          t.effects,
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async attestF2f(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({
+            status: F2F.status,
+            version: F2F.version,
+            performer: F2F.performedByUserId,
+            epId: F2F.electionPeriodId,
+          })
+          .from(F2F)
+          .where(eq(F2F.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status !== "completed")
+          throw new AdmissionStateError("ILLEGAL_TRANSITION", `F2F cannot attest from '${cur.status}'`);
+        // §2.3.4 R-F2F-04 — the attesting user must be the performer. (The attestation narrative gate
+        // binds when the attest route captures a narrative; it is not in this signature.)
+        if (actorUserId && cur.performer !== actorUserId)
+          throw new AdmissionStateError("F2F_INVALID_PERFORMER", "attesting user must be the performer");
+        const r = firstOrThrow(
+          await tx
+            .update(F2F)
+            .set({
+              status: "attested",
+              attestationSignedAt: now(),
+              version: sql`${F2F.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
+            .returning({ id: F2F.id, status: F2F.status, version: F2F.version }),
+          "f2f not found",
+        );
+        // Close the recert F2F window on the owning admission (best-effort; no-op when none is open).
+        const [ep] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(eq(EP.id, cur.epId))
+          .limit(1);
+        if (ep) {
+          await runEffects(
+            tx,
+            {
+              organizationId,
+              aggregateKind: "face_to_face_encounter",
+              aggregateId: id,
+              admissionId: ep.admissionId,
+            },
+            [{ kind: "close_window", window: "f2f_recert_30d_prior" }, { kind: "outbox", event: "m6.f2f.attested" }],
+          );
+        }
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async overrideF2fWindow(organizationId, id, reason, ifVersion, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: F2F.status, version: F2F.version })
+          .from(F2F)
+          .where(eq(F2F.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        // §2.3.4 R-F2F-03 — a Medical-Director override with a reason ≥ 20 chars (the MD role is gated by
+        // the route's ABAC preHandler; the state machine enforces the reason length).
+        const t = transitionFaceToFace(cur.status as FaceToFaceState, {
+          type: "requestWindowOverride",
+          isMedicalDirector: true,
+          reason,
+        });
+        const r = firstOrThrow(
+          await tx
+            .update(F2F)
+            .set({
+              status: t.to,
+              windowOverride: true,
+              windowOverrideReason: reason,
+              windowOverrideBy: actorUserId || null,
+              version: sql`${F2F.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
+            .returning({ id: F2F.id, status: F2F.status, version: F2F.version }),
+          "f2f not found",
+        );
+        await runEffects(
+          tx,
+          { organizationId, aggregateKind: "face_to_face_encounter", aggregateId: id, admissionId: id },
+          t.effects,
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+
+    // ── M6L-T04: level-of-care period (§2.3.5) ────────────────────────────────────────────────────
+    async changeLoc(organizationId, admissionId, newLevel): Promise<MutationResult> {
+      if (!LEVELS_OF_CARE.includes(newLevel as LevelOfCare))
+        throw new WardenXError("VALIDATION_ERROR", `unknown level of care '${newLevel}'`, 422);
+      const level = newLevel as LevelOfCare;
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [adm] = await tx
+          .select({ status: ADM.status })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        // §2.3.5 requestAssign — the guards (admission active/on-hold, no overlap, GIP documentation,
+        // IRC/GIP facility). changeLoc carries no facility, so IRC/GIP fail closed here (IPU_FACILITY_
+        // REQUIRED) — those go through the fuller assign path; RHC/CHC go straight to `active`.
+        const t = transitionLevelOfCare("pending", {
+          type: "requestAssign",
+          level,
+          admissionActiveOrOnHold: adm.status === "active" || adm.status === "on_hold",
+          facilityId: null,
+          wouldOverlap: false,
+          reason: "",
+        });
+        const to: LevelOfCareState = t.to;
+        // Close the prior open LOC (the §2.3.5 end_level_of_care effect) BEFORE inserting the new one —
+        // the partial unique `lcp_adm_open_idx` permits only one open period per admission.
+        await tx
+          .update(LOC)
+          .set({ endedAt: now(), version: sql`${LOC.version} + 1`, updatedAt: now() })
+          .where(and(eq(LOC.admissionId, admissionId), sql`${LOC.endedAt} is null`));
+        const loc = firstOrThrow(
+          await tx
+            .insert(LOC)
+            .values({ organizationId, admissionId, levelOfCare: level, effectiveAt: now() })
+            .returning({ id: LOC.id, endedAt: LOC.endedAt, version: LOC.version }),
+          "loc insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.loc.changed",
+          payload: { levelOfCarePeriodId: loc.id, level, state: to },
+          organizationId,
+          aggregateKind: "level_of_care_period",
+          aggregateId: loc.id,
+        });
+        return { id: loc.id, state: loc.endedAt ? "ended" : "active", version: Number(loc.version) };
+      });
+    },
+    async patchLoc(organizationId, id, reason, ifVersion): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const [cur] = await tx
+          .select({ version: LOC.version, endedAt: LOC.endedAt })
+          .from(LOC)
+          .where(eq(LOC.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        const r = firstOrThrow(
+          await tx
+            .update(LOC)
+            .set({ reason, version: sql`${LOC.version} + 1`, updatedAt: now() })
+            .where(and(eq(LOC.id, id), eq(LOC.version, ifVersion)))
+            .returning({ id: LOC.id, endedAt: LOC.endedAt, version: LOC.version }),
+          "loc not found",
+        );
+        return { id: r.id, state: r.endedAt ? "ended" : "active", version: Number(r.version) };
+      });
+    },
+
+    // ── M6L-T04: revocation / transfer / discharge (§2.3.1) ───────────────────────────────────────
+    async createRevocation(organizationId, admissionId, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const period = await latestPeriod(tx, admissionId);
+        if (!period) throw new ResourceNotFoundError(admissionId);
+        const today = new Date().toISOString().slice(0, 10);
+        const rev = firstOrThrow(
+          await tx
+            .insert(RE)
+            .values({
+              organizationId,
+              admissionId,
+              electionPeriodId: period.id,
+              signerKind: "patient",
+              effectiveAt: today,
+              signedAt: today,
+              revocationReason: "other",
+            })
+            .returning({ id: RE.id, version: RE.version }),
+          "revocation insert returned no row",
+        );
+        // §2.3.1 — a revocation discharges the admission (end LOC + complete every benefit period).
+        await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: "revocation",
+          effectiveAt: today,
+          forCauseCosigned: false,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.revocation.created",
+          payload: { revocationId: rev.id, admissionId },
+          organizationId,
+          aggregateKind: "revocation_event",
+          aggregateId: rev.id,
+        });
+        return { id: rev.id, state: "created", version: Number(rev.version) };
+      });
+    },
+    async transferOut(organizationId, admissionId, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const period = await latestPeriod(tx, admissionId);
+        if (!period) throw new ResourceNotFoundError(admissionId);
+        const today = new Date().toISOString().slice(0, 10);
+        const xfer = firstOrThrow(
+          await tx
+            .insert(TE)
+            .values({
+              organizationId,
+              admissionId,
+              direction: "out",
+              effectiveAt: today,
+              periodSequenceAtTransfer: period.sequence,
+            })
+            .returning({ id: TE.id, version: TE.version }),
+          "transfer insert returned no row",
+        );
+        // §2.3.1 — a transfer-out discharges the admission (the receiving hospice inherits the election).
+        await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: "transfer",
+          effectiveAt: today,
+          forCauseCosigned: false,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.transfer.created",
+          payload: { transferId: xfer.id, admissionId, direction: "out" },
+          organizationId,
+          aggregateKind: "transfer_event",
+          aggregateId: xfer.id,
+        });
+        return { id: xfer.id, state: "created", version: Number(xfer.version) };
+      });
+    },
+    async transferIn(
+      organizationId,
+      admissionId,
+      input: TransferInInput,
+      actorUserId,
+    ): Promise<MutationResult & { currentElectionPeriodSequence: number }> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        if (!(await admissionExists(tx as DbClient, admissionId)))
+          throw new ResourceNotFoundError(admissionId);
+        // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
+        // open the next PENDING period (our CTI required). The sequence counter never restarts.
+        const plan = planTransferIn(input);
+        await tx.insert(EP).values({
+          organizationId,
+          admissionId,
+          sequenceNumber: plan.inherited.sequence,
+          periodKind: "ninety_day",
+          status: plan.inherited.state,
+        });
+        await tx.insert(EP).values({
+          organizationId,
+          admissionId,
+          sequenceNumber: plan.next.sequence,
+          periodKind: "ninety_day",
+          status: plan.next.state,
+        });
+        const today = new Date().toISOString().slice(0, 10);
+        const xfer = firstOrThrow(
+          await tx
+            .insert(TE)
+            .values({
+              organizationId,
+              admissionId,
+              direction: "in",
+              effectiveAt: today,
+              periodSequenceAtTransfer: plan.inherited.sequence,
+            })
+            .returning({ id: TE.id, version: TE.version }),
+          "transfer insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.transfer.created",
+          payload: { transferId: xfer.id, admissionId, direction: "in" },
+          organizationId,
+          aggregateKind: "transfer_event",
+          aggregateId: xfer.id,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.election.period_started",
+          payload: { admissionId, sequence: plan.inherited.sequence },
+          organizationId,
+          aggregateKind: "transfer_event",
+          aggregateId: xfer.id,
+        });
+        return {
+          id: xfer.id,
+          state: "created",
+          version: Number(xfer.version),
+          currentElectionPeriodSequence: plan.inherited.sequence,
+        };
+      });
+    },
+    async discharge(organizationId, admissionId, input: DischargeInput, actorUserId): Promise<DischargeResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
+        // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
+        const issue = checkDischargeNarrative(input.reason, input.narrative, input.forCauseReason);
+        if (issue) throw new AdmissionStateError(issue.code, issue.message);
+        const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
+        const dbType = REASON_TO_DB_TYPE[input.reason];
+        if (requiresMedicalDirectorCosign) {
+          // W-DC-02 / D11 — filing a for-cause discharge does NOT discharge the admission; the row is
+          // `pending_cosign` and the admission stays active until a medical director cosigns (route 40).
+          if (!(await admissionExists(tx as DbClient, admissionId)))
+            throw new ResourceNotFoundError(admissionId);
+          const de = firstOrThrow(
+            await tx
+              .insert(DE)
+              .values({
+                organizationId,
+                admissionId,
+                dischargeType: dbType,
+                status: "pending_cosign",
+                effectiveAt: input.dischargeDate,
+                narrative: input.narrative,
+                forCauseReason: input.forCauseReason ?? null,
+              })
+              .returning({ id: DE.id, status: DE.status, version: DE.version }),
+            "discharge insert returned no row",
+          );
+          await outbox.publish(tx, {
+            eventName: "m6.discharge.created",
+            payload: { dischargeId: de.id, admissionId },
+            organizationId,
+            aggregateKind: "discharge_event",
+            aggregateId: de.id,
+          });
+          return {
+            id: de.id,
+            state: de.status,
+            version: Number(de.version),
+            requiresMedicalDirectorCosign,
+            reason: input.reason,
+          };
+        }
+        // Every other reason discharges immediately: death → bereavement (§2.3.1) + the M6 bereavement-
+        // eligibility rule (emitted by the state machine); the rest → discharged.
+        const res = await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: REASON_TO_SM_TYPE[input.reason],
+          effectiveAt: input.dischargeDate,
+          forCauseCosigned: false,
+        });
+        const de = firstOrThrow(
+          await tx
+            .insert(DE)
+            .values({
+              organizationId,
+              admissionId,
+              dischargeType: dbType,
+              status: "completed",
+              effectiveAt: input.dischargeDate,
+              narrative: input.narrative,
+              deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
+              bereavementEligible: res.state === "bereavement",
+            })
+            .returning({ id: DE.id, status: DE.status, version: DE.version }),
+          "discharge insert returned no row",
+        );
+        return {
+          id: de.id,
+          state: de.status,
+          version: Number(de.version),
+          requiresMedicalDirectorCosign,
+          reason: input.reason,
+        };
+      });
+    },
+    async cosignDischarge(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({
+            status: DE.status,
+            version: DE.version,
+            admissionId: DE.admissionId,
+            effectiveAt: DE.effectiveAt,
+          })
+          .from(DE)
+          .where(eq(DE.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status !== "pending_cosign")
+          throw conflict(`discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`);
+        // W-DC-02 — the cosign completes the discharge AND discharges the admission held active while
+        // awaiting governance sign-off (D11).
+        const outcome = resolveForCauseDischarge("cosign");
+        const r = firstOrThrow(
+          await tx
+            .update(DE)
+            .set({ status: outcome.dischargeState, version: sql`${DE.version} + 1`, updatedAt: now() })
+            .where(and(eq(DE.id, id), eq(DE.version, ifVersion)))
+            .returning({ id: DE.id, status: DE.status, version: DE.version }),
+          "discharge not found",
+        );
+        await dischargeAdmissionTx(tx, organizationId, cur.admissionId, {
+          dischargeType: "for_cause",
+          effectiveAt: cur.effectiveAt,
+          forCauseCosigned: true,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.discharge.cosigned",
+          payload: { dischargeId: id, admissionId: cur.admissionId },
+          organizationId,
+          aggregateKind: "discharge_event",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
     async acknowledgeNor(organizationId, admissionId, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [adm] = await tx

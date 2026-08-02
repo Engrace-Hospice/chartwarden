@@ -874,6 +874,14 @@ export const dischargeType = pgEnum("discharge_type", [
   "no_longer_terminal",
   "moved_out_of_service_area",
   "for_cause",
+  "other",
+]);
+
+/** `discharge_event_status` — the D11 two-step for-cause cascade (M6L-T04): pending_cosign → completed/voided. */
+export const dischargeEventStatus = pgEnum("discharge_event_status", [
+  "pending_cosign",
+  "completed",
+  "voided",
 ]);
 
 /** `nor_acknowledgment_method` — how the Notice of Rights was acknowledged (§3.2). */

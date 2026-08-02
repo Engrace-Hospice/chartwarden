@@ -19,8 +19,10 @@ export const transferEvents = pgTable(
       .notNull()
       .references(() => admissions.id, { onDelete: "restrict" }),
     direction: transferDirection("direction").notNull(),
-    receivingOrSendingCcn: text("receiving_or_sending_ccn").notNull(),
-    receivingOrSendingName: text("receiving_or_sending_name").notNull(),
+    // Nullable at create (M6L-T04): routes 37/38 do not yet capture the counterparty agency; the CCN +
+    // name are filled when the sending/receiving hospice is known.
+    receivingOrSendingCcn: text("receiving_or_sending_ccn"),
+    receivingOrSendingName: text("receiving_or_sending_name"),
     receivingOrSendingFacilityId: uuid("receiving_or_sending_facility_id"), // M40 facility (app-validated)
     effectiveAt: date("effective_at").notNull(),
     periodSequenceAtTransfer: smallint("period_sequence_at_transfer").notNull(),

@@ -159,10 +159,11 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(await service.listElectionPeriods(ORG_A, PATIENT /* not an admission id */)).toBeNull();
   });
 
-  it("the F2F/LOC/discharge/compliance writes still fail-closed 501 until M6L-T04+", async () => {
-    // (Referral + admission [T02] and election + CTI [T03] writes are live — see the *-write*.live tests.)
+  it("the compliance-window close/override writes still fail-closed 501 until M6L-T05", async () => {
+    // (Referral+admission [T02], election+CTI [T03], and F2F/LOC/discharge/transfer/revocation [T04]
+    // writes are live — see the *-write*.live tests. Only the T05 compliance writes remain 501.)
     await expect(
-      service.changeLoc(ORG_A, seeded[ORG_A].admission, "routine_home_care"),
+      service.closeComplianceWindow(ORG_A, seeded[ORG_A].admission, 0),
     ).rejects.toMatchObject({ statusCode: 501 });
   });
 });
