@@ -177,6 +177,7 @@ import {
 } from "./modules/17-scheduling/index";
 import {
   EvvRouteService,
+  M18_OUTBOX_EVENTS,
   registerEvvAbacPredicates,
   registerEvvRoutes,
   registerEvvSeams,
@@ -1218,6 +1219,10 @@ if ((import.meta as { main?: boolean }).main) {
     // published/started/cancelled/rescheduled/no-show + recurring discontinue + time-off requested/approved/
     // denied + route-degraded emits to validate against `m17OutboxPublisher`.
     M17_OUTBOX_EVENTS,
+    // M18L — the `m18.evv.*` catalog. REQUIRED for the EVV write lifecycle's capture (check-in/out) + device
+    // pending/approved/suspended + geofence-policy-changed + late-check-resolved + aggregator-cancelled emits to
+    // validate against `m18OutboxPublisher`.
+    M18_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
     // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
@@ -1263,6 +1268,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m13OutboxPublisher = bindCallerModule(txOutboxPublisher, "m13");
   const m14OutboxPublisher = bindCallerModule(txOutboxPublisher, "m14");
   const m17OutboxPublisher = bindCallerModule(txOutboxPublisher, "m17");
+  const m18OutboxPublisher = bindCallerModule(txOutboxPublisher, "m18");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -1353,7 +1359,7 @@ if ((import.meta as { main?: boolean }).main) {
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
-          mountEvvRoutes(app, dbHandle.db); // M18 reads
+          mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           mountDocumentRoutes(app, dbHandle.db); // M22 reads
           mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
