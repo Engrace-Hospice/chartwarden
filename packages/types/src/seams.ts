@@ -1062,4 +1062,17 @@ export type DataClass =
   /** `doclens_*` invocations — the patient's INTAKE documents (the M22 half). */
   | "intake_ai_provenance"
   /** Every other capability — the patient's CHART (the M8 half). */
-  | "clinical_record_ai_provenance";
+  | "clinical_record_ai_provenance"
+  // M28 (FHIR Gateway) per-TENANT gateway footprint (§3.7). Registered in M28-T02 (the schema task) so the
+  // contract exists from the moment the tables do; the REAL eraser binds through the composition-root hook
+  // over the Phase-0 deny-stub in M28-T08. NOT a delete — a targeted shred that keeps every row: it zeroes
+  // `tenant_fhir_config.cursor_signing_key_cipher`, destroys the `fhir_client_credential` ciphers (keeping
+  // the `fingerprint`), purges the `fhir_bulk_export_artifact` MinIO objects, soft-deletes `fhir_client`
+  // (`status='revoked'`) and `fhir_bulk_export_job` (`status='expired'`), and replaces
+  // `fhir_inbound_resource.payload` with the `{"_destroyed":true}` sentinel — while every row's status,
+  // approvals, `baa_contract_reference`, `payload_sha256` and timestamps survive, because those rows ARE
+  // the §164.528 accounting-of-disclosures evidence (what PHI was disclosed to which external client, under
+  // which BAA, when). `fhir_client_session` rows are fully destructible (no PHI, routine-purged past 90
+  // days) and `fhir_capability_snapshot` is never touched (platform-shared, no PHI). Unlike the per-patient
+  // classes above, `subjectId` is the ORG being offboarded — the M28 named it `fhir_gateway` in M28-T01.
+  | "fhir_gateway";

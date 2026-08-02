@@ -197,6 +197,17 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // are never touched. The `subjectId` is the patient.
   "intake_ai_provenance",
   "clinical_record_ai_provenance",
+  // M28-T02 (the schema task) registers the data-class contract the moment the tables exist; the Phase-0
+  // deny-stub (wireErasers) stands until M28-T08 binds the REAL eraser via the composition-root hook. NOT a
+  // delete: under an M4 destruction certificate it SHREDS in place — zeroes `tenant_fhir_config`'s
+  // cursor-signing-key cipher, destroys the `fhir_client_credential` ciphers (keeping the fingerprint),
+  // purges the `fhir_bulk_export_artifact` MinIO objects, soft-deletes `fhir_client`/`fhir_bulk_export_job`,
+  // replaces `fhir_inbound_resource.payload` with the destroyed sentinel, and fully destroys the no-PHI
+  // `fhir_client_session` rows — while every surviving row's status/approvals/`baa_contract_reference`/
+  // `payload_sha256`/timestamps remain, because they ARE the §164.528 disclosure-accounting evidence.
+  // `fhir_capability_snapshot` (platform-shared, no PHI) is never touched. Unlike the per-patient classes
+  // above, `subjectId` is the ORG being offboarded.
+  "fhir_gateway",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

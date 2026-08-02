@@ -201,6 +201,13 @@ const NON_ORG_SCOPED = new Set<string>([
   "ai_model_backend",
   "ai_prompt_template",
   "ai_evaluation_run",
+  // M28 FHIR Gateway (§3.3 / §3.5): `fhir_capability_snapshot` is the platform-singleton
+  // CapabilityStatement (D11) and carries NO organization_id BY DESIGN — a conformance statement is the
+  // same contract for every tenant. Read-all `USING (true)` TO wardenx_app, writes only via wardenx_admin
+  // (0137; the M32 ai_capability / M38 code_system / M22 form_template precedent); it audits through M1's
+  // baseline `wardenx_audit_trigger()`, which resolves the (absent) org from the session. The other seven
+  // M28 tables carry organization_id and get standard app.org_id RLS.
+  "fhir_capability_snapshot",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =

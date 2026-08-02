@@ -37,7 +37,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 11/11 ✅ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
-| M28 FHIR Gateway | 🟡 Partial | ✅ | ❌ | ❌ | ❌ | — | ❌ | ✅ | — | 0/8 ⚠️ |
+| M28 FHIR Gateway | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 0/8 ⚠️ |
 | M29 External Interfaces | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/11 ⚠️ |
 | M30 HQRP & Quality | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 60/60 ✅ | ✅ | ✅ | ✅ | 18/18 ✅ |
 | M31 Patient/Family Portal & Telehealth | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | ❌ | 0/3 ⚠️ |
