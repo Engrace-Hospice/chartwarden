@@ -80,6 +80,7 @@ import {
   mountCarePlanRoutes,
 } from "./modules/07-care-plan/index";
 import {
+  M8_OUTBOX_EVENTS,
   createDrizzleEncounterReaderStore,
   createInMemoryEncounterBackend,
   registerEncounterAbacPredicates,
@@ -1181,6 +1182,11 @@ if ((import.meta as { main?: boolean }).main) {
     // validate: the bound `m7OutboxPublisher` (below) runs every emit through this catalog, and an
     // unlisted event name throws `unknown_event` and rolls back the caller's write.
     M7_OUTBOX_EVENTS,
+    // M8L-T02 — the `m8.*` encounter catalog. REQUIRED for the write lifecycle's outbox emits to
+    // validate (the bound `m8OutboxPublisher` below runs every emit through it); an unlisted event name
+    // throws `unknown_event` and rolls back the caller's write. `m8.encounter.signed` is the locked
+    // clinical-record trigger — its payload is validated against the §4.4 schema here.
+    M8_OUTBOX_EVENTS,
     M15_OUTBOX_EVENTS,
     M16_OUTBOX_EVENTS,
     // M21-T04 — the §4.5.2 `m21.*` catalog. Registered for the dispatcher's payload validation; the
@@ -1218,6 +1224,7 @@ if ((import.meta as { main?: boolean }).main) {
   // `m34.tenant.provisioned` event, so no mutation rolls back).
   const m6OutboxPublisher = bindCallerModule(txOutboxPublisher, "m6");
   const m7OutboxPublisher = bindCallerModule(txOutboxPublisher, "m7");
+  const m8OutboxPublisher = bindCallerModule(txOutboxPublisher, "m8");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
   const m16OutboxPublisher = bindCallerModule(txOutboxPublisher, "m16");
   const m19OutboxPublisher = bindCallerModule(txOutboxPublisher, "m19");
@@ -1300,7 +1307,7 @@ if ((import.meta as { main?: boolean }).main) {
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
           // lifecycle lands. See each module's `*-route-service-db.ts`.
           mountCarePlanRoutes(app, dbHandle.db, m7OutboxPublisher); // M7 — reads + the T02 write lifecycle over Drizzle+RLS, m7.* transactional outbox
-          mountEncounterRoutes(app, dbHandle.db); // M8 reads
+          mountEncounterRoutes(app, dbHandle.db, m8OutboxPublisher); // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox
           mountAssessmentRoutes(app, dbHandle.db); // M9 reads
           mountHopeRoutes(app, dbHandle.db); // M10 reads
           mountOrderRoutes(app, dbHandle.db); // M11 reads

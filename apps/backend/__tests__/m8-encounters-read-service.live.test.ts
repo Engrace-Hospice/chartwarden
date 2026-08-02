@@ -157,15 +157,18 @@ describe.skipIf(!DB_URL)("M8 Drizzle read service — LIVE Postgres (M8L-T01)", 
     });
   });
 
-  it("writes fail-closed 501 until the M8L-T02+ Drizzle write lifecycle lands", async () => {
-    await expect(
-      service.createDraft(ORG_A, USER, {
-        patientId: PATIENT,
-        admissionId: ADMISSION,
-        encounterType: "routine_visit",
-        discipline: "rn",
-        serviceDate: "2026-01-01",
-      }),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("createDraft now persists a real draft (the M8L-T02 write lifecycle; full coverage in the write suite)", async () => {
+    const draft = await service.createDraft(ORG_A, seeded[ORG_A].membership, {
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      encounterType: "routine_visit",
+      discipline: "rn",
+      serviceDate: "2026-01-01",
+    });
+    expect(draft.status).toBe("draft");
+    expect(draft.version).toBe(0);
+    const detail = await service.getEncounter(ORG_A, draft.id);
+    expect(detail.id).toBe(draft.id);
+    expect(detail.authoredByUserId).toBe(seeded[ORG_A].membership);
   });
 });
