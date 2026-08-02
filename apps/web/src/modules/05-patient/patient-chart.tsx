@@ -91,19 +91,32 @@ function NavIcon({ name }: { name: NavIconName }): JSX.Element {
   );
 }
 
-// Module nav rail (spec). Only sections whose module is built are active now; the rest are
-// placeholders that light up in Track B as their module lands.
-const NAV_SECTIONS: { label: string; ready: boolean; icon: NavIconName }[] = [
+// Module nav rail (spec). Three kinds of row:
+//  • `ready: true`  — an M5-owned tab rendered INLINE here via setSection.
+//  • `route`        — a cross-module tab whose patient-scoped workspace screen exists on its own route
+//                     (M7 Care Plan, M8 Encounters, M11 Orders); the row LINKS there.
+//  • neither        — a placeholder greyed until its module's patient surface lands (Track B).
+const NAV_SECTIONS: {
+  label: string;
+  ready: boolean;
+  icon: NavIconName;
+  route?: (id: string) => string;
+}[] = [
   { label: "Summary", ready: true, icon: "summary" },
   { label: "Demographics & Identifiers", ready: true, icon: "person" },
   { label: "Addresses", ready: true, icon: "pin" },
   { label: "Coverage / Payers", ready: true, icon: "shield" },
   { label: "Care Team & Assignments", ready: true, icon: "groups" },
   { label: "Privacy Flags", ready: true, icon: "lock" },
-  { label: "Care Plan", ready: false, icon: "carePlan" },
-  { label: "Encounters / Visits", ready: false, icon: "stethoscope" },
+  { label: "Care Plan", ready: false, icon: "carePlan", route: (id) => `/patients/${id}/care-plan` },
+  {
+    label: "Encounters / Visits",
+    ready: false,
+    icon: "stethoscope",
+    route: (id) => `/patients/${id}/encounters`,
+  },
   { label: "Assessments", ready: false, icon: "checklist" },
-  { label: "Orders", ready: false, icon: "orders" },
+  { label: "Orders", ready: false, icon: "orders", route: (id) => `/patients/${id}/orders` },
   { label: "Medications / eMAR", ready: false, icon: "pill" },
   { label: "Documents", ready: false, icon: "folder" },
   { label: "Election & Certification", ready: false, icon: "cert" },
@@ -193,47 +206,64 @@ export function PatientChart(): JSX.Element {
               gap: "0.25rem",
             }}
           >
-            {NAV_SECTIONS.map((s) => (
-              <li
-                key={s.label}
-                role={s.ready ? "button" : undefined}
-                tabIndex={s.ready ? 0 : undefined}
-                onClick={s.ready ? () => setSection(s.label) : undefined}
-                onKeyDown={
-                  s.ready
-                    ? (ev) => {
-                        if (ev.key === "Enter" || ev.key === " ") {
-                          ev.preventDefault();
-                          setSection(s.label);
+            {NAV_SECTIONS.map((s) => {
+              const isActiveInline = s.ready && s.label === section;
+              const rowStyle = {
+                display: "flex",
+                alignItems: "center",
+                gap: "0.625rem",
+                padding: "0.5rem 0.75rem",
+                borderRadius: "0.5rem",
+                fontSize: "0.8125rem",
+                textDecoration: "none",
+                color: isActiveInline
+                  ? "var(--color-primary)"
+                  : s.ready || s.route
+                    ? "var(--color-on-surface-variant)"
+                    : "var(--color-muted)",
+                cursor: s.ready || s.route ? "pointer" : "default",
+                background: isActiveInline ? "var(--color-primary-tint)" : "transparent",
+                fontWeight: isActiveInline ? 600 : 500,
+              } as const;
+
+              // A cross-module tab with its own patient-scoped route — navigate there.
+              if (s.route) {
+                return (
+                  <li key={s.label}>
+                    <Link to={s.route(p.id)} style={rowStyle}>
+                      <NavIcon name={s.icon} />
+                      {s.label}
+                    </Link>
+                  </li>
+                );
+              }
+
+              // An M5-owned inline tab, or a greyed placeholder for a not-yet-built surface.
+              return (
+                <li
+                  key={s.label}
+                  role={s.ready ? "button" : undefined}
+                  tabIndex={s.ready ? 0 : undefined}
+                  onClick={s.ready ? () => setSection(s.label) : undefined}
+                  onKeyDown={
+                    s.ready
+                      ? (ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            setSection(s.label);
+                          }
                         }
-                      }
-                    : undefined
-                }
-                aria-current={s.ready && s.label === section ? "page" : undefined}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.625rem",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "0.5rem",
-                  fontSize: "0.8125rem",
-                  color:
-                    s.ready && s.label === section
-                      ? "var(--color-primary)"
-                      : s.ready
-                        ? "var(--color-on-surface-variant)"
-                        : "var(--color-muted)",
-                  cursor: s.ready ? "pointer" : "default",
-                  background:
-                    s.ready && s.label === section ? "var(--color-primary-tint)" : "transparent",
-                  fontWeight: s.ready && s.label === section ? 600 : 500,
-                }}
-                title={s.ready ? undefined : "Available when this module ships"}
-              >
-                <NavIcon name={s.icon} />
-                {s.label}
-              </li>
-            ))}
+                      : undefined
+                  }
+                  aria-current={isActiveInline ? "page" : undefined}
+                  style={rowStyle}
+                  title={s.ready ? undefined : "Available when this module ships"}
+                >
+                  <NavIcon name={s.icon} />
+                  {s.label}
+                </li>
+              );
+            })}
           </ul>
         </LeftNavRail>
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
