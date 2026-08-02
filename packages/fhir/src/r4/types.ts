@@ -253,6 +253,26 @@ export interface DiagnosticReport extends FhirResourceBase {
   contained?: Observation[];
 }
 
+/** An `OperationOutcome.issue` — one diagnostic entry (severity + code + human detail). */
+export interface OperationOutcomeIssue {
+  severity: "fatal" | "error" | "warning" | "information";
+  /** The FHIR issue-type code — `suppressed` for the W-FHIR-03 consent-filter advisory, `not-supported`
+   *  for the W-FHIR-07 forward-seam 404, `throttled` for the D16 429, `invalid` for search errors. */
+  code: string;
+  details?: FhirCodeableConcept;
+  diagnostics?: string;
+  expression?: string[];
+}
+
+/** `OperationOutcome` — the FHIR error/advisory envelope. M28 emits it for the W-FHIR-03 SUD-redaction
+ *  warning folded into the response Bundle, the W-FHIR-07 not-supported error, and the throttle /
+ *  validation errors. Deliberately NOT part of `FhirProjectedResource`: it is an out-of-band advisory,
+ *  never a projected clinical entity, so the egress consent gate can never mistake it for one. */
+export interface OperationOutcome extends FhirResourceBase {
+  resourceType: "OperationOutcome";
+  issue: OperationOutcomeIssue[];
+}
+
 /** The read-only union of resource types the Phase-1 gateway PROJECTS (D1). Not the same as the inbound
  *  or forward-seam sets — those are tracked in `@wardenx/types`. */
 export type FhirProjectedResource =

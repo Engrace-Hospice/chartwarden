@@ -18,8 +18,15 @@
 // Goal/CarePlan + MedicationRequest/MedicationStatement) and the multi-source `DiagnosticReport`
 // projector with its child-Observation + D20 SUD-redaction pieces (§4.11), and the `?patient=:id` search
 // (W-FHIR-14). Every projection is PURE with its reader deps INJECTED — the routes (T08) supply the real
-// seam adapters; T05 adds the SUD/AI-boundary egress enforcement, T06 the published/consumed seam bind,
-// T07 the bulk-export/inbound workers + HMAC-signed cursor.
+// seam adapters; T06 the published/consumed seam bind, T07 the bulk-export/inbound workers + HMAC-signed
+// cursor.
+//
+// M28-T05 adds the two egress-boundary enforcers, both PURE with their cross-module port INJECTED (no
+// `@wardenx/consent`/`@wardenx/ai-platform` import, no `dependsOn` edge ahead of the T06 seam bind): the
+// 42 CFR Part 2 SUD egress consent gate (`egress/consent-gate`, §8.2/D3/W-FHIR-03) that consults M39's
+// `evaluateForDisclosure` per resource to include/redact/filter and folds an `OperationOutcome` warning
+// into the Bundle; and the D14 AI-prohibited-zone boot validator (`ai-block`, §8.6/W-FHIR-11) that
+// refuses M28 boot if any active M32 prompt targets a FHIR output-entity zone.
 
 export * from "./lifecycle";
 export * from "./auth/scopes";
@@ -32,3 +39,5 @@ export * from "./domain/validation";
 export * from "./interfaces/mapper";
 export * from "./interfaces/search-translator";
 export * from "./r4";
+export * from "./egress/consent-gate";
+export * from "./ai-block";
