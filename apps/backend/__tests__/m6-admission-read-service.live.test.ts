@@ -159,11 +159,15 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     expect(await service.listElectionPeriods(ORG_A, PATIENT /* not an admission id */)).toBeNull();
   });
 
-  it("the compliance-window close/override writes still fail-closed 501 until M6L-T05", async () => {
-    // (Referral+admission [T02], election+CTI [T03], and F2F/LOC/discharge/transfer/revocation [T04]
-    // writes are live — see the *-write*.live tests. Only the T05 compliance writes remain 501.)
-    await expect(
-      service.closeComplianceWindow(ORG_A, seeded[ORG_A].admission, 0),
-    ).rejects.toMatchObject({ statusCode: 501 });
+  it("closeComplianceWindow closes an open window (T05 — the whole M6 write lifecycle is now live)", async () => {
+    // Every M6 write is live now (T02–T05); seed one open window and prove the close path drives it to
+    // `closed` under the unprivileged role. Override is exercised in the dedicated T05 write suite.
+    const { rows } = await admin.query(
+      `INSERT INTO compliance_window (organization_id, admission_id, window_kind, starts_at, must_complete_by)
+       VALUES ($1,$2,'notice_of_rights', now(), now() + interval '48 hours') RETURNING id`,
+      [ORG_A, seeded[ORG_A].admission],
+    );
+    const closed = await service.closeComplianceWindow(ORG_A, rows[0].id, 0);
+    expect(closed.state).toBe("closed");
   });
 });
