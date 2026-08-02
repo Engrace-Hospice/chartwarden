@@ -22,6 +22,7 @@ import {
   CreateActionItemRequest,
   IdParamsSchema,
   MeetingPacketParamsSchema,
+  PatientIdParamsSchema,
   RecordAttendanceRequest,
   RecordDecisionRequest,
   RecurringPolicyRequest,
@@ -232,6 +233,22 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId } = actorOf(request);
       const { meetingId, patientId } = parse(MeetingPacketParamsSchema, request.params);
       return service.getPacket(organizationId, meetingId, patientId);
+    },
+  );
+
+  // 14b — patient-scoped IDG review history (patient-chart "IDG History" tab). Gated by idg.read; no
+  // per-meeting idg_meeting_scope ABAC (the target is a patient, not one meeting). Metadata only — no
+  // packet/decision narrative — so there is no SUD payload to redact. A patient never on an agenda → empty.
+  app.get(
+    "/api/v1/patients/:patientId/idg-history",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "idg_history", patientIdParam: "patientId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientIdParamsSchema, request.params);
+      return service.getPatientIdgHistory(organizationId, patientId);
     },
   );
 

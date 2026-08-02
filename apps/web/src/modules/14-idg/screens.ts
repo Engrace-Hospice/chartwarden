@@ -15,6 +15,7 @@ import { LiveMeeting } from "./live-meeting";
 import { MeetingDetail } from "./meeting-detail";
 import { Minutes } from "./minutes";
 import { MyActionItems } from "./my-action-items";
+import { PatientIdgHistory } from "./patient-idg-history";
 import { PatientPacket } from "./patient-packet";
 
 export const idgScreens: ScreenRegistryModule<ComponentType> = {
@@ -53,6 +54,14 @@ export const idgScreens: ScreenRegistryModule<ComponentType> = {
       title: "IDG Packet",
       requiredPermission: "idg.read",
       screen: PatientPacket,
+    },
+    {
+      // Patient IDG History — reached from the patient chart "IDG History" tab; param path (no nav).
+      id: "idg.patient-history",
+      path: "/patients/:patientId/idg-history",
+      title: "IDG History",
+      requiredPermission: "idg.read",
+      screen: PatientIdgHistory,
     },
     {
       // My Action Items — the caller's IDG action-item queue (`assignee=me` server-resolved).

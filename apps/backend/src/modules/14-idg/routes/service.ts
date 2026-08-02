@@ -109,6 +109,40 @@ export interface MeetingScheduleView {
   readonly scheduledEnd: string;
 }
 
+/**
+ * A patient's IDG review history — the meetings this patient was reviewed in (has a packet), each with
+ * the meeting's schedule/status and the patient's decisions + action items from that meeting. PHI-safe by
+ * construction: it surfaces only non-narrative metadata (decision KIND, action-item status/discipline,
+ * meeting dates) — never the denylisted packet cover summaries, decision payloads, or item body text — so
+ * there is no §3.3 SUD narrative to redact (mirrors the packet-digest reads). Empty `meetings` when the
+ * patient has never been on an agenda.
+ */
+export interface PatientIdgHistoryView {
+  readonly meetings: readonly {
+    readonly meetingId: string;
+    readonly status: string;
+    readonly scheduledStart: string;
+    readonly actualStart: string | null;
+    readonly actualEnd: string | null;
+    readonly reviewedAt: string | null;
+    readonly packetFrozenAt: string | null;
+    readonly decisions: readonly {
+      readonly id: string;
+      readonly decisionKind: string;
+      readonly status: string;
+      readonly wasQuorate: boolean;
+      readonly recordedAt: string | null;
+    }[];
+    readonly actionItems: readonly {
+      readonly id: string;
+      readonly status: string;
+      readonly discipline: string | null;
+      readonly dueDate: string | null;
+      readonly closedAt: string | null;
+    }[];
+  }[];
+}
+
 // ── service args ─────────────────────────────────────────────────────────────────────────────────────────
 export interface RecurringPolicyArgs {
   readonly locationId: string;
@@ -163,6 +197,8 @@ export interface IdgRouteService {
   // packets
   listPackets(orgId: string, meetingId: string): Promise<PacketDigestView[]>;
   getPacket(orgId: string, meetingId: string, patientId: string): Promise<PacketDigestView>;
+  /** Patient-scoped IDG review history (patient-chart tab); empty meetings when never on an agenda. */
+  getPatientIdgHistory(orgId: string, patientId: string): Promise<PatientIdgHistoryView>;
   // agenda
   addAgendaItem(orgId: string, userId: string, meetingId: string, args: AddAgendaItemArgs): Promise<AgendaItemView>;
   updateAgendaItem(orgId: string, userId: string, id: string): Promise<AgendaItemView>;
@@ -515,6 +551,39 @@ export function createInMemoryIdgBackend(
         patientId,
         frozenAt: m.status === "adjourned" ? m.adjournedAt : null,
       };
+    },
+    async getPatientIdgHistory(orgId, patientId) {
+      const rows = [...meetings.values()]
+        .filter((m) => m.organizationId === orgId && m.includedPatientIds.has(patientId))
+        .sort((a, b) => Date.parse(b.scheduledStart) - Date.parse(a.scheduledStart))
+        .map((m) => ({
+          meetingId: m.id,
+          status: m.status as string,
+          scheduledStart: m.scheduledStart,
+          actualStart: null,
+          actualEnd: m.adjournedAt,
+          reviewedAt: null,
+          packetFrozenAt: m.status === "adjourned" ? m.adjournedAt : null,
+          decisions: [...decisions.values()]
+            .filter((d) => d.meetingId === m.id && d.patientId === patientId)
+            .map((d) => ({
+              id: d.id,
+              decisionKind: d.decisionKind as string,
+              status: d.status as string,
+              wasQuorate: d.wasQuorate,
+              recordedAt: null,
+            })),
+          actionItems: [...actionItems.values()]
+            .filter((a) => a.meetingId === m.id && a.patientId === patientId)
+            .map((a) => ({
+              id: a.id,
+              status: a.status as string,
+              discipline: null,
+              dueDate: a.dueDate,
+              closedAt: null,
+            })),
+        }));
+      return { meetings: rows };
     },
 
     // ── agenda ───────────────────────────────────────────────────────────────────────────────────────────

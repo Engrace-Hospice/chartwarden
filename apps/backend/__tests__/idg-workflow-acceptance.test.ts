@@ -115,6 +115,23 @@ describe("M14-T08 §7 workflow acceptance", () => {
     expect(schedule.map((m) => m.id)).toEqual(["mtg-a", "mtg-b"]);
   });
 
+  it("getPatientIdgHistory returns the patient's reviewed meetings with their own decisions (no cross-patient leak)", async () => {
+    const svc = await liveQuorateMeeting();
+    await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "care_plan_update" });
+    await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT_2, decisionKind: "order_request" });
+
+    const history = await svc.getPatientIdgHistory(ORG, PATIENT);
+    expect(history.meetings.length).toBe(1);
+    const mtg = history.meetings[0];
+    expect(mtg.meetingId).toBe(MTG);
+    // Only PATIENT's decision surfaces — PATIENT_2's does not leak into PATIENT's history.
+    expect(mtg.decisions.map((d) => d.decisionKind)).toEqual(["care_plan_update"]);
+
+    // A patient never on an agenda → a truthful empty history.
+    const none = await svc.getPatientIdgHistory(ORG, "44444444-0000-0000-0000-000000000000");
+    expect(none.meetings).toEqual([]);
+  });
+
   it("W-PKT-01 / W-DEC-01 / W-ADJ-01 — build → start → record decisions → adjourn bursts one idg.decision_recorded per actionable kind", async () => {
     const svc = createInMemoryIdgBackend({
       now: () => NOW,

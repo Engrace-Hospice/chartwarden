@@ -10107,6 +10107,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{patientId}/idg-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A patient's IDG review history — meetings reviewed in, with per-meeting decisions + action items (metadata only) */
+        get: operations["getApiV1PatientsByPatientIdIdghistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{patientId}/medications/active": {
         parameters: {
             query?: never;
@@ -41893,6 +41910,34 @@ export interface operations {
                                 [key: string]: number | null;
                             } | null;
                             version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByPatientIdIdghistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        meetings: {
+                            [key: string]: unknown;
                         }[];
                     };
                 };
