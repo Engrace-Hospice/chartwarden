@@ -13,7 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { dischargeType } from "../../enums";
+import { dischargeEventStatus, dischargeType } from "../../enums";
 import { organizations } from "../organizations";
 import { admissions } from "./admissions";
 
@@ -28,6 +28,9 @@ export const dischargeEvents = pgTable(
       .notNull()
       .references(() => admissions.id, { onDelete: "restrict" }),
     dischargeType: dischargeType("discharge_type").notNull(),
+    // §7.6 D11 — the immediate reasons insert at `completed`; `for_cause` files at `pending_cosign`
+    // (admission stays active) until a medical director resolves it via route 40 (M6L-T04).
+    status: dischargeEventStatus("status").notNull().default("completed"),
     effectiveAt: date("effective_at").notNull(),
     deathAt: timestamp("death_at", { withTimezone: true }),
     deathCertifierId: uuid("death_certifier_id"), // M40 physician (app-validated)
