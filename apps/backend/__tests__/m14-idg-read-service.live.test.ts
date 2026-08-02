@@ -215,4 +215,31 @@ describe.skipIf(!DB_URL)("M14 Drizzle read service — LIVE Postgres (M14L)", ()
     expect(updated.cadenceDays).toBe(7);
     expect(updated.active).toBe(false);
   });
+
+  it("getPatientIdgHistory assembles the patient's reviewed meetings + decisions + action items", async () => {
+    const history = await service.getPatientIdgHistory(ORG_A, PATIENT);
+    expect(history.meetings.length).toBe(1);
+    const m = history.meetings[0];
+    expect(m.meetingId).toBe(seeded[ORG_A].meeting);
+    // The seeded chain gives this patient one decision + one action item in the meeting.
+    expect(m.decisions.length).toBeGreaterThanOrEqual(1);
+    expect(m.actionItems.some((a) => a.id === seeded[ORG_A].actionItem)).toBe(true);
+  });
+
+  it("getPatientIdgHistory is a truthful empty for a patient never on an agenda", async () => {
+    const history = await service.getPatientIdgHistory(
+      ORG_A,
+      "99999999-9999-9999-9999-999999999999",
+    );
+    expect(history.meetings).toEqual([]);
+  });
+
+  it("RLS: getPatientIdgHistory scopes to the caller's org for a cross-tenant patient literal", async () => {
+    // Both orgs seeded a packet for the SAME patient id; each caller resolves ONLY its own meeting.
+    const a = await service.getPatientIdgHistory(ORG_A, PATIENT);
+    const b = await service.getPatientIdgHistory(ORG_B, PATIENT);
+    expect(a.meetings[0]?.meetingId).toBe(seeded[ORG_A].meeting);
+    expect(b.meetings[0]?.meetingId).toBe(seeded[ORG_B].meeting);
+    expect(b.meetings.every((m) => m.meetingId !== seeded[ORG_A].meeting)).toBe(true);
+  });
 });

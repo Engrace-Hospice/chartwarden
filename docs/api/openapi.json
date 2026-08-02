@@ -94902,6 +94902,57 @@
         }
       }
     },
+    "/api/v1/patients/{patientId}/idg-history": {
+      "get": {
+        "operationId": "getApiV1PatientsByPatientIdIdghistory",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "A patient's IDG review history — meetings reviewed in, with per-meeting decisions + action items (metadata only)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meetings"
+                  ],
+                  "properties": {
+                    "meetings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "patternProperties": {
+                          "^(.*)$": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/patients/{patientId}/medications/active": {
       "get": {
         "operationId": "getApiV1PatientsByPatientIdMedicationsActive",

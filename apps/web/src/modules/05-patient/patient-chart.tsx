@@ -130,7 +130,7 @@ const NAV_SECTIONS: {
     icon: "cert",
     route: (id) => `/patients/${id}/election-certification`,
   },
-  { label: "IDG History", ready: false, icon: "idg" },
+  { label: "IDG History", ready: false, icon: "idg", route: (id) => `/patients/${id}/idg-history` },
 ];
 
 export function PatientChart(): JSX.Element {

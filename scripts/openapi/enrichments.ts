@@ -198,6 +198,7 @@ import {
   MinutesViewSchema as IdgMinutesViewSchema,
   PacketDigestViewSchema as IdgPacketDigestViewSchema,
   PacketListResponseSchema as IdgPacketListResponseSchema,
+  PatientIdgHistoryResponseSchema as IdgPatientHistoryResponseSchema,
   ScheduleListResponseSchema as IdgScheduleListResponseSchema,
   ScheduleQuerySchema as IdgScheduleQuerySchema,
 } from "../../apps/backend/src/modules/14-idg/routes/idg-typebox";
@@ -3599,6 +3600,11 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary:
       "One patient's packet digest in a meeting — chart-embed read (§4.1 / §5; SUD-redacted server-side)",
     response: IdgPacketDigestViewSchema,
+  },
+  "GET /api/v1/patients/:patientId/idg-history": {
+    summary:
+      "A patient's IDG review history — meetings reviewed in, with per-meeting decisions + action items (metadata only)",
+    response: IdgPatientHistoryResponseSchema,
   },
   "GET /api/v1/idg/action-items": {
     summary: "The caller's action items — open / in-progress queue (§4.1 / §5 'My Action Items')",

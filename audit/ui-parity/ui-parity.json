@@ -513,6 +513,13 @@
     {
       "module": "14-idg",
       "moduleId": 14,
+      "id": "idg.patient-history",
+      "path": "/patients/:patientId/idg-history",
+      "permission": "idg.read"
+    },
+    {
+      "module": "14-idg",
+      "moduleId": 14,
       "id": "idg.action-items",
       "path": "/idg/action-items",
       "permission": "idg.read"

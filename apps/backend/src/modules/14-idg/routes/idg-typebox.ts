@@ -85,6 +85,7 @@ const ACTION_ITEM_LINKED_KIND = Type.Union([
 
 // ── params + query ──────────────────────────────────────────────────────────────────────────────────────
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
+export const PatientIdParamsSchema = Type.Object({ patientId: Type.String({ format: "uuid" }) });
 export const MeetingPacketParamsSchema = Type.Object({
   meetingId: Type.String({ format: "uuid" }),
   patientId: Type.String({ format: "uuid" }),
@@ -213,6 +214,15 @@ export const PacketDigestViewSchema = Type.Object({
   frozenAt: Nullable(Type.String({ format: "date-time" })),
 });
 export const PacketListResponseSchema = Type.Array(PacketDigestViewSchema);
+
+// Patient IDG review history (patient-chart tab). NOTE: `meetings` is published as a loose record array
+// on purpose — each meeting item nests decisions[] + actionItems[] arrays of objects, and publishing that
+// full depth makes openapi-fetch's generated client type instantiate past TypeScript's depth limit
+// (TS2589) as one operation among 1000+. The rich per-meeting shape is the service
+// `PatientIdgHistoryView.meetings` type, which the screen casts to; the live-RLS suite proves the shape.
+export const PatientIdgHistoryResponseSchema = Type.Object({
+  meetings: Type.Array(Type.Record(Type.String(), Type.Unknown())),
+});
 
 /** A caller's action-item view (GET /idg/action-items). */
 export const ActionItemViewSchema = Type.Object({

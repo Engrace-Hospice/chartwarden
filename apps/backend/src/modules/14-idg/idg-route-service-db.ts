@@ -40,7 +40,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { and, asc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
 import type {
   IdgAbacResolver,
   MeetingScopeFacts,
@@ -57,6 +57,7 @@ import type {
   MeetingView,
   MinutesView,
   PacketDigestView,
+  PatientIdgHistoryView,
   RecurringPolicyView,
 } from "./routes/service";
 
@@ -257,6 +258,100 @@ export function createDbIdgBackend(
           .limit(1);
         if (!r) throw new NotFoundError("idg_patient_packet");
         return { packetId: r.id, meetingId, patientId, frozenAt: iso(r.frozenAt) };
+      });
+    },
+    async getPatientIdgHistory(orgId, patientId): Promise<PatientIdgHistoryView> {
+      return withOrg(orgId, async (tx) => {
+        // The patient was reviewed in a meeting iff a packet was built for that (meeting, patient). The
+        // packet parent is partitioned; org scoping is explicit here (belt-and-suspenders alongside RLS,
+        // since policies attach at the leaves) so a cross-tenant patient literal never resolves rows.
+        const pkts = await tx
+          .select({
+            meetingId: PKT.idgMeetingId,
+            reviewedAt: PKT.lastIdgReviewedAt,
+            frozenAt: PKT.frozenAt,
+            builtAt: PKT.builtAt,
+          })
+          .from(PKT)
+          .where(and(eq(PKT.organizationId, orgId), eq(PKT.patientId, patientId)));
+        if (pkts.length === 0) return { meetings: [] };
+        // One packet per meeting — the latest build wins (a rebuild inserts a fresh partition row).
+        const pktBy = new Map<string, { reviewedAt: Date | null; frozenAt: Date | null; builtAt: Date }>();
+        for (const p of pkts) {
+          const prev = pktBy.get(p.meetingId);
+          if (!prev || p.builtAt > prev.builtAt) {
+            pktBy.set(p.meetingId, { reviewedAt: p.reviewedAt, frozenAt: p.frozenAt, builtAt: p.builtAt });
+          }
+        }
+        const meetingIds = [...pktBy.keys()];
+        const mtgs = await tx
+          .select({
+            id: MTG.id,
+            status: MTG.status,
+            scheduledStart: MTG.scheduledStart,
+            actualStart: MTG.actualStart,
+            actualEnd: MTG.actualEnd,
+          })
+          .from(MTG)
+          .where(inArray(MTG.id, meetingIds))
+          .orderBy(desc(MTG.scheduledStart));
+        const decs = await tx
+          .select({
+            id: DEC.id,
+            meetingId: DEC.idgMeetingId,
+            decisionKind: DEC.decisionKind,
+            status: DEC.status,
+            wasQuorate: DEC.wasQuorate,
+            recordedAt: DEC.recordedAt,
+          })
+          .from(DEC)
+          .where(and(eq(DEC.patientId, patientId), inArray(DEC.idgMeetingId, meetingIds)));
+        const acts = await tx
+          .select({
+            id: ACT.id,
+            meetingId: ACT.idgMeetingId,
+            status: ACT.status,
+            discipline: ACT.assignedToDiscipline,
+            dueDate: ACT.dueDate,
+            closedAt: ACT.closedAt,
+          })
+          .from(ACT)
+          .where(and(eq(ACT.patientId, patientId), inArray(ACT.idgMeetingId, meetingIds)));
+        const groupByMeeting = <T extends { meetingId: string }>(rows: T[]): Map<string, T[]> => {
+          const m = new Map<string, T[]>();
+          for (const r of rows) (m.get(r.meetingId) ?? m.set(r.meetingId, []).get(r.meetingId)!).push(r);
+          return m;
+        };
+        const decBy = groupByMeeting(decs);
+        const actBy = groupByMeeting(acts);
+        return {
+          meetings: mtgs.map((m) => {
+            const pkt = pktBy.get(m.id);
+            return {
+              meetingId: m.id,
+              status: m.status,
+              scheduledStart: isoReq(m.scheduledStart),
+              actualStart: iso(m.actualStart),
+              actualEnd: iso(m.actualEnd),
+              reviewedAt: iso(pkt?.reviewedAt ?? null),
+              packetFrozenAt: iso(pkt?.frozenAt ?? null),
+              decisions: (decBy.get(m.id) ?? []).map((d) => ({
+                id: d.id,
+                decisionKind: d.decisionKind,
+                status: d.status,
+                wasQuorate: d.wasQuorate,
+                recordedAt: iso(d.recordedAt),
+              })),
+              actionItems: (actBy.get(m.id) ?? []).map((a) => ({
+                id: a.id,
+                status: a.status,
+                discipline: a.discipline,
+                dueDate: iso(a.dueDate),
+                closedAt: iso(a.closedAt),
+              })),
+            };
+          }),
+        };
       });
     },
 
