@@ -48,6 +48,27 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 The fitness gates are **armed-but-inert**: they pass with no source and begin enforcing
 automatically as a module's schema/seams/events land.
 
+### Runtime login roles (deployment precondition)
+
+The migrations define NOLOGIN carrier roles only — deployment (or a local full-stack run) must
+provision the LOGIN credentials the backend's optional pools connect as:
+
+```sh
+PROVISION_DATABASE_URL=postgres://postgres:...@host/db \
+WARDENX_PLATFORM_PASSWORD=... WARDENX_DESTRUCTION_PASSWORD=... \
+bun run db:provision-roles
+```
+
+creates `wardenx_platform_login` (inherits the enumerated `wardenx_platform` carrier + the
+BYPASSRLS **attribute** — attributes are not inherited, so it sits on the login role) and
+`wardenx_destruction_login` (`IN ROLE wardenx_destruction`, migration 0157, NOBYPASSRLS). Then set
+`DATABASE_PLATFORM_URL` (admin console, platform crons, the outbox relay's org enumeration, the
+M34 offboarding eraser) and `DATABASE_DESTRUCTION_URL` (right-to-erasure over the append-only
+clinical/billing tables + `audit_event`). Without them the affected paths refuse loudly — the
+boot log says exactly what is off. Re-running the script rotates passwords; a missing grant
+surfaces as a 42501 and is fixed by one reviewed line in
+`scripts/db/provision-runtime-roles.ts`, never a blanket `ALL`.
+
 ## How to add a module (Phase 1+)
 
 1. **Confirm the manifest.** The module's `codePaths`, `dependsOn`, and `ownedTables` are

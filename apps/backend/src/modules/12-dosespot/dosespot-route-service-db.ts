@@ -168,7 +168,13 @@ export function createDbDoseSpotBackend(
     return toOrderView(await loadOrder(tx, id));
   }
 
-  /** Insert a `draft` medication_order (shared by createDraft / correctOrder / retransmit / refill mint). */
+  /** Insert a `draft` medication_order (shared by createDraft / correctOrder / retransmit / refill mint).
+   *
+   * `acquisition_cost_cents` (mig 0158) is DELIBERATELY not written here and carries no route field: the
+   * create/update bodies are prescriber clinical shapes and a prescriber does not know the drug's
+   * acquisition cost — the future DoseSpot fill/NDC pricing feed populates it at dispense time (a plain
+   * `update ... set acquisitionCostCents` when that webhook lands). Until then every line is honestly
+   * NULL = "not priced", and the §2.10 cost-basis seam refuses to aggregate unpriced lines (never $0). */
   async function insertDraft(
     tx: DbClient,
     organizationId: string,

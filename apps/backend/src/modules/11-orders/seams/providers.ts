@@ -63,6 +63,7 @@ export function createOrderSignatureProvider(
         targetKind: input.targetKind,
         targetId: input.targetId,
         signerMembershipId: input.signerMembershipId,
+        signerDiscipline: input.signerDiscipline,
         signatureKind: input.signatureKind,
         signedAt,
       });

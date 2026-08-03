@@ -21,11 +21,15 @@
 // id and no time window, and inventing one would silently miss an order drafted last month (the M21
 // dispatch-store trade). The patient/admission indexes carry the per-partition cost.
 //
-// SCHEMA GAPS (typed refusals, never fabricated numbers):
-//   - `costBasisForAdmissionMonth` — M12 owns NO drug-cost column (`medication_order` §3.3 has no
-//     acquisition/dispense cost; the platform-wide DrugCostBillingReader is itself still a deny-stub).
-//     Returning `{ totalCostCents: 0, lineCount: 0 }` would feed M27's Worksheet S-7 a fabricated $0 drug
-//     spend, so the method THROWS a typed {@link DoseSpotSeamGapError} and the consumer degrades/suppresses.
+// GAPS (typed refusals, never fabricated numbers):
+//   - `costBasisForAdmissionMonth` — the schema gap CLOSED (mig 0158: `medication_order.acquisition_cost_cents`,
+//     integer CENTS, NULL = "not priced"), but the DATA gap remains until the DoseSpot fill/NDC pricing feed
+//     populates it. The rollup aggregates ONLY when every in-scope line for the admission-month carries a
+//     non-NULL cost; if ANY line is unpriced it THROWS the typed {@link DoseSpotSeamGapError} with the
+//     priced/unpriced counts ("3 of 7 lines unpriced") so the M27 Worksheet S-7 reconciler sees exactly how
+//     far the data is — `{ totalCostCents: 0, lineCount: 0 }` for an unpriced month would be a fabricated $0
+//     drug spend. An admission-month with genuinely ZERO lines is a real `{ 0, 0 }` (port contract: empty
+//     slice when the subject has no rows), not a refusal.
 //   - `comfortKitTimelineForAdmission` — M12 owns NO comfort-kit table (deployment lives in M13's
 //     `comfort_kit_deployment` / M21's `comfort_kit_dispatch`). Returning `null` would read as "no comfort
 //     kit was ever deployed for this admission" — a fabricated negative for a timeliness measure — so it
@@ -34,7 +38,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { MedicationOrderDto, RefillRequestDto, SigStructuredDto } from "@wardenx/types";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import type { DoseSpotSeamStore } from "./store";
 
 const MO = schema.medicationOrders;
@@ -61,6 +65,64 @@ export class DoseSpotSeamGapError extends Error {
     super(`M12_SEAM_SCHEMA_GAP(${method}): ${detail}`);
     this.name = "DoseSpotSeamGapError";
   }
+}
+
+/** One in-scope cost line for {@link costBasisOfLines} — the projected cost column and nothing else. */
+export interface CostBasisLine {
+  /** `medication_order.acquisition_cost_cents` (mig 0158): integer CENTS; NULL = not priced. */
+  readonly acquisitionCostCents: number | null;
+}
+
+/**
+ * The drug-cost rollup HONESTY KERNEL (pure; the Drizzle read below feeds it, tests exercise it directly).
+ * Sums `acquisitionCostCents` ONLY when every in-scope line is priced (non-NULL). If ANY line is unpriced
+ * it throws the typed {@link DoseSpotSeamGapError} naming the counts ("3 of 7 lines unpriced") — treating
+ * NULL as $0 would feed M27's Worksheet S-7 a fabricated drug spend. Zero lines is a REAL `{ 0, 0 }` (the
+ * admission-month genuinely has no medication-order lines — no fabrication involved), and an explicit
+ * 0-cent line is a real price (free/fully-rebated), distinct from NULL.
+ */
+export function costBasisOfLines(
+  lines: readonly CostBasisLine[],
+  admissionId: string,
+  monthKey: string,
+): { totalCostCents: number; lineCount: number } {
+  const unpriced = lines.filter((l) => l.acquisitionCostCents === null).length;
+  if (unpriced > 0) {
+    throw new DoseSpotSeamGapError(
+      "costBasisForAdmissionMonth",
+      `${unpriced} of ${lines.length} medication_order lines for admission ${admissionId} month ${monthKey} ` +
+        "carry no acquisition_cost_cents (NULL = not priced); the rollup refuses rather than zero-fill — " +
+        "M27's Worksheet S-7 must never ingest a fabricated $0 drug spend. The DoseSpot fill/NDC pricing " +
+        "feed (or a pricing backfill) must price every line before this month can be materialized.",
+    );
+  }
+  let totalCostCents = 0;
+  for (const l of lines) totalCostCents += l.acquisitionCostCents ?? 0;
+  return { totalCostCents, lineCount: lines.length };
+}
+
+/**
+ * The UTC month window `[start, end)` of a `monthIso` bucket key (`YYYY-MM` or any ISO instant within the
+ * month — the port keys on the `YYYY-MM` prefix). Bucketing anchors on `created_at`: it is the partition
+ * key (§3.5 D15 monthly partitions — the window prunes to one partition) and the only NOT NULL instant a
+ * line is guaranteed to carry. A malformed key is a caller bug, not a data gap → RangeError, not the seam
+ * refusal.
+ */
+function monthWindowOf(monthIso: string): { start: Date; end: Date; key: string } {
+  const key = monthIso.slice(0, 7);
+  const m = /^(\d{4})-(\d{2})$/.exec(key);
+  const month = m === null ? Number.NaN : Number(m[2]);
+  if (m === null || month < 1 || month > 12) {
+    throw new RangeError(
+      `costBasisForAdmissionMonth: monthIso must begin with a YYYY-MM month bucket, got ${JSON.stringify(monthIso)}`,
+    );
+  }
+  const year = Number(m[1]);
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1)),
+    end: new Date(Date.UTC(year, month, 1)),
+    key,
+  };
 }
 
 /**
@@ -240,15 +302,21 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
     },
 
     async costBasisForAdmissionMonth(admissionId, monthIso) {
-      // SCHEMA GAP (see header): `medication_order` materializes no acquisition/dispense cost column and
-      // the platform DrugCostBillingReader is a deny-stub — there is no drug-cost fact in M12 to roll up.
-      // `{ totalCostCents: 0, lineCount: 0 }` would feed M27's Worksheet S-7 a fabricated $0 drug spend.
-      throw new DoseSpotSeamGapError(
-        "costBasisForAdmissionMonth",
-        `medication_order carries no cost column, so the per-admission-month drug-cost rollup (admission ` +
-          `${admissionId}, month ${monthIso.slice(0, 7)}) cannot be materialized; a cost-bearing source ` +
-          "(a medication_order cost column or the M25/M23 DrugCostBillingReader seam going live) must land first.",
-      );
+      // DATA-GAP honesty (see header): the cost column exists (mig 0158) but only the future DoseSpot
+      // fill/NDC pricing feed populates it. In-scope = EVERY medication_order line created in the month
+      // for the admission, regardless of status — fail-closed: a never-transmitted draft with a NULL cost
+      // blocks the month rather than being silently dropped (narrowing scope to dispensed statuses is a
+      // future refinement for when the pricing feed defines which states bear cost). The pure kernel
+      // {@link costBasisOfLines} then answers only when every line is priced, else throws the typed
+      // refusal with the counts.
+      const { start, end, key } = monthWindowOf(monthIso);
+      return withOrgContextFromRequest(db, async (tx) => {
+        const lines = await tx
+          .select({ acquisitionCostCents: MO.acquisitionCostCents })
+          .from(MO)
+          .where(and(eq(MO.admissionId, admissionId), gte(MO.createdAt, start), lt(MO.createdAt, end)));
+        return costBasisOfLines(lines, admissionId, key);
+      });
     },
 
     // ── refill-inbox reads (RefillInboxProvider) ──────────────────────────────────────────────────────

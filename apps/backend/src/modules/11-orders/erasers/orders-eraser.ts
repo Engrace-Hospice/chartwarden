@@ -278,3 +278,58 @@ export function registerOrderErasers(deps: OrderEraserDeps = {}): void {
   const store = deps.store ?? createInMemoryOrderEraseStore().store;
   registerEraser("order_record", createOrderEraser(store, deps.options ?? {}));
 }
+
+// ── task-15 — the med-order signature cascade (the M11/M12 cross-eraser ownership decision) ──────────
+//
+// `order_signature` / `verbal_order` are M11-OWNED tables, but rows with
+// `target_kind = 'medication_order'` document M12's aggregates — so neither module's own erase pass
+// could reach them (M11 cannot resolve which med-order ids belong to the patient; M12 may not touch
+// M11's tables). THE DECISION: M11 exports this cascade over its OWN tables, and M12's eraser invokes
+// it through an injected port WITH the med-order ids it is erasing — at the only moment those ids are
+// still known (before M12 deletes the rows). Ownership stays clean (M11 code deletes M11 tables), and
+// the ordering hazard (M12 erasing first ⇒ ids unresolvable ⇒ orphaned signature rows forever) cannot
+// occur. The composition root wires it; migration 0157 grants the destruction role both tables.
+
+/** Counts the cascade removed (folded into M12's destruction certificate). */
+export interface MedicationOrderSignatureCascadeCounts {
+  readonly signatures: number;
+  readonly verbalOrders: number;
+}
+
+/**
+ * Build the cascade: delete the M11-side signature/verbal rows targeting the given med-order ids.
+ * Runs under its own explicit org envelope (the caller's erase tx cannot cross module stores).
+ */
+export function createMedicationOrderSignatureCascade(
+  db: DbClient,
+): (
+  organizationId: string,
+  medicationOrderIds: readonly string[],
+) => Promise<MedicationOrderSignatureCascadeCounts> {
+  const SIG = schema.orderSignatures;
+  const VO = schema.verbalOrders;
+  return async (organizationId, medicationOrderIds) => {
+    if (medicationOrderIds.length === 0) return { signatures: 0, verbalOrders: 0 };
+    return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const signatures = await tx
+        .delete(SIG)
+        .where(
+          and(
+            eq(SIG.targetKind, "medication_order"),
+            inArray(SIG.targetId, [...medicationOrderIds]),
+          ),
+        )
+        .returning({ id: SIG.id });
+      const verbalOrders = await tx
+        .delete(VO)
+        .where(
+          and(
+            eq(VO.targetKind, "medication_order"),
+            inArray(VO.targetId, [...medicationOrderIds]),
+          ),
+        )
+        .returning({ id: VO.id });
+      return { signatures: signatures.length, verbalOrders: verbalOrders.length };
+    });
+  };
+}

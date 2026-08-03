@@ -43,6 +43,9 @@ export interface InsertSignatureInput {
   readonly targetKind: OrderSignatureTargetKind;
   readonly targetId: string;
   readonly signerMembershipId: string;
+  /** The signer's clinical discipline (`order_signature.signer_discipline` is NOT NULL) — threaded
+   * verbatim from the leaf `SignOrderTargetInput`; never a sentinel. */
+  readonly signerDiscipline: string;
   readonly signatureKind: "signature" | "cosignature";
   readonly signedAt: IsoInstant;
 }

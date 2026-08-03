@@ -80,6 +80,11 @@ export interface MedicationSignFacts {
   readonly organizationId: string;
   readonly medicationOrderId: string;
   readonly signerMembershipId: string;
+  /** The signer's clinical discipline (`hospice_physician` / `medical_director` / `np` / `pa` — the §4.6
+   * prescriber-only matrix the service already gates via `signerEligibleForMed`). REQUIRED by M11's leaf
+   * `SignOrderTargetInput` so `order_signature.signer_discipline` records the real value: every M12 sign
+   * route body carries `signerDiscipline` and threads it here — never a sentinel. */
+  readonly signerDiscipline: string;
   /** ISO client timestamp; M11 records the authoritative server time. */
   readonly signedAtClient: string;
   /** Populated only on the EPCS controlled-substance path (§2.4 §1311.116). */
@@ -108,6 +113,7 @@ export function buildSignTargetInput(facts: MedicationSignFacts): SignOrderTarge
     targetKind: "medication_order",
     targetId: facts.medicationOrderId,
     signerMembershipId: facts.signerMembershipId,
+    signerDiscipline: facts.signerDiscipline,
     signedAtClient: facts.signedAtClient,
     signatureKind: "signature",
     ...(signatureContext ? { signatureContext } : {}),
