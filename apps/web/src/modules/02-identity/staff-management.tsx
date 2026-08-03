@@ -88,10 +88,15 @@ export function StaffManagement(): JSX.Element {
     });
     setBusy(false);
     if (err) {
-      setError("Could not send the invitation. A pending invite may already exist for that email.");
+      setError("Could not record the invitation. A pending invite may already exist for that email.");
       return;
     }
-    setNotice(`Invitation sent to ${inviteEmail.trim()}.`);
+    // FLOW-007 containment (production-readiness audit 2026-08-03): no email sender is wired, so an
+    // invitation is RECORDED but not deliverable — saying "sent" here was a false success. The honest
+    // message stands until the transactional sender + onboarding flow land (TASK-030).
+    setNotice(
+      `Invitation recorded for ${inviteEmail.trim()} — but NOT emailed: delivery is not yet wired, so the invitee cannot accept it yet.`,
+    );
     setInviteEmail("");
   }
 
@@ -109,9 +114,20 @@ export function StaffManagement(): JSX.Element {
     void load(orgId);
   }
 
+  // UI-010 containment: removing a member is destructive and used to fire on ONE click with no
+  // confirmation and no feedback. Until the shared ConfirmDialog primitive lands (TASK-032), the
+  // Remove button arms on first click ("Confirm remove?") and executes only on the second.
+  const [armedRevoke, setArmedRevoke] = useState<string | null>(null);
+
   async function revoke(m: Member): Promise<void> {
     if (!orgId) return;
+    if (armedRevoke !== m.membershipId) {
+      setArmedRevoke(m.membershipId);
+      return;
+    }
+    setArmedRevoke(null);
     setError(null);
+    setNotice(null);
     const { error: err } = await client.DELETE("/api/v1/orgs/{id}/members/{mId}", {
       params: { path: { id: orgId, mId: m.membershipId } },
     });
@@ -119,6 +135,7 @@ export function StaffManagement(): JSX.Element {
       setError("Could not remove that member (the last active admin can't be removed).");
       return;
     }
+    setNotice(`Removed ${m.displayName ?? m.email ?? "member"} from the organization.`);
     void load(orgId);
   }
 
@@ -158,10 +175,14 @@ export function StaffManagement(): JSX.Element {
             {busy ? "Sending…" : "Invite"}
           </button>
           {notice ? (
-            <span style={{ color: "var(--color-success)", fontSize: "0.85rem" }}>{notice}</span>
+            <span role="status" style={{ color: "var(--color-success)", fontSize: "0.85rem" }}>
+              {notice}
+            </span>
           ) : null}
           {error ? (
-            <span style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>{error}</span>
+            <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
+              {error}
+            </span>
           ) : null}
         </form>
       }
@@ -226,9 +247,14 @@ export function StaffManagement(): JSX.Element {
                       <button
                         type="button"
                         onClick={() => revoke(m)}
-                        style={{ ...linkBtn, color: "var(--color-error)" }}
+                        onBlur={() => setArmedRevoke((a) => (a === m.membershipId ? null : a))}
+                        style={{
+                          ...linkBtn,
+                          color: "var(--color-error)",
+                          fontWeight: armedRevoke === m.membershipId ? 700 : undefined,
+                        }}
                       >
-                        Remove
+                        {armedRevoke === m.membershipId ? "Confirm remove?" : "Remove"}
                       </button>
                     ) : null}
                   </td>

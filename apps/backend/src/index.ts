@@ -25,10 +25,12 @@ import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
 import {
+  assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
   createSessionAuthenticate,
   getSeam,
+  noteInMemoryBinding,
   registerEraser,
   registerSeam,
 } from "./bootstrap/index";
@@ -1052,6 +1054,30 @@ export function wireModuleSeams(
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
   validateModule34Seams();
+  // ── TASK-001 ledger (production-readiness audit 2026-08-03, ARCH-003) ───────────────────────────
+  // Every registrar above that STILL stands an in-memory store behind a published seam on a
+  // db-present boot is recorded here, beside the wiring that chose it. A per-process Map wearing a
+  // seam contract answers "no rows" about a database it never read — a silent clinical lie, not a
+  // neutral default. assertNoInMemoryBindingsOnDbBoot (before listen()) lists these loudly in dev
+  // and refuses to boot in production until TASK-002 binds the Drizzle stores; each fix deletes its
+  // note in the same diff.
+  if (deps.db) {
+    const t2 = "TASK-002 (bind Drizzle seam stores)";
+    noteInMemoryBinding({ kind: "seam", label: "M5 registerPatientSeams — PatientReader + PatientMutator on in-memory stores", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M6 registerAdmissionSeams — the six §4.7 admission readers (Election/Certification/F2F/LOC/Status/Census) on one in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M7 registerCarePlanSeams — CarePlanReader (M8's overdue sign-gate reads this) on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M9 registerAssessmentSeams — LatestAssessmentProvider + ScaleSeriesProvider on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M10 registerHopeSeams — HopeTimepoint/HopeJ2051/HopeSubmission providers on an in-memory store (org rollup is Drizzle)", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M11 registerOrderSeams — OrderSignatureProvider + OrderProvider on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M12 registerDoseSpotSeams — MedicationOrderProvider + RefillInboxProvider on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M13 registerEmarSeams — MedicationAdministrationProvider + ReconciliationProvider on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M14 registerIdgSeams — IdgPacket/IdgDecision/IdgSchedule providers on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M15 registerDisciplinePlanSeams — the seven §4.3 discipline-plan seams on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M16 registerBereavementSeams — the seven §4.6 bereavement seams on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M17 registerSchedulingSeams — VisitReader/VisitAssignmentReader/PortalVisitReader/VisitMetricsProvider on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M18 registerEvvSeams — the six §4.3 EVV seams (incl. EvvBracketResolver M8 consumes at finalize) on an in-memory store", task: t2 });
+    noteInMemoryBinding({ kind: "seam", label: "M22 registerDocumentSeams — DocumentRenderer + DocumentStorageProvider + five readers on in-memory stores (storage needs a real SignedUrlStoragePort impl; bind a DegradedError refusal, never a Map)", task: t2 });
+  }
   // M3 — flip the Authorization Contract's ABAC evaluator from its fail-closed DENY_ALL default to the
   // named-predicate registry, NOW that every module above has registered its predicates. Without this
   // single call, every `requireAbac`/`requireStepUp` route denies in production: the predicates exist
@@ -1234,6 +1260,45 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // migration 0153); aggregate census snapshots survive (no patient_id, D14). Registers only with a DB
   // client (the delete is a privileged tenant-pool write); a slice boot keeps the deny-stub.
   if (deps.db) registerIpuErasers(deps.db);
+  // ── TASK-001 ledger (production-readiness audit 2026-08-03, ARCH-007) ───────────────────────────
+  // Every registrar above called WITHOUT a Drizzle erase store on a db-present boot binds an
+  // in-memory slice store: a right-to-erasure request "succeeds" against rows that exist nowhere and
+  // mints a destruction certificate from nothing — the exact fake-success Phase 0 exists to stop.
+  // assertNoInMemoryBindingsOnDbBoot (before listen()) lists these loudly in dev and refuses to boot
+  // in production until TASK-003 binds the Drizzle stores (the M15/M16/M28 `deps.db ? {store} : {}`
+  // pattern); each fix deletes its line here in the same diff.
+  if (deps.db) {
+    const t3 = "TASK-003 (bind Drizzle erase stores)";
+    for (const label of [
+      "M2 registerIdentityErasers — 'identity' erase store",
+      "M4 registerAuditErasers — 'audit_event' erase store",
+      "M38 registerTerminologyErasers — 'terminology_tenant_extensions' erase store",
+      "M36 registerMessagingErasers — 'messages' erase store",
+      "M40 registerMdmErasers — 'mdm_tenant_overlays' erase store",
+      "M5 registerPatientErasers — 'clinical_record' erase store",
+      "M39 registerConsentErasers — 'consent' erase store",
+      "M6 registerAdmissionErasers — 'admission_record' erase store",
+      "M7 registerCarePlanErasers — 'care_plan_record' erase store",
+      "M8 registerEncounterErasers — 'encounter_record' erase store",
+      "M9 registerAssessmentErasers — 'clinical_assessment' erase store",
+      "M10 registerHopeErasers — 'hope_record' erase store",
+      "M11 registerOrderErasers — 'order_record' erase store",
+      "M12 registerDoseSpotErasers — 'medication_order_record' erase store",
+      "M13 registerEmarErasers — 'emar_record' erase store",
+      "M14 registerIdgErasers — 'idg_record' erase store",
+      "M22 registerDocumentErasers — 'documents' erase store",
+      "M34 registerSaasTenantPlatformErasers — 'saas_tenant_platform_class' erase store",
+      "M33 registerReportingErasers — 'reporting_class' erase store",
+      "M30 registerQualityErasers — 'quality_class' erase store",
+      "M27 registerCostReportErasers — 'cost_report_class' erase store",
+      "M23 registerBillingErasers — 'billing_record' erase store",
+      "M25 registerRemittanceErasers — 'remittance' PR-ledger destruction store",
+      "M24 registerMedicaidErasers — 'medicaid_billing_record' redaction store",
+      "M26 registerCapErasers — 'cap' redaction store",
+    ]) {
+      noteInMemoryBinding({ kind: "eraser", label, task: t3 });
+    }
+  }
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -1459,8 +1524,26 @@ if ((import.meta as { main?: boolean }).main) {
     registerModuleRoutes: dbHandle
       ? (app) => {
           mountAuthorizationRoutes(app, dbHandle.db); // M3 — role catalog + grants on real stores
+          // TASK-001 ledger (ARCH-005/015) — the M3 mount still binds four in-memory route deps. The
+          // fixed-empty effectivePermissions resolver is the sharpest: GET /me/permissions answers []
+          // for every actor and the §6 anti-escalation check reads an empty set, with the build green.
+          noteInMemoryBinding({
+            kind: "route-dep",
+            label:
+              "M3 mountAuthorizationRoutes — engagements/auditorSessions/notifier in-memory; effectivePermissions is a fixed EMPTY resolver (GET /me/permissions always [])",
+            task: "TASK-004 (live effective-permission resolver + M3 follow-up wiring)",
+          });
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
+          // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
+          // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
+          // on one replica only and dies with the process.
+          noteInMemoryBinding({
+            kind: "route-dep",
+            label:
+              "M2 mountIdentityRoutes — external-collaborator magic-link store is a per-process Map (no M2-owned pending-token table exists)",
+            task: "new M2-owned token table + RLS + audit trigger (audit report 07 §M2)",
+          });
           mountAuditRoutes(app, dbHandle.db); // M4 — audit-log search on the real Drizzle AuditQuery
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
@@ -1929,6 +2012,12 @@ if ((import.meta as { main?: boolean }).main) {
       }),
     registerModuleErasers: () => wireModuleErasers({ db: dbHandle?.db }),
   });
+  // TASK-001 (production-readiness audit 2026-08-03) — ALL wiring is done (bootSeams + every route
+  // mount ran inside buildServer above): refuse to boot in production, and loudly list in dev, every
+  // in-memory binding still standing behind a production contract on a DATABASE_URL boot. The ledger
+  // notes live beside the bindings that chose them (wireModuleSeams / wireModuleErasers / the mount
+  // notes in registerModuleRoutes). WARDENX_INMEM_ASSERT=warn is the audit's one-iteration rollback.
+  assertNoInMemoryBindingsOnDbBoot({ dbPresent: dbHandle !== undefined });
   if (dbHandle && auth) {
     registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
     app.addHook("onClose", () => dbHandle.close());

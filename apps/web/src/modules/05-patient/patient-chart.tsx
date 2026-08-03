@@ -676,6 +676,9 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
   });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // UI-010 containment: the address save used to succeed SILENTLY (form reset + reload were the only
+  // signals). A saved change gets announced feedback until the shared toast primitive lands (TASK-032).
+  const [saved, setSaved] = useState<string | null>(null);
 
   async function load(active = { v: true }) {
     setStatus("loading");
@@ -702,6 +705,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     e.preventDefault();
     setSaving(true);
     setSaveError(null);
+    setSaved(null);
     type AddressBody = NonNullable<
       paths["/api/v1/patients/{id}/addresses"]["post"]["requestBody"]
     >["content"]["application/json"];
@@ -721,6 +725,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     setSaving(false);
     if (res.error)
       return setSaveError("Could not save the address. Check the fields and try again.");
+    setSaved("Address saved.");
     setForm({
       line1: "",
       line2: "",
@@ -898,8 +903,15 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
             The current primary address will be closed and moved to history.
           </p>
         ) : null}
+        {saved ? (
+          <p role="status" style={{ color: "var(--color-success)", fontSize: "0.8rem", margin: 0 }}>
+            {saved}
+          </p>
+        ) : null}
         {saveError ? (
-          <p style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: 0 }}>{saveError}</p>
+          <p role="alert" style={{ color: "var(--color-error)", fontSize: "0.8rem", margin: 0 }}>
+            {saveError}
+          </p>
         ) : null}
         <button
           type="submit"

@@ -64,9 +64,11 @@ export function CosignatureQueue(): JSX.Element {
     <WorkQueueLayout
       header={<PageHeader title="Cosignatures" />}
       kpis={
+        // UI-003 containment: during load/outage these used to read "Pending 0" — a false all-clear
+        // on a clinical queue. "—" until the load actually answered.
         <KpiStrip>
-          <KpiCard label="Pending" value={items.length} />
-          <KpiCard label="Past hard cap" value={overdue} />
+          <KpiCard label="Pending" value={loading || error ? "—" : items.length} />
+          <KpiCard label="Past hard cap" value={loading || error ? "—" : overdue} />
         </KpiStrip>
       }
       table={

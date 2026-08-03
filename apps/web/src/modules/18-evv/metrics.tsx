@@ -59,11 +59,17 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
           <LoadingSpinner />
         ) : (
           <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", padding: "1rem 1.5rem" }}>
-            <KpiCard label="Compliant rate (30d)" value={pct(metrics.complianceRate)} />
-            <KpiCard label="Late-checkout rate (30d)" value={pct(metrics.lateCheckoutRate)} />
-            <KpiCard label="Geofence-deviation rate (30d)" value={pct(metrics.geofenceDeviationRate)} />
-            <KpiCard label="GPS-spoof rate (30d)" value={pct(metrics.gpsSpoofingDetectedRate)} />
-            <KpiCard label="Aggregator acceptance (30d)" value={pct(metrics.aggregatorSubmissionSuccessRate)} />
+            {/* UI-003 containment (production-readiness audit 2026-08-03): the backend HARDCODES
+                complianceRate:1 / lateCheckoutRate:0 (evv-route-service-db.ts metrics()) — a
+                CMS-mandated program was showing a fixed perfect score. Render "—" until a real
+                numerator exists; never print a fabricated 100%. The three computed rates are real
+                rows but the service ignores the from/to window, so they are all-time, not 30d —
+                the labels say so. */}
+            <KpiCard label="Compliant rate (not yet measured)" value="—" />
+            <KpiCard label="Late-checkout rate (not yet measured)" value="—" />
+            <KpiCard label="Geofence-deviation rate (all time)" value={pct(metrics.geofenceDeviationRate)} />
+            <KpiCard label="GPS-spoof rate (all time)" value={pct(metrics.gpsSpoofingDetectedRate)} />
+            <KpiCard label="Aggregator acceptance (all time)" value={pct(metrics.aggregatorSubmissionSuccessRate)} />
           </div>
         )
       }
