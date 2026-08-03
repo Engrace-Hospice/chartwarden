@@ -45,6 +45,9 @@ export const InvitationAcceptRequestSchema = Type.Object({
   token: Type.String({ minLength: 1 }),
 });
 
+/** POST /api/v1/orgs/:id/invitations/:invId/resend — no input beyond the path (TASK-030). */
+export const InvitationResendRequestSchema = Type.Object({}, { additionalProperties: false });
+
 /** GET /api/v1/orgs/:id/members — optional staff-facet search narrowing (FB-T11). */
 export const MembersListQuerySchema = Type.Object({
   q: Type.Optional(Type.String()),
@@ -131,10 +134,43 @@ export const OrgBindingResponseSchema = Type.Object({
   expiresAt: Type.String(),
 });
 
-/** POST /api/v1/orgs/:id/invitations (201) — the created invite (token never returned). */
+/**
+ * POST /api/v1/orgs/:id/invitations (201) — the created invite. `inviteUrl` DELIBERATELY carries the
+ * raw token (TASK-030): no vendor email sender is wired yet, so the accept link is echoed to the
+ * inviting admin (who already holds `member.invite`) as a copyable fallback, in addition to the
+ * best-effort email send. Absent when no `webAppBaseUrl` is configured to build a link from.
+ */
 export const InvitationCreatedResponseSchema = Type.Object({
   invitationId: Type.String(),
   expiresAt: Type.String(),
+  inviteUrl: Type.Optional(Type.String()),
+});
+
+/** POST /api/v1/orgs/:id/invitations/:invId/resend — re-minted invite (TASK-030; same shape as create). */
+export const InvitationResendResponseSchema = InvitationCreatedResponseSchema;
+
+/** GET /api/v1/orgs/:id/invitations — the org's invitation roster (TASK-030 pending-invite list). */
+export const InvitationListResponseSchema = Type.Object({
+  invitations: Type.Array(
+    Type.Object({
+      invitationId: Type.String(),
+      email: Type.String(),
+      status: Type.Union([
+        Type.Literal("pending"),
+        Type.Literal("accepted"),
+        Type.Literal("expired"),
+        Type.Literal("revoked"),
+      ]),
+      expiresAt: Type.String(),
+      createdAt: Type.String(),
+    }),
+  ),
+});
+
+/** GET /api/v1/invitations/:token — pre-auth preview of a token's target (TASK-030, §7.1). */
+export const InvitationPeekResponseSchema = Type.Object({
+  email: Type.String(),
+  organizationName: Type.String(),
 });
 
 /** POST /api/v1/invitations/accept — the newly created membership stub (§7.1). */

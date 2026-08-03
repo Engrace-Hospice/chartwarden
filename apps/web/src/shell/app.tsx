@@ -6,6 +6,7 @@ import {
   FeatureFlagProvider,
   LoadingSpinner,
   SystemStatusProvider,
+  ToastProvider,
 } from "@wardenx/ui";
 import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@wardenx/ui";
 // apps/web/src/shell — the app shell (M1, ADR-0030). Composes the cross-cutting providers
@@ -102,7 +103,9 @@ export function AppShell({
           <ActorSessionProvider initial={session}>
             <FeatureFlagProvider flags={flags}>
               <SystemStatusProvider components={systemStatus}>
-                <RouterProvider router={router} />
+                <ToastProvider>
+                  <RouterProvider router={router} />
+                </ToastProvider>
               </SystemStatusProvider>
             </FeatureFlagProvider>
           </ActorSessionProvider>

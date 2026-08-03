@@ -3,6 +3,7 @@ import {
   Glyph,
   GuardChip,
   LoadingSpinner,
+  Modal,
   PageHeader,
   StatusPill,
   WorkQueueLayout,
@@ -21,12 +22,10 @@ import { useParams } from "react-router-dom";
 import { VALIDATION_OUTCOME_TONE, humanize, shortId, toneOf } from "./medicaid-status";
 import {
   alertStyle,
-  backdropStyle,
   disabledButtonStyle,
   ghostButtonStyle,
   iconButtonStyle,
   linkStyle,
-  modalStyle,
   modalTitleStyle,
   mutedStyle,
   primaryButtonStyle,
@@ -362,23 +361,10 @@ function OverrideModal({
   }, [client, result, reason, role, tooShort, onApplied]);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="m24-override-title"
-      style={backdropStyle}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <div style={modalStyle}>
+    <Modal open onClose={onClose} ariaLabel="Override validation rule" width="34rem">
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 id="m24-override-title" style={modalTitleStyle}>
-            Override validation rule
-          </h2>
+          <h2 style={modalTitleStyle}>Override validation rule</h2>
           <button type="button" onClick={onClose} aria-label="Close" style={iconButtonStyle}>
             <Glyph name="close" size={16} label="" />
           </button>
@@ -461,7 +447,7 @@ function OverrideModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

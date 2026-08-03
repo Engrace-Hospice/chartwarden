@@ -1,6 +1,7 @@
 // @wardenx/ui web — modal scaffold for the Guardrail ceremonies/blockers (R0.3, DESIGN.md §7.3/§7.4).
-// Glass scrim + centered floating card, focus-trapped, Escape-to-close. Blocking/ceremony dialogs
-// compose this; it is intentionally unexported from the public barrel (an internal building block).
+// Glass scrim + centered floating card, focus-trapped, Escape-to-close. Blocking/ceremony dialogs and
+// ConfirmDialog compose this; it is also exported directly (UI-005) so callers needing a bespoke
+// dialog build on the accessible shell instead of copying a scrim+panel by hand.
 import { useCallback, useEffect, useRef } from "react";
 import type { JSX, KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import { t } from "../theme/tokens";

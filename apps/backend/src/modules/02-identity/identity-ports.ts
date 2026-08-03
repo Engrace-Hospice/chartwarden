@@ -150,11 +150,53 @@ export interface InvitationDetail {
   readonly defaultLocationIds: readonly string[];
 }
 
-/** Mint / consume / rescind org invitations (M2-owned table; token never leaves the store). */
+/**
+ * A minted or re-minted invitation, as the route needs it to build the accept link + deliver it.
+ * TASK-030: unlike the historical `create()` shape, the raw `token` now DOES leave the store — the
+ * route is the only caller, and it uses the token exactly once (build the link, hand it to the email
+ * transport, and — since no vendor sender is wired yet — echo it to the inviting admin as a copyable
+ * link). The token is still never persisted anywhere but its hash.
+ */
+export interface MintedInvitation {
+  readonly invitationId: string;
+  readonly token: string;
+  readonly expiresAt: string;
+}
+
+/** One row of an org's invitation roster (Staff Management pending-invite list, TASK-030). Never
+ *  carries the token — only `resend`/`create` mint (and briefly expose) a fresh one. */
+export interface InvitationListItem {
+  readonly invitationId: string;
+  readonly email: string;
+  /** Mirrors the M1 `invitation_status` enum. `expired` is enum-legal but never application-set today
+   *  (expiry is enforced at consume/peek time, not a status sweep) — reserved for a future cron sweep. */
+  readonly status: "pending" | "accepted" | "expired" | "revoked";
+  readonly expiresAt: string;
+  readonly createdAt: string;
+}
+
+/**
+ * Delivers the invite-acceptance link to an invitee. Declared locally (not imported from
+ * @wardenx/messaging) so M2 takes no `dependsOn` edge on M36 — the composition root binds the SAME
+ * M36 `TransactionalEmailTransport` instance here via structural typing, mirroring
+ * packages/auth/src/identity/email-transport.ts's `EmailTransport` port for the same reason.
+ */
+export interface InvitationEmailTransport {
+  send(email: {
+    readonly to: string;
+    readonly subject: string;
+    readonly text: string;
+    readonly html?: string;
+  }): Promise<void>;
+}
+
+/** Mint / consume / rescind / re-mint / peek org invitations (M2-owned table). */
 export interface InvitationStore {
   pendingExists(organizationId: string, email: string): Promise<boolean> | boolean;
   /** Count of an org's still-pending invitations (the Staff Management "pending invites" KPI, FB-T12). */
   pendingCount(organizationId: string): Promise<number> | number;
+  /** List an org's invitations (roster for the pending-invite list, TASK-030), newest first. */
+  list(organizationId: string): Promise<InvitationListItem[]> | InvitationListItem[];
   create(input: {
     organizationId: string;
     organizationName: string;
@@ -162,14 +204,20 @@ export interface InvitationStore {
     proposedRoleKeys: string[];
     defaultLocationIds: string[];
     proposedProviderEntityId?: string;
-  }):
-    | Promise<{ invitationId: string; expiresAt: string }>
-    | {
-        invitationId: string;
-        expiresAt: string;
-      };
+  }): Promise<MintedInvitation> | MintedInvitation;
+  /**
+   * Regenerate the token + expiry on a still-pending invite (invalidates any prior link). Returns
+   * null when the invitation is gone or no longer pending (route maps to 404).
+   */
+  resend(invitationId: string): Promise<MintedInvitation | null> | MintedInvitation | null;
   /** Atomically consume a token → its invitation. Throws on expired/used (route maps to 410/409). */
   consume(token: string): Promise<InvitationDetail> | InvitationDetail;
+  /**
+   * Read-only preview of a still-pending token's target (email + org name), WITHOUT consuming it —
+   * lets an unauthenticated invitee's browser pre-fill a sign-up form before an account exists to
+   * call `consume` through (TASK-030). Throws the same LinkError kinds as `consume`.
+   */
+  peek(token: string): Promise<InvitationDetail> | InvitationDetail;
   rescind(invitationId: string): Promise<boolean> | boolean;
 }
 
@@ -220,6 +268,16 @@ export interface IdentityRouteDeps {
   sessionTtlSec?: number;
   /** External-collaborator session TTL in seconds (spec §7.6, up to 8h); default 8h. */
   collaboratorSessionTtlSec?: number;
+  /**
+   * Delivers the invite-acceptance link (TASK-030). Omitted → invites are recorded but not emailed
+   * (the admin-visible `inviteUrl` in the create/resend response is still usable).
+   */
+  emailTransport?: InvitationEmailTransport;
+  /**
+   * The web app's origin, for building the `/invite/:token` link (e.g. `https://app.wardenx.example`).
+   * Omitted → the route falls back to a relative path only (no origin to safely guess).
+   */
+  webAppBaseUrl?: string;
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------
@@ -352,24 +410,46 @@ export function createInMemoryInvitationStore(
   interface Pending extends InvitationDetail {
     invitationId: string;
     token: string;
+    createdAtMs: number;
     expiresAtMs: number;
-    consumed: boolean;
+    status: "pending" | "accepted" | "expired" | "revoked";
   }
+  const INVITE_TTL_MS = 72 * 3600 * 1000;
   const pending = new Map<string, Pending>(); // keyed by invitationId
   const tokens = new Map<string, string>(); // token → invitationId
+
+  function mint(p: Pending): MintedInvitation {
+    return {
+      invitationId: p.invitationId,
+      token: p.token,
+      expiresAt: new Date(p.expiresAtMs).toISOString(),
+    };
+  }
 
   const store: InvitationStore = {
     pendingExists: (organizationId, email) =>
       [...pending.values()].some(
-        (p) => p.organizationId === organizationId && p.email === email && !p.consumed,
+        (p) => p.organizationId === organizationId && p.email === email && p.status === "pending",
       ),
     pendingCount: (organizationId) =>
-      [...pending.values()].filter((p) => p.organizationId === organizationId && !p.consumed)
+      [...pending.values()].filter((p) => p.organizationId === organizationId && p.status === "pending")
         .length,
+    list: (organizationId) =>
+      [...pending.values()]
+        .filter((p) => p.organizationId === organizationId)
+        .sort((a, b) => b.createdAtMs - a.createdAtMs)
+        .map((p) => ({
+          invitationId: p.invitationId,
+          email: p.email,
+          status: p.status,
+          expiresAt: new Date(p.expiresAtMs).toISOString(),
+          createdAt: new Date(p.createdAtMs).toISOString(),
+        })),
     create(input) {
       const invitationId = crypto.randomUUID();
       const token = crypto.randomUUID();
-      pending.set(invitationId, {
+      const now = Date.now();
+      const p: Pending = {
         invitationId,
         token,
         organizationId: input.organizationId,
@@ -377,19 +457,46 @@ export function createInMemoryInvitationStore(
         email: input.email,
         proposedRoleKeys: input.proposedRoleKeys,
         defaultLocationIds: input.defaultLocationIds,
-        expiresAtMs: Date.now() + 72 * 3600 * 1000, // 72h invite TTL
-        consumed: false,
-      });
+        createdAtMs: now,
+        expiresAtMs: now + INVITE_TTL_MS,
+        status: "pending",
+      };
+      pending.set(invitationId, p);
       tokens.set(token, invitationId);
-      return { invitationId, expiresAt: new Date(Date.now() + 72 * 3600 * 1000).toISOString() };
+      return mint(p);
+    },
+    resend(invitationId) {
+      const p = pending.get(invitationId);
+      if (!p || p.status !== "pending") return null;
+      tokens.delete(p.token); // invalidate the prior link
+      p.token = crypto.randomUUID();
+      p.expiresAtMs = Date.now() + INVITE_TTL_MS;
+      tokens.set(p.token, invitationId);
+      return mint(p);
     },
     consume(token) {
       const invitationId = tokens.get(token);
       const p = invitationId ? pending.get(invitationId) : undefined;
       if (!p) throw new LinkError("expired", "invitation token invalid or expired");
-      if (p.consumed) throw new LinkError("used", "invitation already accepted");
+      if (p.status === "accepted") throw new LinkError("used", "invitation already accepted");
+      if (p.status !== "pending") throw new LinkError("expired", "invitation is no longer valid");
       if (p.expiresAtMs <= Date.now()) throw new LinkError("expired", "invitation expired");
-      p.consumed = true; // atomic one-time consumption (§7.12 double-click → used)
+      p.status = "accepted"; // atomic one-time consumption (§7.12 double-click → used)
+      return {
+        organizationId: p.organizationId,
+        organizationName: p.organizationName,
+        email: p.email,
+        proposedRoleKeys: p.proposedRoleKeys,
+        defaultLocationIds: p.defaultLocationIds,
+      };
+    },
+    peek(token) {
+      const invitationId = tokens.get(token);
+      const p = invitationId ? pending.get(invitationId) : undefined;
+      if (!p) throw new LinkError("expired", "invitation token invalid or expired");
+      if (p.status === "accepted") throw new LinkError("used", "invitation already accepted");
+      if (p.status !== "pending") throw new LinkError("expired", "invitation is no longer valid");
+      if (p.expiresAtMs <= Date.now()) throw new LinkError("expired", "invitation expired");
       return {
         organizationId: p.organizationId,
         organizationName: p.organizationName,
@@ -400,9 +507,8 @@ export function createInMemoryInvitationStore(
     },
     rescind(invitationId) {
       const p = pending.get(invitationId);
-      if (!p || p.consumed) return false;
-      pending.delete(invitationId);
-      tokens.delete(p.token);
+      if (!p || p.status !== "pending") return false;
+      p.status = "revoked";
       return true;
     },
   };
@@ -410,7 +516,8 @@ export function createInMemoryInvitationStore(
   void orgNameOf;
   return {
     store,
-    tokenFor: (email) => [...pending.values()].find((p) => p.email === email && !p.consumed)?.token,
+    tokenFor: (email) =>
+      [...pending.values()].find((p) => p.email === email && p.status === "pending")?.token,
   };
 }
 

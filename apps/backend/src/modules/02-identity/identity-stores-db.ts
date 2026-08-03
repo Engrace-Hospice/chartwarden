@@ -13,23 +13,18 @@
 // (mirrors membership-repository.ts / session-writer-db.ts).
 //
 // TOKEN HANDLING. `organization_invitation.token_hash` stores a SHA-256 of the opaque token; the raw
-// token is never persisted and never leaves this module — which matches the column's intent and the
-// route's comment that the token is emailed rather than returned.
-//
-// ⚠ KNOWN GAP, PRE-EXISTING AND UNCHANGED HERE: `InvitationStore.create` returns only
-// `{ invitationId, expiresAt }`, so the raw token has no way out of the store, and nothing in
-// `identity-routes.ts` calls an email transport. The route comment says "Token is emailed by the
-// registered transactional sender" — no sender is wired, so an invitation cannot currently be
-// accepted by anyone, in memory or in Postgres. Persisting it is still strictly better (the record
-// survives, is visible to every replica, and is auditable); delivering it needs the port to return the
-// token to a caller that can send it, which is an interface change beyond this fix.
+// token is never PERSISTED anywhere. It DOES leave the store on `create`/`resend` (TASK-030) — the
+// route is the only caller, and uses it exactly once, to build the accept link for the email transport
+// and (since no vendor sender is wired yet) to echo an admin-visible copyable link back to the inviter.
 import { type DbClient, schema } from "@wardenx/db";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import {
   type InvitationDetail,
+  type InvitationListItem,
   type InvitationStore,
   LinkError,
+  type MintedInvitation,
   type UserDirectory,
 } from "./identity-ports";
 
@@ -66,6 +61,31 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
       return Number(rows[0]?.n ?? 0);
     },
 
+    async list(organizationId) {
+      const rows = await db
+        .select({
+          id: I.id,
+          email: I.email,
+          status: I.status,
+          expiresAt: I.expiresAt,
+          createdAt: I.createdAt,
+        })
+        .from(I)
+        .where(eq(I.organizationId, organizationId))
+        .orderBy(desc(I.createdAt));
+      return rows.map(
+        (r): InvitationListItem => ({
+          invitationId: r.id,
+          email: r.email,
+          // `accepted`/`revoked`/`pending` are the only statuses the roster ever surfaces (the
+          // invitationStatus enum has no other member, per packages/db/src/enums.ts).
+          status: r.status as InvitationListItem["status"],
+          expiresAt: r.expiresAt.toISOString(),
+          createdAt: r.createdAt.toISOString(),
+        }),
+      );
+    },
+
     async create(input) {
       const token = randomUUID();
       const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
@@ -86,7 +106,54 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
         .returning({ id: I.id, expiresAt: I.expiresAt });
       const row = rows[0];
       if (!row) throw new Error("invitation insert returned no row");
-      return { invitationId: row.id, expiresAt: row.expiresAt.toISOString() };
+      return { invitationId: row.id, token, expiresAt: row.expiresAt.toISOString() };
+    },
+
+    async resend(invitationId): Promise<MintedInvitation | null> {
+      const token = randomUUID();
+      const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+      // The status predicate is part of the UPDATE (same atomic-guard pattern as `consume`/`rescind`):
+      // re-minting a no-longer-pending invite (already accepted/revoked) is refused, not resurrected.
+      const rows = await db
+        .update(I)
+        .set({ tokenHash: hashToken(token), expiresAt })
+        .where(and(eq(I.id, invitationId), eq(I.status, "pending")))
+        .returning({ id: I.id, expiresAt: I.expiresAt });
+      const row = rows[0];
+      if (!row) return null;
+      return { invitationId: row.id, token, expiresAt: row.expiresAt.toISOString() };
+    },
+
+    async peek(token) {
+      const O = schema.organizations;
+      const rows = await db
+        .select({
+          organizationId: I.organizationId,
+          organizationName: O.displayName,
+          email: I.email,
+          status: I.status,
+          proposedRoleKeys: I.proposedRoleKeys,
+          proposedDefaultLocationIds: I.proposedDefaultLocationIds,
+          expiresAt: I.expiresAt,
+        })
+        .from(I)
+        .innerJoin(O, eq(O.id, I.organizationId))
+        .where(eq(I.tokenHash, hashToken(token)))
+        .limit(1);
+      const row = rows[0];
+      // Same unknown/expired collapse as `consume` — see its comment (no oracle for token existence).
+      if (!row) throw new LinkError("expired", "invitation token invalid or expired");
+      if (row.status === "accepted") throw new LinkError("used", "invitation already accepted");
+      if (row.status !== "pending") throw new LinkError("expired", "invitation is no longer valid");
+      if (row.expiresAt.getTime() <= Date.now())
+        throw new LinkError("expired", "invitation expired");
+      return {
+        organizationId: row.organizationId,
+        organizationName: row.organizationName,
+        email: row.email,
+        proposedRoleKeys: (row.proposedRoleKeys ?? []) as readonly string[],
+        defaultLocationIds: (row.proposedDefaultLocationIds ?? []) as readonly string[],
+      } satisfies InvitationDetail;
     },
 
     async consume(token) {

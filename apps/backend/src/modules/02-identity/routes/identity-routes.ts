@@ -48,6 +48,7 @@ import {
 import {
   type Actor,
   type IdentityRouteDeps,
+  type InvitationDetail,
   LinkError,
   type MembershipRecord,
   type MembershipStatus,
@@ -149,6 +150,36 @@ function assertOrgMatch(request: FastifyRequest, pathOrgId: string): void {
   }
 }
 
+/**
+ * TASK-030 — best-effort email delivery + the admin-visible link fallback. No vendor sender is wired
+ * yet (M36's transport no-ops in production, logs in dev), so a delivery failure must never surface
+ * as a 5xx on a request whose invite was already durably recorded; the returned `inviteUrl` — echoed
+ * to the inviting admin, who already holds `member.invite` — is the fallback until one is.
+ */
+async function deliverInvite(
+  deps: IdentityRouteDeps,
+  organizationNameAttr: unknown,
+  email: string,
+  token: string,
+): Promise<string | undefined> {
+  const inviteUrl = deps.webAppBaseUrl
+    ? `${deps.webAppBaseUrl.replace(/\/$/, "")}/invite/${token}`
+    : undefined;
+  if (deps.emailTransport && inviteUrl) {
+    const orgName = typeof organizationNameAttr === "string" ? organizationNameAttr : "your organization";
+    try {
+      await deps.emailTransport.send({
+        to: email,
+        subject: "You're invited to WardenX",
+        text: `You've been invited to join ${orgName} on WardenX. Accept your invitation using this link (it expires in 72 hours):\n\n${inviteUrl}\n\nIf you weren't expecting this, you can ignore this email.`,
+      });
+    } catch {
+      // Swallow: see the doc comment above.
+    }
+  }
+  return inviteUrl;
+}
+
 export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRouteDeps): void {
   const collabTtlSec = deps.collaboratorSessionTtlSec ?? DEFAULT_COLLAB_TTL_SEC;
 
@@ -231,10 +262,63 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { invitationId: created.invitationId, organizationId: orgId, email },
     );
-    // Token is emailed by the registered transactional sender — never returned in the body.
-    return reply
-      .code(201)
-      .send({ invitationId: created.invitationId, expiresAt: created.expiresAt });
+    const inviteUrl = await deliverInvite(deps, orgName, email, created.token);
+    return reply.code(201).send({
+      invitationId: created.invitationId,
+      expiresAt: created.expiresAt,
+      ...(inviteUrl ? { inviteUrl } : {}),
+    });
+  });
+
+  // TASK-030 — the org's invitation roster (Staff Management pending-invite list).
+  app.get("/api/v1/orgs/:id/invitations", async (request) => {
+    await requirePermission("member.invite")(request);
+    const orgId = (request.params as { id: string }).id;
+    assertOrgMatch(request, orgId);
+    return { invitations: await deps.invitations.list(orgId) };
+  });
+
+  // TASK-030 — re-mint a pending invite's token + expiry (invalidates the prior link) and re-deliver it.
+  app.post("/api/v1/orgs/:id/invitations/:invId/resend", async (request, reply) => {
+    await requirePermission("member.invite")(request);
+    const { id: orgId, invId } = request.params as { id: string; invId: string };
+    assertOrgMatch(request, orgId);
+    const actor = await resolveActor(deps, request);
+
+    const roster = await deps.invitations.list(orgId);
+    const target = roster.find((i) => i.invitationId === invId);
+    if (!target) throw new WardenXError("NOT_FOUND", "invitation not found", 404);
+
+    const reminted = await deps.invitations.resend(invId);
+    if (!reminted) {
+      throw new WardenXError("NOT_FOUND", "invitation is no longer pending", 404);
+    }
+    await auditUserInvited(
+      deps.audit,
+      auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
+      { invitationId: invId, organizationId: orgId, email: target.email },
+    );
+    const orgName = request.context.attributes.organizationName;
+    const inviteUrl = await deliverInvite(deps, orgName, target.email, reminted.token);
+    return reply.code(200).send({
+      invitationId: reminted.invitationId,
+      expiresAt: reminted.expiresAt,
+      ...(inviteUrl ? { inviteUrl } : {}),
+    });
+  });
+
+  // TASK-030 — pre-auth preview of a still-pending token's target, so the invitee's browser can
+  // pre-fill a sign-up form BEFORE an account (and therefore a session) exists to call `accept` through.
+  app.get("/api/v1/invitations/:token", async (request) => {
+    const { token } = request.params as { token: string };
+    let detail: InvitationDetail;
+    try {
+      detail = await deps.invitations.peek(token);
+    } catch (err) {
+      if (err instanceof LinkError) throw linkErrorToHttp(err);
+      throw err;
+    }
+    return { email: detail.email, organizationName: detail.organizationName };
   });
 
   app.post("/api/v1/invitations/accept", async (request, reply) => {
