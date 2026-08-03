@@ -77,6 +77,14 @@ import {
   onboardingStatusProviderDenyStub,
   externalInterfaceMetricsProviderDenyStub,
   aiTokenMeterProviderDenyStub,
+  ipuAdmissionReaderDenyStub,
+  ipuBedAssignmentProviderDenyStub,
+  ipuCensusProviderDenyStub,
+  ipuIvSafetyOverlayProviderDenyStub,
+  ipuQualityReaderDenyStub,
+  ipuShiftCoverageReaderDenyStub,
+  ipuTenantPostureReaderDenyStub,
+  ipuVisitorReaderDenyStub,
   hopeJ2051ProviderDenyStub,
   hopeOrgRollupProviderDenyStub,
   hopeSubmissionProviderDenyStub,
@@ -1142,6 +1150,17 @@ export const REQUIRED_SEAMS = [
   },
   { key: "CopilotProvider", ownerModule: 32, phi: true, denyStub: copilotProviderDenyStub },
   { key: "AIPromptRegistry", ownerModule: 32, phi: false, denyStub: aiPromptRegistryDenyStub },
+  // M37 §4.11 — the eight published IPU reader seams. M37 registers the REAL Drizzle-backed impls over these
+  // deny-stubs via the composition-root hook (registerIpuSeams); until then validateSeams() applies the
+  // fail-closed default. All ids + counts + policy flags — no raw PHI row crosses (D17/§8.5) → phi:false.
+  { key: "IpuAdmissionReader", ownerModule: 37, phi: false, denyStub: ipuAdmissionReaderDenyStub },
+  { key: "IpuCensusProvider", ownerModule: 37, phi: false, denyStub: ipuCensusProviderDenyStub },
+  { key: "IpuBedAssignmentProvider", ownerModule: 37, phi: false, denyStub: ipuBedAssignmentProviderDenyStub },
+  { key: "IpuShiftCoverageReader", ownerModule: 37, phi: false, denyStub: ipuShiftCoverageReaderDenyStub },
+  { key: "IpuIvSafetyOverlayProvider", ownerModule: 37, phi: false, denyStub: ipuIvSafetyOverlayProviderDenyStub },
+  { key: "IpuVisitorReader", ownerModule: 37, phi: false, denyStub: ipuVisitorReaderDenyStub },
+  { key: "IpuQualityReader", ownerModule: 37, phi: false, denyStub: ipuQualityReaderDenyStub },
+  { key: "IpuTenantPostureReader", ownerModule: 37, phi: false, denyStub: ipuTenantPostureReaderDenyStub },
 ] satisfies readonly RequiredSeam[];
 
 /** A producer module registers its implementation of a published seam. */
