@@ -45,6 +45,7 @@ import { reportingScreens } from "./modules/33-reporting";
 import { saasScreens } from "./modules/34-saas";
 import { subscriptionScreens } from "./modules/35-subscription";
 import { messagingScreens } from "./modules/36-messaging";
+import { ipuScreens } from "./modules/37-ipu";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
 import { AppShell, createScreenRegistry, systemScreens } from "./shell";
@@ -89,6 +90,7 @@ registry.register(reportingScreens); // M33 Reporting & Analytics (R2, ADR-0030)
 registry.register(saasScreens); // M34 SaaS Tenant Platform (R2, ADR-0030)
 registry.register(subscriptionScreens); // M35 Subscription Billing — tenant §5.1 (R2, ADR-0030)
 registry.register(messagingScreens); // M36 Messaging (Track A)
+registry.register(ipuScreens); // M37 Inpatient Unit (IPU) Management — tenant §5 (P3, ADR-0030)
 registry.register(terminologyScreens); // M38 Terminology (Track A)
 registry.register(consentScreens); // M39 Consent & Authorization Management (R2, ADR-0030, §5.1)
 registry.register(mdmScreens); // M40 MDM (Track A)
