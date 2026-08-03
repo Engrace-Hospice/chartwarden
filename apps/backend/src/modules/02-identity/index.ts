@@ -59,8 +59,11 @@ export {
   type CollaboratorScope,
   type IdentityRouteDeps,
   type InvitationDetail,
+  type InvitationEmailTransport,
+  type InvitationListItem,
   type InvitationStore,
   LinkError,
+  type MintedInvitation,
   type MembershipRecord,
   type MembershipRepository,
   type MembershipStatus,
@@ -134,6 +137,10 @@ export function mountIdentityRoutes(
   app: FastifyInstance,
   db: DbClient,
   admin: AdminMembershipReader,
+  // TASK-030 — the M36 transactional-email transport + the web app's origin, threaded from the
+  // composition root so the invite-create/resend routes can deliver (or admin-visibly echo) the
+  // accept link. Both optional: omitted, invites still record — they just stay copy-link-only.
+  invite?: { emailTransport?: IdentityRouteDeps["emailTransport"]; webAppBaseUrl?: string },
 ): void {
   const deps: IdentityRouteDeps = {
     actors: _ctxActor(),
@@ -143,6 +150,8 @@ export function mountIdentityRoutes(
     collaborators: _collabStore().store, // no table exists — see the header
     users: _dbUserDirectory(db),
     audit: db,
+    ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
+    ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
   };
   _registerIdentityRoutes(app, deps);
 }

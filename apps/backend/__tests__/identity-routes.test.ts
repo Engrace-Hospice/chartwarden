@@ -60,7 +60,28 @@ function membership(over: Partial<MembershipRecord> & { membershipId: string }):
   };
 }
 
-function makeServer(opts: { seed?: MembershipRecord[]; actors?: Actor | null | "context" } = {}) {
+interface CapturingEmailTransport {
+  send(email: { to: string; subject: string; text: string }): Promise<void>;
+  sent: Array<{ to: string; subject: string; text: string }>;
+}
+function capturingEmailTransport(): CapturingEmailTransport {
+  const sent: Array<{ to: string; subject: string; text: string }> = [];
+  return {
+    sent,
+    async send(email) {
+      sent.push(email);
+    },
+  };
+}
+
+function makeServer(
+  opts: {
+    seed?: MembershipRecord[];
+    actors?: Actor | null | "context";
+    emailTransport?: IdentityRouteDeps["emailTransport"];
+    webAppBaseUrl?: string;
+  } = {},
+) {
   const memberships = createInMemoryMembershipRepository(opts.seed ?? []);
   const sessions = createInMemorySessionWriter();
   const invitations = createInMemoryInvitationStore();
@@ -102,6 +123,8 @@ function makeServer(opts: { seed?: MembershipRecord[]; actors?: Actor | null | "
     collaborators: collaborators.store,
     users: users.directory,
     audit: auditSink.executor,
+    ...(opts.emailTransport ? { emailTransport: opts.emailTransport } : {}),
+    ...(opts.webAppBaseUrl ? { webAppBaseUrl: opts.webAppBaseUrl } : {}),
   };
   registerIdentityRoutes(app, deps);
   return { app, memberships, sessions, invitations, collaborators, users, auditSink };
@@ -338,6 +361,169 @@ describe("M2-T06 identity route inventory", () => {
       const second = await accept();
       expect(second.statusCode).toBe(409);
       expect(second.json().error.code).toBe("LINK_ALREADY_USED");
+      await app.close();
+    });
+  });
+
+  describe("TASK-030 invite delivery + roster + resend + peek", () => {
+    it("with webAppBaseUrl configured: create returns inviteUrl + emails it via the transport", async () => {
+      const transport = capturingEmailTransport();
+      const { app } = makeServer({
+        emailTransport: transport,
+        webAppBaseUrl: "https://app.wardenx.example",
+      });
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "new@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+      const body = res.json() as { inviteUrl?: string };
+      expect(body.inviteUrl).toMatch(/^https:\/\/app\.wardenx\.example\/invite\//);
+      expect(transport.sent).toHaveLength(1);
+      expect(transport.sent[0]!.to).toBe("new@example.com");
+      expect(transport.sent[0]!.text).toContain(body.inviteUrl);
+      await app.close();
+    });
+
+    it("without webAppBaseUrl configured: create omits inviteUrl (token stays out of the body)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "new2@example.com" },
+      });
+      expect(res.statusCode).toBe(201);
+      expect(res.json().inviteUrl).toBeUndefined();
+      await app.close();
+    });
+
+    it("GET the invitation roster lists pending invites (member.invite)", async () => {
+      const { app } = makeServer();
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "roster@example.com" },
+      });
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+      });
+      expect(res.statusCode).toBe(200);
+      const invitations = res.json().invitations as Array<{ email: string; status: string }>;
+      expect(invitations.some((i) => i.email === "roster@example.com" && i.status === "pending")).toBe(
+        true,
+      );
+      await app.close();
+    });
+
+    it("resend re-mints the token (the old one stops working) and returns a fresh inviteUrl", async () => {
+      const transport = capturingEmailTransport();
+      const { app, invitations } = makeServer({
+        emailTransport: transport,
+        webAppBaseUrl: "https://app.wardenx.example",
+      });
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "resend@example.com" },
+      });
+      const oldToken = invitations.tokenFor("resend@example.com");
+      const roster = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+      });
+      const invId = (roster.json().invitations as Array<{ invitationId: string; email: string }>).find(
+        (i) => i.email === "resend@example.com",
+      )!.invitationId;
+
+      const resend = await app.inject({
+        method: "POST",
+        url: `/api/v1/orgs/org_a/invitations/${invId}/resend`,
+        headers: ADMIN,
+      });
+      expect(resend.statusCode).toBe(200);
+      expect(transport.sent).toHaveLength(2); // create + resend
+
+      // The OLD token is dead now.
+      const acceptOld = await app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "someone" },
+        payload: { token: oldToken },
+      });
+      expect(acceptOld.statusCode).toBe(410);
+      await app.close();
+    });
+
+    it("resending an already-accepted invite → 404", async () => {
+      const { app, invitations } = makeServer();
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "gone@example.com" },
+      });
+      const token = invitations.tokenFor("gone@example.com");
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "accepted_user" },
+        payload: { token },
+      });
+      const roster = await app.inject({
+        method: "GET",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+      });
+      const invId = (roster.json().invitations as Array<{ invitationId: string; email: string }>).find(
+        (i) => i.email === "gone@example.com",
+      )!.invitationId;
+      const resend = await app.inject({
+        method: "POST",
+        url: `/api/v1/orgs/org_a/invitations/${invId}/resend`,
+        headers: ADMIN,
+      });
+      expect(resend.statusCode).toBe(404);
+      await app.close();
+    });
+
+    it("GET /invitations/:token (peek) previews the target pre-auth, without consuming it", async () => {
+      const { app, invitations } = makeServer();
+      await app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: { ...ADMIN, "x-test-orgname": "Engrace" },
+        payload: { email: "peek@example.com" },
+      });
+      const token = invitations.tokenFor("peek@example.com");
+
+      const peek = await app.inject({ method: "GET", url: `/api/v1/invitations/${token}` });
+      expect(peek.statusCode).toBe(200);
+      expect(peek.json()).toMatchObject({ email: "peek@example.com", organizationName: "Engrace" });
+
+      // Peeking does not consume — accept still works afterward.
+      const accept = await app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "peek_user" },
+        payload: { token },
+      });
+      expect(accept.statusCode).toBe(200);
+      await app.close();
+    });
+
+    it("GET /invitations/:token for an unknown token → 410 LINK_EXPIRED", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({ method: "GET", url: "/api/v1/invitations/does-not-exist" });
+      expect(res.statusCode).toBe(410);
+      expect(res.json().error.code).toBe("LINK_EXPIRED");
       await app.close();
     });
   });

@@ -80,6 +80,7 @@ export const identityScreens: ScreenRegistryModule<ComponentType> = {
       path: "/admin/staff",
       title: "Staff Management",
       navGroup: "Admin",
+      requiredPermission: "member.manage",
       screen: StaffManagement,
     },
   ],

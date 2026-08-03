@@ -1,4 +1,5 @@
 import {
+  ConfirmDialog,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -6,20 +7,23 @@ import {
   StatusPill,
   type StatusTone,
   WorkQueueLayout,
+  useToast,
 } from "@wardenx/ui";
 import { useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/02-identity — Staff Management (M2, Track A).
 // Spec: docs/design/screens/admin/WARDENX_UI_STAFF_MANAGEMENT.md (Work Queue). Manages the org's member
 // roster: invite by email, change a member's status (active/suspended), and revoke a membership — over
 // the M2 member routes via the generated client. The active org for the path comes from the session
-// (authClient.getSession). Server stays authoritative (every route is behind member.manage + the
-// last-admin lockout guard). FB-T12 enriches the roster with what the M2 surface carries today —
-// Name/email, Last login, and the Pending-invite / Locked-account KPIs (the live repo joins the
-// M1-owned user/session tables). Discipline / credentials stay deferred to M34 (noted, not faked);
-// see docs/design/DEFERRED_SCREENS.md.
+// (authClient.getSession). Server stays authoritative (every route is behind member.manage/member.invite/
+// role.assign + the last-admin lockout guard + M3's anti-escalation check). FB-T12 enriches the roster
+// with Name/email, Last login, and the Pending-invite / Locked-account KPIs. TASK-030 adds the pending
+// invitation roster (resend/rescind — the invite form used to be a one-way "recorded but not emailed"
+// dead end) and a per-member role editor (grant/revoke over the M3 role routes). Discipline / credentials
+// stay deferred to M34 (noted, not faked); see docs/design/DEFERRED_SCREENS.md.
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { authClient } from "./auth-client";
+import { MemberRoleEditor } from "./member-role-editor";
 
 interface Member {
   membershipId: string;
@@ -33,6 +37,21 @@ interface Member {
   accountStatus: "created" | "active" | "suspended" | "deactivated" | null;
 }
 
+interface Invitation {
+  invitationId: string;
+  email: string;
+  status: "pending" | "accepted" | "expired" | "revoked";
+  expiresAt: string;
+  createdAt: string;
+}
+
+const INVITE_STATUS_TONE: Record<Invitation["status"], StatusTone> = {
+  pending: "progress",
+  accepted: "success",
+  expired: "neutral",
+  revoked: "neutral",
+};
+
 // §6.6 — membership status → tone.
 const STATUS_TONE: Record<Member["status"], StatusTone> = {
   active: "success",
@@ -43,25 +62,33 @@ const STATUS_TONE: Record<Member["status"], StatusTone> = {
 
 export function StaffManagement(): JSX.Element {
   const client = useApiClient();
+  const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [pendingInvites, setPendingInvites] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [expandedRolesFor, setExpandedRolesFor] = useState<string | null>(null);
 
   const load = useCallback(
     async (org: string) => {
-      const { data, error: err } = await client.GET("/api/v1/orgs/{id}/members", {
-        params: { path: { id: org } },
-      });
-      if (err) {
+      const [membersRes, invitationsRes] = await Promise.all([
+        client.GET("/api/v1/orgs/{id}/members", { params: { path: { id: org } } }),
+        client.GET("/api/v1/orgs/{id}/invitations", { params: { path: { id: org } } }),
+      ]);
+      if (membersRes.error) {
         setError("Could not load staff. You may not have permission to manage members.");
         return;
       }
-      setMembers((data?.members ?? []) as Member[]);
-      setPendingInvites(data?.pendingInvitations ?? 0);
+      setMembers((membersRes.data?.members ?? []) as Member[]);
+      setPendingInvites(membersRes.data?.pendingInvitations ?? 0);
+      // Non-fatal: the invitation roster is an enhancement on top of the roster load above.
+      if (!invitationsRes.error) {
+        setInvitations((invitationsRes.data?.invitations ?? []) as Invitation[]);
+      }
     },
     [client],
   );
@@ -81,8 +108,8 @@ export function StaffManagement(): JSX.Element {
     if (!orgId) return;
     setBusy(true);
     setError(null);
-    setNotice(null);
-    const { error: err } = await client.POST("/api/v1/orgs/{id}/invitations", {
+    setInviteLink(null);
+    const { data, error: err } = await client.POST("/api/v1/orgs/{id}/invitations", {
       params: { path: { id: orgId } },
       body: { email: inviteEmail.trim() },
     });
@@ -91,13 +118,67 @@ export function StaffManagement(): JSX.Element {
       setError("Could not record the invitation. A pending invite may already exist for that email.");
       return;
     }
-    // FLOW-007 containment (production-readiness audit 2026-08-03): no email sender is wired, so an
-    // invitation is RECORDED but not deliverable — saying "sent" here was a false success. The honest
-    // message stands until the transactional sender + onboarding flow land (TASK-030).
-    setNotice(
-      `Invitation recorded for ${inviteEmail.trim()} — but NOT emailed: delivery is not yet wired, so the invitee cannot accept it yet.`,
-    );
+    // TASK-030: no vendor email sender is wired yet (M36's transport no-ops in production), so the
+    // server ALSO echoes the accept link here — an honest "copy this to share it yourself" fallback,
+    // replacing the old dead-end "recorded but not emailed" message.
+    if (data?.inviteUrl) {
+      setInviteLink(data.inviteUrl);
+      toast.show(`Invitation recorded for ${inviteEmail.trim()}. Share the link below with them.`, {
+        tone: "success",
+      });
+    } else {
+      toast.show(
+        `Invitation recorded for ${inviteEmail.trim()} — but no link could be built (the server has no web app origin configured).`,
+        { tone: "success" },
+      );
+    }
     setInviteEmail("");
+    void load(orgId);
+  }
+
+  async function resendInvite(inv: Invitation): Promise<void> {
+    if (!orgId) return;
+    setError(null);
+    setInviteLink(null);
+    const { data, error: err } = await client.POST("/api/v1/orgs/{id}/invitations/{invId}/resend", {
+      params: { path: { id: orgId, invId: inv.invitationId } },
+      body: {},
+    });
+    if (err) {
+      setError("Could not resend that invitation (it may no longer be pending).");
+      return;
+    }
+    if (data?.inviteUrl) {
+      setInviteLink(data.inviteUrl);
+      toast.show(
+        `Re-sent invitation for ${inv.email}. The old link no longer works — share this one.`,
+        { tone: "success" },
+      );
+    }
+    void load(orgId);
+  }
+
+  // UI-010: rescinding a pending invite is destructive — confirm via the shared ConfirmDialog
+  // instead of the old arm-then-confirm two-click pattern (TASK-032).
+  const [confirmRescind, setConfirmRescind] = useState<Invitation | null>(null);
+  const [rescindBusy, setRescindBusy] = useState(false);
+
+  async function performRescind(): Promise<void> {
+    if (!orgId || !confirmRescind) return;
+    setRescindBusy(true);
+    setError(null);
+    const { error: err } = await client.DELETE("/api/v1/orgs/{id}/invitations/{invId}", {
+      params: { path: { id: orgId, invId: confirmRescind.invitationId } },
+    });
+    setRescindBusy(false);
+    if (err) {
+      setError("Could not rescind that invitation.");
+      setConfirmRescind(null);
+      return;
+    }
+    toast.show(`Rescinded the invitation for ${confirmRescind.email}.`, { tone: "success" });
+    setConfirmRescind(null);
+    void load(orgId);
   }
 
   async function setStatus(m: Member, status: "active" | "suspended"): Promise<void> {
@@ -114,28 +195,29 @@ export function StaffManagement(): JSX.Element {
     void load(orgId);
   }
 
-  // UI-010 containment: removing a member is destructive and used to fire on ONE click with no
-  // confirmation and no feedback. Until the shared ConfirmDialog primitive lands (TASK-032), the
-  // Remove button arms on first click ("Confirm remove?") and executes only on the second.
-  const [armedRevoke, setArmedRevoke] = useState<string | null>(null);
+  // UI-010: removing a member is destructive — confirm via the shared ConfirmDialog instead of the
+  // old arm-then-confirm two-click pattern (TASK-032).
+  const [confirmRevoke, setConfirmRevoke] = useState<Member | null>(null);
+  const [revokeBusy, setRevokeBusy] = useState(false);
 
-  async function revoke(m: Member): Promise<void> {
-    if (!orgId) return;
-    if (armedRevoke !== m.membershipId) {
-      setArmedRevoke(m.membershipId);
-      return;
-    }
-    setArmedRevoke(null);
+  async function performRevoke(): Promise<void> {
+    if (!orgId || !confirmRevoke) return;
+    setRevokeBusy(true);
     setError(null);
-    setNotice(null);
     const { error: err } = await client.DELETE("/api/v1/orgs/{id}/members/{mId}", {
-      params: { path: { id: orgId, mId: m.membershipId } },
+      params: { path: { id: orgId, mId: confirmRevoke.membershipId } },
     });
+    setRevokeBusy(false);
     if (err) {
       setError("Could not remove that member (the last active admin can't be removed).");
+      setConfirmRevoke(null);
       return;
     }
-    setNotice(`Removed ${m.displayName ?? m.email ?? "member"} from the organization.`);
+    toast.show(
+      `Removed ${confirmRevoke.displayName ?? confirmRevoke.email ?? "member"} from the organization.`,
+      { tone: "success" },
+    );
+    setConfirmRevoke(null);
     void load(orgId);
   }
 
@@ -149,6 +231,7 @@ export function StaffManagement(): JSX.Element {
       .length ?? 0;
 
   return (
+    <>
     <WorkQueueLayout
       header={<PageHeader title="Staff Management" />}
       kpis={
@@ -161,30 +244,41 @@ export function StaffManagement(): JSX.Element {
         </div>
       }
       filters={
-        <form onSubmit={invite} style={inviteBar}>
-          <input
-            type="email"
-            required
-            placeholder="Invite by email…"
-            aria-label="Invite by email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            style={field}
-          />
-          <button type="submit" disabled={busy || !inviteEmail.trim() || !orgId} style={primaryBtn}>
-            {busy ? "Sending…" : "Invite"}
-          </button>
-          {notice ? (
-            <span role="status" style={{ color: "var(--color-success)", fontSize: "0.85rem" }}>
-              {notice}
-            </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <form onSubmit={invite} style={inviteBar}>
+            <input
+              type="email"
+              required
+              placeholder="Invite by email…"
+              aria-label="Invite by email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              style={field}
+            />
+            <button type="submit" disabled={busy || !inviteEmail.trim() || !orgId} style={primaryBtn}>
+              {busy ? "Sending…" : "Invite"}
+            </button>
+            {error ? (
+              <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
+                {error}
+              </span>
+            ) : null}
+          </form>
+          {inviteLink ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0 0.1rem" }}>
+              <code className="wx-data-md" style={inviteLinkField}>
+                {inviteLink}
+              </code>
+              <button
+                type="button"
+                style={linkBtn}
+                onClick={() => void navigator.clipboard.writeText(inviteLink)}
+              >
+                Copy link
+              </button>
+            </div>
           ) : null}
-          {error ? (
-            <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
-              {error}
-            </span>
-          ) : null}
-        </form>
+        </div>
       }
       table={
         members === null ? (
@@ -195,6 +289,7 @@ export function StaffManagement(): JSX.Element {
             description="Invite a team member above to get started."
           />
         ) : (
+          <>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
             <thead>
               <tr
@@ -224,7 +319,7 @@ export function StaffManagement(): JSX.Element {
                   </td>
                   <td style={td}>{m.email ?? "—"}</td>
                   <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
-                  <td style={{ ...td, ...tabular }}>{formatLastLogin(m.lastLoginAt)}</td>
+                  <td style={{ ...td, ...tabular }}>{formatDate(m.lastLoginAt)}</td>
                   <td style={{ ...td, ...tabular }}>{m.defaultLocationIds.length}</td>
                   <td style={td}>
                     <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
@@ -246,25 +341,125 @@ export function StaffManagement(): JSX.Element {
                     {m.status !== "revoked" ? (
                       <button
                         type="button"
-                        onClick={() => revoke(m)}
-                        onBlur={() => setArmedRevoke((a) => (a === m.membershipId ? null : a))}
-                        style={{
-                          ...linkBtn,
-                          color: "var(--color-error)",
-                          fontWeight: armedRevoke === m.membershipId ? 700 : undefined,
-                        }}
+                        onClick={() => setConfirmRevoke(m)}
+                        style={{ ...linkBtn, color: "var(--color-error)" }}
                       >
-                        {armedRevoke === m.membershipId ? "Confirm remove?" : "Remove"}
+                        Remove
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedRolesFor((cur) => (cur === m.membershipId ? null : m.membershipId))
+                      }
+                      style={linkBtn}
+                    >
+                      {expandedRolesFor === m.membershipId ? "Hide roles" : "Roles"}
+                    </button>
                   </td>
                 </tr>
               ))}
+              {members.map((m) =>
+                expandedRolesFor === m.membershipId ? (
+                  <tr key={`${m.membershipId}-roles`}>
+                    <td colSpan={7} style={{ padding: "0 1.5rem 1rem", background: "var(--color-surface)" }}>
+                      <MemberRoleEditor
+                        membershipId={m.membershipId}
+                        memberLabel={m.displayName ?? m.email ?? m.membershipId}
+                      />
+                    </td>
+                  </tr>
+                ) : null,
+              )}
             </tbody>
           </table>
+          <PendingInvitations
+            invitations={invitations}
+            onResend={resendInvite}
+            onRescind={setConfirmRescind}
+          />
+          </>
         )
       }
     />
+      <ConfirmDialog
+        open={confirmRevoke !== null}
+        title="Remove member?"
+        description={`This removes ${confirmRevoke?.displayName ?? confirmRevoke?.email ?? "this member"} from the organization. They lose access immediately.`}
+        tone="danger"
+        confirmLabel="Remove"
+        pending={revokeBusy}
+        onConfirm={() => void performRevoke()}
+        onCancel={() => setConfirmRevoke(null)}
+      />
+      <ConfirmDialog
+        open={confirmRescind !== null}
+        title="Rescind invitation?"
+        description={`The invite link sent to ${confirmRescind?.email ?? "this address"} stops working immediately.`}
+        tone="danger"
+        confirmLabel="Rescind"
+        pending={rescindBusy}
+        onConfirm={() => void performRescind()}
+        onCancel={() => setConfirmRescind(null)}
+      />
+    </>
+  );
+}
+
+function PendingInvitations({
+  invitations,
+  onResend,
+  onRescind,
+}: {
+  invitations: Invitation[];
+  onResend: (inv: Invitation) => void;
+  onRescind: (inv: Invitation) => void;
+}): JSX.Element | null {
+  const relevant = invitations.filter((i) => i.status === "pending" || i.status === "expired");
+  if (relevant.length === 0) return null;
+  return (
+    <div style={{ padding: "1rem 1.5rem" }}>
+      <h2 style={{ fontSize: "0.9rem", margin: "0 0 0.5rem" }}>Pending invitations</h2>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+        <thead>
+          <tr
+            style={{
+              textAlign: "left",
+              color: "var(--color-on-surface-variant)",
+              borderBottom: "1px solid var(--color-outline-variant)",
+            }}
+          >
+            <th style={th}>Email</th>
+            <th style={th}>Status</th>
+            <th style={th}>Expires</th>
+            <th style={th}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {relevant.map((inv) => (
+            <tr key={inv.invitationId} style={{ borderBottom: "1px solid var(--color-outline-variant)" }}>
+              <td style={td}>{inv.email}</td>
+              <td style={td}>
+                <StatusPill label={cap(inv.status)} tone={INVITE_STATUS_TONE[inv.status]} />
+              </td>
+              <td style={{ ...td, ...tabular }}>{formatDate(inv.expiresAt)}</td>
+              <td style={td}>
+                <button type="button" onClick={() => onResend(inv)} style={linkBtn}>
+                  Resend
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onRescind(inv)}
+                  style={{ ...linkBtn, color: "var(--color-error)" }}
+                >
+                  Rescind
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -292,8 +487,8 @@ function MemberName({ member }: { member: Member }): JSX.Element {
   );
 }
 
-/** Render an ISO last-login timestamp as a local date, or an em dash when the user has never signed in. */
-function formatLastLogin(iso: string | null): string {
+/** Render an ISO timestamp as a local date, or an em dash for null (e.g. never signed in). */
+function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString();
@@ -309,6 +504,16 @@ const kpiCard = {
   borderRadius: "0.5rem",
   minWidth: "7rem",
   background: "var(--color-surface-lowest)",
+} as const;
+const inviteLinkField = {
+  padding: "0.25rem 0.5rem",
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: "0.4rem",
+  fontSize: "0.8rem",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap" as const,
+  maxWidth: "28rem",
 } as const;
 const inviteBar = {
   display: "flex",

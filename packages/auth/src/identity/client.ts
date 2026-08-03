@@ -49,6 +49,11 @@ export interface WardenxAuthClient {
     email(input: { email: string; password: string }): Promise<SignInResult>;
     passkey(): Promise<AuthResult>;
   };
+  /** TASK-030 — the invitee's account-creation step (the invite email is fixed by the invite token,
+   *  not user-editable; `name` is the one field Better Auth's `user` row otherwise has no source for). */
+  signUp: {
+    email(input: { email: string; password: string; name: string }): Promise<AuthResult>;
+  };
   signOut(): Promise<AuthResult>;
   /** Read the current session (null when unauthenticated) — drives screen-lock (soft re-auth + class gate). */
   getSession(): Promise<{
