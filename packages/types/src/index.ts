@@ -29,6 +29,7 @@ export * from "./evv";
 export * from "./documents";
 export * from "./portal";
 export * from "./subscription-billing";
+export * from "./inpatient";
 export * from "./screen-registry";
 export * from "./errors";
 export * from "./http-context";

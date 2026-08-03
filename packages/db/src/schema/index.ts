@@ -706,3 +706,10 @@ export * from "./portal/index";
 // invoice retention, copy-then-delete on offboarding). NONE are PHI-bearing by the tenancy heuristic. Enums
 // in enums.ts (M35-T02); tables 0140–0142; RLS/grants + M4 write-audit triggers 0143.
 export * from "./subscription-billing/index";
+
+// M37 Inpatient Unit (IPU) Management: 26 owned tables (§3.3), all TENANT-SCOPED (canonical app.org_id
+// RLS). Four are MONTHLY-PARTITIONED — ipu_admission_state_history / ipu_bed_cleaning_event / ipu_visitor
+// / ipu_meal_service. Fully outbox-decoupled (D17): no cross-module schema FKs either direction; the
+// daily ipu_census_snapshot feeds M23/M26/M27 via outbox, and the ipu_iv_safety_overlay closes the M13
+// IV-pump overlay deferral. Enums in enums.ts; tables + RLS/grants + M4 triggers in migrations 0148–0152.
+export * from "./ipu/index";

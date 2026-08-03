@@ -278,6 +278,9 @@
     "packages/inpatient": {
       "name": "@wardenx/inpatient",
       "version": "0.0.0",
+      "dependencies": {
+        "@wardenx/types": "workspace:*",
+      },
     },
     "packages/intake-extraction": {
       "name": "@wardenx/intake-extraction",

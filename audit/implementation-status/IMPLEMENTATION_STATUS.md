@@ -4,7 +4,7 @@
 > architecture is coherent, NOT that a module is built. This matrix shows per-module build progress.
 > Do not hand-edit — the `status:matrix --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Totals:** 🟢 38 Implemented · 🟡 0 Partial · ⚪ 2 Placeholder (of 40 modules)
+**Totals:** 🟢 38 Implemented · 🟡 1 Partial · ⚪ 1 Placeholder (of 40 modules)
 
 Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned tables in a `CREATE TABLE`) · Routes (non-placeholder backend `routes/`) · Enriched (routes carrying an OpenAPI contract / routes scanned — a RATIO, not a tick; ⚠️ = some route publishes no request/response schema. `arch:openapi-coverage` ratchets it) · Screens (registered web `screens.ts`) · Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · Live (owned tables NAMED in a `*.live.test.ts` / owned tables — a RATIO, and still a name match, not an executed proof; ⚠️ marks any module with an unproven table). This column was a boolean `some()` and read ✅ for M35, a placeholder with zero migrations. Headline status keys off the placeholder marker + schema + routes only.
 
@@ -46,10 +46,39 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 48/48 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M35 Subscription Billing | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 3/21 ⚠️ |
 | M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 22/22 ✅ | ✅ | ✅ | — | 15/15 ✅ |
-| M37 Inpatient Unit (IPU) Management | ⚪ Placeholder | ✅ | ❌ | ❌ | ❌ | — | ❌ | ❌ | — | 0/26 ⚠️ |
+| M37 Inpatient Unit (IPU) Management | 🟡 Partial | ✅ | ✅ | ❌ | ❌ | — | ❌ | ❌ | — | 0/26 ⚠️ |
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 8/8 ✅ | ✅ | ✅ | — | 13/13 ✅ |
 | M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 11/11 ✅ |
+
+## ⚠️ Warnings (non-failing)
+
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_admission" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_admission_state_history" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_bed_assignment" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_admission_transition" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_shift" (packages/db/src/schema/ipu/staffing.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_staff_assignment" (packages/db/src/schema/ipu/staffing.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_rn_coverage_window" (packages/db/src/schema/ipu/staffing.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_visitor" (packages/db/src/schema/ipu/visitor-meal.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_visitor_restriction" (packages/db/src/schema/ipu/visitor-meal.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_meal_service" (packages/db/src/schema/ipu/visitor-meal.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "gip_admission_criteria" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "gip_criteria_reassessment" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "irc_episode" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_remote_inpatient_episode" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "inpatient_unit" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_room" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_bed" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_bed_cleaning_event" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_body_release" (packages/db/src/schema/ipu/census.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_census_snapshot" (packages/db/src/schema/ipu/census.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_iv_safety_overlay" (packages/db/src/schema/ipu/clinical.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_restraint_event" (packages/db/src/schema/ipu/clinical.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_restraint_reassessment" (packages/db/src/schema/ipu/clinical.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_equipment" (packages/db/src/schema/ipu/equipment.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_equipment_maintenance" (packages/db/src/schema/ipu/equipment.ts) has no CREATE TABLE in migrations
+- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_equipment_inspection" (packages/db/src/schema/ipu/equipment.ts) has no CREATE TABLE in migrations
 
 ## Hard-fail consistency checks
 
