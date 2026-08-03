@@ -579,7 +579,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 11,
-        "covered": 0
+        "covered": 11
       }
     },
     {
@@ -699,7 +699,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 21,
-        "covered": 9
+        "covered": 21
       }
     },
     {
@@ -739,7 +739,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 26,
-        "covered": 8
+        "covered": 26
       }
     },
     {
