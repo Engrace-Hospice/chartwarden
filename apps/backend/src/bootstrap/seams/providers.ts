@@ -91,6 +91,7 @@ import type {
   SafetySupervisorProvider,
   ScaleSeriesProvider,
   SeamName,
+  OrganizationReader,
   SessionContextResolver,
   SignedEncountersReader,
   SupplyCostProvider,
@@ -252,6 +253,17 @@ export const auditorSessionMinterDenyStub: AuditorSessionMinter = {
 export const tenantOrgCreationProviderDenyStub: TenantOrgCreationProvider = {
   async createOrganizationForTenant() {
     return { kind: "unavailable", reason: "m2_org_creation_not_yet_locked" };
+  },
+};
+
+// M2 — the fail-closed default for the org display-metadata reader M35's admin lists consume (M35A-T03).
+// Like the org-creation stub above (and UNLIKE the throwing deny-stubs) it degrades GRACEFULLY: a display
+// enrichment must never take down an otherwise-authorized admin list, so the unbound reader resolves NO
+// names (empty result) and the consumer falls back to the raw org id. It never fabricates a name. M2
+// registers the real Drizzle-backed reader over this at init (db-present boot).
+export const organizationReaderDenyStub: OrganizationReader = {
+  async readByIds() {
+    return [];
   },
 };
 

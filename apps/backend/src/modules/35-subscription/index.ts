@@ -13,7 +13,7 @@
 // composition root merges this into the platform event catalog at boot (the M27/M30/M33 precedent).
 export { M35_OUTBOX_EVENTS } from "./events-by-m35";
 
-// §4.7 — the twenty-five permission keys M35 contributes to M3's catalog (the auth-package mirror-row
+// §4.7 — the twenty-six permission keys M35 contributes to M3's catalog (the auth-package mirror-row
 // projector consumes `M35_CONTRIBUTED_PERMISSIONS`; routes gate on these keys via requirePermission).
 export {
   type M35ContributedPermissionKey,

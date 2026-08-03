@@ -87,6 +87,11 @@ export const AdminSubscriptionListQuerySchema = Type.Object({
   status: Type.Optional(SubscriptionStatusLit),
   organizationId: Type.Optional(uuid()),
 });
+export const DunningListQuerySchema = Type.Object({
+  cursor: Type.Optional(Type.String()),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  stage: Type.Optional(DunningStageLit),
+});
 
 // ── tenant request bodies (§4.1 / §4.4) ─────────────────────────────────────────────────────────────────
 
@@ -217,6 +222,8 @@ export const SubscriptionAdminResponseDto = Type.Intersect([
     planTier: PlanTierLit,
     stripeSubscriptionId: strNull(),
     startedAt: Type.String({ format: "date-time" }),
+    // §5.2 — org display name (M2 `OrganizationReader` seam, M35A-T03); "" when unresolved.
+    organizationName: Type.String(),
   }),
 ]);
 
@@ -329,6 +336,8 @@ export const SubscriptionAdminListResponseDto = cursorPage(SubscriptionAdminResp
 export const RefundDto = Type.Object({
   id: uuid(),
   organizationId: uuid(),
+  // §5.2 — org display name (M2 `OrganizationReader` seam, M35A-T03); "" when unresolved.
+  organizationName: Type.String(),
   invoiceId: uuid(),
   amountCents: Type.Integer(),
   kind: Type.Union([Type.Literal("full"), Type.Literal("partial"), Type.Literal("credit_only")]),
@@ -377,6 +386,18 @@ export const DunningDto = Type.Object({
   enteredAt: Type.String({ format: "date-time" }),
   nextAttemptAt: isoNull(),
 });
+export const DunningListItemDto = Type.Object({
+  subscriptionId: uuid(),
+  organizationId: uuid(),
+  // §5.2 — org display name (M2 `OrganizationReader` seam, M35A-T03); "" when unresolved.
+  organizationName: Type.String(),
+  planName: Type.String(),
+  subscriptionStatus: SubscriptionStatusLit,
+  stage: DunningStageLit,
+  enteredAt: Type.String({ format: "date-time" }),
+  nextAttemptAt: isoNull(),
+});
+export const DunningListResponseDto = cursorPage(DunningListItemDto);
 export const RevenueSnapshotDto = Type.Object({
   id: uuid(),
   snapshotMonth: Type.String(),

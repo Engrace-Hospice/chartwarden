@@ -5115,6 +5115,12 @@ export const M35_CONTRIBUTED_PERMISSIONS = {
     category: "billing_admin",
     abac: "platform_billing_scope",
   },
+  "dunning.admin.read": {
+    resource: "dunning",
+    action: "admin_read",
+    category: "billing_admin",
+    abac: "platform_billing_scope",
+  },
   "dunning.admin.override": {
     resource: "dunning",
     action: "override",

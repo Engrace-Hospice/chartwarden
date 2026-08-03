@@ -85,18 +85,20 @@ export const PLATFORM_OPS_ROLE_KEYS = [
 /** Union of the platform-ops role keys. */
 export type PlatformOpsRoleKey = (typeof PLATFORM_OPS_ROLE_KEYS)[number];
 
-// The seventeen M35 `billing_admin.*` permission keys (catalog `category: "billing_admin"`), split by the
-// §4.7 binding rule this wave applies (see ADMIN-T02):
+// The eighteen M35 `billing_admin.*` permission keys (catalog `category: "billing_admin"`), split by the
+// §4.7 binding rule this wave applies (see ADMIN-T02; `dunning.admin.read` added in M35A-T03 as the
+// dunning-list screen's read source):
 //   • READ keys        → support / billing / admin / owner   (the read-only ops surface)
 //   • WRITE/step-up    → billing / admin / owner             (mutating ops, each also §D14 step-up-gated)
 //   • refund.approve   → admin / owner ONLY                  (kept DISJOINT from `refund.request` so the
 //                                                             §4.8 four-eyes approver ≠ requester rule stays
 //                                                             assignable — a `platform_billing_admin` may
 //                                                             REQUEST a refund but never self-APPROVE it)
-/** The 7 read keys of the M35 `billing_admin.*` surface. */
+/** The 8 read keys of the M35 `billing_admin.*` surface. */
 export const M35_BILLING_ADMIN_READ_KEYS = [
   "plan.admin.read",
   "subscription.admin.read",
+  "dunning.admin.read",
   "refund.read",
   "promo.admin.read",
   "revenue.admin.read",

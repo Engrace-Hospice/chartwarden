@@ -1825,6 +1825,8 @@ import {
   CurrentRevenueResponseDto as M35CurrentRevenueResponseDto,
   DenyRefundBodySchema as M35DenyRefundBody,
   DunningDto as M35DunningDto,
+  DunningListQuerySchema as M35DunningListQuery,
+  DunningListResponseDto as M35DunningListResponseDto,
   InvoiceDetailDto as M35InvoiceDetailDto,
   InvoiceListResponseDto as M35InvoiceListResponseDto,
   ListQuerySchema as M35ListQuery,
@@ -2460,7 +2462,7 @@ export interface RouteEnrichment {
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
-  // ── M35 Subscription Billing (§4.1 tenant + §4.2 platform-ops + §4.3 webhook). 51 routes; every one
+  // ── M35 Subscription Billing (§4.1 tenant + §4.2 platform-ops + §4.3 webhook). 55 routes; every one
   // ships its request/response contract (subscription-typebox.ts) so the generated client is fully typed
   // and the new-module deficit floor stays 0. Money is INTEGER CENTS; no PHI (§8.5).
   "GET /api/v1/plans": { response: M35PlanCatalogListResponseDto, summary: "List active plans" },
@@ -2483,6 +2485,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "GET /api/v1/usage/history": { query: M35ListQuery, response: M35UsageHistoryResponseDto, summary: "Historical usage" },
   "GET /api/v1/billing/status": { response: M35BillingStatusDto, summary: "Lightweight billing status" },
   "GET /api/admin/plans": { response: M35PlanAdminListResponseDto, summary: "List all plans (admin)" },
+  "GET /api/admin/plans/:id": { response: M35PlanAdminDto, summary: "Read a plan (admin)" },
   "POST /api/admin/plans": { body: M35CreatePlanBody, response: M35PlanAdminDto, summary: "Create draft plan" },
   "PATCH /api/admin/plans/:id": { body: M35UpdatePlanBody, response: M35PlanAdminDto, summary: "Update draft plan" },
   "POST /api/admin/plans/:id/activate": { response: M35PlanAdminDto, summary: "Activate plan" },
@@ -2496,13 +2499,16 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/admin/subscriptions/:id/cancel": { response: M35SubscriptionAdminResponseDto, summary: "Cancel immediately" },
   "POST /api/admin/subscriptions/:id/apply_promo": { body: M35ApplyPromoBody, response: M35PromoApplicationDto, summary: "Apply promo (admin)" },
   "POST /api/admin/subscriptions/:id/revoke_promo": { body: M35RevokePromoBody, response: M35AckResponseDto, summary: "Revoke applied promo" },
+  "GET /api/admin/dunning": { query: M35DunningListQuery, response: M35DunningListResponseDto, summary: "List subscriptions in dunning (admin)" },
   "POST /api/admin/dunning/:subscriptionId/skip_stage": { response: M35DunningDto, summary: "Skip dunning stage" },
   "POST /api/admin/dunning/:subscriptionId/reset": { response: M35DunningDto, summary: "Reset dunning" },
   "POST /api/admin/refunds": { body: M35RequestRefundBody, response: M35RefundDto, summary: "Request refund" },
   "POST /api/admin/refunds/:id/approve": { response: M35RefundDto, summary: "Approve refund" },
   "POST /api/admin/refunds/:id/deny": { body: M35DenyRefundBody, response: M35RefundDto, summary: "Deny refund" },
   "GET /api/admin/refunds": { query: M35ListQuery, response: M35RefundListResponseDto, summary: "List refunds" },
+  "GET /api/admin/refunds/:id": { response: M35RefundDto, summary: "Read a refund (admin)" },
   "GET /api/admin/promos": { response: M35PromoListResponseDto, summary: "List promos" },
+  "GET /api/admin/promos/:id": { response: M35PromoDto, summary: "Read a promo (admin)" },
   "POST /api/admin/promos": { body: M35CreatePromoBody, response: M35PromoDto, summary: "Create promo" },
   "PATCH /api/admin/promos/:id": { body: M35UpdatePromoBody, response: M35PromoDto, summary: "Update promo" },
   "POST /api/admin/promos/:id/deactivate": { response: M35PromoDto, summary: "Deactivate promo" },

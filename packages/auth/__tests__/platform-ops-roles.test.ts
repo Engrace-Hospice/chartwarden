@@ -22,7 +22,8 @@ import {
 } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 
-/** The seventeen `billing_admin.*` keys are exactly the catalog entries in that category (source of truth). */
+/** The eighteen `billing_admin.*` keys are exactly the catalog entries in that category (source of truth).
+ *  (M35A-T03 added `dunning.admin.read` — the dunning-list screen's read source — as the 18th, a READ key.) */
 const BILLING_ADMIN_KEYS = Object.entries(M35_CONTRIBUTED_PERMISSIONS)
   .filter(([, def]) => def.category === "billing_admin")
   .map(([key]) => key);
@@ -40,8 +41,8 @@ describe("ADMIN-T02 platform-ops role catalog (§4.7)", () => {
     }
   });
 
-  it("the M35 catalog exposes exactly seventeen `billing_admin.*` keys", () => {
-    expect(BILLING_ADMIN_KEYS.length).toBe(17);
+  it("the M35 catalog exposes exactly eighteen `billing_admin.*` keys", () => {
+    expect(BILLING_ADMIN_KEYS.length).toBe(18);
   });
 });
 

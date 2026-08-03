@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/admin/dunning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List subscriptions in dunning (admin) */
+        get: operations["getApiAdminDunning"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/dunning/{subscriptionId}/reset": {
         parameters: {
             query?: never;
@@ -63,7 +80,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read a plan (admin) */
+        get: operations["getApiAdminPlansById"];
         put?: never;
         post?: never;
         delete?: never;
@@ -166,7 +184,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Read a promo (admin) */
+        get: operations["getApiAdminPromosById"];
         put?: never;
         post?: never;
         delete?: never;
@@ -205,6 +224,23 @@ export interface paths {
         put?: never;
         /** Request refund */
         post: operations["postApiAdminRefunds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/refunds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a refund (admin) */
+        get: operations["getApiAdminRefundsById"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -17114,6 +17150,48 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getApiAdminDunning: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+                stage?: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            subscriptionId: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            organizationName: string;
+                            planName: string;
+                            subscriptionStatus: "trialing" | "active" | "past_due" | "at_risk" | "suspended" | "canceled" | "paused";
+                            stage: "none" | "day_1" | "day_7" | "day_14" | "day_21" | "day_28_suspend" | "day_60_cancel" | "resolved";
+                            /** Format: date-time */
+                            enteredAt: string;
+                            nextAttemptAt: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiAdminDunningBySubscriptionIdReset: {
         parameters: {
             query?: never;
@@ -17242,6 +17320,53 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        tier: "starter" | "professional" | "enterprise";
+                        cadence: "monthly" | "annual";
+                        basePriceCents: number;
+                        currencyCode: string;
+                        trialPeriodDays: number;
+                        meters: {
+                            eventType: string;
+                            label: string;
+                            inclusiveQuantity: number;
+                            overageUnitPriceCents: number;
+                            billingAggregation: string;
+                        }[];
+                    } & {
+                        /** Format: uuid */
+                        id: string;
+                        isActive: boolean;
+                        deprecatedAt: string | null;
+                        stripeProductId: string | null;
+                        stripePriceId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminPlansById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -17609,6 +17734,44 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiAdminPromosById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        code: string;
+                        kind: string;
+                        percentOff: number | null;
+                        fixedOffCents: number | null;
+                        duration: string;
+                        durationInMonths: number | null;
+                        validFrom: string | null;
+                        validTo: string | null;
+                        maxRedemptions: number | null;
+                        redemptionCount: number;
+                        isActive: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     patchApiAdminPromosById: {
         parameters: {
             query?: never;
@@ -17717,6 +17880,7 @@ export interface operations {
                             id: string;
                             /** Format: uuid */
                             organizationId: string;
+                            organizationName: string;
                             /** Format: uuid */
                             invoiceId: string;
                             amountCents: number;
@@ -17773,6 +17937,52 @@ export interface operations {
                         id: string;
                         /** Format: uuid */
                         organizationId: string;
+                        organizationName: string;
+                        /** Format: uuid */
+                        invoiceId: string;
+                        amountCents: number;
+                        kind: "full" | "partial" | "credit_only";
+                        reasonCode: string;
+                        status: "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+                        /** Format: uuid */
+                        requestedByMembershipId: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        approvedByMembershipId: string | null;
+                        approvedAt: string | null;
+                        deniedReason: string | null;
+                        executedAt: string | null;
+                        stripeRefundId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminRefundsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        organizationName: string;
                         /** Format: uuid */
                         invoiceId: string;
                         amountCents: number;
@@ -17817,6 +18027,7 @@ export interface operations {
                         id: string;
                         /** Format: uuid */
                         organizationId: string;
+                        organizationName: string;
                         /** Format: uuid */
                         invoiceId: string;
                         amountCents: number;
@@ -17867,6 +18078,7 @@ export interface operations {
                         id: string;
                         /** Format: uuid */
                         organizationId: string;
+                        organizationName: string;
                         /** Format: uuid */
                         invoiceId: string;
                         amountCents: number;
@@ -18041,6 +18253,7 @@ export interface operations {
                             stripeSubscriptionId: string | null;
                             /** Format: date-time */
                             startedAt: string;
+                            organizationName: string;
                         })[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -18090,6 +18303,7 @@ export interface operations {
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
+                        organizationName: string;
                     };
                 };
             };
@@ -18173,6 +18387,7 @@ export interface operations {
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
+                        organizationName: string;
                     };
                 };
             };
@@ -18226,6 +18441,7 @@ export interface operations {
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
+                        organizationName: string;
                     };
                 };
             };
@@ -18272,6 +18488,7 @@ export interface operations {
                         stripeSubscriptionId: string | null;
                         /** Format: date-time */
                         startedAt: string;
+                        organizationName: string;
                     };
                 };
             };

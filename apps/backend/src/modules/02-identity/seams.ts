@@ -30,6 +30,7 @@ import {
 } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { registerSeam } from "../../bootstrap/index";
+import { createOrganizationReader } from "./organization-reader";
 import { createTenantOrgCreationProvider } from "./tenant-org-creation-provider";
 
 /** Injected production adapters for M2's published seams (slice defaults to in-memory). */
@@ -38,8 +39,9 @@ export interface IdentitySeamDeps {
   sessions?: SessionContextStore;
   /** Mints the one-time auditor magic-link token (Valkey TTL store in production). */
   auditorLinks?: AuditorMagicLinkIssuer;
-  /** DB client for the `TenantOrgCreationProvider` (M34 §7.1 step 3). Absent in slice/tests → the
-   *  registry's fail-closed deny-stub stands (org creation resolves `unavailable`). */
+  /** DB client for the `TenantOrgCreationProvider` (M34 §7.1 step 3) + the `OrganizationReader`
+   *  (M35 admin lists, M35A-T03). Absent in slice/tests → the registry's fail-closed deny-stubs stand
+   *  (org creation resolves `unavailable`; the reader resolves no names). */
   db?: DbClient;
 }
 
@@ -53,5 +55,8 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   // fail-closed deny-stub stands in slice/tests).
   if (deps.db) {
     registerSeam("TenantOrgCreationProvider", createTenantOrgCreationProvider(deps.db));
+    // M35A-T03 — the real org display-metadata reader M35's platform-ops admin lists label rows through
+    // (the registry's graceful deny-stub, which resolves no names, stands in slice/tests without a db).
+    registerSeam("OrganizationReader", createOrganizationReader(deps.db));
   }
 }
