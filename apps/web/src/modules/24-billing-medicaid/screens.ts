@@ -10,23 +10,60 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // §5.1 modals and panels are NOT separate registry entries — the override modal, submit/replace-void
 // ceremony, and R&B day override live inside their parent screens; the submissions and acknowledgments
 // panels are sub-routes of the claim so a biller can link straight to a timeline.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { MedicaidAcknowledgmentsTimeline } from "./acknowledgments-timeline";
-import { MedicaidArDashboard } from "./ar-dashboard";
-import { MedicaidAssemblyWizard } from "./claim-assembly-wizard";
-import { MedicaidClaimEditor } from "./claim-editor";
-import { MedicaidClaimWorkbench } from "./claim-workbench";
-import { MedicaidEligibilityCenter } from "./eligibility-center";
-import { MedicaidMetricsSurface } from "./metrics-surface";
-import { MedicaidOverrideAudit } from "./override-audit";
-import { MedicaidRbArrangementDetail } from "./rb-arrangement-detail";
-import { MedicaidRbArrangements } from "./rb-arrangements";
-import { MedicaidRuleConfig } from "./rule-config";
-import { MedicaidSubmissionsTimeline } from "./submissions-timeline";
-import { MedicaidSurveyorReadView } from "./surveyor-read-view";
-import { MedicaidTradingPartnerCredentials } from "./trading-partner-credentials";
-import { MedicaidValidationQueue } from "./validation-queue";
-import { MedicaidValidationWorklist } from "./validation-worklist";
+const MedicaidAcknowledgmentsTimeline = lazy(() =>
+  import("./acknowledgments-timeline").then((m) => ({
+    default: m.MedicaidAcknowledgmentsTimeline,
+  })),
+);
+const MedicaidArDashboard = lazy(() =>
+  import("./ar-dashboard").then((m) => ({ default: m.MedicaidArDashboard })),
+);
+const MedicaidAssemblyWizard = lazy(() =>
+  import("./claim-assembly-wizard").then((m) => ({ default: m.MedicaidAssemblyWizard })),
+);
+const MedicaidClaimEditor = lazy(() =>
+  import("./claim-editor").then((m) => ({ default: m.MedicaidClaimEditor })),
+);
+const MedicaidClaimWorkbench = lazy(() =>
+  import("./claim-workbench").then((m) => ({ default: m.MedicaidClaimWorkbench })),
+);
+const MedicaidEligibilityCenter = lazy(() =>
+  import("./eligibility-center").then((m) => ({ default: m.MedicaidEligibilityCenter })),
+);
+const MedicaidMetricsSurface = lazy(() =>
+  import("./metrics-surface").then((m) => ({ default: m.MedicaidMetricsSurface })),
+);
+const MedicaidOverrideAudit = lazy(() =>
+  import("./override-audit").then((m) => ({ default: m.MedicaidOverrideAudit })),
+);
+const MedicaidRbArrangementDetail = lazy(() =>
+  import("./rb-arrangement-detail").then((m) => ({ default: m.MedicaidRbArrangementDetail })),
+);
+const MedicaidRbArrangements = lazy(() =>
+  import("./rb-arrangements").then((m) => ({ default: m.MedicaidRbArrangements })),
+);
+const MedicaidRuleConfig = lazy(() =>
+  import("./rule-config").then((m) => ({ default: m.MedicaidRuleConfig })),
+);
+const MedicaidSubmissionsTimeline = lazy(() =>
+  import("./submissions-timeline").then((m) => ({ default: m.MedicaidSubmissionsTimeline })),
+);
+const MedicaidSurveyorReadView = lazy(() =>
+  import("./surveyor-read-view").then((m) => ({ default: m.MedicaidSurveyorReadView })),
+);
+const MedicaidTradingPartnerCredentials = lazy(() =>
+  import("./trading-partner-credentials").then((m) => ({
+    default: m.MedicaidTradingPartnerCredentials,
+  })),
+);
+const MedicaidValidationQueue = lazy(() =>
+  import("./validation-queue").then((m) => ({ default: m.MedicaidValidationQueue })),
+);
+const MedicaidValidationWorklist = lazy(() =>
+  import("./validation-worklist").then((m) => ({ default: m.MedicaidValidationWorklist })),
+);
 
 export const medicaidBillingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 24,

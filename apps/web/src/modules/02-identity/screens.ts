@@ -2,16 +2,31 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/02-identity — M2 screen registration (Track A, ADR-0030).
 // Declares this module's screens for the M1 shell registry. Typed against the @wardenx/types
 // contract (no shell import); the composition root (apps/web/src/main.tsx) registers it.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AcceptInvitation } from "./accept-invitation";
-import { ForgotPassword } from "./forgot-password";
-import { MfaChallenge } from "./mfa-challenge";
-import { OrganizationSelect } from "./organization-select";
-import { ResetPassword } from "./reset-password";
-import { SecurityPasskeys } from "./security-passkeys";
-import { SignIn } from "./sign-in";
-import { StaffManagement } from "./staff-management";
-import { StepUp } from "./step-up";
+const AcceptInvitation = lazy(() =>
+  import("./accept-invitation").then((m) => ({ default: m.AcceptInvitation })),
+);
+const ForgotPassword = lazy(() =>
+  import("./forgot-password").then((m) => ({ default: m.ForgotPassword })),
+);
+const MfaChallenge = lazy(() =>
+  import("./mfa-challenge").then((m) => ({ default: m.MfaChallenge })),
+);
+const OrganizationSelect = lazy(() =>
+  import("./organization-select").then((m) => ({ default: m.OrganizationSelect })),
+);
+const ResetPassword = lazy(() =>
+  import("./reset-password").then((m) => ({ default: m.ResetPassword })),
+);
+const SecurityPasskeys = lazy(() =>
+  import("./security-passkeys").then((m) => ({ default: m.SecurityPasskeys })),
+);
+const SignIn = lazy(() => import("./sign-in").then((m) => ({ default: m.SignIn })));
+const StaffManagement = lazy(() =>
+  import("./staff-management").then((m) => ({ default: m.StaffManagement })),
+);
+const StepUp = lazy(() => import("./step-up").then((m) => ({ default: m.StepUp })));
 
 export const identityScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 2,

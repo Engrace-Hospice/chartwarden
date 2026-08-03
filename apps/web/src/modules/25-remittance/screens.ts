@@ -4,11 +4,20 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // `requiredPermission` is the REAL §4.6 M25 key the matching route gates on (already in
 // packages/auth/src/permissions/contributed.ts via Phase 3a) — the server stays the authoritative enforcer;
 // this gates nav visibility only. The four M25 surfaces sit under the "Billing" navGroup (revenue cycle).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AppealTracker } from "./appeal-tracker";
-import { DenialWorklist } from "./denial-worklist";
-import { RemittanceWorklist } from "./remittance-worklist";
-import { TaxonomyOverlay } from "./taxonomy-overlay";
+const AppealTracker = lazy(() =>
+  import("./appeal-tracker").then((m) => ({ default: m.AppealTracker })),
+);
+const DenialWorklist = lazy(() =>
+  import("./denial-worklist").then((m) => ({ default: m.DenialWorklist })),
+);
+const RemittanceWorklist = lazy(() =>
+  import("./remittance-worklist").then((m) => ({ default: m.RemittanceWorklist })),
+);
+const TaxonomyOverlay = lazy(() =>
+  import("./taxonomy-overlay").then((m) => ({ default: m.TaxonomyOverlay })),
+);
 
 export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 25,

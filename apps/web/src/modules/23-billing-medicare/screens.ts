@@ -6,25 +6,50 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // packages/auth/src/permissions/contributed.ts) — the server stays the authoritative enforcer; this only
 // gates nav visibility. Billing screens sit under the "Billing" navGroup; the surveyor read view (#21,
 // /admin/billing-audit) sits under "Admin".
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AcknowledgmentsTimeline } from "./acknowledgments-timeline";
-import { ArDashboard } from "./ar-dashboard";
-import { ClaimAssemblyWizard } from "./claim-assembly-wizard";
-import { ClaimEditor } from "./claim-editor";
-import { ClaimWorkbench } from "./claim-workbench";
-import { EligibilityCenter } from "./eligibility-center";
-import { MacCredentials } from "./mac-credentials";
-import { MetricsSurface } from "./metrics-surface";
-import { NoeDetail } from "./noe-detail";
-import { NoeQueue } from "./noe-queue";
-import { NotrDetail } from "./notr-detail";
-import { NotrQueue } from "./notr-queue";
-import { OverrideAudit } from "./override-audit";
-import { RuleConfigEditor } from "./rule-config";
-import { SequestrationPolicy } from "./sequestration-policy";
-import { SubmissionsTimeline } from "./submissions-timeline";
-import { SurveyorReadView } from "./surveyor-read-view";
-import { ValidationWorklist } from "./validation-worklist";
+const AcknowledgmentsTimeline = lazy(() =>
+  import("./acknowledgments-timeline").then((m) => ({ default: m.AcknowledgmentsTimeline })),
+);
+const ArDashboard = lazy(() => import("./ar-dashboard").then((m) => ({ default: m.ArDashboard })));
+const ClaimAssemblyWizard = lazy(() =>
+  import("./claim-assembly-wizard").then((m) => ({ default: m.ClaimAssemblyWizard })),
+);
+const ClaimEditor = lazy(() => import("./claim-editor").then((m) => ({ default: m.ClaimEditor })));
+const ClaimWorkbench = lazy(() =>
+  import("./claim-workbench").then((m) => ({ default: m.ClaimWorkbench })),
+);
+const EligibilityCenter = lazy(() =>
+  import("./eligibility-center").then((m) => ({ default: m.EligibilityCenter })),
+);
+const MacCredentials = lazy(() =>
+  import("./mac-credentials").then((m) => ({ default: m.MacCredentials })),
+);
+const MetricsSurface = lazy(() =>
+  import("./metrics-surface").then((m) => ({ default: m.MetricsSurface })),
+);
+const NoeDetail = lazy(() => import("./noe-detail").then((m) => ({ default: m.NoeDetail })));
+const NoeQueue = lazy(() => import("./noe-queue").then((m) => ({ default: m.NoeQueue })));
+const NotrDetail = lazy(() => import("./notr-detail").then((m) => ({ default: m.NotrDetail })));
+const NotrQueue = lazy(() => import("./notr-queue").then((m) => ({ default: m.NotrQueue })));
+const OverrideAudit = lazy(() =>
+  import("./override-audit").then((m) => ({ default: m.OverrideAudit })),
+);
+const RuleConfigEditor = lazy(() =>
+  import("./rule-config").then((m) => ({ default: m.RuleConfigEditor })),
+);
+const SequestrationPolicy = lazy(() =>
+  import("./sequestration-policy").then((m) => ({ default: m.SequestrationPolicy })),
+);
+const SubmissionsTimeline = lazy(() =>
+  import("./submissions-timeline").then((m) => ({ default: m.SubmissionsTimeline })),
+);
+const SurveyorReadView = lazy(() =>
+  import("./surveyor-read-view").then((m) => ({ default: m.SurveyorReadView })),
+);
+const ValidationWorklist = lazy(() =>
+  import("./validation-worklist").then((m) => ({ default: m.ValidationWorklist })),
+);
 
 export const billingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 23,

@@ -5,20 +5,35 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // (apps/backend/src/modules/34-saas-tenant-platform/permission-keys.ts) — the server stays the
 // authoritative enforcer; this only gates nav visibility. Platform-ops screens sit under the
 // "Platform" navGroup; the tenant-facing /admin/* screens under "Admin".
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { Account } from "./account";
-import { BaaRegister } from "./baa-register";
-import { DsarQueue } from "./dsar-queue";
-import { FeatureFlags } from "./feature-flags";
-import { KeyRings } from "./key-rings";
-import { Onboarding } from "./onboarding";
-import { OnboardingTemplates } from "./onboarding-templates";
-import { Signups } from "./signups";
-import { SupportGrants } from "./support-grants";
-import { SupportSessions } from "./support-sessions";
-import { TenantExportQueue } from "./tenant-export-queue";
-import { TenantInventory } from "./tenant-inventory";
-import { TenantOverview } from "./tenant-overview";
+const Account = lazy(() => import("./account").then((m) => ({ default: m.Account })));
+const BaaRegister = lazy(() => import("./baa-register").then((m) => ({ default: m.BaaRegister })));
+const DsarQueue = lazy(() => import("./dsar-queue").then((m) => ({ default: m.DsarQueue })));
+const FeatureFlags = lazy(() =>
+  import("./feature-flags").then((m) => ({ default: m.FeatureFlags })),
+);
+const KeyRings = lazy(() => import("./key-rings").then((m) => ({ default: m.KeyRings })));
+const Onboarding = lazy(() => import("./onboarding").then((m) => ({ default: m.Onboarding })));
+const OnboardingTemplates = lazy(() =>
+  import("./onboarding-templates").then((m) => ({ default: m.OnboardingTemplates })),
+);
+const Signups = lazy(() => import("./signups").then((m) => ({ default: m.Signups })));
+const SupportGrants = lazy(() =>
+  import("./support-grants").then((m) => ({ default: m.SupportGrants })),
+);
+const SupportSessions = lazy(() =>
+  import("./support-sessions").then((m) => ({ default: m.SupportSessions })),
+);
+const TenantExportQueue = lazy(() =>
+  import("./tenant-export-queue").then((m) => ({ default: m.TenantExportQueue })),
+);
+const TenantInventory = lazy(() =>
+  import("./tenant-inventory").then((m) => ({ default: m.TenantInventory })),
+);
+const TenantOverview = lazy(() =>
+  import("./tenant-overview").then((m) => ({ default: m.TenantOverview })),
+);
 
 export const saasScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 34,

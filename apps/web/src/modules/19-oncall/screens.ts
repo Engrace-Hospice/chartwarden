@@ -32,22 +32,53 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 // PATH SHAPE: mounted at the shell root (`/triage/...`, `/me/oncall`) per the M15/M16/M17/M18/M21
 // convention, rather than under §5.1's sketched `/app/` prefix.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { EscalationInboxScreen } from "./escalation-inbox";
-import { MyOnCallScreen } from "./my-oncall";
-import { OnCallPolicyScreen } from "./oncall-policy";
-import { OnCallShiftDetailScreen } from "./oncall-shift-detail";
-import { OnCallShiftsScreen } from "./oncall-shifts";
-import { PaperReentryWorklistScreen } from "./paper-reentry";
-import { TriageProtocolCatalogScreen } from "./protocol-catalog";
-import { TriageProtocolDetailScreen } from "./protocol-detail";
-import { TriageCallHistoryScreen } from "./triage-call-history";
-import { TriageIntakeScreen } from "./triage-intake";
-import { TriageMetricsScreen } from "./triage-metrics";
-import { TriageCallPanel } from "./triage-panel";
-import { TriageQueueScreen } from "./triage-queue";
-import { TriageTranscriptScreen } from "./triage-transcript";
-import { ExternalVendorAdminScreen } from "./vendor-admin";
+const EscalationInboxScreen = lazy(() =>
+  import("./escalation-inbox").then((m) => ({ default: m.EscalationInboxScreen })),
+);
+const MyOnCallScreen = lazy(() =>
+  import("./my-oncall").then((m) => ({ default: m.MyOnCallScreen })),
+);
+const OnCallPolicyScreen = lazy(() =>
+  import("./oncall-policy").then((m) => ({ default: m.OnCallPolicyScreen })),
+);
+const OnCallShiftDetailScreen = lazy(() =>
+  import("./oncall-shift-detail").then((m) => ({ default: m.OnCallShiftDetailScreen })),
+);
+const OnCallShiftsScreen = lazy(() =>
+  import("./oncall-shifts").then((m) => ({ default: m.OnCallShiftsScreen })),
+);
+const PaperReentryWorklistScreen = lazy(() =>
+  import("./paper-reentry").then((m) => ({ default: m.PaperReentryWorklistScreen })),
+);
+const TriageProtocolCatalogScreen = lazy(() =>
+  import("./protocol-catalog").then((m) => ({ default: m.TriageProtocolCatalogScreen })),
+);
+const TriageProtocolDetailScreen = lazy(() =>
+  import("./protocol-detail").then((m) => ({ default: m.TriageProtocolDetailScreen })),
+);
+const TriageCallHistoryScreen = lazy(() =>
+  import("./triage-call-history").then((m) => ({ default: m.TriageCallHistoryScreen })),
+);
+const TriageIntakeScreen = lazy(() =>
+  import("./triage-intake").then((m) => ({ default: m.TriageIntakeScreen })),
+);
+const TriageMetricsScreen = lazy(() =>
+  import("./triage-metrics").then((m) => ({ default: m.TriageMetricsScreen })),
+);
+const TriageCallPanel = lazy(() =>
+  import("./triage-panel").then((m) => ({ default: m.TriageCallPanel })),
+);
+const TriageQueueScreen = lazy(() =>
+  import("./triage-queue").then((m) => ({ default: m.TriageQueueScreen })),
+);
+const TriageTranscriptScreen = lazy(() =>
+  import("./triage-transcript").then((m) => ({ default: m.TriageTranscriptScreen })),
+);
+const ExternalVendorAdminScreen = lazy(() =>
+  import("./vendor-admin").then((m) => ({ default: m.ExternalVendorAdminScreen })),
+);
 
 export const oncallScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 19,

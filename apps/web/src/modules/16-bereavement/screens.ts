@@ -21,18 +21,41 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // start/complete/cancel transitions, the opt-out review, the referral composer and the close ceremony each
 // live inside the parent screen, because each one needs the parent's already-read row `version` for its
 // `If-Match`. A modal that had to re-read the row could act on a version that moved in between.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { BereavedContactDetail } from "./contact-detail";
-import { BereavementCloseoutView } from "./closeout-view";
-import { BereavementCounselorDashboard } from "./counselor-dashboard";
-import { BereavementGriefScreen } from "./grief-screen";
-import { BereavementIntakeQueue } from "./intake-queue";
-import { BereavementOutreachPlanner } from "./outreach-planner";
-import { BereavementPlanDetail } from "./plan-detail";
-import { BereavementPlanHistory } from "./plan-history";
-import { BereavementRiskView } from "./risk-view";
-import { BereavementRosterSeed } from "./roster-seed";
-import { BereavementSupervisorDashboard } from "./supervisor-dashboard";
+const BereavedContactDetail = lazy(() =>
+  import("./contact-detail").then((m) => ({ default: m.BereavedContactDetail })),
+);
+const BereavementCloseoutView = lazy(() =>
+  import("./closeout-view").then((m) => ({ default: m.BereavementCloseoutView })),
+);
+const BereavementCounselorDashboard = lazy(() =>
+  import("./counselor-dashboard").then((m) => ({ default: m.BereavementCounselorDashboard })),
+);
+const BereavementGriefScreen = lazy(() =>
+  import("./grief-screen").then((m) => ({ default: m.BereavementGriefScreen })),
+);
+const BereavementIntakeQueue = lazy(() =>
+  import("./intake-queue").then((m) => ({ default: m.BereavementIntakeQueue })),
+);
+const BereavementOutreachPlanner = lazy(() =>
+  import("./outreach-planner").then((m) => ({ default: m.BereavementOutreachPlanner })),
+);
+const BereavementPlanDetail = lazy(() =>
+  import("./plan-detail").then((m) => ({ default: m.BereavementPlanDetail })),
+);
+const BereavementPlanHistory = lazy(() =>
+  import("./plan-history").then((m) => ({ default: m.BereavementPlanHistory })),
+);
+const BereavementRiskView = lazy(() =>
+  import("./risk-view").then((m) => ({ default: m.BereavementRiskView })),
+);
+const BereavementRosterSeed = lazy(() =>
+  import("./roster-seed").then((m) => ({ default: m.BereavementRosterSeed })),
+);
+const BereavementSupervisorDashboard = lazy(() =>
+  import("./supervisor-dashboard").then((m) => ({ default: m.BereavementSupervisorDashboard })),
+);
 
 export const bereavementScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 16,

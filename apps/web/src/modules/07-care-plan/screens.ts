@@ -5,10 +5,17 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // Care Plan Summary (§5.2). Nav visibility is gated by the matching M7 permission key; the SERVER
 // stays the only enforcement point (no frontend authz). The signing modal / draft editor / IDG-review
 // screens fill in as their write surfaces harden (M7 §5.2).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { CarePlanView } from "./care-plan-view";
-import { CarePlanSummary } from "./summary";
-import { CarePlanVersionHistory } from "./version-history";
+const CarePlanView = lazy(() =>
+  import("./care-plan-view").then((m) => ({ default: m.CarePlanView })),
+);
+const CarePlanSummary = lazy(() =>
+  import("./summary").then((m) => ({ default: m.CarePlanSummary })),
+);
+const CarePlanVersionHistory = lazy(() =>
+  import("./version-history").then((m) => ({ default: m.CarePlanVersionHistory })),
+);
 
 export const carePlanScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 7,

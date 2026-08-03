@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/14-idg — M14 IDG screen registration (Track B, ADR-0030, M14-T07).
 // The §5 IDG read screens that have a backing M14 read route on the generated client: the IDG Schedule
 // (per-location), the pre-meeting Meeting Detail, the Live Meeting Surface, the per-patient Packet (chart
@@ -8,15 +9,23 @@
 // minutes amendment-request write surfaces — plus the Socket.IO real-time decision/action-item propagation and
 // the Capacitor Mobile Live variant — fill in as those write paths harden. The M22 minutes/packet PDF render and
 // the M28 FHIR CareTeam/Encounter projection are deferred (Wave F/H handshakes).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { IdgSchedule } from "./idg-schedule";
-import { LiveMeeting } from "./live-meeting";
-import { MeetingDetail } from "./meeting-detail";
-import { Minutes } from "./minutes";
-import { MyActionItems } from "./my-action-items";
-import { PatientIdgHistory } from "./patient-idg-history";
-import { PatientPacket } from "./patient-packet";
+const IdgSchedule = lazy(() => import("./idg-schedule").then((m) => ({ default: m.IdgSchedule })));
+const LiveMeeting = lazy(() => import("./live-meeting").then((m) => ({ default: m.LiveMeeting })));
+const MeetingDetail = lazy(() =>
+  import("./meeting-detail").then((m) => ({ default: m.MeetingDetail })),
+);
+const Minutes = lazy(() => import("./minutes").then((m) => ({ default: m.Minutes })));
+const MyActionItems = lazy(() =>
+  import("./my-action-items").then((m) => ({ default: m.MyActionItems })),
+);
+const PatientIdgHistory = lazy(() =>
+  import("./patient-idg-history").then((m) => ({ default: m.PatientIdgHistory })),
+);
+const PatientPacket = lazy(() =>
+  import("./patient-packet").then((m) => ({ default: m.PatientPacket })),
+);
 
 export const idgScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 14,

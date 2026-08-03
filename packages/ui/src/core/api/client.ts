@@ -18,6 +18,12 @@ export interface ApiClientOptions {
   correlationId?: () => string | undefined;
   /** Override fetch (tests / SSR). */
   fetch?: ClientOptions["fetch"];
+  /**
+   * Fired with the HTTP status of every response the client observes (TASK-033). Leaf-safe: the
+   * client has no router access, so it just reports the fact — the composition root decides what a
+   * given status means (e.g. 401 → navigate to /expired, 503 → /maintenance).
+   */
+  onResponseStatus?: (status: number) => void;
 }
 
 function defaultCorrelationId(): string | undefined {
@@ -56,7 +62,13 @@ const idempotencyKey: Middleware = {
 
 /** Build a typed API client with WardenX auth + correlation-id + idempotency-key middleware. */
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
-  const { baseUrl = "", getAuthToken, correlationId = defaultCorrelationId, fetch } = options;
+  const {
+    baseUrl = "",
+    getAuthToken,
+    correlationId = defaultCorrelationId,
+    fetch,
+    onResponseStatus,
+  } = options;
   const client = createClient<paths>({ baseUrl, ...(fetch ? { fetch } : {}) });
 
   const headers: Middleware = {
@@ -70,5 +82,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   };
   client.use(headers);
   client.use(idempotencyKey);
+  if (onResponseStatus) {
+    client.use({
+      onResponse({ response }) {
+        onResponseStatus(response.status);
+        return undefined;
+      },
+    });
+  }
   return client;
 }

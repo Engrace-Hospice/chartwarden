@@ -305,6 +305,69 @@
     overflow: auto;
   }
 
+  /* Every <table> scrolls horizontally instead of blowing out the layout at narrow widths
+     (TASK-033 / UI-004). `display: block` on the outer element only — thead/tbody/tr/td keep
+     their table-* display by default (the UA stylesheet sets those on the descendant tags, not
+     inherited from the ancestor), so internal column layout is unaffected. Cheaper and more
+     consistent than hand-wrapping ~150 screens' raw `<table>` usages in an `overflow-x` div. */
+  table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* ---- Responsive shell (TASK-033 / UI-004): usable down to a 390px viewport. Below the
+     breakpoint a fixed 14rem sidebar would leave under 170px for content, so the nav becomes an
+     off-canvas drawer (toggled by the header's hamburger, layout.tsx) instead of a permanent column. */
+  .wx-nav-toggle {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .wx-header {
+      flex-wrap: wrap;
+      padding: 0.5rem 0.75rem;
+    }
+    .wx-nav-toggle {
+      display: inline-flex;
+      order: -1;
+    }
+    .wx-topnav-search {
+      order: 3;
+      flex-basis: 100%;
+      max-width: none;
+    }
+    .wx-actor {
+      margin-left: 0;
+    }
+    .wx-body {
+      position: relative;
+    }
+    .wx-nav-backdrop {
+      position: fixed;
+      inset: 0;
+      background: var(--color-scrim);
+      z-index: 40;
+    }
+    .wx-nav {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 50;
+      width: 85vw;
+      max-width: 20rem;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+    }
+    .wx-nav.wx-nav-open {
+      transform: translateX(0);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wx-nav {
+        transition: none;
+      }
+    }
+  }
+
   /* The right-hand context rail (patterns.tsx: WorkQueue `detail`, DetailPage `aside`,
      ConversationView/AdminSplit `detail`). Two kinds of child land here and they want opposite
      treatment, which is why this is a rule rather than an inline style:

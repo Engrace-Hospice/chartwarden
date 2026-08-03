@@ -1,9 +1,16 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/05-patient — M5 screen registration (Track A, ADR-0030).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { GlobalSearchResults } from "./global-search";
-import { PatientChart } from "./patient-chart";
-import { PatientListCensus } from "./patient-list-census";
+const GlobalSearchResults = lazy(() =>
+  import("./global-search").then((m) => ({ default: m.GlobalSearchResults })),
+);
+const PatientChart = lazy(() =>
+  import("./patient-chart").then((m) => ({ default: m.PatientChart })),
+);
+const PatientListCensus = lazy(() =>
+  import("./patient-list-census").then((m) => ({ default: m.PatientListCensus })),
+);
 
 export const patientScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 5,

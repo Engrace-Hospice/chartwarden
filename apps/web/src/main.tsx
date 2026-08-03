@@ -48,14 +48,27 @@ import { messagingScreens } from "./modules/36-messaging";
 import { ipuScreens } from "./modules/37-ipu";
 import { terminologyScreens } from "./modules/38-terminology";
 import { mdmScreens } from "./modules/40-mdm";
-import { AppShell, createScreenRegistry, systemScreens } from "./shell";
+import {
+  AppShell,
+  createScreenRegistry,
+  setGlobalResponseSignal,
+  signalForStatus,
+  systemScreens,
+} from "./shell";
 import { initTheme } from "./shell/theme";
 
 // Apply the resolved Lantern theme (stored choice, else OS preference) before the first paint — no flash.
 initTheme();
 
 const registry = createScreenRegistry();
-const client = createApiClient();
+// TASK-033: every response the client observes is fed through the global signal so the shell can
+// react (401 → /expired, 503 → /maintenance) regardless of which screen made the call.
+const client = createApiClient({
+  onResponseStatus: (status) => {
+    const signal = signalForStatus(status);
+    if (signal) setGlobalResponseSignal(signal); // only 401/503 notify — don't re-render on every 2xx
+  },
+});
 
 // Module web-slices register here as they land (Track A/B).
 registry.register(systemScreens); // M1 system/utility pages (403/404/500/offline/… — Track A)

@@ -1,7 +1,10 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/03-authorization — M3 screen registration (Track A, ADR-0030).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { RolesPermissions } from "./roles-permissions";
+const RolesPermissions = lazy(() =>
+  import("./roles-permissions").then((m) => ({ default: m.RolesPermissions })),
+);
 
 export const authorizationScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 3,

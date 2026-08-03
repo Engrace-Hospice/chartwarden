@@ -111,4 +111,8 @@ describe("guardChromedRoute — chromed-route session guard (audit #6)", () => {
   it("allows an authenticated actor into the app frame", () => {
     expect(guardChromedRoute("authenticated")).toBe("allow");
   });
+
+  it("shows the offline page for an outage — never forces a sign-out (TASK-033 / FLOW-004)", () => {
+    expect(guardChromedRoute("outage")).toBe("outage");
+  });
 });

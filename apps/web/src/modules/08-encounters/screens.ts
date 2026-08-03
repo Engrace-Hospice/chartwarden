@@ -6,11 +6,18 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // visibility is gated by the matching M8 permission key; the SERVER stays the only enforcement point
 // (no frontend authz). The authoring / finalize-Layer-2 write surfaces (§5.2–5.3) still fill in as
 // their write paths harden.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { CosignatureQueue } from "./cosignature-queue";
-import { EncounterRead } from "./encounter-read";
-import { MyDrafts } from "./my-drafts";
-import { PatientEncounters } from "./patient-encounters";
+const CosignatureQueue = lazy(() =>
+  import("./cosignature-queue").then((m) => ({ default: m.CosignatureQueue })),
+);
+const EncounterRead = lazy(() =>
+  import("./encounter-read").then((m) => ({ default: m.EncounterRead })),
+);
+const MyDrafts = lazy(() => import("./my-drafts").then((m) => ({ default: m.MyDrafts })));
+const PatientEncounters = lazy(() =>
+  import("./patient-encounters").then((m) => ({ default: m.PatientEncounters })),
+);
 
 export const encounterScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 8,

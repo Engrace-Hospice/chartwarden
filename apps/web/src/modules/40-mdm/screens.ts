@@ -1,7 +1,8 @@
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/40-mdm — M40 screen registration (Track A, ADR-0030).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { MdmConsole } from "./mdm-console";
+const MdmConsole = lazy(() => import("./mdm-console").then((m) => ({ default: m.MdmConsole })));
 
 export const mdmScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 40,

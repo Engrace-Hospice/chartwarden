@@ -52,17 +52,20 @@ export function canSeeScreen(
   return session.permissions.includes(screen.requiredPermission);
 }
 
-/** What a chromed-route guard should do for a given session status (audit #6). */
-export type RouteGuardOutcome = "loading" | "redirect" | "allow";
+/** What a chromed-route guard should do for a given session status (audit #6, TASK-033). */
+export type RouteGuardOutcome = "loading" | "redirect" | "outage" | "allow";
 
 /**
  * The chromed-route guard decision (pure, so it is unit-testable in the node env). `loading` →
  * render a spinner (don't flash chrome or redirect before we know); `redirect` → send an anonymous
- * actor to sign-in; `allow` → render the authenticated app frame. The org-binding sub-case
- * (authenticated but no org) is handled downstream by `needsOrgSelection` inside the layout.
+ * actor to sign-in; `outage` → the backend is unreachable/unhealthy, render the offline page instead
+ * of forcing a sign-out (TASK-033 / FLOW-004); `allow` → render the authenticated app frame. The
+ * org-binding sub-case (authenticated but no org) is handled downstream by `needsOrgSelection`
+ * inside the layout.
  */
 export function guardChromedRoute(status: SessionStatus): RouteGuardOutcome {
   if (status === "loading") return "loading";
   if (status === "anonymous") return "redirect";
+  if (status === "outage") return "outage";
   return "allow";
 }

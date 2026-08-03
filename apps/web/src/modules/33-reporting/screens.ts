@@ -4,12 +4,23 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // matching list/read route gates on (apps/backend/src/modules/33-reporting/permission-keys.ts) — the
 // server stays the authoritative enforcer; this only gates nav visibility. Reporting screens sit under
 // the "Reports" navGroup; the platform/compliance MV-admin console under "Platform".
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { DashboardRender } from "./dashboard-render";
-import { ReportingAdmin } from "./reporting-admin";
-import { ReportingCatalog } from "./reporting-catalog";
-import { ReportingSchedules } from "./reporting-schedules";
-import { RoleDashboard } from "./role-dashboard";
+const DashboardRender = lazy(() =>
+  import("./dashboard-render").then((m) => ({ default: m.DashboardRender })),
+);
+const ReportingAdmin = lazy(() =>
+  import("./reporting-admin").then((m) => ({ default: m.ReportingAdmin })),
+);
+const ReportingCatalog = lazy(() =>
+  import("./reporting-catalog").then((m) => ({ default: m.ReportingCatalog })),
+);
+const ReportingSchedules = lazy(() =>
+  import("./reporting-schedules").then((m) => ({ default: m.ReportingSchedules })),
+);
+const RoleDashboard = lazy(() =>
+  import("./role-dashboard").then((m) => ({ default: m.RoleDashboard })),
+);
 
 export const reportingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 33,

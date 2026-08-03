@@ -2,7 +2,7 @@ import { DegradedBanner, EmptyState, Glyph, NavGroup, NavLink, groupByNavGroup }
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui (leaf) + react-router — never a feature module.
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Navigate, Outlet, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
@@ -18,6 +18,10 @@ export interface AppLayoutProps {
 
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
+  // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
+  // a fixed 14rem sidebar plus content leaves under 170px at 390px wide, so it's hidden by default
+  // and toggled by the header's hamburger button instead of always occupying the viewport.
+  const [navOpen, setNavOpen] = useState(false);
   // Pre-org guard (ADR-0030): an authenticated session with no bound organization can't use ANY
   // org-scoped screen — the server 401/403s every org route, so the shell would render screens that
   // all read "Unavailable". Send the actor to organization-select instead. `/login/organization` is
@@ -25,10 +29,25 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   if (needsOrgSelection(session)) {
     return <Navigate to="/login/organization" replace />;
   }
+  // A click on a nav link closes the drawer; a click on a NavGroup's own expand/collapse toggle
+  // (not an <a>) should not, or the group would collapse AND the drawer close in the same tap.
+  function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
+    if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
+  }
   return (
     <div className="wx-shell">
       <DegradedBanner />
       <header className="wx-header">
+        <button
+          type="button"
+          className="wx-icon-btn wx-nav-toggle"
+          onClick={() => setNavOpen((open) => !open)}
+          aria-label={navOpen ? "Close navigation" : "Open navigation"}
+          aria-expanded={navOpen}
+          aria-controls="wx-primary-nav"
+        >
+          <Glyph name={navOpen ? "close" : "menu"} size={18} />
+        </button>
         <span className="wx-brand">WardenX</span>
         {/* Top-nav global search (FB-T11). Module-free: it only navigates to the registered
             /search route — the Global Search screen (M5) owns the query + facets. */}
@@ -39,7 +58,16 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         <ThemeToggle />
       </header>
       <div className="wx-body">
-        <nav className="wx-nav" aria-label="Primary">
+        {navOpen ? (
+          // biome-ignore lint/a11y/noStaticElementInteractions: a dismiss backdrop, not a control.
+          <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
+        ) : null}
+        <nav
+          id="wx-primary-nav"
+          className={navOpen ? "wx-nav wx-nav-open" : "wx-nav"}
+          aria-label="Primary"
+          onClick={closeNavOnLinkClick}
+        >
           <NavLink to="/" end>
             Home
           </NavLink>

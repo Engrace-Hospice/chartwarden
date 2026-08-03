@@ -79,7 +79,7 @@ export function SessionExpired(): JSX.Element {
       icon={<Glyph name="clock" size={24} />}
       headline="Your session ended"
       explanation="For your security, you were signed out."
-      actions={<Link to="/login/organization">Sign in</Link>}
+      actions={<Link to="/login">Sign in</Link>}
     />
   );
 }

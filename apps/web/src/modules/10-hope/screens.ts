@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/10-hope — M10 screen registration (Track B, ADR-0030).
 // The §5.1 HOPE Engine screens that have a backing M10 read route on the generated client: the org-wide
 // Timepoint Dashboard (§5.2), the per-patient HOPE Timeline (§5.2), the SFV Worklist (§5.2), the HOPE
@@ -5,15 +6,27 @@
 // (§5.2). Nav visibility is gated by the matching M10 permission key; the SERVER stays the only enforcement
 // point (no frontend authz). The recording modal (§5.2, all five RFAs), the late-completion confirmation
 // dialog, and the schedule-admin write surfaces fill in as their write paths harden.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { HopeAssessmentDetail } from "./hope-assessment-detail";
-import { HopeDashboard } from "./hope-dashboard";
-import { HqrpComplianceDashboard } from "./hqrp-compliance-dashboard";
-import { PatientHopeTimeline } from "./patient-hope-timeline";
-import { SfvWorklist } from "./sfv-worklist";
-import { SubmissionDetail } from "./submission-detail";
-import { SubmissionWorklist } from "./submission-worklist";
+const HopeAssessmentDetail = lazy(() =>
+  import("./hope-assessment-detail").then((m) => ({ default: m.HopeAssessmentDetail })),
+);
+const HopeDashboard = lazy(() =>
+  import("./hope-dashboard").then((m) => ({ default: m.HopeDashboard })),
+);
+const HqrpComplianceDashboard = lazy(() =>
+  import("./hqrp-compliance-dashboard").then((m) => ({ default: m.HqrpComplianceDashboard })),
+);
+const PatientHopeTimeline = lazy(() =>
+  import("./patient-hope-timeline").then((m) => ({ default: m.PatientHopeTimeline })),
+);
+const SfvWorklist = lazy(() => import("./sfv-worklist").then((m) => ({ default: m.SfvWorklist })));
+const SubmissionDetail = lazy(() =>
+  import("./submission-detail").then((m) => ({ default: m.SubmissionDetail })),
+);
+const SubmissionWorklist = lazy(() =>
+  import("./submission-worklist").then((m) => ({ default: m.SubmissionWorklist })),
+);
 
 export const hopeScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 10,

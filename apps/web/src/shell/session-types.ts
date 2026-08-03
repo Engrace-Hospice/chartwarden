@@ -7,8 +7,14 @@
  * "still loading the actor context" from "resolved, but signed out" — otherwise a loading null
  * is indistinguishable from an anonymous null and chromed routes render fail-open. The route
  * guard branches on this: loading → spinner, anonymous → redirect to /login, authenticated → render.
+ *
+ * `outage` (TASK-033 / FLOW-004) is a THIRD failure mode, distinct from `anonymous`: the initial
+ * self-load either threw (offline/DNS/timeout — no response at all) or got back a non-401 error
+ * response (5xx). Neither means "signed out" — collapsing them into `anonymous` is exactly the bug
+ * that force-logs-out a clinician mid-shift when the backend blips. Only a confirmed 401 resolves
+ * to `anonymous`; everything else that isn't a clean 2xx resolves to `outage`.
  */
-export type SessionStatus = "loading" | "anonymous" | "authenticated";
+export type SessionStatus = "loading" | "anonymous" | "authenticated" | "outage";
 
 /** The session context value: the resolution status plus the resolved Session (null unless authenticated). */
 export interface SessionState {
