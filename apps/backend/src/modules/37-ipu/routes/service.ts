@@ -4,10 +4,13 @@
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   ApplyRestraintBody,
+  AssignBedBody,
   BedCleaningBody,
   CreateUnitBody,
+  DischargeBody,
   OpenAdmissionBody,
   ReassessRestraintBody,
+  RequestBedBody,
 } from "./ipu-typebox";
 
 export interface UnitView {
@@ -72,6 +75,9 @@ export interface IpuRouteService {
   listAdmissions(actor: IpuReadActor): Promise<readonly AdmissionView[]>;
   getAdmission(actor: IpuReadActor, id: string): Promise<AdmissionView | null>;
   openAdmission(actor: IpuWriteActor, body: OpenAdmissionBody): Promise<AdmissionView>;
+  requestBed(actor: IpuWriteActor, admissionId: string, body: RequestBedBody): Promise<AdmissionView>;
+  assignBed(actor: IpuWriteActor, admissionId: string, body: AssignBedBody): Promise<AdmissionView>;
+  discharge(actor: IpuWriteActor, admissionId: string, body: DischargeBody): Promise<AdmissionView>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
   applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody): Promise<RestraintView>;

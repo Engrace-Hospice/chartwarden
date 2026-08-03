@@ -64,6 +64,26 @@ export const AdmissionViewSchema = Type.Object({
 });
 export const AdmissionListSchema = Type.Object({ items: Type.Array(AdmissionViewSchema) });
 
+// ── admission transitions (§4.1 routes 13–14, 18) ──────────────────────────────────────────────────────
+export const RequestBedBodySchema = Type.Object({ unitId: id });
+export type RequestBedBody = Static<typeof RequestBedBodySchema>;
+
+export const AssignBedBodySchema = Type.Object({ bedId: id });
+export type AssignBedBody = Static<typeof AssignBedBodySchema>;
+
+export const DischargeBodySchema = Type.Object({
+  reason: Type.Union([
+    Type.Literal("to_home"),
+    Type.Literal("to_facility"),
+    Type.Literal("to_other_hospice"),
+    Type.Literal("revocation"),
+    Type.Literal("expired_benefit"),
+  ]),
+  /** The M6 discharge_event exists (resolved via the M6 DeathEventReader/discharge seam; injected here). */
+  dischargeEventExists: Type.Boolean(),
+});
+export type DischargeBody = Static<typeof DischargeBodySchema>;
+
 // ── bed cleaning-status (§4.1 route 9) ─────────────────────────────────────────────────────────────────
 export const BedCleaningBodySchema = Type.Object({
   event: Type.Union([

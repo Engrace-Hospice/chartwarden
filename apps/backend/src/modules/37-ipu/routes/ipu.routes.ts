@@ -7,12 +7,15 @@ import { actorOf, writeActorOf } from "./actor";
 import { P, RN_COVERAGE, STEP_UP } from "./guards";
 import {
   ApplyRestraintBodySchema,
+  AssignBedBodySchema,
   BedCleaningBodySchema,
   CreateUnitBodySchema,
   DateParamsSchema,
+  DischargeBodySchema,
   IdParamsSchema,
   OpenAdmissionBodySchema,
   ReassessRestraintBodySchema,
+  RequestBedBodySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -64,6 +67,42 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     if (!view) return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_admission not found" });
     return view;
   });
+
+  // 13. POST /ipu-admissions/:id/request-bed — transition to bed_pending. §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/request-bed",
+    { preHandler: [P("m37.bed.assign"), RN_COVERAGE("m37.bed.assign")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(RequestBedBodySchema, request.body);
+      return service.requestBed(actor, id, body);
+    },
+  );
+
+  // 14. POST /ipu-admissions/:id/assign-bed — assign a specific bed (bed_assigned). §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/assign-bed",
+    { preHandler: [P("m37.bed.assign"), RN_COVERAGE("m37.bed.assign")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(AssignBedBodySchema, request.body);
+      return service.assignBed(actor, id, body);
+    },
+  );
+
+  // 18. POST /ipu-admissions/:id/discharge — discharge the admission. §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/discharge",
+    { preHandler: [P("m37.ipu_admission.discharge")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(DischargeBodySchema, request.body);
+      return service.discharge(actor, id, body);
+    },
+  );
 
   // 9. POST /ipu-beds/:id/cleaning-status — transition bed cleaning state. §4.1.
   app.post(

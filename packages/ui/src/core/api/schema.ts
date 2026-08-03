@@ -8680,6 +8680,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-admissions/{id}/assign-bed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign a specific bed (bed_assigned); reserves the bed + persists the assignment; 409 if the bed is not ready (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdAssignbed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/discharge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdDischarge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/request-bed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition an admission to bed_pending (RN-coverage gated; requires an active unit + a ready bed, §2.2) */
+        post: operations["postApiV1IpuadmissionsByIdRequestbed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-admissions/{id}/restraint": {
         parameters: {
             query?: never;
@@ -38808,6 +38859,124 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdAssignbed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bedId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdDischarge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "to_home" | "to_facility" | "to_other_hospice" | "revocation" | "expired_benefit";
+                    dischargeEventExists: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdRequestbed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    unitId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

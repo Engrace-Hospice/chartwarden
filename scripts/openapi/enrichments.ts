@@ -8061,6 +8061,9 @@ import {
   BedCleaningBodySchema as M37BedCleaningBodySchema,
   BedViewSchema as M37BedViewSchema,
   ApplyRestraintBodySchema as M37ApplyRestraintBodySchema,
+  AssignBedBodySchema as M37AssignBedBodySchema,
+  DischargeBodySchema as M37DischargeBodySchema,
+  RequestBedBodySchema as M37RequestBedBodySchema,
   CensusListSchema as M37CensusListSchema,
   CreateUnitBodySchema as M37CreateUnitBodySchema,
   OpenAdmissionBodySchema as M37OpenAdmissionBodySchema,
@@ -8090,6 +8093,21 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M37BedViewSchema,
     summary:
       "Transition a bed's §2.12 cleaning state (409 ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge); writes the ipu_bed_cleaning_event ledger row + emits the M33/M36 signal",
+  },
+  "POST /api/v1/ipu-admissions/:id/request-bed": {
+    body: M37RequestBedBodySchema,
+    response: M37AdmissionViewSchema,
+    summary: "Transition an admission to bed_pending (RN-coverage gated; requires an active unit + a ready bed, §2.2)",
+  },
+  "POST /api/v1/ipu-admissions/:id/assign-bed": {
+    body: M37AssignBedBodySchema,
+    response: M37AdmissionViewSchema,
+    summary: "Assign a specific bed (bed_assigned); reserves the bed + persists the assignment; 409 if the bed is not ready (§2.2)",
+  },
+  "POST /api/v1/ipu-admissions/:id/discharge": {
+    body: M37DischargeBodySchema,
+    response: M37AdmissionViewSchema,
+    summary: "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2)",
   },
   "POST /api/v1/ipu-admissions/:id/restraint": {
     body: M37ApplyRestraintBodySchema,
