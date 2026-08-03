@@ -32,6 +32,7 @@ import type {
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { BEREAVEMENT_OVERSIGHT_ROLES } from "../abac-predicates";
+import { COP_DENOMINATOR_STATUSES, COP_NUMERATOR_STATUSES } from "../seams/store";
 import type { M16ReadActor } from "./actor";
 import {
   type CursorPage,
@@ -116,19 +117,8 @@ const EMPTY_CLOSURE_COUNTS: { [K in BereavementPlanClosureReason]: number } = {
   other_early: 0,
 };
 
-/** The outreach statuses that satisfy the CoP 418.64(d) numerator — a touchpoint that REACHED the family
- *  in some form. `declined` counts: the agency made the contact and the survivor exercised a choice. */
-const COP_NUMERATOR_STATUSES: readonly BereavementOutreachStatus[] = ["completed", "declined"];
-/** The denominator: every touchpoint the schedule OWED, whether or not it landed. Cancelled rows are
- *  excluded because an opt-out / pause removes the obligation rather than failing it. */
-const COP_DENOMINATOR_STATUSES: readonly BereavementOutreachStatus[] = [
-  "completed",
-  "declined",
-  "no_response",
-  "missed",
-  "in_progress",
-  "scheduled",
-];
+// The CoP 418.64(d) numerator/denominator status sets moved to `../seams/store` (ONE definition, shared
+// with the §4.6 seam store) so the dashboard and the M30/M33 seam reads can never disagree on a scope.
 
 /** Deps the composition root may override (tests inject deterministic clocks + an in-memory M39 port). */
 export interface M16ReadDeps {

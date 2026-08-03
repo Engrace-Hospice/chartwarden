@@ -47,6 +47,10 @@ import { type DisciplinePlanSeamStore, createInMemoryDisciplinePlanSeamStore } f
 
 export { getCarePlanReader, getSignedEncountersReader } from "./consumed";
 export {
+  type DrizzleDisciplinePlanSeamDeps,
+  createDrizzleDisciplinePlanSeamStore,
+} from "./drizzle-store";
+export {
   type DisciplineComplianceCounts,
   type DisciplinePlanSeamSeed,
   type DisciplinePlanSeamSeedPlan,

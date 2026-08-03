@@ -34,6 +34,7 @@ export {
   type PrnEffectivenessRow,
   type PrnEffectivenessSeedRow,
   type ReconciliationTimelinessAnchor,
+  createDrizzleEmarSeamStore,
   createInMemoryEmarSeamStore,
   createMedicationAdministrationProvider,
   createReconciliationProvider,

@@ -40,6 +40,8 @@ export {
   type AdmissionReaderSeed,
   type ElectionPeriodRecord,
   AdmissionNotFoundError,
+  AdmissionSeamDataGapError,
+  createDrizzleAdmissionReaderStore,
   createInMemoryAdmissionReaderStore,
   createElectionPeriodReader,
   createCertificationReader,

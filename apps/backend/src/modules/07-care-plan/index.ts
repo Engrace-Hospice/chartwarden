@@ -42,6 +42,7 @@ export {
   type NowClock,
   type StoredRelevantProblem,
   createCarePlanReader,
+  createDrizzleCarePlanReaderStore,
   createInMemoryCarePlanReaderStore,
   getCarePlanReader,
   registerCarePlanSeams,

@@ -38,6 +38,10 @@ import {
   createInMemoryPortalConsentPort,
 } from "./readers-store";
 import { createDocumentStorageProvider } from "./storage-provider";
+export {
+  createDrizzleDocumentReaderStore,
+  createRefusingObjectStore,
+} from "./drizzle-readers-store";
 import {
   type DocumentSeamStore,
   type ObjectStorePort,

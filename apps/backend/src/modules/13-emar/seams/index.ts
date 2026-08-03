@@ -34,6 +34,9 @@ export {
   createMedicationAdministrationProvider,
   createReconciliationProvider,
 } from "./providers";
+// TASK-002 — the FULL production Drizzle-backed store (per-consumer reads under the ambient request RLS
+// context; the two org-aggregate measure reads self-scope on their explicit organizationId).
+export { createDrizzleEmarSeamStore } from "./drizzle-store";
 // M13-T09 — the M31 caregiver-attested-portal FORWARD seam (deny-stub; §2.9 D10). M31's authenticated portal
 // session resolver is not built (later wave); M13 declares the contract + ships a fail-closed deny-stub. NOT
 // wired into the M1 registry and adds NO dependsOn edge (the M12 M28-publisher deny-stub precedent).

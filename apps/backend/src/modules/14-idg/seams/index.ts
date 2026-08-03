@@ -30,6 +30,10 @@ export {
   createIdgPacketProvider,
   createIdgScheduleProvider,
 } from "./providers";
+// TASK-002 — the FULL Drizzle-backed store (no in-memory fallback); the composition root binds it as
+// `registerIdgSeams({ store: createDrizzleIdgSeamStore(db) })` (the M8 pattern). One refused read:
+// `decisionsForCarePlan` throws the typed IdgSeamSchemaGapError (idg_decision has no care-plan link).
+export { IdgSeamSchemaGapError, createDrizzleIdgSeamStore } from "./drizzle-store";
 
 /** Deps for M14's owned-seam registration (slice defaults to the in-memory store). */
 export interface IdgSeamDeps {

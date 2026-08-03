@@ -19,6 +19,9 @@ export {
   createInMemoryCarePlanReaderStore,
 } from "./store";
 export { type NowClock, createCarePlanReader } from "./reader";
+// TASK-002 — the FULL Drizzle-backed store (no in-memory fallback); the composition root binds it as
+// `registerCarePlanSeams({ store: createDrizzleCarePlanReaderStore(db) })` (the M8 pattern).
+export { createDrizzleCarePlanReaderStore } from "./drizzle-store";
 
 /** Deps for M7's reader-seam registration (slice defaults to the in-memory store + real clock). */
 export interface CarePlanSeamDeps {

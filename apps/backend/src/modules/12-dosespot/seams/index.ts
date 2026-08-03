@@ -26,6 +26,9 @@ export {
   createInMemoryDoseSpotSeamStore,
 } from "./store";
 export { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
+// TASK-002 — the production Drizzle-backed store (reads under the CONSUMER's ambient RLS context; the
+// comfort-kit / cost-basis rollups refuse with a typed DoseSpotSeamGapError until a backing schema exists).
+export { DoseSpotSeamGapError, createDrizzleDoseSpotSeamStore } from "./drizzle-store";
 
 /** Deps for M12's owned-seam registration (slice defaults to the in-memory store). */
 export interface DoseSpotSeamDeps {
