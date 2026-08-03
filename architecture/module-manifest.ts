@@ -1050,6 +1050,7 @@ export const MODULES: ModuleDef[] = [
     codePaths: [
       "apps/backend/src/modules/35-subscription",
       "apps/web/src/modules/35-subscription", // Track B web slice (ADR-0030, M35-T01) — scaffolded 1:1
+      "apps/admin/src/modules/35-subscription-billing", // §5.2 platform-ops admin slice (M35A-T04); M34 owns the apps/admin shell (ADR-0030)
       "packages/subscription-billing",
     ],
     // M1 foundation edge (withOrgContext + @wardenx/db + outbox + bootstrap seam/route wiring) — the
