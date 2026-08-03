@@ -46,39 +46,10 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 48/48 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M35 Subscription Billing | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 3/21 ⚠️ |
 | M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 22/22 ✅ | ✅ | ✅ | — | 15/15 ✅ |
-| M37 Inpatient Unit (IPU) Management | 🟡 Partial | ✅ | ✅ | ❌ | ❌ | — | ❌ | ❌ | — | 0/26 ⚠️ |
+| M37 Inpatient Unit (IPU) Management | 🟡 Partial | ✅ | ✅ | ✅ | ❌ | — | ❌ | ❌ | — | 5/26 ⚠️ |
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 8/8 ✅ | ✅ | ✅ | — | 13/13 ✅ |
 | M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 11/11 ✅ |
-
-## ⚠️ Warnings (non-failing)
-
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_admission" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_admission_state_history" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_bed_assignment" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_admission_transition" (packages/db/src/schema/ipu/admission.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_shift" (packages/db/src/schema/ipu/staffing.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_staff_assignment" (packages/db/src/schema/ipu/staffing.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_rn_coverage_window" (packages/db/src/schema/ipu/staffing.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_visitor" (packages/db/src/schema/ipu/visitor-meal.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_visitor_restriction" (packages/db/src/schema/ipu/visitor-meal.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_meal_service" (packages/db/src/schema/ipu/visitor-meal.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "gip_admission_criteria" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "gip_criteria_reassessment" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "irc_episode" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_remote_inpatient_episode" (packages/db/src/schema/ipu/gip-irc.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "inpatient_unit" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_room" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_bed" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_bed_cleaning_event" (packages/db/src/schema/ipu/units.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_body_release" (packages/db/src/schema/ipu/census.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_census_snapshot" (packages/db/src/schema/ipu/census.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_iv_safety_overlay" (packages/db/src/schema/ipu/clinical.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_restraint_event" (packages/db/src/schema/ipu/clinical.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_restraint_reassessment" (packages/db/src/schema/ipu/clinical.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_equipment" (packages/db/src/schema/ipu/equipment.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_equipment_maintenance" (packages/db/src/schema/ipu/equipment.ts) has no CREATE TABLE in migrations
-- SCHEMA-WITHOUT-MIGRATION: owned table "ipu_equipment_inspection" (packages/db/src/schema/ipu/equipment.ts) has no CREATE TABLE in migrations
 
 ## Hard-fail consistency checks
 
