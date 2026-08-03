@@ -306,6 +306,19 @@ import {
   registerFhirGatewayEraser,
   registerFhirPublishedSeams,
 } from "./modules/28-fhir/index";
+// M29 (External Interfaces) boot surface (M29-T08) — the §4.1/§4.2 route store, the §4.4 published seams,
+// and the §4.8 ABAC predicate resolver. Seams register over their M1 deny-stubs ONLY when a Drizzle store is
+// supplied (db-less boot keeps the fail-closed deny-stubs); the ABAC resolver binds the M3 permission store +
+// a lazy M5 CaseloadProvider adapter.
+import {
+  buildDrizzleM29AbacResolver,
+  createDrizzleM29PublishedSeamStore,
+  createDrizzleM29Store,
+  denyStubM29AbacResolver,
+  mountM29Routes,
+  registerM29AbacPredicates,
+  registerM29PublishedSeams,
+} from "./modules/29-external-interfaces/index";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -979,6 +992,29 @@ export function wireModuleSeams(
           permissions: createDbEffectivePermissionStore(deps.db),
         })
       : denyStubFhirGatewayAbacResolver,
+  });
+  // M29-T08 (§4.4) — publish M29's five read seams (LabObservationReader / Hl7InboundProposalReader /
+  // ExternalFeedReader / NppesProviderReader / ExternalInterfaceMetricsProvider) over their M1 deny-stubs.
+  // STORE-GATED (the M28/M19/M20 posture): a db-less boot passes no store and the fail-closed deny-stubs
+  // stand, so M28's DiagnosticReport egress / M5+M6 review badges / M33+M34 feed status deny LOUDLY rather
+  // than reading a projection minted from an unwired store.
+  registerM29PublishedSeams(
+    deps.db ? { store: createDrizzleM29PublishedSeamStore(deps.db) } : {},
+  );
+  // M29-T08 (§4.8) — the six named ABAC predicate resolvers. The resolver binds the M3 effective-permission
+  // store + a LAZY M5 CaseloadProvider adapter (resolved via getSeam at call time, so a not-yet-registered
+  // M5 provider fails closed via the registry deny-stub, never at boot). The db-less path binds the deny-stub
+  // resolver, which refuses for a STATED reason (`arch:abac-predicates` distinguishes it from a typo).
+  registerM29AbacPredicates({
+    resolver: deps.db
+      ? buildDrizzleM29AbacResolver({
+          db: deps.db,
+          permissions: createDbEffectivePermissionStore(deps.db),
+          caseload: {
+            isInCaseload: (input) => getSeam("CaseloadProvider").isInCaseload(input),
+          },
+        })
+      : denyStubM29AbacResolver,
   });
   // M34 — register the PACKAGE-OWNED seams (the D5 `TenantKeyProvider` + the lifecycle/onboarding/support/
   // export-shard publishes). These live in `@wardenx/saas-tenant-platform`'s own registry (M1 imports the
@@ -1839,6 +1875,13 @@ if ((import.meta as { main?: boolean }).main) {
           // the bearer read path runs its scope-enforcement + OperationOutcome shape without persisting a
           // row — the fail-closed Phase-1 posture (no external client is provisioned).
           mountM28Routes(app, { store: createDrizzleFhirGatewayStore(dbHandle.db) });
+
+          // M29 (External Interfaces) — mount the §4.1 operator + §4.2 clinician routes over the Drizzle
+          // route store. Feed lifecycle (dual-approval + BAA gate), ADT proposal review (propose-then-review),
+          // HL7 message search/replay/retry, NPPES read, and the caseload-scoped lab surface. The compliance
+          // decrypt / manual unmatched-lab bind / tenant NPPES trigger fail closed (Phase-1 501/403), each
+          // still walking the full guard chain.
+          mountM29Routes(app, { store: createDrizzleM29Store(dbHandle.db) });
 
         }
       : undefined,

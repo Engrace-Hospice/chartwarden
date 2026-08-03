@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 1139,
-    "enriched": 1133,
+    "routes": 1172,
+    "enriched": 1166,
     "deficit": 6,
-    "mutating": 647,
-    "mutatingNoBody": 104,
-    "gets": 464,
-    "getsNoResponse": 62
+    "mutating": 663,
+    "mutatingNoBody": 109,
+    "gets": 481,
+    "getsNoResponse": 79
   },
   "modules": [
     {
@@ -278,6 +278,16 @@
       "mutatingNoBody": 8,
       "gets": 16,
       "getsNoResponse": 16
+    },
+    {
+      "module": "29-external-interfaces",
+      "routes": 33,
+      "enriched": 33,
+      "deficit": 0,
+      "mutating": 16,
+      "mutatingNoBody": 5,
+      "gets": 17,
+      "getsNoResponse": 17
     },
     {
       "module": "30-quality",

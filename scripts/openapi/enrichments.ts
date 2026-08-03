@@ -521,6 +521,30 @@ import {
   TokenFormBody as M28TokenFormBody,
   ValidateCodeBody as M28ValidateCodeBody,
 } from "../../apps/backend/src/modules/28-fhir/routes/m28-typebox";
+// M29 External Interfaces — the §4.1 operator + §4.2 clinician request bodies + list queries the route
+// handlers `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the
+// validator. NOTE the feed-type vocabulary: the §4.3 sketch used `hl7v2_inbound_adt` …; the T02 pgEnum
+// (`adt_inbound` | `lab_inbound` | `orm_outbound`) wins, and the enrichment publishes what the validator
+// enforces rather than the prose.
+import {
+  AcceptProposalBody as M29AcceptProposalBody,
+  AttachPatientBody as M29AttachPatientBody,
+  CreateFeedBody as M29CreateFeedBody,
+  DeferProposalBody as M29DeferProposalBody,
+  DiscardObservationBody as M29DiscardObservationBody,
+  FeedListQuery as M29FeedListQuery,
+  InboundMessageListQuery as M29InboundMessageListQuery,
+  MintCredentialBody as M29MintCredentialBody,
+  NppesSyncRunListQuery as M29NppesSyncRunListQuery,
+  NppesSyncTriggerBody as M29NppesSyncTriggerBody,
+  ObservationListQuery as M29ObservationListQuery,
+  OutboundMessageListQuery as M29OutboundMessageListQuery,
+  ProposalListQuery as M29ProposalListQuery,
+  RejectProposalBody as M29RejectProposalBody,
+  RevokeFeedBody as M29RevokeFeedBody,
+  SuspendFeedBody as M29SuspendFeedBody,
+  UpdateFeedBody as M29UpdateFeedBody,
+} from "../../apps/backend/src/modules/29-external-interfaces/routes/m29-typebox";
 // M21 Supplies / DME / Comfort Kits — the §4.2 request bodies + list queries the §4.1 route handlers
 // `parse(...)` / `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator;
 // the M21-T06 web screens call the surface these type. Note the decimal-STRING quantities: §4.2.2's sketch
@@ -8049,5 +8073,144 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/fhir/config/rotate-cursor-key": {
     summary:
       "Rotate the per-tenant HMAC cursor-signing key (R39). STEP-UP required — the rotation invalidates every outstanding signed search cursor, so a stolen session must not be able to do it. The key never leaves the server",
+  },
+});
+
+// ── M29 External Interfaces (§4.1 operator + §4.2 clinician) ─────────────────────────────────────────
+// Appended as a trailing `Object.assign(ROUTE_ENRICHMENTS, {...})` — later wins, so this covers every M29
+// route the scanner discovers (openapi:coverage floor for a new module is 0 — an unenriched route fails).
+Object.assign(ROUTE_ENRICHMENTS, {
+  // §4.1.1 feed + credential admin
+  "GET /api/admin/external-interfaces/feeds": {
+    summary: "List the org's HL7/NPPES feeds, filterable by kind/status (§4.1.1)",
+    query: M29FeedListQuery,
+  },
+  "POST /api/admin/external-interfaces/feeds": {
+    summary:
+      "Create a feed (step-up, D18). Lands `pending_approval`: the proposing operator is stamped as the first of two DISTINCT dual-approval actors; a compliance officer activates (§4.1.1)",
+    body: M29CreateFeedBody,
+  },
+  "GET /api/admin/external-interfaces/feeds/:feedId": {
+    summary: "Single feed detail incl. redacted credential metadata — NEVER ciphertext (§4.1.1)",
+  },
+  "PATCH /api/admin/external-interfaces/feeds/:feedId": {
+    summary: "Edit non-credential feed metadata (step-up, D18) (§4.1.1)",
+    body: M29UpdateFeedBody,
+  },
+  "POST /api/admin/external-interfaces/feeds/:feedId/activate": {
+    summary:
+      "Activate a feed: pending_approval → active. Requires a compliance co-approver DISTINCT from the operator (D18) AND the M40 BAA gate (`external_feed_baa_satisfied`, D16) (§4.1.1)",
+  },
+  "POST /api/admin/external-interfaces/feeds/:feedId/suspend": {
+    summary: "Suspend an active feed; the listener unbinds (reason required, step-up) (§4.1.1)",
+    body: M29SuspendFeedBody,
+  },
+  "POST /api/admin/external-interfaces/feeds/:feedId/revoke": {
+    summary:
+      "Terminally revoke a feed (dual-approval, `external_feed_compliance_co_approver_distinct`, D20; step-up). The row is retained so every message FK resolves (§4.1.1)",
+    body: M29RevokeFeedBody,
+  },
+  "POST /api/admin/external-interfaces/feeds/:feedId/credentials": {
+    summary:
+      "Mint / rotate a channel credential (step-up, D18). The prior active credential of the kind is retired; the secret is stored as its sha256 digest (no DEK bound in Phase 1) and never returned in the clear (§4.1.1)",
+    body: M29MintCredentialBody,
+  },
+  "GET /api/admin/external-interfaces/feeds/:feedId/credentials": {
+    summary: "List credential metadata (fingerprint + status only, NEVER ciphertext) (§4.1.1)",
+  },
+  "GET /api/admin/external-interfaces/feeds/:feedId/health": {
+    summary: "Current rolling per-hour health snapshot for a feed (§4.1.1)",
+  },
+  // §4.1.2 ADT proposal review
+  "GET /api/admin/external-interfaces/inbound-proposals": {
+    summary: "List the propose-then-review ADT queue, filterable by status/owner_module/feed (§4.1.2)",
+    query: M29ProposalListQuery,
+  },
+  "GET /api/admin/external-interfaces/inbound-proposals/:proposalId": {
+    summary: "Single ADT proposal detail (owner-module-scoped, D5) (§4.1.2)",
+  },
+  "POST /api/admin/external-interfaces/inbound-proposals/:proposalId/accept": {
+    summary:
+      "Adjudicate ACCEPT — apply via the owner module's native write path (`hl7_inbound_proposal_owner_module_match`, step-up D18). Decided-is-decided (§4.1.2)",
+    body: M29AcceptProposalBody,
+  },
+  "POST /api/admin/external-interfaces/inbound-proposals/:proposalId/reject": {
+    summary:
+      "Adjudicate REJECT — no mutation; rationale ≥40 chars (W-XI-04); owner-module-gated + step-up (§4.1.2)",
+    body: M29RejectProposalBody,
+  },
+  "POST /api/admin/external-interfaces/inbound-proposals/:proposalId/defer": {
+    summary: "Punt a proposal to a caseload-RN task (M19 forward-seam); stays `pending` (§4.1.2)",
+    body: M29DeferProposalBody,
+  },
+  // §4.1.3 message search / replay / retry / decrypt
+  "GET /api/admin/external-interfaces/messages/inbound": {
+    summary: "Search inbound HL7 messages (metadata only, no plaintext) (§4.1.3)",
+    query: M29InboundMessageListQuery,
+  },
+  "GET /api/admin/external-interfaces/messages/inbound/:messageId": {
+    summary: "Single inbound message — metadata only; plaintext is the dedicated decrypt route (§4.1.3)",
+  },
+  "POST /api/admin/external-interfaces/messages/inbound/:messageId/decrypt": {
+    summary:
+      "Server-side plaintext decrypt for compliance review (step-up; a §164.528 disclosure). Phase-1 fail-closed 501 until the per-tenant DEK envelope binds (§4.1.3)",
+  },
+  "POST /api/admin/external-interfaces/messages/inbound/:messageId/replay": {
+    summary: "Re-enqueue a parse_error/rejected inbound message for parsing/matching (step-up) (§4.1.3)",
+  },
+  "GET /api/admin/external-interfaces/messages/outbound": {
+    summary: "Search outbound HL7 messages, filterable by placer order / dispatch status (§4.1.3)",
+    query: M29OutboundMessageListQuery,
+  },
+  "GET /api/admin/external-interfaces/messages/outbound/:messageId": {
+    summary: "Single outbound message incl. the ACK/NACK chain (§4.1.3)",
+  },
+  "POST /api/admin/external-interfaces/messages/outbound/:messageId/retry": {
+    summary: "Manual retry of a failed/dlq outbound message after a DLQ landing (D9; step-up) (§4.1.3)",
+  },
+  // §4.1.4 NPPES administration
+  "GET /api/admin/external-interfaces/nppes/providers/:npi": {
+    summary: "Read one cached platform-shared NPPES provider (public directory, no PHI) (§4.1.4)",
+  },
+  "GET /api/admin/external-interfaces/nppes/sync-runs": {
+    summary: "List NPPES sync-run history (§4.1.4)",
+    query: M29NppesSyncRunListQuery,
+  },
+  "POST /api/admin/external-interfaces/nppes/sync-runs": {
+    summary:
+      "Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up). A tenant session is refused; the real sync runs under the platform scheduler (§4.1.4)",
+    body: M29NppesSyncTriggerBody,
+  },
+  // §4.1.5 ops
+  "GET /api/admin/external-interfaces/health/aggregate": {
+    summary: "Tenant feed-health overview — listener up/down, message + parse-error counts (§4.1.5)",
+  },
+  "GET /api/admin/external-interfaces/metrics/listener-status": {
+    summary: "Per-feed listener socket status (up/down + last message time) (§4.1.5)",
+  },
+  // §4.2 clinician lab surface
+  "GET /api/clinical/labs/observations": {
+    summary: "List caseload lab observations, filterable by patient/loinc/abnormal-flag (§4.2)",
+    query: M29ObservationListQuery,
+  },
+  "GET /api/clinical/labs/observations/unmatched": {
+    summary: "The unmatched-lab review queue (failed patient-match cascade, D6; review-unmatched role) (§4.2)",
+    query: M29ObservationListQuery,
+  },
+  "GET /api/clinical/labs/observations/:observationId": {
+    summary:
+      "Single observation with its value rows (`lab_observation_patient_caseload_or_scope`, D20) (§4.2)",
+  },
+  "POST /api/clinical/labs/observations/:observationId/attach-patient": {
+    summary:
+      "Manual patient attach for an unmatched result (step-up). Phase-1 fail-closed 501: materializing a lab_observation from the stored wire message lands in T-29.13 (§4.2)",
+    body: M29AttachPatientBody,
+  },
+  "POST /api/clinical/labs/observations/:observationId/discard": {
+    summary: "Discard an unmatched result (reason required, step-up). Phase-1 deferred to T-29.13 (§4.2)",
+    body: M29DiscardObservationBody,
+  },
+  "POST /api/clinical/labs/observations/:observationId/acknowledge-abnormal": {
+    summary: "RN acknowledges an abnormal-flag alert; clears the M36 badge (D7) (§4.2)",
   },
 });

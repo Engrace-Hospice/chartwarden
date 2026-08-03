@@ -388,7 +388,17 @@ export type SeamName =
   //   · `LabObservationReader` (M29) — the §4.11 DiagnosticReport result-value source. M29 is a Phase-1
   //     placeholder; the seam is required so M28's DiagnosticReport projection ships only once M29 does.
   | "ClaimReader" // M23 — §4.4 Claim/EOB FHIR projection (W-FHIR-07 forward-seam; 404 until fhir.write/D1 unlock)
-  | "LabObservationReader" // M29 — §4.11 DiagnosticReport result-value read (forward-seam until M29 lands)
+  | "LabObservationReader" // M29 — §4.11 DiagnosticReport result-value read (M29-T08 registers the real impl)
+  // M29 (External Interfaces) §4.4 — the three OTHER published read seams M29 registers into the M1 registry
+  // (M29-T08), alongside `LabObservationReader` (above) + `ExternalInterfaceMetricsProvider` (below, declared
+  // for M35). OPAQUE rich-seams: their interfaces live in the M29 backend module (not this leaf, which may
+  // not import an app module), so the registry holds each as `unknown` and a consumer (M5/M6/M33/M34/M40)
+  // resolves via `getSeam` + a cast to its own view. Each stays on the fail-closed deny-stub until M29's
+  // Drizzle seam store is bound (M29-T08). `Hl7InboundProposalReader` reaches a demographic candidate (PHI);
+  // `ExternalFeedReader` is feed config/health metadata; `NppesProviderReader` is public-directory data.
+  | "Hl7InboundProposalReader" // M29 — pending ADT-proposal review queue (M5/M6 badge; PHI)
+  | "ExternalFeedReader" // M29 — per-org feed inventory + health snapshot (M33/M34; no credentials)
+  | "NppesProviderReader" // M29 — platform-shared NPPES public-directory lookup (M28/M40)
   // M35 (Subscription Billing) §4.5 — the SIX PUBLISHED seams M35 registers into the M1 registry (M35-T05).
   // Leaf-typed (interfaces in ./subscription-billing, this leaf), so — like M6..M20's readers — the registry
   // is statically typed against the real contract. M35 registers the real Drizzle-backed impls over the
@@ -871,6 +881,12 @@ export interface SeamContracts {
   // Both stay on the fail-closed deny-stub the whole of Phase 1 (see the SeamName comments above).
   ClaimReader: unknown;
   LabObservationReader: unknown;
+  // M29's three OTHER §4.4 published read seams (M29-T08). OPAQUE rich-seams (interfaces in the M29 backend
+  // module, not importable by this leaf), so the registry holds each as `unknown`; M29 registers the real
+  // Drizzle-backed impl over the deny-stub and a consumer resolves via `getSeam` + a cast to its own view.
+  Hl7InboundProposalReader: unknown;
+  ExternalFeedReader: unknown;
+  NppesProviderReader: unknown;
   // M35's six §4.5 published seams are LEAF-TYPED — their interfaces live in ./subscription-billing (this
   // package), so the registry is statically typed against the real contract. M35 registers the real
   // Drizzle-backed impls over the deny-stubs (M35-T06); consumers that list `35` in `dependsOn` (M33) —
@@ -1197,4 +1213,18 @@ export type DataClass =
   // registered eraser (M31-T06) under an M4 destruction certificate (§3.7 / D15); the recording BYTES in
   // MinIO are crypto-erased by M22's own `telehealth_recording`/`documents` eraser — M31 stores only the
   // refs, which it shreds. `subjectId` is the patient being destroyed.
-  | "portal_record";
+  | "portal_record"
+  // M29 (External Interfaces) per-TENANT interface footprint (§3.7). Registered in M29-T02 (the schema
+  // task) so the contract exists from the moment the tables do; the REAL eraser binds through the
+  // composition-root hook over the Phase-0 deny-stub in a later M29 task. NOT a delete — a targeted shred
+  // that keeps every row: it destroys the per-tenant DEK so every `*_cipher` column (the raw HL7 payloads,
+  // the `external_feed_credential.secret_cipher` channel secret, the ack payloads) becomes unrecoverable,
+  // re-encrypts `hl7_inbound_proposal.proposed_patient_candidate` to null, tombstones the feed
+  // (`status='revoked'`, `revoked_at` set) and cascades `lab_observation → lab_observation_value /
+  // lab_observation_inbound_link` — while every ROW survives with its status, decision, `payload_sha256`
+  // and timestamps intact, because those rows ARE the §164.528 accounting-of-disclosures evidence (an
+  // inbound HL7 message is a receipt-of-disclosure; a lab surfaced to an operator or projected to M28 for
+  // FHIR egress is itself a disclosure). The platform-shared `nppes_provider` / `nppes_sync_run` are the
+  // public CMS directory (rebuildable from a re-sync) and are never touched. Unlike the per-patient classes
+  // above, `subjectId` is the ORG being offboarded — M29-T01 named it `external_interfaces`.
+  | "external_interfaces";

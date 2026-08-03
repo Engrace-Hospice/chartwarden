@@ -235,6 +235,13 @@ const NON_ORG_SCOPED = new Set<string>([
   "stripe_webhook_event",
   "platform_retained_invoice",
   "platform_retained_invoice_line",
+  // M29 External Interfaces (§3.3 / §3.5): the two NPPES cache tables carry NO organization_id BY DESIGN —
+  // the CMS NPPES registry is the same public provider directory for every tenant. `nppes_provider` (keyed
+  // by the 10-char NPI) and `nppes_sync_run` are read-all `USING (true)` TO wardenx_app, written only via
+  // wardenx_admin under the platform-role nightly sync (0148; the M28 fhir_capability_snapshot / M38
+  // code_system precedent). The other nine M29 tables carry organization_id and get standard app.org_id RLS.
+  "nppes_provider",
+  "nppes_sync_run",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =

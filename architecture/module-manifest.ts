@@ -902,7 +902,12 @@ export const MODULES: ModuleDef[] = [
     id: 29,
     name: "External Interfaces",
     codePaths: ["apps/backend/src/modules/29-external-interfaces"],
-    dependsOn: [5, 11, 40],
+    // +M1 (M29-T08): the backend module now imports the @wardenx/db barrel (the T08 Drizzle route +
+    // published-seam + ABAC-resolver stores) and the M1-owned bootstrap seam registry
+    // (`apps/backend/src/bootstrap` — registerSeam/getSeam) to publish its five §4.4 read seams and resolve
+    // the M5 CaseloadProvider — real compile edges, so M1 is declared (the M5..M28 "+M1: the bootstrap seam
+    // registry" seam-task precedent). No codePath / ownedTable / package change (Wave-H acceptance item 1).
+    dependsOn: [1, 5, 11, 40],
     ownedTables: [
       "external_feed",
       "external_feed_credential",

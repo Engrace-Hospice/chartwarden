@@ -374,6 +374,27 @@ Full STRIDE in module specs; summary here:
 |39 Consent              |Consent bypass (E+R), forgery (S+T)                                         |
 |40 MDM                  |Cross-tenant overlay leak (I), canonical record poisoning (T)               |
 
+### 3.5 M29 External Interfaces — Adapter-Mandate Compliance (ARCHITECTURE §25.14)
+
+M29 terminates external network traffic carrying live PHI (HL7 v2 ADT/ORU/ORM over MLLP) and bridges into
+M5 (patient identity), M11 (clinical orders), M39 (consent), M40 (BAA) and — in Phase 2 — M27 (Xero/Gusto
+factory bindings). It is a textbook adapter-mandate consumer; its confinement posture (M29 spec §8.5) is
+CI-enforced by the dependency-cruiser ruleset in `architecture/.dependency-cruiser.cjs` and mirrored by the
+co-located `m29-adapter-mandate.test.ts` unit guard:
+
+| # | Boundary | Enforcement rule | Fail direction |
+|---|----------|------------------|----------------|
+| 1 | **Vendor-SDK ownership.** M29 consumes Xero GL / Gusto payroll via the `XeroClientFactory` / `GustoClientFactory` seams M27 publishes (Phase 2), never by importing the M27-owned adapter packages directly. | `no-direct-xero-gusto-import-from-m29` | build error |
+| 2 | **Outbox-only cross-module reads.** Every cross-module call flows through a published seam or the M4 outbox — no direct cross-schema SELECT. M29 reads patient identity via `PatientReader` and consumes order intent via `m11.order.hl7_orm_requested`, so it may not import M5/M11/M40 Drizzle schemas. | `no-m29-import-of-cross-module-schemas` | build error |
+| 3 | **M29 schema is seam-private.** Other modules read M29 HL7/lab data only through its five published seams (`LabObservationReader`, …) — not even a module that declares M29 in `dependsOn` (M22/M28) may reach into `packages/db/src/schema/external-interfaces`. | `no-m29-schema-import-from-other-modules` | build error |
+| 4 | **HL7 wire-format containment.** HL7 segment types and wire-frame construction (ORM^O01, ACK) live only inside `apps/backend/src/modules/29-external-interfaces/**`; the generated `module-29-boundary` rule forbids any other module from importing that code. (The standalone `packages/hl7-worker` extraction is deferred to Phase 2.) | `module-29-boundary` (generated) | build error |
+| 5 | **No AI surface (§8.6).** The five-level patient-match cascade is deterministic by design; M29 imports no AI-platform package and no `@anthropic-ai/*` SDK. Probabilistic matching arrives only as a Phase-2 M32 `ProbabilisticMatchProvider` seam under HOTL governance. | `m29-adapter-mandate.test.ts` §8.6 scan | test failure |
+| 6 | **Pre-persist SUD redaction (D15).** The 42 CFR Part 2 redaction pass runs *before* `hl7_message_inbound` is written, orchestrated via the M39 `ConsentEvaluator.evaluateForIngressRedaction` seam — M29 does not implement consent evaluation itself. | seam boundary (§8.5.5) + `arch:boundaries` | build error |
+
+Named-predicate drift is closed separately by `arch:abac-predicates` (M3's registry fails closed on an
+unregistered name) with the W-XI-15 unit arm in `m29-abac.test.ts`: every §4.8 predicate M29 declares must
+have a built resolver and register into M3's registry, and a missing predicate denies (never falls open).
+
 -----
 
 ## 4. Cryptographic Standards

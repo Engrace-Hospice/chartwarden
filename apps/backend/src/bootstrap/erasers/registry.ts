@@ -215,6 +215,16 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // and flips any now-orphaned account to `revoked` with its contact ciphers shredded; the recording BYTES
   // in MinIO are M22's to crypto-erase (M31 stores only refs). The `subjectId` is the patient.
   "portal_record",
+  // M29-T02 (the schema task) registers the data-class contract the moment the tables exist; the Phase-0
+  // deny-stub (wireErasers) stands until a later M29 task binds the REAL eraser via the composition-root
+  // hook. NOT a delete: under an M4 destruction certificate it SHREDS in place — destroys the per-tenant DEK
+  // so every `*_cipher` column (raw HL7 payloads, the `external_feed_credential.secret_cipher`, the ack
+  // payloads) is unrecoverable, re-encrypts `hl7_inbound_proposal.proposed_patient_candidate` to null,
+  // tombstones the feed (`status='revoked'`) and cascades `lab_observation` → its value / inbound-link
+  // children — while every surviving row's status/decision/`payload_sha256`/timestamps remain, because they
+  // ARE the §164.528 disclosure-accounting evidence. The platform-shared NPPES directory (rebuildable from a
+  // re-sync) is never touched. Unlike the per-patient classes above, `subjectId` is the ORG being offboarded.
+  "external_interfaces",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

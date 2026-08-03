@@ -402,6 +402,18 @@ export const claimReaderDenyStub: unknown = denyingSeamProxy("ClaimReader");
  *  M29 registers the real reader. */
 export const labObservationReaderDenyStub: unknown = denyingSeamProxy("LabObservationReader");
 
+/** M29 §4.4 — the pending ADT-proposal review queue (M5/M6 badges). Opaque rich-seam; denies LOUDLY until
+ *  M29 registers the real Drizzle-backed reader (M29-T08). */
+export const hl7InboundProposalReaderDenyStub: unknown = denyingSeamProxy("Hl7InboundProposalReader");
+
+/** M29 §4.4 — the per-org feed inventory + health snapshot (M33/M34; no credentials). Opaque rich-seam;
+ *  denies until M29 registers the real reader (M29-T08). */
+export const externalFeedReaderDenyStub: unknown = denyingSeamProxy("ExternalFeedReader");
+
+/** M29 §4.4 — the platform-shared NPPES public-directory lookup (M28/M40). Opaque rich-seam; denies until
+ *  M29 registers the real reader (M29-T08). */
+export const nppesProviderReaderDenyStub: unknown = denyingSeamProxy("NppesProviderReader");
+
 // M6 (Admission) reader seams (§4.7). These are LEAF-TYPED (interfaces in @wardenx/types), so —
 // unlike the opaque rich-seams above — they get concrete typed deny-stubs (like CaseloadProvider /
 // PatientReader). Each denies LOUDLY until M6 registers the real Drizzle-backed reader (M6-T05).

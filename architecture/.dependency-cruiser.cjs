@@ -276,6 +276,62 @@ module.exports = {
         path: "node_modules/@anthropic-ai/sdk(/|$)",
       },
     },
+    {
+      name: "no-m29-schema-import-from-other-modules",
+      comment:
+        "Other modules must consume M29 (External Interfaces) HL7/lab data via its five published seams " +
+        "(LabObservationReader, etc.), never by reaching into its schema directly — not even a module that " +
+        "declares M29 in dependsOn (M22/M28 consume LabObservationReader; the seam is the only door). M29's " +
+        "Drizzle tables live in the central barrel (packages/db/src/schema/external-interfaces) per repo " +
+        "convention; only M29's own logic and the db barrel itself may import them. (M29 spec §8.5.4/§13.2.)",
+      severity: "error",
+      from: {
+        pathNot: anyOf([
+          "packages/db",
+          "apps/backend/src/modules/29-external-interfaces",
+        ]),
+      },
+      to: { path: p("packages/db/src/schema/external-interfaces") },
+    },
+    {
+      name: "no-m29-import-of-cross-module-schemas",
+      comment:
+        "M29 is a textbook adapter-mandate consumer (ARCHITECTURE §25.14): every cross-module read flows " +
+        "through a published seam or the M4 outbox, never a direct cross-schema SELECT. It declares M5 " +
+        "(patient) and M11 (orders) in dependsOn, but reads patient identity via the PatientReader seam and " +
+        "consumes order intent via the m11.order.hl7_orm_requested outbox event — so it may not import their " +
+        "Drizzle schemas directly. (M29 spec §8.5.4/§13.2.)",
+      severity: "error",
+      from: { path: p("apps/backend/src/modules/29-external-interfaces") },
+      to: {
+        path: anyOf([
+          "packages/db/src/schema/patient",
+          "packages/db/src/schema/admission",
+          "packages/db/src/schema/care-plan",
+          "packages/db/src/schema/encounter",
+          "packages/db/src/schema/assessment",
+          "packages/db/src/schema/orders",
+          "packages/db/src/schema/dosespot",
+          "packages/db/src/schema/emar",
+          "packages/db/src/schema/hope",
+          "packages/db/src/schema/idg",
+          "packages/db/src/schema/evv",
+          "packages/db/src/schema/scheduling",
+          "packages/db/src/schema/mdm",
+        ]),
+      },
+    },
+    {
+      name: "no-direct-xero-gusto-import-from-m29",
+      comment:
+        "M29 must consume the Xero GL / Gusto payroll surfaces via the XeroClientFactory / GustoClientFactory " +
+        "seams M27 publishes (deferred to Phase 2), never by importing the M27-owned adapter packages " +
+        "directly. M29 does not declare M27 in dependsOn — the accounting integration is a cross-phase item. " +
+        "(M29 spec §8.5.1/§13.2.)",
+      severity: "error",
+      from: { path: p("apps/backend/src/modules/29-external-interfaces") },
+      to: { path: anyOf(["packages/xero-client", "packages/gusto-client"]) },
+    },
     ...vendorRules,
     ...helperTableRules,
     ...moduleBoundaryRules,
