@@ -8060,9 +8060,12 @@ import {
   AdmissionViewSchema as M37AdmissionViewSchema,
   BedCleaningBodySchema as M37BedCleaningBodySchema,
   BedViewSchema as M37BedViewSchema,
+  ApplyRestraintBodySchema as M37ApplyRestraintBodySchema,
   CensusListSchema as M37CensusListSchema,
   CreateUnitBodySchema as M37CreateUnitBodySchema,
   OpenAdmissionBodySchema as M37OpenAdmissionBodySchema,
+  ReassessRestraintBodySchema as M37ReassessRestraintBodySchema,
+  RestraintViewSchema as M37RestraintViewSchema,
   UnitListSchema as M37UnitListSchema,
   UnitViewSchema as M37UnitViewSchema,
 } from "../../apps/backend/src/modules/37-ipu/routes/ipu-typebox";
@@ -8088,5 +8091,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Transition a bed's §2.12 cleaning state (409 ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge); writes the ipu_bed_cleaning_event ledger row + emits the M33/M36 signal",
   },
+  "POST /api/v1/ipu-admissions/:id/restraint": {
+    body: M37ApplyRestraintBodySchema,
+    response: M37RestraintViewSchema,
+    summary:
+      "Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10)",
+  },
+  "POST /api/v1/ipu-restraint/:id/reassess": {
+    body: M37ReassessRestraintBodySchema,
+    response: M37RestraintViewSchema,
+    summary: "Record a restraint reassessment (continue/modify/release); 409 on an already-released event (§2.10)",
+  },
+  "POST /api/v1/ipu-restraint/:id/release": { response: M37RestraintViewSchema, summary: "Release a restraint (§2.10)" },
   "GET /api/v1/ipu-census/:date": { response: M37CensusListSchema, summary: "Read the IPU census snapshot for a date (§4.1)" },
 });

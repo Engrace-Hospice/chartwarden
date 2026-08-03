@@ -77410,6 +77410,143 @@
         }
       }
     },
+    "/api/v1/ipu-admissions/{id}/restraint": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdRestraint",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "restraintKind",
+                    "state",
+                    "reassessmentIntervalMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "restraintKind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "reassessmentIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "restraintKind",
+                  "restraintJustificationText",
+                  "orderingPhysicianId",
+                  "orderingOrderId",
+                  "category",
+                  "reassessmentIntervalMinutes"
+                ],
+                "properties": {
+                  "restraintKind": {
+                    "anyOf": [
+                      {
+                        "const": "soft_limb",
+                        "type": "string"
+                      },
+                      {
+                        "const": "posey_vest",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mitt",
+                        "type": "string"
+                      },
+                      {
+                        "const": "side_rail_4",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "restraintJustificationText": {
+                    "minLength": 100,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "orderingPhysicianId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "orderingOrderId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "behavioral",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reassessmentIntervalMinutes": {
+                    "minimum": 1,
+                    "maximum": 240,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ipu-beds/{id}/cleaning-status": {
       "post": {
         "operationId": "postApiV1IpubedsByIdCleaningstatus",
@@ -77618,6 +77755,180 @@
                           }
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-restraint/{id}/reassess": {
+      "post": {
+        "operationId": "postApiV1IpurestraintByIdReassess",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Record a restraint reassessment (continue/modify/release); 409 on an already-released event (§2.10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "restraintKind",
+                    "state",
+                    "reassessmentIntervalMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "restraintKind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "reassessmentIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "outcome",
+                  "nextDueAt"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "continue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "modify",
+                        "type": "string"
+                      },
+                      {
+                        "const": "release",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "nextDueAt": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-restraint/{id}/release": {
+      "post": {
+        "operationId": "postApiV1IpurestraintByIdRelease",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Release a restraint (§2.10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "restraintKind",
+                    "state",
+                    "reassessmentIntervalMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "restraintKind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "reassessmentIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
                     }
                   }
                 }

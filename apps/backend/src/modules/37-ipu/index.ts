@@ -25,3 +25,6 @@ export {
   type WriteOutboxPort,
 } from "./routes/service-drizzle";
 export type { IpuRouteService } from "./routes/service";
+
+// §7.7 — the `ipu_record` destruction eraser (registered over the Phase-0 deny-stub by the composition root).
+export { eraseIpuRecord, registerIpuErasers } from "./eraser";

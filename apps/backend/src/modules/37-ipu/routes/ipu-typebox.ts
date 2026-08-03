@@ -105,5 +105,37 @@ export const CensusListSchema = Type.Object({
   ),
 });
 
+// ── restraint (§4.1 routes 22–24) ──────────────────────────────────────────────────────────────────────
+export const ApplyRestraintBodySchema = Type.Object({
+  restraintKind: Type.Union([
+    Type.Literal("soft_limb"),
+    Type.Literal("posey_vest"),
+    Type.Literal("mitt"),
+    Type.Literal("side_rail_4"),
+  ]),
+  restraintJustificationText: Type.String({ minLength: 100, maxLength: 4000 }),
+  orderingPhysicianId: id,
+  orderingOrderId: id,
+  category: Type.Union([Type.Literal("behavioral"), Type.Literal("medical")]),
+  reassessmentIntervalMinutes: Type.Integer({ minimum: 1, maximum: 240 }),
+});
+export type ApplyRestraintBody = Static<typeof ApplyRestraintBodySchema>;
+
+export const ReassessRestraintBodySchema = Type.Object({
+  outcome: Type.Union([Type.Literal("continue"), Type.Literal("modify"), Type.Literal("release")]),
+  notes: Type.Optional(Type.String({ maxLength: 2000 })),
+  nextDueAt: Type.String({ minLength: 1 }),
+});
+export type ReassessRestraintBody = Static<typeof ReassessRestraintBodySchema>;
+
+export const RestraintViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  restraintKind: Type.String(),
+  state: Type.String(),
+  reassessmentIntervalMinutes: Type.Integer(),
+  version: Type.Integer(),
+});
+
 export const IdParamsSchema = Type.Object({ id });
 export const DateParamsSchema = Type.Object({ date: Type.String({ minLength: 8, maxLength: 10 }) });

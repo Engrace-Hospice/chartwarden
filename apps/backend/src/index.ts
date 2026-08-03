@@ -325,6 +325,7 @@ import {
   M37_OUTBOX_EVENTS,
   buildDrizzleIpuRouteService,
   mountM37Routes,
+  registerIpuErasers,
   registerM37AbacPredicates,
 } from "./modules/37-ipu/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
@@ -1186,6 +1187,11 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // crypto-erase — M31 owns only the refs. Registers only with a DB client (the shred is a privileged write);
   // a slice boot keeps the deny-stub rather than report a destruction it did not perform.
   if (deps.db) registerPortalErasers(deps.db);
+  // M37-T11 — `ipu_record` (per-PATIENT destruction-cert callback, §7.7 / D8): deletes the patient's
+  // ipu_admission subtree in FK order + the per-patient visitor restrictions under RLS (DELETE grants,
+  // migration 0153); aggregate census snapshots survive (no patient_id, D14). Registers only with a DB
+  // client (the delete is a privileged tenant-pool write); a slice boot keeps the deny-stub.
+  if (deps.db) registerIpuErasers(deps.db);
   // Phase-1 data-class owners append here as they land.
 }
 

@@ -8680,6 +8680,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-admissions/{id}/restraint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10) */
+        post: operations["postApiV1IpuadmissionsByIdRestraint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-beds/{id}/cleaning-status": {
         parameters: {
             query?: never;
@@ -8708,6 +8725,40 @@ export interface paths {
         get: operations["getApiV1IpucensusByDate"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-restraint/{id}/reassess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a restraint reassessment (continue/modify/release); 409 on an already-released event (§2.10) */
+        post: operations["postApiV1IpurestraintByIdReassess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-restraint/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a restraint (§2.10) */
+        post: operations["postApiV1IpurestraintByIdRelease"];
         delete?: never;
         options?: never;
         head?: never;
@@ -38780,6 +38831,48 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1IpuadmissionsByIdRestraint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    restraintKind: "soft_limb" | "posey_vest" | "mitt" | "side_rail_4";
+                    restraintJustificationText: string;
+                    orderingPhysicianId: string;
+                    orderingOrderId: string;
+                    category: "behavioral" | "medical";
+                    reassessmentIntervalMinutes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        restraintKind: string;
+                        state: string;
+                        reassessmentIntervalMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IpubedsByIdCleaningstatus: {
         parameters: {
             query?: never;
@@ -38847,6 +38940,76 @@ export interface operations {
                             roomTurnoverCount: number;
                             restraintIncidentCount: number;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpurestraintByIdReassess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "continue" | "modify" | "release";
+                    notes?: string;
+                    nextDueAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        restraintKind: string;
+                        state: string;
+                        reassessmentIntervalMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpurestraintByIdRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        restraintKind: string;
+                        state: string;
+                        reassessmentIntervalMinutes: number;
+                        version: number;
                     };
                 };
             };

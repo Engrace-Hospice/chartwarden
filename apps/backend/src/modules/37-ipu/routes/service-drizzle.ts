@@ -7,15 +7,24 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   INITIAL_BED_CLEANING_STATUS,
+  normalizeReassessmentInterval,
+  planReassessmentOutcome,
   planOpenAdmission,
   transitionBedCleaning,
+  validateRestraintApply,
 } from "@wardenx/inpatient";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
-import type { BedCleaningBody, CreateUnitBody, OpenAdmissionBody } from "./ipu-typebox";
-import type { AdmissionView, BedView, CensusView, IpuRouteService, UnitView } from "./service";
+import type {
+  ApplyRestraintBody,
+  BedCleaningBody,
+  CreateUnitBody,
+  OpenAdmissionBody,
+  ReassessRestraintBody,
+} from "./ipu-typebox";
+import type { AdmissionView, BedView, CensusView, IpuRouteService, RestraintView, UnitView } from "./service";
 
 /** The transactional-outbox port the composition root binds (the catalog-validating `m37` publisher). */
 export interface WriteOutboxPort {
@@ -49,6 +58,17 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
   const B = schema.ipuBed;
   const BCE = schema.ipuBedCleaningEvent;
   const C = schema.ipuCensusSnapshot;
+  const RE = schema.ipuRestraintEvent;
+  const RR = schema.ipuRestraintReassessment;
+
+  const restraintView = (r: typeof RE.$inferSelect): RestraintView => ({
+    id: r.id,
+    ipuAdmissionId: r.ipuAdmissionId,
+    restraintKind: r.restraintKind,
+    state: r.state,
+    reassessmentIntervalMinutes: r.reassessmentIntervalMinutes,
+    version: r.version,
+  });
 
   const unitView = (r: typeof U.$inferSelect): UnitView => ({
     id: r.id,
@@ -214,6 +234,103 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           });
         }
         return bedView(updated);
+      });
+    },
+
+    async applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        if (!adm) throw new NotFoundError("ipu_admission not found");
+        // §2.10 — validate the application (step-up + physician order + ≥100-char justification) and floor
+        // the reassessment interval by category. The DB CHECK is the schema backstop.
+        validateRestraintApply({
+          justificationText: body.restraintJustificationText,
+          hasOrderingOrder: body.orderingOrderId.length > 0,
+          stepUpVerified: actor.stepUpRecent,
+        });
+        const interval = normalizeReassessmentInterval(body.reassessmentIntervalMinutes, body.category);
+        const [row] = await t
+          .insert(RE)
+          .values({
+            organizationId: actor.organizationId,
+            ipuAdmissionId: admissionId,
+            restraintKind: body.restraintKind,
+            restraintJustificationText: body.restraintJustificationText,
+            orderingPhysicianId: body.orderingPhysicianId,
+            orderingOrderId: body.orderingOrderId,
+            appliedByMembershipId: actor.membershipId,
+            appliedStepUpAssertionId: actor.membershipId, // the step-up assertion id (session-verified)
+            reassessmentIntervalMinutes: interval,
+          })
+          .returning();
+        if (!row) throw new ConflictError("restraint insert failed");
+        await outbox.publish(t, {
+          eventName: "m37.restraint.applied",
+          payload: { ipuAdmissionId: admissionId, organizationId: actor.organizationId, restraintEventId: row.id, restraintKind: row.restraintKind },
+          organizationId: actor.organizationId,
+          aggregateKind: "ipu_restraint_event",
+          aggregateId: row.id,
+        });
+        return restraintView(row);
+      });
+    },
+
+    async reassessRestraint(actor: IpuWriteActor, restraintId: string, body: ReassessRestraintBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [ev] = await t.select().from(RE).where(eq(RE.id, restraintId)).limit(1);
+        if (!ev) throw new NotFoundError("ipu_restraint_event not found");
+        // §2.10 — the machine decides the disposition (continue keeps active; modify/release close it).
+        const result = planReassessmentOutcome(ev.state, body.outcome);
+        await t.insert(RR).values({
+          organizationId: actor.organizationId,
+          restraintEventId: restraintId,
+          reassessedByMembershipId: actor.membershipId,
+          outcome: body.outcome,
+          notes: body.notes ?? null,
+          nextDueAt: new Date(body.nextDueAt),
+        });
+        let updated = ev;
+        if (result.closesEvent) {
+          const [u] = await t
+            .update(RE)
+            .set({ state: result.nextState, releasedAt: new Date(), releasedByMembershipId: actor.membershipId, version: ev.version + 1 })
+            .where(eq(RE.id, restraintId))
+            .returning();
+          if (u) updated = u;
+        }
+        await outbox.publish(t, {
+          eventName: result.outbox,
+          payload: { organizationId: actor.organizationId, restraintEventId: restraintId, outcome: body.outcome },
+          organizationId: actor.organizationId,
+          aggregateKind: "ipu_restraint_event",
+          aggregateId: restraintId,
+        });
+        return restraintView(updated);
+      });
+    },
+
+    async releaseRestraint(actor: IpuWriteActor, restraintId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [ev] = await t.select().from(RE).where(eq(RE.id, restraintId)).limit(1);
+        if (!ev) throw new NotFoundError("ipu_restraint_event not found");
+        const result = planReassessmentOutcome(ev.state, "release");
+        const [u] = await t
+          .update(RE)
+          .set({ state: result.nextState, releasedAt: new Date(), releasedByMembershipId: actor.membershipId, version: ev.version + 1 })
+          .where(eq(RE.id, restraintId))
+          .returning();
+        if (!u) throw new ConflictError("restraint release failed");
+        await outbox.publish(t, {
+          eventName: "m37.restraint.released",
+          payload: { organizationId: actor.organizationId, restraintEventId: restraintId },
+          organizationId: actor.organizationId,
+          aggregateKind: "ipu_restraint_event",
+          aggregateId: restraintId,
+        });
+        return restraintView(u);
       });
     },
 

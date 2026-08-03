@@ -6,11 +6,13 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { P, RN_COVERAGE, STEP_UP } from "./guards";
 import {
+  ApplyRestraintBodySchema,
   BedCleaningBodySchema,
   CreateUnitBodySchema,
   DateParamsSchema,
   IdParamsSchema,
   OpenAdmissionBodySchema,
+  ReassessRestraintBodySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -74,6 +76,37 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       return service.transitionBed(actor, id, body);
     },
   );
+
+  // 22. POST /ipu-admissions/:id/restraint — apply restraint (step-up + RN coverage). §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/restraint",
+    { preHandler: [P("m37.restraint.apply"), STEP_UP("m37.restraint.apply"), RN_COVERAGE("m37.restraint.apply")] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(ApplyRestraintBodySchema, request.body);
+      return reply.code(201).send(await service.applyRestraint(actor, id, body));
+    },
+  );
+
+  // 23. POST /ipu-restraint/:id/reassess — record a restraint reassessment. §4.1.
+  app.post(
+    "/api/v1/ipu-restraint/:id/reassess",
+    { preHandler: [P("m37.restraint.reassess")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const body = parse(ReassessRestraintBodySchema, request.body);
+      return service.reassessRestraint(actor, id, body);
+    },
+  );
+
+  // 24. POST /ipu-restraint/:id/release — release a restraint. §4.1.
+  app.post("/api/v1/ipu-restraint/:id/release", { preHandler: [P("m37.restraint.release")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.releaseRestraint(actor, id);
+  });
 
   // 38. GET /ipu-census/:date — read census snapshot for a date. §4.1.
   app.get("/api/v1/ipu-census/:date", { preHandler: [P("m37.census.read")] }, async (request) => {

@@ -215,6 +215,11 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // and flips any now-orphaned account to `revoked` with its contact ciphers shredded; the recording BYTES
   // in MinIO are M22's to crypto-erase (M31 stores only refs). The `subjectId` is the patient.
   "portal_record",
+  // M37-T11: a patient's IPU record (the ipu_admission subtree). M37 registers the REAL eraser via the
+  // composition-root registerModuleErasers hook over this deny-stub — under an M4 destruction certificate it
+  // deletes the FK-ordered satellites + the admission roots + the per-patient visitor restrictions (§7.7 /
+  // D8); aggregate census snapshots survive (they carry no patient_id, the D14 reproducibility rule).
+  "ipu_record",
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

@@ -2,7 +2,13 @@
 // compose over. The Drizzle implementation (./service-drizzle) runs each op inside one withOrgContext tx
 // under RLS and drives the pure @wardenx/inpatient machines; a test can substitute an in-memory backend.
 import type { IpuReadActor, IpuWriteActor } from "./actor";
-import type { BedCleaningBody, CreateUnitBody, OpenAdmissionBody } from "./ipu-typebox";
+import type {
+  ApplyRestraintBody,
+  BedCleaningBody,
+  CreateUnitBody,
+  OpenAdmissionBody,
+  ReassessRestraintBody,
+} from "./ipu-typebox";
 
 export interface UnitView {
   readonly id: string;
@@ -35,6 +41,15 @@ export interface BedView {
   readonly version: number;
 }
 
+export interface RestraintView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly restraintKind: string;
+  readonly state: string;
+  readonly reassessmentIntervalMinutes: number;
+  readonly version: number;
+}
+
 export interface CensusRow {
   readonly unitId: string | null;
   readonly remoteFacilityId: string | null;
@@ -59,4 +74,7 @@ export interface IpuRouteService {
   openAdmission(actor: IpuWriteActor, body: OpenAdmissionBody): Promise<AdmissionView>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
+  applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody): Promise<RestraintView>;
+  reassessRestraint(actor: IpuWriteActor, restraintId: string, body: ReassessRestraintBody): Promise<RestraintView>;
+  releaseRestraint(actor: IpuWriteActor, restraintId: string): Promise<RestraintView>;
 }

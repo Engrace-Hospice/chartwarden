@@ -1197,4 +1197,9 @@ export type DataClass =
   // registered eraser (M31-T06) under an M4 destruction certificate (§3.7 / D15); the recording BYTES in
   // MinIO are crypto-erased by M22's own `telehealth_recording`/`documents` eraser — M31 stores only the
   // refs, which it shreds. `subjectId` is the patient being destroyed.
-  | "portal_record";
+  | "portal_record"
+  // M37-T11: a patient's IPU record (ipu_admission subtree + gip/irc/restraint/iv-overlay/body-release/
+  // visitor/meal satellites + per-patient visitor restrictions). M37 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — under an M4 destruction certificate it deletes the subtree
+  // in FK order (§7.7 / D8); aggregate census snapshots survive (no patient_id, D14). `subjectId` = patient.
+  | "ipu_record";
