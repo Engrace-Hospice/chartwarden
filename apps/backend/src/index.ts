@@ -335,12 +335,14 @@ import {
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
 // bound transactional-outbox publisher. (The remaining §4.1 routes + §7.7 eraser + SeamRegistry extend this.)
 import {
+  type IpuAiPromptRegistryPort,
   M37_OUTBOX_EVENTS,
   buildDrizzleIpuRouteService,
   mountM37Routes,
   registerIpuErasers,
   registerIpuSeams,
   registerM37AbacPredicates,
+  validateIpuAIBlock,
 } from "./modules/37-ipu/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
@@ -1933,6 +1935,17 @@ if ((import.meta as { main?: boolean }).main) {
   }
   // Close the separate M35 platform-ops credential pool on shutdown (when configured).
   if (platformDbHandle) app.addHook("onClose", () => platformDbHandle.close());
+
+  // M37 D16 — the AI-prohibited-zone boot validator (§8.6). With a db, M32's real AIPromptRegistry is
+  // registered (bootSeams ran inside buildServer), so this asks the D18 table-only query whether any active
+  // prompt targets an M37 mutation zone (GIP criteria / IRC cap-override / restraint / body-release) and
+  // REFUSES to listen if so — the deny-stub throws on a no-db slice boot, so it is gated on a real db. This
+  // is belt-and-suspenders with the central AI_PROHIBITED_ZONES table (the R30 registration-time guard).
+  if (dbHandle) {
+    app.addHook("onReady", async () => {
+      await validateIpuAIBlock(getSeam("AIPromptRegistry") as unknown as IpuAiPromptRegistryPort);
+    });
+  }
 
   // M1-T10 — boot-populate `outbox_event_catalog` from the FULL catalog (idempotent UPSERT on event_name;
   // platform reference data, NON_ORG_SCOPED). Fail-soft: a failure here logs but never blocks boot (the

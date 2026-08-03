@@ -55,6 +55,11 @@ export const AI_PROHIBITED_ZONES: readonly AiProhibitedZone[] = [
     prefixes: ["cost_report_", "allocation_", "apportionment_"],
   },
   { module: "m28", decision: "M28 D14", prefixes: ["fhir_"] },
+  {
+    module: "m37",
+    decision: "M37 D16",
+    prefixes: ["gip_criteria_", "irc_cap_override_", "ipu_restraint_", "ipu_body_release_"],
+  },
 ];
 
 /** Every prohibited prefix, flattened — the set a template registration is checked against (R30). */
