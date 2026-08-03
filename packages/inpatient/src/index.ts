@@ -12,3 +12,6 @@ export * from "./domain/gip-criteria/schema";
 export * from "./domain/gip-criteria/validate";
 export * from "./domain/iv-safety/titration-window-catalog";
 export * from "./domain/iv-safety/overlay-builder";
+export * from "./domain/rn-coverage/window-builder";
+export * from "./domain/rn-coverage/horizon-evaluator";
+export * from "./domain/rn-coverage/break-glass";

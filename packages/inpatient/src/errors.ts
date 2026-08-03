@@ -77,6 +77,14 @@ export const M37_ERROR_STATUS = {
   IRC_CAP_OVERRIDE_EXTENSION_TOO_LONG: 409,
   // §2.5 — a cap-override without fresh M2 step-up (Org Admin / Compliance Officer only).
   IRC_CAP_OVERRIDE_STEP_UP_REQUIRED: 403,
+
+  // ── §2.3 D3 24/7 RN-coverage invariant (M37-T07) ───────────────────────────────────────────────────
+  // §2.3 — a unit cannot exit `provisional` (activate) without 168h of forward RN coverage.
+  IPU_UNIT_ACTIVATION_COVERAGE_INSUFFICIENT: 412,
+  // §2.3 — an RN-coverage break-glass override that was not ended by a NON-break-glass actor.
+  RN_BREAK_GLASS_ENDER_INVALID: 403,
+  // §2.3 — an RN-coverage break-glass without fresh M2 step-up (Org Admin / Compliance Officer / Med Director).
+  RN_BREAK_GLASS_STEP_UP_REQUIRED: 403,
 } as const;
 
 /** A machine-readable M37 domain failure code. */
