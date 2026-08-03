@@ -1,7 +1,7 @@
 {
   "totals": {
-    "Implemented": 38,
-    "Partial": 1,
+    "Implemented": 39,
+    "Partial": 0,
     "Placeholder": 1
   },
   "rows": [
@@ -722,12 +722,15 @@
     {
       "id": 37,
       "module": "M37 Inpatient Unit (IPU) Management",
-      "status": "Partial",
+      "status": "Implemented",
       "spec": true,
       "schema": true,
       "migration": true,
-      "routes": false,
-      "enriched": null,
+      "routes": true,
+      "enriched": {
+        "routes": 7,
+        "enriched": 7
+      },
       "screens": false,
       "tests": true,
       "adapter": null,

@@ -8051,3 +8051,42 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Rotate the per-tenant HMAC cursor-signing key (R39). STEP-UP required — the rotation invalidates every outstanding signed search cursor, so a stolen session must not be able to do it. The key never leaves the server",
   },
 });
+
+// ── M37 Inpatient Unit (IPU) Management — the §4.2 request/response DTOs the T11b core route spine binds
+// (the same TypeBox schemas the handlers `parse(...)` / return, so the contract cannot drift). The
+// remaining §4.1 routes are enriched as they land.
+import {
+  AdmissionListSchema as M37AdmissionListSchema,
+  AdmissionViewSchema as M37AdmissionViewSchema,
+  BedCleaningBodySchema as M37BedCleaningBodySchema,
+  BedViewSchema as M37BedViewSchema,
+  CensusListSchema as M37CensusListSchema,
+  CreateUnitBodySchema as M37CreateUnitBodySchema,
+  OpenAdmissionBodySchema as M37OpenAdmissionBodySchema,
+  UnitListSchema as M37UnitListSchema,
+  UnitViewSchema as M37UnitViewSchema,
+} from "../../apps/backend/src/modules/37-ipu/routes/ipu-typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/inpatient-units": { response: M37UnitListSchema, summary: "List IPU units for the org (§4.1)" },
+  "POST /api/v1/inpatient-units": {
+    body: M37CreateUnitBodySchema,
+    response: M37UnitViewSchema,
+    summary: "Create an IPU unit (org admin; step-up). RN-coverage-exempt admin route (§2.3)",
+  },
+  "GET /api/v1/ipu-admissions": { response: M37AdmissionListSchema, summary: "List IPU admissions (§4.1)" },
+  "POST /api/v1/ipu-admissions": {
+    body: M37OpenAdmissionBodySchema,
+    response: M37AdmissionViewSchema,
+    summary:
+      "Open an IPU admission. GIP/IRC compose the m37.ipu.rn_coverage_active gate (412 IPU_RN_COVERAGE_UNAVAILABLE when the unit is uncovered); arranged remote-IPU bypasses (§2.2/§2.3)",
+  },
+  "GET /api/v1/ipu-admissions/:id": { response: M37AdmissionViewSchema, summary: "Read an IPU admission (§4.1)" },
+  "POST /api/v1/ipu-beds/:id/cleaning-status": {
+    body: M37BedCleaningBodySchema,
+    response: M37BedViewSchema,
+    summary:
+      "Transition a bed's §2.12 cleaning state (409 ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge); writes the ipu_bed_cleaning_event ledger row + emits the M33/M36 signal",
+  },
+  "GET /api/v1/ipu-census/:date": { response: M37CensusListSchema, summary: "Read the IPU census snapshot for a date (§4.1)" },
+});

@@ -318,9 +318,15 @@ import {
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
-// M37 (Inpatient Unit / IPU Management) boot surface — as of T11b the §4.7 ABAC predicate registration
-// (the §4.1 routes + §4.4 outbox catalog + §7.7 eraser + SeamRegistry land across the remaining T11 slices).
-import { registerM37AbacPredicates } from "./modules/37-ipu/index";
+// M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
+// and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
+// bound transactional-outbox publisher. (The remaining §4.1 routes + §7.7 eraser + SeamRegistry extend this.)
+import {
+  M37_OUTBOX_EVENTS,
+  buildDrizzleIpuRouteService,
+  mountM37Routes,
+  registerM37AbacPredicates,
+} from "./modules/37-ipu/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -1312,6 +1318,7 @@ if ((import.meta as { main?: boolean }).main) {
     // write's own tx.
     M32_OUTBOX_EVENTS,
     M35_OUTBOX_EVENTS,
+    M37_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -1340,6 +1347,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
+  const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -1535,6 +1543,13 @@ if ((import.meta as { main?: boolean }).main) {
                     )
                 : undefined,
             }),
+          });
+          // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
+          // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
+          // drives the pure @wardenx/inpatient §2 machines, and emits its §4.4 m37.* event through the
+          // catalog-validating tx publisher (callerModule `m37`) in the same unit of work (D17 outbox-only).
+          mountM37Routes(app, {
+            service: buildDrizzleIpuRouteService(dbHandle.db, { outbox: m37OutboxPublisher }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every

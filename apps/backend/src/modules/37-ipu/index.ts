@@ -13,3 +13,15 @@ export {
 // §4.6 — the permission keys M37 contributes to M3 (declared in @wardenx/auth; re-exported for the route
 // layer's requirePermission handlers).
 export { M37_CONTRIBUTED_PERMISSIONS, type M37ContributedPermissionKey } from "@wardenx/auth";
+
+// §4.4 — the outbox event catalog (the composition root merges it into the boot catalog).
+export { M37_OUTBOX_EVENTS } from "./events-by-m37";
+
+// §4.1 — the route mount + Drizzle route service (T11b core spine).
+export { mountM37Routes, type M37MountDeps } from "./routes/mount";
+export {
+  buildDrizzleIpuRouteService,
+  type IpuRouteServiceDeps,
+  type WriteOutboxPort,
+} from "./routes/service-drizzle";
+export type { IpuRouteService } from "./routes/service";
