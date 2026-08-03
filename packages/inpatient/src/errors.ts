@@ -65,6 +65,18 @@ export const M37_ERROR_STATUS = {
   IV_MAX_CONTINUOUS_DURATION_REACHED: 412,
   // §2.6 — no bedside observation within the overlay's bedside-check interval.
   IV_BEDSIDE_CHECK_OVERDUE: 412,
+
+  // ── §2.5 D6 IRC 5-day cap enforcer (M37-T06) ───────────────────────────────────────────────────────
+  // §2.5 — the event is not accepted from the irc_episode's current state (`closed` is terminal).
+  ILLEGAL_IRC_TRANSITION: 409,
+  // §2.5 — the ABAC m37.irc_episode.within_cap gate: an IRC billing action on a breached episode.
+  IRC_CAP_BREACHED: 412,
+  // §2.5 — a cap-override break-glass with an override reason below the 100-char floor.
+  IRC_CAP_OVERRIDE_REASON_TOO_SHORT: 422,
+  // §2.5 — a cap-override extension beyond the 2-day platform-floor maximum (tenants cannot loosen).
+  IRC_CAP_OVERRIDE_EXTENSION_TOO_LONG: 409,
+  // §2.5 — a cap-override without fresh M2 step-up (Org Admin / Compliance Officer only).
+  IRC_CAP_OVERRIDE_STEP_UP_REQUIRED: 403,
 } as const;
 
 /** A machine-readable M37 domain failure code. */
