@@ -264,6 +264,15 @@ export interface AuthzRouteDeps {
   notifier: ComplianceNotifier;
   /** Resolves the actor's effective permissions (anti-escalation + GET /me/permissions). */
   effectivePermissions: ActorPermissionResolver;
+  /**
+   * §2.5 cache invalidation on the LIVE RBAC engine (TASK-004). Optional so slice/tests without a
+   * registered engine still mount; production binds the boot-registered RbacEngineHandle's hooks so
+   * a role grant/revoke/edit drops the org's cached permission sets IMMEDIATELY (not after the TTL).
+   */
+  rbacInvalidation?: {
+    invalidateActor(orgId: string, userId: string): void;
+    invalidateOrg(orgId: string): void;
+  };
   /** Audit sink for the M3 lifecycle events (audit() executor — denylist runs there). */
   audit: AuditExecutor;
   /** Break-glass time-box in seconds (spec §3.5 default +4h, D1). */

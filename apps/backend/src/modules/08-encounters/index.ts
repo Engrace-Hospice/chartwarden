@@ -94,6 +94,7 @@ export {
   type EncounterEraseCounts,
   type EncounterEraseStore,
   type EncounterEraserDeps,
+  createDrizzleEncounterEraseStore,
   createEncounterEraser,
   createInMemoryEncounterEraseStore,
   eraseEncounterRecord,

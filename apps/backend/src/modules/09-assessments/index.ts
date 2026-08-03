@@ -102,6 +102,7 @@ export {
   type AssessmentEraseStore,
   type AssessmentEraserDeps,
   createAssessmentEraser,
+  createDrizzleAssessmentEraseStore,
   createInMemoryAssessmentEraseStore,
   eraseAssessmentRecord,
   registerAssessmentErasers,

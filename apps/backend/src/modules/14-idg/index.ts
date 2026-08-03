@@ -103,6 +103,7 @@ export {
   type IdgEraserDeps,
   type IdgEraseStore,
   type InMemoryIdgEraseSeed,
+  createDrizzleIdgEraseStore,
   createIdgEraser,
   createInMemoryIdgEraseStore,
   eraseIdgRecord,

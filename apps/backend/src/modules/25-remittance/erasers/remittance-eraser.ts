@@ -7,7 +7,9 @@
 // store is injected by the composition root; this wrapper adapts it to the M1 `DataEraser` contract and
 // registers the REAL eraser over the Phase-0 deny-stub via the injected `registerEraser` hook (the M23
 // import-boundary posture — the bootstrap registry is not imported here).
+import { type DbClient, schema } from "@wardenx/db";
 import type { DataClass, DataEraser } from "@wardenx/types";
+import { and, eq } from "drizzle-orm";
 
 /** The M4 destruction-registry hook the composition root binds (its bootstrap `registerEraser`). */
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
@@ -46,6 +48,30 @@ export function createInMemoryRemittanceEraseStore(): RemittanceEraseStore {
   return {
     async erasePrLedgerForPatient() {
       return 0;
+    },
+  };
+}
+
+/**
+ * The REAL Drizzle-backed destruction store (§3.7): deletes the patient's `patient_responsibility_ledger`
+ * rows — and ONLY those. The remittance line/adjustment/remark history is 7-year billing-substantiating
+ * evidence that rolls off via the M4 partition manager at the retention boundary, NOT per-patient, so this
+ * store deliberately implements nothing beyond what the port asks.
+ *
+ * Runs on the PRIVILEGED M4 destruction-cert connection the composition root binds (wardenx_admin —
+ * migration 0083 grants `wardenx_app` no DELETE on the PR ledger, so the app-role `withOrgContext` path
+ * cannot destroy; the M24/M26 sibling posture). The explicit `organization_id` predicate keeps a
+ * certificate from ever reaching across tenants; the count is the rows ACTUALLY deleted (`.returning()`).
+ */
+export function createDrizzleRemittanceEraseStore(db: DbClient): RemittanceEraseStore {
+  const L = schema.patientResponsibilityLedger;
+  return {
+    async erasePrLedgerForPatient(organizationId, patientId) {
+      const deleted = await db
+        .delete(L)
+        .where(and(eq(L.organizationId, organizationId), eq(L.patientId, patientId)))
+        .returning({ id: L.id });
+      return deleted.length;
     },
   };
 }

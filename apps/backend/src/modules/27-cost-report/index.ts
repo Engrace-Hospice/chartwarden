@@ -65,6 +65,7 @@ export {
   type CostReportEraserDeps,
   COST_REPORT_DATA_CLASS,
   createCostReportEraser,
+  createDrizzleCostReportEraseStore,
   registerCostReportErasers,
 } from "./erasers/cost-report-eraser";
 

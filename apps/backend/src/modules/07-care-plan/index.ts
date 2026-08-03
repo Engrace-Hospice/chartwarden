@@ -143,6 +143,7 @@ export {
   type CarePlanEraseStore,
   type CarePlanEraserDeps,
   createCarePlanEraser,
+  createDrizzleCarePlanEraseStore,
   createInMemoryCarePlanEraseStore,
   eraseCarePlanRecord,
   registerCarePlanErasers,

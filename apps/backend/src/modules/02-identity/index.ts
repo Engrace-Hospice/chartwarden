@@ -147,10 +147,13 @@ export function mountIdentityRoutes(
   _registerIdentityRoutes(app, deps);
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
+// TASK-003/ARCH-007: `createDrizzleIdentityEraserStore` is the production store the composition
+// root injects via `deps.store` so the erase destroys real rows, not an in-memory Map.
 export {
   type IdentityEraserDeps,
   type IdentityEraserSeed,
   type IdentityEraserStore,
+  createDrizzleIdentityEraserStore,
   createIdentityEraser,
   createInMemoryIdentityEraserStore,
   registerIdentityErasers,

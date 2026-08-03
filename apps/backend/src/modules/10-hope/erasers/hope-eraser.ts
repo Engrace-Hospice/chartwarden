@@ -20,7 +20,10 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`hope_record` is in REQUIRED_ERASERS); the
 // composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { and, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** The per-table counts a HOPE-record destruction removed (recorded on the destruction cert, §8.4). */
@@ -200,6 +203,120 @@ export function createInMemoryHopeEraseStore(seed: InMemoryHopeEraseSeed = {}): 
         used = true;
         return out;
       },
+    },
+  };
+}
+
+/**
+ * The Drizzle-backed store: the REAL destruction path (TASK-003 / ARCH-007). Runs inside
+ * `withOrgContext` so RLS scopes every statement to the acting org. The CMS 10-year retention decision
+ * itself stays in the ORCHESTRATOR ({@link eraseHopeRecord} refuses with
+ * {@link HopeRetentionBlockedError}); this store only answers `getSubmittedAssessments` truthfully —
+ * an assessment is "submitted" iff a `hope_submission_item` links it to a `hope_submission` whose
+ * `transmitted_at` is set (the iQIES transmission instant that anchors the 10-year clock).
+ *
+ * `hope_assessment` is RANGE-partitioned by `target_date`: every statement targets the PARTITIONED
+ * PARENT (exactly how the M10 route services access it), so Postgres routes across all monthly
+ * partitions. This store always takes the §8.4-step-2 ROW-DELETE path (`target_date < beforeDate` via
+ * the parent) and reports `partitionsDropped: 0` — DETACH+DROP is a DDL fast-path over the same
+ * semantics that requires table ownership and partition-boundary bookkeeping a tenant-scoped
+ * transaction cannot do; the row path is correct at every granularity. `hope_submission` /
+ * `hope_submission_item` rows SURVIVE untouched (compliance evidence; the envelope CONTENT is purged
+ * by M4's envelope-purge worker). Counts come from `returning` lengths (rows ACTUALLY removed). The
+ * M10 grants give `wardenx_app` no DELETE (append-only), so under an app-role connection Postgres
+ * REFUSES the delete and this store THROWS — the destruction path must be handed a privileged
+ * (wardenx_admin) `DbClient` at the composition root.
+ */
+export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
+  const A = schema.hopeAssessments;
+  const SCHED = schema.hopeTimepointSchedules;
+  const SFV = schema.symptomFollowUpVisits;
+  const FINDING = schema.hopeValidationFindings;
+  const SUB = schema.hopeSubmissions;
+  const ITEM = schema.hopeSubmissionItems;
+
+  return {
+    async lockPatient(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // Advisory lock on the patient key (§8.4 #1), released by the surrounding transaction commit.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
+      });
+    },
+
+    async getSubmittedAssessments(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({ id: A.id, transmittedAt: SUB.transmittedAt })
+          .from(A)
+          .innerJoin(ITEM, eq(ITEM.hopeAssessmentId, A.id))
+          .innerJoin(SUB, eq(SUB.id, ITEM.hopeSubmissionId))
+          .where(and(eq(A.patientId, patientId), isNotNull(SUB.transmittedAt)));
+        // transmittedAt is non-null under the isNotNull predicate; keep the guard for the type system.
+        return rows
+          .filter((r): r is { id: string; transmittedAt: Date } => r.transmittedAt !== null)
+          .map((r) => ({ id: r.id, transmittedAt: r.transmittedAt.toISOString() }));
+      });
+    },
+
+    async eraseHopeSubtree(organizationId, patientId, beforeDate) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const zero: HopeEraseCounts = {
+          schedules: 0,
+          sfvs: 0,
+          validationFindings: 0,
+          assessments: 0,
+          partitionsDropped: 0,
+        };
+        const boundary = new Date(beforeDate);
+        // The erasable assessments (`target_date < beforeDate`, via the partitioned parent) — the
+        // validation findings are keyed on assessment id (plain uuid), so resolve the ids first.
+        const erasableIds = (
+          await tx
+            .select({ id: A.id })
+            .from(A)
+            .where(and(eq(A.patientId, patientId), lt(A.targetDate, boundary)))
+        ).map((r) => r.id);
+
+        // §8.4 step 3 children first. Findings are scoped to the ERASED assessments; SFVs and
+        // schedules are patient-level children (plain-uuid links, no FK from them to the parent).
+        const validationFindings =
+          erasableIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .delete(FINDING)
+                  .where(inArray(FINDING.hopeAssessmentId, erasableIds))
+                  .returning({ id: FINDING.id })
+              ).length;
+        const sfvs = (
+          await tx
+            .delete(SFV)
+            .where(eq(SFV.patientId, patientId))
+            .returning({ id: SFV.id })
+        ).length;
+        // §8.4 step 2: the assessment rows themselves — signed AND superseded — via the parent.
+        // Deleted BEFORE the schedules: `hope_assessment.schedule_id` is a real intra-module FK, so a
+        // schedule delete with a surviving referencing assessment would (correctly) fail closed.
+        const assessments =
+          erasableIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .delete(A)
+                  .where(and(eq(A.patientId, patientId), lt(A.targetDate, boundary)))
+                  .returning({ id: A.id })
+              ).length;
+        const schedules = (
+          await tx
+            .delete(SCHED)
+            .where(eq(SCHED.patientId, patientId))
+            .returning({ id: SCHED.id })
+        ).length;
+
+        // Row-delete path only — see the factory doc; a partition is never DETACHed/DROPped here.
+        // Idempotent by construction: a second erase finds nothing and reports `zero`'s shape.
+        return { ...zero, schedules, sfvs, validationFindings, assessments };
+      });
     },
   };
 }

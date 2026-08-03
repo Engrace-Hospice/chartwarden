@@ -105,6 +105,7 @@ export {
   type OrderEraseOptions,
   type OrderEraseStore,
   type OrderEraserDeps,
+  createDrizzleOrderEraseStore,
   createInMemoryOrderEraseStore,
   createOrderEraser,
   eraseOrderRecord,

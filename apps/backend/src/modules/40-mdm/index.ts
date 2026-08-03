@@ -30,7 +30,13 @@ export {
 // codePath to land), so the entity-directory / merge-console / NPPES-console screens are tracked for
 // the follow-up that adds one. Cache grammar (§4.8) + audit catalog (§8.1, `m40.*` in @wardenx/audit)
 // ship with this task; DR Tier 4 (directory-style reference data; NPPES is the sole external feed).
-export { type MdmEraserDeps, registerMdmErasers } from "./erasers/mdm-eraser";
+// TASK-003/ARCH-007: `createDrizzleMdmEraseStore` is the production store the composition root
+// injects via `deps.store` (note the mdm_provisional DELETE-grant caveat in its header).
+export {
+  type MdmEraserDeps,
+  createDrizzleMdmEraseStore,
+  registerMdmErasers,
+} from "./erasers/mdm-eraser";
 
 // FB-T02 — the production Drizzle MDM adapters (over the M40 tables) + the composition-root route
 // mount. `createDbMdmStore`/`createDbBaaStore` back the published `MdmEntityProvider` /

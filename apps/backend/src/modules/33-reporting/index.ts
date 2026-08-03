@@ -42,7 +42,9 @@ export {
 // cleanup; the compliance-class `report_drilldown_audit` is destruction-blocked). Registered over the
 // Phase-0 deny-stub by the composition root's `registerModuleErasers` hook.
 export {
+  type DrizzleReportingEraseDeps,
   type ReportingEraserDeps,
+  createDrizzleReportingEraseStore,
   createReportingEraser,
   registerReportingErasers,
 } from "./erasers/reporting-eraser";

@@ -115,6 +115,7 @@ export {
   type MedicationOrderEraseOptions,
   type MedicationOrderEraserDeps,
   type MedicationOrderEraseStore,
+  createDrizzleMedicationOrderEraseStore,
   createInMemoryMedicationOrderEraseStore,
   createMedicationOrderEraser,
   eraseMedicationOrderRecord,

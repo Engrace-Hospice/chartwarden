@@ -19,7 +19,10 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`medication_order_record` is in REQUIRED_ERASERS);
 // the composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** The per-table counts a medication-order-record destruction removed (recorded on the destruction cert, §7.7). */
@@ -121,6 +124,100 @@ export function createInMemoryMedicationOrderEraseStore(seed: InMemoryMedication
         used = true;
         return out;
       },
+    },
+  };
+}
+
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/**
+ * The Drizzle-backed store: the REAL destruction path. Runs inside `withOrgContext` so RLS scopes every
+ * statement to the acting org (a destruction certificate can never reach across tenants). Deletes the
+ * partitioned `medication_order` parent via the partition-key predicate the route tier uses
+ * (`patient_id` + `created_at < retentionAsOf`) — the row-delete arm of the M11 D12 precedent. The
+ * DETACH+DROP arm is a DDL maintenance path that needs table-owner privileges the RLS-scoped
+ * `wardenx_app` role does not hold, so this store always reports `partitionsDropped: 0`; a wholly-
+ * erasable partition is still fully emptied row-by-row, which is destruction-equivalent (the partition
+ * shell holds no PHI). Any statement the database refuses THROWS and rolls the erase back — the erase
+ * never reports success it did not perform.
+ */
+export function createDrizzleMedicationOrderEraseStore(db: DbClient): MedicationOrderEraseStore {
+  const MO = schema.medicationOrders;
+  const TRANS = schema.medicationOrderTransmissions;
+  const REFILL = schema.refillRequests;
+  const EPCS = schema.epcsSigningAttempts;
+
+  /** The patient's erasable medication-order ids (`created_at < boundary`) — the cascade key. */
+  const orderIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
+    (
+      await tx
+        .select({ id: MO.id })
+        .from(MO)
+        .where(and(eq(MO.patientId, patientId), lt(MO.createdAt, boundary)))
+    ).map((r) => r.id);
+
+  return {
+    async lockPatient(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // Advisory lock on the patient key, released by the surrounding transaction commit.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
+      });
+    },
+
+    async eraseMedicationOrdersSubtree(organizationId, patientId, retentionAsOf) {
+      if (Number.isNaN(Date.parse(retentionAsOf))) {
+        throw new Error(`M12_ERASER_BAD_RETENTION_BOUNDARY: ${retentionAsOf}`);
+      }
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const boundary = new Date(retentionAsOf);
+        const orderIds = await orderIdsFor(tx, patientId, boundary);
+        const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
+          (await run()).length;
+
+        // Children first, cascaded from the DELETED orders (no SQL FK to the partitioned parent — the
+        // cascade is app-owned). `refill_request` is keyed on its SOURCE order (§7.7: "whose source
+        // order matches"); a refill that minted a surviving order goes with its source, per the spec.
+        const transmissions =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(TRANS)
+                  .where(inArray(TRANS.medicationOrderId, orderIds))
+                  .returning({ id: TRANS.id }),
+              );
+        const refillRequests =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(REFILL)
+                  .where(inArray(REFILL.sourceMedicationOrderId, orderIds))
+                  .returning({ id: REFILL.id }),
+              );
+        const epcsSigningAttempts =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(EPCS)
+                  .where(inArray(EPCS.medicationOrderId, orderIds))
+                  .returning({ id: EPCS.id }),
+              );
+
+        // The partitioned parent, via the partition-key predicate (row-delete arm).
+        const medicationOrders = await del(() =>
+          tx
+            .delete(MO)
+            .where(and(eq(MO.patientId, patientId), lt(MO.createdAt, boundary)))
+            .returning({ id: MO.id }),
+        );
+
+        // `dosespot_prescriber` / `refill_inbox_policy` / `controlled_substance_policy` are org-scoped
+        // tenant configuration, and `dosespot_webhook_event` is a per-tenant encrypted receipt — none of
+        // them are patient rows, so the erase never touches them (§7.7 #5).
+        return { medicationOrders, transmissions, refillRequests, epcsSigningAttempts, partitionsDropped: 0 };
+      });
     },
   };
 }

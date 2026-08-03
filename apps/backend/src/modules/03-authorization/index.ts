@@ -65,6 +65,7 @@ export { createDbRoleStore } from "./role-store";
 export { createDbMembershipRoleStore } from "./membership-role-store";
 export { createDbBreakGlassStore } from "./break-glass-store";
 
+import type { RbacEngineHandle } from "@wardenx/auth";
 import { organizationSettingsReader, schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -97,7 +98,17 @@ import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/au
  * ledger at the composition root — and land in follow-up M3 wiring (TASK-004).
  * requirePermission is the live RBAC resolver.
  */
-export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountAuthorizationRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  /**
+   * TASK-004 — the boot-registered RBAC engine handle (the SAME resolver + §2.5 cache
+   * `requirePermission` runs on; a second instance here would split the invalidation cache).
+   * The composition root passes it; absent (slice/tests), the fixed-empty resolver stands and the
+   * in-memory ledger records the gap.
+   */
+  rbac?: RbacEngineHandle,
+): void {
   const breakGlass = _dbBreakGlass(db);
   // §2.2 / §7.4 — wire the break-glass branch over the durable store; the per-access critical row is
   // written under withOrgContext (db) so RLS scopes it. Idempotent (sets the contract's seams).
@@ -109,7 +120,21 @@ export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): vo
     engagements: _engagements().store,
     auditorSessions: _auditorMinter().minter,
     notifier: _notifier().notifier,
-    effectivePermissions: _fixedPerms([]).resolver,
+    // TASK-004 — GET /me/permissions + the §6 anti-escalation check read the LIVE engine (the
+    // resolver only consumes organizationId/userId from its context). Fixed-empty only when no
+    // engine handle was passed (slice/tests) — never on the production mount.
+    effectivePermissions: rbac
+      ? ({ organizationId, userId }) =>
+          rbac.resolver({ organizationId, userId } as Parameters<RbacEngineHandle["resolver"]>[0])
+      : _fixedPerms([]).resolver,
+    ...(rbac
+      ? {
+          rbacInvalidation: {
+            invalidateActor: (orgId: string, userId: string) => rbac.invalidateActor(orgId, userId),
+            invalidateOrg: (orgId: string) => rbac.invalidateOrg(orgId),
+          },
+        }
+      : {}),
     audit: db,
     // audit C2 — tenant policy for the break-glass co-sign requirement, read server-side from the
     // M1 organization-settings registry (`breakglass_cosign_required`, M3's key). Fail CLOSED to the

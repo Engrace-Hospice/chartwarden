@@ -106,6 +106,7 @@ export {
   type EmarEraserDeps,
   type EmarEraseStore,
   type InMemoryEmarEraseSeed,
+  createDrizzleEmarEraseStore,
   createEmarEraser,
   createInMemoryEmarEraseStore,
   eraseEmarRecord,

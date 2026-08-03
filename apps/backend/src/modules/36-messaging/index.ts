@@ -32,8 +32,13 @@
 // tenant DEK, then deletes structural + sole-tenant cross-tenant rows. Screens (§5) defer — M36 has
 // no `apps/web` manifest codePath (the §5 inventory targets apps/frontend/portal/admin); the §4.10
 // STRIDE model + DR/INT inventory ship as module docs (./THREAT_MODEL.md).
+// TASK-003/ARCH-007: `createDrizzleMessagingEraseStore` is the production store the composition
+// root injects via `deps.store` (bind `soleTenantUserIds` from a platform-context membership
+// enumerator; note the `presence` DELETE-grant caveat in its header).
 export {
+  type DrizzleMessagingEraseDeps,
   type MessagingEraserDeps,
+  createDrizzleMessagingEraseStore,
   registerMessagingErasers,
   createMessagingEraser,
 } from "./erasers/messaging-eraser";

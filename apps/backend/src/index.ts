@@ -17,7 +17,7 @@ import {
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
 } from "@wardenx/auth";
-import type { SessionContextStore } from "@wardenx/auth";
+import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withPlatformContext } from "@wardenx/tenancy";
@@ -47,9 +47,14 @@ import {
   wireOutboxCatalog,
 } from "./bootstrap/outbox-persister";
 import {
+  M1_OUTBOX_DISPATCHER_JOB_ID,
+  createOutboxDispatcher,
+} from "./bootstrap/outbox-dispatcher";
+import {
   mountIdentityRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
+  createDrizzleIdentityEraserStore,
 } from "./modules/02-identity/index";
 import {
   mountAuthorizationRoutes,
@@ -59,6 +64,8 @@ import {
   assertAuditActionCatalog,
   mountAuditRoutes,
   registerAuditErasers,
+  createDrizzleAuditEraserStore,
+  createDrizzleAuditEraserPorts,
 } from "./modules/04-audit/index";
 import {
   mountPatientRoutes,
@@ -67,7 +74,9 @@ import {
   registerPatientSeams,
   createDrizzlePatientReaderStore,
   createDrizzlePatientMutatorStore,
+  buildM29ProposalApplierConsumer,
   M5_OUTBOX_EVENTS,
+  createDrizzlePatientEraseStore,
 } from "./modules/05-patient/index";
 import {
   createDrizzleAdmissionReaderStore,
@@ -76,6 +85,7 @@ import {
   registerAdmissionErasers,
   registerAdmissionRoutes,
   registerAdmissionSeams,
+  createDrizzleAdmissionEraseStore,
 } from "./modules/06-admission/index";
 import {
   M7_OUTBOX_EVENTS,
@@ -86,6 +96,7 @@ import {
   registerCarePlanSeams,
   createDrizzleCarePlanReaderStore,
   mountCarePlanRoutes,
+  createDrizzleCarePlanEraseStore,
 } from "./modules/07-care-plan/index";
 import {
   M8_OUTBOX_EVENTS,
@@ -95,6 +106,7 @@ import {
   registerEncounterRoutes,
   registerEncounterSeams,
   mountEncounterRoutes,
+  createDrizzleEncounterEraseStore,
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
@@ -104,6 +116,7 @@ import {
   registerAssessmentRoutes,
   registerAssessmentSeams,
   mountAssessmentRoutes,
+  createDrizzleAssessmentEraseStore,
 } from "./modules/09-assessments/index";
 import {
   M10_OUTBOX_EVENTS,
@@ -112,6 +125,7 @@ import {
   registerHopeRoutes,
   registerHopeSeams,
   mountHopeRoutes,
+  createDrizzleHopeEraseStore,
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
@@ -121,6 +135,7 @@ import {
   registerOrderSeams,
   createDrizzleOrderSeamStore,
   mountOrderRoutes,
+  createDrizzleOrderEraseStore,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
@@ -130,6 +145,7 @@ import {
   registerDoseSpotSeams,
   createDrizzleDoseSpotSeamStore,
   mountDoseSpotRoutes,
+  createDrizzleMedicationOrderEraseStore,
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
@@ -139,6 +155,7 @@ import {
   registerEmarSeams,
   createDrizzleEmarSeamStore,
   mountEmarRoutes,
+  createDrizzleEmarEraseStore,
 } from "./modules/13-emar/index";
 import {
   M14_OUTBOX_EVENTS,
@@ -148,6 +165,7 @@ import {
   registerIdgSeams,
   createDrizzleIdgSeamStore,
   mountIdgRoutes,
+  createDrizzleIdgEraseStore,
 } from "./modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
@@ -231,6 +249,8 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
+  M22_DOCUMENT_REQUEST_EVENTS,
+  M22_LAB_RESULTS_EVENT,
   createDrizzleDocumentReaderStore,
   createRefusingObjectStore,
   createSignedUrlService,
@@ -239,6 +259,7 @@ import {
   registerDocumentRoutes,
   registerDocumentSeams,
   mountDocumentRoutes,
+  createDrizzleDocumentEraseStore,
 } from "./modules/22-documents/index";
 import {
   buildDrizzlePortalStore,
@@ -266,6 +287,7 @@ import {
   registerReportingMetricsSeam,
   scheduleM33Jobs,
   wireM33Tenancy,
+  createDrizzleReportingEraseStore,
 } from "./modules/33-reporting/index";
 import {
   buildDrizzleM30ReadService,
@@ -282,6 +304,7 @@ import {
   registerQualityErasers,
   scheduleM30Jobs,
   wireM30Tenancy,
+  createDrizzleQualityEraseStore,
 } from "./modules/30-quality/index";
 // M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
 // and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
@@ -385,6 +408,7 @@ import {
   registerM27CronWorkers,
   registerM27Workers,
   scheduleM27Jobs,
+  createDrizzleCostReportEraseStore,
 } from "./modules/27-cost-report/index";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
@@ -406,6 +430,7 @@ import {
   registerRemittanceErasers,
   scheduleM25Jobs,
   wireM25Tenancy,
+  createDrizzleRemittanceEraseStore,
 } from "./modules/25-remittance/index";
 // M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
 // _in_settlement / _settled / _methodology_unlocked / cap_platform_admin), and the §4.1 route mount over the
@@ -421,6 +446,7 @@ import {
   registerCapErasers,
   registerM26CronWorkers,
   scheduleM26Jobs,
+  createDrizzleCapRedactStore,
 } from "./modules/26-cap/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -438,6 +464,7 @@ import {
   registerM24AbacPredicates,
   registerM24PublishedSeams,
   registerMedicaidErasers,
+  createDrizzleMedicaidRedactStore,
 } from "./modules/24-billing-medicaid/index";
 // M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
 // mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
@@ -458,6 +485,7 @@ import {
   registerM23PublishedSeams,
   registerM23Workers,
   scheduleM23Jobs,
+  createDrizzleBillingEraseStore,
 } from "./modules/23-billing-medicare/index";
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
@@ -480,6 +508,7 @@ import {
   scheduleM34Jobs,
   validateModule34Seams,
   wireM34Tenancy,
+  createDrizzleSaasTenantPlatformEraseStore,
 } from "./modules/34-saas-tenant-platform/index";
 import {
   createDbMessagingProvider,
@@ -487,12 +516,14 @@ import {
   registerMessagingErasers,
   registerMessagingSeams,
   selectTransactionalEmailTransport,
+  createDrizzleMessagingEraseStore,
 } from "./modules/36-messaging/index";
 import {
   createDbTerminologyStore,
   mountTerminologyRoutes,
   registerTerminologyErasers,
   registerTerminologySeams,
+  createDrizzleTerminologyEraseStore,
 } from "./modules/38-terminology/index";
 import {
   createDbConsentStore,
@@ -500,6 +531,7 @@ import {
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
+  createDrizzleConsentEraseStore,
 } from "./modules/39-consent/index";
 import {
   createDbBaaStore,
@@ -507,6 +539,7 @@ import {
   mountMdmRoutes,
   registerMdmErasers,
   registerMdmSeams,
+  createDrizzleMdmEraseStore,
 } from "./modules/40-mdm/index";
 
 export { buildServer };
@@ -528,6 +561,14 @@ export * from "./bootstrap/index";
  * buildServer() as `registerModuleSeams`, it runs inside bootSeams() after M1's wireSeams()
  * and before validateSeams(), so the real seams stand over the deny-stubs (§3.18).
  */
+/**
+ * TASK-004 — the boot-registered RBAC engine handle. Set by wireModuleSeams (db boots) and read by
+ * registerModuleRoutes when mounting M3, so the route surface and `requirePermission` share ONE
+ * resolver + ONE §2.5 invalidation cache (a second instance would split them). Module-scope because
+ * both closures live in this file; bootSeams runs before registerModuleRoutes inside buildServer.
+ */
+let liveRbacHandle: RbacEngineHandle | undefined;
+
 export function wireModuleSeams(
   deps: {
     sessionContextStore?: SessionContextStore;
@@ -542,7 +583,9 @@ export function wireModuleSeams(
   registerIdentitySeams({ sessions: deps.sessionContextStore, db: deps.db }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
-  if (deps.db) registerDbEffectivePermissionResolver(deps.db);
+  // TASK-004 — the handle is CAPTURED so the M3 route mount binds the SAME resolver + §2.5
+  // invalidation cache for /me/permissions, anti-escalation, and grant/revoke cache drops.
+  if (deps.db) liveRbacHandle = registerDbEffectivePermissionResolver(deps.db);
   // M3 — register M3's own `step_up_recent` ABAC predicate (§4.2.1 — the step-up freshness gate every
   // `requireStepUp` route resolves through). It reads M2's SessionContextResolver seam (registered just
   // above) lazily at request time, so registration order only requires the seam present by first request.
@@ -1247,22 +1290,33 @@ const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
  * eraser stands over its stub. A right-to-erasure request then hits a working eraser, not a
  * silent no-op (M2-T10).
  */
-export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
-  registerIdentityErasers(); // M2 — `identity` data class (two_factor/passkey + invitations)
-  registerAuditErasers(); // M4-T08 — `audit_event` data class (legal-hold + Part 2 lifetime aware)
-  registerTerminologyErasers(); // M38-T10 — `terminology_tenant_extensions` (D8 tenant offboarding)
-  registerMessagingErasers(); // M36-T10 — `messages` (D9 tenant offboarding; DEK crypto-erase §7.8)
-  registerMdmErasers(); // M40-T10 — `mdm_tenant_overlays` (D7 tenant offboarding; canonical untouched)
-  registerPatientErasers(); // M5-T12 — `clinical_record` (patient-subtree destruction-cert callback; D7/D8)
-  registerConsentErasers(); // M39-T10 — `consent` (subtree erase; legal-hold + 42 CFR Part 2 lifetime refusal)
-  registerAdmissionErasers(); // M6-T12 — `admission_record` (admission-subtree destruction-cert callback; D7/D8)
-  registerCarePlanErasers(); // M7-T09 — `care_plan_record` (care-plan-subtree destruction-cert callback; D7/D8)
-  registerEncounterErasers(); // M8-T12 — `encounter_record` (encounter-subtree destruction-cert callback; DEK crypto-erase §3.6; D7/D8)
-  registerAssessmentErasers(); // M9-T07 — `clinical_assessment` (assessment-subtree destruction-cert callback; §8.4; D7/D8)
-  registerHopeErasers(); // M10-T08 — `hope_record` (HOPE-timepoint-subtree destruction-cert callback; CMS 10-year retention block; §8.4; D7/D8)
-  registerOrderErasers(); // M11-T08 — `order_record` (orders-subtree destruction-cert callback; partition-drop; §7.7; D12; D7/D8)
-  registerDoseSpotErasers(); // M12-T09 — `medication_order_record` (prescribing-subtree destruction-cert callback; partition-drop; §7.7; D15; D7/D8)
-  registerEmarErasers(); // M13-T10 — `emar_record` (eMAR-subtree destruction-cert callback; partition-drop; §7.7; D7/D8)
+export function wireModuleErasers(deps: { db?: DbClient; platformDb?: DbClient } = {}): void {
+  // TASK-003 (ARCH-007) — every registrar below binds its Drizzle erase store on a db boot, so a
+  // right-to-erasure request touches REAL rows and its certificate counts what was actually
+  // destroyed. Grant caveats (each fails LOUDLY, never a fake certificate): the append-only
+  // clinical/billing tables (M7–M13, M23, M25) grant wardenx_app no DELETE — the erase path needs
+  // the destruction-granted credential at deployment; M4's performErasure throws typed-UNBOUND
+  // (audit_event is HELPER_ONLY + append-only — the crypto-erase adapter lands in packages/audit);
+  // M36's sole-tenant-user leg refuses without a platform membership enumerator (D9 is an
+  // inherently cross-tenant read); M40's provisional DELETE awaits its grant.
+  const db = deps.db;
+  registerIdentityErasers(db ? { store: createDrizzleIdentityEraserStore(db) } : {}); // M2 — `identity`
+  registerAuditErasers(
+    db ? { store: createDrizzleAuditEraserStore(db), ports: createDrizzleAuditEraserPorts(db) } : {},
+  ); // M4 — `audit_event` (guards live; performErasure typed-UNBOUND until the packages/audit adapter)
+  registerTerminologyErasers(db ? { store: createDrizzleTerminologyEraseStore(db) } : {}); // M38
+  registerMessagingErasers(db ? { store: createDrizzleMessagingEraseStore(db) } : {}); // M36 (sole-tenant leg refuses until the platform enumerator binds)
+  registerMdmErasers(db ? { store: createDrizzleMdmEraseStore(db) } : {}); // M40 — `mdm_tenant_overlays`
+  registerPatientErasers(db ? { store: createDrizzlePatientEraseStore(db) } : {}); // M5 — `clinical_record`
+  registerConsentErasers(db ? { store: createDrizzleConsentEraseStore(db) } : {}); // M39 — `consent`
+  registerAdmissionErasers(db ? { store: createDrizzleAdmissionEraseStore(db) } : {}); // M6 — `admission_record`
+  registerCarePlanErasers(db ? { store: createDrizzleCarePlanEraseStore(db) } : {}); // M7 — `care_plan_record`
+  registerEncounterErasers(db ? { store: createDrizzleEncounterEraseStore(db) } : {}); // M8 — `encounter_record`
+  registerAssessmentErasers(db ? { store: createDrizzleAssessmentEraseStore(db) } : {}); // M9 — `clinical_assessment`
+  registerHopeErasers(db ? { store: createDrizzleHopeEraseStore(db) } : {}); // M10 — `hope_record` (CMS 10-year block in the orchestrator)
+  registerOrderErasers(db ? { store: createDrizzleOrderEraseStore(db) } : {}); // M11 — `order_record`
+  registerDoseSpotErasers(db ? { store: createDrizzleMedicationOrderEraseStore(db) } : {}); // M12 — `medication_order_record`
+  registerEmarErasers(db ? { store: createDrizzleEmarEraseStore(db) } : {}); // M13 — `emar_record`
   // M15-T06 — `discipline_plan_record` (per-PATIENT destruction-cert callback; scrubs the version
   // `state_snapshot` + assessment `data` jsonb FIRST, deletes the discipline subtree, tombstones the plan
   // roots for FK integrity; the workforce-scoped volunteer gate/ledger/hour rows survive, §8.5). The
@@ -1279,16 +1333,40 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   registerBereavementErasers(
     deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
   );
-  registerIdgErasers(); // M14-T07 — `idg_record` (patient-scoped packet/decision/action-item/agenda destruction-cert callback; meetings/minutes survive; §8.4)
-  registerDocumentErasers(); // M22-T10 — `documents` (document/intake-subtree destruction-cert callback; DEK crypto-erase §8.6; legal-hold + Part 2 skip; D9/D12)
-  registerSaasTenantPlatformErasers(); // M34 — `saas_tenant_platform_class` (tenant-offboarding control-plane cleanup; subjectId=org; D6/§8.4)
-  registerReportingErasers(); // M33 — `reporting_class` (tenant-offboarding operational-row cleanup; subjectId=org; report_drilldown_audit destruction-blocked; D6/§8.4)
-  registerQualityErasers(); // M30 — `quality_class` (tenant-offboarding operational-row cleanup; subjectId=org; compliance-class survey evidence destruction-blocked; D6/§8.4)
-  registerCostReportErasers(); // M27 — `cost_report_class` (tenant-offboarding operational-config cleanup; subjectId=org; submitted/accepted cost reports are survey-evidence, destruction-gated; §3.7/§8.4)
-  registerBillingErasers({ registerEraser }); // M23 — `billing_record` (per-PATIENT destruction-cert callback; in-flight/surveyor-hold guard; MAC secret crypto-shred is the org-destruction path; §3.7/§8.4). registerEraser is INJECTED (M23 may not import the M1 bootstrap registry); in-memory slice store until the Drizzle BillingEraseStore binds.
-  registerRemittanceErasers({ registerEraser }); // M25 — `remittance` (per-PATIENT PR-ledger destruction-cert callback; the line/adjustment/remark history rolls off via the M4 partition manager, not per-patient; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the Drizzle PR-ledger destruction store binds (the M23 posture).
-  registerMedicaidErasers({ registerEraser }); // M24 — `medicaid_billing_record` (per-PATIENT redact-to-shred destruction-cert callback; PHI free-text + KMS ciphers on the patient's rb/eligibility rows are shredded, the FK chain survives; the join-only submission/override + the trading-partner secret crypto-shred follow the claim chain / org-destruction path; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M26 posture). Distinct from M23's `billing_record` (single-keyed registry — M24 must not clobber M23).
-  registerCapErasers({ registerEraser }); // M26 — `cap` (per-PATIENT redact-to-sentinel destruction-cert callback; D14 — aggregates survive right-to-erasure so CMS-side cap reconciliation stays reproducible; §3.7/§8.4). registerEraser INJECTED; in-memory slice store until the privileged Drizzle redaction store binds (the M25 posture).
+  registerIdgErasers(db ? { store: createDrizzleIdgEraseStore(db) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
+  registerDocumentErasers(db ? { store: createDrizzleDocumentEraseStore(db) } : {}); // M22 — `documents` (object destruction refuses via DegradedError BEFORE any row delete until the MinIO adapter — retryable, never orphaned keys)
+  // M34 — `saas_tenant_platform_class` runs entirely under withPlatformContext (subjectId = ORG), so
+  // it binds the PLATFORM credential, not the tenant pool; without one the in-memory slice stands
+  // and the ledger records it (the M35 platform-runner posture).
+  registerSaasTenantPlatformErasers(
+    deps.platformDb
+      ? {
+          store: createDrizzleSaasTenantPlatformEraseStore({
+            platformDb: deps.platformDb,
+            auditBypass: m34PlatformBypassAuditor,
+          }),
+        }
+      : {},
+  );
+  registerReportingErasers(db ? { store: createDrizzleReportingEraseStore(db) } : {}); // M33 — `reporting_class` (drilldown audit count-only, destruction-blocked)
+  registerQualityErasers(db ? { store: createDrizzleQualityEraseStore(db) } : {}); // M30 — `quality_class` (compliance/survey evidence count-only, destruction-blocked)
+  registerCostReportErasers(db ? { store: createDrizzleCostReportEraseStore(db) } : {}); // M27 — `cost_report_class` (evidence delete refuses until the M4 elevated destruction-cert binding lands)
+  registerBillingErasers({
+    registerEraser,
+    ...(db ? { store: createDrizzleBillingEraseStore(db) } : {}),
+  }); // M23 — `billing_record` (in-flight guards refuse; MAC-secret shred is the org-destruction path). registerEraser INJECTED (M23 may not import the M1 registry).
+  registerRemittanceErasers({
+    registerEraser,
+    ...(db ? { store: createDrizzleRemittanceEraseStore(db) } : {}),
+  }); // M25 — `remittance` (PR-ledger only; line/adjustment history rolls off via the M4 partition manager).
+  registerMedicaidErasers({
+    registerEraser,
+    ...(db ? { store: createDrizzleMedicaidRedactStore(db) } : {}),
+  }); // M24 — `medicaid_billing_record` (redact-to-shred; FK chain survives). Distinct from M23's class.
+  registerCapErasers({
+    registerEraser,
+    ...(db ? { store: createDrizzleCapRedactStore(db) } : {}),
+  }); // M26 — `cap` (redact-to-sentinel, D14 — aggregates survive for CMS reconciliation).
   // M21-T05 — `supply_record` (per-PATIENT destruction-cert callback). UNLIKE every eraser above it does
   // not delete the controlled-substance rows: DEA 21 CFR §1304.04 requires the perpetual inventory record
   // to survive, so the `supply_request` rows are shredded-then-deleted while the `comfort_kit_dispatch` /
@@ -1351,37 +1429,14 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // assertNoInMemoryBindingsOnDbBoot (before listen()) lists these loudly in dev and refuses to boot
   // in production until TASK-003 binds the Drizzle stores (the M15/M16/M28 `deps.db ? {store} : {}`
   // pattern); each fix deletes its line here in the same diff.
-  if (deps.db) {
-    const t3 = "TASK-003 (bind Drizzle erase stores)";
-    for (const label of [
-      "M2 registerIdentityErasers — 'identity' erase store",
-      "M4 registerAuditErasers — 'audit_event' erase store",
-      "M38 registerTerminologyErasers — 'terminology_tenant_extensions' erase store",
-      "M36 registerMessagingErasers — 'messages' erase store",
-      "M40 registerMdmErasers — 'mdm_tenant_overlays' erase store",
-      "M5 registerPatientErasers — 'clinical_record' erase store",
-      "M39 registerConsentErasers — 'consent' erase store",
-      "M6 registerAdmissionErasers — 'admission_record' erase store",
-      "M7 registerCarePlanErasers — 'care_plan_record' erase store",
-      "M8 registerEncounterErasers — 'encounter_record' erase store",
-      "M9 registerAssessmentErasers — 'clinical_assessment' erase store",
-      "M10 registerHopeErasers — 'hope_record' erase store",
-      "M11 registerOrderErasers — 'order_record' erase store",
-      "M12 registerDoseSpotErasers — 'medication_order_record' erase store",
-      "M13 registerEmarErasers — 'emar_record' erase store",
-      "M14 registerIdgErasers — 'idg_record' erase store",
-      "M22 registerDocumentErasers — 'documents' erase store",
-      "M34 registerSaasTenantPlatformErasers — 'saas_tenant_platform_class' erase store",
-      "M33 registerReportingErasers — 'reporting_class' erase store",
-      "M30 registerQualityErasers — 'quality_class' erase store",
-      "M27 registerCostReportErasers — 'cost_report_class' erase store",
-      "M23 registerBillingErasers — 'billing_record' erase store",
-      "M25 registerRemittanceErasers — 'remittance' PR-ledger destruction store",
-      "M24 registerMedicaidErasers — 'medicaid_billing_record' redaction store",
-      "M26 registerCapErasers — 'cap' redaction store",
-    ]) {
-      noteInMemoryBinding({ kind: "eraser", label, task: t3 });
-    }
+  if (deps.db && !deps.platformDb) {
+    // The one remaining conditional: M34's org-offboarding eraser needs the platform credential.
+    noteInMemoryBinding({
+      kind: "eraser",
+      label:
+        "M34 registerSaasTenantPlatformErasers — 'saas_tenant_platform_class' erase store (no DATABASE_PLATFORM_URL; the cross-tenant deletes need the platform credential)",
+      task: "deployment config (provision the platform login role + set DATABASE_PLATFORM_URL)",
+    });
   }
   // Phase-1 data-class owners append here as they land.
 }
@@ -1610,16 +1665,28 @@ if ((import.meta as { main?: boolean }).main) {
     // stores land. The slice/tests boot without this (foundation routes only).
     registerModuleRoutes: dbHandle
       ? (app) => {
-          mountAuthorizationRoutes(app, dbHandle.db); // M3 — role catalog + grants on real stores
-          // TASK-001 ledger (ARCH-005/015) — the M3 mount still binds four in-memory route deps. The
-          // fixed-empty effectivePermissions resolver is the sharpest: GET /me/permissions answers []
-          // for every actor and the §6 anti-escalation check reads an empty set, with the build green.
+          // M3 — role catalog + grants on real stores; TASK-004 threads the boot-registered RBAC
+          // handle so /me/permissions + anti-escalation read the live engine and grant/revoke/edit
+          // drop the §2.5 cache immediately.
+          mountAuthorizationRoutes(app, dbHandle.db, liveRbacHandle);
+          // TASK-001 ledger (ARCH-005) — three M3 route deps are still in-memory.
           noteInMemoryBinding({
             kind: "route-dep",
             label:
-              "M3 mountAuthorizationRoutes — engagements/auditorSessions/notifier in-memory; effectivePermissions is a fixed EMPTY resolver (GET /me/permissions always [])",
-            task: "TASK-004 (live effective-permission resolver + M3 follow-up wiring)",
+              "M3 mountAuthorizationRoutes — engagements/auditorSessions/notifier in-memory (auditor-engagement console + compliance notifier are process-local)",
+            task: "M3 follow-up wiring (Drizzle engagement/auditor-session/notifier stores)",
           });
+          if (!liveRbacHandle) {
+            // Should be unreachable on a db boot (wireModuleSeams runs first inside buildServer) —
+            // recorded rather than assumed, so a future boot-order change cannot silently revert
+            // /me/permissions to a fixed empty set.
+            noteInMemoryBinding({
+              kind: "route-dep",
+              label:
+                "M3 mountAuthorizationRoutes — effectivePermissions is a fixed EMPTY resolver (no RBAC engine handle at mount time)",
+              task: "TASK-004 (live effective-permission resolver)",
+            });
+          }
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
@@ -2098,7 +2165,8 @@ if ((import.meta as { main?: boolean }).main) {
         db: dbHandle?.db,
         outboxPublisher: txOutboxPublisher,
       }),
-    registerModuleErasers: () => wireModuleErasers({ db: dbHandle?.db }),
+    registerModuleErasers: () =>
+      wireModuleErasers({ db: dbHandle?.db, platformDb: platformDbHandle?.db }),
   });
   // TASK-001 (production-readiness audit 2026-08-03) — ALL wiring is done (bootSeams + every route
   // mount ran inside buildServer above): refuse to boot in production, and loudly list in dev, every
@@ -2393,6 +2461,54 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M26 cron-schedule registration failed");
     }
     app.log.info({ queues: m26Workers.length }, "M26 §4.8 BullMQ cap crons constructed");
+  }
+
+  // ── TASK-006 (OPS-001) — the transactional-outbox DISPATCHER ────────────────────────────────────
+  // Every module's catalog publisher writes `outbox_event` rows; until this relay NOTHING read them.
+  // The relay polls per-org under withOrgContext (RLS-clean; the org list comes from the audited
+  // platform-context enumerator), delivers to live consumers with retry/backoff/DLQ, keeps
+  // declared-deferred handshakes (the M22 render queue) pending on a slow clock so their backlog
+  // survives, marks subscriber-less events dispatched (the row IS the durable record), and purges
+  // dispatched rows past retention. Requires the platform credential for org enumeration — absent,
+  // it does NOT run and says so loudly (the M35 platform-runner posture; fail-closed, never a
+  // tenant-pool RLS bypass). OUTBOX_DISPATCHER_DISABLED=1 opts out (tests/one-off boots).
+  if (dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
+    if (platformDbHandle) {
+      registerPlatformJob(M1_OUTBOX_DISPATCHER_JOB_ID);
+      const outboxDispatcher = createOutboxDispatcher({
+        db: dbHandle.db,
+        orgs: buildActiveOrgEnumerator({
+          platformDb: platformDbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId: M1_OUTBOX_DISPATCHER_JOB_ID,
+          reason: "outbox relay: active-org poll list",
+        }),
+        consumers: [
+          // M5 §4.10 — the proposal applier (live; correctly idle until M29's accept path publishes
+          // the event — its emit wiring is the M29 follow-up). NOTE: M6's applier for the same event
+          // type must land as a SECOND consumer before that emit ships, or m6-owned acceptances
+          // will complete off M5's documented skip.
+          buildM29ProposalApplierConsumer(),
+        ],
+        deferredEventTypes: [
+          // M22 §4.11 — the render handshake awaits the live render worker + MinIO adapter; the
+          // backlog stays pending (visible depth), never faked as consumed.
+          ...M22_DOCUMENT_REQUEST_EVENTS,
+          M22_LAB_RESULTS_EVENT,
+          // M40's NPPES overlay appliers are declared-deferred (m29-nppes-consumers.ts).
+          "m29.nppes.provider_synced",
+          "m29.nppes.provider_deactivated",
+        ],
+        options: { log: (m) => app.log.warn(m) },
+      });
+      outboxDispatcher.start();
+      app.addHook("onClose", () => outboxDispatcher.stop());
+      app.log.info("TASK-006 outbox dispatcher polling (per-org, RLS-scoped)");
+    } else {
+      console.warn(
+        "⚠️  outbox dispatcher NOT running: DATABASE_PLATFORM_URL is not configured (the relay needs the platform credential to enumerate active orgs). Outbox rows will accumulate as pending.",
+      );
+    }
   }
 
   const port = Number(process.env.PORT ?? 3000);
