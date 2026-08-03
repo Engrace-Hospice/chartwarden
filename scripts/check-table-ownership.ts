@@ -38,6 +38,65 @@ import {
 const REPO_ROOT = process.cwd();
 const SCHEMA_DIR = "packages/db/src/schema";
 
+/**
+ * TASK-014/ARCH-017 — sql table names a cross-module DIRECT `schema.<table>` read is sanctioned for,
+ * reviewed individually below. Recognizing the `schema.<table>` member-access import style (the
+ * `import { schema } from "@wardenx/db"` convention ~280 files use) made every one of these visible
+ * to this gate for the first time; none is a NEW decision made here — each was already the
+ * deliberate, load-bearing pattern in its own file. Content-keyed, like check-tenancy.ts's
+ * `NON_ORG_SCOPED` — a table joins this set only with a reviewed justification, not to silence a
+ * finding.
+ */
+const CROSS_MODULE_SCHEMA_READ_EXEMPT = new Set<string>([
+  // M1 Foundation's "who is this actor" identity facts (organization/membership/user/session/
+  // account/verification). Every module's own ABAC resolver (`abac-resolver-drizzle.ts` /
+  // `abac-predicates.ts` / `*-route-service-db.ts`) independently derives caseload/role/discipline
+  // facts from these — the SAME join `ActorEnrichmentReader`/`createDbActorEnrichmentReader`
+  // (packages/auth/src/rbac/drizzle-store.ts) already performs, repeated per-module because no
+  // single shared reader seam covers every module's differently-shaped ABAC query yet (unlike
+  // M17's `VisitReader`, which M18 now consumes instead of reading `visit` directly — see below).
+  // Retrofitting all ~20 of these onto one shared seam is a real but separately-scoped refactor;
+  // until then a direct read of these SPECIFIC, narrow, non-PHI identity tables is the sanctioned
+  // pattern platform-wide, not a per-module escape hatch.
+  "organization",
+  "membership",
+  "user",
+  "session",
+  "account",
+  "verification",
+  // M3 Authorization's role-key facts — the identical "what roles does this membership hold" join
+  // every module's own ABAC layer performs (same reasoning as the M1 cohort above; M30's
+  // `abac-predicates.ts` is today's consumer).
+  "role",
+  "membership_role",
+  // M7 Care Plan's `intervention` — M11 (Orders), as the PRODUCER of the order fact `intervention`
+  // soft-references (`linked_order_id`), owns this cross-module join on the READ side by design
+  // (the M13↔M9 D6 "producer owns the join" precedent) — the alternative is M7 importing M11's
+  // schema, which architecture §11 blocks outright. See the inline comment at
+  // `apps/backend/src/modules/11-orders/seams/drizzle-store.ts` (`const CPI = schema.interventions`).
+  "intervention",
+  // M5 Patient's `patient` + M4 Audit's `legal_hold` — the universal erase-precondition reads every
+  // module's `erasers/*.ts` performs: "is this patient deceased long enough to open the destruction
+  // window" (M39's fail-closed deceased-proof read) and "is this resource under an active legal
+  // hold" before any eraser may proceed. Cross-cutting by nature — every eraser needs both facts —
+  // and, like `intervention` above, a pre-existing documented pattern this gate simply could not
+  // see until the `schema.<table>` detection style landed.
+  "patient",
+  "legal_hold",
+  // M17 Scheduling's `visit` — M18 (EVV) reads it not for its own sake but to CORRELATE within the
+  // SAME transaction as its own `evv_event`/`evv_resolution` tables (an existence anchor at
+  // `bracketForVisit`, and a windowed id-set at `complianceCountsForWindow` that a second batched
+  // `inArray` read joins against — see `apps/backend/src/modules/18-evv/seams/drizzle-store.ts`).
+  // M17 DOES publish a `VisitReader` seam M18 is the documented consumer of, but its three methods
+  // (`visitForEncounter` / `visitsScheduledForMembershipOnDate` / `completedVisitsForPatientSince`)
+  // answer different questions than M18 asks and, being an OUT-OF-TRANSACTION seam call, cannot
+  // preserve the single-transaction read M18's compliance windows depend on — the exact "stale
+  // pre-commit read" failure mode M18's own write-lifecycle design deliberately avoids (read the
+  // view WITHIN `tx`, never after). Routing this through the seam would trade a visible, reviewed
+  // direct read for a subtler transaction-consistency regression; the direct read is correct.
+  "visit",
+]);
+
 // table const name <-> table sql name. We derive the sql name from the pgTable
 // first-arg string in each schema file, and map back to the exported const.
 // Shape we look for:  export const memberships = pgTable('membership', { ... })
@@ -97,20 +156,40 @@ function scan(): Violation[] {
       if (file.startsWith(SCHEMA_DIR) && mod.id !== 1) continue;
       const src = readFileSync(join(REPO_ROOT, file), "utf8");
 
+      // The `import { schema } from "@wardenx/db"` (or `import * as schema from "..."`) namespace
+      // binding — keyed to the LOCAL identifier `schema`, not the import specifier's spelling. The
+      // old `used` check below required the specifier string itself to contain "schema"
+      // (`from '.../schema/...'`), which a bare `from "@wardenx/db"` never does — so every
+      // `schema.<table>` member-access read (the dominant style repo-wide: M18's `schema.visit`,
+      // M30's `schema.roles`/`schema.membershipRoles`, ~30+ ABAC-resolver files reading M1's
+      // `schema.memberships`/`schema.organizations`/`schema.users`) was invisible to this gate.
+      const schemaBindingImported =
+        /import\s+(?:\{[^}]*\bschema\b[^}]*\}|\*\s+as\s+schema)\s+from\s+['"][^'"]+['"]/.test(src);
+
       for (const ref of registry) {
-        // crude but effective: a word-boundary reference to the table const
-        const used =
+        // Named-import style: `import { visit } from '.../schema/...'`.
+        const namedImportUsed =
           new RegExp(`\\b${ref.constName}\\b`).test(src) && /from ['"].*schema/.test(src);
+        // Namespace-binding style: `schema.<table>` member access, regardless of the import
+        // specifier's own spelling (see comment above).
+        const namespaceUsed =
+          schemaBindingImported && new RegExp(`\\bschema\\.${ref.constName}\\b`).test(src);
+        const used = namedImportUsed || namespaceUsed;
         if (!used) continue;
 
         const owner = ownerOf(ref.sqlName);
 
-        // helper-only tables: only the helper package may reference them
+        // helper-only tables: only the helper package (or the OWNING module's own dispatcher/
+        // middleware — apps/backend/src/bootstrap is Module 1's own codePath, and the outbox
+        // dispatcher / idempotency store living there ARE "packages/shared (outbox dispatcher …)"
+        // the manifest comment describes, just organized under bootstrap rather than the package)
+        // may reference them.
         if (ref.sqlName in HELPER_ONLY_TABLES) {
           const helperOk =
             file.startsWith("packages/audit") ||
             file.startsWith("packages/shared") ||
-            file.startsWith("packages/db");
+            file.startsWith("packages/db") ||
+            (owner !== undefined && owner.id === mod.id);
           if (!helperOk) violations.push({ module: mod, file, table: ref.sqlName, owner });
           continue;
         }
@@ -119,6 +198,12 @@ function scan(): Violation[] {
         if (owner && owner.id === mod.id) continue;
         // owned table is unknown (unspecced) -> can't judge yet; skip conservatively
         if (!owner) continue;
+        // A small, reviewed set of cross-module DIRECT schema reads that are the sanctioned
+        // pattern rather than an evasion — see CROSS_MODULE_SCHEMA_READ_EXEMPT for the per-table
+        // justification. Recognizing `schema.<table>` member access (ARCH-017) made every one of
+        // these visible for the first time; each was already a deliberate, documented design
+        // choice in its own file BEFORE this gate could see it, not a new decision made here.
+        if (CROSS_MODULE_SCHEMA_READ_EXEMPT.has(ref.sqlName)) continue;
         // owned by a dependency -> still a violation for DIRECT schema use:
         // cross-module access must go through the owner's repository, not its schema.
         if (ownAndDeps.has(owner.id)) {

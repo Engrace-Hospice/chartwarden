@@ -92,6 +92,35 @@ describe("createPredicateRegistry — register + resolve", () => {
     expect(() => registry.register("dup", () => false)).toThrow(/already registered/);
   });
 
+  // ARCH-001/002: the per-module boot idiom `if (abacRegistry.has(name)) continue;` silently
+  // swallowed a cross-module name collision — M8/M9/M11 each registered a bare `cosigner_role_match`
+  // and whichever booted first won, with no error, ever. `registerIdempotent` replaces that idiom:
+  // a module re-registering its OWN (byte-identical) resolver on reboot stays silent, but a
+  // DIFFERENT resolver claiming an already-used name now throws.
+  describe("registerIdempotent — same-source reboot is silent, cross-module collision throws", () => {
+    it("re-registering the identical predicate function under its own name is a no-op", () => {
+      const registry = createPredicateRegistry({});
+      const buildPredicate = () => async (_ctx: AbacContext, target: AbacTarget) => target.id === "x";
+      registry.registerIdempotent("m8.cosigner_role_match", buildPredicate());
+      expect(() => registry.registerIdempotent("m8.cosigner_role_match", buildPredicate())).not.toThrow();
+      expect(registry.has("m8.cosigner_role_match")).toBe(true);
+    });
+
+    it("a DIFFERENT resolver registering an already-used name throws (the real collision)", () => {
+      const registry = createPredicateRegistry({});
+      registry.registerIdempotent(
+        "cosigner_role_match",
+        async (ctx: AbacContext, target: AbacTarget) => target.encounterId === ctx.userId,
+      );
+      expect(() =>
+        registry.registerIdempotent(
+          "cosigner_role_match",
+          async (ctx: AbacContext, target: AbacTarget) => target.assessmentId === ctx.userId,
+        ),
+      ).toThrow(/DIFFERENT resolver/);
+    });
+  });
+
   it("seeds M3 intrinsic predicates by default and lists registered names", () => {
     const registry = createPredicateRegistry();
     expect(registry.names()).toEqual(

@@ -17,14 +17,20 @@
 // through M39's `ConsentEvaluator` seam — the Part 2 / DPOA gate M9 binds by USING those names at the route,
 // not by re-registering them). `caseload_or_scope` / `collaborator_patient_match` / `portal_patient_match`
 // are likewise shared. Registration is idempotent: the shared registry is single-owner / no-clear, so
-// re-boot (tests) guards on `abacRegistry.has`.
+// re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import { anyDisciplineCanRecordScale, ASSESSMENT_DISCIPLINES } from "@wardenx/assessments";
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { ScaleType } from "@wardenx/types";
 import type { AssessmentAbacResolver } from "./routes/service";
 
-/** The §4.7 predicate names M9 owns (registered into M3). Single-owner across the platform registry. */
-export const M9_ABAC_PREDICATES = ["discipline_can_record_scale", "cosigner_role_match"] as const;
+/**
+ * The §4.7 predicate names M9 owns (registered into M3). `cosigner_role_match` is namespaced `m9.` —
+ * M8/M9/M11 each define one with DIFFERENT target-field expectations; a shared bare name meant whichever
+ * module booted first silently won the registration and the other two's cosign checks were quietly
+ * replaced by a resolver that could never find its target field — always denying, with no error anywhere
+ * (ARCH-001/002). Single-owner across the platform registry.
+ */
+export const M9_ABAC_PREDICATES = ["discipline_can_record_scale", "m9.cosigner_role_match"] as const;
 
 /** The disciplines that may attest an assessment cosignature (§6 `assessment.cosign`; lower-case keys). */
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
@@ -71,7 +77,7 @@ export function buildAssessmentAbacPredicates(
       if (!scaleType) return false; // no scale named → deny (fail-closed)
       return anyDisciplineCanRecordScale(disciplinesOf(context), scaleType as ScaleType);
     },
-    cosigner_role_match: async (context, target) => {
+    "m9.cosigner_role_match": async (context, target) => {
       if (!isCosignEligible(context)) return false; // a cosigner must be RN / Clinical Supervisor (§7.4)
       const id = targetStr(target, "id") ?? targetStr(target, "assessmentId");
       if (!id) return false;
@@ -91,7 +97,6 @@ export function buildAssessmentAbacPredicates(
 export function registerAssessmentAbacPredicates(deps: AssessmentAbacDeps): void {
   const predicates = buildAssessmentAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

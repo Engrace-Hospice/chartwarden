@@ -6,7 +6,7 @@
 //
 // §4.7 wiring: the author routes (POST /orders, /orders/:id/correct) add `requireAbac('discipline_can_order')`
 // with the body's `kind` as the target; the sign routes (/orders/:id/sign, /sign-on-behalf) add
-// `requireAbac('signer_eligible')` (target = `:id`); the cosign route adds `requireAbac('cosigner_role_match')`
+// `requireAbac('signer_eligible')` (target = `:id`); the cosign route adds `requireAbac('m11.cosigner_role_match')`
 // (target = `:id`). The §4.1 caseload column maps to the shared `caseload_or_scope` predicate (registered by
 // M5/M6/M7) — bound by the §4.6 default ABAC on each clinical key, enforced by M3's authorization middleware.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
@@ -77,7 +77,7 @@ const kindTarget = (request: { readonly body?: unknown }): AbacTarget => {
 const ABAC_DRAFT = requireAbac("orders.draft", "discipline_can_order", { getTarget: kindTarget }) as PreHandler;
 const ABAC_AMEND = requireAbac("orders.amend", "discipline_can_order", { getTarget: kindTarget }) as PreHandler;
 const ABAC_SIGN = requireAbac("orders.sign", "signer_eligible") as PreHandler; // target = :id
-const ABAC_COSIGN = requireAbac("orders.cosign", "cosigner_role_match") as PreHandler; // target = :id
+const ABAC_COSIGN = requireAbac("orders.cosign", "m11.cosigner_role_match") as PreHandler; // target = :id
 
 export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps): void {
   const { service } = deps;
@@ -210,7 +210,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     });
   });
 
-  // 9 — attach a cosignature (cosigner_role_match ABAC).
+  // 9 — attach a cosignature (m11.cosigner_role_match ABAC).
   app.post("/api/v1/orders/:id/cosign", { preHandler: [COSIGN, ABAC_COSIGN] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(OrderParamsSchema, request.params);

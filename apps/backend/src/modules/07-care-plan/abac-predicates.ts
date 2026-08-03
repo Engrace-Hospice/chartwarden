@@ -19,8 +19,8 @@
 // Consent (`dpoa_active`, `sud_disclosure_allowed`) resolves through M39's `ConsentEvaluator` seam; M7
 // `dependsOn` 39, so it imports the TYPE from @wardenx/consent and resolves the impl via the opaque M1
 // registry (`getSeam`). Registration is idempotent: the shared registry is single-owner / no-clear, so
-// re-boot (tests) guards on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+// re-boot (tests) is idempotent via `registerPredicateIdempotent`.
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { ConsentEvaluator, ConsentTypeKey } from "@wardenx/consent";
 import type { CarePlanSignerRole } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
@@ -230,7 +230,6 @@ export function buildCarePlanAbacPredicates(
 export function registerCarePlanAbacPredicates(deps: CarePlanAbacDeps): void {
   const predicates = buildCarePlanAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

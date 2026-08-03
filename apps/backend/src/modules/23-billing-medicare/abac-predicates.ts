@@ -37,7 +37,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has` (the M27 `registerM27AbacPredicates` precedent). Never fails open.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { type BillingDb, DEFAULT_BILLING_RULES, type OverrideRole } from "@wardenx/billing";
 // The Drizzle fact loader + the resolver fact types live in `./abac-resolver-drizzle` (it carries the
 // central-schema import; this file names `context.roles`, so keeping the two apart clears the table-ownership
@@ -342,7 +342,6 @@ export function buildM23AbacPredicates(
 export function registerM23AbacPredicates(deps: ReadingM23AbacDeps = {}): void {
   const predicates = buildM23AbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

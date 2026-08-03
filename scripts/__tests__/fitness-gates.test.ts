@@ -33,6 +33,10 @@ describe("each gate goes RED on its planted violation", () => {
     const r = gate("check-table-ownership.ts", join(FIX, "table-ownership"));
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/medication_order/);
+    // TASK-014/ARCH-017 — the `schema.<table>` namespace-binding style (`leak-namespace.ts`) must be
+    // caught too, not just the named-import style (`leak.ts`): both files should be named.
+    expect(r.out).toMatch(/leak\.ts/);
+    expect(r.out).toMatch(/leak-namespace\.ts/);
   });
 
   it("ddl-legality — duplicate enum", () => {
@@ -45,6 +49,18 @@ describe("each gate goes RED on its planted violation", () => {
     const r = gate("check-fitness-gaps.ts", join(FIX, "gaps"));
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/event-naming/);
+  });
+
+  it("fitness-gaps — seam consumed via an aliased getSeam cast, not registered anywhere (ARCH-018)", () => {
+    // Same fixture root as above (the gate runs all three sub-checks together); this asserts the
+    // seam-registry violation specifically. A module-local `M99_REQUIRED_SEAMS` array must NOT be
+    // mistaken for the canonical registry, and `rawSeam("TotallyUnregisteredSeam")` (an alias-cast
+    // call, not a literal `getSeam("...")`) must still be caught as consumed-but-unregistered.
+    const r = gate("check-fitness-gaps.ts", join(FIX, "gaps"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/seam-unregistered/);
+    expect(r.out).toMatch(/TotallyUnregisteredSeam/);
+    expect(r.out).not.toMatch(/SomeSeamNobodyReallyRegisters/);
   });
 
   it("boundaries — domain leaf importing packages/db", () => {

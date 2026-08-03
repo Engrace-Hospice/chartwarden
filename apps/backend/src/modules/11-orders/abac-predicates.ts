@@ -18,14 +18,24 @@
 //
 // The §4.7 `caseload_or_scope` predicate is SHARED (registered by M5/M6/M7) — M11 binds it by USING the name
 // at the route (it is each clinical key's default ABAC), not by re-registering it. Registration is
-// idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on `abacRegistry.has`.
+// idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import { disciplineCanOrder, signerEligible } from "@wardenx/orders";
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { OrderKind } from "@wardenx/types";
 import type { OrderAbacResolver } from "./routes/service";
 
-/** The §4.7 predicate names M11 owns (registered into M3). Single-owner across the platform registry. */
-export const M11_ABAC_PREDICATES = ["discipline_can_order", "signer_eligible", "cosigner_role_match"] as const;
+/**
+ * The §4.7 predicate names M11 owns (registered into M3). `cosigner_role_match` is namespaced `m11.` —
+ * M8/M9/M11 each define one with DIFFERENT target-field expectations; a shared bare name meant whichever
+ * module booted first silently won the registration and the other two's cosign checks were quietly
+ * replaced by a resolver that could never find its target field — always denying, with no error anywhere
+ * (ARCH-001/002). Single-owner across the platform registry.
+ */
+export const M11_ABAC_PREDICATES = [
+  "discipline_can_order",
+  "signer_eligible",
+  "m11.cosigner_role_match",
+] as const;
 
 /** The disciplines an RN cosignature (§2.5 axis 1) accepts; the medical_director satisfies the MD demand. */
 const RN_COSIGN_ROLES = ["rn_case_manager", "clinical_supervisor"] as const;
@@ -81,7 +91,7 @@ export function buildOrderAbacPredicates(
       if (!facts) return false; // fail-closed (absent / cross-tenant)
       return orderDisciplinesOf(context).some((d) => signerEligible(d, facts.kind));
     },
-    cosigner_role_match: async (context, target) => {
+    "m11.cosigner_role_match": async (context, target) => {
       const id = targetStr(target, "id") ?? targetStr(target, "orderId");
       if (!id) return false;
       const facts = await resolver.loadOrder(context.organizationId, id);
@@ -101,7 +111,6 @@ export function buildOrderAbacPredicates(
 export function registerOrderAbacPredicates(deps: OrderAbacDeps): void {
   const predicates = buildOrderAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

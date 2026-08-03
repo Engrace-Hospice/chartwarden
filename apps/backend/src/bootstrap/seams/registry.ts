@@ -65,6 +65,7 @@ import {
   fhirInboundProposalReaderDenyStub,
   claimReaderDenyStub,
   externalFeedReaderDenyStub,
+  externalGriefResourceReaderDenyStub,
   hl7InboundProposalReaderDenyStub,
   labObservationReaderDenyStub,
   nppesProviderReaderDenyStub,
@@ -106,6 +107,8 @@ import {
   onCallProviderDenyStub,
   orderProviderDenyStub,
   orderSignatureProviderDenyStub,
+  patientAddressReaderDenyStub,
+  patientCaregiverReaderDenyStub,
   patientCoverageReaderDenyStub,
   patientDaysProviderDenyStub,
   patientMutatorDenyStub,
@@ -181,6 +184,26 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientCoverageReaderDenyStub,
+  },
+  // M5 — TASK-015/ARCH-018: the M31 `portal_caregiver_is_primary_or_dpoa` ABAC read. Deny-stub only —
+  // no caregiver→user schema link exists (see the interface doc in @wardenx/types).
+  {
+    key: "PatientCaregiverReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientCaregiverReaderDenyStub,
+  },
+  // M5 — TASK-015/ARCH-018: the M31 `state_two_party_recording_consent_present` ABAC read (D9/§3.8).
+  // PHI: a residence state is PHI-adjacent (M5 owns patient_address); M5 registers a real impl over
+  // `patient_address` at boot.
+  { key: "PatientAddressReader", ownerModule: 5, phi: true, denyStub: patientAddressReaderDenyStub },
+  // M40 — TASK-015/ARCH-018: the M31 bereaved-portal `/resources` read. Deny-stub only — no
+  // `external_grief_resource` table exists yet (M40 has not built this catalog).
+  {
+    key: "ExternalGriefResourceReader",
+    ownerModule: 40,
+    phi: false,
+    denyStub: externalGriefResourceReaderDenyStub,
   },
   // M5 (§4.9) — applies an M29-proposal/amendment field diff (D12 strip). PHI write surface;
   // boot-validated and fail-closed until M5 registers the real mutator (M5-T08).

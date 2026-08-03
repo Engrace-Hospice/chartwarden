@@ -6,7 +6,7 @@ import { ASSESSMENT_DISCIPLINES, disciplineCanRecordScale } from "@wardenx/asses
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
 //
 // §4.7 wiring: the author/correction routes add `requireAbac('discipline_can_record_scale')` (the D8 typed
-// matrix M9 owns; target lifted from the body's `scaleType`); the cosign route adds `cosigner_role_match`
+// matrix M9 owns; target lifted from the body's `scaleType`); the cosign route adds `m9.cosigner_role_match`
 // (RN/Clinical-Supervisor ∧ not-self-recorder). The shared `caseload_or_scope` / Part-2 `sud_disclosure_allowed`
 // / `dpoa_active` predicates are registered by M5/M7 (resolving through M39's `ConsentEvaluator` seam); M9
 // binds the Part 2 / DPOA gate by enforcing it in the service (`DPOA_CONSENT_REQUIRED` on the write path,
@@ -92,8 +92,8 @@ const bodyScaleTarget = (request: { body?: unknown }): AbacTarget => {
 const ABAC_DISCIPLINE = requireAbac("assessment.author", "discipline_can_record_scale", {
   getTarget: bodyScaleTarget,
 }) as PreHandler;
-// §4.7 — the cosigner_role_match ABAC guard M9 owns (target = request.params → id).
-const ABAC_COSIGN = requireAbac("assessment.cosign", "cosigner_role_match") as PreHandler;
+// §4.7 — the m9.cosigner_role_match ABAC guard M9 owns (target = request.params → id).
+const ABAC_COSIGN = requireAbac("assessment.cosign", "m9.cosigner_role_match") as PreHandler;
 // §2.3 / §7.7 — the correction route carries the parent row version in If-Match.
 const IF_MATCH = requireIfMatch() as PreHandler;
 
@@ -241,7 +241,7 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
     },
   );
 
-  // 8 — LPN cosignature (§7.4; cosigner_role_match ABAC).
+  // 8 — LPN cosignature (§7.4; m9.cosigner_role_match ABAC).
   app.post(
     "/api/v1/assessments/:id/cosignatures",
     { preHandler: [COSIGN, ABAC_COSIGN] },

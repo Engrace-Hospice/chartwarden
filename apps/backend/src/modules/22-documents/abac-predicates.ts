@@ -12,8 +12,8 @@
 // RN-or-above requirement for high-risk medication/allergy/dx fields lives here, read off the actor's
 // session licensure attribute (`user.licensure.type ∈ {RN, NP, PA, MD, DO}`); the platform floor cannot be
 // loosened. Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
-// guards on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+// is idempotent via registerPredicateIdempotent.
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { DocumentRetentionClass } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 
@@ -177,7 +177,6 @@ export function buildDocumentAbacPredicates(
 export function registerDocumentAbacPredicates(deps: DocumentAbacDeps): void {
   const predicates = buildDocumentAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

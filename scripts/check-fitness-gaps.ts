@@ -121,9 +121,15 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
 
 // ---- 2. SEAM REGISTRY -------------------------------------------------------
 {
+  // Consumer-side files outside a `seams/` directory that legitimately call `getSeam` — the per-module
+  // ABAC-resolver convention (every module's `abac-predicates.ts` / `abac-resolver-drizzle.ts`). Without
+  // these, this whole sub-check was blind to a module's own ABAC layer, which is exactly where M31's
+  // `PatientCaregiverReader`/`PatientAddressReader`/`ExternalGriefResourceReader` cast-resolved calls
+  // hid (ARCH-018): the files that consumed them were never scanned, so an aliased-call fix here alone
+  // could not have caught them.
   const seamFiles = [
     ...walk("packages", /seams?\/.+\.ts$|REQUIRED_SEAMS/),
-    ...walk("apps", /seams?\/.+\.ts$/),
+    ...walk("apps", /seams?\/.+\.ts$|\/(abac-predicates|abac-resolver[\w-]*)\.ts$/),
   ];
   const registryHit = seamFiles.some((f) =>
     /REQUIRED_SEAMS|registerSeam/.test(readFileSync(join(ROOT, f), "utf8")),
@@ -137,9 +143,23 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
       const src = readFileSync(join(ROOT, f), "utf8");
       for (const m of src.matchAll(/registerSeam\(\s*['"]([A-Za-z0-9_]+)['"]/g))
         registered.add(m[1]!);
-      for (const m of src.matchAll(/REQUIRED_SEAMS\s*=\s*\[([^\]]*)\]/g))
+      // Anchored to the CANONICAL `REQUIRED_SEAMS` export only — unanchored, this matched ANY
+      // identifier merely ending in "REQUIRED_SEAMS" (e.g. `M31_REQUIRED_SEAMS`, a module's own
+      // "seams I consume" documentation array, not the bootstrap registry) as if it were the real
+      // thing, which is how three unregistered M31 seams read as "registered" for months (ARCH-018).
+      for (const m of src.matchAll(/(?<![A-Za-z0-9_])REQUIRED_SEAMS\s*=\s*\[([^\]]*)\]/g))
         for (const s of m[1]!.matchAll(/['"]([A-Za-z0-9_]+)['"]/g)) registered.add(s[1]!);
+      // Direct `getSeam("Name")` calls, PLUS the aliased forms modules use to call an untyped seam
+      // name (`const rawSeam = getSeam as unknown as (name: string) => unknown; rawSeam("Name")`, or
+      // a generic helper `const arm = <T>(name) => (getSeam as ...)(name) as T; arm<T>("Name")`) —
+      // both read as "consumed" only via the literal token `getSeam(`, so an alias assignment
+      // followed by a call through the ALIAS was invisible before.
       for (const m of src.matchAll(/getSeam\(\s*['"]([A-Za-z0-9_]+)['"]/g)) consumed.set(m[1]!, f);
+      const aliasNames = [...src.matchAll(/const\s+(\w+)\s*=[^;]*\bgetSeam\b[^;]*;/g)].map((m) => m[1]!);
+      for (const alias of aliasNames) {
+        const callRe = new RegExp(`\\b${alias}(?:<[^>]*>)?\\(\\s*['"]([A-Za-z0-9_]+)['"]`, "g");
+        for (const m of src.matchAll(callRe)) consumed.set(m[1]!, f);
+      }
     }
     for (const [seam, f] of consumed)
       if (!registered.has(seam))

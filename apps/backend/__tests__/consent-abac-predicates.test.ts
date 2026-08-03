@@ -1,9 +1,14 @@
 // apps/backend/__tests__/consent-abac-predicates.test.ts — M39-T07 (§4.8).
 //
-// Proves M39 registers its eleven ABAC predicate resolvers into M3's named-predicate registry and
+// Proves M39 registers its seven ABAC predicate resolvers into M3's named-predicate registry and
 // that each resolves THROUGH the published ConsentEvaluator seam (one decision engine). Uses a slice
 // dataset so a real allow/deny is observable: an active 42_cfr_part_2_release naming the recipient
 // makes `sud_consent_present` true; a patient with no consent makes the predicates fail-closed.
+//
+// Four §4.8 names M39 does NOT register here — `dpoa_active`/`sud_disclosure_allowed` (M7 owns them,
+// keyed on its own planId/elementId targets), `family_violence_disclosure_allowed` (M15 owns it), and
+// `telehealth_consent_active` (M31 owns it, keyed on telehealthVisitId) — see the ownership note atop
+// `../src/modules/39-consent/abac-predicates.ts`.
 import { abacRegistry } from "@wardenx/auth";
 import { type StoredConsent, createInMemoryConsentStore } from "@wardenx/consent";
 import { createConsentEvaluator } from "@wardenx/consent";
@@ -26,9 +31,9 @@ beforeEach(() => {
   __resetSeamsForTest();
 });
 
-describe("M39-T07 — the 11 ABAC predicate resolvers (§4.8)", () => {
-  it("registers exactly the eleven named predicates", () => {
-    expect(M39_ABAC_PREDICATES).toHaveLength(11);
+describe("M39-T07 — the 7 ABAC predicate resolvers (§4.8)", () => {
+  it("registers exactly the seven named predicates", () => {
+    expect(M39_ABAC_PREDICATES).toHaveLength(7);
     seedEvaluator([]);
     registerConsentAbacPredicates();
     for (const name of M39_ABAC_PREDICATES) expect(abacRegistry.has(name)).toBe(true);

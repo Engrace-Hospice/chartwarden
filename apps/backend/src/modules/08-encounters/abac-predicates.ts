@@ -11,12 +11,19 @@
 // `AbacContext` (M3-T05) carries the server-assembled `roles` + `userId` instead, so the resolver derives
 // the RN discipline from the actor's roles/attributes (the M7 `disciplineScopeOf` convention) and compares
 // `context.userId` to the encounter's `authoredByUserId`. Registration is idempotent: the shared registry
-// is single-owner / no-clear, so re-boot (tests) guards on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+// is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { EncounterAbacResolver } from "./routes/service";
 
-/** The §4.6 predicate name M8 owns (registered into M3). Single-owner across the platform registry. */
-export const M8_ABAC_PREDICATES = ["cosigner_role_match"] as const;
+/**
+ * The §4.6 predicate name M8 owns (registered into M3). Namespaced `m8.` — M8/M9/M11 each define a
+ * `cosigner_role_match` with DIFFERENT target-field expectations (`encounterId` vs `id`/`assessmentId`
+ * vs `id`/`orderId`); a shared bare name meant whichever module booted first silently won the
+ * registration and the other two's cosign checks were quietly replaced by a resolver that could never
+ * find its target field — always denying, with no error anywhere (ARCH-001/002). Single-owner across
+ * the platform registry.
+ */
+export const M8_ABAC_PREDICATES = ["m8.cosigner_role_match"] as const;
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetId = (target: AbacTarget, field: string): string | null => {
@@ -47,7 +54,7 @@ export function buildEncounterAbacPredicates(
 ): Record<string, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
   const { resolver } = deps;
   return {
-    cosigner_role_match: async (context, target) => {
+    "m8.cosigner_role_match": async (context, target) => {
       if (!isRn(context)) return false; // a cosigner must be an RN (§4.6)
       const id = targetId(target, "encounterId");
       if (!id) return false;
@@ -67,7 +74,6 @@ export function buildEncounterAbacPredicates(
 export function registerEncounterAbacPredicates(deps: EncounterAbacDeps): void {
   const predicates = buildEncounterAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

@@ -40,6 +40,8 @@ export function toSessionContextRecord(
     membershipId: enrichment?.membershipId ?? null, // M3-owned path (membership_role/role) via the reader
     organizationId: row.activeOrganizationId ?? "",
     roles: enrichment?.roles ?? [], // authz still runs through M3's effective-permission resolver
+    providerEntityIds: enrichment?.providerEntityIds ?? [],
+    locationIds: enrichment?.locationIds ?? [],
     lastStepUpAt: row.lastStepUpAt ?? null,
     lastStepUpFactor: (row.lastStepUpFactor as StepUpFactor | null) ?? null,
   };

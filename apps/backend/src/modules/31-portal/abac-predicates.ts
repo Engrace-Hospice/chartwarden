@@ -34,15 +34,11 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { PortalAccessGrantKind, PortalAccountStatus } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 import { consentTypeForGrantKind, portalSessionClass } from "./lifecycle/portal-access-gate";
 import { isTwoPartyRecordingState } from "./telehealth/state-matrix";
-
-/** Resolve a seam whose contract is not typed in the bootstrap `SeamContracts` (M5 caregiver/address arms) —
- *  the name is still in M31_REQUIRED_SEAMS so the fitness-gaps registry check covers it. */
-const rawSeam = getSeam as unknown as (name: string) => unknown;
 
 /** The §4.7 predicate names M31 OWNS (registered into M3). Single-owner across the platform registry. */
 export const M31_ABAC_PREDICATES = [
@@ -155,16 +151,6 @@ interface BereavedPortalScopeShape {
     asOf: string;
   }): Promise<boolean>;
 }
-interface PatientCaregiverReaderShape {
-  primaryForPatient(
-    orgId: string,
-    patientId: string,
-  ): Promise<{ userId?: string | null; isPrimary?: boolean } | null>;
-}
-interface PatientAddressReaderShape {
-  primaryForPatient(orgId: string, patientId: string): Promise<{ stateCode?: string | null } | null>;
-}
-
 /** The production ports — every seam resolved LAZILY at call time through the M1 registry, so registration
  *  order is irrelevant and an unregistered seam denies at its own deny-stub rather than at boot. */
 export const seamPortalAbacPorts: PortalAbacPorts = {
@@ -193,21 +179,14 @@ export const seamPortalAbacPorts: PortalAbacPorts = {
   },
   async primaryCaregiverUserId(orgId, patientId) {
     try {
-      const reader = rawSeam("PatientCaregiverReader") as PatientCaregiverReaderShape;
-      const primary = await reader.primaryForPatient(orgId, patientId);
-      if (!primary || primary.isPrimary === false) return null;
-      return typeof primary.userId === "string" && primary.userId.length > 0 ? primary.userId : null;
+      return await getSeam("PatientCaregiverReader").primaryCaregiverUserId(orgId, patientId);
     } catch {
       return null;
     }
   },
   async patientResidenceState(orgId, patientId) {
     try {
-      const reader = rawSeam("PatientAddressReader") as PatientAddressReaderShape;
-      const address = await reader.primaryForPatient(orgId, patientId);
-      return typeof address?.stateCode === "string" && address.stateCode.length > 0
-        ? address.stateCode
-        : null;
+      return await getSeam("PatientAddressReader").primaryResidenceState(orgId, patientId);
     } catch {
       return null;
     }
@@ -391,8 +370,7 @@ export function buildPortalAbacPredicates(
 export function registerPortalAbacPredicates(deps: PortalAbacDeps): void {
   const predicates = buildPortalAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }
 

@@ -40,7 +40,7 @@ export * from "./authoring/index";
 // M8-T08 — the §4.7 owned seams (Billable/Signed/Mileage/Creator) + the M7 CarePlanReader M8 consumes.
 export * from "./seams/index";
 // M8-T09 — the §4.1 route inventory (31 routes) behind the REAL Authorization Contract on the §4.5 keys
-// M8 contributes to M3 (M8_CONTRIBUTED_PERMISSIONS in @wardenx/auth) + the §4.6 `cosigner_role_match`
+// M8 contributes to M3 (M8_CONTRIBUTED_PERMISSIONS in @wardenx/auth) + the §4.6 `m8.cosigner_role_match`
 // ABAC predicate M8 registers into M3. In-memory route service + AbacResolver for boot-without-DB/tests.
 export {
   type EncounterRouteDeps,

@@ -16,6 +16,7 @@ export {
   providerEntityScope,
   registerAbacRegistry,
   registerPredicate,
+  registerPredicateIdempotent,
   resetAbacRegistry,
 } from "./registry";
 export { isStepUpRecent } from "./step-up";

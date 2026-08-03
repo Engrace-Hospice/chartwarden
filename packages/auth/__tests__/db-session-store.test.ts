@@ -19,6 +19,8 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
       membershipId: null,
       organizationId: "org1",
       roles: [],
+      providerEntityIds: [],
+      locationIds: [],
       lastStepUpAt: at,
       lastStepUpFactor: "totp",
     });
@@ -34,17 +36,24 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
     expect(rec.lastStepUpFactor).toBeNull();
   });
 
-  it("merges M3 actor enrichment (membershipId + roles) when supplied", () => {
+  it("merges M3 actor enrichment (membershipId + roles + PE/location scope) when supplied", () => {
     const rec = toSessionContextRecord(
       { userId: "u3", activeOrganizationId: "org3", lastStepUpAt: null, lastStepUpFactor: null },
       "s3",
-      { membershipId: "m3", roles: ["nurse", "on_call"] },
+      {
+        membershipId: "m3",
+        roles: ["nurse", "on_call"],
+        providerEntityIds: ["pe-1"],
+        locationIds: ["loc-1", "loc-2"],
+      },
     );
     expect(rec.membershipId).toBe("m3");
     expect(rec.roles).toEqual(["nurse", "on_call"]);
+    expect(rec.providerEntityIds).toEqual(["pe-1"]);
+    expect(rec.locationIds).toEqual(["loc-1", "loc-2"]);
   });
 
-  it("keeps empty membership/roles when enrichment is null (no active membership in scope)", () => {
+  it("keeps empty membership/roles/scope when enrichment is null (no active membership in scope)", () => {
     const rec = toSessionContextRecord(
       { userId: "u4", activeOrganizationId: "org4", lastStepUpAt: null, lastStepUpFactor: null },
       "s4",
@@ -52,5 +61,7 @@ describe("toSessionContextRecord (AUTH-T05b)", () => {
     );
     expect(rec.membershipId).toBeNull();
     expect(rec.roles).toEqual([]);
+    expect(rec.providerEntityIds).toEqual([]);
+    expect(rec.locationIds).toEqual([]);
   });
 });

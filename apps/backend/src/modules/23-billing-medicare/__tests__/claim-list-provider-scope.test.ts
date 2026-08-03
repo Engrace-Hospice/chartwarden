@@ -51,12 +51,12 @@ describe("resolveClaimProviderScope (M23 claim-list authorization narrowing)", (
     expect(scope).toEqual(["pe-1", "pe-2"]);
   });
 
-  it("treats an EMPTY providerEntityIds as UNASSEMBLED, not as 'scoped to zero providers'", () => {
-    // `request-context.ts` initializes providerEntityIds to [] and nothing populates it — ActorEnrichment
-    // has no provider-entity field. Treating that default as a restriction would silently empty the claim
-    // list for every non-org-admin: a quieter, worse failure than the 404 this replaced. "Unreadable" and
-    // "empty" must not be the same value. When the fact becomes real this expectation flips to `[]`.
-    expect(resolveClaimProviderScope(req({ roles: ["billing_manager"] }))).toBeUndefined();
+  it("narrows a scoped, PE-less actor to the empty set (TASK-013: providerEntityIds is now assembled)", () => {
+    // `bootstrap/plugins/authenticate.ts` now stamps `providerEntityIds` from the actor's real
+    // `ActorEnrichment` (membership.defaultProviderEntityId) — an empty array is a real fact (this
+    // membership carries no default PE), not "the fact was never assembled", so it correctly narrows
+    // to zero claims for a non-org-wide role instead of leaving the list unrestricted.
+    expect(resolveClaimProviderScope(req({ roles: ["billing_manager"] }))).toEqual([]);
   });
 
   it("never reads the provider from the query string (authorization is server-derived)", () => {

@@ -1752,6 +1752,12 @@ if ((import.meta as { main?: boolean }).main) {
     ? createSessionAuthenticate({
         getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
         getResolver: () => getSeam("SessionContextResolver"),
+        // TASK-013 — the M23 #39/#40 / M15 `/internal/...` system-principal routes' only path to
+        // reachability. Unset (dev/no secret configured) → `systemCredential` is undefined and the
+        // machine-credential branch never runs, exactly today's fail-closed posture.
+        systemCredential: process.env.INTERNAL_SERVICE_TOKEN
+          ? { token: process.env.INTERNAL_SERVICE_TOKEN }
+          : undefined,
       })
     : undefined;
   const app = buildServer({

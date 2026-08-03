@@ -4,7 +4,7 @@
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
 //
-// §4.6: the cosignature routes (19/20) additionally wire `requireAbac('cosigner_role_match')` — the new
+// §4.6: the cosignature routes (19/20) additionally wire `requireAbac('m8.cosigner_role_match')` — the new
 // predicate M8 owns (RN ∧ not-self-author; caseload composed by the reused `caseload_membership`). §7.7:
 // the selections PATCH carries `If-Match` (the row version) → 412 VERSION_MISMATCH on skew. Sign routes
 // (14/20/21/25) carry the client's step-up timestamp; freshness (≤ 5 min, §2.7 D13) is verified here and
@@ -90,8 +90,8 @@ const READ_INTERNAL = P("encounter.read_internal");
 const VITALS = P("vitals.author");
 const MILEAGE = P("mileage.author");
 
-// §4.6 — the cosigner_role_match ABAC guard M8 owns (target = request.params → encounterId).
-const ABAC_COSIGN = requireAbac("encounter.cosign", "cosigner_role_match") as PreHandler;
+// §4.6 — the m8.cosigner_role_match ABAC guard M8 owns (target = request.params → encounterId).
+const ABAC_COSIGN = requireAbac("encounter.cosign", "m8.cosigner_role_match") as PreHandler;
 
 // §7.7 — the selections PATCH carries the read version in If-Match.
 const IF_MATCH = requireIfMatch() as PreHandler;
@@ -361,7 +361,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 19 — cosigner acknowledges (§4.6 cosigner_role_match).
+  // 19 — cosigner acknowledges (§4.6 m8.cosigner_role_match).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/acknowledge",
     { preHandler: [COSIGN, ABAC_COSIGN] },
@@ -371,7 +371,7 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 20 — cosigner signs (§4.6 cosigner_role_match; D13 step-up).
+  // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
     { preHandler: [COSIGN, ABAC_COSIGN] },

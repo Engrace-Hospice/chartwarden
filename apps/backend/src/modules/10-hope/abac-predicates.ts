@@ -16,9 +16,9 @@
 // The §4.1 `caseload` / `provider_entity` / `platform_admin` ABAC columns map to SHARED predicates
 // (`caseload_or_scope` registered by M5/M7; `provider_entity_scope` is an M3 intrinsic) — M10 binds those
 // by USING the names at the route, not by re-registering them. Registration is idempotent: the shared
-// registry is single-owner / no-clear, so re-boot (tests) guards on `abacRegistry.has`.
+// registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import { isHopeAuthorDisciplineAllowed, isSfvAuthorDisciplineAllowed } from "@wardenx/hope";
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 
 /** The §4.7 predicate names M10 owns (registered into M3). Single-owner across the platform registry. */
 export const M10_ABAC_PREDICATES = [
@@ -101,7 +101,6 @@ export function buildHopeAbacPredicates(
 export function registerHopeAbacPredicates(deps: HopeAbacDeps): void {
   const predicates = buildHopeAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

@@ -1,7 +1,7 @@
 // apps/backend/src/modules/09-assessments/routes/service.ts — M9-T05 the AssessmentRouteService + an
 // in-memory slice (§4.1). The route handlers compose over this; production injects a Drizzle-backed
 // service (writes under `withOrgContext` so RLS scopes by `app.org_id`). The slice also exposes an
-// AssessmentAbacResolver over the SAME dataset so M9's §4.7 `cosigner_role_match` predicate resolves an
+// AssessmentAbacResolver over the SAME dataset so M9's §4.7 `m9.cosigner_role_match` predicate resolves an
 // assessment's recorder/discipline without a cross-module schema import. Mirrors the M6/M7/M8
 // routes/service.ts precedent: pure-ish (no clock except the injected `now()`), every guard failure
 // surfaces as an `AssessmentStateError` (the §4.4 code → HTTP map).
@@ -34,7 +34,7 @@ import type {
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 
-/** The §4.7 recorder facts the `cosigner_role_match` predicate resolves for one row (RLS-backstopped). */
+/** The §4.7 recorder facts the `m9.cosigner_role_match` predicate resolves for one row (RLS-backstopped). */
 export interface AssessmentAbacFacts {
   readonly assessmentId: string;
   readonly patientId: string;

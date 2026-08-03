@@ -29,6 +29,8 @@ export interface SessionContextRecord {
   readonly membershipId: string | null;
   readonly organizationId: string;
   readonly roles: readonly string[];
+  readonly providerEntityIds: readonly string[];
+  readonly locationIds: readonly string[];
   readonly lastStepUpAt: Date | null;
   readonly lastStepUpFactor: StepUpFactor | null;
 }
@@ -57,6 +59,8 @@ export function createSessionContextResolver(store: SessionContextStore): Sessio
         membershipId: row.membershipId,
         organizationId: row.organizationId,
         roles: row.roles,
+        providerEntityIds: row.providerEntityIds,
+        locationIds: row.locationIds,
       };
     },
     async resolveStepUpState(scope, sessionId): Promise<SessionStepUpFields | null> {

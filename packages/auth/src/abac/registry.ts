@@ -47,6 +47,19 @@ export type AbacPredicate = (
 export interface PredicateRegistry {
   /** Register a predicate under `name`. Throws if `name` is already registered (single-owner). */
   register(name: string, predicate: AbacPredicate): void;
+  /**
+   * Idempotent module registration (§4.2): a module's own re-boot (tests re-invoking its
+   * `register*AbacPredicates()`) re-registers the SAME predicate under a name it already owns —
+   * that must stay silent. A DIFFERENT module claiming an already-used name must NOT — that is
+   * the cross-module collision `register()` is supposed to catch, which the old per-module
+   * `if (abacRegistry.has(name)) continue;` idiom silently swallowed instead (ARCH-001/002: two
+   * of three `cosigner_role_match` registrants lost the boot-order race with no error, ever).
+   * Distinguishes the two cases by comparing the predicate's source text (`Function.prototype.
+   * toString`) — a closure's source is stable across repeated calls with fresh `deps`, so the
+   * SAME resolver re-registering compares equal; a genuinely DIFFERENT resolver under the same
+   * name never does. Throws on a real collision; never throws on a same-source reboot.
+   */
+  registerIdempotent(name: string, predicate: AbacPredicate): void;
   /** Whether a predicate is registered under `name`. */
   has(name: string): boolean;
   /** The registered predicate names (for diagnostics / a "no unresolved consumer" audit). */
@@ -186,10 +199,25 @@ export function createPredicateRegistry(
     predicates.set(name, predicate);
   };
 
+  const registerIdempotent = (name: string, predicate: AbacPredicate): void => {
+    const existing = predicates.get(name);
+    if (!existing) {
+      predicates.set(name, predicate);
+      return;
+    }
+    if (existing.toString() === predicate.toString()) return; // same-source reboot — no-op
+    throw new Error(
+      `ABAC predicate '${name}' is already registered with a DIFFERENT resolver (single-owner per ` +
+        `§4.2) — two modules named the same predicate; namespace one (e.g. 'm8.${name}') to resolve ` +
+        "the collision. This is NOT a re-boot: a re-boot re-registers byte-identical source.",
+    );
+  };
+
   for (const [name, predicate] of Object.entries(seed)) register(name, predicate);
 
   return {
     register,
+    registerIdempotent,
     has: (name) => predicates.has(name),
     names: () => [...predicates.keys()],
     // Fail closed: an unregistered name denies (returns false), never throws (§2.2).
@@ -211,6 +239,15 @@ export const abacRegistry: PredicateRegistry = createPredicateRegistry();
 /** Register a predicate into the shared registry by name (the cross-module seam, §4.2.1). */
 export function registerPredicate(name: string, predicate: AbacPredicate): void {
   abacRegistry.register(name, predicate);
+}
+
+/**
+ * The idempotent-registration seam every module's `register*AbacPredicates()` boot function
+ * should call instead of hand-rolling `if (abacRegistry.has(name)) continue;` — that idiom
+ * silently no-ops a genuine cross-module name collision (see {@link PredicateRegistry.registerIdempotent}).
+ */
+export function registerPredicateIdempotent(name: string, predicate: AbacPredicate): void {
+  abacRegistry.registerIdempotent(name, predicate);
 }
 
 /**
