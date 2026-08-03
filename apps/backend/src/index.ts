@@ -318,6 +318,9 @@ import {
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
+// M37 (Inpatient Unit / IPU Management) boot surface — as of T11b the §4.7 ABAC predicate registration
+// (the §4.1 routes + §4.4 outbox catalog + §7.7 eraser + SeamRegistry land across the remaining T11 slices).
+import { registerM37AbacPredicates } from "./modules/37-ipu/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -858,6 +861,11 @@ export function wireModuleSeams(
   // Pure over (context, target) — no DB handle needed; the resource-fact clauses the guard can't supply
   // (a promo's redemption count, a refund's requester) are re-asserted server-side by the route service.
   registerM35AbacPredicates();
+  // M37 — the five §4.7 ABAC resolvers (`m37.ipu.rn_coverage_active`, `m37.irc_episode.within_cap`,
+  // `m37.equipment.inspection_current`, `m37.gip_criteria.attester_eligible`, `m37.ipu.staff_member`). Pure
+  // over (context, target) — the route write service resolves the DB fact onto the target and the §2
+  // machines re-assert the invariant inside the tx (defense in depth). Default-deny.
+  registerM37AbacPredicates();
   // M23 — the four §4.7 ABAC resolvers (`provider_entity_billing_scope`, `claim_in_billing_manager_caseload`,
   // `override_role_eligible`, `regulatory_required_rule_protected`). Pass the DB handle so the Drizzle
   // owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny). The M5
