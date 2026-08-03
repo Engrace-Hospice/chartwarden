@@ -114,6 +114,16 @@ import type {
   SubscriptionStateProvider,
   UsageMeteringIngest,
 } from "./subscription-billing";
+import type {
+  IpuAdmissionReader,
+  IpuBedAssignmentProvider,
+  IpuCensusProvider,
+  IpuIvSafetyOverlayProvider,
+  IpuQualityReader,
+  IpuShiftCoverageReader,
+  IpuTenantPostureReader,
+  IpuVisitorReader,
+} from "./inpatient";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {
@@ -417,7 +427,18 @@ export type SeamName =
   // (M35 also consumes M28's `FhirGatewayMetricsProvider` above — declared by M28, NOT re-declared here.)
   | "OnboardingStatusProvider" // M34 — SaaS-onboarding billability gate (ADR-0025; interim: active-org = billable)
   | "ExternalInterfaceMetricsProvider" // M29 — HL7 feed-health message counts (M35 `hl7_message` meter input)
-  | "AITokenMeterProvider"; // M32 — AI-token consumption per org (M35 `ai_token` meter input; PHI-free count)
+  | "AITokenMeterProvider" // M32 — AI-token consumption per org (M35 `ai_token` meter input; PHI-free count)
+  // M37 §4.11 — the eight published IPU reader seams. Leaf-typed (interfaces in ./inpatient). M37 registers
+  // real Drizzle-backed impls over the deny-stubs at boot; consumers (M23/M26/M27/M13/M30/M31/M34) resolve
+  // them via getSeam. All ids + counts + policy flags — no raw PHI row crosses (D17/§8.5) → phi:false.
+  | "IpuAdmissionReader" // M37 — bed-assignment-for-date read (M23 GIP-day gate; M26/M27/M28/M30/M34)
+  | "IpuCensusProvider" // M37 — inpatient/service-day fiscal roll-ups (M23 per-diem, M26 cap, M27 S-3, M33)
+  | "IpuBedAssignmentProvider" // M37 — active-bed-assignment check (M6 §2.3.5 confirm handshake)
+  | "IpuShiftCoverageReader" // M37 — unit RN-coverage-active at an instant (M17 cross-check / M19 after-hours)
+  | "IpuIvSafetyOverlayProvider" // M37 — the IV-continuous overlay for a signed order (M13 pre-administration gate)
+  | "IpuVisitorReader" // M37 — the patient visit-policy (M31 portal visit-policy page)
+  | "IpuQualityReader" // M37 — IPU acuity / restraint / mortality reads (M30 measure-detail pages)
+  | "IpuTenantPostureReader"; // M37 — tenant unit posture + the offboarding open-admissions gate (M34 console)
 
 /**
  * M5/M17 — resolves an actor's caseload (the patients they may access), the source of truth for
@@ -905,6 +926,15 @@ export interface SeamContracts {
   OnboardingStatusProvider: OnboardingStatusProvider;
   ExternalInterfaceMetricsProvider: ExternalInterfaceMetricsProvider;
   AITokenMeterProvider: AITokenMeterProvider;
+  // M37 §4.11 — the eight published IPU reader seams (leaf-typed in ./inpatient).
+  IpuAdmissionReader: IpuAdmissionReader;
+  IpuCensusProvider: IpuCensusProvider;
+  IpuBedAssignmentProvider: IpuBedAssignmentProvider;
+  IpuShiftCoverageReader: IpuShiftCoverageReader;
+  IpuIvSafetyOverlayProvider: IpuIvSafetyOverlayProvider;
+  IpuVisitorReader: IpuVisitorReader;
+  IpuQualityReader: IpuQualityReader;
+  IpuTenantPostureReader: IpuTenantPostureReader;
 }
 
 /**

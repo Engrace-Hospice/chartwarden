@@ -339,6 +339,7 @@ import {
   buildDrizzleIpuRouteService,
   mountM37Routes,
   registerIpuErasers,
+  registerIpuSeams,
   registerM37AbacPredicates,
 } from "./modules/37-ipu/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
@@ -810,6 +811,9 @@ export function wireModuleSeams(
   } else {
     registerPortalAbacPredicates({ resolver: denyStubPortalAbacResolver });
   }
+  // M37 §4.11 — register the eight REAL Drizzle-backed IPU reader seams over their deny-stubs (db-present
+  // boot); consumers (M23/M26/M27/M13/M30/M31/M34) resolve them via getSeam. Without a db the deny-stubs stand.
+  if (deps.db) registerIpuSeams({ registerSeam }, deps.db);
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution

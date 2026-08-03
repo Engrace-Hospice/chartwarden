@@ -17,6 +17,14 @@ import type {
   AuditorSessionMinter,
   BillingStatusProvider,
   ExternalInterfaceMetricsProvider,
+  IpuAdmissionReader,
+  IpuBedAssignmentProvider,
+  IpuCensusProvider,
+  IpuIvSafetyOverlayProvider,
+  IpuQualityReader,
+  IpuShiftCoverageReader,
+  IpuTenantPostureReader,
+  IpuVisitorReader,
   OnboardingStatusProvider,
   PatientCounterProvider,
   PlanCatalogReader,
@@ -1549,6 +1557,69 @@ export const externalInterfaceMetricsProviderDenyStub: ExternalInterfaceMetricsP
 export const aiTokenMeterProviderDenyStub: AITokenMeterProvider = {
   async tokensConsumedForOrg() {
     throw new NotImplementedError("AITokenMeterProvider");
+  },
+};
+
+// ── M37 §4.11 — the eight published IPU reader seams. Deny-stubs are the fail-closed REQUIRED_SEAMS
+// defaults; M37 registers the REAL Drizzle-backed impls over these via the composition-root hook. ──────────
+/** M37 §4.11 — bed-assignment-for-date read (M23 GIP-day gate). Denies until M37 registers the real reader. */
+export const ipuAdmissionReaderDenyStub: IpuAdmissionReader = {
+  async bedAssignmentForDate() {
+    throw new NotImplementedError("IpuAdmissionReader");
+  },
+};
+/** M37 §4.11 — the daily census + fiscal roll-ups (M23/M26/M27/M33). */
+export const ipuCensusProviderDenyStub: IpuCensusProvider = {
+  async inpatientDaysForFiscalDate() {
+    throw new NotImplementedError("IpuCensusProvider");
+  },
+  async serviceDaysForFiscalYear() {
+    throw new NotImplementedError("IpuCensusProvider");
+  },
+};
+/** M37 §4.11 — the M6 §2.3.5 confirm-handshake active-bed check. */
+export const ipuBedAssignmentProviderDenyStub: IpuBedAssignmentProvider = {
+  async hasActiveBedAssignment() {
+    throw new NotImplementedError("IpuBedAssignmentProvider");
+  },
+};
+/** M37 §4.11 — unit RN-coverage-active at an instant (M17/M19). */
+export const ipuShiftCoverageReaderDenyStub: IpuShiftCoverageReader = {
+  async coverageActiveForUnit() {
+    throw new NotImplementedError("IpuShiftCoverageReader");
+  },
+};
+/** M37 §4.11 — the IV-safety overlay for a signed order (M13 pre-administration gate). */
+export const ipuIvSafetyOverlayProviderDenyStub: IpuIvSafetyOverlayProvider = {
+  async getOverlayForOrder() {
+    throw new NotImplementedError("IpuIvSafetyOverlayProvider");
+  },
+};
+/** M37 §4.11 — the patient visit-policy (M31 portal). */
+export const ipuVisitorReaderDenyStub: IpuVisitorReader = {
+  async visitsAllowedForPatient() {
+    throw new NotImplementedError("IpuVisitorReader");
+  },
+};
+/** M37 §4.11 — IPU acuity / restraint / mortality reads (M30 measure detail). */
+export const ipuQualityReaderDenyStub: IpuQualityReader = {
+  async acuityForAdmission() {
+    throw new NotImplementedError("IpuQualityReader");
+  },
+  async restraintIncidentsForDate() {
+    throw new NotImplementedError("IpuQualityReader");
+  },
+  async mortalityCountForDate() {
+    throw new NotImplementedError("IpuQualityReader");
+  },
+};
+/** M37 §4.11 — tenant unit posture + the offboarding open-admissions gate (M34). */
+export const ipuTenantPostureReaderDenyStub: IpuTenantPostureReader = {
+  async unitsForOrg() {
+    throw new NotImplementedError("IpuTenantPostureReader");
+  },
+  async openIpuAdmissionsForOrg() {
+    throw new NotImplementedError("IpuTenantPostureReader");
   },
 };
 
