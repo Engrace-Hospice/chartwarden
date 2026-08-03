@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type SafetyCheckInStatus,
   type SafetyCheckInView,
   type SafetyMyDayView,
   amendCheckIn,
@@ -130,7 +131,8 @@ export function MyCheckInsScreen(): JSX.Element {
     setSaving(true);
     setModalError(null);
     const res = await amendCheckIn(client, amending.id, {
-      status,
+      // `status` is always one of the closed vocabulary the SelectField below offers.
+      status: status as SafetyCheckInStatus,
       ...(status !== "ok" ? { concernNote: note } : {}),
       amendmentReason: reason,
     });

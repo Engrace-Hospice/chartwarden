@@ -16,6 +16,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type BereavementLogKind,
+  type BereavementLogOutcome,
   type ClosureView,
   type PlanDetail,
   errorMessage,
@@ -237,9 +239,10 @@ function FinalContactModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
+    // `kind`/`outcome` are always one of the closed vocabularies the SelectFields below offer.
     const { error: err } = await logDirectContact(client, contactId, {
-      kind,
-      outcome,
+      kind: kind as BereavementLogKind,
+      outcome: outcome as BereavementLogOutcome,
       contactAt: contactAt ? new Date(contactAt).toISOString() : new Date().toISOString(),
       contactResponded: responded,
       artifactDocumentId: artifactDocumentId || undefined,

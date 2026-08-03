@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Stripe webhooks (`/admin/webhooks/stripe`,
 // stripe.admin.read). Recent inbound webhook receipts over GET /api/admin/webhooks/stripe/recent, searchable
 // by event id / type client-side, with a per-event Replay (stripe.admin.replay — step-up + Idempotency-Key)
@@ -8,14 +9,9 @@ import type { JSX } from "react";
 import { actionButtonStyle, bodyRow, cell, cellRight, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
 import { formatDate, idempotencyKey } from "./status";
 
-interface Receipt {
-  stripeEventId: string;
-  eventType: string;
-  receivedAt: string;
-  processedAt: string | null;
-  processingAttemptCount: number;
-  derivedOrganizationId: string | null;
-}
+type WebhookReceiptsPage =
+  operations["getApiAdminWebhooksStripeRecent"]["responses"][200]["content"]["application/json"];
+type Receipt = WebhookReceiptsPage["items"][number];
 
 export function Webhooks(): JSX.Element {
   const client = useApiClient();
@@ -40,7 +36,7 @@ export function Webhooks(): JSX.Element {
         setLoading(false);
         return;
       }
-      const page = res.data as unknown as { items: Receipt[]; nextCursor: string | null; hasMore: boolean };
+      const page = res.data;
       setRows((prev) => (append ? [...prev, ...page.items] : page.items));
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);

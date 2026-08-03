@@ -1,4 +1,5 @@
 import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plan editor (`/admin/plans/:id/edit`, plan.admin.write).
 // Hydrates from GET /api/admin/plans/:id (M35A-T03 detail GET), then manages the plan's usage meters
 // (POST/PATCH .../meters) and drives the lifecycle: Activate (which the §4.13 outbox dispatcher syncs to a
@@ -10,30 +11,9 @@ import { useParams } from "react-router-dom";
 import { actionButtonStyle, bodyRow, cell, cellRight, Field, inputStyle, Kv, OutcomeBanner, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, idempotencyKey } from "./status";
 
-interface Meter {
-  id: string;
-  eventType: string;
-  label: string;
-  inclusiveQuantity: number;
-  overageUnitPriceCents: number;
-  billingAggregation: string;
-  warningThresholdPercent: number;
-}
-interface PlanDetail {
-  id: string;
-  slug: string;
-  name: string;
-  tier: string;
-  cadence: string;
-  basePriceCents: number;
-  currencyCode: string;
-  trialPeriodDays: number;
-  isActive: boolean;
-  deprecatedAt: string | null;
-  stripeProductId: string | null;
-  stripePriceId: string | null;
-  meters: Meter[];
-}
+type PlanDetail =
+  operations["getApiAdminPlansById"]["responses"][200]["content"]["application/json"];
+type Meter = PlanDetail["meters"][number];
 
 export function PlanEdit(): JSX.Element {
   const client = useApiClient();
@@ -59,7 +39,7 @@ export function PlanEdit(): JSX.Element {
       setLoading(false);
       return;
     }
-    setPlan(res.data as unknown as PlanDetail);
+    setPlan(res.data);
     setLoading(false);
   }, [client, id]);
 
@@ -162,16 +142,14 @@ export function PlanEdit(): JSX.Element {
                 <th style={cell}>Meter</th>
                 <th style={cellRight}>Included</th>
                 <th style={cellRight}>Overage / unit</th>
-                <th style={cellRight}>Warn %</th>
               </tr>
             </thead>
             <tbody>
               {plan.meters.map((m) => (
-                <tr key={m.id} style={bodyRow}>
+                <tr key={m.eventType} style={bodyRow}>
                   <td style={cell}>{m.label}</td>
                   <td style={cellRight} className="tabular-nums">{m.inclusiveQuantity.toLocaleString()}</td>
                   <td style={cellRight} className="tabular-nums">{formatCents(m.overageUnitPriceCents, plan.currencyCode)}</td>
-                  <td style={cellRight} className="tabular-nums">{m.warningThresholdPercent}%</td>
                 </tr>
               ))}
             </tbody>

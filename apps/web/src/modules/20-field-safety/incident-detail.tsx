@@ -30,6 +30,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type SafetyIncidentCategory,
+  type SafetyIncidentSeverity,
+  type SafetyIncidentStateTransition,
   type SafetyIncidentView,
   errorMessage,
   getIncident,
@@ -147,9 +150,10 @@ export function IncidentDetailScreen(): JSX.Element {
     if (!incident) return;
     setSaving(true);
     setModalError(null);
+    // `category`/`severity` are always one of the closed vocabularies the SelectFields below offer.
     const res = await patchIncident(client, incident.id, incident.version, {
-      category,
-      severity,
+      category: category as SafetyIncidentCategory,
+      severity: severity as SafetyIncidentSeverity,
       ...(locationDescription.trim() ? { locationDescription: locationDescription.trim() } : {}),
       ...(narrative.trim() ? { narrative } : {}),
       ...(witnesses.trim() ? { witnesses } : {}),
@@ -202,7 +206,8 @@ export function IncidentDetailScreen(): JSX.Element {
     setSaving(true);
     setModalError(null);
     const res = await transitionIncident(client, incident.id, incident.version, {
-      toState,
+      // `toState` is always one of the closed transition vocabulary the SelectField below offers.
+      toState: toState as SafetyIncidentStateTransition,
       reason,
       ...(toState === "closed_with_action_plan" && actionPlan.trim() ? { actionPlan } : {}),
     });

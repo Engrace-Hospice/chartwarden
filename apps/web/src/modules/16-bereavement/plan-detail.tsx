@@ -18,6 +18,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type BereavementCloseEarlyReason,
+  type BereavementInitiateContactKind,
+  type BereavementPauseKind,
+  type BereavementRelationshipCode,
   type ContactDraft,
   type PlanDetail,
   closeEarly,
@@ -206,9 +210,12 @@ export function BereavementPlanDetail(): JSX.Element {
       {plan.externalSource ? (
         <Card title="External source (HL7 ADT)">
           <SummaryGrid>
-            <Field label="Source facility" value={String(plan.externalSource.sourceFacility ?? "—")} />
-            <Field label="Source system" value={String(plan.externalSource.sourceSystem ?? "—")} />
-            <Field label="Acknowledged" value={dateTime(String(plan.externalSource.ackAt ?? "") || null)} />
+            <Field label="Source facility" value={String(plan.externalSource.sourceFacilityName ?? "—")} />
+            <Field label="Source message" value={String(plan.externalSource.sourceMessageId ?? "—")} />
+            <Field
+              label="Acknowledged"
+              value={dateTime(String(plan.externalSource.ackReceivedAt ?? "") || null)}
+            />
             <Field label="Cosign status" value={humanize(String(plan.externalSource.cosignStatus ?? ""))} />
             <Field label="Cosigned" value={dateTime(String(plan.externalSource.cosignedAt ?? "") || null)} />
           </SummaryGrid>
@@ -452,7 +459,7 @@ function AddContactModal({
         label="Relationship to the decedent"
         value={draft.relationshipCode}
         options={RELATIONSHIP_CODES.map((c) => ({ value: c, label: humanize(c) }))}
-        onChange={(v) => setDraft({ ...draft, relationshipCode: v })}
+        onChange={(v) => setDraft({ ...draft, relationshipCode: v as BereavementRelationshipCode })}
       />
       <TextField
         label="Email (optional)"
@@ -502,7 +509,11 @@ function PauseModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const { error: err } = await pausePlan(client, planId, version, { pauseKind, reason });
+    // `pauseKind` is always one of the closed vocabulary the SelectField below offers.
+    const { error: err } = await pausePlan(client, planId, version, {
+      pauseKind: pauseKind as BereavementPauseKind,
+      reason,
+    });
     setBusy(false);
     if (err) {
       setError(errorMessage(err, "The plan could not be paused."));
@@ -560,7 +571,11 @@ function CloseModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const { error: err } = await closeEarly(client, planId, version, { reason, narrative });
+    // `reason` is always one of the closed vocabulary the SelectField below offers.
+    const { error: err } = await closeEarly(client, planId, version, {
+      reason: reason as BereavementCloseEarlyReason,
+      narrative,
+    });
     setBusy(false);
     if (err) {
       setError(errorMessage(err, "The plan could not be closed."));
@@ -673,7 +688,11 @@ function FirstContactModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const { error: err } = await initiateContact(client, planId, { contactId, kind });
+    // `kind` is always one of the closed vocabulary the SelectField below offers.
+    const { error: err } = await initiateContact(client, planId, {
+      contactId,
+      kind: kind as BereavementInitiateContactKind,
+    });
     setBusy(false);
     if (err) {
       setError(errorMessage(err, "First contact was refused."));

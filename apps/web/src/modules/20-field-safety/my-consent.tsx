@@ -32,6 +32,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type SafetyConsentPurpose,
   type SafetyConsentView,
   errorMessage,
   getConsents,
@@ -126,7 +127,8 @@ export function MyConsentScreen(): JSX.Element {
       return;
     }
     const res = await grantConsent(client, {
-      purpose: granting,
+      // `granting` is always one of CONSENT_PURPOSES — the caller only ever sets it from that list.
+      purpose: granting as NonNullable<SafetyConsentPurpose>,
       acknowledgmentTextSnapshot: text,
       ...(granting === "emergency_contact_call"
         ? {
@@ -155,7 +157,8 @@ export function MyConsentScreen(): JSX.Element {
     setSaving(true);
     setModalError(null);
     const res = await revokeConsent(client, {
-      purpose: revoking,
+      // `revoking` is always one of CONSENT_PURPOSES — the caller only ever sets it from that list.
+      purpose: revoking as NonNullable<SafetyConsentPurpose>,
       ...(revokeReason.trim() ? { reason: revokeReason.trim() } : {}),
     });
     setSaving(false);

@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund queue (`/admin/refunds`, refund.read). The
 // cross-tenant refund roster over GET /api/admin/refunds, filtered by state (requested/approved/executed/
 // failed) client-side, with the org DISPLAY NAME (M35A-T03 seam) per row. `requested` rows link to the
@@ -9,17 +10,9 @@ import { Link } from "react-router-dom";
 import { actionButtonStyle, bodyRow, cell, cellRight, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 
-interface Refund {
-  id: string;
-  organizationId: string;
-  organizationName: string;
-  invoiceId: string;
-  amountCents: number;
-  kind: string;
-  reasonCode: string;
-  status: string;
-  requestedAt: string;
-}
+type RefundPage =
+  operations["getApiAdminRefunds"]["responses"][200]["content"]["application/json"];
+type Refund = RefundPage["items"][number];
 
 const STATE_FILTERS = ["requested", "approved", "executed_success", "executed_failed", "denied"] as const;
 
@@ -44,7 +37,7 @@ export function RefundsQueue(): JSX.Element {
         setLoading(false);
         return;
       }
-      const page = res.data as unknown as { items: Refund[]; nextCursor: string | null; hasMore: boolean };
+      const page = res.data;
       setRows((prev) => (append ? [...prev, ...page.items] : page.items));
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);

@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Plans list + create (`/admin/plans`, plan.admin.read).
 // Cross-tenant plan catalog over GET /api/admin/plans; a draft plan is created via POST /api/admin/plans
 // (plan.admin.write — step-up + Idempotency-Key, enforced server-side). Each row links to the meter/pricing
@@ -9,17 +10,8 @@ import { Link } from "react-router-dom";
 import { actionButtonStyle, bodyRow, cell, cellRight, Field, inputStyle, OutcomeBanner, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, idempotencyKey } from "./status";
 
-interface PlanRow {
-  id: string;
-  slug: string;
-  name: string;
-  tier: string;
-  cadence: string;
-  basePriceCents: number;
-  currencyCode: string;
-  trialPeriodDays: number;
-  isActive: boolean;
-}
+type PlanRow =
+  operations["getApiAdminPlans"]["responses"][200]["content"]["application/json"][number];
 
 export function PlansList(): JSX.Element {
   const client = useApiClient();
@@ -40,7 +32,7 @@ export function PlansList(): JSX.Element {
       setLoading(false);
       return;
     }
-    setPlans(res.data as unknown as PlanRow[]);
+    setPlans(res.data);
     setLoading(false);
   }, [client]);
 

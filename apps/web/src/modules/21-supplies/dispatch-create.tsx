@@ -29,7 +29,10 @@ import type { JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   type ComfortKitTemplateView,
+  type DispatchDeploymentSite,
   type DispatchLineInput,
+  type DispatchSource,
+  type PharmacyDispatchMode,
   type SupplyRequestListItem,
   createDispatch,
   errorMessage,
@@ -183,7 +186,9 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       supplyRequestId,
       comfortKitTemplateId: templateId,
       locationId: selectedRequest.locationId,
-      deploymentSite,
+      // Always one of DEPLOYMENT_SITES/DISPATCH_SOURCES/PHARMACY_DISPATCH_MODES — the SelectFields below
+      // offer no other value.
+      deploymentSite: deploymentSite as DispatchDeploymentSite,
       ...(isIpu ? { ipuRoomId: ipuRoomId.trim() } : {}),
       ...(needsFacility && facilityName.trim()
         ? {
@@ -194,8 +199,8 @@ export function ComfortKitDispatchCreate(): JSX.Element {
             },
           }
         : {}),
-      dispatchSource,
-      pharmacyDispatchMode,
+      dispatchSource: dispatchSource as DispatchSource,
+      pharmacyDispatchMode: pharmacyDispatchMode as PharmacyDispatchMode,
       ...(pharmacyPartnerId.trim() ? { pharmacyPartnerId: pharmacyPartnerId.trim() } : {}),
       kitSerialNumber: kitSerialNumber.trim(),
       contents: lines.map((l) => ({

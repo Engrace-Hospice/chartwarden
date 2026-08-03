@@ -19,6 +19,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type BereavementLogOutcome,
+  type BereavementOutreachStatus,
   type OutreachRow,
   type PlanDetail,
   cancelOutreach,
@@ -106,7 +108,8 @@ export function BereavementOutreachPlanner(): JSX.Element {
     const [detail, page] = await Promise.all([
       getPlan(client, planId),
       listOutreach(client, planId, {
-        status: status || undefined,
+        // `status` is always "" or one of the closed vocabulary the SelectField below offers.
+        status: (status || undefined) as BereavementOutreachStatus | undefined,
         contactId: contactFilter || undefined,
         limit: 200,
       }),
@@ -374,17 +377,19 @@ function CompleteModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
+    // `outcome` is always one of the closed vocabulary the SelectField below offers.
     const body = inPerson
       ? {
           kind: "in_person_visit" as const,
           sourceEncounterId,
-          outcome,
+          outcome: outcome as BereavementLogOutcome,
           contactResponded: responded,
           notes: notes || undefined,
         }
       : {
-          kind: row.kind,
-          outcome,
+          // `row.kind` is never "in_person_visit" here — that arm is handled above.
+          kind: row.kind as Exclude<OutreachRow["kind"], "in_person_visit">,
+          outcome: outcome as BereavementLogOutcome,
           contactResponded: responded,
           artifactDocumentId: artifactDocumentId || undefined,
           notes: notes || undefined,

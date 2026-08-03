@@ -27,6 +27,8 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type SafetyHighRiskAreaView,
+  type SafetyHighRiskCategory,
+  type SafetyHighRiskPolicy,
   createHighRiskArea,
   errorMessage,
   listHighRiskAreas,
@@ -172,21 +174,22 @@ export function HighRiskAreasScreen(): JSX.Element {
     }
     setSaving(true);
     setModalError(null);
+    // `riskCategory`/`areaPolicy` are always one of the closed vocabularies the SelectFields below offer.
     const res =
       editing === "new"
         ? await createHighRiskArea(client, {
-            riskCategory,
+            riskCategory: riskCategory as SafetyHighRiskCategory,
             advisoryMessage: advisoryMessage.trim(),
             polygon: parsed.rings,
-            policyForVisitsToArea: areaPolicy,
+            policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
             ...(effectiveFrom ? { effectiveFrom: toInstant(effectiveFrom) } : {}),
             ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
           })
         : await patchHighRiskArea(client, (editing as SafetyHighRiskAreaView).id, {
-            riskCategory,
+            riskCategory: riskCategory as SafetyHighRiskCategory,
             advisoryMessage: advisoryMessage.trim(),
             polygon: parsed.rings,
-            policyForVisitsToArea: areaPolicy,
+            policyForVisitsToArea: areaPolicy as SafetyHighRiskPolicy,
             ...(effectiveTo ? { effectiveTo: toInstant(effectiveTo) } : {}),
           });
     setSaving(false);

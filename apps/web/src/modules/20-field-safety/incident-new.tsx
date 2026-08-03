@@ -23,7 +23,12 @@ import { PageHeader, t, useApiClient } from "@wardenx/ui";
 import { useCallback, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { createIncident, errorMessage } from "./safety-api";
+import {
+  type SafetyIncidentCategory,
+  type SafetyIncidentSeverity,
+  createIncident,
+  errorMessage,
+} from "./safety-api";
 import {
   DEFAULT_INCIDENT_CATEGORY,
   DEFAULT_INCIDENT_SEVERITY,
@@ -80,8 +85,9 @@ export function IncidentNewScreen(): JSX.Element {
     setError(null);
     const res = await createIncident(client, {
       affectedClinicianMembershipId: affected.trim(),
-      category,
-      severity,
+      // `category`/`severity` are always one of the closed vocabularies the SelectFields below offer.
+      category: category as SafetyIncidentCategory,
+      severity: severity as SafetyIncidentSeverity,
       occurredAt: toInstant(occurredAt),
       ...(visitId.trim() ? { visitId: visitId.trim() } : {}),
       ...(patientId.trim() ? { patientId: patientId.trim() } : {}),

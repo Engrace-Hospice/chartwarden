@@ -31,6 +31,7 @@ import { Link, useParams } from "react-router-dom";
 import {
   type DispatchedContentView,
   type ReturnDetail,
+  type ReturnDisposalMethod,
   assignRetriever,
   declareUnreturnable,
   errorMessage,
@@ -221,7 +222,8 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
     setBusy(true);
     setActionError(null);
     const { error: err } = await reconcileReturn(client, returnId, ret.updatedAt, {
-      disposalMethod,
+      // `disposalMethod` is always one of DISPOSAL_METHODS — the SelectField below offers no other value.
+      disposalMethod: disposalMethod as ReturnDisposalMethod,
       ...(witnessMembershipId.trim()
         ? { disposalWitnessMembershipId: witnessMembershipId.trim() }
         : {}),

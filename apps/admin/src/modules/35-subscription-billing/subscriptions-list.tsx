@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscriptions list (`/admin/subscriptions`,
 // subscription.admin.read). The cross-tenant subscription roster over GET /api/admin/subscriptions, filtered
 // by status (server) with the org DISPLAY NAME (M35A-T03 seam) rendered instead of a raw UUID, plus plan,
@@ -9,16 +10,9 @@ import { Link } from "react-router-dom";
 import { actionButtonStyle, bodyRow, cell, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
 import { cap, dunningTone, orgLabel, subscriptionTone, SUBSCRIPTION_STATUSES } from "./status";
 
-interface AdminSub {
-  id: string;
-  organizationId: string;
-  organizationName: string;
-  planName: string;
-  planTier: string;
-  status: string;
-  dunningStage: string;
-  defaultPaymentMethodLast4: string | null;
-}
+type SubscriptionsPage =
+  operations["getApiAdminSubscriptions"]["responses"][200]["content"]["application/json"];
+type AdminSub = SubscriptionsPage["items"][number];
 
 export function SubscriptionsList(): JSX.Element {
   const client = useApiClient();
@@ -42,7 +36,7 @@ export function SubscriptionsList(): JSX.Element {
         setLoading(false);
         return;
       }
-      const page = res.data as unknown as { items: AdminSub[]; nextCursor: string | null; hasMore: boolean };
+      const page = res.data;
       setRows((prev) => (append ? [...prev, ...page.items] : page.items));
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);

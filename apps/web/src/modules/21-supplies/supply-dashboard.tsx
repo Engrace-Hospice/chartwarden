@@ -25,7 +25,9 @@ import {
   type DispatchListItem,
   type ParStockView,
   type ReturnListItem,
+  type SupplyRequestKind,
   type SupplyRequestListItem,
+  type SupplyRequestStatus,
   errorMessage,
   listDispatches,
   listParStock,
@@ -104,8 +106,10 @@ export function SupplyTeamDashboard(): JSX.Element {
     const [reqs, rets, shelf, disp] = await Promise.all([
       listSupplyRequests(client, {
         limit: QUEUE_PAGE,
-        ...(kind ? { kind } : {}),
-        ...(status ? { status } : { openOnly: true }),
+        // `kind`/`status` are always "" or one of REQUEST_KINDS/OPEN_REQUEST_STATUSES — the SelectFields
+        // below offer no other value.
+        ...(kind ? { kind: kind as SupplyRequestKind } : {}),
+        ...(status ? { status: status as SupplyRequestStatus } : { openOnly: true }),
       }),
       listReturns(client, { limit: QUEUE_PAGE, openOnly: true }),
       listParStock(client, { limit: PAR_PAGE, belowThresholdOnly: true }),

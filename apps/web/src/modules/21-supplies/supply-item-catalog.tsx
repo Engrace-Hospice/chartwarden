@@ -24,6 +24,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type SupplyItemSkuClass,
   type SupplyItemView,
   createTenantSupplyItem,
   errorMessage,
@@ -97,7 +98,9 @@ export function SupplyItemCatalog(): JSX.Element {
     const { page, error: err } = await listSupplyItems(client, {
       limit: PAGE,
       ...(query.trim() ? { q: query.trim() } : {}),
-      ...(skuClass ? { skuClass } : {}),
+      // `skuClass` is always "" or one of the catalog's SKU classes — the SelectField below offers no
+      // other value.
+      ...(skuClass ? { skuClass: skuClass as SupplyItemSkuClass } : {}),
       ...(includeRetired ? { includeRetired: true } : {}),
     });
     if (err) {

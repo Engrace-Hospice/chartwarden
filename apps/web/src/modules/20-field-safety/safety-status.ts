@@ -13,6 +13,7 @@
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
 import type { StatusTone } from "@wardenx/ui";
+import type { SafetyConsentPurpose, SafetySubscriptionAlertKind } from "./safety-api";
 
 /**
  * `safety_sos_lifecycle_state` (§2.2.2).
@@ -307,10 +308,15 @@ export const SUBSCRIPTION_MODELS: readonly string[] = [
 ];
 
 /** §3.3 `safety_supervisor_subscription.alert_kinds[]` — which alert classes one row pages on. */
-export const ALERT_KINDS: readonly string[] = ["sos", "overdue", "incident", "high_risk_area"];
+export const ALERT_KINDS: readonly SafetySubscriptionAlertKind[] = [
+  "sos",
+  "overdue",
+  "incident",
+  "high_risk_area",
+];
 
 /** §3.3 `safety_emergency_contact_consent.consent_purpose` (D6 / D10 / M20-F16). */
-export const CONSENT_PURPOSES: readonly string[] = [
+export const CONSENT_PURPOSES: readonly NonNullable<SafetyConsentPurpose>[] = [
   "sos_coordinates",
   "continuous_location_during_sos",
   "emergency_contact_call",

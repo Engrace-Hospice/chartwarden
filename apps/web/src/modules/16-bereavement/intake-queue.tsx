@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type BereavementPlanStatus,
   type PlanListItem,
   assignCounselor,
   assignVolunteer,
@@ -73,7 +74,11 @@ export function BereavementIntakeQueue(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { page, error: err } = await listPlans(client, { status, limit: 100 });
+    // `status` is always one of the closed vocabulary the SelectField below offers.
+    const { page, error: err } = await listPlans(client, {
+      status: status as BereavementPlanStatus,
+      limit: 100,
+    });
     if (err) {
       setError(errorMessage(err, "The bereavement intake queue could not be loaded."));
       setLoading(false);

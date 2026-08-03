@@ -29,6 +29,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type ActiveSosView,
+  type SafetySosAcknowledgeOutcome,
   acknowledgeSos,
   errorMessage,
   getSosAlert,
@@ -148,7 +149,8 @@ export function ActiveSosScreen(): JSX.Element {
     setModalError(null);
     const res = await acknowledgeSos(client, ackFor.id, ackFor.version, {
       actionTaken,
-      outcome,
+      // `outcome` is always one of the closed vocabulary the SelectField below offers.
+      outcome: outcome as SafetySosAcknowledgeOutcome,
       ...(phoneMasked.trim() ? { outreachPhoneNumberMasked: phoneMasked.trim() } : {}),
     });
     setSaving(false);

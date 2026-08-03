@@ -20,7 +20,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type PharmacyDispatchMode,
+  type VendorRoutingFulfillmentMode,
   type VendorRoutingRuleView,
+  type VendorRoutingScopeKind,
   createVendorRoutingRule,
   errorMessage,
   listVendorRoutingRules,
@@ -103,7 +106,8 @@ export function VendorRoutingAdmin(): JSX.Element {
     setError(null);
     const { page, error: err } = await listVendorRoutingRules(client, {
       limit: PAGE,
-      ...(scopeFilter ? { scopeKind: scopeFilter } : {}),
+      // `scopeFilter` is always "" or one of the closed scope-kind vocabulary the SelectField below offers.
+      ...(scopeFilter ? { scopeKind: scopeFilter as VendorRoutingScopeKind } : {}),
       ...(includeRetired ? { includeRetired: true } : {}),
     });
     if (err) {
@@ -122,17 +126,19 @@ export function VendorRoutingAdmin(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
+  // `draft.scopeKind`/`assignedFulfillmentMode`/`defaultPharmacyDispatchMode` are always one of the
+  // closed vocabularies the SelectFields below offer.
   const body = () => ({
-    scopeKind: draft.scopeKind,
+    scopeKind: draft.scopeKind as VendorRoutingScopeKind,
     // §3.1.5's CHECK: `sku` and `location` carry a target, `tenant` does not.
     ...(draft.scopeKind === "tenant" || draft.scopeId.trim() === ""
       ? {}
       : { scopeId: draft.scopeId.trim() }),
     ...(draft.skuClassPattern.trim() ? { skuClassPattern: draft.skuClassPattern.trim() } : {}),
     assignedVendorId: draft.assignedVendorId.trim() === "" ? null : draft.assignedVendorId.trim(),
-    assignedFulfillmentMode: draft.assignedFulfillmentMode,
+    assignedFulfillmentMode: draft.assignedFulfillmentMode as VendorRoutingFulfillmentMode,
     ...(draft.defaultPharmacyDispatchMode
-      ? { defaultPharmacyDispatchMode: draft.defaultPharmacyDispatchMode }
+      ? { defaultPharmacyDispatchMode: draft.defaultPharmacyDispatchMode as PharmacyDispatchMode }
       : {}),
     ...(draft.precedencePriority.trim()
       ? { precedencePriority: Number(draft.precedencePriority) }

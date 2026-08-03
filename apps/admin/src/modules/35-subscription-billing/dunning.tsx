@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Dunning (`/admin/dunning`, dunning.admin.read +
 // dunning.admin.override). Subscriptions currently in an OPEN dunning stage over GET /api/admin/dunning
 // (M35A-T03, the screen's only data source), filterable by stage. Per-subscription overrides — skip_stage /
@@ -8,16 +9,9 @@ import type { JSX } from "react";
 import { actionButtonStyle, bodyRow, cell, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
 import { cap, dunningTone, DUNNING_STAGES, formatDate, idempotencyKey, isCriticalDunningStage, orgLabel } from "./status";
 
-interface DunningRow {
-  subscriptionId: string;
-  organizationId: string;
-  organizationName: string;
-  planName: string;
-  subscriptionStatus: string;
-  stage: string;
-  enteredAt: string;
-  nextAttemptAt: string | null;
-}
+type DunningPage =
+  operations["getApiAdminDunning"]["responses"][200]["content"]["application/json"];
+type DunningRow = DunningPage["items"][number];
 
 export function Dunning(): JSX.Element {
   const client = useApiClient();
@@ -43,7 +37,7 @@ export function Dunning(): JSX.Element {
         setLoading(false);
         return;
       }
-      const page = res.data as unknown as { items: DunningRow[]; nextCursor: string | null; hasMore: boolean };
+      const page = res.data;
       setRows((prev) => (append ? [...prev, ...page.items] : page.items));
       setCursor(page.nextCursor);
       setHasMore(page.hasMore);

@@ -17,6 +17,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type BereavementLogKind,
+  type BereavementLogOutcome,
+  type BereavementOptOutKind,
+  type BereavementOutreachKind,
   type ContactRow,
   type PlanDetail,
   confirmContact,
@@ -313,9 +317,12 @@ function OptOutModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
+    // `optOutKind`/`channelKinds` are always drawn from the closed vocabularies the SelectField /
+    // checkbox list below offer.
     const { error: err } = await optOutContact(client, contact.contactId, contact.version, {
-      optOutKind,
-      channelKinds: optOutKind === "channel_specific" ? channelKinds : undefined,
+      optOutKind: optOutKind as BereavementOptOutKind,
+      channelKinds:
+        optOutKind === "channel_specific" ? (channelKinds as BereavementOutreachKind[]) : undefined,
       reason: reason || undefined,
       // This screen is the STAFF path. A survivor's own M31 portal opt-out carries
       // `portal_self_service` and rides the portal-self ABAC branch instead.
@@ -541,9 +548,10 @@ function LogDirectModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
+    // `kind`/`outcome` are always one of the closed vocabularies the SelectFields below offer.
     const { error: err } = await logDirectContact(client, contact.contactId, {
-      kind,
-      outcome,
+      kind: kind as BereavementLogKind,
+      outcome: outcome as BereavementLogOutcome,
       contactAt: contactAt ? new Date(contactAt).toISOString() : new Date().toISOString(),
       contactResponded: responded,
       notes: notes || undefined,
@@ -613,7 +621,8 @@ function ChannelsModal({
     setError(null);
     const { error: err } = await updateContact(client, contact.contactId, contact.version, {
       preferredLanguageIso639: language,
-      outreachPreferences: { allowedKinds: allowed },
+      // `allowed` is always drawn from the closed vocabulary the checkbox list below offers.
+      outreachPreferences: { allowedKinds: allowed as BereavementOutreachKind[] },
       volunteerVisibleOnly,
     });
     setBusy(false);

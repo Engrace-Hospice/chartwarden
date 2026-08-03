@@ -176,12 +176,12 @@ function buildTimeline(
   push(plan.openedAt, "Plan", "Plan opened", "roster seeded and schedule materialized");
   push(plan.pausedAt, "Plan", "Plan paused", humanize(plan.pauseKind));
   push(plan.closedAt, "Plan", "Plan closed", humanize(plan.status));
-  if (plan.externalSource?.ackAt)
+  if (plan.externalSource?.ackReceivedAt)
     push(
-      String(plan.externalSource.ackAt),
+      String(plan.externalSource.ackReceivedAt),
       "Plan",
       "External death notice acknowledged",
-      String(plan.externalSource.sourceFacility ?? "external source"),
+      String(plan.externalSource.sourceFacilityName ?? "external source"),
     );
   if (plan.externalSource?.cosignedAt)
     push(

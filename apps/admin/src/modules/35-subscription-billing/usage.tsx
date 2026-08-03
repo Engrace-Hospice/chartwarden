@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Tenant usage drill-down (`/admin/usage/:organizationId`,
 // usage.admin.read). The meter-by-meter current-period usage for one tenant over GET
 // /api/admin/usage/:organizationId/current, with used / included / overage and the projected overage cost.
@@ -9,17 +10,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { actionButtonStyle, bodyRow, cell, cellRight, inputStyle, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, formatDate, usageThresholdTone } from "./status";
 
-interface UsageMeter {
-  eventType: string;
-  label: string;
-  totalQuantity: number;
-  inclusiveQuantity: number;
-  overageQuantity: number;
-  overageUnitPriceCents: number;
-  projectedOverageCostCents: number;
-  thresholdState: string;
-}
-interface UsageCurrent { periodStart: string; periodEnd: string; meters: UsageMeter[] }
+type UsageCurrent =
+  operations["getApiAdminUsageByOrganizationIdCurrent"]["responses"][200]["content"]["application/json"];
 
 export function Usage(): JSX.Element {
   const client = useApiClient();
@@ -43,7 +35,7 @@ export function Usage(): JSX.Element {
       setLoading(false);
       return;
     }
-    setUsage(res.data as unknown as UsageCurrent);
+    setUsage(res.data);
     setLoading(false);
   }, [client, organizationId]);
 

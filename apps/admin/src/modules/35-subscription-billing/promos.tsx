@@ -1,4 +1,5 @@
 import { EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Promos (`/admin/promos`, promo.admin.read/write).
 // Cross-tenant promo catalog over GET /api/admin/promos with redemption counts; create via POST
 // /api/admin/promos and deactivate via POST /api/admin/promos/:id/deactivate (promo.admin.write — step-up +
@@ -8,18 +9,8 @@ import type { JSX } from "react";
 import { actionButtonStyle, bodyRow, cell, cellRight, Field, inputStyle, OutcomeBanner, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, idempotencyKey } from "./status";
 
-interface Promo {
-  id: string;
-  code: string;
-  kind: string;
-  percentOff: number | null;
-  fixedOffCents: number | null;
-  duration: string;
-  durationInMonths: number | null;
-  maxRedemptions: number | null;
-  redemptionCount: number;
-  isActive: boolean;
-}
+type Promo =
+  operations["getApiAdminPromos"]["responses"][200]["content"]["application/json"][number];
 
 export function Promos(): JSX.Element {
   const client = useApiClient();
@@ -40,7 +31,7 @@ export function Promos(): JSX.Element {
       setLoading(false);
       return;
     }
-    setPromos(res.data as unknown as Promo[]);
+    setPromos(res.data);
     setLoading(false);
   }, [client]);
 

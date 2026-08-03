@@ -1,4 +1,5 @@
 import { EmptyState, KpiCard, KpiStrip, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Revenue (`/admin/revenue`, revenue.admin.read). The
 // MRR/ARR dashboard: the live current estimate (GET /api/admin/revenue/current) as KPI tiles, plus the
 // trailing snapshot history (GET /api/admin/revenue/snapshots) broken into new / expansion / contraction /
@@ -8,18 +9,11 @@ import type { JSX } from "react";
 import { actionButtonStyle, bodyRow, cell, cellRight, OutcomeBanner, tableStyle, theadRow } from "./ui";
 import { formatCents, formatDate, idempotencyKey } from "./status";
 
-interface Current { mrrCents: number; arrCents: number; activeSubscriptions: number; asOf: string }
-interface Snapshot {
-  id: string;
-  snapshotMonth: string;
-  mrrCents: number;
-  arrCents: number;
-  newMrrCents: number;
-  expansionMrrCents: number;
-  contractionMrrCents: number;
-  churnMrrCents: number;
-  activeSubscriptions: number;
-}
+type Current =
+  operations["getApiAdminRevenueCurrent"]["responses"][200]["content"]["application/json"];
+type SnapshotPage =
+  operations["getApiAdminRevenueSnapshots"]["responses"][200]["content"]["application/json"];
+type Snapshot = SnapshotPage["items"][number];
 
 export function Revenue(): JSX.Element {
   const client = useApiClient();
@@ -39,9 +33,9 @@ export function Revenue(): JSX.Element {
       setLoading(false);
       return;
     }
-    setCurrent(cur.data as unknown as Current);
+    setCurrent(cur.data);
     const snaps = await client.GET("/api/admin/revenue/snapshots", { params: { query: {} } });
-    setSnapshots(snaps.error ? [] : (snaps.data as unknown as { items: Snapshot[] }).items);
+    setSnapshots(snaps.error ? [] : snaps.data.items);
     setLoading(false);
   }, [client]);
 

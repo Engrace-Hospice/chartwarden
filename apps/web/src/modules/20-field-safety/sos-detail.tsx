@@ -30,7 +30,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  type SafetySosAcknowledgeOutcome,
   type SafetySosAlertView,
+  type SafetySosResolveOutcome,
   type SosLocationStreamPage,
   acknowledgeSos,
   errorMessage,
@@ -137,7 +139,8 @@ export function SosDetailScreen(): JSX.Element {
     setModalError(null);
     const res = await acknowledgeSos(client, alert.id, alert.version, {
       actionTaken,
-      outcome: ackOutcome,
+      // `ackOutcome` is always one of the closed vocabulary the SelectField below offers.
+      outcome: ackOutcome as SafetySosAcknowledgeOutcome,
     });
     setSaving(false);
     if (res.error) {
@@ -155,7 +158,8 @@ export function SosDetailScreen(): JSX.Element {
     setModalError(null);
     const res = await resolveSos(client, alert.id, alert.version, {
       resolutionNarrative: narrative,
-      outcome,
+      // `outcome` is always one of the closed vocabulary the SelectField below offers.
+      outcome: outcome as SafetySosResolveOutcome,
       openIncidentFromOutcome: openIncident,
     });
     setSaving(false);

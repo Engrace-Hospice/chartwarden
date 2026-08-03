@@ -21,6 +21,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type BereavementRiskFactors,
+  type BereavementRiskTier,
   type PlanDetail,
   type RiskScoreRow,
   type TriState,
@@ -361,11 +363,13 @@ function RecomputeModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
+    // `factors`'s keys are always exactly RISK_FACTOR_KEYS, and `overrideTier` is always "" or one of the
+    // closed vocabulary the SelectField below offers.
     const { error: err } = await recomputeRisk(client, planId, {
       bereavedContactId: contactId || undefined,
-      factors: supplyFactors ? factors : undefined,
+      factors: supplyFactors ? (factors as unknown as BereavementRiskFactors) : undefined,
       requestAugmentation: requestAugmentation || undefined,
-      overrideTier: overrideTier || undefined,
+      overrideTier: (overrideTier || undefined) as BereavementRiskTier,
       overrideReason: overrideTier ? overrideReason : undefined,
     });
     setBusy(false);

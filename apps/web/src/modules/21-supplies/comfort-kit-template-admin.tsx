@@ -456,7 +456,12 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                             label="Schedule"
                             value={m.controlledSubstanceSchedule ?? "CII"}
                             options={enumOptions(CONTROLLED_SCHEDULES, (s) => s)}
-                            onChange={(v) => patchMed(m.key, { controlledSubstanceSchedule: v })}
+                            onChange={(v) =>
+                              // `v` is always one of CONTROLLED_SCHEDULES — this SelectField offers no other value.
+                              patchMed(m.key, {
+                                controlledSubstanceSchedule: v as MedDraft["controlledSubstanceSchedule"],
+                              })
+                            }
                           />
                         ) : null}
                       </td>

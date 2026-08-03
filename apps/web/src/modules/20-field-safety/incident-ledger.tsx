@@ -20,7 +20,12 @@ import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } f
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { type SafetyIncidentView, errorMessage, listIncidents } from "./safety-api";
+import {
+  type SafetyIncidentLifecycleState,
+  type SafetyIncidentView,
+  errorMessage,
+  listIncidents,
+} from "./safety-api";
 import {
   INCIDENT_CATEGORIES,
   INCIDENT_SEVERITIES,
@@ -76,7 +81,8 @@ export function IncidentLedgerScreen(): JSX.Element {
     setError(null);
     const res = await listIncidents(client, {
       limit: 100,
-      ...(lifecycleState ? { lifecycleState } : {}),
+      // `lifecycleState` is always "" or one of the closed vocabulary the SelectField below offers.
+      ...(lifecycleState ? { lifecycleState: lifecycleState as SafetyIncidentLifecycleState } : {}),
       ...(oshaOnly ? { oshaReportable: oshaOnly === "yes" } : {}),
     });
     if (res.error || !res.page) {
@@ -103,7 +109,8 @@ export function IncidentLedgerScreen(): JSX.Element {
     const res = await listIncidents(client, {
       limit: 100,
       cursor,
-      ...(lifecycleState ? { lifecycleState } : {}),
+      // `lifecycleState` is always "" or one of the closed vocabulary the SelectField below offers.
+      ...(lifecycleState ? { lifecycleState: lifecycleState as SafetyIncidentLifecycleState } : {}),
       ...(oshaOnly ? { oshaReportable: oshaOnly === "yes" } : {}),
     });
     setPaging(false);

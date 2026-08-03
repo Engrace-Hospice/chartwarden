@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type BereavementRelationshipCode,
   type ContactDraft,
   type PlanActivation,
   type PlanDetail,
@@ -197,7 +198,7 @@ export function BereavementRosterSeed(): JSX.Element {
                 label="Relationship"
                 value={d.relationshipCode}
                 options={RELATIONSHIP_CODES.map((c) => ({ value: c, label: humanize(c) }))}
-                onChange={(v) => setDraft(i, { ...d, relationshipCode: v })}
+                onChange={(v) => setDraft(i, { ...d, relationshipCode: v as BereavementRelationshipCode })}
               />
               <TextField
                 label="Email"

@@ -39,6 +39,8 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type RaiseSosResult,
+  type SafetyCheckInKind,
+  type SafetyCheckInStatus,
   type SafetyMyDayView,
   type SafetyWarning,
   cancelSos,
@@ -214,9 +216,13 @@ export function MySafetyScreen(): JSX.Element {
   }, [client, raised]);
 
   const postCheckIn = useCallback(
-    async (
-      body: { kind: string; status: string; visitId?: string; scheduleId?: string; concernNote?: string },
-    ) => {
+    async (body: {
+      kind: SafetyCheckInKind;
+      status: SafetyCheckInStatus;
+      visitId?: string;
+      scheduleId?: string;
+      concernNote?: string;
+    }) => {
       setPosting(true);
       setPostError(null);
       setPostWarnings(null);
@@ -500,8 +506,10 @@ export function MySafetyScreen(): JSX.Element {
           type="button"
           onClick={() =>
             void postCheckIn({
-              kind,
-              status,
+              // `kind`/`status` are always one of the closed vocabularies the SelectFields on this
+              // screen offer.
+              kind: kind as SafetyCheckInKind,
+              status: status as SafetyCheckInStatus,
               ...(noteOwed ? { concernNote: note } : {}),
             })
           }

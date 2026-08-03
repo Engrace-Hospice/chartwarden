@@ -1,4 +1,5 @@
 import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscription detail (`/admin/subscriptions/:id`,
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
 // dunning state (on the row), a usage drill-down (GET /api/admin/usage/:orgId/current), and its refund
@@ -9,22 +10,12 @@ import { Link, useParams } from "react-router-dom";
 import { actionButtonStyle, bodyRow, cell, cellRight, Kv, tableStyle, theadRow } from "./ui";
 import { cap, dunningTone, formatCents, formatDate, orgLabel, refundTone, subscriptionTone, usageThresholdTone } from "./status";
 
-interface AdminSub {
-  id: string;
-  organizationId: string;
-  organizationName: string;
-  planName: string;
-  planTier: string;
-  status: string;
-  dunningStage: string;
-  startedAt: string;
-  currentPeriodStart: string | null;
-  currentPeriodEnd: string | null;
-  cancelAtPeriodEnd: boolean;
-  stripeSubscriptionId: string | null;
-}
-interface UsageMeter { eventType: string; label: string; totalQuantity: number; inclusiveQuantity: number; overageQuantity: number; projectedOverageCostCents: number; thresholdState: string }
-interface Refund { id: string; organizationId: string; amountCents: number; status: string; reasonCode: string; requestedAt: string }
+type AdminSub =
+  operations["getApiAdminSubscriptionsById"]["responses"][200]["content"]["application/json"];
+type UsageMeter =
+  operations["getApiAdminUsageByOrganizationIdCurrent"]["responses"][200]["content"]["application/json"]["meters"][number];
+type Refund =
+  operations["getApiAdminRefunds"]["responses"][200]["content"]["application/json"]["items"][number];
 
 export function SubscriptionDetail(): JSX.Element {
   const client = useApiClient();
@@ -49,13 +40,13 @@ export function SubscriptionDetail(): JSX.Element {
       setLoading(false);
       return;
     }
-    const s = res.data as unknown as AdminSub;
+    const s = res.data;
     setSub(s);
     // Usage drill-down + refund history are best-effort side reads (a missing usage row is not an error).
     const usageRes = await client.GET("/api/admin/usage/{organizationId}/current", { params: { path: { organizationId: s.organizationId } } });
-    setUsage(usageRes.error ? [] : (usageRes.data as unknown as { meters: UsageMeter[] }).meters);
+    setUsage(usageRes.error ? [] : usageRes.data.meters);
     const refundRes = await client.GET("/api/admin/refunds", { params: { query: {} } });
-    const allRefunds = refundRes.error ? [] : (refundRes.data as unknown as { items: Refund[] }).items;
+    const allRefunds = refundRes.error ? [] : refundRes.data.items;
     setRefunds(allRefunds.filter((r) => r.organizationId === s.organizationId));
     setLoading(false);
   }, [client, id]);

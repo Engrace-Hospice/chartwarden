@@ -27,6 +27,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type SafetySubscriptionAlertKind,
+  type SafetySubscriptionScopeKind,
   type SafetySubscriptionView,
   createSubscription,
   deleteSubscription,
@@ -123,11 +125,13 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
     setModalError(null);
     const res = await createSubscription(client, {
       supervisorMembershipId: supervisor.trim(),
-      scopeKind,
+      // `scopeKind`/`alertKinds` are always drawn from the closed vocabularies the SelectField /
+      // checkbox list below offer.
+      scopeKind: scopeKind as SafetySubscriptionScopeKind,
       ...(clinician.trim() ? { clinicianMembershipId: clinician.trim() } : {}),
       ...(locationId.trim() ? { locationId: locationId.trim() } : {}),
       ...(providerEntityId.trim() ? { providerEntityId: providerEntityId.trim() } : {}),
-      alertKinds,
+      alertKinds: alertKinds as SafetySubscriptionAlertKind[],
       isVacationForwarding: forwarding,
       ...(forwarding && forwardTo.trim() ? { vacationForwardToMembershipId: forwardTo.trim() } : {}),
     });

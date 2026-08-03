@@ -1,4 +1,5 @@
 import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import type { operations } from "@wardenx/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Refund approval (`/admin/refunds/:id/approve`,
 // refund.approve). THE sensitive path: approval carries a step-up AND the §4.8 four-eyes rule (the approver
 // MUST differ from the requester). The server enforces both; this screen surfaces each denial as a
@@ -10,18 +11,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { actionButtonStyle, Field, inputStyle, Kv, OutcomeBanner } from "./ui";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
 
-interface Refund {
-  id: string;
-  organizationId: string;
-  organizationName: string;
-  invoiceId: string;
-  amountCents: number;
-  kind: string;
-  reasonCode: string;
-  status: string;
-  requestedByMembershipId: string;
-  requestedAt: string;
-}
+type Refund =
+  operations["getApiAdminRefundsById"]["responses"][200]["content"]["application/json"];
 
 function denialMessage(error: unknown, fallback: string): string {
   const code = (error as { code?: string })?.code;
@@ -55,7 +46,7 @@ export function RefundApprove(): JSX.Element {
       setLoading(false);
       return;
     }
-    setRefund(res.data as unknown as Refund);
+    setRefund(res.data);
     setLoading(false);
   }, [client, id]);
 

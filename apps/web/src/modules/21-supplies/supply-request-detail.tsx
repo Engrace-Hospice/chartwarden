@@ -26,7 +26,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type DeliveryMethod,
+  type PharmacyDispatchMode,
+  type ReceivedConfirmedActor,
   type SupplyRequestDetail as RequestDetail,
+  type VendorRoutingFulfillmentMode,
   assignVendor,
   cancelSupplyRequest,
   confirmReceived,
@@ -472,8 +476,11 @@ export function SupplyRequestDetailScreen(): JSX.Element {
                       // A null vendor routes to the internal hub — which is why the field is NULLABLE
                       // rather than absent-or-uuid. An empty box means "the hub", not "unset".
                       vendorId: vendorId.trim() === "" ? null : vendorId.trim(),
-                      fulfillmentMode,
-                      ...(pharmacyMode ? { pharmacyDispatchMode: pharmacyMode } : {}),
+                      // Always one of the closed vocabularies the SelectFields below offer.
+                      fulfillmentMode: fulfillmentMode as VendorRoutingFulfillmentMode,
+                      ...(pharmacyMode
+                        ? { pharmacyDispatchMode: pharmacyMode as PharmacyDispatchMode }
+                        : {}),
                       ...(reason.trim() ? { overrideReason: reason.trim() } : {}),
                     }),
                   "The vendor could not be assigned.",
@@ -599,7 +606,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
                   () =>
                     markDelivered(client, supplyRequestId, stamp, {
                       deliveredAt: toInstant(when),
-                      deliveryMethod,
+                      // `deliveryMethod` is always one of DELIVERY_METHODS — the SelectField below offers
+                      // no other value.
+                      deliveryMethod: deliveryMethod as DeliveryMethod,
                       ...(evidenceDocumentId.trim()
                         ? { evidenceDocumentId: evidenceDocumentId.trim() }
                         : {}),
@@ -645,7 +654,8 @@ export function SupplyRequestDetailScreen(): JSX.Element {
                 void run(
                   () =>
                     confirmReceived(client, supplyRequestId, stamp, {
-                      actor: receiptActor,
+                      // `receiptActor` is always one of the closed vocabulary the SelectField below offers.
+                      actor: receiptActor as ReceivedConfirmedActor,
                       confirmedAt: toInstant(when),
                     }),
                   "Receipt could not be confirmed.",
