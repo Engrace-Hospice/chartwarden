@@ -235,6 +235,7 @@ export * from "./seams/registry";
 export * from "./seams/providers";
 export * from "./erasers/registry";
 export * from "./erasers/providers";
+export * from "./in-memory-ledger";
 export * from "./plugins/request-context";
 export * from "./plugins/error-handler";
 export * from "./plugins/security";

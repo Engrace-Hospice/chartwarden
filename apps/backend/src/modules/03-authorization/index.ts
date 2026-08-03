@@ -70,7 +70,6 @@ import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { createInMemoryAuditExecutor } from "../02-identity/index";
 import {
   type AuthzRouteDeps,
   createInMemoryAuditorSessionMinter as _auditorMinter,
@@ -89,9 +88,14 @@ import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/au
  * registerModuleRoutes hook, when a DB client is present). The role catalog + break-glass run on the
  * REAL Drizzle stores; mounting also registers the §2.2 break-glass BRANCH (`registerBreakGlassContract`)
  * over that durable store + db, so an ABAC-denied access under open glass is allowed AND audited at
- * `critical` (audit #M3 — previously test-only/in-memory). The remaining route deps (engagements,
- * auditor sessions, compliance notifier, anti-escalation resolver, the route audit sink) are still
- * in-memory and land in follow-up M3 wiring. requirePermission is the live RBAC resolver.
+ * `critical` (audit #M3 — previously test-only/in-memory). The route audit sink is the DURABLE
+ * Drizzle path (`audit: db` — `AuditExecutor` is structurally `insert(table).values(row)`, the M2
+ * precedent; migration 0119 gave `wardenx_app` the INSERT policy that makes it legal under RLS), so
+ * every M3 lifecycle event (role grant/revoke, break-glass, engagement) lands in `audit_event`
+ * instead of a per-process Map. The remaining route deps (engagements, auditor sessions, compliance
+ * notifier, anti-escalation resolver) are still in-memory — recorded in the TASK-001 in-memory
+ * ledger at the composition root — and land in follow-up M3 wiring (TASK-004).
+ * requirePermission is the live RBAC resolver.
  */
 export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): void {
   const breakGlass = _dbBreakGlass(db);
@@ -106,7 +110,7 @@ export function mountAuthorizationRoutes(app: FastifyInstance, db: DbClient): vo
     auditorSessions: _auditorMinter().minter,
     notifier: _notifier().notifier,
     effectivePermissions: _fixedPerms([]).resolver,
-    audit: createInMemoryAuditExecutor().executor,
+    audit: db,
     // audit C2 — tenant policy for the break-glass co-sign requirement, read server-side from the
     // M1 organization-settings registry (`breakglass_cosign_required`, M3's key). Fail CLOSED to the
     // registered default (false) if the row is absent or unreadable: `cosign_pending` grants no

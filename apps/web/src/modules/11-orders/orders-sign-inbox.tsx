@@ -74,11 +74,13 @@ export function OrdersSignInbox(): JSX.Element {
     <WorkQueueLayout
       header={<PageHeader title="Orders Awaiting Signature" />}
       kpis={
+        // UI-003 containment: during load/outage these used to read "Awaiting signature 0" — a false
+        // all-clear on a clinical queue. "—" until the load actually answered.
         <KpiStrip>
-          <KpiCard label="Awaiting signature" value={counts.total} />
-          <KpiCard label="STAT" value={counts.stat} onSelect={() => setKind("")} />
-          <KpiCard label="ASAP" value={counts.asap} onSelect={() => setKind("")} />
-          <KpiCard label="Cosign pending" value={counts.cosign} />
+          <KpiCard label="Awaiting signature" value={loading || error ? "—" : counts.total} />
+          <KpiCard label="STAT" value={loading || error ? "—" : counts.stat} onSelect={() => setKind("")} />
+          <KpiCard label="ASAP" value={loading || error ? "—" : counts.asap} onSelect={() => setKind("")} />
+          <KpiCard label="Cosign pending" value={loading || error ? "—" : counts.cosign} />
         </KpiStrip>
       }
       filters={
