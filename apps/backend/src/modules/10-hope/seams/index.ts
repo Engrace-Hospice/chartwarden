@@ -27,7 +27,9 @@ import {
   createHopeSubmissionProvider,
   createHopeTimepointProvider,
 } from "./providers";
+import { createDrizzleHopeSeamStore } from "./drizzle-store";
 import { type HopeSeamStore, createInMemoryHopeSeamStore } from "./store";
+export { createDrizzleHopeSeamStore } from "./drizzle-store";
 
 export {
   type HopeSeamSeed,
@@ -72,7 +74,10 @@ export interface HopeSeamDeps {
  * Called by the composition root's wireModuleSeams().
  */
 export function registerHopeSeams(deps: HopeSeamDeps = {}): void {
-  const store = deps.store ?? createInMemoryHopeSeamStore().store;
+  // TASK-002 (ARCH-003): a db-present boot defaults the per-entity store to the Drizzle reader —
+  // the in-memory slice stands only when there is genuinely no database behind the process.
+  const store =
+    deps.store ?? (deps.db ? createDrizzleHopeSeamStore(deps.db) : createInMemoryHopeSeamStore().store);
   registerSeam("HopeTimepointProvider", createHopeTimepointProvider(store));
   registerSeam("HopeJ2051Provider", createHopeJ2051Provider(store));
   registerSeam("HopeSubmissionProvider", createHopeSubmissionProvider(store));

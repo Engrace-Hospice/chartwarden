@@ -65,8 +65,12 @@ import {
   registerPatientErasers,
   getPatientCoverageReader,
   registerPatientSeams,
+  createDrizzlePatientReaderStore,
+  createDrizzlePatientMutatorStore,
+  M5_OUTBOX_EVENTS,
 } from "./modules/05-patient/index";
 import {
+  createDrizzleAdmissionReaderStore,
   mountAdmissionRoutes,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
@@ -80,6 +84,7 @@ import {
   registerCarePlanErasers,
   registerCarePlanRoutes,
   registerCarePlanSeams,
+  createDrizzleCarePlanReaderStore,
   mountCarePlanRoutes,
 } from "./modules/07-care-plan/index";
 import {
@@ -93,6 +98,7 @@ import {
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
+  createDrizzleAssessmentReaderStore,
   registerAssessmentAbacPredicates,
   registerAssessmentErasers,
   registerAssessmentRoutes,
@@ -113,6 +119,7 @@ import {
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
+  createDrizzleOrderSeamStore,
   mountOrderRoutes,
 } from "./modules/11-orders/index";
 import {
@@ -121,6 +128,7 @@ import {
   registerDoseSpotErasers,
   registerDoseSpotRoutes,
   registerDoseSpotSeams,
+  createDrizzleDoseSpotSeamStore,
   mountDoseSpotRoutes,
 } from "./modules/12-dosespot/index";
 import {
@@ -129,6 +137,7 @@ import {
   registerEmarErasers,
   registerEmarRoutes,
   registerEmarSeams,
+  createDrizzleEmarSeamStore,
   mountEmarRoutes,
 } from "./modules/13-emar/index";
 import {
@@ -137,6 +146,7 @@ import {
   registerIdgErasers,
   registerIdgRoutes,
   registerIdgSeams,
+  createDrizzleIdgSeamStore,
   mountIdgRoutes,
 } from "./modules/14-idg/index";
 import {
@@ -150,6 +160,7 @@ import {
   registerDisciplinePlanAbacPredicates,
   registerDisciplinePlanErasers,
   registerDisciplinePlanSeams,
+  createDrizzleDisciplinePlanSeamStore,
 } from "./modules/15-discipline-care-plans/index";
 import {
   M16_OUTBOX_EVENTS,
@@ -162,12 +173,14 @@ import {
   registerBereavementAbacPredicates,
   registerBereavementErasers,
   registerBereavementSeams,
+  createDrizzleBereavementSeamStore,
 } from "./modules/16-bereavement/index";
 import {
   M17_OUTBOX_EVENTS,
   registerSchedulingAbacPredicates,
   registerSchedulingRoutes,
   registerSchedulingSeams,
+  createDrizzleSchedulingSeamStore,
   mountSchedulingRoutes,
 } from "./modules/17-scheduling/index";
 import {
@@ -175,6 +188,7 @@ import {
   registerEvvAbacPredicates,
   registerEvvRoutes,
   registerEvvSeams,
+  createDrizzleEvvSeamStore,
   mountEvvRoutes,
 } from "./modules/18-evv/index";
 import {
@@ -217,6 +231,8 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
+  createDrizzleDocumentReaderStore,
+  createRefusingObjectStore,
   createSignedUrlService,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
@@ -513,7 +529,13 @@ export * from "./bootstrap/index";
  * and before validateSeams(), so the real seams stand over the deny-stubs (§3.18).
  */
 export function wireModuleSeams(
-  deps: { sessionContextStore?: SessionContextStore; db?: DbClient } = {},
+  deps: {
+    sessionContextStore?: SessionContextStore;
+    db?: DbClient;
+    /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
+     * `m5.patient.updated` emit rides it. Absent on slice/test boots (mutator stays in-memory). */
+    outboxPublisher?: OutboxPublishPort;
+  } = {},
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
   // a DB client is present); the slice/tests fall back to M2's in-memory store.
@@ -539,17 +561,39 @@ export function wireModuleSeams(
   // M5 — CaseloadProvider (§4.1, + caseload_membership predicate); PatientReader/Mutator land T08. The
   // §3.4 PatientCoverageReader registers over the real `patient_payer` rows when a db is present — the
   // read M23/M24 resolve a claim's billed payer from (without it, billing degrades fail-closed).
-  registerPatientSeams(deps.db ? { db: deps.db } : {});
+  // TASK-002 — PatientReader/PatientMutator bind their Drizzle stores on a db boot (the reader over
+  // patient + patient_identifier; the mutator's §4.6 emit rides the catalog publisher when supplied).
+  registerPatientSeams(
+    deps.db
+      ? {
+          db: deps.db,
+          readerStore: createDrizzlePatientReaderStore(deps.db),
+          ...(deps.outboxPublisher
+            ? {
+                mutatorStore: createDrizzlePatientMutatorStore(deps.db, {
+                  outbox: deps.outboxPublisher,
+                }),
+              }
+            : {}),
+        }
+      : {},
+  );
   // M6 — the six §4.7 admission reader seams (election/CTI/F2F/LOC/status/census). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M6's routes/repos (M6-T06+). PLUS the §4.11
   // DeathDischargeReader the M30 measure-recompute worker consumes for the HVLDL denominator — registered over
   // a DEDICATED Drizzle reader when a db is present (it self-scopes each call, HARD RULE 3); slice/tests
   // without a db keep it on the fail-closed deny-stub.
-  registerAdmissionSeams(deps.db ? { db: deps.db } : {});
+  // TASK-002 — the six §4.7 admission readers bind the Drizzle store on a db boot (deps.db also
+  // keeps the §4.11 DeathDischargeReader live, as before).
+  registerAdmissionSeams(
+    deps.db ? { db: deps.db, store: createDrizzleAdmissionReaderStore(deps.db) } : {},
+  );
   // M7 — the §7.8 CarePlanReader (encounter-relevance picker + the 5-/15-day overdue sign-gate M8
   // consumes). Slice/tests keep the in-memory store + real clock; the Drizzle-backed store lands with
   // M7's routes/repos (M7-T05+).
-  registerCarePlanSeams();
+  // TASK-002 — CarePlanReader binds the full Drizzle store on a db boot (SUD/D7 redaction resolves
+  // the M39 ConsentEvaluator lazily, fail-closed).
+  registerCarePlanSeams(deps.db ? { store: createDrizzleCarePlanReaderStore(deps.db) } : {});
   // M8 — the four §4.7 owned seams (billable/signed/mileage/creator). M8 also CONSUMES M7's CarePlanReader
   // (registered just above) for the encounter authoring picker + the overdue sign-gate. Slice/tests keep
   // the in-memory store; the Drizzle-backed store lands with M8's routes/repos (M8-T09+).
@@ -560,7 +604,13 @@ export function wireModuleSeams(
   // M9 — the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) M7/M10/M14/M28/M32
   // consume for latest-scale reads + trend series/deltas. Slice/tests keep the in-memory store; the
   // Drizzle-backed store lands with M9's routes/repos (M9-T05+).
-  registerAssessmentSeams();
+  // TASK-002 — LatestAssessmentProvider + ScaleSeriesProvider bind the Drizzle store on a db boot.
+  // KNOWN GAP (agent finding): the M9 route write path never populates provider_entity_id/location_id,
+  // so a route-recorded row's latest-read throws AssessmentSeamDataGapError until the write path sites
+  // captures — loud, never a fabricated context.
+  registerAssessmentSeams(
+    deps.db ? { store: createDrizzleAssessmentReaderStore(deps.db) } : {},
+  );
   // M10 — the three PER-ENTITY §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider +
   // HopeSubmissionProvider) M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations,
   // and per-PE submission status (in-memory store). PLUS the ORG-LEVEL HopeOrgRollupProvider (#107) the M30
@@ -602,24 +652,36 @@ export function wireModuleSeams(
   // WRITE primitive M12 routes medication-order signatures through, D4 — + OrderProvider — the read-side
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
   // with M11's routes/repos (M11-T06+).
-  registerOrderSeams();
+  // TASK-002 — OrderProvider + the OrderSignatureProvider WRITE primitive bind the Drizzle store on
+  // a db boot (guard-checked writes in the caller's request scope; the M12 med-order discontinuation
+  // arm refuses — no target_kind discriminator on order_discontinuation — and signer_discipline
+  // records the documented sentinel pending a leaf-type contract change).
+  registerOrderSeams(deps.db ? { store: createDrizzleOrderSeamStore(deps.db) } : {});
   // M12 — the two §2.10 D17 owned READ seams (MedicationOrderProvider — the medication-order read path M13
   // (eMAR administration context) / M14 / M19 / M28 (FHIR) / M30 / M31 (portal) / M33 consume — + RefillInboxProvider
   // — the refill-inbox read path the prescriber UI + M19/M33 consume). Slice/tests keep the in-memory store;
   // the Drizzle-backed store lands with M12's routes/repos (M12-T08+).
-  registerDoseSpotSeams();
+  // TASK-002 — MedicationOrderProvider + RefillInboxProvider bind the Drizzle store on a db boot
+  // (D14 allowlist sig projection; the cost-basis + comfort-kit rollups REFUSE with
+  // M12_SEAM_SCHEMA_GAP — no cost column / not M12's table — never a fabricated $0 or "no kit").
+  registerDoseSpotSeams(deps.db ? { store: createDrizzleDoseSpotSeamStore(deps.db) } : {});
   // M13 — the two §2.12 D16 owned READ seams (MedicationAdministrationProvider — the administration read path M14
   // (IDG "administrations since last meeting") / M28 (FHIR) / M30 (PRN-effectiveness / missed-dose /
   // comfort-kit-timeliness measures) / M31 (portal summary) / M33 (dashboards) / M37 (IPU IV-pump overlay)
   // consume — + ReconciliationProvider — the reconciliation-worksheet read path M14/M30 consume). Slice/tests
   // keep the in-memory store; the Drizzle-backed store lands with M13's routes/repos (M13-T08+).
-  registerEmarSeams();
+  // TASK-002 — MedicationAdministrationProvider + ReconciliationProvider bind the full Drizzle
+  // store on a db boot (12/12 methods; §3.6 free-text denylist keys scrubbed from `data`).
+  registerEmarSeams(deps.db ? { store: createDrizzleEmarSeamStore(deps.db) } : {});
   // M14 — the three §4.8 owned READ seams (IdgPacketProvider — the packet-snapshot + M22 render handshake M22
   // (minutes / packet PDF) + M33 consume — + IdgDecisionProvider — the decision read path M30
   // (decision-to-careplan-update latency) + M33 consume — + IdgScheduleProvider — the meeting-schedule +
   // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
-  registerIdgSeams();
+  // TASK-002 — the three IDG providers bind the full Drizzle store on a db boot. KNOWN GAP:
+  // `decisionsForCarePlan` throws IdgSeamSchemaGapError (idg_decision has no care-plan link column) —
+  // loud, never a patient-wide over-count corrupting M30's latency measure.
+  registerIdgSeams(deps.db ? { store: createDrizzleIdgSeamStore(deps.db) } : {});
   // M15 — the seven §4.3 owned READ seams. Two of them are the LOCKED contracts M17 shipped first and has been
   // consuming as fail-closed deny-stubs since Wave F (M17-F06/ADR-0009): registering `VolunteerComplianceProvider`
   // CLOSES the D8 pre-schedule gate predicate 6 (a `volunteer_visit` now resolves the REAL 42 CFR §418.78 gate
@@ -631,7 +693,12 @@ export function wireModuleSeams(
   // (the M30/M33 rollups + the 418.78(e) ratio). Slice/tests keep the in-memory store; the Drizzle-backed store
   // lands with M15's routes/repos (M15-T06+), so today's reads answer empty/null — never a fabricated pass:
   // the volunteer gate still denies fail-CLOSED on an unreadable store and the ratio still badges `unavailable`.
-  registerDisciplinePlanSeams();
+  // TASK-002 — the seven M15 discipline-plan seams bind the Drizzle store on a db boot (volunteer
+  // 418.78 gate stays fail-CLOSED: absent rows fail each blocking kind; the 418.78(e) ratio badges
+  // `unavailable` until the M27 staffPatientCareMinutes dep binds — never a fabricated 0% breach).
+  registerDisciplinePlanSeams(
+    deps.db ? { store: createDrizzleDisciplinePlanSeamStore(deps.db) } : {},
+  );
   // M15-T06 — the four §4.5 ABAC predicates M15 OWNS (aide_supervisor_eligible /
   // volunteer_compliance_active / family_violence_disclosure_allowed / volunteer_coordinator_role) into
   // M3's named-predicate registry. Their subject facts load through the Drizzle resolver when a DB client
@@ -652,7 +719,10 @@ export function wireModuleSeams(
   // Slice/tests keep the in-memory store; the Drizzle-backed store lands with M16's routes/repos (M16-T06+),
   // so today's reads answer empty/null — never a fabricated pass: `isInBereavementWindow` still denies
   // fail-CLOSED on an unreadable plan, which is what M36 and M3's `bereavement_window` predicate read.
-  registerBereavementSeams();
+  // TASK-002 — the seven M16 bereavement seams bind the Drizzle store on a db boot (all 15 port
+  // methods incl. the ONE write: the append to the immutable risk-score ledger; contact channel
+  // ciphers never cross the seam).
+  registerBereavementSeams(deps.db ? { store: createDrizzleBereavementSeamStore(deps.db) } : {});
   // M16-T06 — the four §4.8 ABAC predicates M16 OWNS (bereavement_window / discipline_can_provide_bereavement
   // / org_scope_bereavement_oversight / portal_self_service) into M3's named-predicate registry. §4.8 calls
   // the last two "reused / M3 §4.2 family", but nothing on the platform registers either name, and an
@@ -825,7 +895,11 @@ export function wireModuleSeams(
   // M31 portal upcoming-visit read path (lay-language, scrubbed) — + VisitMetricsProvider — the M30/M33
   // productivity + quality measures read path). Slice/tests keep the in-memory store; the Drizzle-backed store
   // lands with M17's routes/repos (M17-T07+).
-  registerSchedulingSeams();
+  // TASK-002 — the four M17 visit seams bind the Drizzle store on a db boot. BEHAVIOR CHANGE the
+  // agent flagged: `tonightsOnCallRoster` now THROWS SchedulingOnCallRosterUnavailableError (M17
+  // owns no rotation table) instead of the in-memory `[]` — which is the answer M19's shift-sync
+  // degraded path is built for ("unreadable" keeps the last committed shifts; `[]` would cancel them).
+  registerSchedulingSeams(deps.db ? { store: createDrizzleSchedulingSeamStore(deps.db) } : {});
   // M18 — the six §4.3 owned reader seams. `EvvBracketResolver` is published over M8's EXISTING `resolveBracket`
   // contract — this registration CLOSES M8's `encounter.period` forward seam (M8 D9), replacing its fail-closed
   // deny-stub with the real resolver. The other five (EvvComplianceReader — M23/M24 billing gate + M30 HQRP —
@@ -833,14 +907,29 @@ export function wireModuleSeams(
   // the only coordinate-bearing seam, D10 — EvvMetricsProvider — M30/M33 dashboards — EvvVerificationProvider — M31
   // portal arrival surface) stand over their deny-stubs. Slice/tests keep the in-memory store; the Drizzle-backed
   // store lands with M18's routes/repos (M18-T06+).
-  registerEvvSeams();
+  // TASK-002 — the six M18 EVV seams bind the Drizzle store on a db boot (real classified
+  // compliance breakdowns — the route service's UI-003 hardcode was NOT copied; coordinate-bearing
+  // reads keep the route surface's zeroed-coords D10 posture pending the decrypt pipeline).
+  registerEvvSeams(deps.db ? { store: createDrizzleEvvSeamStore(deps.db) } : {});
   // M22 — the two §4.3 published seams: `DocumentRenderer` (the §7.2 W2 render-from-typed-payload handshake
   // M5/M6/M8/M11/M12/M13/M14/M16/M17/M18/M23/M39 consume to materialize their PDFs) + `DocumentStorageProvider`
   // (the §11 D1 per-tenant object store: presign-download + version-aware destroy). Registering the renderer
   // CLOSES the forward-seam deny-stub M39 consent's Wave-C render path + every source module's m22-document-
   // backref consumer awaited. Slice/tests keep the in-memory store + in-memory object store; the Drizzle +
   // MinIO adapters land with M22's routes/worker (a later M22 task).
-  registerDocumentSeams();
+  // TASK-002 — the five §4.3 reader seams bind the Drizzle reader store on a db boot, and the object
+  // store binds the REFUSING port (DegradedError naming the missing MinIO adapter — the audit's
+  // TASK-002 risk note: never a Map wearing durable storage). The renderer's document-row write store
+  // stays in-memory pending the MinIO adapter (see the narrowed ledger note below) — a render cannot
+  // complete anyway: it refuses at the object write, loudly.
+  registerDocumentSeams(
+    deps.db
+      ? {
+          readers: createDrizzleDocumentReaderStore(deps.db),
+          objects: createRefusingObjectStore(),
+        }
+      : {},
+  );
   // M39 — ConsentEvaluator (§4.3, the disclosure/redaction gate). Production backs it with the Drizzle
   // store over the real M39 consent tables (FB-T03); slice/tests keep the in-memory default.
   registerConsentSeams(deps.db ? { store: createDbConsentStore(deps.db) } : {});
@@ -1063,20 +1152,15 @@ export function wireModuleSeams(
   // note in the same diff.
   if (deps.db) {
     const t2 = "TASK-002 (bind Drizzle seam stores)";
-    noteInMemoryBinding({ kind: "seam", label: "M5 registerPatientSeams — PatientReader + PatientMutator on in-memory stores", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M6 registerAdmissionSeams — the six §4.7 admission readers (Election/Certification/F2F/LOC/Status/Census) on one in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M7 registerCarePlanSeams — CarePlanReader (M8's overdue sign-gate reads this) on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M9 registerAssessmentSeams — LatestAssessmentProvider + ScaleSeriesProvider on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M10 registerHopeSeams — HopeTimepoint/HopeJ2051/HopeSubmission providers on an in-memory store (org rollup is Drizzle)", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M11 registerOrderSeams — OrderSignatureProvider + OrderProvider on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M12 registerDoseSpotSeams — MedicationOrderProvider + RefillInboxProvider on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M13 registerEmarSeams — MedicationAdministrationProvider + ReconciliationProvider on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M14 registerIdgSeams — IdgPacket/IdgDecision/IdgSchedule providers on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M15 registerDisciplinePlanSeams — the seven §4.3 discipline-plan seams on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M16 registerBereavementSeams — the seven §4.6 bereavement seams on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M17 registerSchedulingSeams — VisitReader/VisitAssignmentReader/PortalVisitReader/VisitMetricsProvider on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M18 registerEvvSeams — the six §4.3 EVV seams (incl. EvvBracketResolver M8 consumes at finalize) on an in-memory store", task: t2 });
-    noteInMemoryBinding({ kind: "seam", label: "M22 registerDocumentSeams — DocumentRenderer + DocumentStorageProvider + five readers on in-memory stores (storage needs a real SignedUrlStoragePort impl; bind a DegradedError refusal, never a Map)", task: t2 });
+    // M22 (narrowed by TASK-002): the five readers are Drizzle and the object store REFUSES loudly
+    // (DegradedError) — what remains in-memory is the renderer's document-ROW write store, which is
+    // unreachable-for-success anyway (every render refuses at the object write) but is still a Map
+    // wearing a contract, so it stays on the ledger until the MinIO adapter + Drizzle write store land.
+    noteInMemoryBinding({ kind: "seam", label: "M22 registerDocumentSeams — DocumentRenderer's document-row WRITE store in-memory (readers Drizzle; object store refuses pending the MinIO adapter)", task: "M22 MinIO adapter + Drizzle render-write store" });
+    if (!deps.outboxPublisher) {
+      // Slice boots that pass a db but no catalog publisher keep the in-memory PatientMutator.
+      noteInMemoryBinding({ kind: "seam", label: "M5 registerPatientSeams — PatientMutator on an in-memory store (no outbox publisher supplied)", task: t2 });
+    }
   }
   // M3 — flip the Authorization Contract's ABAC evaluator from its fail-closed DENY_ALL default to the
   // named-predicate registry, NOW that every module above has registered its predicates. Without this
@@ -1364,6 +1448,9 @@ if ((import.meta as { main?: boolean }).main) {
   // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
+    // TASK-002 — the `m5.*` patient catalog. REQUIRED for the Drizzle PatientMutator's §4.6
+    // `m5.patient.updated` emit to validate against the shared publisher.
+    M5_OUTBOX_EVENTS,
     // M7L-T02 — the `m7.*` care-plan catalog. REQUIRED for the write lifecycle's outbox emits to
     // validate: the bound `m7OutboxPublisher` (below) runs every emit through this catalog, and an
     // unlisted event name throws `unknown_event` and rolls back the caller's write.
@@ -2009,6 +2096,7 @@ if ((import.meta as { main?: boolean }).main) {
           ? createDbSessionContextStore(dbHandle.db, createDbActorEnrichmentReader(dbHandle.db))
           : undefined,
         db: dbHandle?.db,
+        outboxPublisher: txOutboxPublisher,
       }),
     registerModuleErasers: () => wireModuleErasers({ db: dbHandle?.db }),
   });

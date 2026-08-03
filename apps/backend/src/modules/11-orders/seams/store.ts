@@ -47,12 +47,15 @@ export interface InsertSignatureInput {
   readonly signedAt: IsoInstant;
 }
 
-/** The fields a `recordVerbalOrder` write records (the deadline is computed by the provider). */
+/** The fields a `recordVerbalOrder` write records (the deadline is computed by the provider). The
+ * attestation rides along because `verbal_order.verbal_attestation` is NOT NULL (denylisted in audit) —
+ * the Drizzle store cannot record a receipt without it. */
 export interface InsertVerbalOrderInput {
   readonly targetKind: OrderSignatureTargetKind;
   readonly targetId: string;
   readonly recordingMembershipId: string;
   readonly orderingPhysicianMdmId: string;
+  readonly verbalAttestation: string;
   readonly receivedAt: IsoInstant;
   readonly deadlineAt: IsoInstant;
 }

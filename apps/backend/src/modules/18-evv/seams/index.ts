@@ -51,6 +51,7 @@ export {
   createEvvMetricsProvider,
   createEvvVerificationProvider,
 } from "./providers";
+export { createDrizzleEvvSeamStore } from "./drizzle-store";
 
 /** Deps for M18's owned-seam registration (slice defaults to the in-memory store). */
 export interface EvvSeamDeps {

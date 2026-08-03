@@ -89,6 +89,7 @@ export {
   type EvvSeamStore,
   type EvvVerificationSummary,
   type EvvWindowSeedRow,
+  createDrizzleEvvSeamStore,
   createEvvAggregatorReferenceReader,
   createEvvBracketResolver,
   createEvvComplianceReader,

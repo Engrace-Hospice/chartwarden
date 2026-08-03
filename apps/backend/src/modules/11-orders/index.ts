@@ -35,6 +35,7 @@ export {
   type OrderSeamStore,
   type VerbalSeedRow,
   type VerbalTimeliness,
+  createDrizzleOrderSeamStore,
   createInMemoryOrderSeamStore,
   createOrderProvider,
   createOrderSignatureProvider,

@@ -81,6 +81,7 @@ export function createOrderSignatureProvider(
         targetId: input.targetId,
         recordingMembershipId: input.recordingMembershipId,
         orderingPhysicianMdmId: input.orderingPhysicianMdmId,
+        verbalAttestation: input.verbalAttestation,
         receivedAt: input.receivedAt,
         deadlineAt,
       });

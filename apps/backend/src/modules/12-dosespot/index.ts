@@ -30,6 +30,8 @@ export {
   type DoseSpotSeamDeps,
   type DoseSpotSeamSeed,
   type DoseSpotSeamStore,
+  DoseSpotSeamGapError,
+  createDrizzleDoseSpotSeamStore,
   createInMemoryDoseSpotSeamStore,
   createMedicationOrderProvider,
   createRefillInboxProvider,

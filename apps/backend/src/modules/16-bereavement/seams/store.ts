@@ -29,6 +29,7 @@ import type {
   BereavementConfidenceBand,
   BereavementCopComplianceCounts,
   BereavementDataCompleteness,
+  BereavementOutreachStatus,
   BereavementOutreachStatusCounts,
   BereavementOutreachView,
   BereavementPlanClosureReason,
@@ -129,6 +130,25 @@ export interface BereavedPortalRow {
   readonly contact: BereavedContactView;
   readonly plan: BereavementPlanFacts;
 }
+
+/** The outreach statuses that satisfy the CoP 418.64(d) numerator — a touchpoint that REACHED the family
+ *  in some form. `declined` counts: the agency made the contact and the survivor exercised a choice.
+ *  ONE definition, shared by the seam store and the route-31 supervisor dashboard, so M30 and M33 can
+ *  never be shown two different bereavement-compliance rates for the same scope. */
+export const COP_NUMERATOR_STATUSES: readonly BereavementOutreachStatus[] = [
+  "completed",
+  "declined",
+];
+/** The denominator: every touchpoint the schedule OWED, whether or not it landed. Cancelled rows are
+ *  excluded because an opt-out / pause removes the obligation rather than failing it. */
+export const COP_DENOMINATOR_STATUSES: readonly BereavementOutreachStatus[] = [
+  "completed",
+  "declined",
+  "no_response",
+  "missed",
+  "in_progress",
+  "scheduled",
+];
 
 /** The per-status volume with every status present; a status with no rows is `0`, not absent. */
 export const EMPTY_OUTREACH_STATUS_COUNTS: BereavementOutreachStatusCounts = {

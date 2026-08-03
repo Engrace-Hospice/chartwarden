@@ -41,6 +41,8 @@ export {
   createInMemoryPatientReaderStore,
   createPatientMutator,
   createInMemoryPatientMutatorStore,
+  createDrizzlePatientReaderStore,
+  createDrizzlePatientMutatorStore,
   getCaseloadProvider,
   getPatientReader,
   getPatientMutator,

@@ -34,7 +34,9 @@ import type {
   PatientId,
   ScaleSeriesPoint,
 } from "@wardenx/types";
-import { getMswRiskFactorReader, getScaleSeriesProvider } from "../seams/index";
+// Imported from ./consumed directly (not the seams barrel): the barrel now also exports the
+// Drizzle seam store, which imports risk/score → risk/extract — a barrel import here is a cycle.
+import { getMswRiskFactorReader, getScaleSeriesProvider } from "../seams/consumed";
 
 /**
  * How far back the pre-death PPS series is windowed. The D3 question is whether the DEATH was foreseeable,

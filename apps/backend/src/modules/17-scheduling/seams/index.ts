@@ -40,6 +40,10 @@ export {
   createVisitMetricsProvider,
   createVisitReader,
 } from "./providers";
+export {
+  SchedulingOnCallRosterUnavailableError,
+  createDrizzleSchedulingSeamStore,
+} from "./drizzle-store";
 
 /** Deps for M17's owned-seam registration (slice defaults to the in-memory store). */
 export interface SchedulingSeamDeps {

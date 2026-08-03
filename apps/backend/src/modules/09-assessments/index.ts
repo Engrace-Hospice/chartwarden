@@ -36,6 +36,8 @@ export {
   type AssessmentReaderStore,
   type AssessmentSeamDeps,
   type SeededSeriesPoint,
+  AssessmentSeamDataGapError,
+  createDrizzleAssessmentReaderStore,
   createInMemoryAssessmentReaderStore,
   createLatestAssessmentProvider,
   createScaleSeriesProvider,

@@ -57,6 +57,7 @@ export {
   getScaleSeriesProvider,
   getVolunteerComplianceProvider,
 } from "./consumed";
+export { createDrizzleBereavementSeamStore } from "./drizzle-store";
 export {
   type BereavementAugmentedScoreDraft,
   type BereavementClosureFacts,
@@ -65,6 +66,8 @@ export {
   type BereavementSeamSeed,
   type BereavementSeamStore,
   type BereavedPortalRow,
+  COP_DENOMINATOR_STATUSES,
+  COP_NUMERATOR_STATUSES,
   EMPTY_CLOSURE_COUNTS,
   EMPTY_OUTREACH_STATUS_COUNTS,
   EMPTY_TIER_DISTRIBUTION,

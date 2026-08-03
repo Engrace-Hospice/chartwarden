@@ -104,6 +104,8 @@ export {
   type SchedulingSeamDeps,
   type SchedulingSeamSeed,
   type SchedulingSeamStore,
+  SchedulingOnCallRosterUnavailableError,
+  createDrizzleSchedulingSeamStore,
   createInMemorySchedulingSeamStore,
   createPortalVisitReader,
   createVisitAssignmentReader,

@@ -40,6 +40,11 @@ export {
   createPatientMutator,
   createInMemoryPatientMutatorStore,
 } from "./patient-mutator";
+export {
+  type DrizzlePatientMutatorStoreDeps,
+  createDrizzlePatientMutatorStore,
+  createDrizzlePatientReaderStore,
+} from "./drizzle-stores";
 
 /** Deps for M5's seam registration (slice defaults to in-memory stores). */
 export interface PatientSeamDeps {

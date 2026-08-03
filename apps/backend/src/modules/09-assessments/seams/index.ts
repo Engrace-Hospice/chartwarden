@@ -21,6 +21,7 @@ export {
   createInMemoryAssessmentReaderStore,
 } from "./store";
 export { createLatestAssessmentProvider, createScaleSeriesProvider } from "./providers";
+export { AssessmentSeamDataGapError, createDrizzleAssessmentReaderStore } from "./drizzle-store";
 
 /** Deps for M9's owned-seam registration (slice defaults to the in-memory store). */
 export interface AssessmentSeamDeps {
