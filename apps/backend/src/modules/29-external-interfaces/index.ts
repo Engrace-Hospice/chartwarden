@@ -269,3 +269,61 @@ export {
   type RetryDecision,
   decideRetry,
 } from "./outbound/retry-policy";
+
+// ── M29-T07: NPPES sync — Luhn validate · API projection · rate limiter · client · cache diff · orchestrator ─
+export { isValidNpi } from "./nppes/npi-validate";
+export {
+  type NppesIndividualProvider,
+  type NppesBasic,
+  type NppesAddress,
+  type NppesTaxonomy,
+  type NppesIdentifier,
+  type NppesFetchResult,
+  type NppesApiResponse,
+  type NppesApiRawResult,
+  classifyNppesResponse,
+  projectProvider,
+  primaryTaxonomyCode,
+} from "./nppes/response-projection";
+export { RateLimiter, type RateLimiterConfig } from "./nppes/rate-limiter";
+export {
+  NppesClient,
+  RetryableHttpError,
+  type NppesClientConfig,
+  type NppesFetchPort,
+  type HttpFetch,
+  type HttpFetchInit,
+  type HttpFetchResponse,
+} from "./nppes/nppes-client";
+export {
+  type NppesProviderSnapshot,
+  type ProviderSyncedPayload,
+  type ProviderDeactivatedPayload,
+  type SyncRunStartedPayload,
+  type SyncRunCompletedPayload,
+  type SyncRunFailedPayload,
+  type NppesOutboxEvent,
+  type NppesOutboxSink,
+} from "./nppes/sync-events";
+export {
+  type CachedProviderView,
+  type CacheUpsertDecision,
+  type ProviderCachePort,
+  decideCacheUpsert,
+  toSnapshot,
+  buildProviderRow,
+} from "./nppes/provider-cache";
+export {
+  NPPES_CIRCUIT_BREAKER_CONSECUTIVE_FAILURES,
+  NPPES_CHECKPOINT_EVERY,
+  NppesTenantTriggerRefusedError,
+  type NppesTriggerScope,
+  type NppesSyncRequest,
+  type NppesNpiSourcePort,
+  type SyncRunCounts,
+  type NppesSyncRunStorePort,
+  type SyncOrchestratorDeps,
+  type SyncResult,
+  NppesSyncOrchestrator,
+} from "./nppes/sync-orchestrator";
+export { NPPES_SYNC_SCHEDULE, type NppesSyncSchedule } from "./nppes/schedule";
