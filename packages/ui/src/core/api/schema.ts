@@ -9433,6 +9433,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-body-release/{admissionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a body-release record (§2.11) */
+        get: operations["getApiV1IpubodyreleaseByAdmissionId"];
+        put?: never;
+        /** Advance body-release (identifyFuneralHome/releaseBody/postClose); releaseBody resumes bed cleaning (§2.11) */
+        post: operations["postApiV1IpubodyreleaseByAdmissionId"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-census/{date}": {
         parameters: {
             query?: never;
@@ -9444,6 +9462,92 @@ export interface paths {
         get: operations["getApiV1IpucensusByDate"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-equipment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List IPU equipment (§4.1) */
+        get: operations["getApiV1Ipuequipment"];
+        put?: never;
+        /** Create an equipment asset (§4.1) */
+        post: operations["postApiV1Ipuequipment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-equipment/{id}/assign-bed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign equipment to a bed/patient; 412 EQUIPMENT_INSPECTION_OVERDUE on an overdue inspection (§2.9) */
+        post: operations["postApiV1IpuequipmentByIdAssignbed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-equipment/{id}/inspection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log a biomed inspection; rolls next_inspection_due_date forward (§2.9) */
+        post: operations["postApiV1IpuequipmentByIdInspection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-equipment/{id}/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log equipment maintenance (§2.9) */
+        post: operations["postApiV1IpuequipmentByIdMaintenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-meals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Log a meal-service entry (§2.8) */
+        post: operations["postApiV1Ipumeals"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9583,6 +9687,58 @@ export interface paths {
         put?: never;
         /** Invoke an RN-coverage break-glass override (step-up; max 4h; §2.3) */
         post: operations["postApiV1IpuunitsByIdRncoverageBreakglass"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-visitor-restrictions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a unit/patient visitor restriction (§2.7) */
+        post: operations["postApiV1Ipuvisitorrestrictions"];
+        /** Lift a visitor restriction (§2.7) */
+        delete: operations["deleteApiV1Ipuvisitorrestrictions"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-visitors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check in a visitor; 412 on full_block / immediate_family_only restriction (§2.7) */
+        post: operations["postApiV1Ipuvisitors"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-visitors/{id}/check-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check out a visitor (§4.1) */
+        post: operations["postApiV1IpuvisitorsByIdCheckout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -41145,6 +41301,73 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IpubodyreleaseByAdmissionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        state: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpubodyreleaseByAdmissionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                admissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    action: "identifyFuneralHome" | "releaseBody" | "postClose";
+                    funeralHomeId?: string;
+                    releaseDocumentId?: string;
+                    releasedToRepresentativeName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        state: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IpucensusByDate: {
         parameters: {
             query?: never;
@@ -41174,6 +41397,232 @@ export interface operations {
                             roomTurnoverCount: number;
                             restraintIncidentCount: number;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Ipuequipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            serialNumber: string;
+                            equipmentType: string;
+                            currentStatus: string;
+                            nextInspectionDueDate: string | null;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Ipuequipment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    serialNumber: string;
+                    equipmentType: "hospital_bed" | "oxygen_concentrator" | "suction_machine" | "iv_pump" | "bipap" | "cpap" | "lift" | "scale" | "vitals_monitor" | "comfort_mattress" | "low_air_loss_mattress";
+                    manufacturer: string;
+                    modelNumber: string;
+                    yearOfManufacture?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        serialNumber: string;
+                        equipmentType: string;
+                        currentStatus: string;
+                        nextInspectionDueDate: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuequipmentByIdAssignbed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bedId: string;
+                    patientId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        serialNumber: string;
+                        equipmentType: string;
+                        currentStatus: string;
+                        nextInspectionDueDate: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuequipmentByIdInspection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    inspectionKind: "annual_biomed" | "per_use_safety" | "post_repair_safety" | "recall_response";
+                    outcome: "pass" | "fail" | "conditional_pass" | "retired";
+                    notes?: string;
+                    nextInspectionDueDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        serialNumber: string;
+                        equipmentType: string;
+                        currentStatus: string;
+                        nextInspectionDueDate: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuequipmentByIdMaintenance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    maintenanceKind: string;
+                    notes?: string;
+                    vendorInvoiceReference?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        serialNumber: string;
+                        equipmentType: string;
+                        currentStatus: string;
+                        nextInspectionDueDate: string | null;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Ipumeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ipuAdmissionId: string;
+                    serviceDate: string;
+                    mealSlot: "breakfast" | "lunch" | "dinner" | "snack";
+                    intakeFraction?: number;
+                    refusalReason?: string;
+                    caregiverAssistedFeeding?: boolean;
+                    oralCareCompleted?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        serviceDate: string;
+                        mealSlot: string;
                     };
                 };
             };
@@ -41559,6 +42008,148 @@ export interface operations {
                     "application/json": {
                         unitId: string;
                         invoked: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Ipuvisitorrestrictions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    scope: "unit" | "patient";
+                    unitId?: string;
+                    patientId?: string;
+                    restrictionKind: "full_block" | "immediate_family_only" | "mask_required" | "time_limited" | "no_overnight";
+                    rationale: string;
+                    sourceKind: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: string;
+                        restrictionKind: string;
+                        liftedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1Ipuvisitorrestrictions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    restrictionId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        scope: string;
+                        restrictionKind: string;
+                        liftedAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Ipuvisitors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ipuAdmissionId: string;
+                    visitorName: string;
+                    relationship: "spouse" | "parent" | "child" | "sibling" | "grandparent" | "grandchild" | "in_law" | "aunt_uncle" | "cousin" | "friend" | "clergy" | "volunteer" | "caregiver_paid" | "legal_representative" | "other";
+                    screeningOutcome: {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        relationship: string;
+                        maskRequired: boolean;
+                        checkedInAt: string;
+                        checkedOutAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuvisitorsByIdCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        relationship: string;
+                        maskRequired: boolean;
+                        checkedInAt: string;
+                        checkedOutAt: string | null;
                     };
                 };
             };

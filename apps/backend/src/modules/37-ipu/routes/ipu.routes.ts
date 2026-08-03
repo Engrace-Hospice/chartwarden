@@ -6,14 +6,20 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { P, RN_COVERAGE, STEP_UP } from "./guards";
 import {
+  AdmissionIdParamsSchema,
+  AdvanceBodyReleaseBodySchema,
   ApplyRestraintBodySchema,
+  ApplyVisitorRestrictionBodySchema,
   AssignBedBodySchema,
+  AssignEquipmentBedBodySchema,
   AssignStaffBodySchema,
   AttestGipBodySchema,
   BedCleaningBodySchema,
+  CheckInVisitorBodySchema,
   ConfirmBodySchema,
   ConfirmTransferBodySchema,
   CreateBedBodySchema,
+  CreateEquipmentBodySchema,
   CreateRoomBodySchema,
   CreateShiftBodySchema,
   CreateUnitBodySchema,
@@ -22,6 +28,10 @@ import {
   IdParamsSchema,
   InitiateTransferBodySchema,
   IrcOverrideBodySchema,
+  LiftVisitorRestrictionBodySchema,
+  LogInspectionBodySchema,
+  LogMaintenanceBodySchema,
+  LogMealBodySchema,
   OpenAdmissionBodySchema,
   ReassessGipBodySchema,
   ReassessRestraintBodySchema,
@@ -306,6 +316,78 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       return service.invokeRnBreakGlass(actor, id);
     },
   );
+
+  // 29. POST /ipu-visitors — check-in a visitor. §4.1.
+  app.post("/api/v1/ipu-visitors", { preHandler: [P("m37.visitor.check_in")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.checkInVisitor(actor, parse(CheckInVisitorBodySchema, request.body)));
+  });
+
+  // 30. POST /ipu-visitors/:id/check-out — check-out a visitor. §4.1.
+  app.post("/api/v1/ipu-visitors/:id/check-out", { preHandler: [P("m37.visitor.check_out")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.checkOutVisitor(actor, id);
+  });
+
+  // 31. POST/DELETE /ipu-visitor-restrictions — apply / lift a restriction. §4.1.
+  app.post("/api/v1/ipu-visitor-restrictions", { preHandler: [P("m37.visitor_restriction.apply")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.applyVisitorRestriction(actor, parse(ApplyVisitorRestrictionBodySchema, request.body)));
+  });
+  app.delete("/api/v1/ipu-visitor-restrictions", { preHandler: [P("m37.visitor_restriction.lift")] }, async (request) => {
+    const actor = writeActorOf(request);
+    return service.liftVisitorRestriction(actor, parse(LiftVisitorRestrictionBodySchema, request.body));
+  });
+
+  // 32. POST /ipu-meals — log a meal. §4.1.
+  app.post("/api/v1/ipu-meals", { preHandler: [P("m37.meal.log")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.logMeal(actor, parse(LogMealBodySchema, request.body)));
+  });
+
+  // 33. GET/POST /ipu-equipment — list / create equipment. §4.1.
+  app.get("/api/v1/ipu-equipment", { preHandler: [P("m37.equipment.read")] }, async (request) => ({
+    items: await service.listEquipment(actorOf(request)),
+  }));
+  app.post("/api/v1/ipu-equipment", { preHandler: [P("m37.equipment.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.createEquipment(actor, parse(CreateEquipmentBodySchema, request.body)));
+  });
+
+  // 34. POST /ipu-equipment/:id/maintenance — log maintenance. §4.1.
+  app.post("/api/v1/ipu-equipment/:id/maintenance", { preHandler: [P("m37.equipment.maintenance_log")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.logMaintenance(actor, id, parse(LogMaintenanceBodySchema, request.body));
+  });
+
+  // 35. POST /ipu-equipment/:id/inspection — log a biomed inspection. §4.1.
+  app.post("/api/v1/ipu-equipment/:id/inspection", { preHandler: [P("m37.equipment.inspection_record")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.logInspection(actor, id, parse(LogInspectionBodySchema, request.body));
+  });
+
+  // 36. POST /ipu-equipment/:id/assign-bed — assign equipment to a bed/patient (inspection-current gate). §4.1.
+  app.post("/api/v1/ipu-equipment/:id/assign-bed", { preHandler: [P("m37.equipment.assign_bed")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.assignEquipmentBed(actor, id, parse(AssignEquipmentBedBodySchema, request.body));
+  });
+
+  // 37. GET/POST /ipu-body-release/:admissionId — read / advance body-release state. §4.1.
+  app.get("/api/v1/ipu-body-release/:admissionId", { preHandler: [P("m37.body_release.coordinate")] }, async (request, reply) => {
+    const { admissionId } = parse(AdmissionIdParamsSchema, request.params);
+    const view = await service.getBodyRelease(actorOf(request), admissionId);
+    if (!view) return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_body_release not found" });
+    return view;
+  });
+  app.post("/api/v1/ipu-body-release/:admissionId", { preHandler: [P("m37.body_release.coordinate")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { admissionId } = parse(AdmissionIdParamsSchema, request.params);
+    return service.advanceBodyRelease(actor, admissionId, parse(AdvanceBodyReleaseBodySchema, request.body));
+  });
 
   // 38. GET /ipu-census/:date — read census snapshot for a date. §4.1.
   app.get("/api/v1/ipu-census/:date", { preHandler: [P("m37.census.read")] }, async (request) => {

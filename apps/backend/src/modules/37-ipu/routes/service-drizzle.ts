@@ -8,35 +8,47 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
+  assertInspectionCurrent,
   computeIrcState,
+  evaluateVisitorCheckIn,
   normalizeReassessmentInterval,
   planCapOverride,
   planReassessmentOutcome,
   planOpenAdmission,
   transitionAdmission,
   transitionBedCleaning,
+  transitionBodyRelease,
   validateGipCriteriaPayload,
   validateRestraintApply,
 } from "@wardenx/inpatient";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
+  AdvanceBodyReleaseBody,
   ApplyRestraintBody,
+  ApplyVisitorRestrictionBody,
   AssignBedBody,
+  AssignEquipmentBedBody,
   AssignStaffBody,
   AttestGipBody,
   BedCleaningBody,
+  CheckInVisitorBody,
   ConfirmBody,
   ConfirmTransferBody,
   CreateBedBody,
+  CreateEquipmentBody,
   CreateRoomBody,
   CreateShiftBody,
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
   IrcOverrideBody,
+  LiftVisitorRestrictionBody,
+  LogInspectionBody,
+  LogMaintenanceBody,
+  LogMealBody,
   OpenAdmissionBody,
   ReassessGipBody,
   ReassessRestraintBody,
@@ -49,16 +61,21 @@ import type {
 import type {
   AdmissionView,
   BedView,
+  BodyReleaseView,
   CensusView,
+  EquipmentView,
   GipCriteriaView,
   IpuRouteService,
   IrcEpisodeView,
+  MealView,
   RestraintView,
   RoomView,
   RnCoverageView,
   ShiftView,
   StaffAssignmentView,
   UnitView,
+  VisitorRestrictionView,
+  VisitorView,
 } from "./service";
 
 /** The transactional-outbox port the composition root binds (the catalog-validating `m37` publisher). */
@@ -938,6 +955,243 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           aggregateId: restraintId,
         });
         return restraintView(u);
+      });
+    },
+
+    async checkInVisitor(actor: IpuWriteActor, body: CheckInVisitorBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [adm] = await t.select().from(A).where(eq(A.id, body.ipuAdmissionId)).limit(1);
+        if (!adm) throw new NotFoundError("ipu_admission not found");
+        // Resolve active restrictions: unit-scope (via the admission's unit) + patient-scope (via the patient).
+        const VR = schema.ipuVisitorRestriction;
+        const restrictions = await t.select().from(VR).where(isNull(VR.liftedAt));
+        const applicable = restrictions
+          .filter((r) => (r.scope === "unit" && r.unitId === adm.unitId) || (r.scope === "patient" && r.patientId === adm.patientId))
+          .map((r) => ({ kind: r.restrictionKind }));
+        // §2.7 — the machine throws VISITOR_RESTRICTION_FULL_BLOCK / VISITOR_IMMEDIATE_FAMILY_ONLY (412).
+        const decision = evaluateVisitorCheckIn(body.relationship, applicable);
+        const [row] = await t
+          .insert(schema.ipuVisitor)
+          .values({
+            organizationId: actor.organizationId,
+            ipuAdmissionId: body.ipuAdmissionId,
+            visitorName: body.visitorName,
+            relationship: body.relationship,
+            screeningOutcome: body.screeningOutcome,
+            consentEvaluatorResult: {}, // M39 ConsentEvaluator is a forward seam; {} until bound.
+            checkedInBy: actor.membershipId,
+            maskRequired: decision.maskRequired,
+          })
+          .returning();
+        if (!row) throw new ConflictError("visitor insert failed");
+        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, relationship: row.relationship, maskRequired: row.maskRequired, checkedInAt: iso(row.checkedInAt), checkedOutAt: row.checkedOutAt ? iso(row.checkedOutAt) : null } satisfies VisitorView;
+      });
+    },
+
+    async checkOutVisitor(actor: IpuWriteActor, visitorId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [row] = await t.update(schema.ipuVisitor).set({ checkedOutAt: new Date() }).where(eq(schema.ipuVisitor.id, visitorId)).returning();
+        if (!row) throw new NotFoundError("ipu_visitor not found");
+        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, relationship: row.relationship, maskRequired: row.maskRequired, checkedInAt: iso(row.checkedInAt), checkedOutAt: row.checkedOutAt ? iso(row.checkedOutAt) : null } satisfies VisitorView;
+      });
+    },
+
+    async applyVisitorRestriction(actor: IpuWriteActor, body: ApplyVisitorRestrictionBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const [row] = await (tx as DbClient)
+          .insert(schema.ipuVisitorRestriction)
+          .values({
+            organizationId: actor.organizationId,
+            scope: body.scope,
+            unitId: body.unitId ?? null,
+            patientId: body.patientId ?? null,
+            restrictionKind: body.restrictionKind,
+            rationale: body.rationale,
+            appliedBy: actor.membershipId,
+            sourceKind: body.sourceKind,
+          })
+          .returning();
+        if (!row) throw new ConflictError("visitor restriction insert failed");
+        await outbox.publish(tx as DbClient, {
+          eventName: "m37.visitor_restriction.applied",
+          payload: { organizationId: actor.organizationId, restrictionId: row.id, scope: row.scope, kind: row.restrictionKind },
+          organizationId: actor.organizationId,
+          aggregateKind: "ipu_visitor_restriction",
+          aggregateId: row.id,
+        });
+        return { id: row.id, scope: row.scope, restrictionKind: row.restrictionKind, liftedAt: null } satisfies VisitorRestrictionView;
+      });
+    },
+
+    async liftVisitorRestriction(actor: IpuWriteActor, body: LiftVisitorRestrictionBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [row] = await t
+          .update(schema.ipuVisitorRestriction)
+          .set({ liftedAt: new Date(), liftedBy: actor.membershipId })
+          .where(eq(schema.ipuVisitorRestriction.id, body.restrictionId))
+          .returning();
+        if (!row) throw new NotFoundError("ipu_visitor_restriction not found");
+        return { id: row.id, scope: row.scope, restrictionKind: row.restrictionKind, liftedAt: row.liftedAt ? iso(row.liftedAt) : null } satisfies VisitorRestrictionView;
+      });
+    },
+
+    async logMeal(actor: IpuWriteActor, body: LogMealBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const [row] = await (tx as DbClient)
+          .insert(schema.ipuMealService)
+          .values({
+            organizationId: actor.organizationId,
+            ipuAdmissionId: body.ipuAdmissionId,
+            serviceDate: body.serviceDate,
+            mealSlot: body.mealSlot,
+            intakeFraction: body.intakeFraction != null ? String(body.intakeFraction) : null,
+            refusalReason: body.refusalReason ?? null,
+            caregiverAssistedFeeding: body.caregiverAssistedFeeding ?? false,
+            oralCareCompleted: body.oralCareCompleted ?? false,
+            recordedBy: actor.membershipId,
+          })
+          .returning();
+        if (!row) throw new ConflictError("meal insert failed");
+        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, serviceDate: row.serviceDate, mealSlot: row.mealSlot } satisfies MealView;
+      });
+    },
+
+    async listEquipment(actor) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const E = schema.ipuEquipment;
+        const rows = await (tx as DbClient).select().from(E).orderBy(desc(E.createdAt));
+        return rows.map((r): EquipmentView => ({ id: r.id, serialNumber: r.serialNumber, equipmentType: r.equipmentType, currentStatus: r.currentStatus, nextInspectionDueDate: r.nextInspectionDueDate, version: r.version }));
+      });
+    },
+
+    async createEquipment(actor: IpuWriteActor, body: CreateEquipmentBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const [row] = await (tx as DbClient)
+          .insert(schema.ipuEquipment)
+          .values({
+            organizationId: actor.organizationId,
+            serialNumber: body.serialNumber,
+            equipmentType: body.equipmentType,
+            manufacturer: body.manufacturer,
+            modelNumber: body.modelNumber,
+            yearOfManufacture: body.yearOfManufacture ?? null,
+          })
+          .returning();
+        if (!row) throw new ConflictError("equipment insert failed");
+        return { id: row.id, serialNumber: row.serialNumber, equipmentType: row.equipmentType, currentStatus: row.currentStatus, nextInspectionDueDate: row.nextInspectionDueDate, version: row.version } satisfies EquipmentView;
+      });
+    },
+
+    async logMaintenance(actor: IpuWriteActor, equipmentId: string, body: LogMaintenanceBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [eq_] = await t.select().from(schema.ipuEquipment).where(eq(schema.ipuEquipment.id, equipmentId)).limit(1);
+        if (!eq_) throw new NotFoundError("ipu_equipment not found");
+        await t.insert(schema.ipuEquipmentMaintenance).values({
+          organizationId: actor.organizationId,
+          equipmentId,
+          maintenanceKind: body.maintenanceKind,
+          performedByMembershipId: actor.membershipId,
+          notes: body.notes ?? null,
+          vendorInvoiceReference: body.vendorInvoiceReference ?? null,
+        });
+        return { id: eq_.id, serialNumber: eq_.serialNumber, equipmentType: eq_.equipmentType, currentStatus: eq_.currentStatus, nextInspectionDueDate: eq_.nextInspectionDueDate, version: eq_.version } satisfies EquipmentView;
+      });
+    },
+
+    async logInspection(actor: IpuWriteActor, equipmentId: string, body: LogInspectionBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [eq_] = await t.select().from(schema.ipuEquipment).where(eq(schema.ipuEquipment.id, equipmentId)).limit(1);
+        if (!eq_) throw new NotFoundError("ipu_equipment not found");
+        await t.insert(schema.ipuEquipmentInspection).values({
+          organizationId: actor.organizationId,
+          equipmentId,
+          inspectionKind: body.inspectionKind,
+          inspectorMembershipId: actor.membershipId,
+          outcome: body.outcome,
+          notes: body.notes ?? null,
+          nextInspectionDueDate: body.nextInspectionDueDate,
+        });
+        // Roll the equipment's next-due forward + record the last inspection date.
+        const [row] = await t
+          .update(schema.ipuEquipment)
+          .set({ nextInspectionDueDate: body.nextInspectionDueDate, lastInspectionDate: new Date().toISOString().slice(0, 10), updatedAt: new Date(), version: eq_.version + 1 })
+          .where(eq(schema.ipuEquipment.id, equipmentId))
+          .returning();
+        if (!row) throw new ConflictError("inspection update failed");
+        return { id: row.id, serialNumber: row.serialNumber, equipmentType: row.equipmentType, currentStatus: row.currentStatus, nextInspectionDueDate: row.nextInspectionDueDate, version: row.version } satisfies EquipmentView;
+      });
+    },
+
+    async assignEquipmentBed(actor: IpuWriteActor, equipmentId: string, body: AssignEquipmentBedBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [eq_] = await t.select().from(schema.ipuEquipment).where(eq(schema.ipuEquipment.id, equipmentId)).limit(1);
+        if (!eq_) throw new NotFoundError("ipu_equipment not found");
+        // §2.9 — an overdue biomed inspection blocks assignment (412 EQUIPMENT_INSPECTION_OVERDUE).
+        const dueMs = eq_.nextInspectionDueDate ? new Date(eq_.nextInspectionDueDate).getTime() : 0;
+        assertInspectionCurrent(dueMs, Date.now());
+        const [row] = await t
+          .update(schema.ipuEquipment)
+          .set({ currentLocationKind: "bed", currentBedId: body.bedId, currentAssignedPatientId: body.patientId, updatedAt: new Date(), version: eq_.version + 1 })
+          .where(eq(schema.ipuEquipment.id, equipmentId))
+          .returning();
+        if (!row) throw new ConflictError("equipment assign failed");
+        return { id: row.id, serialNumber: row.serialNumber, equipmentType: row.equipmentType, currentStatus: row.currentStatus, nextInspectionDueDate: row.nextInspectionDueDate, version: row.version } satisfies EquipmentView;
+      });
+    },
+
+    async getBodyRelease(actor, admissionId: string): Promise<BodyReleaseView | null> {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const [row] = await (tx as DbClient).select().from(schema.ipuBodyRelease).where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId)).limit(1);
+        return row ? { id: row.id, ipuAdmissionId: row.ipuAdmissionId, state: row.state, version: row.version } : null;
+      });
+    },
+
+    async advanceBodyRelease(actor: IpuWriteActor, admissionId: string, body: AdvanceBodyReleaseBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [br] = await t.select().from(schema.ipuBodyRelease).where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId)).limit(1);
+        if (!br) throw new NotFoundError("ipu_body_release not found");
+        const event =
+          body.action === "identifyFuneralHome"
+            ? { type: "identifyFuneralHome" as const, funeralHomeResolved: body.funeralHomeId !== undefined }
+            : body.action === "releaseBody"
+              ? { type: "releaseBody" as const, hasReleaseDocument: body.releaseDocumentId !== undefined }
+              : { type: "postClose" as const, isSystemActor: true };
+        const transition = transitionBodyRelease(br.state, event);
+        const bed = body.action === "releaseBody" ? await activeBedFor(t, admissionId) : null;
+        const patch: Record<string, unknown> = { state: transition.to, updatedAt: new Date(), version: br.version + 1 };
+        if (body.action === "identifyFuneralHome" && body.funeralHomeId) patch.funeralHomeId = body.funeralHomeId;
+        if (body.action === "releaseBody") {
+          patch.releaseDocumentId = body.releaseDocumentId ?? br.releaseDocumentId;
+          patch.releasedAt = new Date();
+          patch.releasedByMembershipId = actor.membershipId;
+          if (body.releasedToRepresentativeName) patch.releasedToRepresentativeName = body.releasedToRepresentativeName;
+        }
+        if (body.action === "postClose") patch.closedAt = new Date();
+        for (const eff of transition.effects) {
+          if (eff.kind === "outbox") {
+            await outbox.publish(t, {
+              eventName: eff.event,
+              payload: { organizationId: actor.organizationId, bodyReleaseId: br.id, ...(eff.event === "m37.body_release.funeral_home_identified" && body.funeralHomeId ? { funeralHomeId: body.funeralHomeId } : {}) },
+              organizationId: actor.organizationId,
+              aggregateKind: "ipu_body_release",
+              aggregateId: br.id,
+            });
+          } else if (eff.kind === "source_bed_cleaning" && bed) {
+            const bedResult = transitionBedCleaning(bed.status as never, eff.event);
+            await t.update(B).set({ cleaningStatus: bedResult.to, cleaningStatusChangedAt: new Date() }).where(eq(B.id, bed.id));
+            await t.insert(BCE).values({ organizationId: actor.organizationId, bedId: bed.id, fromStatus: bedResult.from, toStatus: bedResult.to, byMembershipId: actor.membershipId });
+          }
+        }
+        const [row] = await t.update(schema.ipuBodyRelease).set(patch).where(eq(schema.ipuBodyRelease.id, br.id)).returning();
+        if (!row) throw new ConflictError("body release update failed");
+        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, state: row.state, version: row.version };
       });
     },
 

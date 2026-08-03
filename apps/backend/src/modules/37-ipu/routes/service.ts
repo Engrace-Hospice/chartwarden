@@ -3,20 +3,29 @@
 // under RLS and drives the pure @wardenx/inpatient machines; a test can substitute an in-memory backend.
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
+  AdvanceBodyReleaseBody,
   ApplyRestraintBody,
+  ApplyVisitorRestrictionBody,
   AssignBedBody,
+  AssignEquipmentBedBody,
   AssignStaffBody,
   AttestGipBody,
   BedCleaningBody,
+  CheckInVisitorBody,
   ConfirmBody,
   ConfirmTransferBody,
   CreateBedBody,
+  CreateEquipmentBody,
   CreateRoomBody,
   CreateShiftBody,
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
   IrcOverrideBody,
+  LiftVisitorRestrictionBody,
+  LogInspectionBody,
+  LogMaintenanceBody,
+  LogMealBody,
   OpenAdmissionBody,
   ReassessGipBody,
   ReassessRestraintBody,
@@ -82,6 +91,41 @@ export interface IrcEpisodeView {
   readonly state: string;
   readonly consecutiveDayCount: number;
   readonly capOverrideInvoked: boolean;
+  readonly version: number;
+}
+
+export interface VisitorView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly relationship: string;
+  readonly maskRequired: boolean;
+  readonly checkedInAt: string;
+  readonly checkedOutAt: string | null;
+}
+export interface VisitorRestrictionView {
+  readonly id: string;
+  readonly scope: string;
+  readonly restrictionKind: string;
+  readonly liftedAt: string | null;
+}
+export interface MealView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly serviceDate: string;
+  readonly mealSlot: string;
+}
+export interface EquipmentView {
+  readonly id: string;
+  readonly serialNumber: string;
+  readonly equipmentType: string;
+  readonly currentStatus: string;
+  readonly nextInspectionDueDate: string | null;
+  readonly version: number;
+}
+export interface BodyReleaseView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly state: string;
   readonly version: number;
 }
 
@@ -164,4 +208,16 @@ export interface IpuRouteService {
   applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody): Promise<RestraintView>;
   reassessRestraint(actor: IpuWriteActor, restraintId: string, body: ReassessRestraintBody): Promise<RestraintView>;
   releaseRestraint(actor: IpuWriteActor, restraintId: string): Promise<RestraintView>;
+  checkInVisitor(actor: IpuWriteActor, body: CheckInVisitorBody): Promise<VisitorView>;
+  checkOutVisitor(actor: IpuWriteActor, visitorId: string): Promise<VisitorView>;
+  applyVisitorRestriction(actor: IpuWriteActor, body: ApplyVisitorRestrictionBody): Promise<VisitorRestrictionView>;
+  liftVisitorRestriction(actor: IpuWriteActor, body: LiftVisitorRestrictionBody): Promise<VisitorRestrictionView>;
+  logMeal(actor: IpuWriteActor, body: LogMealBody): Promise<MealView>;
+  listEquipment(actor: IpuReadActor): Promise<readonly EquipmentView[]>;
+  createEquipment(actor: IpuWriteActor, body: CreateEquipmentBody): Promise<EquipmentView>;
+  logMaintenance(actor: IpuWriteActor, equipmentId: string, body: LogMaintenanceBody): Promise<EquipmentView>;
+  logInspection(actor: IpuWriteActor, equipmentId: string, body: LogInspectionBody): Promise<EquipmentView>;
+  assignEquipmentBed(actor: IpuWriteActor, equipmentId: string, body: AssignEquipmentBedBody): Promise<EquipmentView>;
+  getBodyRelease(actor: IpuReadActor, admissionId: string): Promise<BodyReleaseView | null>;
+  advanceBodyRelease(actor: IpuWriteActor, admissionId: string, body: AdvanceBodyReleaseBody): Promise<BodyReleaseView>;
 }
