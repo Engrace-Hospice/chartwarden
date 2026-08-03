@@ -10,14 +10,23 @@
 // destruction eraser, which enforces legal-hold supremacy (§10.6) and Part 2 lifetime retention
 // (§6) row-by-row — so a right-to-erasure can never blow away SUD audit history a patient is still
 // entitled to (W-M4-09). Like the rest of the slice it runs over an injected store + ports with an
-// in-memory default; the production Drizzle adapter (the partitioned crypto-erase) is a follow-up.
+// in-memory default; production injects `createDrizzleAuditEraserStore` (row-group enumeration over
+// the sanctioned @wardenx/audit query reader) + `createDrizzleAuditEraserPorts` (live legal-hold /
+// patient-lifecycle guards). The one deliberately UNBOUND leg is `performErasure` — see its note:
+// `audit_event` is HELPER_ONLY and `wardenx_app` holds no DELETE grant, so the partitioned
+// crypto-erase adapter must land in packages/audit; until it does the port THROWS, so a
+// right-to-erasure against audit rows fails loudly instead of minting a certificate from nothing.
 import {
   type EraseInput,
   type EraserPorts,
+  createDbAuditQuery,
   createInMemoryEraserPorts,
   eraseAuditRows,
 } from "@wardenx/audit";
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser, OrgScope } from "@wardenx/types";
+import { eq } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** Enumerates the `audit_event` row-groups a right-to-erasure for a subject would target. */
@@ -57,6 +66,130 @@ export function createInMemoryAuditEraserStore(
 ): AuditEraserStore {
   return {
     rowsForSubject: (_scope, subjectId) => seed[subjectId] ?? [],
+  };
+}
+
+/**
+ * The right-to-erasure path enters through the DataEraser contract, which carries NO destruction
+ * certificate id (the certificate is filed by the M4 workflow that invoked the registry). The
+ * Drizzle store stamps enumerated row-groups with this marker so a certificate line produced from
+ * them is distinguishable from a retention-scan-opened certificate's own id.
+ */
+export const RIGHT_TO_ERASURE_CERTIFICATE_ID = "right-to-erasure";
+
+/**
+ * The Drizzle-backed store (TASK-003 / ARCH-007): enumerate the subject's REAL `audit_event`
+ * row-groups. `audit_event` is HELPER_ONLY (manifest HELPER_ONLY_TABLES) — packages/audit is its
+ * only sanctioned reader — so this store does NOT touch the table itself: it pages the
+ * `createDbAuditQuery` search surface (RLS-scoped, newest-first) with the subject as the patient
+ * filter, and folds the rows into (retentionClass, resourceKind, resourceId) groups, newest cohort
+ * first. Every group carries `patientId = subjectId` so the orchestrator's Part 2 lifetime guard
+ * has its subject without a resolver round-trip.
+ */
+export function createDrizzleAuditEraserStore(db: DbClient): AuditEraserStore {
+  const query = createDbAuditQuery(db);
+  return {
+    async rowsForSubject(scope, subjectId) {
+      const groups = new Map<string, EraseInput>();
+      let cursor: string | undefined;
+      do {
+        const page = await query.searchEvents(scope.orgId, {
+          patientId: subjectId,
+          limit: 200, // MAX_PAGE_LIMIT — fewest round trips the reader allows
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const r of page.items) {
+          // A row with no resource id forms its own group keyed on the event id — grouping it
+          // under a shared blank key would let one legal hold shadow unrelated events.
+          const resourceId = r.resourceId ?? r.id;
+          const key = `${r.retentionClass}|${r.resourceKind}|${resourceId}`;
+          if (groups.has(key)) continue;
+          groups.set(key, {
+            retentionClass: r.retentionClass,
+            resourceKind: r.resourceKind,
+            resourceId,
+            organizationId: scope.orgId,
+            destructionCertificateId: RIGHT_TO_ERASURE_CERTIFICATE_ID,
+            patientId: subjectId,
+          });
+        }
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return [...groups.values()];
+    },
+  };
+}
+
+/**
+ * The Drizzle-backed `EraserPorts` (TASK-003 / ARCH-007): the guards are LIVE, the erase leg is
+ * deliberately unbound.
+ *
+ *   • `legalHoldFor` reads the org's ACTIVE `legal_hold` rows (M4-owned) and matches
+ *     conservatively — a hold whose free-form `criteria` jsonb mentions the row-group's resource
+ *     id or patient anywhere holds the group (the M39 consent-eraser precedent). Over-matching is
+ *     the safe direction: a wrongly-held row is merely refused; a wrongly-released one is erased
+ *     against a hold (§10.6 supremacy).
+ *   • `loadPatient` reads the M5 `patient` status + deceased_date under org RLS for the §6
+ *     lifetime window (the M39 "fail-closed deceased proof" read). Any non-deceased status maps
+ *     to `active` — only a proven death date can open the 6-year window.
+ *   • `performErasure` THROWS: `audit_event` is HELPER_ONLY and `wardenx_app` holds INSERT/SELECT
+ *     only (migration 0001 — the append-only guarantee), so no code in this module may, and no
+ *     tenant connection could, delete audit rows. The partitioned crypto-erase adapter belongs in
+ *     packages/audit under a role with the destruction grant; until it lands, an erase that
+ *     reaches this leg fails loudly rather than reporting rows destroyed that still exist.
+ */
+export function createDrizzleAuditEraserPorts(db: DbClient): EraserPorts {
+  const HOLD = schema.legalHolds;
+  const P = schema.patients;
+  return {
+    async legalHoldFor(input) {
+      return withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: "" },
+        async (tx) => {
+          const holds = await tx
+            .select({ id: HOLD.id, criteria: HOLD.criteria })
+            .from(HOLD)
+            .where(eq(HOLD.status, "active"));
+          for (const h of holds) {
+            const text = JSON.stringify(h.criteria ?? {});
+            if (
+              text.includes(input.resourceId) ||
+              (input.patientId !== undefined && text.includes(input.patientId))
+            ) {
+              return h.id;
+            }
+          }
+          return null;
+        },
+      );
+    },
+
+    async loadPatient(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({ status: P.status, deceasedDate: P.deceasedDate })
+          .from(P)
+          .where(eq(P.id, patientId))
+          .limit(1);
+        const row = rows[0];
+        if (!row) return null;
+        return row.status === "deceased"
+          ? { status: "deceased" as const, deceasedDate: row.deceasedDate }
+          : { status: "active" as const };
+      });
+    },
+
+    async performErasure(input) {
+      throw new Error(
+        "M4_ERASER_PERFORM_ERASURE_UNBOUND: audit_event is HELPER_ONLY and wardenx_app has no " +
+          "DELETE grant (migration 0001 append-only guarantee); the partitioned crypto-erase " +
+          "adapter must land in packages/audit under a destruction-granted role. Refusing to " +
+          `report '${input.resourceKind}/${input.resourceId}' erased while its rows survive.`,
+      );
+    },
+
+    now: () => new Date(),
   };
 }
 

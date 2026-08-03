@@ -18,7 +18,10 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`order_record` is in REQUIRED_ERASERS); the
 // composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** The per-table counts an order-record destruction removed (recorded on the destruction cert, §7.7). */
@@ -130,6 +133,125 @@ export function createInMemoryOrderEraseStore(seed: InMemoryOrderEraseSeed = {})
         used = true;
         return out;
       },
+    },
+  };
+}
+
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/**
+ * The Drizzle-backed store: the REAL destruction path. Runs inside `withOrgContext` so RLS scopes every
+ * statement to the acting org (a destruction certificate can never reach across tenants). Deletes the
+ * partitioned `order_record` parent via the partition-key predicate the route tier uses
+ * (`patient_id` + `created_at < retentionAsOf`) — the row-delete arm of D12. The DETACH+DROP arm is a
+ * DDL maintenance path that needs table-owner privileges the RLS-scoped `wardenx_app` role does not
+ * hold, so this store always reports `partitionsDropped: 0`; a wholly-erasable partition is still fully
+ * emptied row-by-row, which is destruction-equivalent (the partition shell holds no PHI).
+ * Any statement the database refuses (FK restrict from a surviving row, RLS, permissions) THROWS and
+ * rolls the erase transaction back — the erase never reports success it did not perform.
+ */
+export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
+  const ORD = schema.orderRecords;
+  const SIG = schema.orderSignatures;
+  const VO = schema.verbalOrders;
+  const SOI = schema.standingOrderInstances;
+  const DISC = schema.orderDiscontinuations;
+  const SO = schema.standingOrders;
+
+  /** The patient's erasable order ids (`created_at < boundary`) — the child cascade is keyed on these. */
+  const orderIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
+    (
+      await tx
+        .select({ id: ORD.id })
+        .from(ORD)
+        .where(and(eq(ORD.patientId, patientId), lt(ORD.createdAt, boundary)))
+    ).map((r) => r.id);
+
+  return {
+    async lockPatient(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // Advisory lock on the patient key, released by the surrounding transaction commit.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
+      });
+    },
+
+    async eraseOrdersSubtree(organizationId, patientId, retentionAsOf) {
+      if (Number.isNaN(Date.parse(retentionAsOf))) {
+        throw new Error(`M11_ERASER_BAD_RETENTION_BOUNDARY: ${retentionAsOf}`);
+      }
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const boundary = new Date(retentionAsOf);
+        const orderIds = await orderIdsFor(tx, patientId, boundary);
+        const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
+          (await run()).length;
+
+        // Children first, cascaded from the DELETED orders (no SQL FK to the partitioned parent — the
+        // cascade is app-owned). `order_signature` / `verbal_order` are polymorphic (D14): only the
+        // `target_kind = 'order'` rows belong to M11's subtree; `'medication_order'` rows are M12's.
+        const signatures =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(SIG)
+                  .where(and(eq(SIG.targetKind, "order"), inArray(SIG.targetId, orderIds)))
+                  .returning({ id: SIG.id }),
+              );
+        const verbalOrders =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(VO)
+                  .where(and(eq(VO.targetKind, "order"), inArray(VO.targetId, orderIds)))
+                  .returning({ id: VO.id }),
+              );
+        const standingInstances =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(SOI)
+                  .where(inArray(SOI.orderRecordId, orderIds))
+                  .returning({ id: SOI.id }),
+              );
+        const discontinuations =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(DISC)
+                  .where(inArray(DISC.orderRecordId, orderIds))
+                  .returning({ id: DISC.id }),
+              );
+
+        // The partitioned parent, via the partition-key predicate (row-delete arm of D12).
+        const orders = await del(() =>
+          tx
+            .delete(ORD)
+            .where(and(eq(ORD.patientId, patientId), lt(ORD.createdAt, boundary)))
+            .returning({ id: ORD.id }),
+        );
+
+        // The patient's standing_order templates go LAST: `order_record.standing_order_id` and
+        // `standing_order_instance.standing_order_id` reference them, so the referencing rows must
+        // already be gone. If a surviving out-of-boundary order still references a template, the FK
+        // refuses and the whole erase rolls back (fail closed) rather than orphaning the reference.
+        const standingOrders = await del(() =>
+          tx.delete(SO).where(eq(SO.patientId, patientId)).returning({ id: SO.id }),
+        );
+
+        // `order_verbal_policy` is org-scoped tenant configuration — never touched (§7.7 #4).
+        return {
+          orders,
+          signatures,
+          verbalOrders,
+          standingInstances,
+          discontinuations,
+          standingOrders,
+          partitionsDropped: 0,
+        };
+      });
     },
   };
 }

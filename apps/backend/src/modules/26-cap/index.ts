@@ -52,6 +52,7 @@ export {
   type CapEraserDeps,
   createCapEraser,
   createDrizzleCapRedactStore,
+  createDrizzleCapTenantStore,
   eraseCapForTenant,
   registerCapErasers,
 } from "./erasers/cap-eraser";

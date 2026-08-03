@@ -138,7 +138,9 @@ export {
 // `registerModuleErasers` hook M5/M6/M22/M36/M40 use). The pure eraseFn lives in the package; this backend
 // wrapper adapts it to the M1 `DataEraser` contract.
 export {
+  type DrizzleSaasTenantPlatformEraseDeps,
   type SaasTenantPlatformEraserDeps,
+  createDrizzleSaasTenantPlatformEraseStore,
   createSaasTenantPlatformEraser,
   registerSaasTenantPlatformErasers,
 } from "./erasers/saas-tenant-platform-eraser";

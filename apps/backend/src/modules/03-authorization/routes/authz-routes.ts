@@ -155,6 +155,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
         roleKey: role.key,
         clonedFrom: body.clonedFromKey,
       });
+      deps.rbacInvalidation?.invalidateOrg(organizationId); // §2.5 — a new role is grantable now
       return reply.code(201).send(role);
     },
   );
@@ -199,6 +200,8 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
         roleKey: updated.key,
         changedFields,
       });
+      // §2.5 — an edited permission set must drop every cached actor set in the org immediately.
+      deps.rbacInvalidation?.invalidateOrg(organizationId);
       return reply.code(200).send(updated);
     },
   );
@@ -207,7 +210,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
     "/api/v1/roles/:id",
     { preHandler: [requirePermission("role.manage") as PreHandler] },
     async (request, reply) => {
-      actorOf(request.context);
+      const { organizationId } = actorOf(request.context);
       const { id: roleId } = parse(RoleIdParams, request.params);
       const existing = await deps.roles.get(roleId);
       if (!existing) throw notFound("role");
@@ -221,6 +224,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
         roleId: existing.roleId,
         roleKey: existing.key,
       });
+      deps.rbacInvalidation?.invalidateOrg(organizationId); // §2.5 — grants on it are void now
       return reply.code(200).send({ deleted: true });
     },
   );
@@ -265,6 +269,9 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
         scope: body.scope,
         expiresAt,
       });
+      // §2.5 — the grantee's cached set is stale the instant the grant lands. Org-wide drop (the
+      // resolver caches by (org,user) and the grantee's USER id is not in this handler's scope).
+      deps.rbacInvalidation?.invalidateOrg(organizationId);
       return reply.code(201).send(grant);
     },
   );
@@ -273,7 +280,7 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
     "/api/v1/memberships/:id/roles/:rid",
     { preHandler: [requirePermission("role.assign") as PreHandler] },
     async (request, reply) => {
-      actorOf(request.context);
+      const { organizationId } = actorOf(request.context);
       const { id: membershipId, rid: roleId } = parse(MembershipRoleParams, request.params);
       const role = await deps.roles.get(roleId);
       const revoked = await deps.membershipRoles.revoke(membershipId, roleId);
@@ -282,6 +289,8 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
         membershipId,
         roleKey: role?.key ?? roleId,
       });
+      // §2.5 — a revoked grant must stop authorizing NOW, not at cache expiry.
+      deps.rbacInvalidation?.invalidateOrg(organizationId);
       return reply.code(200).send({ revoked: true });
     },
   );

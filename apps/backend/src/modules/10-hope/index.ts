@@ -144,6 +144,7 @@ export {
   type SubmittedAssessmentRef,
   HopeRetentionBlockedError,
   addYears,
+  createDrizzleHopeEraseStore,
   createHopeEraser,
   createInMemoryHopeEraseStore,
   earliestErasableInstant,

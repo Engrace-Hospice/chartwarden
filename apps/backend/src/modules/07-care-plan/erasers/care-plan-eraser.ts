@@ -12,8 +12,13 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`care_plan_record` is in REQUIRED_ERASERS);
 // the composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { eq, inArray } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
+
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
 /** The per-table counts a care-plan-record destruction removed (recorded on the destruction cert). */
 export interface CarePlanEraseCounts {
@@ -75,6 +80,87 @@ export function createInMemoryCarePlanEraseStore(seed: Partial<CarePlanEraseCoun
       async tombstoneCarePlans(_org, patientId) {
         tombstoned.push(patientId);
       },
+    },
+  };
+}
+
+/**
+ * The Drizzle-backed store: the REAL destruction path (TASK-003 / ARCH-007). Runs inside
+ * `withOrgContext` so RLS scopes every statement to the acting org (a destruction certificate can
+ * never reach across tenants). Deletes report ONLY rows actually removed (`returning` lengths);
+ * migration 0029 grants `wardenx_app` no DELETE on any care-plan table (append-only for survey
+ * reconstruction), so under an app-role connection Postgres REFUSES the delete and this store THROWS —
+ * the destruction path must be handed a privileged (wardenx_admin) `DbClient` at the composition root.
+ */
+export function createDrizzleCarePlanEraseStore(db: DbClient): CarePlanEraseStore {
+  const PLAN = schema.carePlans;
+  const V = schema.carePlanVersions;
+  const SIG = schema.carePlanSignatures;
+  const PROB = schema.problems;
+  const G = schema.goals;
+  const I = schema.interventions;
+
+  /** The patient's plan-root ids — every satellite is keyed on `care_plan_id`, not on the patient. */
+  const planIdsFor = async (tx: Tx, patientId: string): Promise<string[]> =>
+    (await tx.select({ id: PLAN.id }).from(PLAN).where(eq(PLAN.patientId, patientId))).map(
+      (r) => r.id,
+    );
+
+  return {
+    async eraseCarePlanSubtree(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const planIds = await planIdsFor(tx, patientId);
+        const zero: CarePlanEraseCounts = {
+          versions: 0,
+          signatures: 0,
+          problems: 0,
+          goals: 0,
+          interventions: 0,
+        };
+        if (planIds.length === 0) return zero; // idempotent: a second erase finds nothing.
+        const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
+          (await run()).length;
+
+        // FK order: signature → version (signatures hang off care_plan_version); goal / intervention →
+        // problem (both carry a `problem_id` RESTRICT FK); versions and problems then fall to the plan.
+        const signatures = await del(() =>
+          tx
+            .delete(SIG)
+            .where(
+              inArray(
+                SIG.carePlanVersionId,
+                tx.select({ id: V.id }).from(V).where(inArray(V.carePlanId, planIds)),
+              ),
+            )
+            .returning({ id: SIG.id }),
+        );
+        const versions = await del(() =>
+          tx.delete(V).where(inArray(V.carePlanId, planIds)).returning({ id: V.id }),
+        );
+        const goals = await del(() =>
+          tx.delete(G).where(inArray(G.carePlanId, planIds)).returning({ id: G.id }),
+        );
+        const interventions = await del(() =>
+          tx.delete(I).where(inArray(I.carePlanId, planIds)).returning({ id: I.id }),
+        );
+        const problems = await del(() =>
+          tx.delete(PROB).where(inArray(PROB.carePlanId, planIds)).returning({ id: PROB.id }),
+        );
+
+        return { versions, signatures, problems, goals, interventions };
+      });
+    },
+
+    async tombstoneCarePlans(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // D8 tombstone: the root row SURVIVES for FK referential integrity — status flips to the
+        // terminal 'discharged' and the soft self-ref to the (now-deleted) active version is cleared,
+        // along with the scheduling columns that no longer mean anything.
+        await tx
+          .update(PLAN)
+          .set({ status: "discharged", activeVersionId: null, nextReviewDueAt: null })
+          .where(eq(PLAN.patientId, patientId));
+      });
     },
   };
 }

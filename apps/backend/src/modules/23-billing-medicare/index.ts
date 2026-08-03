@@ -72,9 +72,12 @@ export { buildM23BootAssemblyService } from "./services/boot-assembly";
 // `registerEraser` hook is INJECTED by the composition root (the eraser import-boundary note).
 export {
   type BillingEraserDeps,
+  type BillingSurveyorHoldProbe,
+  type DrizzleBillingEraseStoreOptions,
   type RegisterEraserHook,
   BILLING_DATA_CLASS,
   createBillingEraser,
+  createDrizzleBillingEraseStore,
   registerBillingErasers,
 } from "./erasers/billing-eraser";
 

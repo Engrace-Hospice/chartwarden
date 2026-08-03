@@ -20,7 +20,10 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`emar_record` is in REQUIRED_ERASERS); the composition
 // root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before validateErasers(), so a real
 // eraser stands over its stub.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** The per-table counts an eMAR-record destruction removed (recorded on the destruction cert, §7.7). */
@@ -154,6 +157,176 @@ export function createInMemoryEmarEraseStore(seed: InMemoryEmarEraseSeed = {}): 
         used = true;
         return out;
       },
+    },
+  };
+}
+
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/**
+ * The Drizzle-backed store: the REAL destruction path. Runs inside `withOrgContext` so RLS scopes every
+ * statement to the acting org (a destruction certificate can never reach across tenants). Deletes the
+ * partitioned `administration_record` parent via the partition-key predicate the route tier uses
+ * (`patient_id` + `administered_at < retentionAsOf`) — the row-delete arm of the M11/M12 precedent. The
+ * DETACH+DROP arm is a DDL maintenance path that needs table-owner privileges the RLS-scoped
+ * `wardenx_app` role does not hold, so this store always reports `partitionsDropped: 0`; a wholly-
+ * erasable partition is still fully emptied row-by-row, which is destruction-equivalent (the partition
+ * shell holds no PHI). Any statement the database refuses THROWS and rolls the erase back — the erase
+ * never reports success it did not perform.
+ */
+export function createDrizzleEmarEraseStore(db: DbClient): EmarEraseStore {
+  const ADM = schema.administrationRecords;
+  const PRN = schema.prnAdministrations;
+  const WIT = schema.administrationWitnesses;
+  const SCAN = schema.barcodeScanEvents;
+  const SCHED = schema.scheduledDoses;
+  const MISSED = schema.missedDoses;
+  const KIT = schema.comfortKitDeployments;
+  const DRAW = schema.comfortKitDrawdowns;
+  const WS = schema.medicationReconciliationWorksheets;
+  const DEC = schema.medicationReconciliationDecisions;
+  const OFFQ = schema.administrationOfflineQueue;
+
+  /** The patient's erasable administration ids (`administered_at < boundary`) — the cascade key. */
+  const adminIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
+    (
+      await tx
+        .select({ id: ADM.id })
+        .from(ADM)
+        .where(and(eq(ADM.patientId, patientId), lt(ADM.administeredAt, boundary)))
+    ).map((r) => r.id);
+
+  return {
+    async lockPatient(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // Advisory lock on the patient key, released by the surrounding transaction commit.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
+      });
+    },
+
+    async eraseEmarSubtree(organizationId, patientId, retentionAsOf) {
+      if (Number.isNaN(Date.parse(retentionAsOf))) {
+        throw new Error(`M13_ERASER_BAD_RETENTION_BOUNDARY: ${retentionAsOf}`);
+      }
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const boundary = new Date(retentionAsOf);
+        const adminIds = await adminIdsFor(tx, patientId, boundary);
+        const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
+          (await run()).length;
+
+        // ── (1) Children cascaded from the DELETED administrations (no SQL FK to the partitioned
+        // parent — the cascade is app-owned).
+        const prnAdministrations =
+          adminIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(PRN)
+                  .where(inArray(PRN.administrationRecordId, adminIds))
+                  .returning({ id: PRN.id }),
+              );
+        const witnesses =
+          adminIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(WIT)
+                  .where(inArray(WIT.administrationRecordId, adminIds))
+                  .returning({ id: WIT.id }),
+              );
+        // A pre-commit scan carries a NULL administration_record_id and only a wristband-payload DIGEST
+        // (never the raw payload), so the patient-attributable scans are exactly the linked ones.
+        const barcodeScans =
+          adminIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(SCAN)
+                  .where(inArray(SCAN.administrationRecordId, adminIds))
+                  .returning({ id: SCAN.id }),
+              );
+        // `administration_offline_queue` carries no patient column (§3.3 — digest-only idempotency
+        // rows on a 30-day purge path); the patient-attributable rows are the ones whose sync landed on
+        // a deleted administration.
+        const offlineQueueRows =
+          adminIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(OFFQ)
+                  .where(inArray(OFFQ.syncedAdministrationRecordId, adminIds))
+                  .returning({ id: OFFQ.id }),
+              );
+
+        // ── (2) The partitioned parent, via the partition-key predicate (row-delete arm).
+        const administrations = await del(() =>
+          tx
+            .delete(ADM)
+            .where(and(eq(ADM.patientId, patientId), lt(ADM.administeredAt, boundary)))
+            .returning({ id: ADM.id }),
+        );
+
+        // ── (3) Patient-keyed satellites. Loose-FK children go before their parents: missed_dose →
+        // scheduled_dose, comfort_kit_drawdown → comfort_kit_deployment (the drawdown carries no
+        // patient column — the parent deployment is the patient anchor), reconciliation decision →
+        // worksheet.
+        const missedDoses = await del(() =>
+          tx.delete(MISSED).where(eq(MISSED.patientId, patientId)).returning({ id: MISSED.id }),
+        );
+        const scheduledDoses = await del(() =>
+          tx.delete(SCHED).where(eq(SCHED.patientId, patientId)).returning({ id: SCHED.id }),
+        );
+
+        const kitIds = (
+          await tx.select({ id: KIT.id }).from(KIT).where(eq(KIT.patientId, patientId))
+        ).map((r) => r.id);
+        const comfortKitDrawdowns =
+          kitIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(DRAW)
+                  .where(inArray(DRAW.comfortKitDeploymentId, kitIds))
+                  .returning({ id: DRAW.id }),
+              );
+        const comfortKitDeployments =
+          kitIds.length === 0
+            ? 0
+            : await del(() => tx.delete(KIT).where(inArray(KIT.id, kitIds)).returning({ id: KIT.id }));
+
+        const worksheetIds = (
+          await tx.select({ id: WS.id }).from(WS).where(eq(WS.patientId, patientId))
+        ).map((r) => r.id);
+        const reconciliationDecisions =
+          worksheetIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(DEC)
+                  .where(inArray(DEC.worksheetId, worksheetIds))
+                  .returning({ id: DEC.id }),
+              );
+        const reconciliationWorksheets =
+          worksheetIds.length === 0
+            ? 0
+            : await del(() => tx.delete(WS).where(inArray(WS.id, worksheetIds)).returning({ id: WS.id }));
+
+        // `administration_policy` is org-scoped tenant configuration — never touched (§7.7 #7).
+        return {
+          administrations,
+          prnAdministrations,
+          witnesses,
+          barcodeScans,
+          scheduledDoses,
+          missedDoses,
+          comfortKitDeployments,
+          comfortKitDrawdowns,
+          reconciliationWorksheets,
+          reconciliationDecisions,
+          offlineQueueRows,
+          partitionsDropped: 0,
+        };
+      });
     },
   };
 }

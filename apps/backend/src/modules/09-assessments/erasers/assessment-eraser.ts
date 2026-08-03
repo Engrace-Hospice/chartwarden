@@ -15,7 +15,10 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`clinical_assessment` is in REQUIRED_ERASERS); the
 // composition root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before
 // validateErasers(), so a real eraser stands over its stub.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { eq, inArray, sql } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** The per-table counts an assessment-record destruction removed (recorded on the destruction cert, §8.4 #5). */
@@ -77,6 +80,71 @@ export function createInMemoryAssessmentEraseStore(seed: Partial<AssessmentErase
         used = true;
         return out;
       },
+    },
+  };
+}
+
+/**
+ * The Drizzle-backed store: the REAL destruction path (TASK-003 / ARCH-007). Runs inside
+ * `withOrgContext` so RLS scopes every statement to the acting org. `clinical_assessment` is RANGE-
+ * partitioned by `captured_at` — every statement targets the PARTITIONED PARENT (exactly how the M9
+ * route services read/write it), so Postgres routes the select/delete across all monthly partitions;
+ * no per-partition access is ever attempted. There is NO tombstone: the assessment rows are the leaf
+ * clinical facts and are deleted OUTRIGHT — active AND superseded, no status filter — after their
+ * `assessment_cosignature` / `significant_change_event` children (§8.4 #2). The org-level
+ * `scale_license` / `scale_policy` tables are tenant configuration and are NEVER touched (§8.4 #3).
+ * Counts come from `returning` lengths (rows ACTUALLY removed). The M9 grants give `wardenx_app` no
+ * DELETE (append-only), so under an app-role connection Postgres REFUSES the delete and this store
+ * THROWS — the destruction path must be handed a privileged (wardenx_admin) `DbClient` at the
+ * composition root.
+ */
+export function createDrizzleAssessmentEraseStore(db: DbClient): AssessmentEraseStore {
+  const CA = schema.clinicalAssessments;
+  const COSIGN = schema.assessmentCosignatures;
+  const SCE = schema.significantChangeEvents;
+
+  return {
+    async lockPatient(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // Advisory lock on the patient key (§8.4 #1), released by the surrounding transaction commit.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
+      });
+    },
+
+    async eraseAssessmentSubtree(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const zero: AssessmentEraseCounts = {
+          cosignatures: 0,
+          significantChangeEvents: 0,
+          assessments: 0,
+        };
+        // The children are keyed on assessment id (plain uuid — the partitioned parent takes no FK),
+        // so resolve the patient's assessment ids first, via the parent (partition-safe).
+        const assessmentIds = (
+          await tx.select({ id: CA.id }).from(CA).where(eq(CA.patientId, patientId))
+        ).map((r) => r.id);
+        if (assessmentIds.length === 0) return zero; // idempotent: a second erase finds nothing.
+
+        const cosignatures = (
+          await tx
+            .delete(COSIGN)
+            .where(inArray(COSIGN.clinicalAssessmentId, assessmentIds))
+            .returning({ id: COSIGN.id })
+        ).length;
+        const significantChangeEvents = (
+          await tx
+            .delete(SCE)
+            .where(inArray(SCE.clinicalAssessmentId, assessmentIds))
+            .returning({ id: SCE.id })
+        ).length;
+        // Active AND superseded in one parent-targeted statement, so a correction-supersede chain is
+        // erased at both ends within the same transaction (the DEFERRABLE self-FK never fires).
+        const assessments = (
+          await tx.delete(CA).where(eq(CA.patientId, patientId)).returning({ id: CA.id })
+        ).length;
+
+        return { cosignatures, significantChangeEvents, assessments };
+      });
     },
   };
 }

@@ -3,6 +3,7 @@
 // written exclusively by the packages/shared outbox dispatcher — never a direct
 // insert/select from a feature module (HELPER_ONLY_TABLES, manifest). org-scoped:
 // carries organization_id (no PHI columns → three-column PE/location not required).
+import { sql } from "drizzle-orm";
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { outboxEventStatus } from "../enums";
 import { organizations } from "./organizations";
@@ -23,10 +24,17 @@ export const outboxEvents = pgTable(
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    // TASK-006 (migration 0154) — the dispatcher's retry clock: the instant a pending row becomes
+    // eligible again (NULL = eligible now). Exponential backoff lives HERE so `dispatched_at` keeps
+    // its documented meaning (the SUCCESS instant).
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
   },
   (t) => ({
     statusCreatedIdx: index("outbox_status_created_idx").on(t.status, t.createdAt),
     orgIdx: index("outbox_org_idx").on(t.organizationId),
+    pendingDueIdx: index("outbox_pending_due_idx")
+      .on(t.nextAttemptAt, t.createdAt)
+      .where(sql`status = 'pending'`),
   }),
 );
 

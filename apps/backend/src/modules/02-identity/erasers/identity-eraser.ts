@@ -10,14 +10,18 @@
 //
 // SLICE NOTE: like the rest of the M2 slice (identity-ports / step-up-ports / seams), the
 // eraser runs over an injected store with a slice-safe in-memory default — no live DB. The
-// production adapter (a tracked follow-up, consistent with the slice's forward pattern) wires:
+// production adapter is `createDrizzleIdentityEraserStore` (below, TASK-003 / ARCH-007):
 //   • two_factor / passkey → a DELETE keyed on user_id. These tables are user-owned and
-//     NON_ORG_SCOPED (M02-F01: one identity, many memberships), so erasure is GLOBAL for the
-//     subject and runs under the user-ownership RLS predicate (not app.org_id). `scope` is
-//     carried for audit/telemetry symmetry with the DataEraser contract, not as a row filter.
+//     NON_ORG_SCOPED (M02-F01: one identity, many memberships; un-RLS'd per migration 0006's
+//     authority note), so erasure is GLOBAL for the subject and runs on the pooled handle the
+//     way identity-stores-db.ts already reads/writes them. `scope` is carried for
+//     audit/telemetry symmetry with the DataEraser contract, not as a row filter.
 //   • organization_invitation → a DELETE of the subject's PENDING rows within `scope.orgId`
 //     (org-scoped table, RLS on app.org_id), invoked inside withOrgContext.
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser, OrgScope } from "@wardenx/types";
+import { and, eq } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 /**
@@ -95,6 +99,57 @@ export function createInMemoryIdentityEraserStore(seed: IdentityEraserSeed = {})
       passkeys: passkeys.length,
       invitations: invitations.length,
     }),
+  };
+}
+
+/**
+ * The Drizzle-backed store: the REAL destruction path (TASK-003 / ARCH-007 — the argument-less
+ * registration bound an in-memory store, so a right-to-erasure "succeeded" against rows that exist
+ * nowhere). Every count is the rows ACTUALLY deleted (`.returning()`), never the request size.
+ *
+ *   • two_factor / passkey are user-owned and un-RLS'd (migration 0006), so the deletes run on the
+ *     pooled `wardenx_app` handle keyed on user_id — the same access shape identity-stores-db.ts
+ *     uses for the M1-owned `users`. Erasure is global per subject by design (M02-F01).
+ *   • organization_invitation is org-scoped (app.org_id RLS), and an invitation is addressed by
+ *     EMAIL (it predates the account), so the store resolves the subject's email from `users`
+ *     first and deletes the PENDING rows for that email inside `withOrgContext`. This is a hard
+ *     DELETE, not the route path's `revoked` soft-rescind: under a right-to-erasure the email on
+ *     the row is exactly the personal data being destroyed. Accepted/revoked rows are out of this
+ *     data class's contract (see the store port doc) and survive as compliance records.
+ */
+export function createDrizzleIdentityEraserStore(db: DbClient): IdentityEraserStore {
+  const TF = schema.twoFactor;
+  const PK = schema.passkey;
+  const I = schema.organizationInvitations;
+  const U = schema.users;
+
+  return {
+    async eraseTwoFactor(_scope, userId) {
+      const deleted = await db.delete(TF).where(eq(TF.userId, userId)).returning({ id: TF.id });
+      return deleted.length;
+    },
+
+    async erasePasskeys(_scope, userId) {
+      const deleted = await db.delete(PK).where(eq(PK.userId, userId)).returning({ id: PK.id });
+      return deleted.length;
+    },
+
+    async rescindInvitationsFor(scope, userId) {
+      // Invitations key on email, not user_id — resolve the subject first (users is un-RLS'd).
+      const rows = await db.select({ email: U.email }).from(U).where(eq(U.id, userId)).limit(1);
+      const email = rows[0]?.email;
+      // No user row ⇒ no email to match ⇒ nothing addressable to this subject (faithful zero).
+      if (!email) return 0;
+      return withOrgContext(db, { organizationId: scope.orgId, userId: "" }, async (tx) => {
+        const deleted = await tx
+          .delete(I)
+          .where(
+            and(eq(I.organizationId, scope.orgId), eq(I.email, email), eq(I.status, "pending")),
+          )
+          .returning({ id: I.id });
+        return deleted.length;
+      });
+    },
   };
 }
 

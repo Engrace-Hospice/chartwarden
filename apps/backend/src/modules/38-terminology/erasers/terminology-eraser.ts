@@ -15,6 +15,7 @@
 // out of reach (the tenant role has no write grant, §7.4). Like the rest of the slice it runs over
 // an injected store with an in-memory default; production injects the Drizzle-backed store (the same
 // `TerminologyStore` adapter the provider/routes use, which implements `eraseTenantExtensions`).
+import type { DbClient } from "@wardenx/db";
 import {
   type TerminologyEraseStore,
   createInMemoryTerminologyStore,
@@ -22,11 +23,29 @@ import {
 } from "@wardenx/terminology";
 import type { DataEraser } from "@wardenx/types";
 import { registerEraser } from "../../../bootstrap/index";
+import { createDbTerminologyStore } from "../terminology-store-db";
 
 /** Injected adapter for the M38 eraser (slice defaults to the in-memory terminology store). */
 export interface TerminologyEraserDeps {
   /** The data port deletes run over (Drizzle-backed in production; in-memory store by default). */
   store?: TerminologyEraseStore;
+}
+
+/**
+ * The Drizzle-backed erase store (TASK-003 / ARCH-007 — the argument-less registration bound the
+ * in-memory store, so a tenant offboarding "erased" extensions that exist nowhere). The header's
+ * promise was always that production injects "the same `TerminologyStore` adapter the
+ * provider/routes use, which implements `eraseTenantExtensions`" — so this narrows exactly that
+ * proven adapter (FB-T01, `terminology-store-db.ts`) to the erase port: a hard DELETE of every
+ * `value_set_tenant_extension` row the org owns, inside `withOrgContext` (app.org_id RLS), counted
+ * by `.returning()`. Platform reference tables stay physically out of reach (§7.4 — no
+ * `wardenx_app` write grant), so the narrowing is also the guarantee nothing else is deletable.
+ */
+export function createDrizzleTerminologyEraseStore(db: DbClient): TerminologyEraseStore {
+  const store = createDbTerminologyStore(db);
+  return {
+    eraseTenantExtensions: (orgId) => store.eraseTenantExtensions(orgId),
+  };
 }
 
 /**

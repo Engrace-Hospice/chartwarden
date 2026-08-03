@@ -111,6 +111,7 @@ export {
   type RemittanceEraserDeps,
   type RegisterEraserHook,
   REMITTANCE_DATA_CLASS,
+  createDrizzleRemittanceEraseStore,
   createInMemoryRemittanceEraseStore,
   createRemittanceEraser,
   registerRemittanceErasers,

@@ -210,6 +210,7 @@ export {
   type AdmissionEraseCounts,
   eraseAdmissionRecord,
   createInMemoryAdmissionEraseStore,
+  createDrizzleAdmissionEraseStore,
   createAdmissionEraser,
   registerAdmissionErasers,
 } from "./erasers/admission-eraser";

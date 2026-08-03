@@ -65,8 +65,10 @@ export {
 // the compliance-class survey-evidence tables are destruction-blocked). Registered over the Phase-0 deny-stub
 // by the composition root's `registerModuleErasers` hook.
 export {
+  type DrizzleQualityEraseDeps,
   type QualityEraserDeps,
   QUALITY_DATA_CLASS,
+  createDrizzleQualityEraseStore,
   createQualityEraser,
   registerQualityErasers,
 } from "./erasers/quality-eraser";

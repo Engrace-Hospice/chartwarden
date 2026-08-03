@@ -7,12 +7,14 @@ import {
   __resetInMemoryLedgerForTest,
   inMemoryBindingNotes,
 } from "../src/bootstrap/in-memory-ledger";
+import { __resetErasersForTest } from "../src/bootstrap/erasers/registry";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
-import { wireModuleSeams } from "../src/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 afterEach(() => {
   __resetInMemoryLedgerForTest();
   __resetSeamsForTest();
+  __resetErasersForTest();
 });
 
 describe("TASK-002 — Drizzle seam binding on a db boot", () => {
@@ -33,5 +35,24 @@ describe("TASK-002 — Drizzle seam binding on a db boot", () => {
     wireModuleSeams({ db: {} as never });
     const labels = inMemoryBindingNotes().map((n) => n.label);
     expect(labels.some((l) => l.includes("PatientMutator"))).toBe(true);
+  });
+});
+
+describe("TASK-003 — Drizzle erase-store binding on a db boot", () => {
+  it("records no TASK-003 eraser fallbacks when db + platformDb are supplied", () => {
+    wireModuleErasers({ db: {} as never, platformDb: {} as never });
+    const eraserFallbacks = inMemoryBindingNotes().filter(
+      (n) => n.kind === "eraser" && n.task.startsWith("TASK-003"),
+    );
+    expect(eraserFallbacks).toEqual([]);
+  });
+
+  it("records the M34 platform-credential gap when platformDb is absent", () => {
+    wireModuleErasers({ db: {} as never });
+    const labels = inMemoryBindingNotes()
+      .filter((n) => n.kind === "eraser")
+      .map((n) => n.label);
+    expect(labels.some((l) => l.includes("saas_tenant_platform_class"))).toBe(true);
+    expect(labels).toHaveLength(1); // every other data class is Drizzle-bound
   });
 });

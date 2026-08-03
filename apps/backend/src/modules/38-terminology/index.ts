@@ -25,8 +25,11 @@ export {
 // M38-T10 — the REAL `terminology_tenant_extensions` eraser (registered over the deny-stub by the
 // composition root): D8 tenant offboarding deletes the org's value-set extensions; platform tables
 // (reference data) are never touched.
+// TASK-003/ARCH-007: `createDrizzleTerminologyEraseStore` narrows the FB-T01 Drizzle
+// `TerminologyStore` to the erase port — the composition root injects it via `deps.store`.
 export {
   type TerminologyEraserDeps,
+  createDrizzleTerminologyEraseStore,
   createTerminologyEraser,
   registerTerminologyErasers,
 } from "./erasers/terminology-eraser";

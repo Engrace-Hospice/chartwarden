@@ -103,6 +103,11 @@ export {
   type ProposedPatientCandidate,
   type ProposalDecision,
 } from "./outbox-consumers/m29-proposal-accepted";
+// TASK-006 — the LIVE m5.proposal-applier binding the boot outbox dispatcher registers.
+export {
+  type M5ProposalApplierBinding,
+  buildM29ProposalApplierConsumer,
+} from "./outbox-consumers/live-binding";
 
 // M5-T12 — the `clinical_record` destruction eraser (§8/§10, D7/D8). Screens DEFER (no apps/web
 // codePath in the M5 manifest — the entity/admit/merge screens are tracked for the ADR-0030 UI
@@ -114,6 +119,8 @@ export {
   type PatientEraseCounts,
   erasePatientClinicalRecord,
   createInMemoryPatientEraseStore,
+  createDrizzlePatientEraseStore,
+  createPatientEraser,
   registerPatientErasers,
 } from "./erasers/patient-eraser";
 export { createDbPatientRouteService } from "./patient-route-service-db";

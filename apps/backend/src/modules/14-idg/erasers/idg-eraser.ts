@@ -18,7 +18,12 @@
 // Registers the REAL eraser over the Phase-0 deny-stub (`idg_record` is in REQUIRED_ERASERS); the composition
 // root's wireModuleErasers() invokes it AFTER wireErasers() (deny-stubs) and before validateErasers(), so a real
 // eraser stands over its stub.
+import { createHash } from "node:crypto";
+import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
+import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { registerEraser } from "../../../bootstrap/index";
 
 /** The per-table counts an IDG-record destruction removed (recorded on the destruction cert, §8.4). */
@@ -120,6 +125,152 @@ export function createInMemoryIdgEraseStore(seed: InMemoryIdgEraseSeed = {}): {
         used = true;
         return out;
       },
+    },
+  };
+}
+
+/**
+ * The Drizzle-backed store: the REAL destruction path. Runs inside `withOrgContext` so RLS scopes every
+ * statement to the acting org (a destruction certificate can never reach across tenants). Deletes ONLY
+ * the patient-scoped rows (`patient_id = subject`, `created_at < retentionAsOf`; the partitioned
+ * `idg_patient_packet` via its partition-key predicate `built_at < retentionAsOf`) — the caseload-wide
+ * `idg_meeting` / `idg_recurring_policy` / `idg_attendance` / `idg_minutes` / `idg_minutes_amendment`
+ * rows SURVIVE (§8.4). Patient references inside the surviving `idg_minutes` `*_snapshot` jsonb are
+ * HASH-REDACTED in place (the patient uuid is replaced by its sha256 — the M4 hash-redaction pattern),
+ * so the frozen minutes stay structurally intact without naming the destroyed patient. Any statement
+ * the database refuses THROWS and rolls the erase back — the erase never reports success it did not
+ * perform.
+ */
+export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
+  const AGENDA = schema.idgAgendaItem;
+  const DEC = schema.idgDecision;
+  const ACT = schema.idgActionItem;
+  const PKT = schema.idgPatientPacket;
+  const MIN = schema.idgMinutes;
+
+  return {
+    async lockPatient(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        // Advisory lock on the patient key, released by the surrounding transaction commit.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${patientId}))`);
+      });
+    },
+
+    async erasePatientRecords(organizationId, patientId, retentionAsOf) {
+      if (Number.isNaN(Date.parse(retentionAsOf))) {
+        throw new Error(`M14_ERASER_BAD_RETENTION_BOUNDARY: ${retentionAsOf}`);
+      }
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const boundary = new Date(retentionAsOf);
+        const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
+          (await run()).length;
+        const ids = (rows: Array<{ id: string }>): string[] => rows.map((r) => r.id);
+
+        // Collect the target row ids (and the meetings they hang off) BEFORE deleting anything: the
+        // minutes redaction and the FK detach both need them after the rows are gone.
+        const agendaRows = await tx
+          .select({ id: AGENDA.id, meetingId: AGENDA.idgMeetingId })
+          .from(AGENDA)
+          .where(and(eq(AGENDA.patientId, patientId), lt(AGENDA.createdAt, boundary)));
+        const decisionRows = await tx
+          .select({ id: DEC.id, meetingId: DEC.idgMeetingId })
+          .from(DEC)
+          .where(and(eq(DEC.patientId, patientId), lt(DEC.createdAt, boundary)));
+        const actionRows = await tx
+          .select({ id: ACT.id, meetingId: ACT.idgMeetingId })
+          .from(ACT)
+          .where(and(eq(ACT.patientId, patientId), lt(ACT.createdAt, boundary)));
+        const packetRows = await tx
+          .select({ id: PKT.id, meetingId: PKT.idgMeetingId })
+          .from(PKT)
+          .where(and(eq(PKT.patientId, patientId), lt(PKT.builtAt, boundary)));
+        const meetingIds = [
+          ...new Set(
+            [...agendaRows, ...decisionRows, ...actionRows, ...packetRows].map((r) => r.meetingId),
+          ),
+        ];
+
+        // FK order: idg_action_item → idg_decision → idg_agenda_item (action items FK the decision,
+        // decisions FK the agenda item). Non-patient rows are never deleted, but a surviving team-level
+        // row may still REFERENCE a deleted patient row — those references are detached (nulled), which
+        // removes the last pointer at the destroyed record without touching the survivor's own content.
+        const actionItems =
+          actionRows.length === 0
+            ? 0
+            : await del(() =>
+                tx.delete(ACT).where(inArray(ACT.id, ids(actionRows))).returning({ id: ACT.id }),
+              );
+        if (decisionRows.length > 0) {
+          await tx
+            .update(ACT)
+            .set({ idgDecisionId: null })
+            .where(inArray(ACT.idgDecisionId, ids(decisionRows)));
+        }
+        const decisions =
+          decisionRows.length === 0
+            ? 0
+            : await del(() =>
+                tx.delete(DEC).where(inArray(DEC.id, ids(decisionRows))).returning({ id: DEC.id }),
+              );
+        if (agendaRows.length > 0) {
+          await tx
+            .update(DEC)
+            .set({ agendaItemId: null })
+            .where(inArray(DEC.agendaItemId, ids(agendaRows)));
+        }
+        const agendaItems =
+          agendaRows.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(AGENDA)
+                  .where(inArray(AGENDA.id, ids(agendaRows)))
+                  .returning({ id: AGENDA.id }),
+              );
+
+        // The partitioned packet parent, via the partition-key predicate (row-delete; DETACH+DROP is a
+        // DDL maintenance path the RLS-scoped app role cannot run).
+        const packets = await del(() =>
+          tx
+            .delete(PKT)
+            .where(and(eq(PKT.patientId, patientId), lt(PKT.builtAt, boundary)))
+            .returning({ id: PKT.id }),
+        );
+
+        // Hash-redact the patient references inside the surviving minutes snapshots (rows PRESERVED,
+        // §8.4): every occurrence of the patient uuid inside the three `*_snapshot` jsonb columns is
+        // replaced by its sha256 hex — valid JSON stays valid, the meeting record stays whole, the
+        // patient is no longer nameable from it. Counts only the minutes that actually contained the id.
+        const patientDigest = createHash("sha256").update(patientId).digest("hex");
+        const needle = `%${patientId}%`;
+        const redact = (col: AnyPgColumn) =>
+          sql`replace(${col}::text, ${patientId}, ${patientDigest})::jsonb`;
+        const minutesRedacted =
+          meetingIds.length === 0
+            ? 0
+            : (
+                await tx
+                  .update(MIN)
+                  .set({
+                    attendanceSnapshot: redact(MIN.attendanceSnapshot),
+                    decisionListSnapshot: redact(MIN.decisionListSnapshot),
+                    actionItemListSnapshot: redact(MIN.actionItemListSnapshot),
+                  })
+                  .where(
+                    and(
+                      inArray(MIN.idgMeetingId, meetingIds),
+                      or(
+                        sql`${MIN.attendanceSnapshot}::text LIKE ${needle}`,
+                        sql`${MIN.decisionListSnapshot}::text LIKE ${needle}`,
+                        sql`${MIN.actionItemListSnapshot}::text LIKE ${needle}`,
+                      ),
+                    ),
+                  )
+                  .returning({ id: MIN.id })
+              ).length;
+
+        return { packets, decisions, actionItems, agendaItems, minutesRedacted };
+      });
     },
   };
 }
