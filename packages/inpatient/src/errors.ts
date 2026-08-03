@@ -18,6 +18,39 @@ export const M37_ERROR_STATUS = {
   ILLEGAL_BED_CLEANING_TRANSITION: 409,
   // §2.12 — a turnover-SLA value that attempts to LOOSEN above the 2-hour platform floor (tighten-only).
   TURNOVER_SLA_NOT_TIGHTENING: 409,
+
+  // ── §2.2 D2 ipu_admission lifecycle machine (M37-T04) ──────────────────────────────────────────────
+  // §2.2 — the event is not accepted from the admission's current state (the D2 mermaid graph).
+  ILLEGAL_ADMISSION_TRANSITION: 409,
+  // §2.2/§2.3 D3 — a GIP/IRC admission action while the unit's RN coverage is inactive (ABAC
+  // m37.ipu.rn_coverage_active = false); arranged remote-IPU bypasses this gate.
+  IPU_RN_COVERAGE_UNAVAILABLE: 412,
+  // §2.2 — requestBed against a unit that is not active.
+  IPU_UNIT_INACTIVE: 409,
+  // §2.2 — requestBed when the unit has no bed in `ready` state.
+  IPU_NO_READY_BED: 409,
+  // §2.2 — assignBed to a bed that is not in `ready` state.
+  IPU_BED_NOT_READY: 409,
+  // §2.2 — assignBed into a room occupied by an opposite-sex patient without a private room / privacy flag.
+  IPU_ROOM_OCCUPANCY_CONFLICT: 409,
+  // §2.2 — confirm() before the M6 LCP bed-assignment ack arrived (and not force-flagged past the 30s window).
+  ADMISSION_LCP_NOT_CONFIRMED: 409,
+  // §2.2 — confirm() of a GIP admission with no gip_admission_criteria row yet (the criteria ARE the
+  // activation step).
+  GIP_CRITERIA_REQUIRED: 412,
+  // §2.2 — initiateTransfer(to_unit) whose destination unit lacks RN coverage.
+  ADMISSION_DESTINATION_RN_COVERAGE: 412,
+  // §2.2 — confirmTransfer without an acknowledgment from the destination.
+  ADMISSION_TRANSFER_NOT_ACKNOWLEDGED: 409,
+  // §2.2 — discharge() with no M6 discharge_event row.
+  ADMISSION_DISCHARGE_EVENT_MISSING: 422,
+  // §2.2 — recordDeath() whose M6 death_event does not reference this admission.
+  ADMISSION_DEATH_EVENT_MISMATCH: 422,
+  // §2.2 — recordDeath()/postClose driven by a non-system actor (these are outbox-consumer / cron-driven).
+  ADMISSION_SYSTEM_ACTOR_REQUIRED: 403,
+  // §2.2 — postCloseSettlement while a child row is still open (unfinalized GIP criteria / open irc_episode /
+  // incomplete body release).
+  ADMISSION_OPEN_CHILD_ROWS: 409,
 } as const;
 
 /** A machine-readable M37 domain failure code. */

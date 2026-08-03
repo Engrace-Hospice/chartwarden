@@ -6,3 +6,4 @@
 export * from "./enums";
 export * from "./errors";
 export * from "./machines/ipu-bed";
+export * from "./machines/ipu-admission";
