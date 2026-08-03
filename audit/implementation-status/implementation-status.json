@@ -729,7 +729,7 @@
       "routes": false,
       "enriched": null,
       "screens": false,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 26,

@@ -4,3 +4,5 @@
 // M37-T01 the package ships the §3.2 enum value mirrors (the anti-drift `satisfies` tuples over the
 // packages/types leaf unions). DB-free and edge-light (only `@wardenx/types`).
 export * from "./enums";
+export * from "./errors";
+export * from "./machines/ipu-bed";
