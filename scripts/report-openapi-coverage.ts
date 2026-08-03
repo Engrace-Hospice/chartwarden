@@ -112,23 +112,36 @@ const totals = coverage.reduce(
 );
 
 // ---- baseline ---------------------------------------------------------------
-type Baseline = Record<string, { routes: number; deficit: number }>;
+type Baseline = Record<string, { routes: number; deficit: number; mutatingNoBody: number }>;
 
 function readBaseline(): Baseline {
   if (!existsSync(join(ROOT, BASELINE))) return {};
-  return JSON.parse(readFileSync(join(ROOT, BASELINE), "utf8")).modules as Baseline;
+  const modules = JSON.parse(readFileSync(join(ROOT, BASELINE), "utf8")).modules as Record<
+    string,
+    { routes: number; deficit: number; mutatingNoBody?: number }
+  >;
+  // Back-compat: a baseline row written before mutatingNoBody was ratcheted has no key —
+  // treat it as an implied floor of 0, same as a module missing from the file entirely.
+  const out: Baseline = {};
+  for (const [mod, row] of Object.entries(modules))
+    out[mod] = { routes: row.routes, deficit: row.deficit, mutatingNoBody: row.mutatingNoBody ?? 0 };
+  return out;
 }
 
 function renderBaseline(): string {
   const modules: Baseline = {};
-  for (const c of coverage) modules[c.module] = { routes: c.routes, deficit: c.deficit };
+  for (const c of coverage)
+    modules[c.module] = { routes: c.routes, deficit: c.deficit, mutatingNoBody: c.mutatingNoBody };
   return `${JSON.stringify(
     {
       $comment:
         "RATCHET FLOOR for OpenAPI enrichment coverage. `deficit` = routes with no entry in " +
-        "scripts/openapi/enrichments.ts. A module's deficit may never RISE (new routes must ship " +
-        "their contracts); when it FALLS, re-baseline with `bun run openapi:coverage --update` to " +
-        "lock the progress in. A module missing here has an implied floor of 0.",
+        "scripts/openapi/enrichments.ts; `mutatingNoBody` = POST/PUT/PATCH routes whose entry (if any) " +
+        "carries no `body` schema — a SHALLOW (summary-only) enrichment still counts as enriched for " +
+        "`deficit` but must not hide a body-less mutation, so it is ratcheted separately. Neither may " +
+        "ever RISE per module (new routes must ship real request contracts); when either FALLS, " +
+        "re-baseline with `bun run openapi:coverage --update` to lock the progress in. A module missing " +
+        "here has an implied floor of 0 for both.",
       modules,
     },
     null,
@@ -205,15 +218,31 @@ for (const c of coverage) {
   const base = baseline[c.module];
   // A module with no baseline row has an implied floor of 0 — a brand-new module
   // must ship its routes enriched. This is exactly the M20-T06 case.
-  const floor = base?.deficit ?? 0;
-  if (c.deficit > floor) {
+  const deficitFloor = base?.deficit ?? 0;
+  if (c.deficit > deficitFloor) {
     const added = c.routes - (base?.routes ?? 0);
     violations.push(
-      `${c.module}: ${c.deficit} unenriched routes exceeds baseline ${floor}` +
-        (added > 0 ? ` (+${added} route(s) since baseline, ${c.deficit - floor} unenriched)` : ""),
+      `${c.module}: ${c.deficit} unenriched routes exceeds baseline ${deficitFloor}` +
+        (added > 0
+          ? ` (+${added} route(s) since baseline, ${c.deficit - deficitFloor} unenriched)`
+          : ""),
     );
-  } else if (c.deficit < floor) {
-    stale.push(`${c.module}: ${c.deficit} unenriched, baseline still claims ${floor}`);
+  } else if (c.deficit < deficitFloor) {
+    stale.push(`${c.module}: ${c.deficit} unenriched, baseline still claims ${deficitFloor}`);
+  }
+
+  // A shallow (summary-only) enrichment counts toward `deficit` as "enriched" while still
+  // publishing no requestBody — the exact hole a routes task can hide 30+ undocumented POST
+  // bodies in with `deficit` alone green. Ratchet it the same way.
+  const bodyFloor = base?.mutatingNoBody ?? 0;
+  if (c.mutatingNoBody > bodyFloor) {
+    violations.push(
+      `${c.module}: ${c.mutatingNoBody} mutating routes with no request-body schema exceeds baseline ${bodyFloor}`,
+    );
+  } else if (c.mutatingNoBody < bodyFloor) {
+    stale.push(
+      `${c.module}: ${c.mutatingNoBody} mutating routes lack a body, baseline still claims ${bodyFloor}`,
+    );
   }
 }
 

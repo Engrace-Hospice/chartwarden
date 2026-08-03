@@ -1,0 +1,45 @@
+// TASK-020 — the shared client auto-attaches Idempotency-Key on mutating requests so a network-level
+// retry replays instead of double-executing the backend's `requireIdempotencyKey` guard (§4.1.1). Verifies
+// the middleware directly against a captured Request, without a real server or the generated `paths` type.
+import { describe, expect, it } from "vitest";
+import { createApiClient } from "../client";
+
+function fetchCapturingRequest(): { fetch: typeof fetch; requests: Request[] } {
+  const requests: Request[] = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = input instanceof Request ? input : new Request(input, init);
+    requests.push(req.clone());
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  return { fetch: fetchImpl, requests };
+}
+
+describe("createApiClient — Idempotency-Key middleware (TASK-020)", () => {
+  it("attaches a generated Idempotency-Key to a POST (e.g. a claim submit)", async () => {
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.POST("/api/v1/billing/claims/{id}/submit" as never, {
+      params: { path: { id: "claim-1" } },
+    } as never);
+    expect(requests).toHaveLength(1);
+    const key = requests[0]?.headers.get("Idempotency-Key");
+    expect(key).toBeTruthy();
+    expect(key).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it("attaches a key to PATCH/PUT/DELETE but not to GET", async () => {
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.GET("/api/v1/billing/claims" as never, {} as never);
+    expect(requests[0]?.headers.has("Idempotency-Key")).toBe(false);
+  });
+
+  it("never overwrites a caller-supplied Idempotency-Key", async () => {
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.POST("/api/v1/billing/claims/assemble" as never, {
+      headers: { "Idempotency-Key": "caller-chosen-key" },
+    } as never);
+    expect(requests[0]?.headers.get("Idempotency-Key")).toBe("caller-chosen-key");
+  });
+});

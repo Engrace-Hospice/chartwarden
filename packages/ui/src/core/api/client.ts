@@ -26,7 +26,35 @@ function defaultCorrelationId(): string | undefined {
   return undefined;
 }
 
-/** Build a typed API client with WardenX auth + correlation-id middleware. */
+/** Methods that mutate state — the ones the backend's `requireIdempotencyKey` guard can gate (TASK-020). */
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * §4.1.1 — every mutating request carries an `Idempotency-Key` so a network-level retry replays
+ * instead of double-executing. Routes that don't require the header ignore it harmlessly; routes that
+ * do (`requireIdempotencyKey`, ADR-0032/TASK-020) are satisfied without every call site remembering to
+ * set one by hand. A caller-supplied key (e.g. to make a deliberate retry share the original's key) is
+ * never overwritten.
+ *
+ * `If-Match` (§7.7 optimistic concurrency) is NOT auto-generated here — the caller must read the row
+ * version first, so it is passed explicitly per call via the typed `params.header["If-Match"]` option
+ * openapi-fetch derives from the enrichment's `headers` (scripts/openapi/enrichments.ts).
+ */
+const idempotencyKey: Middleware = {
+  onRequest({ request }) {
+    if (
+      MUTATING_METHODS.has(request.method) &&
+      !request.headers.has("Idempotency-Key") &&
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
+      request.headers.set("Idempotency-Key", crypto.randomUUID());
+    }
+    return request;
+  },
+};
+
+/** Build a typed API client with WardenX auth + correlation-id + idempotency-key middleware. */
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const { baseUrl = "", getAuthToken, correlationId = defaultCorrelationId, fetch } = options;
   const client = createClient<paths>({ baseUrl, ...(fetch ? { fetch } : {}) });
@@ -41,5 +69,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
   };
   client.use(headers);
+  client.use(idempotencyKey);
   return client;
 }

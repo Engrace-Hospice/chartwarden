@@ -2480,9 +2480,39 @@ export interface RouteEnrichment {
   query?: TSchema;
   /** Typed 2xx response body schema, when known. */
   response?: TSchema;
+  /**
+   * Request headers the route's pre-handlers require or read (e.g. `Idempotency-Key`,
+   * `If-Match`) — each becomes an `in: header` OpenAPI parameter. Reused literally by
+   * `emit.ts`; keep the header name in its canonical casing (matched case-insensitively
+   * by clients/servers, but kept stable here for doc readability).
+   */
+  headers?: Record<string, { required?: boolean; description?: string }>;
+  /** The route's actual success status code (`reply.code(...)`). Default 200 when omitted. */
+  status?: 200 | 201 | 202 | 204;
   /** Human summary for the operation. */
   summary?: string;
 }
+
+// Shared header specs for the two concurrency pre-handlers (`requireIdempotencyKey`/`requireIfMatch`,
+// TASK-020) — reused literally on every route that mounts them so the contract and the guard never drift.
+const IDEMPOTENCY_KEY_HEADER: RouteEnrichment["headers"] = {
+  "Idempotency-Key": {
+    required: true,
+    description:
+      "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+  },
+};
+const IF_MATCH_HEADER: RouteEnrichment["headers"] = {
+  "If-Match": {
+    required: true,
+    description:
+      "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+  },
+};
+const IDEMPOTENCY_AND_IF_MATCH_HEADERS: RouteEnrichment["headers"] = {
+  ...IDEMPOTENCY_KEY_HEADER,
+  ...IF_MATCH_HEADER,
+};
 
 /** `METHOD /path` → enrichment. Keys MUST match a scanned route (openapi:check enforces). */
 export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
@@ -3340,6 +3370,8 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Assemble a server-authoritative DRAFT claim (lines + HIPPS + SIA + initial validation run, §4.1 #1)",
     body: ClaimAssembleRequest,
     response: ClaimAssembleResponse,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   "GET /api/v1/billing/claims": {
     summary: "List claims — cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2)",
@@ -3351,24 +3383,35 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "PATCH /api/v1/billing/claims/:id": {
     summary: "DRAFT re-assembly edit — replace line set + totals; If-Match version; coder ICD-only scope (§4.1 #4)",
     body: ClaimPatchDraftBodySchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/billing/claims/:id": {
     summary: "Delete a DRAFT claim (DRAFT-only; AI-block + idempotency, §4.1 #5)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 204,
   },
   "POST /api/v1/billing/claims/:id/validate": {
     summary: "Trigger a validation_run for a claim (the manual re-run / initial trigger; 202, §4.1 #6)",
     body: ManualValidateRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 202,
   },
   "POST /api/v1/billing/claims/:id/submit": {
     summary: "READY → SUBMITTED — emits m23.claim.submit_requested (PE scope + step-up + If-Match; 202, §4.1 #7)",
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
+    status: 202,
   },
   "POST /api/v1/billing/claims/:id/replace": {
     summary: "Build a TOB-817 replacement DRAFT (copies the original's lines; step-up + If-Match; 201, §4.1 #8)",
     body: ClaimReplaceRequest,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
+    status: 201,
   },
   "POST /api/v1/billing/claims/:id/void": {
     summary: "Build a TOB-818 void DRAFT (no service lines; step-up + If-Match; 201, §4.1 #9)",
     body: ClaimVoidRequest,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
+    status: 201,
   },
   "GET /api/v1/billing/claims/:id/lines": {
     summary: "The claim_line projection for a claim (§4.1 #10)",
@@ -3391,10 +3434,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   },
   "POST /api/v1/claims/:id/validate": {
     summary: "Trigger a manual_re_run validation; state → validating (202, §4.1 #6)",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 202,
   },
   "POST /api/v1/claims/:id/validation-runs/:runId/results/:resultId/override": {
     summary: "Override a failed validation result — approver-role ABAC + step-up (201, §4.1 #16)",
     body: OverrideValidationResultBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   // ── rule-config overlay (rule-config.routes.ts) ──
   "GET /api/v1/billing/rule-configs": {
@@ -3407,13 +3454,18 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/v1/billing/rule-configs/custom": {
     summary: "Create a tenant CUSTOM validation rule (regulatory-required forbidden; 201, §4.1 #20)",
     body: CreateRuleConfigBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   "PATCH /api/v1/billing/rule-configs/:id": {
     summary: "Overlay edit — disable / re-severity / re-parameterize a rule (If-Match, §4.1 #19)",
     body: UpdateRuleConfigBodySchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/billing/rule-configs/:id": {
     summary: "Revert a rule overlay to the platform default (If-Match, §4.1 #21)",
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
+    status: 204,
   },
   // ── NOE fast path (noe.routes.ts) ──
   "GET /api/v1/noe-records": {
@@ -5551,12 +5603,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/care-plans/:planId/versions/:versionId/signatures": { summary: "Record a signature toward the version's §11 D5 quorum", body: M7SignVersionSchema },
   "POST /api/v1/care-plans/:planId/versions/:versionId/return-to-draft": { summary: "Return an in-review version to draft (clears signatures, D8)", body: M7ReturnToDraftSchema },
   "POST /api/v1/care-plans/:planId/problems": { summary: "Add a problem to the plan", body: M7CreateProblemSchema },
-  "PATCH /api/v1/care-plans/:planId/problems/:elementId": { summary: "Patch a problem (optimistic If-Match)", body: M7PatchProblemSchema },
+  "PATCH /api/v1/care-plans/:planId/problems/:elementId": { summary: "Patch a problem (optimistic If-Match)", body: M7PatchProblemSchema, headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS },
   "POST /api/v1/care-plans/:planId/problems/:elementId/resolve": { summary: "Resolve a problem with a resolution note", body: M7ResolveProblemSchema },
   "POST /api/v1/care-plans/:planId/goals": { summary: "Add a goal (agent-stated requires active DPOA consent)", body: M7CreateGoalSchema },
-  "PATCH /api/v1/care-plans/:planId/goals/:elementId": { summary: "Patch a goal (verbatim original_text immutable, D6)", body: M7PatchGoalSchema },
+  "PATCH /api/v1/care-plans/:planId/goals/:elementId": { summary: "Patch a goal (verbatim original_text immutable, D6)", body: M7PatchGoalSchema, headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS },
   "POST /api/v1/care-plans/:planId/interventions": { summary: "Add an intervention (§7.4 discipline_scope enforced)", body: M7CreateInterventionSchema },
-  "PATCH /api/v1/care-plans/:planId/interventions/:elementId": { summary: "Patch an intervention (optimistic If-Match)", body: M7PatchInterventionSchema },
+  "PATCH /api/v1/care-plans/:planId/interventions/:elementId": { summary: "Patch an intervention (optimistic If-Match)", body: M7PatchInterventionSchema, headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS },
   "POST /api/v1/care-plans/:planId/interventions/:elementId/discontinue": { summary: "Discontinue an intervention", body: M7DiscontinueInterventionSchema },
   "GET /api/v1/care-plans/:planId/summary": { summary: "The plan's lay-language active summary", response: M7CarePlanSummaryResponseSchema },
   "GET /api/v1/care-plans/:planId/overdue-status": { summary: "The 5-/15-day CoP 418.56 review-gate status", query: M7RelevantElementsQuerySchema, response: M7OverdueStatusResponseSchema },
@@ -5570,11 +5622,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/encounters/cosignature-queue": { summary: "RN cosignature work queue", response: M8EncounterListResponseSchema },
   "GET /api/v1/encounters/my-drafts": { summary: "The caller's open draft encounters", response: M8EncounterListResponseSchema },
   "GET /api/v1/encounters/:encounterId": { summary: "Read one encounter", response: M8EncounterViewResponseSchema },
-  "PATCH /api/v1/encounters/:encounterId/selections": { summary: "Update draft selections (§7.7 If-Match)", body: M8UpdateSelectionsSchema, response: M8SelectionsUpdateResponseSchema },
+  "PATCH /api/v1/encounters/:encounterId/selections": { summary: "Update draft selections (§7.7 If-Match)", body: M8UpdateSelectionsSchema, response: M8SelectionsUpdateResponseSchema, headers: IF_MATCH_HEADER },
   "POST /api/v1/encounters/:encounterId/vitals": { summary: "Capture a vitals set", body: M8CaptureVitalsSchema, response: M8VitalsResultResponseSchema },
-  "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId": { summary: "Edit a vitals set (§7.7 If-Match)", body: M8CaptureVitalsSchema, response: M8VitalsResultResponseSchema },
+  "PATCH /api/v1/encounters/:encounterId/vitals/:vitalId": { summary: "Edit a vitals set (§7.7 If-Match)", body: M8CaptureVitalsSchema, response: M8VitalsResultResponseSchema, headers: IF_MATCH_HEADER },
   "POST /api/v1/encounters/:encounterId/mileage": { summary: "Capture per-encounter mileage (D10)", body: M8CaptureMileageSchema, response: M8MileageResultResponseSchema },
-  "PATCH /api/v1/encounters/:encounterId/mileage": { summary: "Edit per-encounter mileage (§7.7 If-Match)", body: M8CaptureMileageSchema, response: M8MileageResultResponseSchema },
+  "PATCH /api/v1/encounters/:encounterId/mileage": { summary: "Edit per-encounter mileage (§7.7 If-Match)", body: M8CaptureMileageSchema, response: M8MileageResultResponseSchema, headers: IF_MATCH_HEADER },
   "POST /api/v1/encounters/:encounterId/care-plan-links": { summary: "Link the encounter to care-plan elements", body: M8CarePlanLinkSchema, response: M8CarePlanLinkResponseSchema },
   "DELETE /api/v1/encounters/:encounterId/care-plan-links/:linkId": { summary: "Remove a care-plan link while draft" },
   "POST /api/v1/encounters/:encounterId/evv-reconcile": { summary: "Document an EVV-missing reason (D9 fallback)", body: M8EvvReconcileSchema, response: M8EvvReconcileResponseSchema },
@@ -5590,7 +5642,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/encounters/:encounterId/cosignature/sign": { summary: "Cosigner signs (§4.6 cosigner_role_match; D13 step-up)", body: M8SignEncounterSchema, response: M8CosignSignResponseSchema },
   "POST /api/v1/encounters/:encounterId/cosignature/supervisor-release": { summary: "Supervisor releases past the 48h hard cap", body: M8SupervisorReleaseSchema, response: M8CosignatureStatusResponseSchema },
   "POST /api/v1/encounters/:encounterId/addenda": { summary: "Create an addendum draft on a signed encounter", body: M8CreateAddendumSchema, response: M8CreateAddendumResponseSchema },
-  "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections": { summary: "Update addendum selections (§7.7 If-Match)", body: M8UpdateSelectionsSchema, response: M8AddendumSelectionsResponseSchema },
+  "PATCH /api/v1/encounters/:encounterId/addenda/:addendumId/selections": { summary: "Update addendum selections (§7.7 If-Match)", body: M8UpdateSelectionsSchema, response: M8AddendumSelectionsResponseSchema, headers: IF_MATCH_HEADER },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/finalize": { summary: "Finalize an addendum", body: M8FinalizeEncounterSchema, response: M8AddendumFinalizeResponseSchema },
   "POST /api/v1/encounters/:encounterId/addenda/:addendumId/sign": { summary: "Sign an addendum (D13 step-up)", body: M8SignEncounterSchema, response: M8AddendumSignResponseSchema },
   "GET /api/v1/internal/encounters/billable": { summary: "Internal: BillableEncounterReader seam (M23/M24)", query: M8BillableQuerySchema, response: M8BillableResponseSchema },
@@ -5607,6 +5659,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/patients/:patientId/assessments/:id/corrections": {
     summary: "Correction-of-record (append-only supersede; If-Match)",
     body: M9CorrectAssessmentSchema,
+    headers: IF_MATCH_HEADER,
+    status: 201,
   },
   "GET /api/v1/patients/:patientId/assessments": {
     summary: "Patient assessment timeline",
@@ -5926,7 +5980,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/form-templates/:key/versions/:versionId": { summary: "Read a specific template version", response: M22FormTemplateVersionResponseSchema },
   "POST /api/v1/admin/form-templates/:key/versions": { summary: "Publish a new template version (platform-only, §4.7 ABAC)", body: M22PublishTemplateRequest },
   "GET /api/v1/tenant-overlays": { summary: "List the org's published overlays", response: M22TenantOverlayListResponseSchema },
-  "PUT /api/v1/tenant-overlays/:templateKey": { summary: "Publish a tenant overlay (step-up + If-Match, §4.7 ABAC)", body: M22PublishOverlayRequest },
+  "PUT /api/v1/tenant-overlays/:templateKey": { summary: "Publish a tenant overlay (step-up + If-Match, §4.7 ABAC)", body: M22PublishOverlayRequest, headers: IF_MATCH_HEADER },
   "GET /api/v1/admin/form-fills/:id": { summary: "Inspect a form-fill render record (platform-only debug)", response: M22FormFillResponseSchema },
   "POST /api/v1/admin/form-fills/:id/retry": { summary: "Manually retry a failed render (platform-only, step-up)", body: M22RetryRenderRequest },
 });

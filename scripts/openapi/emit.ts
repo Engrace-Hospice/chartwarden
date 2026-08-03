@@ -20,7 +20,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Kind, type TSchema } from "@sinclair/typebox";
-import { ROUTE_ENRICHMENTS } from "./enrichments";
+import { type RouteEnrichment, ROUTE_ENRICHMENTS } from "./enrichments";
 import { type ScannedRoute, routeKey, scanRoutes } from "./scan-routes";
 
 const REPO_ROOT = process.cwd();
@@ -86,6 +86,20 @@ function queryParameters(schema: TSchema | undefined): unknown[] {
   }));
 }
 
+/** OpenAPI header parameters from an enrichment's `headers` map (e.g. `Idempotency-Key`, `If-Match`). */
+function headerParameters(
+  headers: RouteEnrichment["headers"] | undefined,
+): unknown[] {
+  if (!headers) return [];
+  return Object.entries(headers).map(([name, spec]) => ({
+    name,
+    in: "header",
+    required: spec.required ?? false,
+    ...(spec.description ? { description: spec.description } : {}),
+    schema: { type: "string" },
+  }));
+}
+
 interface BuildResult {
   doc: Record<string, unknown>;
   errors: string[];
@@ -117,13 +131,18 @@ function build(routes: ScannedRoute[]): BuildResult {
     opIds.set(opId, routeKey(route));
 
     const enrich = ROUTE_ENRICHMENTS[routeKey(route)];
+    const successStatus = String(enrich?.status ?? 200);
     const op: Record<string, unknown> = {
       operationId: opId,
       tags: [route.module],
       ...(enrich?.summary ? { summary: enrich.summary } : {}),
-      parameters: [...pathParameters(route.path), ...queryParameters(enrich?.query)],
+      parameters: [
+        ...pathParameters(route.path),
+        ...queryParameters(enrich?.query),
+        ...headerParameters(enrich?.headers),
+      ],
       responses: {
-        "200": enrich?.response
+        [successStatus]: enrich?.response
           ? {
               description: "OK",
               content: { "application/json": { schema: toJsonSchema(enrich.response) } },

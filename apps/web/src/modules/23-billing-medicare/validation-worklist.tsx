@@ -13,19 +13,26 @@ import {
 // each with a §6.6 severity StatusPill, a PHI-free remediation hint that deep-links into the owning module's
 // editor (Edit in M6 / Cosign in M8 / Refresh Eligibility), and an Override affordance per FAILED rule. The
 // override modal captures a ≥40-char rationale (server CHECK-enforced) + the acting override role, and
-// surfaces the rule's regulatory-required posture prominently via a GuardChip. Backed by the existing routes:
+// surfaces the rule's regulatory-required posture prominently via a GuardChip. A header "Re-run validation"
+// action and a successful override BOTH trigger POST /claims/{id}/validate directly — recording an override
+// alone never unblocks the claim, since only a fresh run reads `overriddenKeysForClaim` (TASK-021/FLOW-008).
+// Backed by the existing routes:
 //   GET  /api/v1/claims/{id}/validation-runs                                   → { claimId, runs[] }
 //   GET  /api/v1/claims/{id}/validation-runs/{runId}                           → run + per-rule results
+//   POST /api/v1/claims/{id}/validate                                          → manual_re_run (202)
 //   POST /api/v1/claims/{id}/validation-runs/{runId}/results/{resultId}/override
 //   GET  /api/v1/billing/rule-configs (best-effort)  → regulatory-required overlay per ruleKey
 // The server is the only authz point (ADR-0030): a 503 (seam unbound) degrades the surface; the override is
-// §4.7 override_role_eligible + §D14 step-up + §D13 AI-block gated server-side, so a 401/403 step-up failure
-// or a 422 (reason too short) surfaces inline (role="alert"), never a toast. Lantern: WorkQueueLayout +
-// No-Line role="table" (§6.7), mono ruleKey, CSS-var tokens only; tones via billing-status.ts.
+// §4.7 override_role_eligible + §D14 step-up + §D13 AI-block gated server-side, so a STEP_UP_REQUIRED denial
+// routes to the real /step-up screen (returning here — the in-progress reason/role survive via a
+// process-memory draft cache, write-workflow.ts, never browser storage) and a 422 (reason too short) surfaces
+// inline (role="alert"), never a toast. Lantern: WorkQueueLayout + No-Line role="table" (§6.7), mono ruleKey,
+// CSS-var tokens only; tones via billing-status.ts.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { statusLabel, validationRunTone, validationSeverityTone } from "./billing-status";
+import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 type ValidationSeverity = "error" | "warn" | "info";
 type ValidationResultOutcome = "pass" | "fail" | "warn" | "info";
@@ -39,6 +46,15 @@ const OVERRIDE_ROLES: { value: OverrideRole; label: string }[] = [
 ];
 
 const MIN_REASON_LENGTH = 40;
+
+// TASK-021 — an override in progress survives a step-up round trip (this page → /step-up → back) via the
+// write-workflow draft cache (process memory only; never browser storage — the rationale can carry PHI).
+interface OverrideDraft {
+  resultId: string;
+  reason: string;
+  overrideRole: OverrideRole;
+}
+const overrideDraftKey = (claimId: string): string => `claim-override:${claimId}`;
 
 interface Remediation {
   summary?: string;
@@ -113,6 +129,7 @@ function fixActionLabel(action: string | undefined): string {
 
 export function ValidationWorklist(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const { claimId } = useParams<{ claimId: string }>();
   const [runs, setRuns] = useState<ValidationRunView[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -121,6 +138,8 @@ export function ValidationWorklist(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [overrideTarget, setOverrideTarget] = useState<ValidationResultView | null>(null);
+  const [revalidating, setRevalidating] = useState(false);
+  const [revalidateError, setRevalidateError] = useState<string | null>(null);
 
   // Load the run list (anchor read) + a best-effort regulatory-required overlay from the rule library.
   const loadRuns = useCallback(async () => {
@@ -134,7 +153,9 @@ export function ValidationWorklist(): JSX.Element {
       client.GET("/api/v1/billing/rule-configs"),
     ]);
     if (runRes.error) {
-      setError("Validation worklist unavailable — the billing read seam is not bound, or you lack scope.");
+      setError(
+        "Validation worklist unavailable — the billing read seam is not bound, or you lack scope.",
+      );
       setLoading(false);
       return;
     }
@@ -144,7 +165,8 @@ export function ValidationWorklist(): JSX.Element {
     // Best-effort overlay: a worklist user may lack billing.rule_config.read — then the GuardChip falls back
     // to a generic "overriding is audited" message rather than the regulatory-required escalation.
     if (!ruleRes.error) {
-      const items = ((ruleRes.data as unknown as { items?: RuleConfigView[] })?.items ?? []) as RuleConfigView[];
+      const items = ((ruleRes.data as unknown as { items?: RuleConfigView[] })?.items ??
+        []) as RuleConfigView[];
       setRegulatory(new Map(items.map((r) => [r.ruleKey, r.regulatoryRequiredSnapshot])));
     }
     setLoading(false);
@@ -170,6 +192,54 @@ export function ValidationWorklist(): JSX.Element {
     void loadDetail();
   }, [loadDetail]);
 
+  // TASK-021 — "Re-run validation" had no UI at all; this is the one place a caller can manually trigger a
+  // `manual_re_run` (the route requires no step-up, unlike override/submit/replace/void). Selects the new
+  // run when the server returns one so the worklist reflects it immediately, rather than staying pinned to
+  // the stale run.
+  const revalidate = useCallback(async () => {
+    if (!claimId) return;
+    setRevalidating(true);
+    setRevalidateError(null);
+    const {
+      data,
+      error: err,
+      response,
+    } = (await client.POST("/api/v1/claims/{id}/validate", {
+      params: { path: { id: claimId } },
+    } as never)) as {
+      data?: { validationRunId?: string };
+      error?: { error?: { code?: string } };
+      response?: Response;
+    };
+    setRevalidating(false);
+    if (err) {
+      const redirect = authFailureRedirect(
+        response?.status,
+        err?.error?.code,
+        window.location.pathname,
+      );
+      if (redirect) {
+        navigate(redirect);
+        return;
+      }
+      setRevalidateError("Re-validation could not be triggered — try again shortly.");
+      return;
+    }
+    await loadRuns();
+    if (data?.validationRunId) setActiveRunId(data.validationRunId);
+  }, [client, claimId, navigate, loadRuns]);
+
+  // A resumed override draft (step-up round trip) reopens the modal once the run detail it targets is back.
+  useEffect(() => {
+    if (!claimId || !detail || overrideTarget) return;
+    const draft = loadDraft<OverrideDraft>(overrideDraftKey(claimId));
+    if (!draft) return;
+    const match = detail.results.find(
+      (r) => r.resultId === draft.resultId && r.outcome === "fail" && !r.overridden,
+    );
+    if (match) setOverrideTarget(match);
+  }, [claimId, detail, overrideTarget]);
+
   const sortedResults = useMemo(() => {
     const order: Record<ValidationResultOutcome, number> = { fail: 0, warn: 1, info: 2, pass: 3 };
     return [...(detail?.results ?? [])].sort((a, b) => order[a.outcome] - order[b.outcome]);
@@ -193,6 +263,30 @@ export function ValidationWorklist(): JSX.Element {
           <PageHeader
             title="Validation Worklist"
             breadcrumb={`Billing — Medicare · Claim ${claimId}`}
+            actions={
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.35rem",
+                  alignItems: "flex-end",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => void revalidate()}
+                  disabled={revalidating}
+                  style={revalidating ? disabledButtonStyle : primaryButtonStyle}
+                >
+                  {revalidating ? "Re-validating…" : "Re-run validation"}
+                </button>
+                {revalidateError ? (
+                  <span role="alert" style={{ fontSize: "0.75rem", color: "var(--color-error)" }}>
+                    {revalidateError}
+                  </span>
+                ) : null}
+              </div>
+            }
           />
         }
         filters={<RunSelector runs={runs} activeRunId={activeRunId} onSelect={setActiveRunId} />}
@@ -214,10 +308,14 @@ export function ValidationWorklist(): JSX.Element {
           claimId={claimId}
           result={overrideTarget}
           regulatoryRequired={regulatory.get(overrideTarget.ruleKey)}
-          onClose={() => setOverrideTarget(null)}
-          onApplied={() => {
+          onClose={() => {
+            clearDraft(overrideDraftKey(claimId));
             setOverrideTarget(null);
-            void loadDetail();
+          }}
+          onApplied={(newRunId) => {
+            setOverrideTarget(null);
+            if (newRunId) setActiveRunId(newRunId);
+            else void loadDetail();
             void loadRuns();
           }}
         />
@@ -257,7 +355,10 @@ function RunSelector({
       {(() => {
         const active = runs.find((r) => r.validationRunId === activeRunId);
         return active ? (
-          <StatusPill label={statusLabel(active.outcome)} tone={validationRunTone(active.outcome)} />
+          <StatusPill
+            label={statusLabel(active.outcome)}
+            tone={validationRunTone(active.outcome)}
+          />
         ) : null;
       })()}
     </label>
@@ -387,16 +488,29 @@ function OverrideModal({
   result: ValidationResultView;
   regulatoryRequired: boolean | undefined;
   onClose: () => void;
-  onApplied: () => void;
+  /** The re-run this override immediately triggers may return a new run id — the caller selects it. */
+  onApplied: (newRunId?: string) => void;
 }): JSX.Element {
   const client = useApiClient();
-  const [reason, setReason] = useState("");
-  const [overrideRole, setOverrideRole] = useState<OverrideRole>("billing_manager");
+  const navigate = useNavigate();
+  // Resume a draft (step-up round trip) only if it targets THIS result — a stale draft for a different,
+  // already-resolved result is never restored.
+  const initialDraft = loadDraft<OverrideDraft>(overrideDraftKey(claimId));
+  const resumable = initialDraft?.resultId === result.resultId ? initialDraft : undefined;
+  const [reason, setReason] = useState(resumable?.reason ?? "");
+  const [overrideRole, setOverrideRole] = useState<OverrideRole>(
+    resumable?.overrideRole ?? "billing_manager",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reasonTooShort = reason.trim().length < MIN_REASON_LENGTH;
   const remaining = MIN_REASON_LENGTH - reason.trim().length;
+
+  // Keep the draft cache current so a step-up redirect below (or one from any other action) can resume it.
+  useEffect(() => {
+    saveDraft(overrideDraftKey(claimId), { resultId: result.resultId, reason, overrideRole });
+  }, [claimId, result.resultId, reason, overrideRole]);
 
   const apply = useCallback(async () => {
     if (reasonTooShort) return;
@@ -412,13 +526,28 @@ function OverrideModal({
       } as never,
     )) as { error?: { error?: { code?: string } }; response?: Response };
     if (err) {
+      const redirect = authFailureRedirect(
+        response?.status,
+        err?.error?.code,
+        window.location.pathname,
+      );
+      if (redirect) {
+        navigate(redirect);
+        return;
+      }
       setError(overrideErrorMessage(err?.error?.code, response?.status));
       setBusy(false);
       return;
     }
+    // §4.7/§2.5 — the override alone does not unblock the claim: `overriddenKeysForClaim` is read by the
+    // NEXT validation run, so a re-run must follow immediately or the claim sits stuck forever (FLOW-008).
+    const revalidated = (await client.POST("/api/v1/claims/{id}/validate", {
+      params: { path: { id: claimId } },
+    } as never)) as { data?: { validationRunId?: string } };
+    clearDraft(overrideDraftKey(claimId));
     setBusy(false);
-    onApplied();
-  }, [client, claimId, result, reason, reasonTooShort, overrideRole, onApplied]);
+    onApplied(revalidated.data?.validationRunId);
+  }, [client, claimId, result, reason, reasonTooShort, overrideRole, navigate, onApplied]);
 
   const errorId = "override-reason-error";
 
@@ -448,7 +577,10 @@ function OverrideModal({
             {result.ruleKey}
           </span>{" "}
           (v{result.ruleVersion}) ·{" "}
-          <StatusPill label={statusLabel(result.severity)} tone={validationSeverityTone(result.severity)} />
+          <StatusPill
+            label={statusLabel(result.severity)}
+            tone={validationSeverityTone(result.severity)}
+          />
         </p>
 
         {/* Regulatory posture surfaced prominently (§5.1 #6). regulatory-required → error-toned escalation;
@@ -526,7 +658,9 @@ function OverrideModal({
   );
 }
 
-function outcomeTone(outcome: ValidationResultOutcome): "success" | "error" | "warning" | "neutral" {
+function outcomeTone(
+  outcome: ValidationResultOutcome,
+): "success" | "error" | "warning" | "neutral" {
   switch (outcome) {
     case "pass":
       return "success";
@@ -539,18 +673,17 @@ function outcomeTone(outcome: ValidationResultOutcome): "success" | "error" | "w
   }
 }
 
-// Map the override error envelope (§4.7 / §D14) to a precise, PHI-free inline message.
+// Map the override error envelope (§4.7 / §D14) to a precise, PHI-free inline message. A 401 or a
+// STEP_UP_REQUIRED 403 never reaches here — `authFailureRedirect` routes those to /step-up first.
 function overrideErrorMessage(code: string | undefined, status: number | undefined): string {
   switch (code) {
     case "OVERRIDE_ROLE_NOT_ELIGIBLE":
       return "Your role is not eligible to override this rule.";
-    case "STEP_UP_REQUIRED":
-      return "Re-authentication (step-up) is required before applying an override.";
     default:
-      if (status === 401 || status === 403)
-        return "Re-authentication (step-up) or a higher role is required to override this rule.";
+      if (status === 403) return "You do not have permission to override this rule.";
       if (status === 422) return "The rationale did not meet the minimum length — add more detail.";
-      if (status === 412) return "This result changed since you opened it — reopen the worklist to retry.";
+      if (status === 412)
+        return "This result changed since you opened it — reopen the worklist to retry.";
       if (status === 503) return "The override seam is unavailable — try again shortly.";
       return "The override could not be applied.";
   }
@@ -563,7 +696,11 @@ const thStyle = {
   textTransform: "uppercase" as const,
   letterSpacing: "0.04em",
 };
-const tdStyle = { padding: "0.5rem 0.75rem", color: "var(--color-on-surface)", verticalAlign: "top" as const };
+const tdStyle = {
+  padding: "0.5rem 0.75rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "top" as const,
+};
 const selectStyle = {
   padding: "0.35rem 0.5rem",
   borderRadius: "var(--radius-md)",

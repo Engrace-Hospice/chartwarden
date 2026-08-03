@@ -13,17 +13,21 @@ import {
 // HIPPS / SIA / sequestration pricing cards, the latest validation-run summary (with a deep-link into the
 // §11.A worklist drawer), and the replacement-chain breadcrumb (<nav aria-label="Replacement chain">). It
 // also hosts the §10 ceremonies: Submit (#7 — control number + active MAC jurisdiction + latest validation
-// outcome + M2 step-up) and the Replace/Void builder (#10 — TOB 817/818, reason ≥40 chars + step-up). Reads
-// GET /api/v1/billing/claims/:id (+ /lines, /state-history); writes go through POST :submit / :replace /
+// outcome) and the Replace/Void builder (#10 — TOB 817/818, reason at the server's real floor + `ifVersion`).
+// Reads GET /api/v1/billing/claims/:id (+ /lines, /state-history); writes go through POST :submit / :replace /
 // :void with an If-Match header (the claim version) for §2.5 optimistic concurrency. The server is the only
-// authz point (ADR-0030): a 503 (seams unbound) degrades the surface; a 412 (If-Match) / 422 (validation) on
-// a write surfaces inline (role="alert"), never a toast. Lantern: DetailPageLayout + No-Line table (§6.7),
-// mono identifiers (claim control #, CCN, MAC), tabular-nums figures, CSS-var tokens only; every status pill
-// resolves through billing-status.ts (§6.6). NOTE: the openapi marks these reads' bodies as `never` and the
-// state-history query as `never`, so result payloads are cast and the optimistic-concurrency header is passed
-// through a narrow cast — the server stays the authoritative parser/enforcer.
+// authz point (ADR-0030): a 503 (seams unbound) degrades the surface; a 412 (If-Match) / 422 (validation) on a
+// write surfaces inline (role="alert"), never a toast; a STEP_UP_REQUIRED denial routes to the real /step-up
+// screen with a returnTo, and the in-progress ceremony/reason survives that round trip via a process-memory
+// draft cache (write-workflow.ts — never browser storage, since the reason can carry PHI) (TASK-021). Lantern:
+// DetailPageLayout + No-Line table (§6.7), mono identifiers (claim control #, CCN, MAC), tabular-nums figures,
+// CSS-var tokens only; every status pill resolves through billing-status.ts (§6.6). NOTE: the openapi marks
+// these reads' bodies as `never` and the state-history query as `never`, so result payloads are cast and the
+// optimistic-concurrency header is passed through a narrow cast — the server stays the authoritative
+// parser/enforcer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   claimStateTone,
   dollars,
@@ -31,6 +35,7 @@ import {
   tobLabel,
   validationRunTone,
 } from "./billing-status";
+import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 interface HippsPricing {
   hippsCode: string;
@@ -107,10 +112,25 @@ function claimIdFromPath(): string {
 
 type CeremonyMode = "submit" | "replace" | "void" | null;
 
-const REASON_MIN = 40;
+// TASK-021 — the server's real minimum (packages/billing/src/schemas/{claim-replace,claim-void}.ts:
+// `reason: string(minLength 20)`); the previous 40-char client floor was stricter than the wire contract.
+const REASON_MIN = 20;
+
+interface CeremonyDraft {
+  ceremony: Exclude<CeremonyMode, null>;
+  reason: string;
+}
+const ceremonyDraftKey = (claimId: string): string => `claim-ceremony:${claimId}`;
+
+/** The claim-workbench's Replace/Void links (`?ceremony=replace|void`) open straight into that ceremony. */
+function ceremonyFromParam(value: string | null): CeremonyMode {
+  return value === "submit" || value === "replace" || value === "void" ? value : null;
+}
 
 export function ClaimEditor(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [claimId] = useState(claimIdFromPath);
   const [claim, setClaim] = useState<ClaimDetail | null>(null);
   const [lines, setLines] = useState<ClaimLine[]>([]);
@@ -118,11 +138,30 @@ export function ClaimEditor(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [linesDegraded, setLinesDegraded] = useState(false);
 
-  // Active §10 ceremony + the inline write outcome (412/422/503 surface here, never a toast).
-  const [ceremony, setCeremony] = useState<CeremonyMode>(null);
-  const [reason, setReason] = useState("");
+  // Active §10 ceremony + the inline write outcome (412/422/503 surface here, never a toast). The initial
+  // ceremony resolves, in order: a resumed draft (a step-up round trip back to this exact page) > a
+  // `?ceremony=` deep link (from the workbench's Replace/Void links) > none. The reason resumes only from
+  // the draft — a fresh deep link never pre-fills it.
+  const initialCeremonyDraft = loadDraft<CeremonyDraft>(ceremonyDraftKey(claimId));
+  const [ceremony, setCeremony] = useState<CeremonyMode>(
+    initialCeremonyDraft?.ceremony ?? ceremonyFromParam(searchParams.get("ceremony")),
+  );
+  const [reason, setReason] = useState(initialCeremonyDraft?.reason ?? "");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Keep the draft cache current as the ceremony opens/closes or the reason is typed.
+  useEffect(() => {
+    if (ceremony) saveDraft(ceremonyDraftKey(claimId), { ceremony, reason });
+    else clearDraft(ceremonyDraftKey(claimId));
+  }, [claimId, ceremony, reason]);
+
+  // The `?ceremony=` deep link has done its job once read into state above — strip it so a reload or the
+  // back button doesn't keep reopening it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally runs once on mount only.
+  useEffect(() => {
+    if (searchParams.has("ceremony")) setSearchParams({}, { replace: true });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,7 +195,7 @@ export function ClaimEditor(): JSX.Element {
   }, []);
 
   const runWrite = useCallback(
-    async (mode: Exclude<CeremonyMode, null>, _stepUp?: string) => {
+    async (mode: Exclude<CeremonyMode, null>) => {
       if (!claim) return;
       if ((mode === "replace" || mode === "void") && reason.trim().length < REASON_MIN) {
         setActionError(`Provide a reason of at least ${REASON_MIN} characters.`);
@@ -169,7 +208,10 @@ export function ClaimEditor(): JSX.Element {
           path: { id: claim.claimId },
           header: { "If-Match": String(claim.version) },
         },
-        body: mode === "submit" ? {} : { reason: reason.trim() },
+        // §2.5 — replace/void must carry `ifVersion` (the row version the caller read) alongside the
+        // If-Match header; the route's TypeBox body (ClaimReplaceRequest/ClaimVoidRequest) requires it and
+        // previously never received it, so every replace/void 422'd before If-Match was even checked.
+        body: mode === "submit" ? {} : { reason: reason.trim(), ifVersion: claim.version },
       };
       const path =
         mode === "submit"
@@ -180,26 +222,37 @@ export function ClaimEditor(): JSX.Element {
       // The header/body are not in the typed shape (openapi emits `never`), so the init is cast; the result
       // collapses to `never` and is read through a narrow envelope shape for the status code.
       const { error: err, response } = (await client.POST(path as never, init as never)) as {
-        error?: unknown;
+        error?: { error?: { code?: string } };
         response?: Response;
       };
-      setBusy(false);
       if (err) {
+        const redirect = authFailureRedirect(
+          response?.status,
+          err?.error?.code,
+          window.location.pathname,
+        );
+        if (redirect) {
+          // The draft-cache effect above already stashed {ceremony, reason} — resume it on return.
+          navigate(redirect);
+          return;
+        }
+        setBusy(false);
         if (response?.status === 412)
           setActionError("This claim changed since you opened it — close and reopen to retry.");
         else if (response?.status === 422)
           setActionError("Validation failed — resolve the claim's open findings first.");
         else if (response?.status === 503)
           setActionError("Billing write seam unavailable — try again shortly.");
-        else if (response?.status === 401 || response?.status === 403)
-          setActionError("Step-up authentication required, or you lack permission for this action.");
+        else if (response?.status === 403)
+          setActionError("You do not have permission for this action.");
         else setActionError("The action could not be completed.");
         return;
       }
+      setBusy(false);
       closeCeremony();
       void load();
     },
-    [claim, reason, client, closeCeremony, load],
+    [claim, reason, client, navigate, closeCeremony, load],
   );
 
   if (loading) return <LoadingSpinner />;
@@ -291,7 +344,9 @@ export function ClaimEditor(): JSX.Element {
         </div>
       </section>
 
-      {/* §10 Submit ceremony (#7): control number + active MAC + latest validation outcome + M2 step-up. */}
+      {/* §10 Submit ceremony (#7): control number + active MAC + latest validation outcome. A STEP_UP_REQUIRED
+          denial routes to the real /step-up screen (TASK-021) rather than a local decorative credential
+          field — the modal has no step-up input because typing into one here never verified anything. */}
       <CeremonyModal
         open={ceremony === "submit"}
         title="Submit claim to MAC"
@@ -323,13 +378,13 @@ export function ClaimEditor(): JSX.Element {
         }
         legalText="I attest this claim is accurate, supported by the record, and ready for transmission to the MAC."
         signer={{ name: "Billing manager", role: "This session" }}
-        stepUp={{ label: "Re-enter your credentials to submit to the MAC", type: "password" }}
         commitLabel="Submit to MAC"
-        onCommit={(value) => void runWrite("submit", value)}
+        onCommit={() => void runWrite("submit")}
         onCancel={closeCeremony}
       />
 
-      {/* §10 Replacement / Void builder (#10): TOB 817/818, reason ≥40 chars + step-up. */}
+      {/* §10 Replacement / Void builder (#10): TOB 817/818, reason at the real server floor (TASK-021,
+          REASON_MIN) + ifVersion in the write body; step-up denials route to /step-up (see above). */}
       <CeremonyModal
         open={ceremony === "replace" || ceremony === "void"}
         title={ceremony === "void" ? "Void claim (TOB 818)" : "Replace claim (TOB 817)"}
@@ -343,7 +398,11 @@ export function ClaimEditor(): JSX.Element {
             <Field label="Original claim control #" value={claim.claimControlNumber} mono />
             <label
               htmlFor="rv-reason"
-              style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-on-surface-variant)" }}
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: "var(--color-on-surface-variant)",
+              }}
             >
               Reason (≥ {REASON_MIN} characters)
             </label>
@@ -381,10 +440,11 @@ export function ClaimEditor(): JSX.Element {
             : "I authorize replacing this submitted claim and understand a TOB-817 replacement will be transmitted."
         }
         signer={{ name: "Billing manager", role: "This session" }}
-        stepUp={{ label: "Re-enter your credentials to continue", type: "password" }}
         epcs={false}
-        commitLabel={busy ? "Working…" : ceremony === "void" ? "Build void draft" : "Build replacement draft"}
-        onCommit={(value) => void runWrite(ceremony === "void" ? "void" : "replace", value)}
+        commitLabel={
+          busy ? "Working…" : ceremony === "void" ? "Build void draft" : "Build replacement draft"
+        }
+        onCommit={() => void runWrite(ceremony === "void" ? "void" : "replace")}
         onCancel={closeCeremony}
       />
     </DetailPageLayout>
@@ -548,10 +608,7 @@ function PricingCards({ claim }: { claim: ClaimDetail }): JSX.Element {
         ) : (
           <>
             <Field label="Window start" value={sia.windowStart} />
-            <Field
-              label="Qualifying minutes"
-              value={String(sia.totalQualifyingMinutes)}
-            />
+            <Field label="Qualifying minutes" value={String(sia.totalQualifyingMinutes)} />
             <Field label="SIA add-on" value={dollars(sia.siaAddOnCents)} />
           </>
         )}

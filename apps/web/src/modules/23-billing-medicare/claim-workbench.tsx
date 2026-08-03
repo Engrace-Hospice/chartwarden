@@ -9,19 +9,23 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM WORKBENCH (R2, §5.1 #2).
-// The §10 PR-J Work Queue: a FilterBar (state / TOB / ProviderEntity / patient) over a No-Line claim table
-// with §6.6 StatusPills, an inline action menu (Assemble / Submit / Replace / Void), and a RightDetailPanel
-// preview of the selected claim. Reads the cursor-paginated GET /api/v1/billing/claims; writes go through the
-// existing POST routes (assemble / {id}/submit / {id}/replace / {id}/void). The server is the only authz
-// point (ADR-0030): a 503 (seams unbound) degrades the surface; a 412 (If-Match) / 422 (validation) on a
-// write surfaces inline, never a toast. Lantern: WorkQueueLayout + FilterBar + RightDetailPanel, No-Line
-// table (§6.7), mono claim-control-number (IBM Plex), tabular-nums, CSS-var tokens only. Status tones flow
-// through billing-status.ts (§6.6). NOTE: the openapi marks the list query as `never` (the route's query
-// schema is not emitted into openapi.json), so the cursor/filter query is passed through a narrow cast —
-// the server stays the authoritative parser of the query envelope.
+// The §10 PR-J Work Queue: a FilterBar (state / TOB / ProviderEntity / patient) over a cursor-paginated
+// ("Load more") No-Line claim table with §6.6 StatusPills, and a RightDetailPanel preview of the selected
+// claim with a one-click Submit + deep links into the claim editor for Replace/Void (TASK-021/FLOW-008 —
+// this panel used to write Replace/Void directly with a fabricated empty reason; that reason-capture
+// ceremony now lives in exactly one place, the editor). Reads GET /api/v1/billing/claims; Submit writes
+// POST {id}/submit directly. The server is the only authz point (ADR-0030): a 503 (seams unbound) degrades
+// the surface; a 412 (If-Match) / 422 (validation) on a write surfaces inline, never a toast; a
+// STEP_UP_REQUIRED denial routes to /step-up. Lantern: WorkQueueLayout + FilterBar + RightDetailPanel,
+// No-Line table (§6.7), mono claim-control-number (IBM Plex), tabular-nums, CSS-var tokens only. Status
+// tones flow through billing-status.ts (§6.6). NOTE: the openapi marks the list query as `never` (the
+// route's query schema is not emitted into openapi.json), so the cursor/filter query is passed through a
+// narrow cast — the server stays the authoritative parser of the query envelope.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import { claimStateTone, dollars, statusLabel, tobLabel } from "./billing-status";
+import { authFailureRedirect } from "./write-workflow";
 
 interface ClaimSummary {
   claimId: string;
@@ -85,29 +89,59 @@ export function ClaimWorkbench(): JSX.Element {
     patientId: "",
   });
   const [claims, setClaims] = useState<ClaimSummary[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<ClaimSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const { data, error: err } = await client.GET(
-      "/api/v1/billing/claims",
-      listInit(filters, null) as never,
-    );
-    if (err) {
-      setError("Claim workbench unavailable — the billing read seam is not bound, or you lack scope.");
-      setLoading(false);
-      return;
-    }
-    setClaims(((data as unknown as ClaimPage)?.items ?? []) as ClaimSummary[]);
-    setLoading(false);
-  }, [client, filters]);
+  // TASK-021 — the cursor the server returns was previously read into `ClaimPage` and dropped; `append`
+  // distinguishes a fresh filter change (replace the page) from "Load more" (grow it).
+  const load = useCallback(
+    async (cursor: string | null, append: boolean) => {
+      if (append) setLoadingMore(true);
+      else {
+        setLoading(true);
+        setError(null);
+      }
+      const { data, error: err } = await client.GET(
+        "/api/v1/billing/claims",
+        listInit(filters, cursor) as never,
+      );
+      if (err) {
+        if (append) setLoadingMore(false);
+        else {
+          setError(
+            "Claim workbench unavailable — the billing read seam is not bound, or you lack scope.",
+          );
+          setLoading(false);
+        }
+        return;
+      }
+      const page = (data as unknown as ClaimPage) ?? {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      };
+      setClaims((prev) => (append ? [...prev, ...page.items] : page.items));
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
+    },
+    [client, filters],
+  );
 
   useEffect(() => {
-    void load();
+    // A `load` identity change (client/filters) always restarts at page 1 — only an explicit
+    // "Load more" click appends.
+    void load(null, false);
   }, [load]);
+
+  const loadMore = useCallback(() => {
+    if (nextCursor) void load(nextCursor, true);
+  }, [load, nextCursor]);
 
   return (
     <WorkQueueLayout
@@ -154,13 +188,29 @@ export function ClaimWorkbench(): JSX.Element {
             description="No claims match the current filters in your scope."
           />
         ) : (
-          <ClaimTable claims={claims} selectedId={selected?.claimId ?? null} onSelect={setSelected} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <ClaimTable
+              claims={claims}
+              selectedId={selected?.claimId ?? null}
+              onSelect={setSelected}
+            />
+            {hasMore ? (
+              <button
+                type="button"
+                onClick={loadMore}
+                disabled={loadingMore}
+                style={loadingMore ? disabledButtonStyle : ghostButtonStyle}
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            ) : null}
+          </div>
         )
       }
       detail={
         selected ? (
           <RightDetailPanel title="Claim preview" onClose={() => setSelected(null)}>
-            <ClaimPreview claim={selected} onChanged={() => void load()} />
+            <ClaimPreview claim={selected} onChanged={() => void load(null, false)} />
           </RightDetailPanel>
         ) : undefined
       }
@@ -224,53 +274,57 @@ function ClaimTable({
   );
 }
 
-// ── right-panel claim preview + inline write actions (Assemble / Submit / Replace / Void) ─────────────
+// ── right-panel claim preview: a one-click Submit + links into the full editor for Replace/Void ────────
+// TASK-021/FLOW-008 — Replace/Void used to write directly from this compact panel with a fabricated
+// `reason: ""` (always 422, since the server requires >=20 real chars + `ifVersion`). Rather than duplicate
+// the reason-capture ceremony a second time here, those two actions now deep-link to the claim editor, which
+// already builds the correct payload — a consequential, irreversible act like voiding a submitted Medicare
+// claim also deserves the editor's full context, not a compact preview.
 function ClaimPreview({
   claim,
   onChanged,
 }: { claim: ClaimSummary; onChanged: () => void }): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Each write sends If-Match (the claim version) for §2.5 optimistic concurrency. A 412 means the row moved
-  // under us (re-open the panel); a 422 carries the validation envelope; a 503 means the write seam is unbound.
-  const runWrite = useCallback(
-    async (kind: "submit" | "replace" | "void") => {
-      setBusy(true);
-      setActionError(null);
-      const init = {
-        params: { path: { id: claim.claimId }, header: { "If-Match": String(claim.version) } },
-        body: kind === "submit" ? {} : { reason: "" },
-      };
-      const path =
-        kind === "submit"
-          ? "/api/v1/billing/claims/{id}/submit"
-          : kind === "replace"
-            ? "/api/v1/billing/claims/{id}/replace"
-            : "/api/v1/billing/claims/{id}/void";
-      // The path is chosen at runtime, so the typed POST collapses to `never`; read the result through a
-      // narrow shape (error envelope + raw Response for the status code). The server stays authoritative.
-      const { error: err, response } = (await client.POST(path as never, init as never)) as {
-        error?: unknown;
-        response?: Response;
-      };
-      if (err) {
-        if (response?.status === 412)
-          setActionError("This claim changed since you opened it — reopen to retry.");
-        else if (response?.status === 422)
-          setActionError("Validation failed — resolve the claim's open findings first.");
-        else if (response?.status === 503)
-          setActionError("Billing write seam unavailable — try again shortly.");
-        else setActionError("The action could not be completed.");
-        setBusy(false);
+  // Submit carries no reason, so it stays a direct one-click action here. It sends If-Match (the claim
+  // version) for §2.5 optimistic concurrency; a 412 means the row moved under us (reopen to retry), a 422
+  // carries the validation envelope, a 503 means the write seam is unbound, and a step-up denial routes to
+  // the real /step-up screen (returning here) rather than a dead-end inline message.
+  const submit = useCallback(async () => {
+    setBusy(true);
+    setActionError(null);
+    const { error: err, response } = (await client.POST("/api/v1/billing/claims/{id}/submit", {
+      params: { path: { id: claim.claimId }, header: { "If-Match": String(claim.version) } },
+      body: {},
+    } as never)) as { error?: { error?: { code?: string } }; response?: Response };
+    if (err) {
+      const redirect = authFailureRedirect(
+        response?.status,
+        err?.error?.code,
+        window.location.pathname,
+      );
+      if (redirect) {
+        navigate(redirect);
         return;
       }
       setBusy(false);
-      onChanged();
-    },
-    [client, claim.claimId, claim.version],
-  );
+      if (response?.status === 412)
+        setActionError("This claim changed since you opened it — reopen to retry.");
+      else if (response?.status === 422)
+        setActionError("Validation failed — resolve the claim's open findings first.");
+      else if (response?.status === 503)
+        setActionError("Billing write seam unavailable — try again shortly.");
+      else if (response?.status === 403)
+        setActionError("You do not have permission for this action.");
+      else setActionError("The action could not be completed.");
+      return;
+    }
+    setBusy(false);
+    onChanged();
+  }, [client, claim.claimId, claim.version, navigate, onChanged]);
 
   const canSubmit = claim.state === "ready";
   const canReplaceVoid = claim.state === "paid" || claim.state === "ack_accepted";
@@ -278,7 +332,10 @@ function ClaimPreview({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <Field label="Control #" value={claim.claimControlNumber} mono />
-      <Field label="State" value={<StatusPill label={statusLabel(claim.state)} tone={claimStateTone(claim.state)} />} />
+      <Field
+        label="State"
+        value={<StatusPill label={statusLabel(claim.state)} tone={claimStateTone(claim.state)} />}
+      />
       <Field label="Type of bill" value={tobLabel(claim.tob)} />
       <Field label="MAC jurisdiction" value={claim.macJurisdiction} mono />
       <Field label="Service dates" value={`${claim.serviceFrom} → ${claim.serviceTo}`} />
@@ -295,27 +352,31 @@ function ClaimPreview({
         <button
           type="button"
           disabled={!canSubmit || busy}
-          onClick={() => void runWrite("submit")}
+          onClick={() => void submit()}
           style={canSubmit ? primaryButtonStyle : disabledButtonStyle}
         >
-          Submit
+          {busy ? "Submitting…" : "Submit"}
         </button>
-        <button
-          type="button"
-          disabled={!canReplaceVoid || busy}
-          onClick={() => void runWrite("replace")}
+        <a
+          href={`/billing/claims/${claim.claimId}?ceremony=replace`}
+          aria-disabled={!canReplaceVoid}
           style={canReplaceVoid ? ghostButtonStyle : disabledButtonStyle}
+          onClick={(e) => {
+            if (!canReplaceVoid) e.preventDefault();
+          }}
         >
-          Replace
-        </button>
-        <button
-          type="button"
-          disabled={!canReplaceVoid || busy}
-          onClick={() => void runWrite("void")}
+          Replace…
+        </a>
+        <a
+          href={`/billing/claims/${claim.claimId}?ceremony=void`}
+          aria-disabled={!canReplaceVoid}
           style={canReplaceVoid ? ghostButtonStyle : disabledButtonStyle}
+          onClick={(e) => {
+            if (!canReplaceVoid) e.preventDefault();
+          }}
         >
-          Void
-        </button>
+          Void…
+        </a>
       </div>
 
       {actionError ? (

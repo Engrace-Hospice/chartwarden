@@ -20,10 +20,11 @@ import type { GateItem, GateStatus } from "@wardenx/ui";
 // (seams unbound, fail-closed) each surface inline (role="alert"), never a toast. Lantern:
 // StepperWorkflowLayout + GateStepper steps + StickyFooterActions footer, mono identifiers, CSS-var tokens
 // only; status tones flow through billing-status.ts (§6.6).
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { dollars, statusLabel, tobLabel } from "./billing-status";
+import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 // The four assemblable Type-of-Bill codes (§4.1: 817/818 route through :replace / :void, not assembly).
 const ASSEMBLABLE_TOBS = ["811", "812", "813", "814"] as const;
@@ -56,6 +57,15 @@ const EMPTY_FORM: WizardForm = {
   tob: "811",
 };
 
+// TASK-021 — the wizard's in-progress step/form draft (never the assembled `result`, which the server can
+// re-derive) survives an in-SPA navigation away and back via the write-workflow draft cache (process memory
+// only — see write-workflow.ts for why this can't be sessionStorage/localStorage: patientId is PHI).
+const WIZARD_DRAFT_KEY = "claim-assembly-wizard";
+interface WizardDraft {
+  step: number;
+  form: WizardForm;
+}
+
 // The §6.6 outcome → tone mapping for the assembled initial validation roll-up.
 const OUTCOME_TONE = {
   all_pass: "success",
@@ -75,11 +85,18 @@ function stepStatus(stepIndex: number, activeIndex: number): GateStatus {
 export function ClaimAssemblyWizard(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState<WizardForm>(EMPTY_FORM);
+  const draft = loadDraft<WizardDraft>(WIZARD_DRAFT_KEY);
+  const [step, setStep] = useState(draft?.step ?? 0);
+  const [form, setForm] = useState<WizardForm>(draft?.form ?? EMPTY_FORM);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AssembleResult | null>(null);
+
+  // Persist the in-progress draft as the caller types — once assembled there is nothing left to lose
+  // (the server-authoritative `result` is what matters, and it clears the draft below).
+  useEffect(() => {
+    if (!result) saveDraft(WIZARD_DRAFT_KEY, { step, form });
+  }, [step, form, result]);
 
   // Step 1 is complete once all four identifying fields are present; step 2 always has a default TOB.
   const step1Valid =
@@ -109,7 +126,11 @@ export function ClaimAssemblyWizard(): JSX.Element {
       serviceTo: form.serviceTo,
       tob: form.tob,
     };
-    const { data, error: err, response } = (await client.POST("/api/v1/billing/claims/assemble", {
+    const {
+      data,
+      error: err,
+      response,
+    } = (await client.POST("/api/v1/billing/claims/assemble", {
       body,
     } as never)) as {
       data?: unknown;
@@ -117,18 +138,30 @@ export function ClaimAssemblyWizard(): JSX.Element {
       response?: Response;
     };
     if (err || !data) {
+      const redirect = authFailureRedirect(
+        response?.status,
+        err?.error?.code,
+        window.location.pathname,
+      );
+      if (redirect) {
+        navigate(redirect);
+        return;
+      }
       setError(assembleErrorMessage(err?.error?.code, response?.status));
       setBusy(false);
       return;
     }
     setResult(data as AssembleResult);
+    clearDraft(WIZARD_DRAFT_KEY);
     setBusy(false);
-  }, [client, form]);
+  }, [client, form, navigate]);
 
   return (
     <StepperWorkflowLayout
       header={<PageHeader title="Assemble Claim" breadcrumb="Billing — Medicare · New claim" />}
-      steps={<GateStepper items={steps} ariaLabel="Claim assembly steps" surfaceBlockersFirst={false} />}
+      steps={
+        <GateStepper items={steps} ariaLabel="Claim assembly steps" surfaceBlockersFirst={false} />
+      }
       context={<WizardContext form={form} />}
       footer={
         <StickyFooterActions>
@@ -222,8 +255,8 @@ function IdentifyStep({
         Identify the claim
       </h2>
       <p style={hintStyle}>
-        The server assembles a DRAFT claim from the elected coverage that spans this service-date range —
-        the patient must have an active Medicare hospice election covering the period.
+        The server assembles a DRAFT claim from the elected coverage that spans this service-date
+        range — the patient must have an active Medicare hospice election covering the period.
       </p>
       <LabeledInput
         label="Provider entity"
@@ -283,13 +316,21 @@ function TobStep({
         Type of bill
       </h2>
       <p style={hintStyle}>
-        Choose how this period bills: an <strong>admit-through-discharge</strong> claim (811) when the
-        whole stay is in one claim, or the <strong>interim</strong> sequence (812 first → 813 continuing →
-        814 last) for an ongoing election. The server re-derives the final TOB from the election timeline
-        and rejects an inconsistent choice.
+        Choose how this period bills: an <strong>admit-through-discharge</strong> claim (811) when
+        the whole stay is in one claim, or the <strong>interim</strong> sequence (812 first → 813
+        continuing → 814 last) for an ongoing election. The server re-derives the final TOB from the
+        election timeline and rejects an inconsistent choice.
       </p>
       <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
-        <legend style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+        <legend
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            overflow: "hidden",
+            clip: "rect(0 0 0 0)",
+          }}
+        >
           Type of bill
         </legend>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -333,10 +374,13 @@ function PreviewStep({ form }: { form: WizardForm }): JSX.Element {
         Review before assembly
       </h2>
       <p style={hintStyle}>
-        On confirm, the server derives the claim lines, the HIPPS code + rate, and the SIA snapshot from the
-        elected periods, then runs the initial validation. Nothing is written until you confirm.
+        On confirm, the server derives the claim lines, the HIPPS code + rate, and the SIA snapshot
+        from the elected periods, then runs the initial validation. Nothing is written until you
+        confirm.
       </p>
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.4rem 1rem", margin: 0 }}>
+      <dl
+        style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.4rem 1rem", margin: 0 }}
+      >
         <DtDd label="Provider entity" value={form.providerEntityId} mono />
         <DtDd label="Patient" value={form.patientId} mono />
         <DtDd label="Service dates" value={`${form.serviceFrom} → ${form.serviceTo}`} />
@@ -369,11 +413,16 @@ function ConfirmStep({ form }: { form: WizardForm }): JSX.Element {
 function AssembledResult({ result }: { result: AssembleResult }): JSX.Element {
   return (
     <section style={sectionStyle} aria-labelledby="assembled-h">
-      <h2 id="assembled-h" style={{ ...sectionTitleStyle, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <h2
+        id="assembled-h"
+        style={{ ...sectionTitleStyle, display: "flex", alignItems: "center", gap: "0.5rem" }}
+      >
         <Glyph name="check-circle" size={18} label="assembled" />
         Draft claim assembled
       </h2>
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.4rem 1rem", margin: 0 }}>
+      <dl
+        style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.4rem 1rem", margin: 0 }}
+      >
         <DtDd label="Claim id" value={result.claimId} mono />
         <DtDd label="State" value={statusLabel(result.state)} />
         <DtDd
@@ -392,8 +441,8 @@ function AssembledResult({ result }: { result: AssembleResult }): JSX.Element {
       </dl>
       {result.initialValidationOutcome !== "all_pass" ? (
         <p style={hintStyle}>
-          The initial run found items to resolve. Open the validation worklist to remediate or override
-          before submission.
+          The initial run found items to resolve. Open the validation worklist to remediate or
+          override before submission.
         </p>
       ) : null}
     </section>
@@ -409,7 +458,11 @@ function WizardContext({ form }: { form: WizardForm }): JSX.Element {
       <ContextLine label="Patient" value={form.patientId || "—"} mono />
       <ContextLine
         label="Dates"
-        value={form.serviceFrom || form.serviceTo ? `${form.serviceFrom || "?"} → ${form.serviceTo || "?"}` : "—"}
+        value={
+          form.serviceFrom || form.serviceTo
+            ? `${form.serviceFrom || "?"} → ${form.serviceTo || "?"}`
+            : "—"
+        }
       />
       <ContextLine label="TOB" value={tobLabel(form.tob)} />
     </div>
@@ -511,7 +564,8 @@ function assembleErrorMessage(code: string | undefined, status: number | undefin
     default:
       if (status === 503)
         return "Billing assembly is unavailable — the assembly seam is not bound, or you lack scope.";
-      if (status === 403) return "You do not have scope to assemble claims for this provider entity.";
+      if (status === 403)
+        return "You do not have scope to assemble claims for this provider entity.";
       return "The claim could not be assembled. Check the inputs and try again.";
   }
 }

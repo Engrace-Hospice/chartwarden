@@ -26877,7 +26877,10 @@ export interface operations {
     deleteApiV1BillingClaimsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -26886,7 +26889,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description OK */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26899,7 +26902,12 @@ export interface operations {
     patchApiV1BillingClaimsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -26991,7 +26999,12 @@ export interface operations {
     postApiV1BillingClaimsByIdReplace: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -27007,7 +27020,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27064,7 +27077,12 @@ export interface operations {
     postApiV1BillingClaimsByIdSubmit: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -27073,7 +27091,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description OK */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27086,7 +27104,10 @@ export interface operations {
     postApiV1BillingClaimsByIdValidate: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -27099,7 +27120,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27112,7 +27133,12 @@ export interface operations {
     postApiV1BillingClaimsByIdVoid: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -27128,7 +27154,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27141,7 +27167,10 @@ export interface operations {
     postApiV1BillingClaimsAssemble: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -27168,7 +27197,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27419,7 +27448,12 @@ export interface operations {
     deleteApiV1BillingRuleconfigsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -27428,7 +27462,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description OK */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27441,7 +27475,12 @@ export interface operations {
     patchApiV1BillingRuleconfigsById: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 id: string;
             };
@@ -27478,7 +27517,10 @@ export interface operations {
     postApiV1BillingRuleconfigsCustom: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -27502,7 +27544,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -28736,7 +28778,12 @@ export interface operations {
     patchApiV1CareplansByPlanIdGoalsByElementId: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 planId: string;
                 elementId: string;
@@ -28803,7 +28850,12 @@ export interface operations {
     patchApiV1CareplansByPlanIdInterventionsByElementId: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 planId: string;
                 elementId: string;
@@ -28936,7 +28988,12 @@ export interface operations {
     patchApiV1CareplansByPlanIdProblemsByElementId: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 planId: string;
                 elementId: string;
@@ -29248,7 +29305,10 @@ export interface operations {
     postApiV1ClaimsByIdValidate: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
             };
@@ -29257,7 +29317,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description OK */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -29315,7 +29375,10 @@ export interface operations {
     postApiV1ClaimsByIdValidationrunsByRunIdResultsByResultIdOverride: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path: {
                 id: string;
                 runId: string;
@@ -29334,7 +29397,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -34938,7 +35001,10 @@ export interface operations {
     patchApiV1EncountersByEncounterIdAddendaByAddendumIdSelections: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 encounterId: string;
                 addendumId: string;
@@ -35436,7 +35502,10 @@ export interface operations {
     patchApiV1EncountersByEncounterIdMileage: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 encounterId: string;
             };
@@ -35475,7 +35544,10 @@ export interface operations {
     patchApiV1EncountersByEncounterIdSelections: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 encounterId: string;
             };
@@ -35601,7 +35673,10 @@ export interface operations {
     patchApiV1EncountersByEncounterIdVitalsByVitalId: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 encounterId: string;
                 vitalId: string;
@@ -47495,7 +47570,10 @@ export interface operations {
     postApiV1PatientsByPatientIdAssessmentsByIdCorrections: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 patientId: string;
                 id: string;
@@ -47525,7 +47603,7 @@ export interface operations {
         };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -61715,7 +61793,10 @@ export interface operations {
     putApiV1TenantoverlaysByTemplateKey: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
             path: {
                 templateKey: string;
             };
