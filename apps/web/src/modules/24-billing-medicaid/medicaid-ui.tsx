@@ -128,28 +128,8 @@ export const iconButtonStyle = {
 };
 
 // ── modal chrome (the §5.1 modals: override, submit, replace/void, R&B day) ────────────────────────────
-export const backdropStyle = {
-  position: "fixed" as const,
-  inset: 0,
-  background: "var(--color-scrim)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "1rem",
-  zIndex: 1000,
-};
-export const modalStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "1rem",
-  width: "min(34rem, 100%)",
-  maxHeight: "90vh",
-  overflowY: "auto" as const,
-  background: "var(--color-surface-lowest)",
-  borderRadius: "var(--radius-xl, 1rem)",
-  boxShadow: "var(--shadow-elevated, var(--shadow-soft))",
-  padding: "1.5rem",
-};
+// The scrim/panel chrome itself now delegates to `@wardenx/ui`'s focus-trapped `Modal` (UI-005) at
+// each call site; only the title style remains a shared atom.
 export const modalTitleStyle = {
   margin: 0,
   fontFamily: "var(--font-display)",

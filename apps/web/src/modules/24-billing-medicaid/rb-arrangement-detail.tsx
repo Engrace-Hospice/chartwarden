@@ -4,6 +4,7 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
+  Modal,
   PageHeader,
   StatusPill,
   useApiClient,
@@ -34,12 +35,10 @@ import {
   Field,
   SummaryGrid,
   alertStyle,
-  backdropStyle,
   disabledButtonStyle,
   ghostButtonStyle,
   iconButtonStyle,
   linkStyle,
-  modalStyle,
   modalTitleStyle,
   mutedStyle,
   primaryButtonStyle,
@@ -417,23 +416,10 @@ function DayOverrideModal({
   }, [client, day, status, needsReason, exclusionReason, reasonMissing, onApplied]);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="m24-rb-day-title"
-      style={backdropStyle}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-    >
-      <div style={modalStyle}>
+    <Modal open onClose={onClose} ariaLabel="Change day status" width="34rem">
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 id="m24-rb-day-title" style={modalTitleStyle}>
-            Change day status
-          </h2>
+          <h2 style={modalTitleStyle}>Change day status</h2>
           <button type="button" onClick={onClose} aria-label="Close" style={iconButtonStyle}>
             <Glyph name="close" size={16} label="" />
           </button>
@@ -498,7 +484,7 @@ function DayOverrideModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -1,10 +1,10 @@
-import { DegradedBanner, EmptyState, Glyph } from "@wardenx/ui";
+import { DegradedBanner, EmptyState, Glyph, NavGroup, NavLink, groupByNavGroup } from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui (leaf) + react-router — never a feature module.
 import { useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
-import { Link, Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
 import type { WebScreenDescriptor } from "./screen-registry";
 import { useSession } from "./session";
@@ -40,17 +40,24 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       </header>
       <div className="wx-body">
         <nav className="wx-nav" aria-label="Primary">
-          <Link to="/">Home</Link>
+          <NavLink to="/" end>
+            Home
+          </NavLink>
           {/* Detail screens (param paths like /patients/:id) are reached programmatically, not via nav.
-              Gated screens show only when the actor holds the key (FB-T15 — server still enforces). */}
-          {screens
-            .filter((s) => !s.path.includes(":"))
-            .filter((s) => canSeeScreen(s, session))
-            .map((s) => (
-              <Link key={s.id} to={s.path}>
-                {s.title}
-              </Link>
-            ))}
+              Gated screens show only when the actor holds the key (FB-T15 — server still enforces).
+              Grouped by navGroup (UI-001) — 35 module screen-sets already declare one; ungrouped
+              screens fall into "General" so nothing silently disappears from the sidebar. */}
+          {groupByNavGroup(
+            screens.filter((s) => !s.path.includes(":")).filter((s) => canSeeScreen(s, session)),
+          ).map(([group, items]) => (
+            <NavGroup key={group} label={group}>
+              {items.map((s) => (
+                <NavLink key={s.id} to={s.path}>
+                  {s.title}
+                </NavLink>
+              ))}
+            </NavGroup>
+          ))}
         </nav>
         <main className="wx-main">
           <Outlet />

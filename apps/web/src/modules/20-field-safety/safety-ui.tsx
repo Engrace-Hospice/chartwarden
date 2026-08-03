@@ -14,7 +14,7 @@
 //   • {@link CancelCountdown} — SC 1.4.1's non-colour-only countdown: the ring AND the sentence "N seconds
 //     to cancel", announced through an assertive live region so a screen-reader user gets the same
 //     realtime feedback a sighted one does (SC 4.1.3).
-import { StatusPill, t } from "@wardenx/ui";
+import { Modal as SharedModal, StatusPill, t } from "@wardenx/ui";
 import type { StatusTone } from "@wardenx/ui";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import {
@@ -174,28 +174,6 @@ export const disabledButtonStyle: CSSProperties = {
 };
 
 // ── modal chrome (the §5 ceremonies: acknowledge, resolve, sign off, transition, grant) ────────────────
-export const backdropStyle: CSSProperties = {
-  position: "fixed",
-  inset: 0,
-  background: t.scrim,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: t.space4,
-  zIndex: 1000,
-};
-export const modalStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: t.space4,
-  width: "min(36rem, 100%)",
-  maxHeight: "90vh",
-  overflowY: "auto",
-  background: t.surfaceLowest,
-  borderRadius: t.radiusXl,
-  boxShadow: t.shadowFloat,
-  padding: t.space5,
-};
 export const modalTitleStyle: CSSProperties = {
   margin: 0,
   fontFamily: t.fontDisplay,
@@ -498,7 +476,9 @@ export function ChipMultiSelect({
   );
 }
 
-/** The §5 modal shell — backdrop + dialog + footer actions. Every M20 ceremony reuses it. */
+/** The §5 modal shell — backdrop + dialog + footer actions. Every M20 ceremony reuses it. Delegates
+ * to `@wardenx/ui`'s focus-trapped `Modal` (UI-005) for the scrim, Escape-to-close, and focus
+ * trap/restore, keeping this call-site's `{title, onClose, footer, children}` shape unchanged. */
 export function Modal({
   title,
   onClose,
@@ -511,8 +491,8 @@ export function Modal({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div style={backdropStyle}>
-      <div role="dialog" aria-modal="true" aria-label={title} style={modalStyle}>
+    <SharedModal open onClose={onClose} ariaLabel={title} width="36rem">
+      <div style={{ display: "flex", flexDirection: "column", gap: t.space4, padding: t.space5 }}>
         <h2 style={modalTitleStyle}>{title}</h2>
         {children}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: t.space2 }}>
@@ -522,7 +502,7 @@ export function Modal({
           {footer}
         </div>
       </div>
-    </div>
+    </SharedModal>
   );
 }
 

@@ -3,6 +3,7 @@ import {
   Glyph,
   GuardChip,
   LoadingSpinner,
+  Modal,
   PageHeader,
   StatusPill,
   WorkQueueLayout,
@@ -552,20 +553,10 @@ function OverrideModal({
   const errorId = "override-reason-error";
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="override-title"
-      style={backdropStyle}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div style={modalStyle}>
+    <Modal open onClose={onClose} ariaLabel="Override validation rule" width="34rem">
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 id="override-title" style={{ ...modalTitleStyle, margin: 0 }}>
-            Override validation rule
-          </h2>
+          <h2 style={{ ...modalTitleStyle, margin: 0 }}>Override validation rule</h2>
           <button type="button" onClick={onClose} aria-label="Close" style={iconButtonStyle}>
             <Glyph name="close" size={16} label="" />
           </button>
@@ -654,7 +645,7 @@ function OverrideModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -749,28 +740,6 @@ const iconButtonStyle = {
   background: "transparent",
   color: "var(--color-on-surface-variant)",
   display: "flex",
-};
-const backdropStyle = {
-  position: "fixed" as const,
-  inset: 0,
-  background: "var(--color-scrim)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "1rem",
-  zIndex: 1000,
-};
-const modalStyle = {
-  display: "flex",
-  flexDirection: "column" as const,
-  gap: "1rem",
-  width: "min(34rem, 100%)",
-  maxHeight: "90vh",
-  overflowY: "auto" as const,
-  background: "var(--color-surface-lowest)",
-  borderRadius: "var(--radius-xl, 1rem)",
-  boxShadow: "var(--shadow-elevated, var(--shadow-soft))",
-  padding: "1.5rem",
 };
 const modalTitleStyle = {
   fontFamily: "var(--font-display)",
