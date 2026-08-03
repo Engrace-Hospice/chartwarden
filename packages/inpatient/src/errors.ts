@@ -85,6 +85,24 @@ export const M37_ERROR_STATUS = {
   RN_BREAK_GLASS_ENDER_INVALID: 403,
   // §2.3 — an RN-coverage break-glass without fresh M2 step-up (Org Admin / Compliance Officer / Med Director).
   RN_BREAK_GLASS_STEP_UP_REQUIRED: 403,
+
+  // ── §2.10 D11 restraint · §2.7 D8 visitor · §2.9 D10 equipment (M37-T08) ────────────────────────────
+  // §2.10 — a restraint application with justification below the 100-char floor.
+  RESTRAINT_JUSTIFICATION_TOO_SHORT: 422,
+  // §2.10 — a restraint application with no ordering physician order (required even in emergency, CoP 418.110).
+  RESTRAINT_ORDER_REQUIRED: 422,
+  // §2.10 — a restraint application without fresh M2 step-up (RN+; the m37.restraint.apply key is step-up).
+  RESTRAINT_STEP_UP_REQUIRED: 403,
+  // §2.10 — a reassessment interval that attempts to LOOSEN above its behavioral/medical platform floor.
+  RESTRAINT_INTERVAL_NOT_TIGHTENING: 409,
+  // §2.10 — a restraint transition not accepted from the event's current state (`released` is terminal).
+  ILLEGAL_RESTRAINT_TRANSITION: 409,
+  // §2.7 — a visitor check-in blocked by an active full_block restriction.
+  VISITOR_RESTRICTION_FULL_BLOCK: 412,
+  // §2.7 — a non-immediate-family visitor blocked by an active immediate_family_only restriction.
+  VISITOR_IMMEDIATE_FAMILY_ONLY: 412,
+  // §2.9 — an assign-equipment-to-patient action on equipment with an overdue biomed inspection.
+  EQUIPMENT_INSPECTION_OVERDUE: 412,
 } as const;
 
 /** A machine-readable M37 domain failure code. */
