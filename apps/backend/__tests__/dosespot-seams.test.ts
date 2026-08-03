@@ -10,6 +10,8 @@ import type { MedicationOrderDto, RefillRequestDto } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type DoseSpotSeamSeed,
+  DoseSpotSeamGapError,
+  costBasisOfLines,
   createInMemoryDoseSpotSeamStore,
   createMedicationOrderProvider,
   createRefillInboxProvider,
@@ -194,6 +196,44 @@ describe("MedicationOrderProvider (§2.10 D17)", () => {
     expect((await provider().asFhirMedicationRequest(ORG, "med-active"))?.status).toBe("active");
     expect((await provider().asFhirMedicationRequest(ORG, "med-dc"))?.status).toBe("stopped");
     expect(await provider().asFhirMedicationRequest(ORG, "missing")).toBeNull();
+  });
+});
+
+describe("costBasisOfLines (drug-cost rollup honesty kernel, mig 0158)", () => {
+  const priced = (acquisitionCostCents: number | null) => ({ acquisitionCostCents });
+
+  it("all lines priced → the correct cent sum and lineCount = priced lines", () => {
+    expect(costBasisOfLines([priced(1250), priced(0), priced(99_999)], ADM, "2026-03")).toEqual({
+      totalCostCents: 101_249,
+      lineCount: 3,
+    });
+  });
+
+  it("an explicit 0-cent line is a real price (free/rebated), never a refusal", () => {
+    expect(costBasisOfLines([priced(0), priced(0)], ADM, "2026-03")).toEqual({
+      totalCostCents: 0,
+      lineCount: 2,
+    });
+  });
+
+  it("ANY unpriced (NULL) line → the typed DoseSpotSeamGapError naming the counts, never a $0 fill", () => {
+    let thrown: unknown;
+    try {
+      costBasisOfLines([priced(1250), priced(null), priced(null), priced(400)], ADM, "2026-03");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(DoseSpotSeamGapError);
+    const gap = thrown as DoseSpotSeamGapError;
+    expect(gap.code).toBe("M12_SEAM_SCHEMA_GAP");
+    expect(gap.method).toBe("costBasisForAdmissionMonth");
+    expect(gap.message).toContain("2 of 4");
+    expect(gap.message).toContain(ADM);
+    expect(gap.message).toContain("2026-03");
+  });
+
+  it("an admission-month with zero lines is a REAL { 0, 0 } (port contract: empty, not fabricated)", () => {
+    expect(costBasisOfLines([], ADM, "2026-04")).toEqual({ totalCostCents: 0, lineCount: 0 });
   });
 });
 

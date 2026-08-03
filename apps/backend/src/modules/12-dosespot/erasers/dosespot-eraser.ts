@@ -37,6 +37,14 @@ export interface MedicationOrderEraseCounts {
   readonly epcsSigningAttempts: number;
   /** Whole `medication_order` partitions DETACHed + DROPped (the partition-drop path). */
   readonly partitionsDropped: number;
+  /**
+   * task-15 — M11-side `order_signature` rows with `target_kind='medication_order'` targeting the
+   * erased orders, removed via M11's exported cascade (injected port; 0 when unbound — the rows
+   * then survive as the documented pre-cascade posture).
+   */
+  readonly orderSignatures: number;
+  /** task-15 — M11-side `verbal_order` rows targeting the erased orders (same cascade). */
+  readonly orderVerbalOrders: number;
 }
 
 /** Knobs the M4 destruction cert carries into the erase (defaults: erase everything up to now). */
@@ -87,7 +95,12 @@ export async function eraseMedicationOrderRecord(
   const counts = await store.eraseMedicationOrdersSubtree(organizationId, patientId, retentionAsOf);
   // partitionsDropped is bookkeeping (how the order rows left), already counted in `medicationOrders`.
   const erased =
-    counts.medicationOrders + counts.transmissions + counts.refillRequests + counts.epcsSigningAttempts;
+    counts.medicationOrders +
+    counts.transmissions +
+    counts.refillRequests +
+    counts.epcsSigningAttempts +
+    counts.orderSignatures +
+    counts.orderVerbalOrders;
   return { erased, counts };
 }
 
@@ -108,6 +121,8 @@ export function createInMemoryMedicationOrderEraseStore(seed: InMemoryMedication
     refillRequests: 0,
     epcsSigningAttempts: 0,
     partitionsDropped: 0,
+    orderSignatures: 0,
+    orderVerbalOrders: 0,
   };
   const counts: MedicationOrderEraseCounts = { ...zero, ...seed.counts };
   const locked: string[] = [];
@@ -141,7 +156,24 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * shell holds no PHI). Any statement the database refuses THROWS and rolls the erase back — the erase
  * never reports success it did not perform.
  */
-export function createDrizzleMedicationOrderEraseStore(db: DbClient): MedicationOrderEraseStore {
+/** Cross-module deps the Drizzle erase store composes over (injected at the composition root). */
+export interface DrizzleMedicationOrderEraseDeps {
+  /**
+   * task-15 — M11's exported signature cascade (`createMedicationOrderSignatureCascade`): deletes
+   * the M11-side `order_signature`/`verbal_order` rows targeting the med-order ids THIS erase is
+   * removing, at the only moment those ids are still resolvable. Unbound ⇒ counts 0 and the rows
+   * survive (the documented pre-cascade posture) — never a fabricated count.
+   */
+  readonly orderSignatureCascade?: (
+    organizationId: string,
+    medicationOrderIds: readonly string[],
+  ) => Promise<{ readonly signatures: number; readonly verbalOrders: number }>;
+}
+
+export function createDrizzleMedicationOrderEraseStore(
+  db: DbClient,
+  eraseDeps: DrizzleMedicationOrderEraseDeps = {},
+): MedicationOrderEraseStore {
   const MO = schema.medicationOrders;
   const TRANS = schema.medicationOrderTransmissions;
   const REFILL = schema.refillRequests;
@@ -168,8 +200,22 @@ export function createDrizzleMedicationOrderEraseStore(db: DbClient): Medication
       if (Number.isNaN(Date.parse(retentionAsOf))) {
         throw new Error(`M12_ERASER_BAD_RETENTION_BOUNDARY: ${retentionAsOf}`);
       }
+      const boundary = new Date(retentionAsOf);
+      // task-15 — run M11's signature cascade BEFORE the erase tx (its own org envelope; calling
+      // another module's store inside our open tx would re-enter the pool — the nested-tx gotcha).
+      // The ids are resolved at the only moment they are still resolvable; a failure here aborts
+      // the whole erase (nothing deleted yet), and a re-run is idempotent on both sides.
+      let orderSignatures = 0;
+      let orderVerbalOrders = 0;
+      if (eraseDeps.orderSignatureCascade) {
+        const cascadeIds = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+          orderIdsFor(tx, patientId, boundary),
+        );
+        const cascade = await eraseDeps.orderSignatureCascade(organizationId, cascadeIds);
+        orderSignatures = cascade.signatures;
+        orderVerbalOrders = cascade.verbalOrders;
+      }
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const boundary = new Date(retentionAsOf);
         const orderIds = await orderIdsFor(tx, patientId, boundary);
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
@@ -216,7 +262,15 @@ export function createDrizzleMedicationOrderEraseStore(db: DbClient): Medication
         // `dosespot_prescriber` / `refill_inbox_policy` / `controlled_substance_policy` are org-scoped
         // tenant configuration, and `dosespot_webhook_event` is a per-tenant encrypted receipt — none of
         // them are patient rows, so the erase never touches them (§7.7 #5).
-        return { medicationOrders, transmissions, refillRequests, epcsSigningAttempts, partitionsDropped: 0 };
+        return {
+          medicationOrders,
+          transmissions,
+          refillRequests,
+          epcsSigningAttempts,
+          partitionsDropped: 0,
+          orderSignatures,
+          orderVerbalOrders,
+        };
       });
     },
   };

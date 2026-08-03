@@ -62,6 +62,7 @@ describe("§2.3 / §2.8 D14 buildSignTargetInput (M11 signOrderTarget payload)",
       organizationId: "org-1",
       medicationOrderId: "mo-1",
       signerMembershipId: "md-1",
+      signerDiscipline: "hospice_physician",
       signedAtClient: "2026-06-22T13:00:00.000Z",
     });
     expect(input).toEqual({
@@ -69,6 +70,7 @@ describe("§2.3 / §2.8 D14 buildSignTargetInput (M11 signOrderTarget payload)",
       targetKind: "medication_order",
       targetId: "mo-1",
       signerMembershipId: "md-1",
+      signerDiscipline: "hospice_physician",
       signedAtClient: "2026-06-22T13:00:00.000Z",
       signatureKind: "signature",
     });
@@ -79,16 +81,19 @@ describe("§2.3 / §2.8 D14 buildSignTargetInput (M11 signOrderTarget payload)",
       organizationId: "org-1",
       medicationOrderId: "mo-1",
       signerMembershipId: "md-1",
+      signerDiscipline: "np",
       signedAtClient: "2026-06-22T13:00:00.000Z",
       secondFactorType: "passkey",
     });
     expect(input.signatureContext).toEqual({ reason: "epcs_second_factor=passkey" });
+    expect(input.signerDiscipline).toBe("np");
   });
   it("carries an on-behalf signer for the standard (non-verbal) path", () => {
     const input = buildSignTargetInput({
       organizationId: "org-1",
       medicationOrderId: "mo-1",
       signerMembershipId: "md-2",
+      signerDiscipline: "medical_director",
       signedAtClient: "2026-06-22T13:00:00.000Z",
       onBehalfOf: "md-1",
     });

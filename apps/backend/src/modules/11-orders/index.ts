@@ -106,6 +106,8 @@ export {
   type OrderEraseStore,
   type OrderEraserDeps,
   createDrizzleOrderEraseStore,
+  createMedicationOrderSignatureCascade,
+  type MedicationOrderSignatureCascadeCounts,
   createInMemoryOrderEraseStore,
   createOrderEraser,
   eraseOrderRecord,

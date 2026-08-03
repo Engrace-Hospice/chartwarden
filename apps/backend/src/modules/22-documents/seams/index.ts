@@ -42,6 +42,26 @@ export {
   createDrizzleDocumentReaderStore,
   createRefusingObjectStore,
 } from "./drizzle-readers-store";
+// The PRODUCTION MinIO/S3 ObjectStorePort (dependency-free SigV4 over fetch + node:crypto) — binds
+// over the refusing adapter when the MINIO_* env contract is present (composition-root decision).
+export {
+  type ListedObjectVersion,
+  type ParsedVersionList,
+  type S3ObjectStoreConfig,
+  type S3ObjectStoreDeps,
+  DEFAULT_PRESIGN_TTL_SECONDS,
+  createS3ObjectStore,
+  parseListObjectVersionsXml,
+  s3ObjectStoreConfigFromEnv,
+  sigV4AmzDate,
+  sigV4CanonicalQuery,
+  sigV4CanonicalRequest,
+  sigV4Sha256Hex,
+  sigV4Signature,
+  sigV4SigningKey,
+  sigV4StringToSign,
+  sigV4UriEncode,
+} from "./s3-object-store";
 import {
   type DocumentSeamStore,
   type ObjectStorePort,

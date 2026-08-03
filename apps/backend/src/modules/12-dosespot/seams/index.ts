@@ -26,9 +26,16 @@ export {
   createInMemoryDoseSpotSeamStore,
 } from "./store";
 export { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
-// TASK-002 — the production Drizzle-backed store (reads under the CONSUMER's ambient RLS context; the
-// comfort-kit / cost-basis rollups refuse with a typed DoseSpotSeamGapError until a backing schema exists).
-export { DoseSpotSeamGapError, createDrizzleDoseSpotSeamStore } from "./drizzle-store";
+// TASK-002 — the production Drizzle-backed store (reads under the CONSUMER's ambient RLS context). The
+// comfort-kit rollup still refuses with a typed DoseSpotSeamGapError (no backing schema); the cost-basis
+// rollup (mig 0158: `acquisition_cost_cents`) answers only when every in-scope line is priced, else throws
+// the same typed refusal with the priced/unpriced counts — `costBasisOfLines` is its pure honesty kernel.
+export {
+  type CostBasisLine,
+  DoseSpotSeamGapError,
+  costBasisOfLines,
+  createDrizzleDoseSpotSeamStore,
+} from "./drizzle-store";
 
 /** Deps for M12's owned-seam registration (slice defaults to the in-memory store). */
 export interface DoseSpotSeamDeps {

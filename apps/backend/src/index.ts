@@ -141,6 +141,7 @@ import {
   createDrizzleOrderSeamStore,
   mountOrderRoutes,
   createDrizzleOrderEraseStore,
+  createMedicationOrderSignatureCascade,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
@@ -258,6 +259,8 @@ import {
   M22_LAB_RESULTS_EVENT,
   createDrizzleDocumentReaderStore,
   createRefusingObjectStore,
+  createS3ObjectStore,
+  s3ObjectStoreConfigFromEnv,
   createSignedUrlService,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
@@ -703,8 +706,8 @@ export function wireModuleSeams(
   // with M11's routes/repos (M11-T06+).
   // TASK-002 — OrderProvider + the OrderSignatureProvider WRITE primitive bind the Drizzle store on
   // a db boot (guard-checked writes in the caller's request scope). Migration 0156 added the
-  // `order_discontinuation.target_kind` discriminator, so the M12 med-order arm records live
-  // (task-11); signer_discipline still records the documented sentinel pending a leaf-type change.
+  // `order_discontinuation.target_kind` discriminator (task-11), and `SignOrderTargetInput` now
+  // carries the REQUIRED signerDiscipline (task-15) — the seam sentinel is gone.
   registerOrderSeams(deps.db ? { store: createDrizzleOrderSeamStore(deps.db) } : {});
   // M12 — the two §2.10 D17 owned READ seams (MedicationOrderProvider — the medication-order read path M13
   // (eMAR administration context) / M14 / M19 / M28 (FHIR) / M30 / M31 (portal) / M33 consume — + RefillInboxProvider
@@ -971,11 +974,14 @@ export function wireModuleSeams(
   // TASK-002 risk note: never a Map wearing durable storage). The renderer's document-row write store
   // stays in-memory pending the MinIO adapter (see the narrowed ledger note below) — a render cannot
   // complete anyway: it refuses at the object write, loudly.
+  // task-15 — the zero-dep SigV4 S3/MinIO adapter binds when the MINIO_* env contract is present
+  // (official-vector-tested); absent, the REFUSING port stands (never a Map wearing durable storage).
+  const s3Config = deps.db ? s3ObjectStoreConfigFromEnv(process.env) : null;
   registerDocumentSeams(
     deps.db
       ? {
           readers: createDrizzleDocumentReaderStore(deps.db),
-          objects: createRefusingObjectStore(),
+          objects: s3Config ? createS3ObjectStore(s3Config) : createRefusingObjectStore(),
         }
       : {},
   );
@@ -1367,7 +1373,17 @@ export function wireModuleErasers(
   registerAssessmentErasers(eraseDb ? { store: createDrizzleAssessmentEraseStore(eraseDb) } : {}); // M9 — `clinical_assessment`
   registerHopeErasers(eraseDb ? { store: createDrizzleHopeEraseStore(eraseDb) } : {}); // M10 — `hope_record` (CMS 10-year block in the orchestrator)
   registerOrderErasers(eraseDb ? { store: createDrizzleOrderEraseStore(eraseDb) } : {}); // M11 — `order_record`
-  registerDoseSpotErasers(eraseDb ? { store: createDrizzleMedicationOrderEraseStore(eraseDb) } : {}); // M12 — `medication_order_record`
+  // M12 — `medication_order_record`; the injected M11 cascade removes the med-order-targeted
+  // signature/verbal rows at erase time (task-15 — the cross-eraser ownership decision).
+  registerDoseSpotErasers(
+    eraseDb
+      ? {
+          store: createDrizzleMedicationOrderEraseStore(eraseDb, {
+            orderSignatureCascade: createMedicationOrderSignatureCascade(eraseDb),
+          }),
+        }
+      : {},
+  );
   registerEmarErasers(eraseDb ? { store: createDrizzleEmarEraseStore(eraseDb) } : {}); // M13 — `emar_record`
   // M15-T06 — `discipline_plan_record` (per-PATIENT destruction-cert callback; scrubs the version
   // `state_snapshot` + assessment `data` jsonb FIRST, deletes the discipline subtree, tombstones the plan
@@ -1386,7 +1402,22 @@ export function wireModuleErasers(
     deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
   );
   registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
-  registerDocumentErasers(eraseDb ? { store: createDrizzleDocumentEraseStore(eraseDb) } : {}); // M22 — `documents` (object destruction refuses via DegradedError BEFORE any row delete until the MinIO adapter — retryable, never orphaned keys)
+  // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
+  // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
+  // any row delete (retryable, never orphaned keys).
+  {
+    const s3EraseConfig = eraseDb ? s3ObjectStoreConfigFromEnv(process.env) : null;
+    registerDocumentErasers(
+      eraseDb
+        ? {
+            store: createDrizzleDocumentEraseStore(
+              eraseDb,
+              s3EraseConfig ? { objects: createS3ObjectStore(s3EraseConfig) } : {},
+            ),
+          }
+        : {},
+    );
+  }
   // M34 — `saas_tenant_platform_class` runs entirely under withPlatformContext (subjectId = ORG), so
   // it binds the PLATFORM credential, not the tenant pool; without one the in-memory slice stands
   // and the ledger records it (the M35 platform-runner posture).
@@ -2568,10 +2599,11 @@ if ((import.meta as { main?: boolean }).main) {
           // M5 §4.10 — the proposal applier (LIVE end-to-end now that M29's accept path publishes
           // the event; skips everything not m5-owned).
           buildM29ProposalApplierConsumer(),
-          // M6 §4.8.3 — the INTERIM applier binding: skips m5-owned; DEAD-LETTERS m6-owned loudly
-          // until the real facts+service applier lands (task-11 follow-up). Registered as the
-          // second consumer so m6-owned acceptances can never complete off M5's skip.
-          buildM6ProposalAcceptedConsumer(),
+          // M6 §4.8.3 — the LIVE admission-event applier (task-15): resolves facts + executes
+          // through the Drizzle gateway (external death / HL7 withdrawal / compliance windows),
+          // records refusals durably + emits m6.applier.refused. Second consumer on the event so
+          // m6-owned acceptances can never complete off M5's skip.
+          buildM6ProposalAcceptedConsumer({ db: dbHandle.db, outbox: m6OutboxPublisher }),
         ],
         deferredEventTypes: [
           // M22 §4.11 — the render handshake awaits the live render worker + MinIO adapter; the

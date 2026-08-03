@@ -17,6 +17,7 @@
     "db:down": "docker stop wardenx-postgres",
     "db:migrate": "bun run scripts/db/migrate.ts",
     "db:migrate:baseline": "bun run scripts/db/migrate.ts --baseline",
+    "db:provision-roles": "bun run scripts/db/provision-runtime-roles.ts",
     "db:seed": "bun run scripts/db/seed.ts",
     "db:seed:org-admin": "bun run scripts/db/seed-org-admin.ts",
     "db:sync:permissions": "bun --env-file=.env run scripts/db/sync-permission-catalog.ts",

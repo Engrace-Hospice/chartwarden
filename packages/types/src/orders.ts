@@ -392,6 +392,15 @@ export interface SignOrderTargetInput {
   readonly targetKind: OrderSignatureTargetKind;
   readonly targetId: string;
   readonly signerMembershipId: string;
+  /**
+   * The signer's clinical discipline — the same §2.1 signer-matrix vocabulary M11's own route path
+   * records (`OrderSignerDiscipline` in `@wardenx/orders`; this leaf cannot import the feature catalog,
+   * so the wire representation is the same non-empty string every route body carries and
+   * `order_signature.signer_discipline` persists). REQUIRED: the ledger column is NOT NULL and every
+   * caller has the discipline in scope (M12's sign routes thread their `signerDiscipline` body field),
+   * so a seam signature records the real value — the former `unattested_via_seam` sentinel is gone.
+   */
+  readonly signerDiscipline: string;
   readonly signedAtClient: string; // ISO; server records the authoritative timestamp
   readonly signatureKind: "signature" | "cosignature";
   readonly signatureContext?: { readonly onBehalfOf?: string; readonly reason?: string };

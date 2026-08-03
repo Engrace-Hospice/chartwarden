@@ -81,6 +81,12 @@ export const medicationOrders = pgTable(
     refillsAuthorized: integer("refills_authorized").notNull().default(0),
     refillsRemaining: integer("refills_remaining").notNull().default(0),
 
+    // Drug acquisition cost in integer CENTS (repo money rule — never fractional dollars), mig 0158.
+    // NULL = "not priced" — the honest default until the DoseSpot fill/NDC pricing feed lands; a real
+    // free/$0 line is an explicit 0, never NULL. Aggregates must REFUSE unpriced lines, not zero-fill
+    // them (the §2.10 cost-basis seam feeds M27 Worksheet S-7; a fabricated $0 would corrupt it).
+    acquisitionCostCents: integer("acquisition_cost_cents"),
+
     // Lifecycle.
     status: medicationOrderStatus("status").notNull().default("draft"),
     version: integer("version").notNull().default(1), // optimistic concurrency
@@ -140,6 +146,11 @@ export const medicationOrders = pgTable(
     controlledScheduleConsistency: check(
       "medication_order_controlled_schedule_consistency",
       sql`(is_controlled_substance = true) = (dea_schedule IS NOT NULL)`,
+    ),
+    // Mirrors mig 0158's guarded CHECK (name differs from Drizzle's default so the migration owns it).
+    acquisitionCostNonNegative: check(
+      "medication_order_acquisition_cost_nonneg_chk",
+      sql`acquisition_cost_cents IS NULL OR acquisition_cost_cents >= 0`,
     ),
   }),
 );

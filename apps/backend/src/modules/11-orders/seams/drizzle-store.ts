@@ -76,17 +76,6 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * acting user. */
 const ORDER_READER_SYSTEM_USER_ID = "";
 
-/**
- * The `order_signature.signer_discipline` sentinel for seam-routed signatures. The wire contract
- * (`SignOrderTargetInput`, @wardenx/types) carries NO signer discipline and the ambient request context
- * carries only org/user ids, while the ledger column is NOT NULL — so a seam signature records a
- * DISTINGUISHABLE sentinel (mirroring the module's `PHYSICIAN_SENTINEL` / M22's `*_by_membership_id`
- * sentinel precedents), never a plausible-looking clinical discipline. Route-path signatures (which do know
- * the discipline) go through `orders-route-service-db.ts` and record the real value; closing this for the
- * seam path needs a `signerDiscipline` field on the leaf-typed input — a @wardenx/types contract change.
- */
-const SEAM_SIGNER_DISCIPLINE_SENTINEL = "unattested_via_seam";
-
 const iso = (d: Date): IsoInstant => d.toISOString() as IsoInstant;
 const isoN = (d: Date | null): IsoInstant | null => (d === null ? null : iso(d));
 
@@ -352,7 +341,11 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             targetId: input.targetId,
             signatureKind: input.signatureKind,
             signerMembershipId: input.signerMembershipId,
-            signerDiscipline: SEAM_SIGNER_DISCIPLINE_SENTINEL,
+            // The caller-attested discipline the leaf contract now REQUIRES (`SignOrderTargetInput.
+            // signerDiscipline` — the TASK-002 contract change): the NOT NULL ledger column records the
+            // real §2.1 signer-matrix value, exactly like the route path — the former
+            // `unattested_via_seam` sentinel is gone.
+            signerDiscipline: input.signerDiscipline,
             signedAt: new Date(input.signedAt),
           })
           .returning({ id: OS.id });

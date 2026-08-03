@@ -80,11 +80,43 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
       targetKind: "medication_order",
       targetId: "med-1",
       signerMembershipId: "mem-md",
+      signerDiscipline: "hospice_physician",
       signedAtClient: "2026-03-01T11:59:00.000Z",
       signatureKind: "signature",
     });
     expect(out.signatureId).toMatch(/^[0-9a-f-]{36}$/);
     expect(out.orderStatusAfter).toBe("active");
+  });
+
+  it("signOrderTarget threads the caller's signerDiscipline to the store write (no sentinel)", async () => {
+    // The TASK-002 contract close: `SignOrderTargetInput.signerDiscipline` is REQUIRED and the store
+    // records it verbatim on `order_signature.signer_discipline` — the Drizzle adapter no longer writes
+    // the `unattested_via_seam` sentinel. Proven against a capturing store because the seam surface has
+    // no signature read-back.
+    const inMem = createInMemoryOrderSeamStore(seed()).store;
+    const inserted: unknown[] = [];
+    const capturing: typeof inMem = {
+      ...inMem,
+      async insertSignature(input) {
+        inserted.push(input);
+        return inMem.insertSignature(input);
+      },
+    };
+    await createOrderSignatureProvider(capturing).signOrderTarget({
+      organizationId: "org-1",
+      targetKind: "medication_order",
+      targetId: "med-1",
+      signerMembershipId: "mem-md",
+      signerDiscipline: "medical_director",
+      signedAtClient: "2026-03-01T11:59:00.000Z",
+      signatureKind: "signature",
+    });
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({
+      signerMembershipId: "mem-md",
+      signerDiscipline: "medical_director",
+    });
+    expect((inserted[0] as { signerDiscipline: string }).signerDiscipline).not.toBe("unattested_via_seam");
   });
 
   it("signOrderTarget transitions a local pending order to active", async () => {
@@ -95,6 +127,7 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
       targetKind: "order",
       targetId: "ord-pend",
       signerMembershipId: "mem-md",
+      signerDiscipline: "medical_director",
       signedAtClient: "2026-03-04T12:00:00.000Z",
       signatureKind: "signature",
     });
@@ -138,6 +171,7 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
       targetKind: "order",
       targetId: "ord-pend",
       signerMembershipId: "mem-md",
+      signerDiscipline: "medical_director",
       signedAtClient: "2026-03-04T18:00:00.000Z",
       signatureKind: "signature",
     });
@@ -225,6 +259,7 @@ describe("boot wiring (registerOrderSeams)", () => {
       targetKind: "medication_order",
       targetId: "med-1",
       signerMembershipId: "mem-md",
+      signerDiscipline: "hospice_physician",
       signedAtClient: "2026-03-01T11:59:00.000Z",
       signatureKind: "signature",
     });
