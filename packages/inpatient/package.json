@@ -8,6 +8,7 @@
   },
   "types": "./src/index.ts",
   "dependencies": {
+    "@sinclair/typebox": "^0.34.52",
     "@wardenx/types": "workspace:*"
   }
 }

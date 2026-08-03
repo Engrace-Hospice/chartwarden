@@ -51,6 +51,20 @@ export const M37_ERROR_STATUS = {
   // §2.2 — postCloseSettlement while a child row is still open (unfinalized GIP criteria / open irc_episode /
   // incomplete body release).
   ADMISSION_OPEN_CHILD_ROWS: 409,
+
+  // ── §2.4 D4/D5 GIP criteria + §2.6 D7 IV-safety overlay (M37-T05) ──────────────────────────────────
+  // §2.4 — a gip_admission_criteria payload that fails the per-kind discriminated-union TypeBox schema.
+  GIP_CRITERIA_INVALID_PAYLOAD: 422,
+  // §2.4 — a GIP-criteria reassessment staleness config that attempts to LOOSEN above the 24h floor.
+  GIP_REASSESSMENT_NOT_TIGHTENING: 409,
+  // §2.6 — M13 pre-administration gate: the proposed IV rate is outside the overlay's titration window.
+  IV_RATE_OUTSIDE_TITRATION_WINDOW: 412,
+  // §2.6 — a sedation-class IV drip administration with no dual-witness HMAC token attached.
+  IV_DUAL_WITNESS_REQUIRED: 412,
+  // §2.6 — the overlay's max continuous infusion duration would be exceeded (needs a new order / rate-stop).
+  IV_MAX_CONTINUOUS_DURATION_REACHED: 412,
+  // §2.6 — no bedside observation within the overlay's bedside-check interval.
+  IV_BEDSIDE_CHECK_OVERDUE: 412,
 } as const;
 
 /** A machine-readable M37 domain failure code. */
