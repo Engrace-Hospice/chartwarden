@@ -429,6 +429,1344 @@
         }
       }
     },
+    "/api/admin/external-interfaces/feeds": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesFeeds",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "List the org's HL7/NPPES feeds, filterable by kind/status (§4.1.1)",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "adt_inbound",
+                  "type": "string"
+                },
+                {
+                  "const": "lab_inbound",
+                  "type": "string"
+                },
+                {
+                  "const": "orm_outbound",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "proposed",
+                  "type": "string"
+                },
+                {
+                  "const": "pending_approval",
+                  "type": "string"
+                },
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "suspended",
+                  "type": "string"
+                },
+                {
+                  "const": "revoked",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesFeeds",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Create a feed (step-up, D18). Lands `pending_approval`: the proposing operator is stamped as the first of two DISTINCT dual-approval actors; a compliance officer activates (§4.1.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "displayName",
+                  "port",
+                  "protocol"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "adt_inbound",
+                        "type": "string"
+                      },
+                      {
+                        "const": "lab_inbound",
+                        "type": "string"
+                      },
+                      {
+                        "const": "orm_outbound",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "displayName": {
+                    "minLength": 3,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "host": {
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "port": {
+                    "minimum": 1,
+                    "maximum": 65535,
+                    "type": "integer"
+                  },
+                  "protocol": {
+                    "anyOf": [
+                      {
+                        "const": "mllp_tls",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mllp_plain",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "channelCertPin": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "sendingFacilityAllowlist": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 80,
+                      "type": "string"
+                    }
+                  },
+                  "baaContractRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "baaExpiresOn": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "rateLimitMsgPerSec": {
+                    "minimum": 1,
+                    "maximum": 5000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/feeds/{feedId}": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesFeedsByFeedId",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Single feed detail incl. redacted credential metadata — NEVER ciphertext (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchApiAdminExternalinterfacesFeedsByFeedId",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Edit non-credential feed metadata (step-up, D18) (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "displayName": {
+                    "minLength": 3,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "host": {
+                    "maxLength": 255,
+                    "type": "string"
+                  },
+                  "channelCertPin": {
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "sendingFacilityAllowlist": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "minLength": 1,
+                      "maxLength": 80,
+                      "type": "string"
+                    }
+                  },
+                  "baaContractRef": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "baaExpiresOn": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "rateLimitMsgPerSec": {
+                    "minimum": 1,
+                    "maximum": 5000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/feeds/{feedId}/activate": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesFeedsByFeedIdActivate",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Activate a feed: pending_approval → active. Requires a compliance co-approver DISTINCT from the operator (D18) AND the M40 BAA gate (`external_feed_baa_satisfied`, D16) (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/feeds/{feedId}/credentials": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesFeedsByFeedIdCredentials",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "List credential metadata (fingerprint + status only, NEVER ciphertext) (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesFeedsByFeedIdCredentials",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Mint / rotate a channel credential (step-up, D18). The prior active credential of the kind is retired; the secret is stored as its sha256 digest (no DEK bound in Phase 1) and never returned in the clear (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "secret"
+                ],
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "mllp_client_cert",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mllp_channel_password",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "secret": {
+                    "minLength": 1,
+                    "maxLength": 20000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/feeds/{feedId}/health": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesFeedsByFeedIdHealth",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Current rolling per-hour health snapshot for a feed (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/feeds/{feedId}/revoke": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesFeedsByFeedIdRevoke",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Terminally revoke a feed (dual-approval, `external_feed_compliance_co_approver_distinct`, D20; step-up). The row is retained so every message FK resolves (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "primaryApproverId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/feeds/{feedId}/suspend": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesFeedsByFeedIdSuspend",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Suspend an active feed; the listener unbinds (reason required, step-up) (§4.1.1)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/health/aggregate": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesHealthAggregate",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Tenant feed-health overview — listener up/down, message + parse-error counts (§4.1.5)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/inbound-proposals": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesInboundproposals",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "List the propose-then-review ADT queue, filterable by status/owner_module/feed (§4.1.2)",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                },
+                {
+                  "const": "expired",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "ownerModule",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "m5",
+                  "type": "string"
+                },
+                {
+                  "const": "m6",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "feedId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposedForPatientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesInboundproposalsByProposalId",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Single ADT proposal detail (owner-module-scoped, D5) (§4.1.2)",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}/accept": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesInboundproposalsByProposalIdAccept",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Adjudicate ACCEPT — apply via the owner module's native write path (`hl7_inbound_proposal_owner_module_match`, step-up D18). Decided-is-decided (§4.1.2)",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decisionNote": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "acceptedAggregateId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}/defer": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesInboundproposalsByProposalIdDefer",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Punt a proposal to a caseload-RN task (M19 forward-seam); stays `pending` (§4.1.2)",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}/reject": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesInboundproposalsByProposalIdReject",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Adjudicate REJECT — no mutation; rationale ≥40 chars (W-XI-04); owner-module-gated + step-up (§4.1.2)",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "rationale"
+                ],
+                "properties": {
+                  "rationale": {
+                    "minLength": 40,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/inbound": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesMessagesInbound",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Search inbound HL7 messages (metadata only, no plaintext) (§4.1.3)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 20,
+              "type": "string"
+            }
+          },
+          {
+            "name": "messageControlId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "name": "parseStatus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "in_progress",
+                  "type": "string"
+                },
+                {
+                  "const": "parsed",
+                  "type": "string"
+                },
+                {
+                  "const": "parse_error",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/inbound/{messageId}": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesMessagesInboundByMessageId",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Single inbound message — metadata only; plaintext is the dedicated decrypt route (§4.1.3)",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/inbound/{messageId}/decrypt": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesMessagesInboundByMessageIdDecrypt",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Server-side plaintext decrypt for compliance review (step-up; a §164.528 disclosure). Phase-1 fail-closed 501 until the per-tenant DEK envelope binds (§4.1.3)",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/inbound/{messageId}/replay": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesMessagesInboundByMessageIdReplay",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Re-enqueue a parse_error/rejected inbound message for parsing/matching (step-up) (§4.1.3)",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/outbound": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesMessagesOutbound",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Search outbound HL7 messages, filterable by placer order / dispatch status (§4.1.3)",
+        "parameters": [
+          {
+            "name": "feedId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "placerOrderNumber",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "queued",
+                  "type": "string"
+                },
+                {
+                  "const": "in_flight",
+                  "type": "string"
+                },
+                {
+                  "const": "acked",
+                  "type": "string"
+                },
+                {
+                  "const": "naked",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "dlq",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/outbound/{messageId}": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesMessagesOutboundByMessageId",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Single outbound message incl. the ACK/NACK chain (§4.1.3)",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/messages/outbound/{messageId}/retry": {
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesMessagesOutboundByMessageIdRetry",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Manual retry of a failed/dlq outbound message after a DLQ landing (D9; step-up) (§4.1.3)",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/metrics/listener-status": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesMetricsListenerstatus",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Per-feed listener socket status (up/down + last message time) (§4.1.5)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/nppes/providers/{npi}": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesNppesProvidersByNpi",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Read one cached platform-shared NPPES provider (public directory, no PHI) (§4.1.4)",
+        "parameters": [
+          {
+            "name": "npi",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/external-interfaces/nppes/sync-runs": {
+      "get": {
+        "operationId": "getApiAdminExternalinterfacesNppesSyncruns",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "List NPPES sync-run history (§4.1.4)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiAdminExternalinterfacesNppesSyncruns",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up). A tenant session is refused; the real sync runs under the platform scheduler (§4.1.4)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "daily_incremental",
+                        "type": "string"
+                      },
+                      {
+                        "const": "weekly_dissemination",
+                        "type": "string"
+                      },
+                      {
+                        "const": "monthly_deactivation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "manual",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/plans": {
       "get": {
         "operationId": "getApiAdminPlans",
@@ -5714,6 +7052,353 @@
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/clinical/labs/observations": {
+      "get": {
+        "operationId": "getApiClinicalLabsObservations",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "List caseload lab observations, filterable by patient/loinc/abnormal-flag (§4.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "loincCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 20,
+              "type": "string"
+            }
+          },
+          {
+            "name": "abnormalFlag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "H",
+                  "type": "string"
+                },
+                {
+                  "const": "L",
+                  "type": "string"
+                },
+                {
+                  "const": "HH",
+                  "type": "string"
+                },
+                {
+                  "const": "LL",
+                  "type": "string"
+                },
+                {
+                  "const": "A",
+                  "type": "string"
+                },
+                {
+                  "const": "N",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/clinical/labs/observations/{observationId}": {
+      "get": {
+        "operationId": "getApiClinicalLabsObservationsByObservationId",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Single observation with its value rows (`lab_observation_patient_caseload_or_scope`, D20) (§4.2)",
+        "parameters": [
+          {
+            "name": "observationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/clinical/labs/observations/{observationId}/acknowledge-abnormal": {
+      "post": {
+        "operationId": "postApiClinicalLabsObservationsByObservationIdAcknowledgeabnormal",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "RN acknowledges an abnormal-flag alert; clears the M36 badge (D7) (§4.2)",
+        "parameters": [
+          {
+            "name": "observationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/clinical/labs/observations/{observationId}/attach-patient": {
+      "post": {
+        "operationId": "postApiClinicalLabsObservationsByObservationIdAttachpatient",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Manual patient attach for an unmatched result (step-up). Phase-1 fail-closed 501: materializing a lab_observation from the stored wire message lands in T-29.13 (§4.2)",
+        "parameters": [
+          {
+            "name": "observationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId"
+                ],
+                "properties": {
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "note": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clinical/labs/observations/{observationId}/discard": {
+      "post": {
+        "operationId": "postApiClinicalLabsObservationsByObservationIdDiscard",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "Discard an unmatched result (reason required, step-up). Phase-1 deferred to T-29.13 (§4.2)",
+        "parameters": [
+          {
+            "name": "observationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clinical/labs/observations/unmatched": {
+      "get": {
+        "operationId": "getApiClinicalLabsObservationsUnmatched",
+        "tags": [
+          "29-external-interfaces"
+        ],
+        "summary": "The unmatched-lab review queue (failed patient-match cascade, D6; review-unmatched role) (§4.2)",
+        "parameters": [
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "loincCode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 20,
+              "type": "string"
+            }
+          },
+          {
+            "name": "abnormalFlag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "H",
+                  "type": "string"
+                },
+                {
+                  "const": "L",
+                  "type": "string"
+                },
+                {
+                  "const": "HH",
+                  "type": "string"
+                },
+                {
+                  "const": "LL",
+                  "type": "string"
+                },
+                {
+                  "const": "A",
+                  "type": "string"
+                },
+                {
+                  "const": "N",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 200,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

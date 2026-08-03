@@ -1,7 +1,7 @@
 {
   "totals": {
-    "Implemented": 38,
-    "Partial": 1,
+    "Implemented": 39,
+    "Partial": 0,
     "Placeholder": 1
   },
   "rows": [
@@ -565,12 +565,15 @@
     {
       "id": 29,
       "module": "M29 External Interfaces",
-      "status": "Partial",
+      "status": "Implemented",
       "spec": true,
       "schema": true,
       "migration": true,
-      "routes": false,
-      "enriched": null,
+      "routes": true,
+      "enriched": {
+        "routes": 33,
+        "enriched": 33
+      },
       "screens": false,
       "tests": false,
       "adapter": null,

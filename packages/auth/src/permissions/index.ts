@@ -248,4 +248,8 @@ export {
   type M35ContributedPermissionKey,
   M35_CONTRIBUTED_PERMISSIONS,
   m35ContributedPermissionMirrorRows,
+  // M29 — Module 29's twenty-one External Interfaces permission keys (§4.7 handshake).
+  type M29ContributedPermissionKey,
+  M29_CONTRIBUTED_PERMISSIONS,
+  m29ContributedPermissionMirrorRows,
 } from "./contributed";

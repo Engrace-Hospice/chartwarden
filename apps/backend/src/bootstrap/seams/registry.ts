@@ -64,7 +64,10 @@ import {
   fhirGatewayMetricsProviderDenyStub,
   fhirInboundProposalReaderDenyStub,
   claimReaderDenyStub,
+  externalFeedReaderDenyStub,
+  hl7InboundProposalReaderDenyStub,
   labObservationReaderDenyStub,
+  nppesProviderReaderDenyStub,
   subscriptionStateProviderDenyStub,
   billingStatusProviderDenyStub,
   usageMeteringIngestDenyStub,
@@ -439,6 +442,22 @@ export const REQUIRED_SEAMS = [
     ownerModule: 29,
     phi: true,
     denyStub: labObservationReaderDenyStub,
+  },
+  // M29 §4.4 — the three OTHER published read seams M29 registers into the M1 registry (M29-T08). Each stays
+  // on the fail-closed deny-stub until M29's Drizzle seam store is bound at the composition root. The proposal
+  // reader reaches a demographic candidate (PHI); the other two are feed metadata / public-directory data.
+  {
+    key: "Hl7InboundProposalReader",
+    ownerModule: 29,
+    phi: true,
+    denyStub: hl7InboundProposalReaderDenyStub,
+  },
+  { key: "ExternalFeedReader", ownerModule: 29, phi: false, denyStub: externalFeedReaderDenyStub },
+  {
+    key: "NppesProviderReader",
+    ownerModule: 29,
+    phi: false,
+    denyStub: nppesProviderReaderDenyStub,
   },
   // M35 (Subscription Billing) §4.5 — the SIX published read seams M35 registers into the M1 registry
   // (M35-T05). Until these entries existed, M35 was reachable cross-module ONLY through its §4.11 outbox

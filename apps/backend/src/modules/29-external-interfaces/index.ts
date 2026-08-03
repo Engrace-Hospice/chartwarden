@@ -13,6 +13,47 @@
 // `m29.lab_order.transmission_failed`. Every core is PURE / IO-injected; the ORU/ORM ingest sinks, the seam
 // bindings, and the operator/clinician routes land in T07–T09. Xero GL / Gusto payroll stay Phase-2
 // (XI_ACCOUNTING_GL_FLAG OFF).
+//
+// M29-T08 adds the HTTP surface: the §4.1 operator routes + §4.2 clinician routes over the Drizzle route
+// store (+ in-memory for tests), the twenty-one §4.7 permission keys, the six §4.8 ABAC predicates + their
+// Drizzle resolver, and the five §4.4 published seams over the Drizzle published-seam store.
+export {
+  M29_CONTRIBUTED_PERMISSIONS,
+  M29_PERMISSION_KEY_LIST,
+  M29_STEP_UP_PERMISSION_KEYS,
+  type M29ContributedPermissionKey,
+  type M29PermissionKey,
+} from "./permission-keys";
+export {
+  M29_ABAC_PREDICATES,
+  HL7_OWNER_MODULE_WRITE_PERMISSION,
+  buildM29AbacPredicates,
+  denyStubM29AbacResolver,
+  registerM29AbacPredicates,
+  type M29AbacDeps,
+  type M29AbacResolver,
+  type M29RegisteredAbacPredicate,
+} from "./abac-predicates";
+export {
+  buildDrizzleM29AbacResolver,
+  type M29AbacDrizzleDeps,
+  type M29CaseloadPort,
+  type M29EffectivePermissionReader,
+} from "./abac-resolver-drizzle";
+export {
+  mountM29Routes,
+  createDrizzleM29Store,
+  createInMemoryM29Store,
+  M29StoreError,
+  type M29RouteServices,
+  type M29Store,
+} from "./routes/index";
+export {
+  registerM29PublishedSeams,
+  createDrizzleM29PublishedSeamStore,
+  type M29PublishedSeamDeps,
+  type M29PublishedSeamStore,
+} from "./seams/index";
 export {
   EXTERNAL_FEED_INITIAL_STATUS,
   EXTERNAL_FEED_TRANSITIONS,

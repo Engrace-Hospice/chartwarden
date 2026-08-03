@@ -55,6 +55,401 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/external-interfaces/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the org's HL7/NPPES feeds, filterable by kind/status (§4.1.1) */
+        get: operations["getApiAdminExternalinterfacesFeeds"];
+        put?: never;
+        /** Create a feed (step-up, D18). Lands `pending_approval`: the proposing operator is stamped as the first of two DISTINCT dual-approval actors; a compliance officer activates (§4.1.1) */
+        post: operations["postApiAdminExternalinterfacesFeeds"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/feeds/{feedId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single feed detail incl. redacted credential metadata — NEVER ciphertext (§4.1.1) */
+        get: operations["getApiAdminExternalinterfacesFeedsByFeedId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit non-credential feed metadata (step-up, D18) (§4.1.1) */
+        patch: operations["patchApiAdminExternalinterfacesFeedsByFeedId"];
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/feeds/{feedId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a feed: pending_approval → active. Requires a compliance co-approver DISTINCT from the operator (D18) AND the M40 BAA gate (`external_feed_baa_satisfied`, D16) (§4.1.1) */
+        post: operations["postApiAdminExternalinterfacesFeedsByFeedIdActivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/feeds/{feedId}/credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List credential metadata (fingerprint + status only, NEVER ciphertext) (§4.1.1) */
+        get: operations["getApiAdminExternalinterfacesFeedsByFeedIdCredentials"];
+        put?: never;
+        /** Mint / rotate a channel credential (step-up, D18). The prior active credential of the kind is retired; the secret is stored as its sha256 digest (no DEK bound in Phase 1) and never returned in the clear (§4.1.1) */
+        post: operations["postApiAdminExternalinterfacesFeedsByFeedIdCredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/feeds/{feedId}/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current rolling per-hour health snapshot for a feed (§4.1.1) */
+        get: operations["getApiAdminExternalinterfacesFeedsByFeedIdHealth"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/feeds/{feedId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Terminally revoke a feed (dual-approval, `external_feed_compliance_co_approver_distinct`, D20; step-up). The row is retained so every message FK resolves (§4.1.1) */
+        post: operations["postApiAdminExternalinterfacesFeedsByFeedIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/feeds/{feedId}/suspend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Suspend an active feed; the listener unbinds (reason required, step-up) (§4.1.1) */
+        post: operations["postApiAdminExternalinterfacesFeedsByFeedIdSuspend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/health/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Tenant feed-health overview — listener up/down, message + parse-error counts (§4.1.5) */
+        get: operations["getApiAdminExternalinterfacesHealthAggregate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/inbound-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the propose-then-review ADT queue, filterable by status/owner_module/feed (§4.1.2) */
+        get: operations["getApiAdminExternalinterfacesInboundproposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single ADT proposal detail (owner-module-scoped, D5) (§4.1.2) */
+        get: operations["getApiAdminExternalinterfacesInboundproposalsByProposalId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adjudicate ACCEPT — apply via the owner module's native write path (`hl7_inbound_proposal_owner_module_match`, step-up D18). Decided-is-decided (§4.1.2) */
+        post: operations["postApiAdminExternalinterfacesInboundproposalsByProposalIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}/defer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Punt a proposal to a caseload-RN task (M19 forward-seam); stays `pending` (§4.1.2) */
+        post: operations["postApiAdminExternalinterfacesInboundproposalsByProposalIdDefer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/inbound-proposals/{proposalId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adjudicate REJECT — no mutation; rationale ≥40 chars (W-XI-04); owner-module-gated + step-up (§4.1.2) */
+        post: operations["postApiAdminExternalinterfacesInboundproposalsByProposalIdReject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/inbound": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search inbound HL7 messages (metadata only, no plaintext) (§4.1.3) */
+        get: operations["getApiAdminExternalinterfacesMessagesInbound"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/inbound/{messageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single inbound message — metadata only; plaintext is the dedicated decrypt route (§4.1.3) */
+        get: operations["getApiAdminExternalinterfacesMessagesInboundByMessageId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/inbound/{messageId}/decrypt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Server-side plaintext decrypt for compliance review (step-up; a §164.528 disclosure). Phase-1 fail-closed 501 until the per-tenant DEK envelope binds (§4.1.3) */
+        post: operations["postApiAdminExternalinterfacesMessagesInboundByMessageIdDecrypt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/inbound/{messageId}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-enqueue a parse_error/rejected inbound message for parsing/matching (step-up) (§4.1.3) */
+        post: operations["postApiAdminExternalinterfacesMessagesInboundByMessageIdReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/outbound": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search outbound HL7 messages, filterable by placer order / dispatch status (§4.1.3) */
+        get: operations["getApiAdminExternalinterfacesMessagesOutbound"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/outbound/{messageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single outbound message incl. the ACK/NACK chain (§4.1.3) */
+        get: operations["getApiAdminExternalinterfacesMessagesOutboundByMessageId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/messages/outbound/{messageId}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual retry of a failed/dlq outbound message after a DLQ landing (D9; step-up) (§4.1.3) */
+        post: operations["postApiAdminExternalinterfacesMessagesOutboundByMessageIdRetry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/metrics/listener-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-feed listener socket status (up/down + last message time) (§4.1.5) */
+        get: operations["getApiAdminExternalinterfacesMetricsListenerstatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/nppes/providers/{npi}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one cached platform-shared NPPES provider (public directory, no PHI) (§4.1.4) */
+        get: operations["getApiAdminExternalinterfacesNppesProvidersByNpi"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/external-interfaces/nppes/sync-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List NPPES sync-run history (§4.1.4) */
+        get: operations["getApiAdminExternalinterfacesNppesSyncruns"];
+        put?: never;
+        /** Trigger a manual NPPES sync — platform-only (`nppes_platform_job_caller`, W-XI-12; step-up). A tenant session is refused; the real sync runs under the platform scheduler (§4.1.4) */
+        post: operations["postApiAdminExternalinterfacesNppesSyncruns"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/plans": {
         parameters: {
             query?: never;
@@ -496,6 +891,108 @@ export interface paths {
         put?: never;
         /** Replay a webhook */
         post: operations["postApiAdminWebhooksStripeReplayByEventId"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clinical/labs/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List caseload lab observations, filterable by patient/loinc/abnormal-flag (§4.2) */
+        get: operations["getApiClinicalLabsObservations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clinical/labs/observations/{observationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Single observation with its value rows (`lab_observation_patient_caseload_or_scope`, D20) (§4.2) */
+        get: operations["getApiClinicalLabsObservationsByObservationId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clinical/labs/observations/{observationId}/acknowledge-abnormal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** RN acknowledges an abnormal-flag alert; clears the M36 badge (D7) (§4.2) */
+        post: operations["postApiClinicalLabsObservationsByObservationIdAcknowledgeabnormal"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clinical/labs/observations/{observationId}/attach-patient": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Manual patient attach for an unmatched result (step-up). Phase-1 fail-closed 501: materializing a lab_observation from the stored wire message lands in T-29.13 (§4.2) */
+        post: operations["postApiClinicalLabsObservationsByObservationIdAttachpatient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clinical/labs/observations/{observationId}/discard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discard an unmatched result (reason required, step-up). Phase-1 deferred to T-29.13 (§4.2) */
+        post: operations["postApiClinicalLabsObservationsByObservationIdDiscard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/clinical/labs/observations/unmatched": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The unmatched-lab review queue (failed patient-match cascade, D6; review-unmatched role) (§4.2) */
+        get: operations["getApiClinicalLabsObservationsUnmatched"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -17254,6 +17751,686 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiAdminExternalinterfacesFeeds: {
+        parameters: {
+            query?: {
+                kind?: "adt_inbound" | "lab_inbound" | "orm_outbound";
+                status?: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesFeeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "adt_inbound" | "lab_inbound" | "orm_outbound";
+                    displayName: string;
+                    host?: string;
+                    port: number;
+                    protocol: "mllp_tls" | "mllp_plain";
+                    channelCertPin?: string;
+                    sendingFacilityAllowlist?: string[];
+                    baaContractRef?: string;
+                    /** Format: date-time */
+                    baaExpiresOn?: string;
+                    rateLimitMsgPerSec?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesFeedsByFeedId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiAdminExternalinterfacesFeedsByFeedId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    host?: string;
+                    channelCertPin?: string;
+                    sendingFacilityAllowlist?: string[];
+                    baaContractRef?: string;
+                    /** Format: date-time */
+                    baaExpiresOn?: string;
+                    rateLimitMsgPerSec?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesFeedsByFeedIdActivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesFeedsByFeedIdCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesFeedsByFeedIdCredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "mllp_client_cert" | "mllp_channel_password";
+                    secret: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesFeedsByFeedIdHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesFeedsByFeedIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    /** Format: uuid */
+                    primaryApproverId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesFeedsByFeedIdSuspend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                feedId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesHealthAggregate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesInboundproposals: {
+        parameters: {
+            query?: {
+                status?: "pending" | "accepted" | "rejected" | "expired";
+                ownerModule?: "m5" | "m6";
+                feedId?: string;
+                proposedForPatientId?: string;
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesInboundproposalsByProposalId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesInboundproposalsByProposalIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    decisionNote?: string;
+                    /** Format: uuid */
+                    acceptedAggregateId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesInboundproposalsByProposalIdDefer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesInboundproposalsByProposalIdReject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    rationale: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesMessagesInbound: {
+        parameters: {
+            query?: {
+                feedId?: string;
+                messageType?: string;
+                messageControlId?: string;
+                parseStatus?: "in_progress" | "parsed" | "parse_error" | "rejected";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesMessagesInboundByMessageId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesMessagesInboundByMessageIdDecrypt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesMessagesInboundByMessageIdReplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesMessagesOutbound: {
+        parameters: {
+            query?: {
+                feedId?: string;
+                placerOrderNumber?: string;
+                status?: "queued" | "in_flight" | "acked" | "naked" | "failed" | "dlq";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesMessagesOutboundByMessageId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesMessagesOutboundByMessageIdRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesMetricsListenerstatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesNppesProvidersByNpi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                npi: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminExternalinterfacesNppesSyncruns: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminExternalinterfacesNppesSyncruns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind?: "daily_incremental" | "weekly_dissemination" | "monthly_deactivation" | "manual";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiAdminPlans: {
         parameters: {
             query?: never;
@@ -18626,6 +19803,160 @@ export interface operations {
                         ok: boolean;
                     };
                 };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiClinicalLabsObservations: {
+        parameters: {
+            query?: {
+                patientId?: string;
+                loincCode?: string;
+                abnormalFlag?: "H" | "L" | "HH" | "LL" | "A" | "N";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiClinicalLabsObservationsByObservationId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiClinicalLabsObservationsByObservationIdAcknowledgeabnormal: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiClinicalLabsObservationsByObservationIdAttachpatient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiClinicalLabsObservationsByObservationIdDiscard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiClinicalLabsObservationsUnmatched: {
+        parameters: {
+            query?: {
+                patientId?: string;
+                loincCode?: string;
+                abnormalFlag?: "H" | "L" | "HH" | "LL" | "A" | "N";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

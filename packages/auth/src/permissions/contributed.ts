@@ -5208,6 +5208,160 @@ export function m35ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M35_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * Module 29 (External Interfaces) — the twenty-one §4.7 permission keys registered into M3's catalog
+ * (M29-T08). Two audiences: the operator / compliance-officer surface (`external_interfaces.*` feed,
+ * credential, proposal, message, nppes admin keys, `/api/admin/external-interfaces/*`) and the narrow
+ * clinician surface (`external_interfaces.lab.*`, `/api/clinical/labs/*`). The `abac` cell names the
+ * DEFAULT predicate the route composes — M3's intrinsic `inOrg` for the org-scoped feed/message/nppes-read
+ * surfaces, and the six M29-owned predicates where §4.8 calls for a resource-level check
+ * (`hl7_inbound_proposal_owner_module_match` on accept/reject, `external_feed_compliance_co_approver_distinct`
+ * on revoke, `nppes_platform_job_caller` on the platform sync trigger, `lab_observation_patient_caseload_or_scope`
+ * on the lab reads/writes). It is CATALOG METADATA mirrored to the DB `permission` row, not the route's whole
+ * gate: several §4.1 routes layer a step-up gate + a second `requireAbac` the guard factory composes.
+ */
+export const M29_CONTRIBUTED_PERMISSIONS = {
+  // ── feed onboarding + credential lifecycle (§4.1.1) ─────────────────────────────────────────────────
+  "external_interfaces.feed.read": {
+    resource: "external_feed",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "external_interfaces.feed.create": {
+    resource: "external_feed",
+    action: "create",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "external_interfaces.feed.update": {
+    resource: "external_feed",
+    action: "update",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "external_interfaces.feed.activate": {
+    resource: "external_feed",
+    action: "activate",
+    category: "compliance",
+    abac: "external_feed_baa_satisfied",
+  },
+  "external_interfaces.feed.suspend": {
+    resource: "external_feed",
+    action: "suspend",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "external_interfaces.feed.revoke": {
+    resource: "external_feed",
+    action: "revoke",
+    category: "compliance",
+    abac: "external_feed_compliance_co_approver_distinct",
+  },
+  "external_interfaces.credential.read": {
+    resource: "external_feed_credential",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "external_interfaces.credential.rotate": {
+    resource: "external_feed_credential",
+    action: "rotate",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── inbound ADT proposal review (§4.1.2) ────────────────────────────────────────────────────────────
+  "external_interfaces.proposal.read": {
+    resource: "hl7_inbound_proposal",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "external_interfaces.proposal.accept": {
+    resource: "hl7_inbound_proposal",
+    action: "accept",
+    category: "clinical",
+    abac: "hl7_inbound_proposal_owner_module_match",
+  },
+  "external_interfaces.proposal.reject": {
+    resource: "hl7_inbound_proposal",
+    action: "reject",
+    category: "admin",
+    abac: "hl7_inbound_proposal_owner_module_match",
+  },
+  "external_interfaces.proposal.defer": {
+    resource: "hl7_inbound_proposal",
+    action: "defer",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // ── HL7 message search / replay / decrypt (§4.1.3) ──────────────────────────────────────────────────
+  "external_interfaces.message.read": {
+    resource: "hl7_message_inbound",
+    action: "read",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "external_interfaces.message.read_plaintext": {
+    resource: "hl7_message_inbound",
+    action: "read_plaintext",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "external_interfaces.message.replay": {
+    resource: "hl7_message_inbound",
+    action: "replay",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  "external_interfaces.message.retry": {
+    resource: "hl7_message_outbound",
+    action: "retry",
+    category: "compliance",
+    abac: "inOrg",
+  },
+  // ── NPPES administration (§4.1.4) ───────────────────────────────────────────────────────────────────
+  "external_interfaces.nppes.read": {
+    resource: "nppes_provider",
+    action: "read",
+    category: "admin",
+    abac: "inOrg",
+  },
+  "external_interfaces.nppes.sync_trigger": {
+    resource: "nppes_sync_run",
+    action: "sync_trigger",
+    category: "platform",
+    abac: "nppes_platform_job_caller",
+  },
+  // ── clinician lab surface (§4.2) ────────────────────────────────────────────────────────────────────
+  "external_interfaces.lab.read": {
+    resource: "lab_observation",
+    action: "read",
+    category: "clinical",
+    abac: "lab_observation_patient_caseload_or_scope",
+  },
+  "external_interfaces.lab.review_unmatched": {
+    resource: "lab_observation",
+    action: "review_unmatched",
+    category: "clinical",
+    abac: "lab_observation_patient_caseload_or_scope",
+  },
+  "external_interfaces.lab.acknowledge_abnormal": {
+    resource: "lab_observation",
+    action: "acknowledge_abnormal",
+    category: "clinical",
+    abac: "lab_observation_patient_caseload_or_scope",
+  },
+} satisfies Record<string, PermissionDef>;
+
+/** Union of the M29 contributed permission keys (twenty-one). */
+export type M29ContributedPermissionKey = keyof typeof M29_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M29 contributed keys into `permission`-table mirror rows (M29 §4.7). */
+export function m29ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M29_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -5247,5 +5401,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m28ContributedPermissionMirrorRows(),
     ...m31ContributedPermissionMirrorRows(),
     ...m35ContributedPermissionMirrorRows(),
+    ...m29ContributedPermissionMirrorRows(),
   ];
 }

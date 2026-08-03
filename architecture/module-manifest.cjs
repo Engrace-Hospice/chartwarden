@@ -811,7 +811,9 @@ exports.MODULES = [
     id: 29,
     name: "External Interfaces",
     codePaths: ["apps/backend/src/modules/29-external-interfaces"],
-    dependsOn: [5, 11, 40],
+    // +M1 (M29-T08): the backend module imports the @wardenx/db barrel + the M1-owned bootstrap seam
+    // registry (registerSeam/getSeam) to publish its §4.4 read seams — real compile edges (see .ts manifest).
+    dependsOn: [1, 5, 11, 40],
     ownedTables: [
       "external_feed",
       "external_feed_credential",
