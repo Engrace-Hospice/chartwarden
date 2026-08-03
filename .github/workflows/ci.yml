@@ -95,6 +95,11 @@ jobs:
           - { name: "M32 AI Platform", script: "test:rls:live:m32" }
           - { name: "M33 Reporting", script: "test:rls:live:m33" }
           - { name: "M34 SaaS Platform", script: "test:rls:live:m34" }
+          - { name: "M28 FHIR Gateway", script: "test:rls:live:m28" }
+          - { name: "M29 External Interfaces", script: "test:rls:live:m29" }
+          - { name: "M31 Portal & Telehealth", script: "test:rls:live:m31" }
+          - { name: "M35 Subscription Billing", script: "test:rls:live:m35" }
+          - { name: "M37 IPU Management", script: "test:rls:live:m37" }
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:
