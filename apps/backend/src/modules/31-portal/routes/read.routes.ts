@@ -9,6 +9,7 @@
 // history, M9 trend, M10 HOPE, M11 orders, M21 supplies, M40 grief) resolve their seam through a LOCAL
 // structural shape with an OPTIONAL method, so a missing arm yields the empty lay view rather than a type
 // error or a leak (D17). No route reads a raw clinical field.
+import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -40,9 +41,6 @@ interface PortalPatientLayArm {
   getPortalOrderSummary?(orgId: string, patientId: string): Promise<unknown[]>;
   getPortalDeliveryView?(orgId: string, patientId: string): Promise<unknown[]>;
   portalSummary?(orgId: string, patientId: string): Promise<{ category: string; problems: unknown[]; redacted: boolean }>;
-}
-interface GriefResourceArm {
-  resourcesForOrg?(orgId: string): Promise<unknown[]>;
 }
 interface MessagingArm {
   syncCareTeamChannel?(orgId: string, patientId: string): Promise<{ channelId: string }>;
@@ -348,9 +346,22 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     },
     async (request) => {
       const actor = actorOf(request);
-      return layList("bereavement", () =>
-        arm<GriefResourceArm>("ExternalGriefResourceReader").resourcesForOrg?.(actor.organizationId),
-      );
+      // TASK-015/ARCH-018 — a real, registered seam now (deny-stub until M40 builds the catalog); a
+      // typed direct call, not the `arm()` cast-and-hope indirection. `layList`'s catch-to-empty-200
+      // would make "the catalog doesn't exist yet" indistinguishable from "this org has no resources"
+      // — an honest 501 says which one it is.
+      try {
+        const items = await getSeam("ExternalGriefResourceReader").resourcesForOrg(
+          actor.organizationId,
+        );
+        return { category: "bereavement", items };
+      } catch {
+        throw new WardenXError(
+          "NOT_IMPLEMENTED",
+          "external grief resources are not yet available (M40 has not built this catalog)",
+          501,
+        );
+      }
     },
   );
 }

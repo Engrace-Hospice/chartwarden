@@ -310,3 +310,31 @@ export interface PatientCoverageReader {
     onDate: string;
   }): Promise<PatientCoverage | null>;
 }
+
+// ── PatientCaregiverReader / PatientAddressReader seams (TASK-015 — M31 portal ABAC) ─────────────────
+
+/**
+ * The M31 `portal_caregiver_is_primary_or_dpoa` ABAC predicate's read: is a given M2 `userId` the
+ * PRIMARY caregiver on file for a patient? DENY-STUB ONLY today — `patient_caregiver` records
+ * `caregiverId`/`isPrimary` but M5's `caregiver` row carries no column linking it to an M2 user
+ * account, and `portal_account` carries a `userId` with no back-link to `caregiverId` either. No
+ * schema path from a caregiver row to a `userId` exists yet, so a real impl cannot honestly answer
+ * this question — it would have to guess or over-claim. The predicate's own fail-closed default
+ * (§8.2: an unreadable seam denies) is the correct behavior until that link is added.
+ */
+export interface PatientCaregiverReader {
+  /** The M2 userId of the patient's PRIMARY caregiver, or null (none on file, or no user link). */
+  primaryCaregiverUserId(organizationId: string, patientId: string): Promise<string | null>;
+}
+
+/**
+ * The M31 `state_two_party_recording_consent_present` ABAC predicate's read (D9 / §3.8): a patient's
+ * current residence state, to check against the two-party recording-consent matrix. REAL impl —
+ * `patient_address` already carries `state` + `isPrimary` + `effectiveTo` (M5 §3.3), a straightforward
+ * current-primary-row query.
+ */
+export interface PatientAddressReader {
+  /** The 2-letter state code of the patient's current (effective_to IS NULL) PRIMARY address, or null
+   *  (no primary address, or its state is unset — e.g. a non-US address). */
+  primaryResidenceState(organizationId: string, patientId: string): Promise<string | null>;
+}

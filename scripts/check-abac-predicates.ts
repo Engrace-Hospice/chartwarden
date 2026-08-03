@@ -161,10 +161,17 @@ for (const [file, src] of sources) {
     for (const m of src.slice(open, close).matchAll(/^\s*(\w+)\s*[,:]/gm)) addDeclared(m[1]!, file);
   }
 
-  const registersHere = src.includes("registerPredicate(");
+  // `registerPredicateIdempotent` is the idempotent-reboot seam (packages/auth/src/abac/registry.ts)
+  // every module's `register*AbacPredicates()` calls instead of the old hand-rolled
+  // `if (abacRegistry.has(name)) continue; registerPredicate(name, predicate);` idiom — a plain
+  // substring match on `registerPredicate(` must not miss it (it is NOT a substring of
+  // `registerPredicateIdempotent(`, since "Idempotent(" ≠ "(").
+  const registersHere =
+    src.includes("registerPredicate(") || src.includes("registerPredicateIdempotent(");
 
-  // Literal registrations: registerPredicate("name", fn).
-  for (const m of src.matchAll(/registerPredicate\(\s*(['"])(.*?)\1/g)) addDeclared(m[2]!, file);
+  // Literal registrations: registerPredicate("name", fn) / registerPredicateIdempotent("name", fn).
+  for (const m of src.matchAll(/registerPredicate(?:Idempotent)?\(\s*(['"])(.*?)\1/g))
+    addDeclared(m[2]!, file);
 
   // Per-module ownership sets: `export const M<N>_..._PREDICATES = [...]`, the convention every
   // abac-predicates.ts follows (their registrars loop over a record keyed by these names).

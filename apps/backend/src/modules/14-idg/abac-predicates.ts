@@ -23,7 +23,7 @@
 // filter applies (registered by M5/M6/M7) — bound by USING the name at the route, not re-registered here.
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { decisionMeetsQuorum, evaluateQuorum } from "@wardenx/idg";
 
 /** The §4.7 predicate names M14 owns (registered into M3). Single-owner across the platform registry. */
@@ -127,7 +127,6 @@ export function buildIdgAbacPredicates(
 export function registerIdgAbacPredicates(deps: IdgAbacDeps): void {
   const predicates = buildIdgAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

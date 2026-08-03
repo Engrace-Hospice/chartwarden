@@ -137,27 +137,17 @@ const READ_CLAIM = CLAIM_CASELOAD("billing.claim.read");
  * Returns `undefined` for an unrestricted actor and an ARRAY to narrow to exactly those providers. The
  * role set is imported from the predicate module so this filter and the point-read gate cannot drift.
  *
- * ⚠ `context.providerEntityIds` IS NOT ASSEMBLED YET. `request-context.ts` initializes it to `[]` and
- * nothing anywhere populates it — `ActorEnrichment` (the M3-owned port that fills `membershipId` +
- * `roles`) has no provider-entity field, and no membership→ProviderEntity association exists to read.
- * So an empty array today means "this fact was never assembled", NOT "the actor is scoped to zero
- * providers", and those two must not be the same answer: treating the unassembled default as a
- * restriction would silently empty the claim list for every non-org-admin, which is a quieter and
- * worse failure than the 404 this replaces. Until the fact is real we therefore do not narrow — the
- * list behaves exactly like its sibling `/noe-records` and `/notr-records` collections, which carry
- * RBAC only and lean on `billing.claim.read` plus RLS org-scoping.
- *
- * WHEN `providerEntityIds` IS POPULATED: delete the `scope.length === 0` early return below. From that
- * point an empty array correctly means "no provider scope ⇒ no claims" and the filter narrows for real.
+ * `context.providerEntityIds` is now assembled (TASK-013/ARCH-008 — `bootstrap/plugins/authenticate.ts`
+ * stamps it from the actor's `ActorEnrichment`), so an empty array here is a real fact: this actor's
+ * membership carries no `defaultProviderEntityId`, which correctly narrows the list to zero claims
+ * rather than leaving it unrestricted.
  */
 export function resolveClaimProviderScope(request: FastifyRequest): readonly string[] | undefined {
   const ctx = request.context;
   const roles = ctx?.roles ?? [];
   if (ORG_WIDE_BILLING_SCOPE_ROLES.some((r) => roles.includes(r))) return undefined;
   if (ctx?.attributes?.actorKind === "system") return undefined; // M25/M26 service-to-service
-  const scope = ctx?.providerEntityIds ?? [];
-  if (scope.length === 0) return undefined; // unassembled, not "scoped to nothing" — see above
-  return scope;
+  return ctx?.providerEntityIds ?? [];
 }
 
 const ASSEMBLE = P("billing.claim.assemble");

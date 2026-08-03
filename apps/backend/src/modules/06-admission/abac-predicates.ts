@@ -14,8 +14,8 @@
 // Drizzle resolver in the M6 workflow tasks.
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests)
-// guards on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+// is idempotent via registerPredicateIdempotent.
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
 import type { AdmissionAbacResolver } from "./routes/service";
 
@@ -155,7 +155,6 @@ export function buildAdmissionAbacPredicates(
 export function registerAdmissionAbacPredicates(deps: AdmissionAbacDeps): void {
   const predicates = buildAdmissionAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

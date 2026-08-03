@@ -1,7 +1,7 @@
 // apps/backend/src/modules/09-assessments — M9 Clinical Assessments Suite module entrypoint. M9-T04
 // publishes the two §4.7 / D7 owned seams (LatestAssessmentProvider + ScaleSeriesProvider) + their
 // registration hook; M9-T05 adds the §4.1 route inventory over an in-memory backend, plus the two §4.7
-// ABAC predicates M9 owns (`discipline_can_record_scale` / `cosigner_role_match`). The pure domain core
+// ABAC predicates M9 owns (`discipline_can_record_scale` / `m9.cosigner_role_match`). The pure domain core
 // (lifecycle/scoring/cosign/eligibility) lives in @wardenx/assessments; the §4.6 permission keys M9
 // contributes to M3 live in @wardenx/auth (M9_CONTRIBUTED_PERMISSIONS).
 import type { DbClient } from "@wardenx/db";

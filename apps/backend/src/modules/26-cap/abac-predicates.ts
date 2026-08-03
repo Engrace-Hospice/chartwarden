@@ -14,7 +14,7 @@
 //
 // Default-deny throughout: a missing/cross-tenant row or an un-suppliable target id resolves to deny. No PHI
 // is read (status + methodology enums + a settlement status only).
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
@@ -156,7 +156,6 @@ export function buildM26AbacPredicates(
 export function registerM26AbacPredicates(deps: ReadingM26AbacDeps = {}): void {
   const predicates = buildM26AbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

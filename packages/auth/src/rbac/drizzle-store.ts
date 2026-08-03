@@ -110,12 +110,22 @@ export function registerDbEffectivePermissionResolver(db: DbClient): RbacEngineH
  * reflect only currently-effective grants; the authoritative permission set still flows through the
  * effective-permission resolver.
  */
+/** M1's `membership.default_location_ids` is jsonb; normalize whatever is stored into a string list
+ *  (the M20/M21 `locationIdsOf` convention — see `apps/backend/src/modules/20-field-safety/seams/store-drizzle.ts`). */
+function locationIdsOf(raw: unknown): readonly string[] {
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
+}
+
 export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentReader {
   return {
     async read(scope: OrgScope, userId: string): Promise<ActorEnrichment | null> {
       return withOrgContext(db, { organizationId: scope.orgId, userId }, async (tx) => {
         const memberships = await tx
-          .select({ id: schema.memberships.id })
+          .select({
+            id: schema.memberships.id,
+            defaultProviderEntityId: schema.memberships.defaultProviderEntityId,
+            defaultLocationIds: schema.memberships.defaultLocationIds,
+          })
           .from(schema.memberships)
           .where(
             and(
@@ -146,7 +156,14 @@ export function createDbActorEnrichmentReader(db: DbClient): ActorEnrichmentRead
               .map((r) => r.roleKey),
           ),
         ];
-        return { membershipId: membership.id, roles };
+        return {
+          membershipId: membership.id,
+          roles,
+          providerEntityIds: membership.defaultProviderEntityId
+            ? [membership.defaultProviderEntityId]
+            : [],
+          locationIds: locationIdsOf(membership.defaultLocationIds),
+        };
       });
     },
   };

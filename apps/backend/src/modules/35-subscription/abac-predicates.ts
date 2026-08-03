@@ -26,8 +26,7 @@ import {
   type AbacContext,
   type AbacTarget,
   PLATFORM_OPS_ROLE_KEYS,
-  abacRegistry,
-  registerPredicate,
+  registerPredicateIdempotent,
 } from "@wardenx/auth";
 
 /** The §4.8 predicate names M35 OWNS and registers into M3 (five). `inOrg` (M3) is excluded — re-used. */
@@ -145,7 +144,6 @@ export function buildM35AbacPredicates(): Record<
 export function registerM35AbacPredicates(): void {
   const predicates = buildM35AbacPredicates();
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

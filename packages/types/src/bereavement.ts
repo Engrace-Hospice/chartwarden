@@ -846,3 +846,21 @@ export interface BereavementComplianceProvider {
 export interface BereavementRiskTierProvider {
   tierDistribution(scope: BereavementScope): Promise<BereavementRiskTierDistribution>;
 }
+
+/** TASK-015 — one M40 `external_grief_resource` row, the M31 bereaved-portal "resources" list item. */
+export interface ExternalGriefResource {
+  readonly id: ExternalGriefResourceId;
+  readonly name: string;
+  readonly url: string | null;
+  readonly description: string | null;
+}
+
+/**
+ * The M31 bereaved-portal resources read (`GET /portal/bereavement/resources`). DENY-STUB ONLY today
+ * — no `external_grief_resource` table exists anywhere in `packages/db` (M40 has not built this
+ * surface); `ExternalGriefResourceId` above is a forward-reference type alias only, per the existing
+ * comment on that type. Fails closed (empty list) until M40 ships the catalog and registers a real impl.
+ */
+export interface ExternalGriefResourceReader {
+  resourcesForOrg(organizationId: string): Promise<readonly ExternalGriefResource[]>;
+}

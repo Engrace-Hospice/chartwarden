@@ -29,7 +29,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { FhirInboundOwnerModule } from "@wardenx/types";
 
 /** The §4.7 predicate names M28 OWNS (registered into M3). Single-owner across the platform registry. */
@@ -264,7 +264,6 @@ export function buildFhirGatewayAbacPredicates(deps: FhirGatewayAbacDeps): Recor
 export function registerFhirGatewayAbacPredicates(deps: FhirGatewayAbacDeps): void {
   const predicates = buildFhirGatewayAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

@@ -20,7 +20,7 @@
 // the db handle). Every fact read is against an M25-OWNED table (denial_case / appeal_case) plus the core
 // `memberships` row that resolves the acting membership. Default-deny throughout: a missing/cross-tenant row
 // or an un-suppliable target id resolves to deny. No PHI is read (ids + a deadline instant only).
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
@@ -192,7 +192,6 @@ export function buildM25AbacPredicates(
 export function registerM25AbacPredicates(deps: ReadingM25AbacDeps = {}): void {
   const predicates = buildM25AbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

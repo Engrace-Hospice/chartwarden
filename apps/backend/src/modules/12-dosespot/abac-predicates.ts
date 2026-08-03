@@ -21,8 +21,8 @@
 // at the route (it is each clinical key's default ABAC), not by re-registering it. The M11 seam predicates
 // (`signer_eligible` / `cosigner_role_match`) are owned by M11 and registered by 11-orders; M12's sign /
 // cosign routes reference them by name. Registration is idempotent: the shared registry is single-owner /
-// no-clear, so re-boot (tests) guards on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+// no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { MedClass } from "@wardenx/types";
 import { prescriberEligible } from "./prescriber-eligibility";
 import type { DoseSpotAbacResolver } from "./routes/service";
@@ -99,7 +99,6 @@ export function buildDoseSpotAbacPredicates(
 export function registerDoseSpotAbacPredicates(deps: DoseSpotAbacDeps): void {
   const predicates = buildDoseSpotAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

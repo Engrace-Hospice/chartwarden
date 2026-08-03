@@ -1,10 +1,16 @@
 import type { DbClient } from "@wardenx/db";
-import type { PatientCoverageReader, PatientMutator, PatientReader } from "@wardenx/types";
+import type {
+  PatientAddressReader,
+  PatientCoverageReader,
+  PatientMutator,
+  PatientReader,
+} from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 // apps/backend/src/modules/05-patient/seams — M5's published cross-module seams (M5-T07/T08).
 // M5 closes THREE M3/Wave-A boot-gate deny-stubs, all required by validateSeams(): CaseloadProvider
 // (§4.1, T07 — also wires the `caseload_membership` ABAC predicate), PatientReader (§4.8, T08), and
 // PatientMutator (§4.9, T08). `registerPatientSeams` registers them all from the composition root.
+import { buildPatientAddressReader } from "../address-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
 import {
@@ -68,6 +74,11 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // present: without one there is no coverage data to project, and the deny-stub's loud failure is the
   // honest answer (an empty coverage list would read as "this patient has no insurance").
   if (deps.db) registerSeam("PatientCoverageReader", buildPatientCoverageReader(deps.db));
+  // TASK-015/ARCH-018 — the M31 two-party-recording-consent residence-state read. Same posture as
+  // PatientCoverageReader: registered only with a db present, since there is no address data to read
+  // without one and the deny-stub's loud failure is honest (the ABAC predicate already fails closed
+  // on an unreadable residence — see the interface doc).
+  if (deps.db) registerSeam("PatientAddressReader", buildPatientAddressReader(deps.db));
   registerSeam(
     "PatientReader",
     createPatientReader(deps.readerStore ?? createInMemoryPatientReaderStore().store),
@@ -86,6 +97,11 @@ export function getPatientReader(): PatientReader {
 /** Typed resolver for M5's §3.4 PatientCoverageReader seam (the billing payer-resolution read). */
 export function getPatientCoverageReader(): PatientCoverageReader {
   return getSeam("PatientCoverageReader");
+}
+
+/** Typed resolver for M5's PatientAddressReader seam (the M31 two-party-recording-consent read). */
+export function getPatientAddressReader(): PatientAddressReader {
+  return getSeam("PatientAddressReader");
 }
 
 /** Typed resolver for M5's PatientMutator seam. */

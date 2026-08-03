@@ -17,7 +17,7 @@
 // DEFERRAL (the M25/M26 posture): the per-caseload narrowing of `medicaid_claim_in_billing_manager_caseload`
 // binds when the M5 CaseloadProvider seam binds; until then the org-RLS row-existence floor stands (a claim
 // not in the acting org always denies). Noted in P3; full caseload narrowing is a follow-up.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
@@ -199,7 +199,6 @@ export function buildM24AbacPredicates(
 export function registerM24AbacPredicates(deps: ReadingM24AbacDeps = {}): void {
   const predicates = buildM24AbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

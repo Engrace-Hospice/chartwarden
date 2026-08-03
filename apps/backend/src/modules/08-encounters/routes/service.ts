@@ -1,7 +1,7 @@
 // apps/backend/src/modules/08-encounters/routes/service.ts — M8-T09 the EncounterRouteService + an
 // in-memory slice (§4.1). The route handlers compose over this; production injects a Drizzle-backed
 // service (writes under `withOrgContext` so RLS scopes by `app.org_id`). The slice also exposes an
-// EncounterAbacResolver over the SAME dataset so M8's §4.6 `cosigner_role_match` predicate resolves an
+// EncounterAbacResolver over the SAME dataset so M8's §4.6 `m8.cosigner_role_match` predicate resolves an
 // encounter's author/discipline without a cross-module schema import. Mirrors the M6/M7 routes/service.ts
 // precedent: pure-ish (no clock except the injected `now()` so version/sign timestamps are deterministic
 // in tests), every guard failure surfaces as an `EncounterStateError` (the §2.7 code → HTTP map).
@@ -35,7 +35,7 @@ import {
   checkVersion,
 } from "../lifecycle/validation";
 
-/** The §4.6 owner facts the `cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
+/** The §4.6 owner facts the `m8.cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
 export interface EncounterAbacFacts {
   readonly encounterId: string;
   readonly patientId: string;

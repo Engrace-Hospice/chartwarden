@@ -159,7 +159,7 @@ export interface VerbalPolicyArgs {
   readonly npCosignRequiredKinds?: readonly OrderKind[];
 }
 
-/** The §4.7 ABAC facts the order resolver loads for a target order id (for `signer_eligible` / `cosigner_role_match`). */
+/** The §4.7 ABAC facts the order resolver loads for a target order id (for `signer_eligible` / `m11.cosigner_role_match`). */
 export interface OrderAbacFacts {
   readonly kind: OrderKind;
   readonly drafterMembershipId: string;

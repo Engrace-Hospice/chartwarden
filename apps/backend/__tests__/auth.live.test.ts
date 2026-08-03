@@ -286,10 +286,12 @@ describe.skipIf(!DB_URL)(
           [`en-${Date.now()}`],
         )
       ).rows[0].id as string;
+      // TASK-013/ARCH-008 — the PE/location scope the live reader must also assemble.
+      const pe = crypto.randomUUID();
       const membership = (
         await admin.query(
-          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
-          [userId, org],
+          "INSERT INTO membership (user_id,organization_id,status,default_provider_entity_id,default_location_ids) VALUES ($1,$2,'active',$3,$4) RETURNING id",
+          [userId, org, pe, JSON.stringify(["loc-a", "loc-b"])],
         )
       ).rows[0].id as string;
       const liveRole = (
@@ -317,6 +319,9 @@ describe.skipIf(!DB_URL)(
       expect(enrichment?.membershipId).toBe(membership);
       // Only the current (non-expired) role is reported; the closed window is dropped (§7.2).
       expect(enrichment?.roles).toEqual(["en-rn"]);
+      // TASK-013/ARCH-008 — the PE/location scope `authenticate.ts` stamps onto request.context.
+      expect(enrichment?.providerEntityIds).toEqual([pe]);
+      expect(enrichment?.locationIds).toEqual(["loc-a", "loc-b"]);
 
       // A user with no active membership in the org → null (no actor context).
       expect(await reader.read({ orgId: org }, crypto.randomUUID())).toBeNull();

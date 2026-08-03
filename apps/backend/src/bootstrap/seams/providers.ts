@@ -16,6 +16,7 @@ import type {
   AdmissionStatusReader,
   AuditorSessionMinter,
   BillingStatusProvider,
+  ExternalGriefResourceReader,
   ExternalInterfaceMetricsProvider,
   IpuAdmissionReader,
   IpuBedAssignmentProvider,
@@ -80,6 +81,8 @@ import type {
   OnCallProvider,
   OrderProvider,
   OrderSignatureProvider,
+  PatientAddressReader,
+  PatientCaregiverReader,
   PatientCoverageReader,
   PatientMutator,
   PatientReader,
@@ -170,6 +173,41 @@ export const patientCoverageReaderDenyStub: PatientCoverageReader = {
   },
   activeCoverageOfKind() {
     throw new NotImplementedError("PatientCoverageReader");
+  },
+};
+
+/**
+ * M31 `portal_caregiver_is_primary_or_dpoa` ABAC read — deny-stub ONLY, no real impl to register: no
+ * caregiver→user schema link exists (see the interface doc in @wardenx/types). Denying loudly on call
+ * (rather than the unregistered-name `SeamError` the cast-resolved call site used to throw) keeps the
+ * same fail-closed behavior the ABAC predicate already relies on, just through a registered contract.
+ */
+export const patientCaregiverReaderDenyStub: PatientCaregiverReader = {
+  primaryCaregiverUserId() {
+    throw new NotImplementedError("PatientCaregiverReader");
+  },
+};
+
+/**
+ * M31 `state_two_party_recording_consent_present` ABAC read (D9/§3.8). M5 registers a real impl over
+ * `patient_address` at boot; this is the fail-closed default for a boot without a DB (the ABAC
+ * predicate already treats an unreadable residence as fail-closed-to-two-party, so a thrown deny-stub
+ * here does not change that posture — it only removes the unregistered-name `SeamError` path).
+ */
+export const patientAddressReaderDenyStub: PatientAddressReader = {
+  primaryResidenceState() {
+    throw new NotImplementedError("PatientAddressReader");
+  },
+};
+
+/**
+ * M31 bereaved-portal `/resources` read. Deny-stub ONLY — no `external_grief_resource` table exists;
+ * M40 has not built this catalog. The route now returns 501 on this throw instead of silently
+ * swallowing it into an empty 200 (see `31-portal/routes/read.routes.ts`).
+ */
+export const externalGriefResourceReaderDenyStub: ExternalGriefResourceReader = {
+  resourcesForOrg() {
+    throw new NotImplementedError("ExternalGriefResourceReader");
   },
 };
 

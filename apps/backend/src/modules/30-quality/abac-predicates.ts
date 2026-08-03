@@ -38,7 +38,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards
 // on `abacRegistry.has` (the M33 `registerM33AbacPredicates` / M34 precedent). Never fails open.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { schema } from "@wardenx/db";
 import type { QualityDb } from "@wardenx/quality";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -563,7 +563,6 @@ export function buildM30AbacPredicates(
 export function registerM30AbacPredicates(deps: ReadingM30AbacDeps = {}): void {
   const predicates = buildM30AbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

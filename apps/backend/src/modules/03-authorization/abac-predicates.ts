@@ -10,13 +10,12 @@
 // table), then to the pure `isStepUpRecent` decision (packages/auth · step-up.ts) against the platform
 // floor `STEP_UP_POLICY`. Fail-closed throughout: no session id on the request, no org, or a missing/
 // stale/non-qualifying step-up all deny. Registered once, idempotently (the registry is single-owner /
-// no-clear, so re-boot in tests guards on `abacRegistry.has`).
+// no-clear, so re-boot in tests is idempotent via `registerPredicateIdempotent`).
 import {
   type AbacContext,
   type AbacTarget,
-  abacRegistry,
   isStepUpRecent,
-  registerPredicate,
+  registerPredicateIdempotent,
 } from "@wardenx/auth";
 import { STEP_UP_POLICY } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
@@ -38,9 +37,8 @@ export const M3_IN_ORG_PREDICATE = "inOrg";
  * `deps.now` is injectable for deterministic tests (defaults to wall-clock at evaluation time).
  */
 export function registerAuthorizationAbacPredicates(deps: { now?: () => number } = {}): void {
-  if (abacRegistry.has(M3_STEP_UP_PREDICATE)) return; // single-owner; re-boot (tests) re-points safely
   const now = deps.now ?? (() => Date.now());
-  registerPredicate(M3_STEP_UP_PREDICATE, async (context: AbacContext, _target: AbacTarget) => {
+  registerPredicateIdempotent(M3_STEP_UP_PREDICATE, async (context: AbacContext, _target: AbacTarget) => {
     const sessionId =
       typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
     if (!sessionId || !context.organizationId) return false; // fail-closed

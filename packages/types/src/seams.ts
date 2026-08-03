@@ -16,6 +16,7 @@ import type {
   BereavementPlanProvider,
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
+  ExternalGriefResourceReader,
 } from "./bereavement";
 import type { CarePlanReader } from "./care-plan";
 import type {
@@ -71,7 +72,13 @@ import type {
   TriageCallReader,
 } from "./oncall";
 import type { OrderProvider, OrderSignatureProvider } from "./orders";
-import type { PatientCoverageReader, PatientMutator, PatientReader } from "./patient";
+import type {
+  PatientAddressReader,
+  PatientCaregiverReader,
+  PatientCoverageReader,
+  PatientMutator,
+  PatientReader,
+} from "./patient";
 // @wardenx/types — Boot-registered SEAM contracts (Phase 0 skeleton).
 //
 // Per ADR-0005 D1, cross-module consumption via a boot-registered seam needs NO
@@ -138,6 +145,9 @@ export type SeamName =
   | "CaseloadProvider" // M5/M17 — which patients an actor may see
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
+  | "PatientCaregiverReader" // M5 — TASK-015: is a user the patient's primary caregiver (M31 portal ABAC); deny-stub only
+  | "PatientAddressReader" // M5 — TASK-015: patient residence state (M31 portal two-party-recording ABAC)
+  | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
   | "PatientMutator" // M5 — apply an M29-proposal/amendment field diff (§4.9; D12 strip)
   | "DocumentRenderer" // M22 — render a typed payload to a stored document (W2 handshake)
   | "DocumentStorageProvider" // M22 — per-tenant object storage (presign + version-aware destroy; §4.3/D1)
@@ -478,12 +488,19 @@ export interface DocumentRenderer {
 /**
  * The authenticated actor a `SessionContextResolver` resolves a request to (M2 spec §4.7).
  * `membershipId` is null for a PRE-ORG session (post-login, before `select-organization`).
+ * `providerEntityIds`/`locationIds` are the actor's ABAC scope (ARCH-008/009): the membership's
+ * `defaultProviderEntityId`/`defaultLocationIds`, assembled here so `provider_entity_scope` /
+ * `location_scope` (packages/auth/src/abac/registry.ts) and every module's own PE/location
+ * predicate (M14 `idg_meeting_scope`, M20/M23/M24's PE checks) have real data instead of the
+ * permanently-`[]` fields `authenticate.ts` used to leave unassembled.
  */
 export interface ResolvedActor {
   readonly userId: string;
   readonly membershipId: string | null;
   readonly organizationId: string;
   readonly roles: readonly string[];
+  readonly providerEntityIds: readonly string[];
+  readonly locationIds: readonly string[];
 }
 
 /** The membership + active role keys for an actor in one org (the actor-context fields M3 owns). */
@@ -492,6 +509,10 @@ export interface ActorEnrichment {
   readonly membershipId: string | null;
   /** The actor's current (enabled, non-expired) role keys in the scope org. */
   readonly roles: readonly string[];
+  /** The membership's `defaultProviderEntityId`, as a single-element array (empty when null). */
+  readonly providerEntityIds: readonly string[];
+  /** The membership's `defaultLocationIds` (empty when the membership has none/is absent). */
+  readonly locationIds: readonly string[];
 }
 
 /**
@@ -608,6 +629,9 @@ export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
   PatientReader: PatientReader;
   PatientCoverageReader: PatientCoverageReader;
+  PatientCaregiverReader: PatientCaregiverReader;
+  PatientAddressReader: PatientAddressReader;
+  ExternalGriefResourceReader: ExternalGriefResourceReader;
   PatientMutator: PatientMutator;
   DocumentRenderer: DocumentRenderer;
   // M22's `DocumentStorageProvider` (§4.3 / §11 D1) is LEAF-TYPED — its interface lives in ./documents

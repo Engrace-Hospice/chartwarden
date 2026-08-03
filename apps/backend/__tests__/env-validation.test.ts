@@ -27,6 +27,8 @@ const GOOD: EnvLike = {
   MESSAGING_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
   CURSOR_SIGNING_KEY: "z".repeat(32),
   TRUSTED_PROXY_CIDRS: "10.0.0.0/8",
+  // TASK-013 — the internal-seam machine-credential shared secret (authenticate.ts).
+  INTERNAL_SERVICE_TOKEN: "w".repeat(32),
 };
 
 describe("collectEnvProblems", () => {
@@ -122,6 +124,13 @@ describe("collectEnvProblems", () => {
   it("flags a too-short cursor signing key", () => {
     const problems = collectEnvProblems({ ...GOOD, CURSOR_SIGNING_KEY: "short" });
     expect(problems).toEqual([{ key: "CURSOR_SIGNING_KEY", problem: "must be at least 32 characters" }]);
+  });
+
+  it("flags a too-short internal service token", () => {
+    const problems = collectEnvProblems({ ...GOOD, INTERNAL_SERVICE_TOKEN: "short" });
+    expect(problems).toEqual([
+      { key: "INTERNAL_SERVICE_TOKEN", problem: "must be at least 32 characters" },
+    ]);
   });
 });
 

@@ -21,7 +21,7 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so a re-boot (tests) guards
 // on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { Hl7ProposalOwnerModule } from "@wardenx/types";
 
 /** The §4.8 predicate names M29 OWNS (registered into M3). Single-owner across the platform registry. */
@@ -243,7 +243,6 @@ export function buildM29AbacPredicates(
 export function registerM29AbacPredicates(deps: M29AbacDeps): void {
   const predicates = buildM29AbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

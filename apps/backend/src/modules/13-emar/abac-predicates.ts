@@ -23,8 +23,8 @@
 //
 // The §4.7 `caseload_or_scope` predicate is SHARED (registered by M5/M6/M7) — M13 binds it by USING the name at
 // the route (it is each clinical key's default ABAC), not by re-registering it. Registration is idempotent: the
-// shared registry is single-owner / no-clear, so re-boot (tests) guards on `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@wardenx/auth";
+// shared registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { controlledSubstanceWitnessEligible } from "@wardenx/emar";
 import type { ReconciliationTriggerKind } from "@wardenx/types";
 
@@ -175,7 +175,6 @@ export function buildEmarAbacPredicates(
 export function registerEmarAbacPredicates(deps: EmarAbacDeps): void {
   const predicates = buildEmarAbacPredicates(deps);
   for (const [name, predicate] of Object.entries(predicates)) {
-    if (abacRegistry.has(name)) continue;
-    registerPredicate(name, predicate);
+    registerPredicateIdempotent(name, predicate);
   }
 }

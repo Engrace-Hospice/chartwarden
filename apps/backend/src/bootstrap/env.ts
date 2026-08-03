@@ -112,6 +112,16 @@ const REQUIREMENTS: readonly Requirement[] = [
     // in production behind a load balancer that silently breaks client-IP-derived rate limiting/audit.
     key: "TRUSTED_PROXY_CIDRS",
   },
+  {
+    // TASK-013/ARCH-008 — the shared secret an internal (non-interactive) caller presents to
+    // authenticate as a system principal (`bootstrap/plugins/authenticate.ts`), the only way
+    // `requireSystemPrincipal()`-gated routes (M23 #39/#40, M15's `/internal/...` seams) become
+    // reachable. Required in production for the same reason as M13_WITNESS_SIGNING_KEY: without it
+    // the feature the fix ships is silently inert (those routes stay permanently 403), which is safe
+    // but should be a deliberate deploy choice, not an unset-and-forgotten secret.
+    key: "INTERNAL_SERVICE_TOKEN",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
 ];
 
 /**
