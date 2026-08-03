@@ -38,7 +38,14 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
   // R23 — list the org's registered clients.
   app.get(
     "/api/v1/fhir/clients",
-    { preHandler: [P("fhir.client.read"), ABAC_IN_ORG("fhir.client.read")] },
+    {
+      preHandler: [P("fhir.client.read"), ABAC_IN_ORG("fhir.client.read")],
+      config: {
+        auditRead: {
+          none: "FHIR API client registry metadata (name/type/tier/scopes/rate-limit); no patient data.",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { status } = parseQuery(ClientListQuery, request.query);
@@ -140,7 +147,14 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
   // R29 — list the client's sessions (the active-bearer ledger).
   app.get(
     "/api/v1/fhir/clients/:id/sessions",
-    { preHandler: [P("fhir.client.session.read"), ABAC_CLIENT_ORG("fhir.client.session.read")] },
+    {
+      preHandler: [P("fhir.client.session.read"), ABAC_CLIENT_ORG("fhir.client.session.read")],
+      config: {
+        auditRead: {
+          none: "OAuth session metadata (jti/scopes/issued-expires-revoked); no patient data.",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClientIdParams, request.params);

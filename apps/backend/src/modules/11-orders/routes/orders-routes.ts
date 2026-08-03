@@ -83,39 +83,63 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   const { service } = deps;
 
   // 1 — list orders by patient / admission / kind / status.
-  app.get("/api/v1/orders", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(OrderListQuerySchema, request.query);
-    return service.listOrders(organizationId, { patientId: q.patientId, admissionId: q.admissionId, kind: q.kind, status: q.status });
-  });
+  app.get(
+    "/api/v1/orders",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(OrderListQuerySchema, request.query);
+      return service.listOrders(organizationId, { patientId: q.patientId, admissionId: q.admissionId, kind: q.kind, status: q.status });
+    },
+  );
 
   // (these static collection routes precede `/orders/:id` so the radix tree resolves them first.)
   // 13 — physician's pending-signature inbox.
-  app.get("/api/v1/orders/pending-signature", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.pendingSignature(organizationId);
-  });
+  app.get(
+    "/api/v1/orders/pending-signature",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.pendingSignature(organizationId);
+    },
+  );
   // 14 — RN's verbal-expiring queue.
-  app.get("/api/v1/orders/verbal-expiring", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.verbalExpiring(organizationId);
-  });
+  app.get(
+    "/api/v1/orders/verbal-expiring",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.verbalExpiring(organizationId);
+    },
+  );
   // 15 — RN's cosign-pending queue.
-  app.get("/api/v1/orders/cosign-pending", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.cosignPending(organizationId);
-  });
+  app.get(
+    "/api/v1/orders/cosign-pending",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.cosignPending(organizationId);
+    },
+  );
   // 16 — lab orders with results awaiting clinician review (D17).
-  app.get("/api/v1/orders/results-pending-review", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.resultsPendingReview(organizationId);
-  });
+  app.get(
+    "/api/v1/orders/results-pending-review",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "lab_order", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.resultsPendingReview(organizationId);
+    },
+  );
   // 17 — derived suggestion banner state (D7).
-  app.get("/api/v1/orders/suggestions/:patientId", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { patientId } = parse(PatientParamsSchema, request.params);
-    return service.suggestions(organizationId, patientId);
-  });
+  app.get(
+    "/api/v1/orders/suggestions/:patientId",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "order_suggestion", patientIdParam: "patientId" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { patientId } = parse(PatientParamsSchema, request.params);
+      return service.suggestions(organizationId, patientId);
+    },
+  );
 
   // 3 — create a draft order (RN/LPN/MD etc. per `discipline_can_order`).
   app.post("/api/v1/orders", { preHandler: [DRAFT, ABAC_DRAFT] }, async (request, reply) => {
@@ -131,11 +155,15 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   });
 
   // 2 — order detail with signatures + discontinuation history.
-  app.get("/api/v1/orders/:id", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    return service.getOrder(organizationId, id);
-  });
+  app.get(
+    "/api/v1/orders/:id",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "order", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      return service.getOrder(organizationId, id);
+    },
+  );
 
   // 4 — edit a draft (status='draft' only).
   app.patch("/api/v1/orders/:id", { preHandler: [DRAFT] }, async (request) => {
@@ -221,16 +249,24 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   });
 
   // 18 — list standing orders.
-  app.get("/api/v1/standing-orders", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.listStandingOrders(organizationId);
-  });
+  app.get(
+    "/api/v1/standing-orders",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "standing_order", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listStandingOrders(organizationId);
+    },
+  );
   // 19 — standing-order template + spawn history.
-  app.get("/api/v1/standing-orders/:id", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(StandingOrderParamsSchema, request.params);
-    return service.getStandingOrder(organizationId, id);
-  });
+  app.get(
+    "/api/v1/standing-orders/:id",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "standing_order", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(StandingOrderParamsSchema, request.params);
+      return service.getStandingOrder(organizationId, id);
+    },
+  );
   // 20 — create template.
   app.post("/api/v1/standing-orders", { preHandler: [STANDING_MANAGE] }, async (request, reply) => {
     const { organizationId, userId } = actorOf(request);
@@ -277,10 +313,17 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   });
 
   // 26 — org-admin verbal-policy read.
-  app.get("/api/v1/admin/orders/verbal-policy", { preHandler: [POLICY_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.getVerbalPolicy(organizationId);
-  });
+  app.get(
+    "/api/v1/admin/orders/verbal-policy",
+    {
+      preHandler: [POLICY_READ],
+      config: { auditRead: { none: "org-level verbal-order policy configuration; no patient-identifying data" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getVerbalPolicy(organizationId);
+    },
+  );
   // 27 — org-admin verbal-policy update (service enforces tighten-only).
   app.put("/api/v1/admin/orders/verbal-policy", { preHandler: [POLICY_MANAGE] }, async (request) => {
     const { organizationId } = actorOf(request);

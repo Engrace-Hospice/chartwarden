@@ -21,7 +21,14 @@ export function registerAdminConfigRoutes(app: FastifyInstance, deps: AdminConfi
   // R37 — read the tenant's FHIR config.
   app.get(
     "/api/v1/fhir/config",
-    { preHandler: [P("fhir.config.read"), ABAC_IN_ORG("fhir.config.read")] },
+    {
+      preHandler: [P("fhir.config.read"), ABAC_IN_ORG("fhir.config.read")],
+      config: {
+        auditRead: {
+          none: "org-level FHIR gateway configuration (host, SLA windows, dedup window); no patient data.",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       return { config: await store.getConfig(actor.organizationId) };

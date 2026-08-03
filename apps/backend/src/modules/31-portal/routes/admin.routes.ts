@@ -49,7 +49,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   );
   app.get(
     "/api/v1/admin/portal-invitations",
-    { preHandler: [P("portal.invitation.read"), ABAC_IN_ORG("portal.invitation.read"), NO_OFFSET] },
+    {
+      preHandler: [P("portal.invitation.read"), ABAC_IN_ORG("portal.invitation.read"), NO_OFFSET],
+      config: { auditRead: { resourceKind: "portal_invitation", list: true } },
+    },
     async (request) => {
       actorOf(request);
       return { items: [] };
@@ -111,7 +114,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   );
   app.get(
     "/api/v1/admin/portal-accounts",
-    { preHandler: [P("portal.account.read_list"), ABAC_IN_ORG("portal.account.read_list"), NO_OFFSET] },
+    {
+      preHandler: [P("portal.account.read_list"), ABAC_IN_ORG("portal.account.read_list"), NO_OFFSET],
+      config: { auditRead: { resourceKind: "portal_account", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const rows = await store.accountList(actor.organizationId);
@@ -129,7 +135,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   );
   app.get(
     "/api/v1/admin/portal-accounts/:id/access-grants",
-    { preHandler: [P("portal.account.read_grants"), ABAC_IN_ORG("portal.account.read_grants"), NO_OFFSET] },
+    {
+      preHandler: [P("portal.account.read_grants"), ABAC_IN_ORG("portal.account.read_grants"), NO_OFFSET],
+      config: { auditRead: { resourceKind: "portal_access_grant", resourceIdParam: "id" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id } = request.params as { id: string };
@@ -160,7 +169,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   // ── telehealth admin ─────────────────────────────────────────────────────────────────────────────────
   app.get(
     "/api/v1/admin/telehealth/visits",
-    { preHandler: [P("telehealth.read_list"), ABAC_IN_ORG("telehealth.read_list"), NO_OFFSET] },
+    {
+      preHandler: [P("telehealth.read_list"), ABAC_IN_ORG("telehealth.read_list"), NO_OFFSET],
+      config: { auditRead: { resourceKind: "telehealth_visit", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const rows = await store.telehealthList(actor.organizationId);

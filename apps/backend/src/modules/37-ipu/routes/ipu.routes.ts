@@ -53,7 +53,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   const { service } = deps;
 
   // 1. GET /inpatient-units — list units for org. §4.1.
-  app.get("/api/v1/inpatient-units", { preHandler: [P("m37.unit.read")] }, async (request) => ({
+  app.get(
+    "/api/v1/inpatient-units",
+    { preHandler: [P("m37.unit.read")], config: { auditRead: { none: "unit configuration (display name, bed count, coverage/SLA settings) — no patient data" } } },
+    async (request) => ({
     items: await service.listUnits(actorOf(request)),
   }));
 
@@ -87,7 +90,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   );
 
   // 5. GET/POST /inpatient-units/:id/rooms — list / create rooms. §4.1.
-  app.get("/api/v1/inpatient-units/:id/rooms", { preHandler: [P("m37.room.read")] }, async (request) => {
+  app.get(
+    "/api/v1/inpatient-units/:id/rooms",
+    { preHandler: [P("m37.room.read")], config: { auditRead: { none: "room configuration (room number, kind, bed count) — no patient data" } } },
+    async (request) => {
     const { id } = parse(IdParamsSchema, request.params);
     return { items: await service.listRooms(actorOf(request), id) };
   });
@@ -105,7 +111,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 7. GET/POST /ipu-rooms/:id/beds — list / create beds. §4.1.
-  app.get("/api/v1/ipu-rooms/:id/beds", { preHandler: [P("m37.bed.read")] }, async (request) => {
+  app.get(
+    "/api/v1/ipu-rooms/:id/beds",
+    { preHandler: [P("m37.bed.read")], config: { auditRead: { none: "bed configuration + cleaning status — no occupant/patient data" } } },
+    async (request) => {
     const { id } = parse(IdParamsSchema, request.params);
     return { items: await service.listBeds(actorOf(request), id) };
   });
@@ -123,9 +132,13 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 10. GET /ipu-admissions — list admissions. §4.1.
-  app.get("/api/v1/ipu-admissions", { preHandler: [P("m37.ipu_admission.read")] }, async (request) => ({
-    items: await service.listAdmissions(actorOf(request)),
-  }));
+  app.get(
+    "/api/v1/ipu-admissions",
+    { preHandler: [P("m37.ipu_admission.read")], config: { auditRead: { resourceKind: "ipu_admission", list: true } } },
+    async (request) => ({
+      items: await service.listAdmissions(actorOf(request)),
+    }),
+  );
 
   // 11. POST /ipu-admissions — open admission (GIP/IRC compose the RN-coverage gate). §4.1.
   app.post(
@@ -139,7 +152,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   );
 
   // 12. GET /ipu-admissions/:id — read admission detail. §4.1.
-  app.get("/api/v1/ipu-admissions/:id", { preHandler: [P("m37.ipu_admission.read")] }, async (request, reply) => {
+  app.get(
+    "/api/v1/ipu-admissions/:id",
+    { preHandler: [P("m37.ipu_admission.read")], config: { auditRead: { resourceKind: "ipu_admission", resourceIdParam: "id" } } },
+    async (request, reply) => {
     const { id } = parse(IdParamsSchema, request.params);
     const view = await service.getAdmission(actorOf(request), id);
     if (!view) return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_admission not found" });
@@ -280,9 +296,13 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 25. GET/POST /ipu-shifts — list / create shifts. §4.1.
-  app.get("/api/v1/ipu-shifts", { preHandler: [P("m37.shift.read")] }, async (request) => ({
-    items: await service.listShifts(actorOf(request)),
-  }));
+  app.get(
+    "/api/v1/ipu-shifts",
+    { preHandler: [P("m37.shift.read")], config: { auditRead: { none: "unit shift schedule (start/end times, staff assignments by membership) — no patient data" } } },
+    async (request) => ({
+      items: await service.listShifts(actorOf(request)),
+    }),
+  );
   app.post("/api/v1/ipu-shifts", { preHandler: [P("m37.shift.create")] }, async (request, reply) => {
     const actor = writeActorOf(request);
     return reply.code(201).send(await service.createShift(actor, parse(CreateShiftBodySchema, request.body)));
@@ -301,7 +321,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 27. GET /ipu-units/:id/rn-coverage — read the coverage window. §4.1.
-  app.get("/api/v1/ipu-units/:id/rn-coverage", { preHandler: [P("m37.shift.read")] }, async (request) => {
+  app.get(
+    "/api/v1/ipu-units/:id/rn-coverage",
+    { preHandler: [P("m37.shift.read")], config: { auditRead: { none: "per-hour RN-coverage boolean for a unit — staffing state, no patient data" } } },
+    async (request) => {
     const { id } = parse(IdParamsSchema, request.params);
     return service.getRnCoverage(actorOf(request), id);
   });
@@ -347,9 +370,13 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 33. GET/POST /ipu-equipment — list / create equipment. §4.1.
-  app.get("/api/v1/ipu-equipment", { preHandler: [P("m37.equipment.read")] }, async (request) => ({
-    items: await service.listEquipment(actorOf(request)),
-  }));
+  app.get(
+    "/api/v1/ipu-equipment",
+    { preHandler: [P("m37.equipment.read")], config: { auditRead: { none: "durable equipment inventory (serial, type, status, inspection due date) — no patient data" } } },
+    async (request) => ({
+      items: await service.listEquipment(actorOf(request)),
+    }),
+  );
   app.post("/api/v1/ipu-equipment", { preHandler: [P("m37.equipment.create")] }, async (request, reply) => {
     const actor = writeActorOf(request);
     return reply.code(201).send(await service.createEquipment(actor, parse(CreateEquipmentBodySchema, request.body)));
@@ -377,7 +404,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 37. GET/POST /ipu-body-release/:admissionId — read / advance body-release state. §4.1.
-  app.get("/api/v1/ipu-body-release/:admissionId", { preHandler: [P("m37.body_release.coordinate")] }, async (request, reply) => {
+  app.get(
+    "/api/v1/ipu-body-release/:admissionId",
+    { preHandler: [P("m37.body_release.coordinate")], config: { auditRead: { resourceKind: "ipu_body_release", resourceIdParam: "admissionId" } } },
+    async (request, reply) => {
     const { admissionId } = parse(AdmissionIdParamsSchema, request.params);
     const view = await service.getBodyRelease(actorOf(request), admissionId);
     if (!view) return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_body_release not found" });
@@ -390,7 +420,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   });
 
   // 38. GET /ipu-census/:date — read census snapshot for a date. §4.1.
-  app.get("/api/v1/ipu-census/:date", { preHandler: [P("m37.census.read")] }, async (request) => {
+  app.get(
+    "/api/v1/ipu-census/:date",
+    { preHandler: [P("m37.census.read")], config: { auditRead: { none: "per-unit census snapshot — aggregate bed/day/turnover counts for a service date, no patient identity" } } },
+    async (request) => {
     const { date } = parse(DateParamsSchema, request.params);
     return service.getCensus(actorOf(request), date);
   });

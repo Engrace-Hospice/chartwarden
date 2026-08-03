@@ -191,25 +191,37 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   });
 
   // 8 — read one administration.
-  app.get("/api/v1/administrations/:id", { preHandler: [READ] }, async (request) => {
+  app.get(
+    "/api/v1/administrations/:id",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "administration", resourceIdParam: "id" } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     return service.getAdministration(organizationId, id);
-  });
+  },
+  );
 
   // 9 — list administrations for a patient.
-  app.get("/api/v1/administrations", { preHandler: [READ] }, async (request) => {
+  app.get(
+    "/api/v1/administrations",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "administration", list: true } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(AdministrationListQuerySchema, request.query);
     return service.listAdministrations(organizationId, { patient: q.patient, since: q.since, until: q.until });
-  });
+  },
+  );
 
   // 10 — list an IV continuous session sequence.
-  app.get("/api/v1/administrations/iv-sessions/:sessionId", { preHandler: [READ] }, async (request) => {
+  app.get(
+    "/api/v1/administrations/iv-sessions/:sessionId",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "iv_session", resourceIdParam: "sessionId" } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const { sessionId } = parse(SessionParamsSchema, request.params);
     return service.getIvSession(organizationId, sessionId);
-  });
+  },
+  );
 
   // 11 — record a refusal (patient declined; administering_clinician_eligible ABAC floor).
   app.post("/api/v1/administrations/refuse", { preHandler: [RECORD_REFUSAL, ABAC_ADMINISTER] }, async (request, reply) => {
@@ -243,11 +255,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   });
 
   // 13 — read the scheduled-dose timeline.
-  app.get("/api/v1/scheduled-doses", { preHandler: [READ] }, async (request) => {
+  app.get(
+    "/api/v1/scheduled-doses",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "scheduled_dose", list: true } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(ScheduledDoseQuerySchema, request.query);
     return service.listScheduledDoses(organizationId, { patient: q.patient, from: q.from, to: q.to });
-  });
+  },
+  );
 
   // 14 — record an intentional hold before the grace window expires.
   app.post("/api/v1/scheduled-doses/:id/intentional-hold", { preHandler: [RECORD_MISSED] }, async (request) => {
@@ -258,11 +274,15 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   });
 
   // 15 — list missed doses for a patient.
-  app.get("/api/v1/missed-doses", { preHandler: [READ_MISSED] }, async (request) => {
+  app.get(
+    "/api/v1/missed-doses",
+    { preHandler: [READ_MISSED], config: { auditRead: { resourceKind: "missed_dose", list: true } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(MissedDoseQuerySchema, request.query);
     return service.listMissedDoses(organizationId, { patient: q.patient, since: q.since });
-  });
+  },
+  );
 
   // 16 — case manager acknowledges a missed dose.
   app.post("/api/v1/missed-doses/:id/acknowledge", { preHandler: [ACK_MISSED] }, async (request) => {
@@ -272,18 +292,26 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   });
 
   // 17 — list reconciliation worksheets for a patient.
-  app.get("/api/v1/reconciliation/worksheets", { preHandler: [RECON_READ] }, async (request) => {
+  app.get(
+    "/api/v1/reconciliation/worksheets",
+    { preHandler: [RECON_READ], config: { auditRead: { resourceKind: "reconciliation_worksheet", list: true } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(WorksheetQuerySchema, request.query);
     return service.listWorksheets(organizationId, q.patient);
-  });
+  },
+  );
 
   // 18 — read one worksheet with its lines + decisions.
-  app.get("/api/v1/reconciliation/worksheets/:id", { preHandler: [RECON_READ] }, async (request) => {
+  app.get(
+    "/api/v1/reconciliation/worksheets/:id",
+    { preHandler: [RECON_READ], config: { auditRead: { resourceKind: "reconciliation_worksheet", resourceIdParam: "id" } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     return service.getWorksheet(organizationId, id);
-  });
+  },
+  );
 
   // 19 — record a per-line decision (reconciliation_authoring_eligible ABAC).
   app.post("/api/v1/reconciliation/worksheets/:id/decisions", { preHandler: [RECON_DECIDE, ABAC_RECON_DECIDE] }, async (request, reply) => {
@@ -330,18 +358,26 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   });
 
   // 24 — list active and historical comfort-kit deployments.
-  app.get("/api/v1/comfort-kits/deployments", { preHandler: [KIT_READ] }, async (request) => {
+  app.get(
+    "/api/v1/comfort-kits/deployments",
+    { preHandler: [KIT_READ], config: { auditRead: { resourceKind: "comfort_kit_deployment", list: true } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const q = parse(DeploymentQuerySchema, request.query);
     return service.listDeployments(organizationId, q.patient);
-  });
+  },
+  );
 
   // 25 — read one deployment with its drawdowns.
-  app.get("/api/v1/comfort-kits/deployments/:id", { preHandler: [KIT_READ] }, async (request) => {
+  app.get(
+    "/api/v1/comfort-kits/deployments/:id",
+    { preHandler: [KIT_READ], config: { auditRead: { resourceKind: "comfort_kit_deployment", resourceIdParam: "id" } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     return service.getDeployment(organizationId, id);
-  });
+  },
+  );
 
   // 26 — manual return acknowledgment (Phase-1 fallback when M21 absent).
   app.post("/api/v1/comfort-kits/deployments/:id/acknowledge-return", { preHandler: [KIT_ACK_RETURN] }, async (request) => {
@@ -352,10 +388,14 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
   });
 
   // 27 — read tenant administration policy.
-  app.get("/api/v1/admin/administration-policy", { preHandler: [POLICY] }, async (request) => {
+  app.get(
+    "/api/v1/admin/administration-policy",
+    { preHandler: [POLICY], config: { auditRead: { none: "organization-level administration policy configuration (grace window, PRN interval, PDF-on-commit flag); no patient data" } } },
+    async (request) => {
     const { organizationId } = actorOf(request);
     return service.getPolicy(organizationId);
-  });
+  },
+  );
 
   // 28 — update tenant administration policy (step-up enforced upstream).
   app.put("/api/v1/admin/administration-policy", { preHandler: [POLICY] }, async (request) => {

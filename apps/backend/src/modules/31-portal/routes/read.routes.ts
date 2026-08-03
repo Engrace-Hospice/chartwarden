@@ -306,7 +306,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
   // notification preferences (read) — M31 owns no preference table; reconciled against M36 availability.
   app.get(
     "/api/v1/portal/notification-preferences",
-    { preHandler: [P("portal.preferences.read_own"), ABAC_ACCOUNT("portal.preferences.read_own")] },
+    {
+      preHandler: [P("portal.preferences.read_own"), ABAC_ACCOUNT("portal.preferences.read_own")],
+      config: { auditRead: { none: "static default notification-preference stub; M31 owns no preference table, no patient data" } },
+    },
     async (request) => {
       actorOf(request);
       return {

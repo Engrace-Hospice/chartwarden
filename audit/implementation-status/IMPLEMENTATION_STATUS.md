@@ -44,7 +44,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M32 AI Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 32/32 ✅ | ❌ | ✅ | — | 13/13 ✅ |
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 42/42 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 48/48 ✅ | ✅ | ✅ | — | 17/17 ✅ |
-| M35 Subscription Billing | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 3/21 ⚠️ |
+| M35 Subscription Billing | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 9/21 ⚠️ |
 | M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 22/22 ✅ | ✅ | ✅ | — | 15/15 ✅ |
 | M37 Inpatient Unit (IPU) Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | — | 8/26 ⚠️ |
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 8/8 ✅ | ✅ | ✅ | — | 13/13 ✅ |

@@ -125,14 +125,24 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   );
 
   // ── Versions ───────────────────────────────────────────────────────────────────────────────────
-  app.get("/api/v1/care-plans/:planId/versions", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.listVersions(organizationId, planIdOf(request));
-  });
+  app.get(
+    "/api/v1/care-plans/:planId/versions",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "care_plan_version", resourceIdParam: "planId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listVersions(organizationId, planIdOf(request));
+    },
+  );
 
   app.get(
     "/api/v1/care-plans/:planId/versions/:versionId",
-    { preHandler: [READ] },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "care_plan_version", resourceIdParam: "versionId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { planId, versionId } = parse(PlanVersionParamsSchema, request.params);
@@ -354,22 +364,39 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
   );
 
   // ── Summary + overdue + internal element picker (reads over the §7.8 CarePlanReader seam) ───────
-  app.get("/api/v1/care-plans/:planId/summary", { preHandler: [READ_SUMMARY] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const planId = planIdOf(request);
-    const allowSud = await sudDisclosureAllowed({ organizationId, patientId: "", planId });
-    return service.getSummary(organizationId, planId, { sudDisclosureAllowed: allowSud });
-  });
+  app.get(
+    "/api/v1/care-plans/:planId/summary",
+    {
+      preHandler: [READ_SUMMARY],
+      config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const planId = planIdOf(request);
+      const allowSud = await sudDisclosureAllowed({ organizationId, patientId: "", planId });
+      return service.getSummary(organizationId, planId, { sudDisclosureAllowed: allowSud });
+    },
+  );
 
-  app.get("/api/v1/care-plans/:planId/overdue-status", { preHandler: [READ] }, async (request) => {
-    actorOf(request);
-    const q = parse(RelevantElementsQuerySchema, request.query);
-    return getSeam("CarePlanReader").isReviewOverdue(q.patientId);
-  });
+  app.get(
+    "/api/v1/care-plans/:planId/overdue-status",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "care_plan", resourceIdParam: "planId" } },
+    },
+    async (request) => {
+      actorOf(request);
+      const q = parse(RelevantElementsQuerySchema, request.query);
+      return getSeam("CarePlanReader").isReviewOverdue(q.patientId);
+    },
+  );
 
   app.get(
     "/api/v1/internal/care-plan/relevant-elements",
-    { preHandler: [READ] },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "care_plan_element" } },
+    },
     async (request) => {
       actorOf(request);
       const q = parse(RelevantElementsQuerySchema, request.query);

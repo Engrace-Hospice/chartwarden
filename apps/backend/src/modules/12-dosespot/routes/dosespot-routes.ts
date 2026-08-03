@@ -102,16 +102,23 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   const { service } = deps;
 
   // 1 — list medication orders.
-  app.get("/api/v1/medication-orders", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(MedicationOrderListQuerySchema, request.query);
-    return service.listOrders(organizationId, {
-      patientId: q.patientId,
-      prescriberId: q.prescriberId,
-      medClass: q.medClass,
-      status: q.status,
-    });
-  });
+  app.get(
+    "/api/v1/medication-orders",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "medication_order", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(MedicationOrderListQuerySchema, request.query);
+      return service.listOrders(organizationId, {
+        patientId: q.patientId,
+        prescriberId: q.prescriberId,
+        medClass: q.medClass,
+        status: q.status,
+      });
+    },
+  );
 
   // 3 — create draft (prescriber_eligible ABAC floor on the body's medClass).
   app.post(
@@ -143,11 +150,18 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 2 — medication order detail.
-  app.get("/api/v1/medication-orders/:id", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    return service.getOrder(organizationId, id);
-  });
+  app.get(
+    "/api/v1/medication-orders/:id",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      return service.getOrder(organizationId, id);
+    },
+  );
 
   // 4 — edit a draft.
   app.patch("/api/v1/medication-orders/:id", { preHandler: [DRAFT] }, async (request) => {
@@ -305,11 +319,18 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 15 — DoseSpot transmission status incl. retry history.
-  app.get("/api/v1/medication-orders/:id/transmission", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(OrderParamsSchema, request.params);
-    return service.getTransmission(organizationId, id);
-  });
+  app.get(
+    "/api/v1/medication-orders/:id/transmission",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "medication_order", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      return service.getTransmission(organizationId, id);
+    },
+  );
 
   // 16 — active medications for a patient.
   app.get(
@@ -363,17 +384,31 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 20 — refill inbox (refill_inbox_scope ABAC; list resolves to allow + the service narrows).
-  app.get("/api/v1/refills", { preHandler: [READ, ABAC_REFILL_SCOPE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    return service.listRefills(organizationId, userId);
-  });
+  app.get(
+    "/api/v1/refills",
+    {
+      preHandler: [READ, ABAC_REFILL_SCOPE],
+      config: { auditRead: { resourceKind: "refill", list: true } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      return service.listRefills(organizationId, userId);
+    },
+  );
 
   // 21 — refill detail.
-  app.get("/api/v1/refills/:id", { preHandler: [READ, ABAC_REFILL_SCOPE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(RefillParamsSchema, request.params);
-    return service.getRefill(organizationId, id);
-  });
+  app.get(
+    "/api/v1/refills/:id",
+    {
+      preHandler: [READ, ABAC_REFILL_SCOPE],
+      config: { auditRead: { resourceKind: "refill", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(RefillParamsSchema, request.params);
+      return service.getRefill(organizationId, id);
+    },
+  );
 
   // 22 — approve a refill (mints a new medication_order).
   app.post(
@@ -415,10 +450,19 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   });
 
   // 25 — per-tenant prescriber roster.
-  app.get("/api/v1/admin/dosespot-prescribers", { preHandler: [ROSTER] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.listPrescribers(organizationId);
-  });
+  app.get(
+    "/api/v1/admin/dosespot-prescribers",
+    {
+      preHandler: [ROSTER],
+      config: {
+        auditRead: { none: "prescriber enrollment/credential roster; no patient data" },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listPrescribers(organizationId);
+    },
+  );
 
   // 26 — enroll a prescriber into DoseSpot.
   app.post(
@@ -450,10 +494,19 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   );
 
   // 28 — refill-inbox policy read.
-  app.get("/api/v1/admin/refill-inbox-policy", { preHandler: [POLICY] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.getRefillInboxPolicy(organizationId);
-  });
+  app.get(
+    "/api/v1/admin/refill-inbox-policy",
+    {
+      preHandler: [POLICY],
+      config: {
+        auditRead: { none: "org-level refill-inbox SLA policy configuration; no patient data" },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getRefillInboxPolicy(organizationId);
+    },
+  );
 
   // 29 — refill-inbox policy update (tighten-only).
   app.patch("/api/v1/admin/refill-inbox-policy", { preHandler: [POLICY] }, async (request) => {
@@ -468,7 +521,14 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
   // 30 — controlled-substance policy read.
   app.get(
     "/api/v1/admin/controlled-substance-policy",
-    { preHandler: [POLICY] },
+    {
+      preHandler: [POLICY],
+      config: {
+        auditRead: {
+          none: "org-level controlled-substance refill policy configuration; no patient data",
+        },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.getControlledSubstancePolicy(organizationId);

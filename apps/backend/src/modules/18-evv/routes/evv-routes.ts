@@ -154,19 +154,27 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   });
 
   // 4 — fetch one event (coords only with ?include=coords + evv.read_coords; the slice returns metadata).
-  app.get("/api/v1/evv/events/:eventId", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { eventId } = parse(EventIdParams, request.params);
-    parse(EventGetQuery, request.query);
-    return service.getEvent(organizationId, eventId);
-  });
+  app.get(
+    "/api/v1/evv/events/:eventId",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "evv_visit_event", resourceIdParam: "eventId" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { eventId } = parse(EventIdParams, request.params);
+      parse(EventGetQuery, request.query);
+      return service.getEvent(organizationId, eventId);
+    },
+  );
 
   // 5 — list events by filters.
-  app.get("/api/v1/evv/events", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(EventListQuery, request.query);
-    return service.listEvents(organizationId, { visit: q.visit, clinician: q.clinician, patient: q.patient, kind: q.kind });
-  });
+  app.get(
+    "/api/v1/evv/events",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "evv_visit_event", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(EventListQuery, request.query);
+      return service.listEvents(organizationId, { visit: q.visit, clinician: q.clinician, patient: q.patient, kind: q.kind });
+    },
+  );
 
   // 6 — correction-of-record (Clinical Supervisor+, step-up; §2.3).
   app.post("/api/v1/evv/events/:eventId/correct", { preHandler: [CORRECT] }, async (request) => {
@@ -186,18 +194,31 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   });
 
   // 7 — the EVV bracket for a visit (M8's EvvBracketResolver reads this).
-  app.get("/api/v1/evv/visits/:visitId/bracket", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { visitId } = parse(VisitIdParams, request.params);
-    return service.bracketForVisit(organizationId, visitId);
-  });
+  app.get(
+    "/api/v1/evv/visits/:visitId/bracket",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "evv_visit_bracket", resourceIdParam: "visitId" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { visitId } = parse(VisitIdParams, request.params);
+      return service.bracketForVisit(organizationId, visitId);
+    },
+  );
 
   // 8 — list registered devices (self or supervisor).
-  app.get("/api/v1/evv/devices", { preHandler: [DEVICE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(MembershipIdQuery, request.query);
-    return service.listDevices(organizationId, q.membership);
-  });
+  app.get(
+    "/api/v1/evv/devices",
+    {
+      preHandler: [DEVICE_READ],
+      config: {
+        auditRead: { none: "Device inventory is clinician/device hardware metadata (platform, model, status) — carries no patient identifiers or clinical content." },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(MembershipIdQuery, request.query);
+      return service.listDevices(organizationId, q.membership);
+    },
+  );
 
   // 9 — clinician self-registers a new device (→ pending_approval).
   app.post("/api/v1/evv/devices/self-register", { preHandler: [DEVICE_REGISTER] }, async (request, reply) => {
@@ -238,10 +259,14 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   });
 
   // 14 — read geofence policy (tenant + per-address overrides).
-  app.get("/api/v1/evv/geofence-policy", { preHandler: [POLICY_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.getGeofencePolicy(organizationId);
-  });
+  app.get(
+    "/api/v1/evv/geofence-policy",
+    { preHandler: [POLICY_READ], config: { auditRead: { resourceKind: "evv_geofence_policy", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getGeofencePolicy(organizationId);
+    },
+  );
 
   // 15 — edit tenant tighten-only policy.
   app.patch("/api/v1/evv/geofence-policy/tenant", { preHandler: [POLICY_EDIT] }, async (request) => {
@@ -260,11 +285,15 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   });
 
   // 17 — open + recently-closed resolution queue.
-  app.get("/api/v1/evv/missing-resolutions", { preHandler: [MR_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(MissingResolutionListQuery, request.query);
-    return service.listMissingResolutions(organizationId, { status: q.status, visit: q.visit });
-  });
+  app.get(
+    "/api/v1/evv/missing-resolutions",
+    { preHandler: [MR_READ], config: { auditRead: { resourceKind: "evv_missing_resolution", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(MissingResolutionListQuery, request.query);
+      return service.listMissingResolutions(organizationId, { status: q.status, visit: q.visit });
+    },
+  );
 
   // 18 — assigned clinician self-attests (reason ≥40 chars; D6 ≤24h window).
   app.post("/api/v1/evv/missing-resolutions/:id/clinician-attest", { preHandler: [MR_ATTEST] }, async (request) => {
@@ -283,11 +312,15 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   });
 
   // 20 — per-state aggregator submission queue + status.
-  app.get("/api/v1/evv/aggregator-submissions", { preHandler: [AGG_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(AggregatorListQuery, request.query);
-    return service.listAggregatorSubmissions(organizationId, { stateCode: q.stateCode, status: q.status });
-  });
+  app.get(
+    "/api/v1/evv/aggregator-submissions",
+    { preHandler: [AGG_READ], config: { auditRead: { resourceKind: "evv_aggregator_submission", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(AggregatorListQuery, request.query);
+      return service.listAggregatorSubmissions(organizationId, { stateCode: q.stateCode, status: q.status });
+    },
+  );
 
   // 21 — operator-initiated resubmit (§7.9; valid from rejected/timeout).
   app.post("/api/v1/evv/aggregator-submissions/:id/resubmit", { preHandler: [AGG_RESUBMIT] }, async (request) => {
@@ -306,23 +339,40 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   });
 
   // 23 — EVV metrics (M30/M33 dashboard source).
-  app.get("/api/v1/evv/metrics", { preHandler: [READ_METRICS] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    parse(MetricsQuery, request.query);
-    return service.metrics(organizationId);
-  });
+  app.get(
+    "/api/v1/evv/metrics",
+    {
+      preHandler: [READ_METRICS],
+      config: {
+        auditRead: { none: "Pure aggregate compliance-rate percentages (org-wide rates only) — zero per-visit or per-patient breakdown." },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(MetricsQuery, request.query);
+      return service.metrics(organizationId);
+    },
+  );
 
   // 24 — clinician current last-known location (M20 supervisor live-awareness; D10 coordinate-bearing).
-  app.get("/api/v1/evv/clinician-current-location", { preHandler: [LOCATION_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(MembershipIdQuery, request.query);
-    return service.clinicianCurrentLocation(organizationId, q.membership);
-  });
+  app.get(
+    "/api/v1/evv/clinician-current-location",
+    { preHandler: [LOCATION_READ], config: { auditRead: { resourceKind: "evv_clinician_location", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(MembershipIdQuery, request.query);
+      return service.clinicianCurrentLocation(organizationId, q.membership);
+    },
+  );
 
   // 25 — portal arrival surface (timestamp only, no coordinates; portal session class).
-  app.get("/api/v1/portal/visits/:visitId/arrival", { preHandler: [PORTAL_ARRIVAL] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { visitId } = parse(VisitIdParams, request.params);
-    return service.portalArrival(organizationId, visitId);
-  });
+  app.get(
+    "/api/v1/portal/visits/:visitId/arrival",
+    { preHandler: [PORTAL_ARRIVAL], config: { auditRead: { resourceKind: "evv_visit_arrival", resourceIdParam: "visitId" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { visitId } = parse(VisitIdParams, request.params);
+      return service.portalArrival(organizationId, visitId);
+    },
+  );
 }

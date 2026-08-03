@@ -90,11 +90,18 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   const { service } = deps;
 
   // 1 — list the meeting schedule for a location/range (location-scoped server-side).
-  app.get("/api/v1/idg/schedule", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(ScheduleQuerySchema, request.query);
-    return service.listSchedule(organizationId, { location: q.location, from: q.from, to: q.to });
-  });
+  app.get(
+    "/api/v1/idg/schedule",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "idg_meeting", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(ScheduleQuerySchema, request.query);
+      return service.listSchedule(organizationId, { location: q.location, from: q.from, to: q.to });
+    },
+  );
 
   // 2 — create a recurring policy (tenant-admin scope).
   app.post("/api/v1/idg/recurring-policies", { preHandler: [SCHEDULE] }, async (request, reply) => {
@@ -113,11 +120,18 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   });
 
   // 4 — read one meeting.
-  app.get("/api/v1/idg/meetings/:id", { preHandler: [READ, SCOPE("idg.read")] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    return service.getMeeting(organizationId, id);
-  });
+  app.get(
+    "/api/v1/idg/meetings/:id",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.getMeeting(organizationId, id);
+    },
+  );
 
   // 5 — cancel a meeting (per_patient_review_floor_clear ABAC; override composed at the route).
   app.post(
@@ -217,7 +231,10 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 13 — list a meeting's packets.
   app.get(
     "/api/v1/idg/meetings/:id/packets",
-    { preHandler: [READ, SCOPE("idg.read")] },
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_packet", resourceIdParam: "id", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -228,7 +245,10 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 14 — read one patient's packet (SUD redaction applied in the read path, W-SUD-01).
   app.get(
     "/api/v1/idg/meetings/:meetingId/packets/:patientId",
-    { preHandler: [READ, SCOPE("idg.read")] },
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_packet", patientIdParam: "patientId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { meetingId, patientId } = parse(MeetingPacketParamsSchema, request.params);
@@ -352,19 +372,29 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   });
 
   // 24 — list action items (assignee self-scoped; location-scoped server-side).
-  app.get("/api/v1/idg/action-items", { preHandler: [READ] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const q = parse(ActionItemListQuerySchema, request.query);
-    return service.listActionItems(organizationId, userId, {
-      assignee: q.assignee,
-      status: q.status as IdgActionItemStatus | undefined,
-    });
-  });
+  app.get(
+    "/api/v1/idg/action-items",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "idg_action_item", list: true } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const q = parse(ActionItemListQuerySchema, request.query);
+      return service.listActionItems(organizationId, userId, {
+        assignee: q.assignee,
+        status: q.status as IdgActionItemStatus | undefined,
+      });
+    },
+  );
 
   // 25 — read a meeting's minutes.
   app.get(
     "/api/v1/idg/meetings/:id/minutes",
-    { preHandler: [READ, SCOPE("idg.read")] },
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_minutes", resourceIdParam: "id" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);

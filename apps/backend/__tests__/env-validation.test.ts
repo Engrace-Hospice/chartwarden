@@ -17,6 +17,16 @@ const GOOD: EnvLike = {
   TWO_FACTOR_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
   // M24 §8.7 — the master KEK for state trading-partner secrets (also 32 bytes base64).
   M24_CREDENTIAL_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString("base64"),
+  // TASK-008 — the §7.4 witness-attestation HMAC secret (raw string, not base64).
+  M13_WITNESS_SIGNING_KEY: "y".repeat(32),
+  // TASK-010 — the remaining Phase 2 (SEC-005/OPS-010) required vars.
+  REDIS_URL: "rediss://user:pass@host:6379",
+  DATABASE_PLATFORM_URL: "postgres://u:p@platform-host:5432/db",
+  PASSKEY_RP_ID: "app.wardenx.example",
+  WEBAUTHN_RP_ID: "app.wardenx.example",
+  MESSAGING_ENCRYPTION_KEY: Buffer.alloc(32, 3).toString("base64"),
+  CURSOR_SIGNING_KEY: "z".repeat(32),
+  TRUSTED_PROXY_CIDRS: "10.0.0.0/8",
 };
 
 describe("collectEnvProblems", () => {
@@ -39,6 +49,14 @@ describe("collectEnvProblems", () => {
         "TRUSTED_ORIGINS",
         "TWO_FACTOR_ENCRYPTION_KEY",
         "M24_CREDENTIAL_ENCRYPTION_KEY",
+        "M13_WITNESS_SIGNING_KEY",
+        "REDIS_URL",
+        "DATABASE_PLATFORM_URL",
+        "PASSKEY_RP_ID",
+        "WEBAUTHN_RP_ID",
+        "MESSAGING_ENCRYPTION_KEY",
+        "CURSOR_SIGNING_KEY",
+        "TRUSTED_PROXY_CIDRS",
       ]),
     );
   });
@@ -75,6 +93,35 @@ describe("collectEnvProblems", () => {
     expect(problems).toEqual([
       { key: "M24_CREDENTIAL_ENCRYPTION_KEY", problem: "must decode to 32 base64 bytes" },
     ]);
+  });
+
+  it("flags a too-short M13 witness signing key", () => {
+    const problems = collectEnvProblems({ ...GOOD, M13_WITNESS_SIGNING_KEY: "short" });
+    expect(problems).toEqual([
+      { key: "M13_WITNESS_SIGNING_KEY", problem: "must be at least 32 characters" },
+    ]);
+  });
+
+  it("flags a non-redis REDIS_URL", () => {
+    const problems = collectEnvProblems({ ...GOOD, REDIS_URL: "http://host:6379" });
+    expect(problems).toEqual([
+      { key: "REDIS_URL", problem: "must be a redis:// or rediss:// URL" },
+    ]);
+  });
+
+  it("flags a messaging encryption key that does not decode to 32 bytes", () => {
+    const problems = collectEnvProblems({
+      ...GOOD,
+      MESSAGING_ENCRYPTION_KEY: Buffer.alloc(16, 1).toString("base64"),
+    });
+    expect(problems).toEqual([
+      { key: "MESSAGING_ENCRYPTION_KEY", problem: "must decode to 32 base64 bytes" },
+    ]);
+  });
+
+  it("flags a too-short cursor signing key", () => {
+    const problems = collectEnvProblems({ ...GOOD, CURSOR_SIGNING_KEY: "short" });
+    expect(problems).toEqual([{ key: "CURSOR_SIGNING_KEY", problem: "must be at least 32 characters" }]);
   });
 });
 

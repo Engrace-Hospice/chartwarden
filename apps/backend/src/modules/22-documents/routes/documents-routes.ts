@@ -128,16 +128,20 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   });
 
   // 7 — list documents (static path before the :id routes; filtered + cursor-paginated).
-  app.get("/api/v1/documents", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(DocumentListQuerySchema, request.query);
-    return service.listDocuments(
-      organizationId,
-      { patientId: q.patientId, aggregateType: q.aggregateType, retentionClass: q.retentionClass },
-      q.cursor,
-      q.limit,
-    );
-  });
+  app.get(
+    "/api/v1/documents",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "document", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(DocumentListQuerySchema, request.query);
+      return service.listDocuments(
+        organizationId,
+        { patientId: q.patientId, aggregateType: q.aggregateType, retentionClass: q.retentionClass },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // 2 — upload new version of an existing document.
   app.post("/api/v1/documents/:id/versions", { preHandler: [UPLOAD] }, async (request, reply) => {
@@ -148,16 +152,23 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   });
 
   // 4 — list version history (cursor-paginated).
-  app.get("/api/v1/documents/:id/versions", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(VersionListQuerySchema, request.query);
-    return service.listVersions(organizationId, docIdOf(request), q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/documents/:id/versions",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "document_version", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(VersionListQuerySchema, request.query);
+      return service.listVersions(organizationId, docIdOf(request), q.cursor, q.limit);
+    },
+  );
 
   // 6 — mint signed URL + (in prod) 302 redirect to MinIO. ABAC: document_owner_or_caseload (§4.7).
   app.get(
     "/api/v1/documents/:id/versions/:versionId/content",
-    { preHandler: [READ_PHI, ABAC_OWNER] },
+    {
+      preHandler: [READ_PHI, ABAC_OWNER],
+      config: { auditRead: { resourceKind: "document", resourceIdParam: "versionId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id, versionId } = parse(VersionParamsSchema, request.params);
@@ -173,17 +184,25 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   );
 
   // 5 — read version metadata.
-  app.get("/api/v1/documents/:id/versions/:versionId", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id, versionId } = parse(VersionParamsSchema, request.params);
-    return service.getVersion(organizationId, id, versionId);
-  });
+  app.get(
+    "/api/v1/documents/:id/versions/:versionId",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "document_version", resourceIdParam: "versionId" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id, versionId } = parse(VersionParamsSchema, request.params);
+      return service.getVersion(organizationId, id, versionId);
+    },
+  );
 
   // 3 — read document metadata + current version metadata.
-  app.get("/api/v1/documents/:id", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.getDocument(organizationId, docIdOf(request));
-  });
+  app.get(
+    "/api/v1/documents/:id",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "document", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getDocument(organizationId, docIdOf(request));
+    },
+  );
 
   // 8 — edit metadata (legal_hold_aware ABAC denies while a hold is active, §4.7).
   app.patch("/api/v1/documents/:id", { preHandler: [EDIT, ABAC_LEGAL_HOLD] }, async (request) => {
@@ -238,19 +257,30 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   });
 
   // 13 — read batch metadata + pipeline status.
-  app.get("/api/v1/intake/uploads/:id", { preHandler: [INTAKE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(BatchParamsSchema, request.params);
-    return service.getBatch(organizationId, id);
-  });
+  app.get(
+    "/api/v1/intake/uploads/:id",
+    { preHandler: [INTAKE_READ], config: { auditRead: { resourceKind: "intake_batch", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(BatchParamsSchema, request.params);
+      return service.getBatch(organizationId, id);
+    },
+  );
 
   // 14 — read classifier output (cursor-paginated).
-  app.get("/api/v1/intake/uploads/:id/classification", { preHandler: [INTAKE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(BatchParamsSchema, request.params);
-    const q = parse(ClassificationQuerySchema, request.query);
-    return service.listClassification(organizationId, id, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/intake/uploads/:id/classification",
+    {
+      preHandler: [INTAKE_READ],
+      config: { auditRead: { resourceKind: "intake_classification", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(BatchParamsSchema, request.params);
+      const q = parse(ClassificationQuerySchema, request.query);
+      return service.listClassification(organizationId, id, q.cursor, q.limit);
+    },
+  );
 
   // 15 — human-confirm classifier results.
   app.post("/api/v1/intake/uploads/:id/classification/confirm", { preHandler: [INTAKE_CONFIRM] }, async (request) => {
@@ -261,20 +291,28 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   });
 
   // 16 — list extraction jobs for the batch (cursor-paginated).
-  app.get("/api/v1/intake/uploads/:id/jobs", { preHandler: [INTAKE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(BatchParamsSchema, request.params);
-    const q = parse(JobsListQuerySchema, request.query);
-    return service.listJobs(organizationId, id, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/intake/uploads/:id/jobs",
+    { preHandler: [INTAKE_READ], config: { auditRead: { resourceKind: "intake_job", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(BatchParamsSchema, request.params);
+      const q = parse(JobsListQuerySchema, request.query);
+      return service.listJobs(organizationId, id, q.cursor, q.limit);
+    },
+  );
 
   // 17 — read job + candidates (candidates cursor-paginated).
-  app.get("/api/v1/intake/jobs/:id", { preHandler: [INTAKE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(JobParamsSchema, request.params);
-    const q = parse(JobQuerySchema, request.query);
-    return service.getJob(organizationId, id, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/intake/jobs/:id",
+    { preHandler: [INTAKE_READ], config: { auditRead: { resourceKind: "intake_job", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(JobParamsSchema, request.params);
+      const q = parse(JobQuerySchema, request.query);
+      return service.getJob(organizationId, id, q.cursor, q.limit);
+    },
+  );
 
   // 18 — open extraction_review session (acquires lock).
   app.post("/api/v1/intake/uploads/:id/review", { preHandler: [INTAKE_REVIEW] }, async (request, reply) => {
@@ -286,12 +324,16 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   });
 
   // 19 — read review state (candidates + decisions; cursor-paginated).
-  app.get("/api/v1/intake/reviews/:id", { preHandler: [INTAKE_REVIEW] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(ReviewParamsSchema, request.params);
-    const q = parse(ReviewQuerySchema, request.query);
-    return service.getReview(organizationId, id, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/intake/reviews/:id",
+    { preHandler: [INTAKE_REVIEW], config: { auditRead: { resourceKind: "intake_review", resourceIdParam: "id" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(ReviewParamsSchema, request.params);
+      const q = parse(ReviewQuerySchema, request.query);
+      return service.getReview(organizationId, id, q.cursor, q.limit);
+    },
+  );
 
   // 20 — record per-candidate decision (extraction_reviewer_eligible ABAC, §4.7).
   app.post("/api/v1/intake/reviews/:id/decisions", { preHandler: [INTAKE_REVIEW, ABAC_REVIEWER] }, async (request, reply) => {
@@ -353,25 +395,46 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   // ── form templates / overlays / admin (§4.1) ─────────────────────────────────────────────────────────
 
   // 26 — list all templates (cursor-paginated).
-  app.get("/api/v1/form-templates", { preHandler: [READ_TEMPLATES] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(TemplateListQuerySchema, request.query);
-    return service.listTemplates(organizationId, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/form-templates",
+    {
+      preHandler: [READ_TEMPLATES],
+      config: { auditRead: { none: "org-wide form template catalog is config, not patient data" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(TemplateListQuerySchema, request.query);
+      return service.listTemplates(organizationId, q.cursor, q.limit);
+    },
+  );
 
   // 27 — read template + active version.
-  app.get("/api/v1/form-templates/:key", { preHandler: [READ_TEMPLATES] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { key } = parse(TemplateParamsSchema, request.params);
-    return service.getTemplate(organizationId, key);
-  });
+  app.get(
+    "/api/v1/form-templates/:key",
+    {
+      preHandler: [READ_TEMPLATES],
+      config: { auditRead: { none: "form template + active version is config, not patient data" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { key } = parse(TemplateParamsSchema, request.params);
+      return service.getTemplate(organizationId, key);
+    },
+  );
 
   // 28 — read a specific template version.
-  app.get("/api/v1/form-templates/:key/versions/:versionId", { preHandler: [READ_TEMPLATES] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { key, versionId } = parse(TemplateVersionParamsSchema, request.params);
-    return service.getTemplateVersion(organizationId, key, versionId);
-  });
+  app.get(
+    "/api/v1/form-templates/:key/versions/:versionId",
+    {
+      preHandler: [READ_TEMPLATES],
+      config: { auditRead: { none: "specific form template version is config, not patient data" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { key, versionId } = parse(TemplateVersionParamsSchema, request.params);
+      return service.getTemplateVersion(organizationId, key, versionId);
+    },
+  );
 
   // 29 — publish a new template version (platform-only; form_template_publish_authority ABAC, §4.7).
   app.post(
@@ -387,10 +450,17 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   );
 
   // 30 — list org's overlays.
-  app.get("/api/v1/tenant-overlays", { preHandler: [READ_TEMPLATES] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.listOverlays(organizationId);
-  });
+  app.get(
+    "/api/v1/tenant-overlays",
+    {
+      preHandler: [READ_TEMPLATES],
+      config: { auditRead: { none: "tenant template overlays are org config, not patient data" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listOverlays(organizationId);
+    },
+  );
 
   // 31 — publish overlay (step-up + golden-template diff; tenant_template_overlay_edit_authority ABAC + If-Match).
   app.put(
@@ -405,11 +475,18 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
   );
 
   // 32 — inspect a form fill record (platform-only debug).
-  app.get("/api/v1/admin/form-fills/:id", { preHandler: [ADMIN_READ_FILLS] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(FormFillParamsSchema, request.params);
-    return service.getFormFill(organizationId, id);
-  });
+  app.get(
+    "/api/v1/admin/form-fills/:id",
+    {
+      preHandler: [ADMIN_READ_FILLS],
+      config: { auditRead: { resourceKind: "form_fill", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(FormFillParamsSchema, request.params);
+      return service.getFormFill(organizationId, id);
+    },
+  );
 
   // 33 — manually retry a failed render (platform-only; step-up; audited as elevated).
   app.post("/api/v1/admin/form-fills/:id/retry", { preHandler: [ADMIN_RETRY_RENDER] }, async (request) => {

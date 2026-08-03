@@ -117,29 +117,57 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   });
 
   // 26 — list encounters (static path BEFORE the :encounterId param routes for clarity).
-  app.get("/api/v1/encounters", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    parse(EncounterListQuerySchema, request.query);
-    return service.listEncounters(organizationId);
-  });
+  app.get(
+    "/api/v1/encounters",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "encounter", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterListQuerySchema, request.query);
+      return service.listEncounters(organizationId);
+    },
+  );
 
   // 27 — RN cosignature work queue.
-  app.get("/api/v1/encounters/cosignature-queue", { preHandler: [COSIGN] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.cosignatureQueue(organizationId);
-  });
+  app.get(
+    "/api/v1/encounters/cosignature-queue",
+    {
+      preHandler: [COSIGN],
+      config: { auditRead: { resourceKind: "encounter", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.cosignatureQueue(organizationId);
+    },
+  );
 
   // 28 — author's open drafts.
-  app.get("/api/v1/encounters/my-drafts", { preHandler: [AUTHOR] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    return service.myDrafts(organizationId, userId);
-  });
+  app.get(
+    "/api/v1/encounters/my-drafts",
+    {
+      preHandler: [AUTHOR],
+      config: { auditRead: { resourceKind: "encounter", list: true } },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      return service.myDrafts(organizationId, userId);
+    },
+  );
 
   // 2 — read one encounter.
-  app.get("/api/v1/encounters/:encounterId", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.getEncounter(organizationId, encounterIdOf(request));
-  });
+  app.get(
+    "/api/v1/encounters/:encounterId",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.getEncounter(organizationId, encounterIdOf(request));
+    },
+  );
 
   // 3 — update selections (§7.7 If-Match).
   app.patch(
@@ -321,7 +349,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 18 — read cosignature-request state.
   app.get(
     "/api/v1/encounters/:encounterId/cosignature",
-    { preHandler: [READ] },
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: { resourceKind: "encounter_cosignature", resourceIdParam: "encounterId" },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.getCosignature(organizationId, encounterIdOf(request));
@@ -419,7 +452,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 29 — internal: BillableEncounterReader seam endpoint (system principal; M23/M24).
   app.get(
     "/api/v1/internal/encounters/billable",
-    { preHandler: [READ_INTERNAL] },
+    {
+      preHandler: [READ_INTERNAL],
+      config: { auditRead: { resourceKind: "encounter", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(BillableQuerySchema, request.query);
@@ -430,7 +466,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 30 — internal: signed-since seam (system principal; M14 IDG aggregator).
   app.get(
     "/api/v1/internal/encounters/signed-since",
-    { preHandler: [READ_INTERNAL] },
+    {
+      preHandler: [READ_INTERNAL],
+      config: { auditRead: { resourceKind: "encounter", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(SignedSinceQuerySchema, request.query);
@@ -441,7 +480,12 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 31 — internal: M22 PDF-render payload (system principal).
   app.get(
     "/api/v1/internal/encounters/:encounterId/render-payload",
-    { preHandler: [READ_INTERNAL] },
+    {
+      preHandler: [READ_INTERNAL],
+      config: {
+        auditRead: { resourceKind: "encounter", resourceIdParam: "encounterId" },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.renderPayload(organizationId, encounterIdOf(request));

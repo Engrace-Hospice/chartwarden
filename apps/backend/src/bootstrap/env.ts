@@ -58,6 +58,60 @@ const REQUIREMENTS: readonly Requirement[] = [
       }
     },
   },
+  {
+    // TASK-008/SEC-001 — the §7.4 witness-attestation HMAC secret (M13 emar-route-service-db.ts). Raw
+    // HMAC key material (not base64), so the length rule mirrors BETTER_AUTH_SECRET, not the base64 KEKs.
+    key: "M13_WITNESS_SIGNING_KEY",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
+    // TASK-010/SEC-005 — required so BullMQ workers (outbox dispatcher, cron jobs) actually run in
+    // production instead of silently not constructing (index.ts today only warns when unset).
+    key: "REDIS_URL",
+    rule: (v) => (/^rediss?:\/\//.test(v) ? null : "must be a redis:// or rediss:// URL"),
+  },
+  {
+    // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,
+    // like DATABASE_URL: format is a connection string, not something to pattern-match here.
+    key: "DATABASE_PLATFORM_URL",
+  },
+  {
+    // TASK-010/SEC-005 — WebAuthn relying-party id for the Better Auth passkey plugin
+    // (packages/auth/src/identity/auth.ts). Unset previously fell through to a hardcoded "localhost".
+    key: "PASSKEY_RP_ID",
+  },
+  {
+    // TASK-010/SEC-005 — WebAuthn relying-party id for the step-up re-auth ceremony
+    // (02-identity/routes/session-step-up.ts). A DIFFERENT var from PASSKEY_RP_ID (both are real,
+    // independently-read WebAuthn RP ids in this codebase) with the same "localhost" fallback bug.
+    key: "WEBAUTHN_RP_ID",
+  },
+  {
+    // TASK-010/SEC-005 — the messaging body-encryption KEK (packages/messaging/src/crypto/body-crypto.ts),
+    // which today only fails closed LAZILY on first use. Same base64/32-byte shape as its own local check.
+    key: "MESSAGING_ENCRYPTION_KEY",
+    rule: (v) => {
+      try {
+        return Buffer.from(v, "base64").length === 32 ? null : "must decode to 32 base64 bytes";
+      } catch {
+        return "must be valid base64";
+      }
+    },
+  },
+  {
+    // TASK-010/SEC-005 — the shared cursor-signing secret M19/M20 concurrency.ts fall back to (each also
+    // accepts a module-specific M19_/M20_CURSOR_SIGNING_KEY override). Unset, cursors are signed with a
+    // process-local random key and stop verifying across a restart/redeploy — safe, but an avoidable
+    // re-page for every caller in production.
+    key: "CURSOR_SIGNING_KEY",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
+    // TASK-010/OPS-010 — the trusted-proxy CIDR allowlist (bootstrap/index.ts parseTrustedProxies).
+    // Unset today, Fastify's trustProxy is `false` (fails open to "trust no proxy", not a boot failure) —
+    // in production behind a load balancer that silently breaks client-IP-derived rate limiting/audit.
+    key: "TRUSTED_PROXY_CIDRS",
+  },
 ];
 
 /**
