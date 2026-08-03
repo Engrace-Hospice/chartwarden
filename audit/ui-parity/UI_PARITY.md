@@ -4,7 +4,7 @@
 > corpus is consistent; this shows how much of it is BUILT in `apps/web`. Do not hand-edit —
 > the `ui:parity --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 35 module screen-sets registered · 242 screens wired in `apps/web`.
+**Coverage:** 113 documented screen specs · 35 module screen-sets registered · 244 screens wired in `apps/web`.
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -33,7 +33,7 @@
 | 02-identity | `identity.organization-select` | `/login/organization` | `(none)` | ✅ |
 | 02-identity | `identity.accept-invitation` | `/invite/:token` | `(none)` | ✅ |
 | 02-identity | `identity.security-passkeys` | `/security/passkeys` | `(none)` | ✅ |
-| 02-identity | `identity.staff-management` | `/admin/staff` | `(none)` | ✅ |
+| 02-identity | `identity.staff-management` | `/admin/staff` | `member.manage` | ✅ |
 | 03-authorization | `authz.roles-permissions` | `/roles` | `role.read` | ✅ |
 | 04-audit | `audit.log-viewer` | `/audit` | `audit.read` | ✅ |
 | 05-patient | `patient.census` | `/patients` | `patient.read` | ✅ |
@@ -43,6 +43,8 @@
 | 06-admission | `admission.census` | `/admissions` | `admission.read` | ✅ |
 | 06-admission | `admission.compliance` | `/compliance/admissions` | `compliance.read` | ✅ |
 | 06-admission | `admission.detail` | `/admissions/:id` | `admission.read` | ✅ |
+| 06-admission | `admission.referral-detail` | `/referrals/:id` | `referral.read` | ✅ |
+| 06-admission | `admission.create` | `/admissions/new` | `admission.create` | ✅ |
 | 06-admission | `admission.patient-election-cert` | `/patients/:patientId/election-certification` | `election.read` | ✅ |
 | 07-care-plan | `care-plan.view` | `/patients/:patientId/care-plan` | `care_plan.read` | ✅ |
 | 07-care-plan | `care-plan.versions` | `/care-plans/:planId/versions` | `care_plan.read` | ✅ |

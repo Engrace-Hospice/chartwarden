@@ -178,6 +178,16 @@ export interface CtiDraftInput {
   readonly attendingPhysicianId?: string;
   readonly isRecert: boolean;
 }
+/**
+ * §4.2.2 route 41 body (NorAcknowledgeSchema), narrowed to the two fields the
+ * `notice_of_rights_acknowledgment` table can actually store (`acknowledgment_method`/`signer_kind`).
+ * `formVersionId`/`acknowledgedByName` are validated by the route but have no column to land in today —
+ * TASK-034 fixes the ones that do rather than widening this type to fields that would still be dropped.
+ */
+export interface NorAcknowledgeInput {
+  readonly deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
+  readonly acknowledgedByRole: "patient" | "legal_representative";
+}
 export interface F2fScheduleInput {
   readonly admissionId: string;
   readonly electionPeriodId: string;
@@ -457,6 +467,7 @@ export interface AdmissionRouteService {
   acknowledgeNor(
     organizationId: string,
     admissionId: string,
+    input: NorAcknowledgeInput,
     actorUserId: string,
   ): Promise<MutationResult>;
   getNor(organizationId: string, admissionId: string): Promise<SummaryRow | null>;
@@ -510,6 +521,9 @@ interface Rec {
   pendingForCauseDischarge?: boolean;
   bereavementOptOut?: boolean;
   reason?: DischargeReason;
+  // NOR acknowledgment facts (TASK-034) — what was actually submitted, not a hardcoded default.
+  deliveryMethod?: NorAcknowledgeInput["deliveryMethod"];
+  acknowledgedByRole?: NorAcknowledgeInput["acknowledgedByRole"];
 }
 
 /** A seed record for the slice (lets a test pre-populate a resource with owner facts for ABAC). */
@@ -1143,12 +1157,14 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       return res;
     },
 
-    async acknowledgeNor(organizationId, admissionId, actorUserId) {
+    async acknowledgeNor(organizationId, admissionId, input, actorUserId) {
       void actorUserId;
       const adm = get(organizationId, admissionId, "admission") ?? notFound(admissionId);
       const rec = insert("nor", organizationId, "acknowledged", {
         admissionId: adm.id,
         patientId: adm.patientId,
+        deliveryMethod: input.deliveryMethod,
+        acknowledgedByRole: input.acknowledgedByRole,
       });
       events.push("m6.nor.acknowledged");
       // W-AD-04: acknowledging the NOR closes its open compliance window (admission.recompute_windows).

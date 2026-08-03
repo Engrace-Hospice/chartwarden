@@ -1,5 +1,6 @@
 import {
   cardSurface,
+  CeremonyModal,
   EmptyState,
   ghostBorder,
   Glyph,
@@ -19,10 +20,22 @@ import {
 // vitals strip the frame shows, and not the EVV match. Those regions render as honest placeholders naming
 // the read that will fill them, never a fabricated note. Reads GET /api/v1/encounters/:encounterId
 // (+ /cosignature, + the patient summary for the banner); the server enforces every scope (ADR-0030).
-import { useEffect, useState } from "react";
+//
+// Write ceremonies (TASK-031): Sign / Acknowledge cosignature / Sign cosignature / Supervisor release, each
+// a CeremonyModal committing to the matching M8 route. Honest gap carried into the ceremony: the sign/
+// cosign-sign routes take a client-supplied `stepUpAuthAt` and only check it's ≤5 minutes old
+// (encounters-routes.ts) — not a real M2 step-up event the way M23's STEP_UP_REQUIRED 403 is. Real step-up
+// wiring for M8 is a backend contract change, not this UI task's to invent, so the ceremony stamps the
+// current time at commit — satisfying the literal contract — and `write-workflow.ts`'s authFailureRedirect
+// stays ready for the day the route does emit STEP_UP_REQUIRED.
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import { authFailureRedirect } from "./write-workflow";
+
+type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
+const REASON_MIN = 40; // SupervisorReleaseSchema's real floor (encounters-typebox.ts).
 
 interface Encounter {
   id: string;
@@ -60,53 +73,121 @@ export function EncounterRead(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [ceremony, setCeremony] = useState<CeremonyMode>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+
+  const load = useCallback(async () => {
+    if (!encounterId) return;
+    setLoading(true);
+    setError(null);
+    const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
+      params: { path: { encounterId } },
+    });
+    if (err || !data?.id) {
+      setError("Could not load the encounter.");
+      setLoading(false);
+      return;
+    }
+    setEncounter({
+      id: data.id,
+      patientId: data.patientId,
+      encounterType: data.encounterType,
+      discipline: data.discipline,
+      serviceDate: data.serviceDate,
+      status: data.status,
+      lateEntryTier: data.lateEntryTier,
+      version: data.version,
+      isF2f: data.isF2f,
+      signedAt: data.signedAt ?? null,
+      cosignedAt: data.cosignedAt ?? null,
+    });
+    const pid = patientId ?? data.patientId;
+    const [cos, pat] = await Promise.all([
+      client.GET("/api/v1/encounters/{encounterId}/cosignature", { params: { path: { encounterId } } }),
+      client.GET("/api/v1/patients/{id}", { params: { path: { id: pid } } }),
+    ]);
+    setCosignStatus(cos.data?.status ?? null);
+    if (pat.data) setPatient(pat.data as PatientSummary);
+    setLoading(false);
+  }, [client, encounterId, patientId]);
+
   useEffect(() => {
-    let active = true;
-    (async () => {
+    void load();
+  }, [load]);
+
+  const closeCeremony = useCallback(() => {
+    setCeremony(null);
+    setReason("");
+    setActionError(null);
+  }, []);
+
+  const runWrite = useCallback(
+    async (mode: Exclude<CeremonyMode, null>) => {
       if (!encounterId) return;
-      setLoading(true);
-      setError(null);
-      const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
-        params: { path: { encounterId } },
-      });
-      if (!active) return;
-      if (err || !data?.id) {
-        setError("Could not load the encounter.");
-        setLoading(false);
+      if (mode === "supervisor-release" && reason.trim().length < REASON_MIN) {
+        setActionError(`Provide a reason of at least ${REASON_MIN} characters.`);
         return;
       }
-      setEncounter({
-        id: data.id,
-        patientId: data.patientId,
-        encounterType: data.encounterType,
-        discipline: data.discipline,
-        serviceDate: data.serviceDate,
-        status: data.status,
-        lateEntryTier: data.lateEntryTier,
-        version: data.version,
-        isF2f: data.isF2f,
-        signedAt: data.signedAt ?? null,
-        cosignedAt: data.cosignedAt ?? null,
-      });
-      const pid = patientId ?? data.patientId;
-      const [cos, pat] = await Promise.all([
-        client.GET("/api/v1/encounters/{encounterId}/cosignature", { params: { path: { encounterId } } }),
-        client.GET("/api/v1/patients/{id}", { params: { path: { id: pid } } }),
-      ]);
-      if (!active) return;
-      setCosignStatus(cos.data?.status ?? null);
-      if (pat.data) setPatient(pat.data as PatientSummary);
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client, encounterId, patientId]);
+      setBusy(true);
+      setActionError(null);
+      const stepUpAuthAt = new Date().toISOString();
+      const path =
+        mode === "sign"
+          ? "/api/v1/encounters/{encounterId}/sign"
+          : mode === "acknowledge"
+            ? "/api/v1/encounters/{encounterId}/cosignature/acknowledge"
+            : mode === "cosign-sign"
+              ? "/api/v1/encounters/{encounterId}/cosignature/sign"
+              : "/api/v1/encounters/{encounterId}/cosignature/supervisor-release";
+      const body =
+        mode === "sign" || mode === "cosign-sign"
+          ? { stepUpAuthAt, attestationConfirmed: true as const }
+          : mode === "supervisor-release"
+            ? { reason: reason.trim(), stepUpAuthAt }
+            : undefined;
+      const init = { params: { path: { encounterId } }, ...(body ? { body } : {}) };
+      // The four routes have distinct request shapes (never a union client.POST can dispatch on
+      // statically) — cast at the boundary, same as claim-editor.tsx's runWrite; the server is the
+      // only real parser/enforcer (ADR-0030).
+      const { error: err, response } = (await client.POST(path as never, init as never)) as {
+        error?: { error?: { code?: string } };
+        response?: Response;
+      };
+      if (err) {
+        const errCode = err?.error?.code;
+        const redirect = authFailureRedirect(response?.status, errCode, window.location.pathname);
+        if (redirect) {
+          navigate(redirect);
+          return;
+        }
+        setBusy(false);
+        if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED")
+          setActionError("Your step-up expired — try again.");
+        else if (response?.status === 412)
+          setActionError("This encounter changed since you opened it — reload to retry.");
+        else if (response?.status === 403)
+          setActionError("You do not have permission for this action.");
+        else setActionError("The action could not be completed.");
+        return;
+      }
+      setBusy(false);
+      closeCeremony();
+      void load();
+    },
+    [encounterId, reason, client, navigate, closeCeremony, load],
+  );
 
   if (loading) return <LoadingSpinner />;
   if (error || !encounter) return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
 
   const e = encounter;
+  const canSign = e.status === "finalized";
+  const canAcknowledge =
+    cosignStatus === "pending" || cosignStatus === "routed" || cosignStatus === "escalated";
+  const canCosignSign = cosignStatus === "acknowledged";
+  const canSupervisorRelease = cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
   const banner = patient ? (
     <PatientBanner
       name={`${patient.firstName} ${patient.lastName}`}
@@ -222,6 +303,26 @@ export function EncounterRead(): JSX.Element {
             <span style={{ flex: 0 }} />
           )}
           <span style={{ flex: 1 }} />
+          {canSupervisorRelease ? (
+            <button type="button" onClick={() => setCeremony("supervisor-release")} style={ghostBtn}>
+              Supervisor release
+            </button>
+          ) : null}
+          {canAcknowledge ? (
+            <button type="button" onClick={() => setCeremony("acknowledge")} style={ghostBtn}>
+              Acknowledge cosignature
+            </button>
+          ) : null}
+          {canCosignSign ? (
+            <button type="button" onClick={() => setCeremony("cosign-sign")} style={primaryBtn}>
+              Sign cosignature
+            </button>
+          ) : null}
+          {canSign ? (
+            <button type="button" onClick={() => setCeremony("sign")} style={primaryBtn}>
+              Sign
+            </button>
+          ) : null}
           <button type="button" onClick={() => navigate("/work/cosignatures")} style={ghostBtn}>
             Cosignature queue
           </button>
@@ -230,7 +331,136 @@ export function EncounterRead(): JSX.Element {
           </button>
         </div>
       </div>
+
+      {/* Sign — the author's own Layer-3 signature (§2.7). */}
+      <CeremonyModal
+        open={ceremony === "sign"}
+        title="Sign encounter"
+        attestation={
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <Glyph name="shield" size={16} />
+              <strong>Sign {stateLabel(e.encounterType)}</strong>
+            </div>
+            <RowField label="Service date" value={e.serviceDate} mono />
+            <RowField label="Discipline" value={stateLabel(e.discipline)} />
+            {actionError ? (
+              <p role="alert" aria-live="assertive" style={alertStyle}>
+                {actionError}
+              </p>
+            ) : null}
+          </div>
+        }
+        legalText="I attest this documentation is complete and accurate to the best of my knowledge."
+        signer={{ name: "Signing clinician", role: "This session" }}
+        commitLabel={busy ? "Signing…" : "Sign & commit"}
+        onCommit={() => void runWrite("sign")}
+        onCancel={closeCeremony}
+      />
+
+      {/* Acknowledge cosignature — a receipt of notice, not a signature: no legal text, no step-up. */}
+      <CeremonyModal
+        open={ceremony === "acknowledge"}
+        title="Acknowledge cosignature request"
+        attestation={
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <span style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
+              Confirms you have opened this encounter for cosignature review. This does not sign it.
+            </span>
+            {actionError ? (
+              <p role="alert" aria-live="assertive" style={alertStyle}>
+                {actionError}
+              </p>
+            ) : null}
+          </div>
+        }
+        signer={{ name: "Cosigner", role: "This session" }}
+        commitLabel={busy ? "Acknowledging…" : "Acknowledge"}
+        onCommit={() => void runWrite("acknowledge")}
+        onCancel={closeCeremony}
+      />
+
+      {/* Sign cosignature — the RN cosigner's own Layer-3 signature (§4.6 m8.cosigner_role_match). */}
+      <CeremonyModal
+        open={ceremony === "cosign-sign"}
+        title="Sign cosignature"
+        attestation={
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+              <Glyph name="shield" size={16} />
+              <strong>Cosign {stateLabel(e.encounterType)}</strong>
+            </div>
+            <RowField label="Service date" value={e.serviceDate} mono />
+            {actionError ? (
+              <p role="alert" aria-live="assertive" style={alertStyle}>
+                {actionError}
+              </p>
+            ) : null}
+          </div>
+        }
+        legalText="I attest I have reviewed this documentation and concur as the qualifying cosigner."
+        signer={{ name: "Cosigning RN", role: "This session" }}
+        commitLabel={busy ? "Signing…" : "Sign & commit"}
+        onCommit={() => void runWrite("cosign-sign")}
+        onCancel={closeCeremony}
+      />
+
+      {/* Supervisor release — past the 48h hard cap; reason at the real server floor (REASON_MIN). */}
+      <CeremonyModal
+        open={ceremony === "supervisor-release"}
+        title="Supervisor release"
+        attestation={
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+            <span style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
+              Releases this encounter from the 48-hour cosignature hard cap.
+            </span>
+            <label
+              htmlFor="supervisor-release-reason"
+              style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}
+            >
+              Reason (≥ {REASON_MIN} characters)
+            </label>
+            <textarea
+              id="supervisor-release-reason"
+              aria-describedby="supervisor-release-reason-count"
+              value={reason}
+              onChange={(ev) => setReason(ev.target.value)}
+              rows={3}
+              style={textareaStyle}
+            />
+            <span
+              id="supervisor-release-reason-count"
+              style={{
+                fontSize: "0.7rem",
+                color: reason.trim().length >= REASON_MIN ? t.onSurfaceVariant : t.warning,
+              }}
+            >
+              {reason.trim().length}/{REASON_MIN}
+            </span>
+            {actionError ? (
+              <p role="alert" aria-live="assertive" style={alertStyle}>
+                {actionError}
+              </p>
+            ) : null}
+          </div>
+        }
+        signer={{ name: "Supervisor", role: "This session" }}
+        commitLabel={busy ? "Releasing…" : "Release"}
+        onCommit={() => void runWrite("supervisor-release")}
+        onCancel={closeCeremony}
+      />
     </PatientWorkspaceLayout>
+  );
+}
+
+function RowField({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }): JSX.Element {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+      <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
+      <span style={{ fontSize: "0.85rem", color: t.onSurface, fontFamily: mono ? t.fontMono : undefined }}>
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -259,3 +489,13 @@ const lifeGrid: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1f
 const dt: CSSProperties = { fontWeight: 600, color: t.onSurfaceVariant };
 const dd: CSSProperties = { margin: 0, color: t.onSurface };
 const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.25rem 0 0" };
+const alertStyle: CSSProperties = { margin: 0, fontSize: "0.8rem", color: t.error };
+const textareaStyle: CSSProperties = {
+  width: "100%",
+  padding: "0.5rem",
+  borderRadius: t.radiusMd,
+  border: `1px solid ${t.outlineVariant}`,
+  fontFamily: t.fontSans,
+  fontSize: "0.85rem",
+  resize: "vertical",
+};

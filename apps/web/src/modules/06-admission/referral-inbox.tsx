@@ -61,7 +61,7 @@ export function ReferralInbox(): JSX.Element {
 
   // Faceted state filter is applied client-side over the loaded page (server stays the source of truth).
   const filtered = state ? items.filter((r) => r.state === state) : items;
-  const openCount = items.filter((r) => r.state === "received" || r.state === "triaged").length;
+  const openCount = items.filter((r) => r.state === "received" || r.state === "evaluated").length;
 
   return (
     <WorkQueueLayout
@@ -87,11 +87,11 @@ export function ReferralInbox(): JSX.Element {
           >
             <option value="">Any state</option>
             <option value="received">Received</option>
-            <option value="triaged">Triaged</option>
+            <option value="evaluated">Evaluated</option>
             <option value="accepted">Accepted</option>
-            <option value="declined">Declined</option>
-            <option value="ineligible">Ineligible</option>
+            <option value="rejected">Rejected</option>
             <option value="withdrawn">Withdrawn</option>
+            <option value="admitted">Admitted</option>
           </select>
         </FilterBar>
       }

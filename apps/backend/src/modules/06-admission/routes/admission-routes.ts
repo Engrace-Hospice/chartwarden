@@ -613,8 +613,13 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     { preHandler: [NOR_ACKNOWLEDGE] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
-      parse(NorAcknowledgeSchema, request.body);
-      const res = await service.acknowledgeNor(organizationId, idOf(request), userId);
+      const body = parse(NorAcknowledgeSchema, request.body);
+      const res = await service.acknowledgeNor(
+        organizationId,
+        idOf(request),
+        { deliveryMethod: body.deliveryMethod, acknowledgedByRole: body.acknowledgedByRole },
+        userId,
+      );
       return reply.code(201).send(res);
     },
   );

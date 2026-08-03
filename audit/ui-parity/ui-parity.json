@@ -111,7 +111,7 @@
       "moduleId": 2,
       "id": "identity.staff-management",
       "path": "/admin/staff",
-      "permission": "(none)"
+      "permission": "member.manage"
     },
     {
       "module": "03-authorization",
@@ -175,6 +175,20 @@
       "id": "admission.detail",
       "path": "/admissions/:id",
       "permission": "admission.read"
+    },
+    {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.referral-detail",
+      "path": "/referrals/:id",
+      "permission": "referral.read"
+    },
+    {
+      "module": "06-admission",
+      "moduleId": 6,
+      "id": "admission.create",
+      "path": "/admissions/new",
+      "permission": "admission.create"
     },
     {
       "module": "06-admission",

@@ -86,6 +86,7 @@ import {
   createDrizzleAdmissionReaderStore,
   mountAdmissionRoutes,
   buildM6ProposalAcceptedConsumer,
+  M6_OUTBOX_EVENTS,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
@@ -1601,6 +1602,15 @@ if ((import.meta as { main?: boolean }).main) {
   // completeness but is intentionally NOT bound (its emit payloads are non-conformant — zero regression).
   // A duplicate `eventName` across contributions fails boot here (OutboxEventCollisionError — fail-closed).
   const bootOutboxCatalog = buildBootOutboxCatalog([
+    // TASK-031 — the `m6.*` referral/admission catalog. `m6OutboxPublisher` (below) has always been
+    // bound to the M6 Drizzle route service, but the catalog itself was never registered here, so
+    // every M6 mutation that emits an outbox event (referral received/triaged/accepted/declined,
+    // admission created/activated/held/…) threw `OutboxEventValidationError: unknown_event` and rolled
+    // back — M6 could not complete a single write in a DATABASE_URL boot. Discovered running the
+    // referral-accept ceremony end-to-end (running the app finds what gates miss — check-fitness-gaps's
+    // event-catalog check validates events-by-m6.ts's own shape, not whether it's wired into the boot
+    // catalog, so this had no test coverage anywhere in the gate suite).
+    M6_OUTBOX_EVENTS,
     // TASK-002 — the `m5.*` patient catalog. REQUIRED for the Drizzle PatientMutator's §4.6
     // `m5.patient.updated` emit to validate against the shared publisher.
     M5_OUTBOX_EVENTS,
@@ -1743,6 +1753,15 @@ if ((import.meta as { main?: boolean }).main) {
   const emailTransport = selectTransactionalEmailTransport({
     isProduction: process.env.NODE_ENV === "production",
   });
+  // TASK-030 — the web app's origin, for building the M2 invite-accept link (`${origin}/invite/:token`).
+  // `WEB_APP_URL` is an explicit override; `BETTER_AUTH_URL` (already production-required, §bootstrap/
+  // env.ts) is reused as the same-origin-SPA default per its own baseURL comment above; dev falls back
+  // to the Vite origin, matching every other dev fallback in this file. Undefined only if production
+  // sets neither — the invite route then omits `inviteUrl` rather than guess a wrong origin.
+  const webAppBaseUrl =
+    process.env.WEB_APP_URL ??
+    process.env.BETTER_AUTH_URL ??
+    (process.env.NODE_ENV === "production" ? undefined : "http://localhost:5173");
   const auth = dbHandle
     ? createIdentityAuth(dbHandle.db as Parameters<typeof createIdentityAuth>[0], {
         emailTransport,
@@ -1797,7 +1816,12 @@ if ((import.meta as { main?: boolean }).main) {
             });
           }
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
-          mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db));
+          // TASK-030 — invite delivery: the SAME M36 transport bound to Better Auth's reset/magic-link
+          // above, reused here so the invite-create/resend routes can email the accept link too.
+          mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db), {
+            emailTransport,
+            webAppBaseUrl,
+          });
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
           // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
           // on one replica only and dies with the process.

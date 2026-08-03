@@ -14,10 +14,11 @@ import {
 // Org-scoped admissions queue read from GET /api/v1/admissions (optional state filter) via the
 // generated typed client; a row opens the Admission Detail (§5.2.4). The server enforces every scope
 // (ADR-0030 — no authz on the frontend). Reconciled to Lantern (R1): §6.6 status pills, mono ids,
-// No-Line table (global index.css styles carry the tokens). Imports only leaves (@wardenx/ui).
+// No-Line table (global index.css styles carry the tokens). Imports only leaves (@wardenx/ui). The
+// header's "New admission" link is the entry point into the direct-intake form (TASK-031).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate } from "react-router-dom";
+import type { CSSProperties, JSX } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { ADMISSION_TONE, stateLabel } from "./admission-status";
 
 interface AdmissionRow {
@@ -64,7 +65,16 @@ export function AdmissionCensus(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Admissions" />}
+      header={
+        <PageHeader
+          title="Admissions"
+          actions={
+            <Link to="/admissions/new" style={newAdmissionLink}>
+              New admission
+            </Link>
+          }
+        />
+      }
       kpis={
         <KpiStrip>
           <KpiCard label="Active" value={activeCount} />
@@ -171,3 +181,15 @@ function AdmissionTable({
     </div>
   );
 }
+
+const newAdmissionLink: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0.45rem 0.9rem",
+  borderRadius: "9999px",
+  background: "var(--color-primary)",
+  color: "var(--color-on-primary)",
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  textDecoration: "none",
+};

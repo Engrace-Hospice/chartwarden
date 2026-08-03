@@ -46,6 +46,20 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    // TASK-031 — was missing entirely (not even a boot-wiring gap like the others): `triageReferral`
+    // (route 5) has always emitted this event name, and it has never been declared, so every triage
+    // call 500'd with `unknown_event` in any DATABASE_URL boot.
+    eventName: "m6.referral.triaged",
+    moduleOwner: "m6",
+    description: "A triage outcome (eligible/ineligible) was recorded (route 5).",
+    payloadSchema: Type.Object({
+      referralId: Type.String({ minLength: 1 }),
+      outcome: Type.Union([Type.Literal("eligible"), Type.Literal("ineligible")]),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m6.referral.accepted",
     moduleOwner: "m6",
     description:
@@ -90,11 +104,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m6.admission.draft_created",
     moduleOwner: "m6",
     description:
-      "The `admission.draft_from_referral` job created a draft admission + draft period 1.",
+      "A draft admission + draft period 1 was created — either `admission.draft_from_referral` (has a "
+      + "referral) or direct intake / walk-in (TASK-034, no referral).",
     payloadSchema: Type.Object({
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
-      referralId: Type.String({ minLength: 1 }),
+      referralId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
@@ -107,7 +122,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
       activatedAt: Type.String({ minLength: 1 }),
-      currentElectionPeriodId: Type.String({ minLength: 1 }),
+      // TASK-031: optional, not dropped — the route's emit (admission-route-service-db.ts) doesn't
+      // look up the current election period today (a second query the activation transaction doesn't
+      // otherwise need); a consumer that needs it can resolve it from `admissionId` via the M6 seam
+      // rather than block every activation on a field none of the 15 declared consumers' existing
+      // wiring reads yet.
+      currentElectionPeriodId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: [
       "m5",
@@ -208,8 +228,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
       sequence: Type.Integer({ minimum: 1 }),
-      startDate: Type.String({ minLength: 1 }),
-      endDate: Type.String({ minLength: 1 }),
+      // TASK-031: optional, not dropped — `election_period.effective_at`/`scheduled_end_at` are never
+      // populated by the §7.1 period-1 seed (`acceptReferral`) or by direct-intake `createAdmission`;
+      // computing real dates here would mean fabricating a period-kind-derived (90/60-day) end date the
+      // schema has no source of truth for. A consumer that needs the window can read it from
+      // `electionPeriodId` via the M6 seam once the seed path actually stores it.
+      startDate: Type.Optional(Type.String({ minLength: 1 })),
+      endDate: Type.Optional(Type.String({ minLength: 1 })),
       admissionId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23", "m26", "m27"],

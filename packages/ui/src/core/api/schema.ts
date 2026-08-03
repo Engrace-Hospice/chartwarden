@@ -9109,6 +9109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/invitations/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pre-auth preview of a still-pending token's target email/org (TASK-030, §7.1) */
+        get: operations["getApiV1InvitationsByToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/invitations/accept": {
         parameters: {
             query?: never;
@@ -11401,7 +11418,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List an org's invitation roster — pending/accepted/revoked (member.invite, TASK-030) */
+        get: operations["getApiV1OrgsByIdInvitations"];
         put?: never;
         /** Invite a user to an org (member.invite, §7.1) */
         post: operations["postApiV1OrgsByIdInvitations"];
@@ -11423,6 +11441,23 @@ export interface paths {
         post?: never;
         /** Rescind a pending invite (member.invite) */
         delete: operations["deleteApiV1OrgsByIdInvitationsByInvId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/orgs/{id}/invitations/{invId}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-mint a pending invite's token + expiry, invalidating the prior link (TASK-030) */
+        post: operations["postApiV1OrgsByIdInvitationsByInvIdResend"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -22382,7 +22417,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -40589,6 +40630,33 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1InvitationsByToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        email: string;
+                        organizationName: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1InvitationsAccept: {
         parameters: {
             query?: never;
@@ -46802,6 +46870,38 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1OrgsByIdInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitations: {
+                            invitationId: string;
+                            email: string;
+                            status: "pending" | "accepted" | "expired" | "revoked";
+                            expiresAt: string;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1OrgsByIdInvitations: {
         parameters: {
             query?: never;
@@ -46831,6 +46931,7 @@ export interface operations {
                     "application/json": {
                         invitationId: string;
                         expiresAt: string;
+                        inviteUrl?: string;
                     };
                 };
             };
@@ -46858,6 +46959,39 @@ export interface operations {
                 content: {
                     "application/json": {
                         rescinded: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrgsByIdInvitationsByInvIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                invId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        invitationId: string;
+                        expiresAt: string;
+                        inviteUrl?: string;
                     };
                 };
             };
@@ -54139,7 +54273,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        id: string;
+                        state: string;
+                        version: number;
+                        admissionId: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

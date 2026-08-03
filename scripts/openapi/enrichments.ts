@@ -659,6 +659,7 @@ import {
   LocPatchSchema,
   NorAcknowledgeSchema,
   PatientElectionCertificationResponseSchema,
+  ReferralAcceptResponseSchema,
   ReferralAcceptSchema,
   ReferralCreateSchema,
   ReferralDeclineSchema,
@@ -681,7 +682,11 @@ import {
   InvitationAcceptedResponseSchema as M2InvitationAcceptedResponseSchema,
   InvitationAcceptRequestSchema as M2InvitationAcceptRequestSchema,
   InvitationCreatedResponseSchema as M2InvitationCreatedResponseSchema,
+  InvitationListResponseSchema as M2InvitationListResponseSchema,
+  InvitationPeekResponseSchema as M2InvitationPeekResponseSchema,
   InvitationRescindedResponseSchema as M2InvitationRescindedResponseSchema,
+  InvitationResendRequestSchema as M2InvitationResendRequestSchema,
+  InvitationResendResponseSchema as M2InvitationResendResponseSchema,
   MemberPatchRequestSchema as M2MemberPatchRequestSchema,
   MemberRevokedResponseSchema as M2MemberRevokedResponseSchema,
   MembershipListResponseSchema as M2MembershipListResponseSchema,
@@ -5433,10 +5438,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/referrals/:id/accept": {
     summary: "Accept a referral → seed the admission",
     body: ReferralAcceptSchema,
+    response: ReferralAcceptResponseSchema,
   },
   "POST /api/v1/referrals/:id/decline": { summary: "Decline a referral", body: ReferralDeclineSchema },
   // Admission (routes 8–14)
-  "POST /api/v1/admissions": { summary: "Create an admission (§5.2)", body: AdmissionCreateSchema },
+  "POST /api/v1/admissions": {
+    summary: "Create an admission (§5.2)",
+    body: AdmissionCreateSchema,
+    response: M6SummaryRowResponseSchema,
+  },
   "GET /api/v1/admissions": {
     summary: "Admission census (cursor-paginated, filterable by state)",
     query: AdmissionListQuerySchema,
@@ -6033,6 +6043,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "DELETE /api/v1/orgs/:id/invitations/:invId": {
     summary: "Rescind a pending invite (member.invite)",
     response: M2InvitationRescindedResponseSchema,
+  },
+  "GET /api/v1/orgs/:id/invitations": {
+    summary: "List an org's invitation roster — pending/accepted/revoked (member.invite, TASK-030)",
+    response: M2InvitationListResponseSchema,
+  },
+  "POST /api/v1/orgs/:id/invitations/:invId/resend": {
+    summary: "Re-mint a pending invite's token + expiry, invalidating the prior link (TASK-030)",
+    body: M2InvitationResendRequestSchema,
+    response: M2InvitationResendResponseSchema,
+  },
+  "GET /api/v1/invitations/:token": {
+    summary: "Pre-auth preview of a still-pending token's target email/org (TASK-030, §7.1)",
+    response: M2InvitationPeekResponseSchema,
   },
   "GET /api/v1/orgs/:id/members": {
     summary: "List an org's memberships + pending-invites KPI (member.manage, §7.5)",

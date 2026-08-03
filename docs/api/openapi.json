@@ -12262,7 +12262,30 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -78840,6 +78863,55 @@
         }
       }
     },
+    "/api/v1/invitations/{token}": {
+      "get": {
+        "operationId": "getApiV1InvitationsByToken",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Pre-auth preview of a still-pending token's target email/org (TASK-030, §7.1)",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "email",
+                    "organizationName"
+                  ],
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "organizationName": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/invitations/accept": {
       "post": {
         "operationId": "postApiV1InvitationsAccept",
@@ -102416,6 +102488,93 @@
       }
     },
     "/api/v1/orgs/{id}/invitations": {
+      "get": {
+        "operationId": "getApiV1OrgsByIdInvitations",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "List an org's invitation roster — pending/accepted/revoked (member.invite, TASK-030)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "invitations"
+                  ],
+                  "properties": {
+                    "invitations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "invitationId",
+                          "email",
+                          "status",
+                          "expiresAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "invitationId": {
+                            "type": "string"
+                          },
+                          "email": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              },
+                              {
+                                "const": "revoked",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "expiresAt": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1OrgsByIdInvitations",
         "tags": [
@@ -102448,6 +102607,9 @@
                       "type": "string"
                     },
                     "expiresAt": {
+                      "type": "string"
+                    },
+                    "inviteUrl": {
                       "type": "string"
                     }
                   }
@@ -102548,6 +102710,78 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/orgs/{id}/invitations/{invId}/resend": {
+      "post": {
+        "operationId": "postApiV1OrgsByIdInvitationsByInvIdResend",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Re-mint a pending invite's token + expiry, invalidating the prior link (TASK-030)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "invId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "invitationId",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "invitationId": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "inviteUrl": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {}
+              }
+            }
           }
         }
       }
@@ -126008,7 +126242,34 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "state",
+                    "version",
+                    "admissionId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

@@ -9,6 +9,7 @@ import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 import type {
   AdmissionDetail as ServiceAdmissionDetail,
+  MutationResult as ServiceMutationResult,
   Page as ServicePage,
   PatientElectionCertificationView as ServicePatientElectionCert,
   SummaryRow as ServiceSummaryRow,
@@ -300,6 +301,14 @@ export const SummaryRowResponseSchema = Type.Object({
   version: Type.Integer(),
 });
 
+/** Route 6 (accept) — the referral's post-accept summary + the `admission.draft_from_referral` seed's id. */
+export const ReferralAcceptResponseSchema = Type.Object({
+  id: Type.String(),
+  state: Type.String(),
+  version: Type.Integer(),
+  admissionId: Type.String(),
+});
+
 const ActivationGapSchema = Type.Union([
   Type.Literal("election_signed"),
   Type.Literal("nor_acknowledged"),
@@ -365,6 +374,10 @@ export const PatientElectionCertificationResponseSchema = Type.Object({
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _SummaryRow = Conforms<Static<typeof SummaryRowResponseSchema>, ServiceSummaryRow>;
+type _ReferralAccept = Conforms<
+  Static<typeof ReferralAcceptResponseSchema>,
+  ServiceMutationResult & { admissionId: string }
+>;
 type _AdmissionDetail = Conforms<Static<typeof AdmissionDetailResponseSchema>, ServiceAdmissionDetail>;
 type _SummaryPage = Conforms<Static<typeof SummaryPageResponseSchema>, ServicePage<ServiceSummaryRow>>;
 type _SummaryItems = Conforms<

@@ -40,6 +40,7 @@ import { resolveForCauseDischarge } from "./discharge/for-cause";
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
 import type { LevelOfCare } from "@wardenx/types";
 import {
+  ActivationPreconditionError,
   InvalidReferralStateError,
   ReferralNotTriagedError,
   ResourceNotFoundError,
@@ -190,12 +191,23 @@ export function createDbAdmissionRouteService(
     tx: DbClient,
     ctx: { organizationId: string; aggregateKind: string; aggregateId: string; admissionId: string },
     effects: ReadonlyArray<SideEffect>,
+    // TASK-031: per-event extra payload fields, keyed by event name — the generic `{aggregateId,
+    // admissionId}` envelope alone doesn't satisfy every effect's declared events-by-m6.ts schema
+    // (e.g. `m6.admission.draft_created` also requires `patientId`/`referralId`); callers that know
+    // those facts at the point they trigger the effect pass them through here rather than `runEffects`
+    // re-querying for state it doesn't otherwise need. Unlisted events keep the base shape (harmless
+    // extra properties — TypeBox `Type.Object` allows them unless a schema opts into strict mode).
+    extraPayloadByEvent: Readonly<Record<string, Record<string, unknown>>> = {},
   ): Promise<void> {
     for (const e of effects) {
       if (e.kind === "outbox") {
         await outbox.publish(tx, {
           eventName: e.event,
-          payload: { aggregateId: ctx.aggregateId },
+          payload: {
+            aggregateId: ctx.aggregateId,
+            admissionId: ctx.admissionId,
+            ...extraPayloadByEvent[e.event],
+          },
           organizationId: ctx.organizationId,
           aggregateKind: ctx.aggregateKind,
           aggregateId: ctx.aggregateId,
@@ -284,39 +296,62 @@ export function createDbAdmissionRouteService(
     throw new VersionMismatchError(id, Number(row.version), ifVersion);
   }
 
-  /** The R-AC-01 period-1 bundle facts the `activate` guard reads (§5.2.5), loaded org-scoped. */
+  /**
+   * The R-AC-01 gate facts (§7.2). TASK-031 fix: mirrors `getAdmission` (route 10)'s inline query
+   * exactly, including `ctiAttendingSigned` — this function used to omit it entirely, so
+   * `activateAdmission`'s write-path guard never checked the attending-physician CTI signature (period
+   * 1) that the read-side `computeActivationGate` (and the §5.2.5 UI checklist) has always required,
+   * a real divergence between what the checklist showed as blocking and what the server enforced. Also
+   * returns the period-1 id/dates (not part of the gate itself) so `activateAdmission` can build the
+   * `m6.election.period_started` outbox payload without a second query.
+   */
   async function gateFacts(
     tx: DbClient,
     admissionId: string,
   ): Promise<{
     electionSigned: boolean;
     ctiHospiceMdSigned: boolean;
+    ctiAttendingSigned: boolean;
     norAcknowledged: boolean;
     periodSequence: number;
+    periodId: string | null;
+    periodEffectiveAt: string | null;
+    periodScheduledEndAt: string | null;
   }> {
     const [period] = await tx
-      .select({ id: EP.id, sequenceNumber: EP.sequenceNumber })
+      .select({
+        id: EP.id,
+        sequenceNumber: EP.sequenceNumber,
+        effectiveAt: EP.effectiveAt,
+        scheduledEndAt: EP.scheduledEndAt,
+      })
       .from(EP)
       .where(and(eq(EP.admissionId, admissionId), eq(EP.sequenceNumber, 1)))
       .limit(1);
     let electionSigned = false;
     let ctiHospiceMdSigned = false;
+    let ctiAttendingSigned = false;
     if (period) {
       const [es] = await tx.select({ id: ES.id }).from(ES).where(eq(ES.electionPeriodId, period.id)).limit(1);
       electionSigned = !!es;
       const [cti] = await tx
-        .select({ h: CTI.hospiceMdSignedAt })
+        .select({ h: CTI.hospiceMdSignedAt, a: CTI.attendingMdSignedAt })
         .from(CTI)
         .where(eq(CTI.electionPeriodId, period.id))
         .limit(1);
       ctiHospiceMdSigned = !!cti?.h;
+      ctiAttendingSigned = !!cti?.a;
     }
     const [nor] = await tx.select({ id: NOR.id }).from(NOR).where(eq(NOR.admissionId, admissionId)).limit(1);
     return {
       electionSigned,
       ctiHospiceMdSigned,
+      ctiAttendingSigned,
       norAcknowledged: !!nor,
       periodSequence: period?.sequenceNumber ?? 1,
+      periodId: period?.id ?? null,
+      periodEffectiveAt: period?.effectiveAt ?? null,
+      periodScheduledEndAt: period?.scheduledEndAt ?? null,
     };
   }
 
@@ -779,7 +814,7 @@ export function createDbAdmissionRouteService(
         const r = firstOrThrow(rows, "referral insert returned no row");
         await outbox.publish(tx, {
           eventName: "m6.referral.received",
-          payload: { referralId: r.id },
+          payload: { referralId: r.id, source: input.source, receivedAt: input.receivedAt },
           organizationId,
           aggregateKind: "referral",
           aggregateId: r.id,
@@ -865,6 +900,7 @@ export function createDbAdmissionRouteService(
           tx,
           { organizationId, aggregateKind: "admission", aggregateId: adm.id, admissionId: adm.id },
           t.effects,
+          { "m6.admission.draft_created": { patientId, referralId: id } },
         );
         // Seed benefit period 1 (the §7.1 cascade — not a state-machine effect).
         await tx
@@ -878,7 +914,7 @@ export function createDbAdmissionRouteService(
           .returning({ id: REF.id, status: REF.status, version: REF.version }), "row not found");
         await outbox.publish(tx, {
           eventName: "m6.referral.accepted",
-          payload: { referralId: id, admissionId: adm.id },
+          payload: { referralId: id, patientId, admissionId: adm.id },
           organizationId,
           aggregateKind: "referral",
           aggregateId: id,
@@ -908,18 +944,89 @@ export function createDbAdmissionRouteService(
     },
 
     // ── M6L-T02: admission lifecycle ────────────────────────────────────────────────────────────
+    // TASK-034 rewrite — this used to insert at the DB's default `status='referred'` (a fresh
+    // admission's only legal transition, ADMISSION_GRAPH, is out of `referred` via the referral-accept
+    // path — a direct-intake admission never reached anywhere), mapped `attendingPhysicianId` into the
+    // WRONG column (`admitted_by_physician_id`, not `attending_physician_id`), and dropped
+    // `hospiceMedicalDirectorId` entirely (no period, no CTI, so the activation gate could never even
+    // be evaluated). Now mirrors `acceptReferral`'s cascade: the same `createAdmission` state-machine
+    // event (opens the same 4 compliance windows, lands on `pending`), a seeded period 1, and a draft
+    // CTI carrying the hospice-MD/attending ids the form actually asked for.
     async createAdmission(organizationId, input, actorUserId): Promise<MutationResult> {
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
-        const adm = firstOrThrow(await tx
-          .insert(ADM)
-          .values({
-            organizationId,
-            patientId: input.patientId,
-            referralId: input.referralId ?? null,
-            admittedByPhysicianId: input.attendingPhysicianId ?? null,
-          })
-          .returning({ id: ADM.id, status: ADM.status, version: ADM.version }), "row not found");
+        // §2.3.1 no double-election: same rule acceptReferral enforces — direct intake is a second
+        // entry path into the same admission lifecycle, not an exemption from it.
+        const [open] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.patientId, input.patientId),
+              ne(ADM.status, "discharged"),
+              ne(ADM.status, "bereavement"),
+              ne(ADM.status, "closed"),
+            ),
+          )
+          .limit(1);
+        const t = transitionAdmission("referred", {
+          type: "createAdmission",
+          referralAccepted: true,
+          hasOtherOpenAdmission: !!open,
+        } satisfies AdmissionEvent);
+        const adm = firstOrThrow(
+          await tx
+            .insert(ADM)
+            .values({
+              organizationId,
+              patientId: input.patientId,
+              referralId: input.referralId ?? null,
+              attendingPhysicianId: input.attendingPhysicianId ?? null,
+              status: t.to,
+            })
+            .returning({ id: ADM.id, status: ADM.status, version: ADM.version }),
+          "admission insert returned no row",
+        );
+        await runEffects(
+          tx,
+          { organizationId, aggregateKind: "admission", aggregateId: adm.id, admissionId: adm.id },
+          t.effects,
+          {
+            "m6.admission.draft_created": {
+              patientId: input.patientId,
+              ...(input.referralId ? { referralId: input.referralId } : {}),
+            },
+          },
+        );
+        // Seed benefit period 1 (mirrors acceptReferral's §7.1 cascade).
+        const period = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({ organizationId, admissionId: adm.id, sequenceNumber: 1, periodKind: "ninety_day" })
+            .returning({ id: EP.id }),
+          "election period insert returned no row",
+        );
+        // Draft the CTI the form's hospiceMedicalDirectorId/attendingPhysicianId are for (mirrors
+        // draftCti) — without this the id the user was required to enter had nowhere to go.
+        const cti = firstOrThrow(
+          await tx
+            .insert(CTI)
+            .values({
+              organizationId,
+              electionPeriodId: period.id,
+              hospiceMdId: input.hospiceMedicalDirectorId,
+              attendingMdId: input.attendingPhysicianId ?? null,
+            })
+            .returning({ id: CTI.id }),
+          "cti insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.cti.drafted",
+          payload: { ctiId: cti.id, electionPeriodId: period.id, isRecert: false },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
         return { id: adm.id, state: adm.status, version: Number(adm.version) };
       });
     },
@@ -950,6 +1057,13 @@ export function createDbAdmissionRouteService(
         const cur = await loadAdm(tx, id);
         assertVersion(id, cur.version, ifVersion);
         const facts = await gateFacts(tx, id);
+        // TASK-031 fix: `computeActivationGate` is the declared single source of truth for BOTH this
+        // write-path guard and the read-side checklist (getAdmission/route 10) — call it here instead
+        // of re-deriving a subset of its logic via `transitionAdmission`'s ad-hoc "activate" guards,
+        // which never checked `ctiAttendingSigned` at all. A caller that bypasses the UI and posts
+        // directly now gets the SAME 412 PRECONDITION_FAILED { missing } the checklist would have shown.
+        const gate = computeActivationGate(facts);
+        if (!gate.ready) throw new ActivationPreconditionError(gate.missing);
         const t = transitionAdmission(cur.status, {
           type: "activate",
           electionStatementSigned: facts.electionSigned,
@@ -961,15 +1075,30 @@ export function createDbAdmissionRouteService(
           isFirstElectionPeriod: facts.periodSequence === 1,
           at: new Date().toISOString().slice(0, 10),
         } satisfies AdmissionEvent);
+        const activatedAt = now();
         const r = firstOrThrow(await tx
           .update(ADM)
-          .set({ status: t.to, activatedAt: now(), version: sql`${ADM.version} + 1` })
+          .set({ status: t.to, activatedAt, version: sql`${ADM.version} + 1` })
           .where(and(eq(ADM.id, id), eq(ADM.version, ifVersion)))
-          .returning({ id: ADM.id, status: ADM.status, version: ADM.version }), "row not found");
+          .returning({ id: ADM.id, status: ADM.status, version: ADM.version, patientId: ADM.patientId }), "row not found");
         await runEffects(
           tx,
           { organizationId, aggregateKind: "admission", aggregateId: id, admissionId: id },
           t.effects,
+          {
+            "m6.admission.activated": {
+              patientId: r.patientId,
+              activatedAt: activatedAt.toISOString(),
+            },
+            // Only fires when `isFirstElectionPeriod` — see the `m6.election.period_started` schema
+            // comment (events-by-m6.ts) for why startDate/endDate are omitted rather than fabricated.
+            "m6.election.period_started": {
+              electionPeriodId: facts.periodId,
+              sequence: facts.periodSequence,
+              ...(facts.periodEffectiveAt ? { startDate: facts.periodEffectiveAt } : {}),
+              ...(facts.periodScheduledEndAt ? { endDate: facts.periodScheduledEndAt } : {}),
+            },
+          },
         );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
@@ -1116,9 +1245,11 @@ export function createDbAdmissionRouteService(
             .returning({ id: CTI.id, status: CTI.status, version: CTI.version }),
           "cti insert returned no row",
         );
+        // TASK-034: was missing `electionPeriodId`/`isRecert` — declared required by events-by-m6.ts,
+        // silently dropped here, same payload-schema-drift pattern TASK-031 fixed elsewhere in M6.
         await outbox.publish(tx, {
           eventName: "m6.cti.drafted",
-          payload: { ctiId: cti.id },
+          payload: { ctiId: cti.id, electionPeriodId: input.electionPeriodId, isRecert: input.isRecert },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
           aggregateId: cti.id,
@@ -1753,7 +1884,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async acknowledgeNor(organizationId, admissionId, actorUserId): Promise<MutationResult> {
+    async acknowledgeNor(organizationId, admissionId, input, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [adm] = await tx
           .select({ status: ADM.status, version: ADM.version, patientId: ADM.patientId })
@@ -1771,14 +1902,26 @@ export function createDbAdmissionRouteService(
           type: "acknowledgeNoticeOfRights",
           alreadyAcknowledged: !!existing,
         } satisfies AdmissionEvent);
-        await tx.insert(NOR).values({
-          organizationId,
-          admissionId,
-          patientId: adm.patientId,
-          signerKind: "patient",
-          acknowledgedAt: new Date().toISOString().slice(0, 10),
-          acknowledgmentMethod: "electronic_witnessed",
-        });
+        const acknowledgedAt = new Date();
+        // TASK-034: the request's `deliveryMethod`/`acknowledgedByRole` used to be validated by the
+        // route then discarded here — every acknowledgment silently recorded "patient, electronic
+        // witnessed" regardless of what was submitted. `acknowledgedByRole`'s wire value
+        // "legal_representative" doesn't match the DB's `election_signer_kind` enum ("representative"),
+        // so it's translated, not passed through.
+        const nor = firstOrThrow(
+          await tx
+            .insert(NOR)
+            .values({
+              organizationId,
+              admissionId,
+              patientId: adm.patientId,
+              signerKind: input.acknowledgedByRole === "legal_representative" ? "representative" : "patient",
+              acknowledgedAt: acknowledgedAt.toISOString().slice(0, 10),
+              acknowledgmentMethod: input.deliveryMethod,
+            })
+            .returning({ id: NOR.id }),
+          "NOR insert returned no row",
+        );
         const r = firstOrThrow(await tx
           .update(ADM)
           .set({ status: t.to, version: sql`${ADM.version} + 1` })
@@ -1788,6 +1931,12 @@ export function createDbAdmissionRouteService(
           tx,
           { organizationId, aggregateKind: "admission", aggregateId: admissionId, admissionId },
           t.effects,
+          {
+            "m6.nor.acknowledged": {
+              norAcknowledgmentId: nor.id,
+              acknowledgedAt: acknowledgedAt.toISOString(),
+            },
+          },
         );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
