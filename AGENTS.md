@@ -1,22 +1,20 @@
 # WardenX — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness
-
-**
-
-**kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **37 of 40 modules
+kit + staged implementation monorepo**: Phase 0 gates/scaffold are in place, and **all 40 modules
 now have real implementation on `main`** — the clinical core (M1–M14, M17, M18, M22), the field/ops
 tier (M15 Discipline Plans · M16 Bereavement · M19 On-Call Triage · M20 Field Safety · M21 Supplies/DME),
 the **complete revenue cycle (M23 Billing-Medicare · M24 Billing-Medicaid · M25 Remittance & Denials ·
-M26 Cap Management · M27 Cost Report)**, **M28 FHIR Gateway**, **M30 HQRP & Quality**,
-**M31 Patient/Family Portal & Telehealth**, **M32 AI Platform**, M33 Reporting &
-M34 SaaS Platform, plus the platform services M36/M38/M39/M40. The generated **implementation-status
-matrix** (`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`)
-is the per-module truth — currently **🟢 37 · 🟡 0 · ⚪ 3**. The **3 remaining placeholders (⚪)** are
-M29 External Interfaces, M35 Subscription Billing, and M37 Inpatient Unit (IPU) Management. As of the **2026-08-01 sweep every 🟢 module is
-enrichment-complete (matrix `Enriched` full-ratio ✅, corpus 989/995 routes carry request/response
-contracts) and live-RLS-proven (matrix `Live` full-ratio ✅, 20 executed cross-tenant suites)** — the
-only ⚠️ Live/Enriched rows left belong to the 3 ⚪ placeholders. **M30 is merged (PR #106)**: 18 frozen
+M26 Cap Management · M27 Cost Report)**, **M28 FHIR Gateway**, **M29 External Interfaces**,
+**M30 HQRP & Quality**, **M31 Patient/Family Portal & Telehealth**, **M32 AI Platform**, M33 Reporting,
+M34 SaaS Platform, **M35 Subscription Billing**, **M37 Inpatient Unit (IPU) Management**, plus the
+platform services M36/M38/M39/M40. The generated **implementation-status matrix**
+(`bun run status:matrix` → `audit/implementation-status/IMPLEMENTATION_STATUS.md`) is the per-module
+truth — currently **🟢 40 · 🟡 0 · ⚪ 0** (the module set is complete; the last three placeholders —
+M29, M35, and M37 — are now merged). Every module is enrichment-complete (matrix `Enriched`
+full-ratio ✅, corpus 989/995 routes carry request/response contracts). The only remaining ⚠️ rows
+are `Live` (cross-tenant RLS proof) on the three newest modules — **M29 (0/11), M35 (3/21), M37
+(8/26)** — whose live-RLS suites are still partial. **M30 is merged (PR #106)**: 18 frozen
 `quality/` tables + migrations 0062–0068; the `@wardenx/quality` domain core + `@wardenx/cahps-vendors`;
 47 routes in `apps/backend/src/modules/30-quality`; the `MEASURE_CATALOG`/measure registry (HCI 10
 indicators + composite, HVLDL, HOPE-derived TFP, operational); and CAHPS/QAPI/SRA/incident/mortality/
@@ -29,7 +27,7 @@ allowlist + active-org enumerator. M23 and M27 are now **merged** (no longer pla
 **HCI/operational measure families' remaining blocker is the cross-module seam BIND** — M27 consuming the
 M23/M26 forward-seams (`CapAccrualReader`/`CapSettlementProvider` for the CMS-1984-14 cap calc) and M30's HCI
 consuming M27; those reach live as deny-stubs today, so `hci_composite` stays fail-closed until they flip
-live. Remaining modules stay explicit placeholders until their plans land.
+live.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
 [`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
@@ -48,6 +46,11 @@ Use this guide to locate authoritative documents.
 > `arch:parity` gate keeps tree↔manifest 1:1. See [ADR-0027](./docs/adr/ADR-0027-phase-0-toolchain-and-scaffold.md).
 
 ## Document map
+
+> **Single entry point:** [`docs/README.md`](./docs/README.md) is the master index of every
+> document under `docs/` — architecture, module specs, design/UI corpus, ADRs, the AI capability
+> catalog, roadmap, wave plans, and reference sources — each linked to its canonical location.
+> The sections below call out the load-bearing directories.
 
 ### Module specifications → `docs/modules/`
 
