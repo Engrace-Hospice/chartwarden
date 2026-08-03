@@ -6,8 +6,13 @@
 // M29-T04 lands the inbound ADT domain (§4.6/§4.12): the ADT segment projection, the deterministic
 // five-level patient-match cascade (D6), the cascade-outcome router, and the propose-then-review proposal
 // lifecycle (§2.2/§4.1.2 — builder, decision core, review FSM) whose accept event closes the M5/M6 deny-stubs.
-// Every core is PURE / IO-injected; the ORU/ORM ingest sinks, the seam bindings, and the operator/clinician
-// routes land in T05–T09. Xero GL / Gusto payroll stay Phase-2 (XI_ACCOUNTING_GL_FLAG OFF).
+// M29-T05 lands the inbound ORU lab domain (§4.6 D7/D8). M29-T06 lands the outbound ORM^O01 sender (§4.12,
+// W-XI-07..09): the pure ORM^O01 wire builder, the BAA-gated dispatch planner (fail-closed pre-persist), the
+// ACK-correlation core (AA→transmitted / AR→failed no-retry / AE→retryable / orphan-discard), and the D9
+// retry/DLQ policy — closing the M11 `hl7_orm` outbound forward-seam via `m29.lab_order.transmitted` /
+// `m29.lab_order.transmission_failed`. Every core is PURE / IO-injected; the ORU/ORM ingest sinks, the seam
+// bindings, and the operator/clinician routes land in T07–T09. Xero GL / Gusto payroll stay Phase-2
+// (XI_ACCOUNTING_GL_FLAG OFF).
 export {
   EXTERNAL_FEED_INITIAL_STATUS,
   EXTERNAL_FEED_TRANSITIONS,
@@ -218,3 +223,49 @@ export {
   type LabAttachInput,
   planLabAttach,
 } from "./inbound/lab-attach-planner";
+
+// ── M29-T06: outbound ORM — ORM^O01 builder · dispatch planning · ACK correlation · retry/DLQ policy ──────
+export {
+  type OrmEndpoint,
+  type BuildOrmInput,
+  type OrmSegmentSummary,
+  escapeHl7,
+  isoDateToHl7,
+  isoToHl7Timestamp,
+  buildOrmO01,
+  summarizeSegments,
+} from "./outbound/orm-o01";
+export {
+  type LabOrderTransmittedPayload,
+  type LabOrderTransmissionFailureReason,
+  type LabOrderTransmissionFailedPayload,
+  type OutboundOutboxEvent,
+  type OutboundAlert,
+  type OutboundAuditRecord,
+} from "./outbound/outbound-events";
+export {
+  ORM_SOURCE_KIND,
+  type OutboundRowDraft,
+  type OutboundDispatchInput,
+  type OutboundDispatchPlan,
+  outboundIdempotencyKey,
+  planOutboundDispatch,
+} from "./outbound/dispatch-planner";
+export {
+  type ParsedAck,
+  type CorrelatedOutboundRow,
+  type AckStatusUpdate,
+  type AckCorrelationInput,
+  type AckCorrelationResult,
+  parseAckMsa,
+  correlateAck,
+} from "./outbound/ack-correlation";
+export {
+  OUTBOUND_MAX_ATTEMPTS,
+  OUTBOUND_BACKOFF_MS,
+  type RetryOutboundRow,
+  type RetryDecisionInput,
+  type RetryStatusUpdate,
+  type RetryDecision,
+  decideRetry,
+} from "./outbound/retry-policy";
