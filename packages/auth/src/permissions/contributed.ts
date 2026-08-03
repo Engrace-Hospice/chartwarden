@@ -5362,6 +5362,66 @@ export function m29ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M29_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * The permission keys Module 37 (Inpatient Unit / IPU Management) registers into Module 3's catalog (M37
+ * §4.6). The catalog `abac` field is the DEFAULT base predicate per key — `inOrg` (canonical org scoping);
+ * the route layer (M37-T11) additionally composes the fine-grained M37 predicates via requireAbac
+ * (`m37.ipu.rn_coverage_active` on every mutation, `m37.irc_episode.within_cap` on IRC billing paths,
+ * `m37.equipment.inspection_current` on assign, `m37.gip_criteria.attester_eligible` on attest,
+ * `m37.ipu.staff_member` on unit-scoped reads). The step-up / break-glass posture (unit.create, gip attest,
+ * IRC override, RN-coverage break-glass, restraint apply) is enforced at the route via requireStepUp — the
+ * catalog carries only resource/action/category/abac (the M35 shape; no defaultRoles).
+ */
+export const M37_CONTRIBUTED_PERMISSIONS = {
+  "m37.unit.read": { resource: "inpatient_unit", action: "read", category: "clinical", abac: "inOrg" },
+  "m37.unit.create": { resource: "inpatient_unit", action: "create", category: "admin", abac: "inOrg" },
+  "m37.unit.update": { resource: "inpatient_unit", action: "update", category: "admin", abac: "inOrg" },
+  "m37.room.read": { resource: "ipu_room", action: "read", category: "clinical", abac: "inOrg" },
+  "m37.room.create": { resource: "ipu_room", action: "create", category: "admin", abac: "inOrg" },
+  "m37.room.update": { resource: "ipu_room", action: "update", category: "admin", abac: "inOrg" },
+  "m37.bed.read": { resource: "ipu_bed", action: "read", category: "clinical", abac: "inOrg" },
+  "m37.bed.create": { resource: "ipu_bed", action: "create", category: "admin", abac: "inOrg" },
+  "m37.bed.update": { resource: "ipu_bed", action: "update", category: "admin", abac: "inOrg" },
+  "m37.bed.assign": { resource: "ipu_bed", action: "assign", category: "clinical", abac: "inOrg" },
+  "m37.bed.cleaning_status_update": { resource: "ipu_bed", action: "cleaning_status_update", category: "clinical", abac: "inOrg" },
+  "m37.ipu_admission.read": { resource: "ipu_admission", action: "read", category: "clinical", abac: "inOrg" },
+  "m37.ipu_admission.create": { resource: "ipu_admission", action: "create", category: "clinical", abac: "inOrg" },
+  "m37.ipu_admission.transfer": { resource: "ipu_admission", action: "transfer", category: "clinical", abac: "inOrg" },
+  "m37.ipu_admission.discharge": { resource: "ipu_admission", action: "discharge", category: "clinical", abac: "inOrg" },
+  "m37.gip_criteria.attest": { resource: "gip_criteria", action: "attest", category: "clinical", abac: "inOrg" },
+  "m37.gip_criteria.reassess": { resource: "gip_criteria", action: "reassess", category: "clinical", abac: "inOrg" },
+  "m37.irc_episode.extend_override": { resource: "irc_episode", action: "extend_override", category: "compliance", abac: "inOrg" },
+  "m37.shift.read": { resource: "ipu_shift", action: "read", category: "scheduling", abac: "inOrg" },
+  "m37.shift.create": { resource: "ipu_shift", action: "create", category: "scheduling", abac: "inOrg" },
+  "m37.shift.assign_staff": { resource: "ipu_shift", action: "assign_staff", category: "scheduling", abac: "inOrg" },
+  "m37.rn_coverage.break_glass": { resource: "rn_coverage", action: "break_glass", category: "compliance", abac: "inOrg" },
+  "m37.restraint.apply": { resource: "ipu_restraint", action: "apply", category: "clinical", abac: "inOrg" },
+  "m37.restraint.reassess": { resource: "ipu_restraint", action: "reassess", category: "clinical", abac: "inOrg" },
+  "m37.restraint.release": { resource: "ipu_restraint", action: "release", category: "clinical", abac: "inOrg" },
+  "m37.visitor.check_in": { resource: "ipu_visitor", action: "check_in", category: "clinical", abac: "inOrg" },
+  "m37.visitor.check_out": { resource: "ipu_visitor", action: "check_out", category: "clinical", abac: "inOrg" },
+  "m37.visitor_restriction.apply": { resource: "ipu_visitor_restriction", action: "apply", category: "compliance", abac: "inOrg" },
+  "m37.visitor_restriction.lift": { resource: "ipu_visitor_restriction", action: "lift", category: "compliance", abac: "inOrg" },
+  "m37.meal.log": { resource: "ipu_meal", action: "log", category: "clinical", abac: "inOrg" },
+  "m37.equipment.read": { resource: "ipu_equipment", action: "read", category: "clinical", abac: "inOrg" },
+  "m37.equipment.create": { resource: "ipu_equipment", action: "create", category: "admin", abac: "inOrg" },
+  "m37.equipment.update": { resource: "ipu_equipment", action: "update", category: "admin", abac: "inOrg" },
+  "m37.equipment.maintenance_log": { resource: "ipu_equipment", action: "maintenance_log", category: "admin", abac: "inOrg" },
+  "m37.equipment.inspection_record": { resource: "ipu_equipment", action: "inspection_record", category: "compliance", abac: "inOrg" },
+  "m37.equipment.assign_bed": { resource: "ipu_equipment", action: "assign_bed", category: "clinical", abac: "inOrg" },
+  "m37.body_release.coordinate": { resource: "ipu_body_release", action: "coordinate", category: "clinical", abac: "inOrg" },
+  "m37.body_release.release_body": { resource: "ipu_body_release", action: "release_body", category: "clinical", abac: "inOrg" },
+  "m37.census.read": { resource: "ipu_census", action: "read", category: "clinical", abac: "inOrg" },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M37 contributed permission keys. */
+export type M37ContributedPermissionKey = keyof typeof M37_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M37 contributed keys into `permission`-table mirror rows (M37 §4.6). */
+export function m37ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M37_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -5402,5 +5462,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m31ContributedPermissionMirrorRows(),
     ...m35ContributedPermissionMirrorRows(),
     ...m29ContributedPermissionMirrorRows(),
+    ...m37ContributedPermissionMirrorRows(),
   ];
 }

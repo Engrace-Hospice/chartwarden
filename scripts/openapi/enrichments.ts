@@ -8214,3 +8214,75 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "RN acknowledges an abnormal-flag alert; clears the M36 badge (D7) (§4.2)",
   },
 });
+
+// ── M37 Inpatient Unit (IPU) Management — the §4.2 request/response DTOs the T11b core route spine binds
+// (the same TypeBox schemas the handlers `parse(...)` / return, so the contract cannot drift). The
+// remaining §4.1 routes are enriched as they land.
+import {
+  AdmissionListSchema as M37AdmissionListSchema,
+  AdmissionViewSchema as M37AdmissionViewSchema,
+  BedCleaningBodySchema as M37BedCleaningBodySchema,
+  BedViewSchema as M37BedViewSchema,
+  ApplyRestraintBodySchema as M37ApplyRestraintBodySchema,
+  AssignBedBodySchema as M37AssignBedBodySchema,
+  DischargeBodySchema as M37DischargeBodySchema,
+  RequestBedBodySchema as M37RequestBedBodySchema,
+  CensusListSchema as M37CensusListSchema,
+  CreateUnitBodySchema as M37CreateUnitBodySchema,
+  OpenAdmissionBodySchema as M37OpenAdmissionBodySchema,
+  ReassessRestraintBodySchema as M37ReassessRestraintBodySchema,
+  RestraintViewSchema as M37RestraintViewSchema,
+  UnitListSchema as M37UnitListSchema,
+  UnitViewSchema as M37UnitViewSchema,
+} from "../../apps/backend/src/modules/37-ipu/routes/ipu-typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/inpatient-units": { response: M37UnitListSchema, summary: "List IPU units for the org (§4.1)" },
+  "POST /api/v1/inpatient-units": {
+    body: M37CreateUnitBodySchema,
+    response: M37UnitViewSchema,
+    summary: "Create an IPU unit (org admin; step-up). RN-coverage-exempt admin route (§2.3)",
+  },
+  "GET /api/v1/ipu-admissions": { response: M37AdmissionListSchema, summary: "List IPU admissions (§4.1)" },
+  "POST /api/v1/ipu-admissions": {
+    body: M37OpenAdmissionBodySchema,
+    response: M37AdmissionViewSchema,
+    summary:
+      "Open an IPU admission. GIP/IRC compose the m37.ipu.rn_coverage_active gate (412 IPU_RN_COVERAGE_UNAVAILABLE when the unit is uncovered); arranged remote-IPU bypasses (§2.2/§2.3)",
+  },
+  "GET /api/v1/ipu-admissions/:id": { response: M37AdmissionViewSchema, summary: "Read an IPU admission (§4.1)" },
+  "POST /api/v1/ipu-beds/:id/cleaning-status": {
+    body: M37BedCleaningBodySchema,
+    response: M37BedViewSchema,
+    summary:
+      "Transition a bed's §2.12 cleaning state (409 ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge); writes the ipu_bed_cleaning_event ledger row + emits the M33/M36 signal",
+  },
+  "POST /api/v1/ipu-admissions/:id/request-bed": {
+    body: M37RequestBedBodySchema,
+    response: M37AdmissionViewSchema,
+    summary: "Transition an admission to bed_pending (RN-coverage gated; requires an active unit + a ready bed, §2.2)",
+  },
+  "POST /api/v1/ipu-admissions/:id/assign-bed": {
+    body: M37AssignBedBodySchema,
+    response: M37AdmissionViewSchema,
+    summary: "Assign a specific bed (bed_assigned); reserves the bed + persists the assignment; 409 if the bed is not ready (§2.2)",
+  },
+  "POST /api/v1/ipu-admissions/:id/discharge": {
+    body: M37DischargeBodySchema,
+    response: M37AdmissionViewSchema,
+    summary: "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2)",
+  },
+  "POST /api/v1/ipu-admissions/:id/restraint": {
+    body: M37ApplyRestraintBodySchema,
+    response: M37RestraintViewSchema,
+    summary:
+      "Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10)",
+  },
+  "POST /api/v1/ipu-restraint/:id/reassess": {
+    body: M37ReassessRestraintBodySchema,
+    response: M37RestraintViewSchema,
+    summary: "Record a restraint reassessment (continue/modify/release); 409 on an already-released event (§2.10)",
+  },
+  "POST /api/v1/ipu-restraint/:id/release": { response: M37RestraintViewSchema, summary: "Release a restraint (§2.10)" },
+  "GET /api/v1/ipu-census/:date": { response: M37CensusListSchema, summary: "Read the IPU census snapshot for a date (§4.1)" },
+});

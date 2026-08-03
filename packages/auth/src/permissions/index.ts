@@ -252,4 +252,8 @@ export {
   type M29ContributedPermissionKey,
   M29_CONTRIBUTED_PERMISSIONS,
   m29ContributedPermissionMirrorRows,
+  // M37 — Module 37's IPU Management permission keys (§4.6 handshake).
+  type M37ContributedPermissionKey,
+  M37_CONTRIBUTED_PERMISSIONS,
+  m37ContributedPermissionMirrorRows,
 } from "./contributed";

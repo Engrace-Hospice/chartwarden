@@ -331,6 +331,16 @@ import {
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
+// M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
+// and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
+// bound transactional-outbox publisher. (The remaining §4.1 routes + §7.7 eraser + SeamRegistry extend this.)
+import {
+  M37_OUTBOX_EVENTS,
+  buildDrizzleIpuRouteService,
+  mountM37Routes,
+  registerIpuErasers,
+  registerM37AbacPredicates,
+} from "./modules/37-ipu/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
@@ -871,6 +881,11 @@ export function wireModuleSeams(
   // Pure over (context, target) — no DB handle needed; the resource-fact clauses the guard can't supply
   // (a promo's redemption count, a refund's requester) are re-asserted server-side by the route service.
   registerM35AbacPredicates();
+  // M37 — the five §4.7 ABAC resolvers (`m37.ipu.rn_coverage_active`, `m37.irc_episode.within_cap`,
+  // `m37.equipment.inspection_current`, `m37.gip_criteria.attester_eligible`, `m37.ipu.staff_member`). Pure
+  // over (context, target) — the route write service resolves the DB fact onto the target and the §2
+  // machines re-assert the invariant inside the tx (defense in depth). Default-deny.
+  registerM37AbacPredicates();
   // M23 — the four §4.7 ABAC resolvers (`provider_entity_billing_scope`, `claim_in_billing_manager_caseload`,
   // `override_role_eligible`, `regulatory_required_rule_protected`). Pass the DB handle so the Drizzle
   // owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny). The M5
@@ -1208,6 +1223,11 @@ export function wireModuleErasers(deps: { db?: DbClient } = {}): void {
   // crypto-erase — M31 owns only the refs. Registers only with a DB client (the shred is a privileged write);
   // a slice boot keeps the deny-stub rather than report a destruction it did not perform.
   if (deps.db) registerPortalErasers(deps.db);
+  // M37-T11 — `ipu_record` (per-PATIENT destruction-cert callback, §7.7 / D8): deletes the patient's
+  // ipu_admission subtree in FK order + the per-patient visitor restrictions under RLS (DELETE grants,
+  // migration 0153); aggregate census snapshots survive (no patient_id, D14). Registers only with a DB
+  // client (the delete is a privileged tenant-pool write); a slice boot keeps the deny-stub.
+  if (deps.db) registerIpuErasers(deps.db);
   // Phase-1 data-class owners append here as they land.
 }
 
@@ -1340,6 +1360,7 @@ if ((import.meta as { main?: boolean }).main) {
     // write's own tx.
     M32_OUTBOX_EVENTS,
     M35_OUTBOX_EVENTS,
+    M37_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -1368,6 +1389,7 @@ if ((import.meta as { main?: boolean }).main) {
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   const m35OutboxPublisher = bindCallerModule(txOutboxPublisher, "m35");
+  const m37OutboxPublisher = bindCallerModule(txOutboxPublisher, "m37");
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -1563,6 +1585,13 @@ if ((import.meta as { main?: boolean }).main) {
                     )
                 : undefined,
             }),
+          });
+          // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
+          // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
+          // drives the pure @wardenx/inpatient §2 machines, and emits its §4.4 m37.* event through the
+          // catalog-validating tx publisher (callerModule `m37`) in the same unit of work (D17 outbox-only).
+          mountM37Routes(app, {
+            service: buildDrizzleIpuRouteService(dbHandle.db, { outbox: m37OutboxPublisher }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every

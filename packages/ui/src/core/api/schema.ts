@@ -8580,6 +8580,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inpatient-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List IPU units for the org (§4.1) */
+        get: operations["getApiV1Inpatientunits"];
+        put?: never;
+        /** Create an IPU unit (org admin; step-up). RN-coverage-exempt admin route (§2.3) */
+        post: operations["postApiV1Inpatientunits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/intake/jobs/{id}": {
         parameters: {
             query?: never;
@@ -9118,6 +9136,177 @@ export interface paths {
         get: operations["getApiV1InvoicesByIdPdf"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List IPU admissions (§4.1) */
+        get: operations["getApiV1Ipuadmissions"];
+        put?: never;
+        /** Open an IPU admission. GIP/IRC compose the m37.ipu.rn_coverage_active gate (412 IPU_RN_COVERAGE_UNAVAILABLE when the unit is uncovered); arranged remote-IPU bypasses (§2.2/§2.3) */
+        post: operations["postApiV1Ipuadmissions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read an IPU admission (§4.1) */
+        get: operations["getApiV1IpuadmissionsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/assign-bed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assign a specific bed (bed_assigned); reserves the bed + persists the assignment; 409 if the bed is not ready (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdAssignbed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/discharge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdDischarge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/request-bed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition an admission to bed_pending (RN-coverage gated; requires an active unit + a ready bed, §2.2) */
+        post: operations["postApiV1IpuadmissionsByIdRequestbed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/restraint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10) */
+        post: operations["postApiV1IpuadmissionsByIdRestraint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-beds/{id}/cleaning-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transition a bed's §2.12 cleaning state (409 ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge); writes the ipu_bed_cleaning_event ledger row + emits the M33/M36 signal */
+        post: operations["postApiV1IpubedsByIdCleaningstatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-census/{date}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the IPU census snapshot for a date (§4.1) */
+        get: operations["getApiV1IpucensusByDate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-restraint/{id}/reassess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a restraint reassessment (continue/modify/release); 409 on an already-released event (§2.10) */
+        post: operations["postApiV1IpurestraintByIdReassess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-restraint/{id}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release a restraint (§2.10) */
+        post: operations["postApiV1IpurestraintByIdRelease"];
         delete?: never;
         options?: never;
         head?: never;
@@ -38719,6 +38908,80 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Inpatientunits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            facilityId: string;
+                            displayName: string;
+                            bedCount: number;
+                            isActive: boolean;
+                            rnCoverageHorizonHours: number;
+                            turnoverSlaMinutes: number;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Inpatientunits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    facilityId: string;
+                    displayName: string;
+                    bedCount: number;
+                    rnCoverageHorizonHours?: number;
+                    turnoverSlaMinutes?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        facilityId: string;
+                        displayName: string;
+                        bedCount: number;
+                        isActive: boolean;
+                        rnCoverageHorizonHours: number;
+                        turnoverSlaMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IntakeJobsById: {
         parameters: {
             query?: {
@@ -39833,6 +40096,420 @@ export interface operations {
                 content: {
                     "application/json": {
                         url: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1Ipuadmissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            patientId: string;
+                            kind: string;
+                            state: string;
+                            unitId: string | null;
+                            remoteFacilityId: string | null;
+                            openedAt: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Ipuadmissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    patientId: string;
+                    admissionId: string;
+                    levelOfCarePeriodId: string;
+                    providerEntityId: string;
+                    locationId?: string;
+                    unitId?: string;
+                    remoteFacilityId?: string;
+                    kind: "gip" | "irc" | "arranged";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IpuadmissionsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdAssignbed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bedId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdDischarge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "to_home" | "to_facility" | "to_other_hospice" | "revocation" | "expired_benefit";
+                    dischargeEventExists: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdRequestbed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    unitId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdRestraint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    restraintKind: "soft_limb" | "posey_vest" | "mitt" | "side_rail_4";
+                    restraintJustificationText: string;
+                    orderingPhysicianId: string;
+                    orderingOrderId: string;
+                    category: "behavioral" | "medical";
+                    reassessmentIntervalMinutes: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        restraintKind: string;
+                        state: string;
+                        reassessmentIntervalMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpubedsByIdCleaningstatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    event: "reserve" | "occupy" | "dischargeDirty" | "startCleaning" | "completeCleaning" | "retire" | "expireReservation";
+                    notes?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        roomId: string;
+                        unitId: string;
+                        bedLabel: string;
+                        cleaningStatus: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IpucensusByDate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                date: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        serviceDate: string;
+                        items: {
+                            unitId: string | null;
+                            remoteFacilityId: string | null;
+                            censusCountGip: number;
+                            censusCountIrc: number;
+                            bedDaysGip: number;
+                            bedDaysIrc: number;
+                            roomTurnoverCount: number;
+                            restraintIncidentCount: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpurestraintByIdReassess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "continue" | "modify" | "release";
+                    notes?: string;
+                    nextDueAt: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        restraintKind: string;
+                        state: string;
+                        reassessmentIntervalMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpurestraintByIdRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        restraintKind: string;
+                        state: string;
+                        reassessmentIntervalMinutes: number;
+                        version: number;
                     };
                 };
             };

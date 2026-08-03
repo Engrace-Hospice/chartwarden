@@ -713,3 +713,10 @@ export * from "./subscription-billing/index";
 // hl7_message_outbound on queued_at, hl7_inbound_proposal on proposed_at) with composite PKs in SQL; RLS +
 // M4 write-audit triggers in migration 0148. Enums in ./external-interfaces/enums.
 export * from "./external-interfaces/index";
+
+// M37 Inpatient Unit (IPU) Management: 26 owned tables (§3.3), all TENANT-SCOPED (canonical app.org_id
+// RLS). Four are MONTHLY-PARTITIONED — ipu_admission_state_history / ipu_bed_cleaning_event / ipu_visitor
+// / ipu_meal_service. Fully outbox-decoupled (D17): no cross-module schema FKs either direction; the
+// daily ipu_census_snapshot feeds M23/M26/M27 via outbox, and the ipu_iv_safety_overlay closes the M13
+// IV-pump overlay deferral. Enums in enums.ts; tables + RLS/grants + M4 triggers in migrations 0149–0153.
+export * from "./ipu/index";

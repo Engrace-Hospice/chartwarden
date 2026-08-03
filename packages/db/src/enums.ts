@@ -3335,3 +3335,208 @@ export const inactivityReason = pgEnum("inactivity_reason", [
   "revoked",
   "transferred",
 ]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// M37 Inpatient Unit (IPU) Management — §3.2 (23 enums). Value tuples MIRROR the
+// leaf union types in packages/inpatient/src/enums.ts (single definition site here;
+// ddl-legality bans duplicate pgEnum). None collide with existing billing/clinical enums.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `ipu_room_kind` — room class within a unit (§3.2). */
+export const ipuRoomKind = pgEnum("ipu_room_kind", [
+  "private",
+  "semi_private",
+  "family",
+  "shared_overflow",
+]);
+
+/** `ipu_bed_cleaning_status` — bed turnover state machine (§2.12 D13). */
+export const ipuBedCleaningStatus = pgEnum("ipu_bed_cleaning_status", [
+  "ready",
+  "reserved",
+  "occupied",
+  "discharged_dirty",
+  "cleaning",
+  "retired",
+]);
+
+/** `ipu_admission_kind` — GIP vs IRC vs arranged-inpatient (§2.2). */
+export const ipuAdmissionKind = pgEnum("ipu_admission_kind", ["gip", "irc", "arranged"]);
+
+/** `ipu_admission_state` — admission lifecycle (§2.2 D2). */
+export const ipuAdmissionState = pgEnum("ipu_admission_state", [
+  "pending",
+  "bed_pending",
+  "bed_assigned",
+  "active",
+  "transferring",
+  "transferred",
+  "discharged",
+  "deceased",
+  "closed",
+]);
+
+/** `ipu_admission_transition_kind` — transfer/discharge transition taxonomy (§2.2). */
+export const ipuAdmissionTransitionKind = pgEnum("ipu_admission_transition_kind", [
+  "to_unit",
+  "to_home",
+  "to_facility",
+  "to_other_hospice",
+  "revocation",
+  "expired_benefit",
+]);
+
+/** `ipu_shift_role` — role a membership fills on a shift (§2.3). */
+export const ipuShiftRole = pgEnum("ipu_shift_role", [
+  "charge_rn",
+  "rn",
+  "np_in_rn_role",
+  "lpn",
+  "cna",
+  "unit_secretary",
+  "housekeeping",
+  "pharmacist",
+  "social_worker_in_unit",
+  "chaplain_in_unit",
+  "medical_director_in_unit",
+]);
+
+/** `ipu_shift_assignment_state` — staff-assignment lifecycle (§2.3). */
+export const ipuShiftAssignmentState = pgEnum("ipu_shift_assignment_state", [
+  "tentative",
+  "confirmed",
+  "cancelled",
+  "completed",
+  "no_show",
+]);
+
+/** `gip_criterion_kind` — GIP admission-criterion discriminator (§2.4 D4). */
+export const gipCriterionKind = pgEnum("gip_criterion_kind", [
+  "acute_symptom_management",
+  "imminent_death_terminal_care",
+  "medications_treatments_inpatient_only",
+]);
+
+/** `irc_episode_state` — 5-day IRC cap lifecycle (§2.5 D6). */
+export const ircEpisodeState = pgEnum("irc_episode_state", [
+  "active",
+  "approaching_cap",
+  "breached",
+  "closed",
+]);
+
+/** `ipu_restraint_kind` — restraint device class (§2.10 D11). */
+export const ipuRestraintKind = pgEnum("ipu_restraint_kind", [
+  "soft_limb",
+  "posey_vest",
+  "mitt",
+  "side_rail_4",
+]);
+
+/** `ipu_restraint_event_state` — restraint application state (§2.10). */
+export const ipuRestraintEventState = pgEnum("ipu_restraint_event_state", ["active", "released"]);
+
+/** `ipu_restraint_reassessment_outcome` — restraint reassessment decision (§2.10). */
+export const ipuRestraintReassessmentOutcome = pgEnum("ipu_restraint_reassessment_outcome", [
+  "continue",
+  "modify",
+  "release",
+]);
+
+/** `ipu_visitor_relationship` — visitor relationship to patient (§2.7 D8). */
+export const ipuVisitorRelationship = pgEnum("ipu_visitor_relationship", [
+  "spouse",
+  "parent",
+  "child",
+  "sibling",
+  "grandparent",
+  "grandchild",
+  "in_law",
+  "aunt_uncle",
+  "cousin",
+  "friend",
+  "clergy",
+  "volunteer",
+  "caregiver_paid",
+  "legal_representative",
+  "other",
+]);
+
+/** `ipu_visitor_restriction_scope` — unit-wide vs per-patient restriction (§2.7). */
+export const ipuVisitorRestrictionScope = pgEnum("ipu_visitor_restriction_scope", ["unit", "patient"]);
+
+/** `ipu_visitor_restriction_kind` — restriction severity (§2.7). */
+export const ipuVisitorRestrictionKind = pgEnum("ipu_visitor_restriction_kind", [
+  "full_block",
+  "immediate_family_only",
+  "mask_required",
+  "time_limited",
+  "no_overnight",
+]);
+
+/** `ipu_meal_slot` — meal service slot (§2.8). */
+export const ipuMealSlot = pgEnum("ipu_meal_slot", ["breakfast", "lunch", "dinner", "snack"]);
+
+/** `ipu_equipment_type` — durable/biomed equipment class (§2.9 D10). */
+export const ipuEquipmentType = pgEnum("ipu_equipment_type", [
+  "hospital_bed",
+  "oxygen_concentrator",
+  "suction_machine",
+  "iv_pump",
+  "bipap",
+  "cpap",
+  "lift",
+  "scale",
+  "vitals_monitor",
+  "comfort_mattress",
+  "low_air_loss_mattress",
+]);
+
+/** `ipu_equipment_location_kind` — where a piece of equipment currently sits (§2.9). */
+export const ipuEquipmentLocationKind = pgEnum("ipu_equipment_location_kind", [
+  "unit",
+  "room",
+  "bed",
+  "storage",
+  "sent_for_repair",
+  "retired",
+]);
+
+/** `ipu_equipment_status` — equipment lifecycle status (§2.9). */
+export const ipuEquipmentStatus = pgEnum("ipu_equipment_status", [
+  "active",
+  "maintenance",
+  "retired",
+  "lost",
+  "sent_for_repair",
+]);
+
+/** `ipu_equipment_inspection_kind` — biomed inspection type (§2.9 D10). */
+export const ipuEquipmentInspectionKind = pgEnum("ipu_equipment_inspection_kind", [
+  "annual_biomed",
+  "per_use_safety",
+  "post_repair_safety",
+  "recall_response",
+]);
+
+/** `ipu_equipment_inspection_outcome` — inspection result (§2.9). */
+export const ipuEquipmentInspectionOutcome = pgEnum("ipu_equipment_inspection_outcome", [
+  "pass",
+  "fail",
+  "conditional_pass",
+  "retired",
+]);
+
+/** `ipu_body_release_state` — post-mortem body-release coordination (§2.11 D12). */
+export const ipuBodyReleaseState = pgEnum("ipu_body_release_state", [
+  "pending",
+  "funeral_home_identified",
+  "released",
+  "closed",
+]);
+
+/** `ipu_remote_arrangement_billing_basis` — arranged-inpatient billing basis (CoP 418.112). */
+export const ipuRemoteArrangementBillingBasis = pgEnum("ipu_remote_arrangement_billing_basis", [
+  "bundled",
+  "per_diem_passthrough",
+]);

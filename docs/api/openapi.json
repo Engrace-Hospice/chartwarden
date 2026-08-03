@@ -75002,6 +75002,188 @@
         }
       }
     },
+    "/api/v1/inpatient-units": {
+      "get": {
+        "operationId": "getApiV1Inpatientunits",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "List IPU units for the org (§4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "facilityId",
+                          "displayName",
+                          "bedCount",
+                          "isActive",
+                          "rnCoverageHorizonHours",
+                          "turnoverSlaMinutes",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "facilityId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "bedCount": {
+                            "type": "integer"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "rnCoverageHorizonHours": {
+                            "type": "integer"
+                          },
+                          "turnoverSlaMinutes": {
+                            "type": "integer"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Inpatientunits",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Create an IPU unit (org admin; step-up). RN-coverage-exempt admin route (§2.3)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "facilityId",
+                    "displayName",
+                    "bedCount",
+                    "isActive",
+                    "rnCoverageHorizonHours",
+                    "turnoverSlaMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "facilityId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "bedCount": {
+                      "type": "integer"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "rnCoverageHorizonHours": {
+                      "type": "integer"
+                    },
+                    "turnoverSlaMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "facilityId",
+                  "displayName",
+                  "bedCount"
+                ],
+                "properties": {
+                  "facilityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "bedCount": {
+                    "minimum": 0,
+                    "maximum": 512,
+                    "type": "integer"
+                  },
+                  "rnCoverageHorizonHours": {
+                    "minimum": 8,
+                    "maximum": 168,
+                    "type": "integer"
+                  },
+                  "turnoverSlaMinutes": {
+                    "minimum": 1,
+                    "maximum": 120,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/intake/jobs/{id}": {
       "get": {
         "operationId": "getApiV1IntakeJobsById",
@@ -78571,6 +78753,1221 @@
                           "type": "null"
                         }
                       ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions": {
+      "get": {
+        "operationId": "getApiV1Ipuadmissions",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "List IPU admissions (§4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "kind",
+                          "state",
+                          "unitId",
+                          "remoteFacilityId",
+                          "openedAt",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "unitId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "remoteFacilityId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "openedAt": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Ipuadmissions",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Open an IPU admission. GIP/IRC compose the m37.ipu.rn_coverage_active gate (412 IPU_RN_COVERAGE_UNAVAILABLE when the unit is uncovered); arranged remote-IPU bypasses (§2.2/§2.3)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "patientId",
+                  "admissionId",
+                  "levelOfCarePeriodId",
+                  "providerEntityId",
+                  "kind"
+                ],
+                "properties": {
+                  "patientId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "levelOfCarePeriodId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "providerEntityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "locationId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "unitId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "remoteFacilityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "gip",
+                        "type": "string"
+                      },
+                      {
+                        "const": "irc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "arranged",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}": {
+      "get": {
+        "operationId": "getApiV1IpuadmissionsById",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Read an IPU admission (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/assign-bed": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdAssignbed",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Assign a specific bed (bed_assigned); reserves the bed + persists the assignment; 409 if the bed is not ready (§2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "bedId"
+                ],
+                "properties": {
+                  "bedId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/discharge": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdDischarge",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "dischargeEventExists"
+                ],
+                "properties": {
+                  "reason": {
+                    "anyOf": [
+                      {
+                        "const": "to_home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "to_facility",
+                        "type": "string"
+                      },
+                      {
+                        "const": "to_other_hospice",
+                        "type": "string"
+                      },
+                      {
+                        "const": "revocation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "expired_benefit",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "dischargeEventExists": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/request-bed": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdRequestbed",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Transition an admission to bed_pending (RN-coverage gated; requires an active unit + a ready bed, §2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "unitId"
+                ],
+                "properties": {
+                  "unitId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/restraint": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdRestraint",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Apply a restraint (step-up + m37.ipu.rn_coverage_active). 422 on missing physician order / <100-char justification; 403 without step-up (§2.10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "restraintKind",
+                    "state",
+                    "reassessmentIntervalMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "restraintKind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "reassessmentIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "restraintKind",
+                  "restraintJustificationText",
+                  "orderingPhysicianId",
+                  "orderingOrderId",
+                  "category",
+                  "reassessmentIntervalMinutes"
+                ],
+                "properties": {
+                  "restraintKind": {
+                    "anyOf": [
+                      {
+                        "const": "soft_limb",
+                        "type": "string"
+                      },
+                      {
+                        "const": "posey_vest",
+                        "type": "string"
+                      },
+                      {
+                        "const": "mitt",
+                        "type": "string"
+                      },
+                      {
+                        "const": "side_rail_4",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "restraintJustificationText": {
+                    "minLength": 100,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "orderingPhysicianId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "orderingOrderId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "behavioral",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reassessmentIntervalMinutes": {
+                    "minimum": 1,
+                    "maximum": 240,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-beds/{id}/cleaning-status": {
+      "post": {
+        "operationId": "postApiV1IpubedsByIdCleaningstatus",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Transition a bed's §2.12 cleaning state (409 ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge); writes the ipu_bed_cleaning_event ledger row + emits the M33/M36 signal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "roomId",
+                    "unitId",
+                    "bedLabel",
+                    "cleaningStatus",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "roomId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "bedLabel": {
+                      "type": "string"
+                    },
+                    "cleaningStatus": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "anyOf": [
+                      {
+                        "const": "reserve",
+                        "type": "string"
+                      },
+                      {
+                        "const": "occupy",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dischargeDirty",
+                        "type": "string"
+                      },
+                      {
+                        "const": "startCleaning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "completeCleaning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "retire",
+                        "type": "string"
+                      },
+                      {
+                        "const": "expireReservation",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-census/{date}": {
+      "get": {
+        "operationId": "getApiV1IpucensusByDate",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Read the IPU census snapshot for a date (§4.1)",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "serviceDate",
+                    "items"
+                  ],
+                  "properties": {
+                    "serviceDate": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "unitId",
+                          "remoteFacilityId",
+                          "censusCountGip",
+                          "censusCountIrc",
+                          "bedDaysGip",
+                          "bedDaysIrc",
+                          "roomTurnoverCount",
+                          "restraintIncidentCount"
+                        ],
+                        "properties": {
+                          "unitId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "remoteFacilityId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "censusCountGip": {
+                            "type": "integer"
+                          },
+                          "censusCountIrc": {
+                            "type": "integer"
+                          },
+                          "bedDaysGip": {
+                            "type": "integer"
+                          },
+                          "bedDaysIrc": {
+                            "type": "integer"
+                          },
+                          "roomTurnoverCount": {
+                            "type": "integer"
+                          },
+                          "restraintIncidentCount": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-restraint/{id}/reassess": {
+      "post": {
+        "operationId": "postApiV1IpurestraintByIdReassess",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Record a restraint reassessment (continue/modify/release); 409 on an already-released event (§2.10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "restraintKind",
+                    "state",
+                    "reassessmentIntervalMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "restraintKind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "reassessmentIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "outcome",
+                  "nextDueAt"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "continue",
+                        "type": "string"
+                      },
+                      {
+                        "const": "modify",
+                        "type": "string"
+                      },
+                      {
+                        "const": "release",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "notes": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "nextDueAt": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-restraint/{id}/release": {
+      "post": {
+        "operationId": "postApiV1IpurestraintByIdRelease",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Release a restraint (§2.10)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "restraintKind",
+                    "state",
+                    "reassessmentIntervalMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "restraintKind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "reassessmentIntervalMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
                     }
                   }
                 }

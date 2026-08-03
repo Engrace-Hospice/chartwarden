@@ -1227,4 +1227,9 @@ export type DataClass =
   // FHIR egress is itself a disclosure). The platform-shared `nppes_provider` / `nppes_sync_run` are the
   // public CMS directory (rebuildable from a re-sync) and are never touched. Unlike the per-patient classes
   // above, `subjectId` is the ORG being offboarded — M29-T01 named it `external_interfaces`.
-  | "external_interfaces";
+  | "external_interfaces"
+  // M37-T11: a patient's IPU record (ipu_admission subtree + gip/irc/restraint/iv-overlay/body-release/
+  // visitor/meal satellites + per-patient visitor restrictions). M37 registers the REAL eraser via the
+  // composition-root hook over this deny-stub — under an M4 destruction certificate it deletes the subtree
+  // in FK order (§7.7 / D8); aggregate census snapshots survive (no patient_id, D14). `subjectId` = patient.
+  | "ipu_record";
