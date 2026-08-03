@@ -2329,6 +2329,38 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       expect(r.rows.map((x) => x.relname), "RLS enabled but NOT forced").toEqual([]);
     });
 
+    it("the 11 platform-only zero-policy tables (migration 0159) each have a reachable policy", async () => {
+      // These tables have no organization_id, so the org-scoped "has at least one policy" check above
+      // never sees them — they were RLS-enabled with a GRANT to wardenx_admin/tenant_platform_writer
+      // but zero CREATE POLICY, which makes the grant dead: default-deny applies to every non-owner
+      // role, including the one that was supposedly granted access.
+      const PLATFORM_ZERO_POLICY_TABLES = [
+        "tenant_signup_intent",
+        "tenant_signup_token",
+        "revenue_recognition_snapshot",
+        "patient_pseudonym_key",
+        "stripe_webhook_event",
+        "stripe_api_call_audit",
+        "platform_retained_invoice",
+        "platform_retained_invoice_line",
+        "merge_request",
+        "nppes_sync_log",
+        "nppes_sync_coordination",
+      ];
+      const r = await db.query<{ relname: string }>(
+        `SELECT c.relname
+           FROM pg_class c
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public'
+            AND c.relname = ANY($1)
+            AND c.relrowsecurity
+            AND NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid)
+          ORDER BY c.relname`,
+        [PLATFORM_ZERO_POLICY_TABLES],
+      );
+      expect(r.rows.map((x) => x.relname), "platform table(s) still policy-less").toEqual([]);
+    });
+
     it("every partition LEAF has RLS enabled + forced, and no policies of its own", async () => {
       // Policies live on the parent and govern parent-routed access only; a leaf is reached directly
       // by naming it. Before 0118 all 429 leaves had `relrowsecurity = false`, so the ONLY thing

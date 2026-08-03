@@ -23,7 +23,14 @@ export function registerAdminExportRoutes(app: FastifyInstance, deps: AdminExpor
   // R31 — list the org's bulk-export jobs.
   app.get(
     "/api/v1/fhir/bulk-export-jobs",
-    { preHandler: [P("fhir.export.bulk.read"), ABAC_IN_ORG("fhir.export.bulk.read")] },
+    {
+      preHandler: [P("fhir.export.bulk.read"), ABAC_IN_ORG("fhir.export.bulk.read")],
+      config: {
+        auditRead: {
+          none: "bulk-export job metadata only (resourceTypes/status/timestamps); no patient data. The real FHIR patient-data surface is /fhir/r4, audited separately via FhirDisclosureAuditPort/FhirReadDisclosureEnvelope (§164.528), which this prefix-based gate cannot reach.",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { status, clientId } = parseQuery(BulkExportListQuery, request.query);

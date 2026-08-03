@@ -69,7 +69,10 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
   // current session context.
   app.get(
     "/api/v1/portal/sessions/current",
-    { preHandler: [P("portal.session.read_own"), ABAC_ACCOUNT("portal.session.read_own")] },
+    {
+      preHandler: [P("portal.session.read_own"), ABAC_ACCOUNT("portal.session.read_own")],
+      config: { auditRead: { resourceKind: "portal_session" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const portalAccountId = portalAccountIdOf(actor);

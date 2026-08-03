@@ -80,11 +80,26 @@ function readFactor(body: unknown, reply: FastifyReply): StepUpQualifyingFactor 
   return factor;
 }
 
+/**
+ * TASK-010 (SEC-005/OPS-010): `WEBAUTHN_RP_ID` unset previously fell through to a hardcoded
+ * `"localhost"` regardless of `NODE_ENV` — in production that silently weakens (or outright breaks)
+ * every WebAuthn ceremony instead of refusing to boot. `bootstrap/env.ts` now requires the var in
+ * production too; this is the defense-in-depth twin at the point of use.
+ */
+function resolveWebauthnRpId(): string {
+  const configured = process.env.WEBAUTHN_RP_ID;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("WEBAUTHN_RP_ID is required in production");
+  }
+  return "localhost";
+}
+
 export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRouteDeps): void {
   const newChallengeId = deps.newChallengeId ?? (() => crypto.randomUUID());
   const newWebauthnChallenge =
     deps.newWebauthnChallenge ?? (() => crypto.randomUUID().replace(/-/g, ""));
-  const rpId = deps.webauthnRpId ?? process.env.WEBAUTHN_RP_ID ?? "localhost";
+  const rpId = deps.webauthnRpId ?? resolveWebauthnRpId();
 
   // --- Initiate a step-up challenge --------------------------------------------------------
   app.post("/api/v1/sessions/step-up/initiate", async (request, reply) => {

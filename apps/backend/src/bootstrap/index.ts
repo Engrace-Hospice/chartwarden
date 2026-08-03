@@ -107,15 +107,15 @@ export function parseTrustedProxies(raw: string | undefined): string[] | false {
  * accounting-of-disclosures request under §164.528, or a snooping investigation, could not have
  * reconstructed those reads.
  *
- * The list is deliberately explicit rather than "/api/v1": the M6–M14/M17/M18/M22 clinical-core
- * prefixes are NOT here yet, because those routes carry no `config.auditRead` and adding their
- * prefixes would only fail the boot. They are the remaining widening work, and they matter most —
- * now that the clinical core mounts live Drizzle route services (see registerModuleRoutes in index.ts),
- * annotating their reads with `config.auditRead` is the follow-up. Prefixes are matched with startsWith,
- * so "/api/v1/claims" also governs "/api/v1/claims/:id/validation-runs".
+ * The list is deliberately explicit rather than "/api/v1": every prefix here was added only after
+ * its module's GET/HEAD handlers were annotated with `config.auditRead` (TASK-009 widened the
+ * clinical core + portal + FHIR into this gate; TASK-020/future modules are the remaining work).
+ * Prefixes are matched with startsWith, so "/api/v1/claims" also governs
+ * "/api/v1/claims/:id/validation-runs".
  */
 export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
-  // M5 patient chart (the original covered surface) + the patient-scoped reads M7/M9/M10/M12/M39 hang off it.
+  // M5 patient chart (the original covered surface) + the patient-scoped reads M6/M7/M9/M10/M12/M39
+  // hang off it.
   "/api/v1/patients",
   // M16 Bereavement · M15 Discipline plans · M20 Field safety · M19 On-call — already at full
   // coverage; listing them locks that in so a new unannotated read route cannot regress them.
@@ -152,6 +152,85 @@ export const DEFAULT_READ_AUDIT_PREFIXES: readonly string[] = [
   "/api/v1/internal/denials",
   "/api/v1/internal/remittance",
   "/api/v1/internal/patient-responsibility",
+  // TASK-009 (SEC-002/API-004) — the clinical-core + field/portal/IPU widening.
+  // M6 Admission — referral → admission → election lifecycle.
+  "/api/v1/referrals",
+  "/api/v1/admissions",
+  "/api/v1/election-statements",
+  "/api/v1/cti",
+  "/api/v1/face-to-face",
+  "/api/v1/compliance-windows",
+  // M7 Care Plan.
+  "/api/v1/care-plans",
+  "/api/v1/internal/care-plan",
+  // M8 Encounters.
+  "/api/v1/encounters",
+  "/api/v1/internal/encounters",
+  // M9 Assessments — the internal batch reads + admin scale-license/policy config (the latter carry
+  // justified waivers; the patient-scoped reads already hang off /api/v1/patients above).
+  "/api/v1/internal/assessments",
+  "/api/v1/admin/scales",
+  // M10 HOPE.
+  "/api/v1/hope",
+  // M11 Orders.
+  "/api/v1/orders",
+  "/api/v1/standing-orders",
+  "/api/v1/admin/orders",
+  // M12 DoseSpot.
+  "/api/v1/medication-orders",
+  "/api/v1/refills",
+  "/api/v1/admin/dosespot-prescribers",
+  "/api/v1/admin/refill-inbox-policy",
+  "/api/v1/admin/controlled-substance-policy",
+  // M13 eMAR.
+  "/api/v1/administrations",
+  "/api/v1/scheduled-doses",
+  "/api/v1/missed-doses",
+  "/api/v1/reconciliation",
+  "/api/v1/comfort-kits",
+  "/api/v1/admin/administration-policy",
+  // M14 IDG.
+  "/api/v1/idg",
+  // M17 Scheduling.
+  "/api/v1/visits",
+  "/api/v1/visit-proposals",
+  "/api/v1/recurring-visits",
+  "/api/v1/day-view",
+  "/api/v1/week-view",
+  "/api/v1/availability",
+  "/api/v1/time-off",
+  "/api/v1/map-view",
+  "/api/v1/metrics",
+  // M18 EVV.
+  "/api/v1/evv",
+  // M22 Documents.
+  "/api/v1/documents",
+  "/api/v1/form-templates",
+  "/api/v1/tenant-overlays",
+  "/api/v1/intake",
+  "/api/v1/admin/form-fills",
+  // M37 IPU.
+  "/api/v1/inpatient-units",
+  "/api/v1/ipu-admissions",
+  "/api/v1/ipu-body-release",
+  "/api/v1/ipu-census",
+  "/api/v1/ipu-equipment",
+  "/api/v1/ipu-rooms",
+  "/api/v1/ipu-shifts",
+  "/api/v1/ipu-units",
+  // M31 Patient/Family Portal + Telehealth (also governs the M17/M18/M19 portal-facing reads that
+  // hang off the same "/api/v1/portal" prefix).
+  "/api/v1/portal",
+  "/api/v1/admin/portal-accounts",
+  "/api/v1/admin/portal-invitations",
+  "/api/v1/admin/telehealth",
+  "/api/v1/auditor/portal-engagement",
+  // M28 FHIR Gateway — the admin/config surface only (client registry, sessions, config, export jobs,
+  // inbound-proposal review queue), all justified waivers: none surface a raw FHIR resource body. The
+  // real patient-data FHIR surface is "/fhir/r4" (a DIFFERENT, non-"/api/v1" mount), audited separately
+  // via FhirDisclosureAuditPort/FhirReadDisclosureEnvelope (§164.528) — this prefix-based gate cannot
+  // reach it, and is not meant to.
+  "/api/v1/fhir",
 ];
 
 /**

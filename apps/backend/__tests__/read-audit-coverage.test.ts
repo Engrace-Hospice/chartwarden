@@ -134,17 +134,44 @@ describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
     }
   });
 
-  it("does NOT yet govern the M6–M14/M17/M18/M22 clinical core — those routes carry no declaration", () => {
-    // Deliberate and temporary: adding these prefixes today would only fail the boot. This assertion
-    // is the reminder that the largest PHI read surface in the product is still unaudited — when
-    // those routes gain `config.auditRead`, add the prefixes and invert this test.
+  it("governs the M6-M14/M17/M18/M22 clinical core (TASK-009) — the largest PHI read surface", () => {
+    // Was the "does NOT yet govern" reminder: every GET/HEAD under these prefixes now carries
+    // `config.auditRead` (an emission config, or a justified waiver — e.g. M9's admin scale-licensing
+    // config, M13's org-level administration policy), so widening the prefix list no longer fails boot.
     for (const url of [
-      "/api/v1/encounters",
+      "/api/v1/referrals",
+      "/api/v1/admissions/:id",
+      "/api/v1/care-plans/:planId/summary",
+      "/api/v1/encounters/:encounterId",
+      "/api/v1/hope/schedules",
       "/api/v1/orders",
+      "/api/v1/medication-orders/:id",
       "/api/v1/administrations",
-      "/api/v1/documents",
+      "/api/v1/idg/schedule",
+      "/api/v1/visits/:visitId",
+      "/api/v1/evv/events",
+      "/api/v1/documents/:id",
     ]) {
-      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(false);
+      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
     }
+  });
+
+  it("governs M37 IPU and the M31 portal (also reached by M17/M18/M19's portal-facing reads)", () => {
+    for (const url of [
+      "/api/v1/ipu-admissions/:id",
+      "/api/v1/inpatient-units",
+      "/api/v1/portal/documents",
+      "/api/v1/portal/visits/upcoming",
+      "/api/v1/portal/visits/:visitId/arrival",
+      "/api/v1/portal/triage/recent",
+      "/api/v1/admin/portal-accounts",
+    ]) {
+      expect(isGovernedReadRoute("GET", url, DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
+    }
+  });
+
+  it("governs the M28 FHIR admin surface, but NOT the /fhir/r4 patient-data mount (a different, non-/api/v1 prefix audited via FhirDisclosureAuditPort)", () => {
+    expect(isGovernedReadRoute("GET", "/api/v1/fhir/clients", DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
+    expect(isGovernedReadRoute("GET", "/fhir/r4/Patient/:id", DEFAULT_READ_AUDIT_PREFIXES)).toBe(false);
   });
 });

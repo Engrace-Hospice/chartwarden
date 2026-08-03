@@ -53,6 +53,8 @@ export const M13_ERROR_STATUS = {
   WITNESS_TOKEN_EXPIRED: 401,
   // §7.4 — the witness-attestation token was minted for a different (patient, order, clinician) scope.
   WITNESS_TOKEN_SCOPE_MISMATCH: 401,
+  // §7.4 / TASK-008 — the witness-attestation token was already burned by a prior administration (replay).
+  WITNESS_TOKEN_ALREADY_USED: 401,
   // §2.8 D17 — a per-line reconciliation decision is illegal for the line's source (e.g. `new_order` on an
   // already-active M12 order).
   RECONCILIATION_DECISION_INVALID: 422,

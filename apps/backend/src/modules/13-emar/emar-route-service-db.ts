@@ -26,8 +26,10 @@
 //       context (an honest scan reads `match`; an expired scan still hard-blocks);
 //   (4) the M8 `SignedEncountersReader` is NOT threaded → encounter auto-linkage is skipped (the caller may
 //       still pass an explicit encounterId);
-//   (5) the witness-attestation token is a process-fixed HMAC secret and the single-use Valkey burn is
-//       deferred (the token's HMAC + 60s TTL + scope binding are enforced; replay-burn lands with Valkey);
+//   (5) [CLOSED, TASK-008] the witness-attestation secret is externalized via `M13_WITNESS_SIGNING_KEY`
+//       (bootstrap/env.ts, prod fail-closed) and the single-use burn is enforced via a unique index on
+//       `administration_witness.attestation_token_digest` (mig 0160) — Postgres, not an optional Valkey
+//       dependency, so it holds cluster-wide without a Redis requirement this deployment doesn't have;
 //   (6) the PRN wrapper row (`prn_administration`) is materialized by M9's reassessment consumer in prod —
 //       the write path emits `m13.prn_administration_recorded` with a fresh id (the in-mem posture);
 //   (7) the reconciliation worksheet stores no expected-line count, so `finalize` requires ≥1 recorded
@@ -71,8 +73,22 @@ import type {
 /** Sentinel patient/admission anchors when no scheduled dose supplies them (the in-mem `findPatient` values). */
 const PATIENT_SENTINEL = "00000000-0000-4000-8000-0000000000aa";
 const ADMISSION_SENTINEL = "00000000-0000-4000-8000-0000000000bb";
-/** Process-fixed witness-token secret (compromise #5): mint + verify share it in-process so tokens round-trip. */
-const WITNESS_SECRET = "wardenx-m13-witness-secret";
+/**
+ * §7.4 witness-attestation HMAC secret (TASK-008, SEC-001). Externalized via `M13_WITNESS_SIGNING_KEY`
+ * (validated ≥32 chars at boot by `bootstrap/env.ts` in production); a fixed dev-only value covers
+ * dev/test so mint + verify still round-trip without the var set. Read once at module load — mirrors
+ * the existing module-level `WITNESS_SECRET` shape, and doubles as a second, defense-in-depth
+ * fail-closed check in case this module is ever imported before `assertProductionEnv()` runs.
+ */
+function resolveWitnessSigningKey(): string {
+  const configured = process.env.M13_WITNESS_SIGNING_KEY;
+  if (configured) return configured;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("M13_WITNESS_SIGNING_KEY is required in production (TASK-008)");
+  }
+  return "wardenx-m13-witness-secret-dev-only-do-not-use-in-prod";
+}
+const WITNESS_SECRET = resolveWitnessSigningKey();
 
 /** The transactional-outbox port (§4.4): the bound publisher validates every emit against the boot catalog
  * and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests commit without
@@ -99,6 +115,7 @@ const RD = schema.medicationReconciliationDecisions;
 const CKD = schema.comfortKitDeployments;
 const POL = schema.administrationPolicy;
 const BSE = schema.barcodeScanEvents;
+const WIT = schema.administrationWitnesses;
 
 /** The in-memory slice's default policy (returned when the org has no `administration_policy` row). */
 const DEFAULT_POLICY: AdministrationPolicyView = {
@@ -468,6 +485,21 @@ export function createDbEmarBackend(
             throw new ValidationError(
               "a controlled-substance administration requires a witness attestation",
               [{ field: "X-Witness-Attestation", code: "WITNESS_REQUIRED", message: `witness attestation ${verify.reason}` }],
+            );
+          // Single-use burn (TASK-008): a valid, unexpired, in-scope token can still be a REPLAY of one
+          // already consumed by an earlier administration. The `administration_witness` unique index on
+          // `attestation_token_digest` (mig 0160) is the structural, cluster-wide backstop; this pre-check
+          // turns the would-be 23505 into the same friendly D7 rejection as an invalid/expired token
+          // (mirrors the M15 `volunteer_compliance_gate` precedent).
+          const priorBurn = await tx
+            .select({ id: WIT.id })
+            .from(WIT)
+            .where(eq(WIT.attestationTokenDigest, verify.digest))
+            .limit(1);
+          if (priorBurn.length > 0)
+            throw new ValidationError(
+              "a controlled-substance administration requires a witness attestation",
+              [{ field: "X-Witness-Attestation", code: "WITNESS_REQUIRED", message: "witness attestation WITNESS_TOKEN_ALREADY_USED" }],
             );
           witnessMembershipId = verify.claims.witnessMembershipId;
           witnessDigest = verify.digest;

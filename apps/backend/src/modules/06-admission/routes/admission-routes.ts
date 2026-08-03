@@ -156,17 +156,31 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return reply.code(201).send(res);
   });
 
-  app.get("/api/v1/referrals", { preHandler: [REFERRAL_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(ReferralListQuerySchema, request.query);
-    return service.listReferrals(organizationId, q);
-  });
+  app.get(
+    "/api/v1/referrals",
+    {
+      preHandler: [REFERRAL_READ],
+      config: { auditRead: { resourceKind: "referral", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(ReferralListQuerySchema, request.query);
+      return service.listReferrals(organizationId, q);
+    },
+  );
 
-  app.get("/api/v1/referrals/:id", { preHandler: [REFERRAL_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const row = await service.getReferral(organizationId, idOf(request));
-    return row ?? notFound(idOf(request));
-  });
+  app.get(
+    "/api/v1/referrals/:id",
+    {
+      preHandler: [REFERRAL_READ],
+      config: { auditRead: { resourceKind: "referral", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getReferral(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
 
   app.patch("/api/v1/referrals/:id", { preHandler: [REFERRAL_UPDATE] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -210,17 +224,31 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     return reply.code(201).send(res);
   });
 
-  app.get("/api/v1/admissions", { preHandler: [ADMISSION_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(AdmissionListQuerySchema, request.query);
-    return service.listAdmissions(organizationId, q);
-  });
+  app.get(
+    "/api/v1/admissions",
+    {
+      preHandler: [ADMISSION_READ],
+      config: { auditRead: { resourceKind: "admission", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(AdmissionListQuerySchema, request.query);
+      return service.listAdmissions(organizationId, q);
+    },
+  );
 
-  app.get("/api/v1/admissions/:id", { preHandler: [ADMISSION_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const row = await service.getAdmission(organizationId, idOf(request));
-    return row ?? notFound(idOf(request));
-  });
+  app.get(
+    "/api/v1/admissions/:id",
+    {
+      preHandler: [ADMISSION_READ],
+      config: { auditRead: { resourceKind: "admission", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getAdmission(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
 
   // Patient-scoped Election & Certification aggregate — the patient-chart "Election & Certification"
   // tab. Gated by `election.read`; a patient with no admission returns a truthful empty (admission null),
@@ -282,11 +310,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.get("/api/v1/election-statements/:id", { preHandler: [ELECTION_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const row = await service.getElectionStatement(organizationId, idOf(request));
-    return row ?? notFound(idOf(request));
-  });
+  app.get(
+    "/api/v1/election-statements/:id",
+    {
+      preHandler: [ELECTION_READ],
+      config: { auditRead: { resourceKind: "election_statement", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getElectionStatement(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
 
   app.post(
     "/api/v1/election-statements/:id/sign",
@@ -310,7 +345,10 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
 
   app.get(
     "/api/v1/admissions/:id/election-periods",
-    { preHandler: [ELECTION_READ] },
+    {
+      preHandler: [ELECTION_READ],
+      config: { auditRead: { resourceKind: "election_period", resourceIdParam: "id" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const rows = await service.listElectionPeriods(organizationId, idOf(request));
@@ -356,11 +394,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.get("/api/v1/cti/:id", { preHandler: [CTI_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const row = await service.getCti(organizationId, idOf(request));
-    return row ?? notFound(idOf(request));
-  });
+  app.get(
+    "/api/v1/cti/:id",
+    {
+      preHandler: [CTI_READ],
+      config: { auditRead: { resourceKind: "cti", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getCti(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
 
   app.post(
     "/api/v1/cti/:id/sign-hospice-md",
@@ -412,11 +457,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.get("/api/v1/face-to-face/:id", { preHandler: [F2F_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const row = await service.getF2f(organizationId, idOf(request));
-    return row ?? notFound(idOf(request));
-  });
+  app.get(
+    "/api/v1/face-to-face/:id",
+    {
+      preHandler: [F2F_READ],
+      config: { auditRead: { resourceKind: "face_to_face", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getF2f(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
 
   app.post("/api/v1/face-to-face/:id/complete", { preHandler: [F2F_COMPLETE] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -462,11 +514,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.get("/api/v1/admissions/:id/level-of-care", { preHandler: [LOC_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const rows = await service.listLoc(organizationId, idOf(request));
-    return rows === null ? notFound(idOf(request)) : { items: rows };
-  });
+  app.get(
+    "/api/v1/admissions/:id/level-of-care",
+    {
+      preHandler: [LOC_READ],
+      config: { auditRead: { resourceKind: "level_of_care", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const rows = await service.listLoc(organizationId, idOf(request));
+      return rows === null ? notFound(idOf(request)) : { items: rows };
+    },
+  );
 
   app.patch("/api/v1/level-of-care/:id", { preHandler: [LOC_CHANGE] }, async (request) => {
     const { organizationId } = actorOf(request);
@@ -560,16 +619,26 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.get("/api/v1/admissions/:id/nor", { preHandler: [NOR_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const row = await service.getNor(organizationId, idOf(request));
-    return row ?? notFound(idOf(request));
-  });
+  app.get(
+    "/api/v1/admissions/:id/nor",
+    {
+      preHandler: [NOR_READ],
+      config: { auditRead: { resourceKind: "nor", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const row = await service.getNor(organizationId, idOf(request));
+      return row ?? notFound(idOf(request));
+    },
+  );
 
   // ── Compliance windows (routes 43–46) ────────────────────────────────────────────────────────
   app.get(
     "/api/v1/admissions/:id/compliance-windows",
-    { preHandler: [COMPLIANCE_READ] },
+    {
+      preHandler: [COMPLIANCE_READ],
+      config: { auditRead: { resourceKind: "compliance_window", resourceIdParam: "id" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const rows = await service.listComplianceWindowsForAdmission(organizationId, idOf(request));
@@ -577,11 +646,18 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     },
   );
 
-  app.get("/api/v1/compliance-windows", { preHandler: [COMPLIANCE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(ComplianceListQuerySchema, request.query);
-    return service.listComplianceWindows(organizationId, q);
-  });
+  app.get(
+    "/api/v1/compliance-windows",
+    {
+      preHandler: [COMPLIANCE_READ],
+      config: { auditRead: { resourceKind: "compliance_window", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(ComplianceListQuerySchema, request.query);
+      return service.listComplianceWindows(organizationId, q);
+    },
+  );
 
   app.post(
     "/api/v1/compliance-windows/:id/close",

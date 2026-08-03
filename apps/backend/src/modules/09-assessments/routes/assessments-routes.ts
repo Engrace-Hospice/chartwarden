@@ -283,24 +283,47 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   );
 
   // 11 — internal: LatestAssessmentProvider batch (system principal; M7/M10).
-  app.get("/api/v1/internal/assessments/latest-batch", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(LatestBatchQuerySchema, request.query);
-    return service.latestBatch(organizationId, q.patientId, q.scaleTypes);
-  });
+  app.get(
+    "/api/v1/internal/assessments/latest-batch",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "assessment", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(LatestBatchQuerySchema, request.query);
+      return service.latestBatch(organizationId, q.patientId, q.scaleTypes);
+    },
+  );
 
   // 12 — internal: ScaleSeriesProvider batch (system principal; M32 AI symptom-trajectory).
-  app.get("/api/v1/internal/assessments/series-batch", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(SeriesBatchQuerySchema, request.query);
-    return service.seriesScale(organizationId, q.patientId, q.scaleType, q.from, q.to);
-  });
+  app.get(
+    "/api/v1/internal/assessments/series-batch",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "assessment", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(SeriesBatchQuerySchema, request.query);
+      return service.seriesScale(organizationId, q.patientId, q.scaleType, q.from, q.to);
+    },
+  );
 
   // 13 — admin: scale-license registry (org_admin / compliance).
-  app.get("/api/v1/admin/scales/licenses", { preHandler: [LICENSE_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.listLicenses(organizationId);
-  });
+  app.get(
+    "/api/v1/admin/scales/licenses",
+    {
+      preHandler: [LICENSE_READ],
+      config: {
+        auditRead: { none: "organization-level scale licensing configuration; no patient data" },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listLicenses(organizationId);
+    },
+  );
 
   // 14 — admin: register a scale license (idempotent via Idempotency-Key, M09-F06).
   app.post(
@@ -327,10 +350,19 @@ export function registerAssessmentRoutes(app: FastifyInstance, deps: AssessmentR
   );
 
   // 16 — admin: scale-policy registry (the enabled/disabled scales for the tenant).
-  app.get("/api/v1/admin/scales/policies", { preHandler: [POLICY_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    return service.listPolicies(organizationId);
-  });
+  app.get(
+    "/api/v1/admin/scales/policies",
+    {
+      preHandler: [POLICY_READ],
+      config: {
+        auditRead: { none: "organization-level scale policy configuration; no patient data" },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listPolicies(organizationId);
+    },
+  );
 
   // 17 — admin: enable/disable a scale (idempotent via Idempotency-Key, M09-F06).
   app.patch(

@@ -122,18 +122,26 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   const { service } = deps;
 
   // 1 — list visits with filters.
-  app.get("/api/v1/visits", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(VisitListQuerySchema, request.query);
-    return service.listVisits(organizationId, { clinician: q.clinician, patient: q.patient, from: q.from, to: q.to, status: q.status });
-  });
+  app.get(
+    "/api/v1/visits",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(VisitListQuerySchema, request.query);
+      return service.listVisits(organizationId, { clinician: q.clinician, patient: q.patient, from: q.from, to: q.to, status: q.status });
+    },
+  );
 
   // 2 — fetch one visit.
-  app.get("/api/v1/visits/:visitId", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { visitId } = parse(VisitIdParamsSchema, request.params);
-    return service.getVisit(organizationId, visitId);
-  });
+  app.get(
+    "/api/v1/visits/:visitId",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", resourceIdParam: "visitId" } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { visitId } = parse(VisitIdParamsSchema, request.params);
+      return service.getVisit(organizationId, visitId);
+    },
+  );
 
   // 3 — direct manual create (skips the proposal path); runs the D8 pre-schedule gate (four §4.7 predicates).
   app.post(
@@ -212,11 +220,15 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 10 — scheduler proposal inbox.
-  app.get("/api/v1/visit-proposals", { preHandler: [PROPOSAL_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(ProposalListQuerySchema, request.query);
-    return service.listProposals(organizationId, { patient: q.patient });
-  });
+  app.get(
+    "/api/v1/visit-proposals",
+    { preHandler: [PROPOSAL_READ], config: { auditRead: { resourceKind: "visit_proposal", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(ProposalListQuerySchema, request.query);
+      return service.listProposals(organizationId, { patient: q.patient });
+    },
+  );
 
   // 11 — publish a proposal as a real visit (runs the gate in-service).
   app.post("/api/v1/visit-proposals/:proposalId/publish", { preHandler: [CREATE] }, async (request, reply) => {
@@ -235,11 +247,15 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 13 — list active recurring policies for a patient.
-  app.get("/api/v1/recurring-visits", { preHandler: [RECURRING_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(RecurringListQuerySchema, request.query);
-    return service.listRecurring(organizationId, q.patient);
-  });
+  app.get(
+    "/api/v1/recurring-visits",
+    { preHandler: [RECURRING_READ], config: { auditRead: { resourceKind: "recurring_visit", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(RecurringListQuerySchema, request.query);
+      return service.listRecurring(organizationId, q.patient);
+    },
+  );
 
   // 14 — create a recurring policy (validates the RRULE subset in the domain).
   app.post("/api/v1/recurring-visits", { preHandler: [RECURRING_CREATE] }, async (request, reply) => {
@@ -265,11 +281,20 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 16 — read a clinician's weekly availability.
-  app.get("/api/v1/availability", { preHandler: [AVAIL_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(AvailabilityQuerySchema, request.query);
-    return service.getAvailability(organizationId, q.membership);
-  });
+  app.get(
+    "/api/v1/availability",
+    {
+      preHandler: [AVAIL_READ],
+      config: {
+        auditRead: { none: "Clinician weekly availability windows only; no patient identifiers or PHI in the response." },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(AvailabilityQuerySchema, request.query);
+      return service.getAvailability(organizationId, q.membership);
+    },
+  );
 
   // 17 — upsert a clinician's weekly availability (own; supervisor edits any).
   app.put("/api/v1/availability/:membershipId", { preHandler: [AVAIL_EDIT] }, async (request) => {
@@ -280,11 +305,20 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 18 — list PTO requests (own; supervisor reads team).
-  app.get("/api/v1/time-off", { preHandler: [TIME_OFF_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(TimeOffListQuerySchema, request.query);
-    return service.listTimeOff(organizationId, { membership: q.membership, state: q.state });
-  });
+  app.get(
+    "/api/v1/time-off",
+    {
+      preHandler: [TIME_OFF_READ],
+      config: {
+        auditRead: { none: "Clinician PTO/time-off request records only; no patient identifiers or PHI in the response." },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(TimeOffListQuerySchema, request.query);
+      return service.listTimeOff(organizationId, { membership: q.membership, state: q.state });
+    },
+  );
 
   // 19 — request PTO.
   app.post("/api/v1/time-off", { preHandler: [TIME_OFF_REQUEST] }, async (request, reply) => {
@@ -324,25 +358,42 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 23 — day-view for a clinician or org-wide.
-  app.get("/api/v1/day-view", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(DayViewQuerySchema, request.query);
-    return service.dayView(organizationId, q.membership, q.date);
-  });
+  app.get(
+    "/api/v1/day-view",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(DayViewQuerySchema, request.query);
+      return service.dayView(organizationId, q.membership, q.date);
+    },
+  );
 
   // 24 — week-view.
-  app.get("/api/v1/week-view", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(WeekViewQuerySchema, request.query);
-    return service.weekView(organizationId, q.membership, q.weekStart);
-  });
+  app.get(
+    "/api/v1/week-view",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(WeekViewQuerySchema, request.query);
+      return service.weekView(organizationId, q.membership, q.weekStart);
+    },
+  );
 
   // 25 — map-view (D9 — coords-only polylines, no PHI text).
-  app.get("/api/v1/map-view", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(MapViewQuerySchema, request.query);
-    return service.mapView(organizationId, q.membership, q.date);
-  });
+  app.get(
+    "/api/v1/map-view",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: { none: "D9 coords-only route polylines; no patient names, ids, or PHI text in the response." },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(MapViewQuerySchema, request.query);
+      return service.mapView(organizationId, q.membership, q.date);
+    },
+  );
 
   // 26 — on-demand optimisation (behind scheduling.route_optimization, OFF; §7.9 degraded path otherwise).
   app.post("/api/v1/optimize-day", { preHandler: [OPTIMIZE] }, async (request) => {
@@ -352,23 +403,47 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 27 — portal upcoming visits (portal session class; lay-language; scrubbed).
-  app.get("/api/v1/portal/upcoming", { preHandler: [PORTAL_READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(PortalUpcomingQuerySchema, request.query);
-    return service.portalUpcoming(organizationId, q.patient, q.withinHours ?? 168);
-  });
+  app.get(
+    "/api/v1/portal/upcoming",
+    { preHandler: [PORTAL_READ], config: { auditRead: { resourceKind: "visit", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(PortalUpcomingQuerySchema, request.query);
+      return service.portalUpcoming(organizationId, q.patient, q.withinHours ?? 168);
+    },
+  );
 
   // 28 — visit metrics (M30/M33 dashboard source).
-  app.get("/api/v1/metrics/visits", { preHandler: [READ_METRICS] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(MetricsQuerySchema, request.query);
-    return service.visitMetrics(organizationId, { from: q.from, to: q.to });
-  });
+  app.get(
+    "/api/v1/metrics/visits",
+    {
+      preHandler: [READ_METRICS],
+      config: {
+        auditRead: { none: "Aggregate visit-count metrics for M30/M33 dashboards; no patient-identifying data in the response." },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(MetricsQuerySchema, request.query);
+      return service.visitMetrics(organizationId, { from: q.from, to: q.to });
+    },
+  );
 
   // 29 — route-efficiency metrics (M33 dashboard source).
-  app.get("/api/v1/metrics/route-efficiency", { preHandler: [ROUTE_METRICS] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(RouteEfficiencyQuerySchema, request.query);
-    return service.routeEfficiencyMetrics(organizationId, q.membership);
-  });
+  app.get(
+    "/api/v1/metrics/route-efficiency",
+    {
+      preHandler: [ROUTE_METRICS],
+      config: {
+        auditRead: {
+          none: "Aggregate route-efficiency metrics (mileage/time) for M33 dashboards; no patient-identifying data in the response.",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(RouteEfficiencyQuerySchema, request.query);
+      return service.routeEfficiencyMetrics(organizationId, q.membership);
+    },
+  );
 }

@@ -28,7 +28,14 @@ export function registerAdminInboundRoutes(app: FastifyInstance, deps: AdminInbo
   // R34 — the operator review queue.
   app.get(
     "/api/v1/fhir/inbound-proposals",
-    { preHandler: [P("fhir.inbound.review"), ABAC_IN_ORG("fhir.inbound.review")] },
+    {
+      preHandler: [P("fhir.inbound.review"), ABAC_IN_ORG("fhir.inbound.review")],
+      config: {
+        auditRead: {
+          none: "review-queue metadata + payload digest only (resourceType/sourceClientId/payloadSha256/status); the FHIR resource body itself is never surfaced by this listing.",
+        },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { ownerModule, status } = parseQuery(InboundListQuery, request.query);

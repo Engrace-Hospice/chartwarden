@@ -85,22 +85,36 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   const { service } = deps;
 
   // 1 — list schedules (org or filtered patient; status / RFA / window-state).
-  app.get("/api/v1/hope/schedules", { preHandler: [READ_SCHEDULE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(ScheduleListQuerySchema, request.query);
-    return service.listSchedules(organizationId, {
-      patientId: q.patientId,
-      status: q.status,
-      rfaKind: q.rfaKind,
-    });
-  });
+  app.get(
+    "/api/v1/hope/schedules",
+    {
+      preHandler: [READ_SCHEDULE],
+      config: { auditRead: { resourceKind: "hope_schedule", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(ScheduleListQuerySchema, request.query);
+      return service.listSchedules(organizationId, {
+        patientId: q.patientId,
+        status: q.status,
+        rfaKind: q.rfaKind,
+      });
+    },
+  );
 
   // 2 — schedule detail with derived state.
-  app.get("/api/v1/hope/schedules/:id", { preHandler: [READ_SCHEDULE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(ScheduleParamsSchema, request.params);
-    return service.getSchedule(organizationId, id);
-  });
+  app.get(
+    "/api/v1/hope/schedules/:id",
+    {
+      preHandler: [READ_SCHEDULE],
+      config: { auditRead: { resourceKind: "hope_schedule", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(ScheduleParamsSchema, request.params);
+      return service.getSchedule(organizationId, id);
+    },
+  );
 
   // 3 — skip a schedule (requires reason code).
   app.post("/api/v1/hope/schedules/:id/skip", { preHandler: [SKIP] }, async (request) => {
@@ -188,11 +202,18 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 9 — read a single assessment (sections, snapshot, validation findings).
-  app.get("/api/v1/hope/assessments/:id", { preHandler: [READ_TIMEPOINT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(AssessmentParamsSchema, request.params);
-    return service.getAssessment(organizationId, id);
-  });
+  app.get(
+    "/api/v1/hope/assessments/:id",
+    {
+      preHandler: [READ_TIMEPOINT],
+      config: { auditRead: { resourceKind: "hope_assessment", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      return service.getAssessment(organizationId, id);
+    },
+  );
 
   // 10 — patient HOPE timeline.
   app.get(
@@ -222,23 +243,42 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 12 — open / overdue / missed SFV worklist.
-  app.get("/api/v1/hope/sfv", { preHandler: [READ_SFV] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(SfvWorklistQuerySchema, request.query);
-    return service.listSfv(organizationId, q.state);
-  });
+  app.get(
+    "/api/v1/hope/sfv",
+    {
+      preHandler: [READ_SFV],
+      config: { auditRead: { resourceKind: "hope_sfv", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(SfvWorklistQuerySchema, request.query);
+      return service.listSfv(organizationId, q.state);
+    },
+  );
 
   // 13 — SFV detail.
-  app.get("/api/v1/hope/sfv/:id", { preHandler: [READ_SFV] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(SfvParamsSchema, request.params);
-    return service.getSfv(organizationId, id);
-  });
+  app.get(
+    "/api/v1/hope/sfv/:id",
+    {
+      preHandler: [READ_SFV],
+      config: { auditRead: { resourceKind: "hope_sfv", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(SfvParamsSchema, request.params);
+      return service.getSfv(organizationId, id);
+    },
+  );
 
   // 14 — on-demand pre-submission validation findings for one row.
   app.get(
     "/api/v1/hope/assessments/:id/validation",
-    { preHandler: [READ_TIMEPOINT] },
+    {
+      preHandler: [READ_TIMEPOINT],
+      config: {
+        auditRead: { resourceKind: "hope_assessment_validation", resourceIdParam: "id" },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -247,18 +287,32 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 15 — submission batch list per ProviderEntity.
-  app.get("/api/v1/hope/submissions", { preHandler: [READ_SUBMISSION] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const q = parse(SubmissionListQuerySchema, request.query);
-    return service.listSubmissions(organizationId, q.providerEntityId);
-  });
+  app.get(
+    "/api/v1/hope/submissions",
+    {
+      preHandler: [READ_SUBMISSION],
+      config: { auditRead: { resourceKind: "hope_submission", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(SubmissionListQuerySchema, request.query);
+      return service.listSubmissions(organizationId, q.providerEntityId);
+    },
+  );
 
   // 16 — submission detail with per-item outcomes.
-  app.get("/api/v1/hope/submissions/:id", { preHandler: [READ_SUBMISSION] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(SubmissionParamsSchema, request.params);
-    return service.getSubmission(organizationId, id);
-  });
+  app.get(
+    "/api/v1/hope/submissions/:id",
+    {
+      preHandler: [READ_SUBMISSION],
+      config: { auditRead: { resourceKind: "hope_submission", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(SubmissionParamsSchema, request.params);
+      return service.getSubmission(organizationId, id);
+    },
+  );
 
   // 17 — retry a rejected submission (re-validates, re-assembles).
   app.post(
@@ -287,7 +341,14 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 19 — org-level HQRP compliance posture.
   app.get(
     "/api/v1/hope/dashboard/compliance",
-    { preHandler: [DASHBOARD_READ] },
+    {
+      preHandler: [DASHBOARD_READ],
+      config: {
+        auditRead: {
+          none: "Aggregate provider-entity compliance rates only (hopeOnTimeRate/sfvOnTimeRate/submissionAcceptanceRate); no patient identifiers or patient-level data returned.",
+        },
+      },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(DashboardQuerySchema, request.query);
