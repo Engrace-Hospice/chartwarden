@@ -5,12 +5,18 @@ import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   ApplyRestraintBody,
   AssignBedBody,
+  AttestGipBody,
   BedCleaningBody,
+  ConfirmBody,
+  ConfirmTransferBody,
   CreateBedBody,
   CreateRoomBody,
   CreateUnitBody,
   DischargeBody,
+  InitiateTransferBody,
+  IrcOverrideBody,
   OpenAdmissionBody,
+  ReassessGipBody,
   ReassessRestraintBody,
   RequestBedBody,
   UpdateBedBody,
@@ -59,6 +65,23 @@ export interface RoomView {
   readonly version: number;
 }
 
+export interface GipCriteriaView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly criterionKind: string;
+  readonly attestedAt: string;
+  readonly version: number;
+}
+
+export interface IrcEpisodeView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly state: string;
+  readonly consecutiveDayCount: number;
+  readonly capOverrideInvoked: boolean;
+  readonly version: number;
+}
+
 export interface RestraintView {
   readonly id: string;
   readonly ipuAdmissionId: string;
@@ -101,6 +124,12 @@ export interface IpuRouteService {
   requestBed(actor: IpuWriteActor, admissionId: string, body: RequestBedBody): Promise<AdmissionView>;
   assignBed(actor: IpuWriteActor, admissionId: string, body: AssignBedBody): Promise<AdmissionView>;
   discharge(actor: IpuWriteActor, admissionId: string, body: DischargeBody): Promise<AdmissionView>;
+  confirm(actor: IpuWriteActor, admissionId: string, body: ConfirmBody): Promise<AdmissionView>;
+  initiateTransfer(actor: IpuWriteActor, admissionId: string, body: InitiateTransferBody): Promise<AdmissionView>;
+  confirmTransfer(actor: IpuWriteActor, admissionId: string, body: ConfirmTransferBody): Promise<AdmissionView>;
+  attestGip(actor: IpuWriteActor, admissionId: string, body: AttestGipBody): Promise<GipCriteriaView>;
+  reassessGip(actor: IpuWriteActor, admissionId: string, body: ReassessGipBody): Promise<GipCriteriaView>;
+  overrideIrcCap(actor: IpuWriteActor, admissionId: string, body: IrcOverrideBody): Promise<IrcEpisodeView>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
   applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody): Promise<RestraintView>;

@@ -4,6 +4,7 @@
 // touches Drizzle; the enrichment registry points at the same schemas so openapi.json carries the contract.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { GipCriteriaPayload } from "@wardenx/inpatient";
 import { ValidationError } from "@wardenx/types";
 
 const id = Type.String({ minLength: 1 });
@@ -144,6 +145,61 @@ export const DischargeBodySchema = Type.Object({
   dischargeEventExists: Type.Boolean(),
 });
 export type DischargeBody = Static<typeof DischargeBodySchema>;
+
+export const ConfirmBodySchema = Type.Object({
+  /** The M6 LCP confirmation was force-flagged past the 30s window by an Admissions Coordinator. */
+  forceFlag: Type.Optional(Type.Boolean()),
+});
+export type ConfirmBody = Static<typeof ConfirmBodySchema>;
+
+export const InitiateTransferBodySchema = Type.Object({
+  targetKind: Type.Union([Type.Literal("to_unit"), Type.Literal("to_home"), Type.Literal("to_facility")]),
+  destinationUnitId: Type.Optional(id),
+  destinationFacilityId: Type.Optional(id),
+  reason: Type.Optional(Type.String({ maxLength: 1000 })),
+});
+export type InitiateTransferBody = Static<typeof InitiateTransferBodySchema>;
+
+export const ConfirmTransferBodySchema = Type.Object({ destinationAcknowledged: Type.Boolean() });
+export type ConfirmTransferBody = Static<typeof ConfirmTransferBodySchema>;
+
+// ── GIP criteria (§4.1 routes 19–20) ───────────────────────────────────────────────────────────────────
+export const AttestGipBodySchema = Type.Object({
+  attestingPhysicianId: id,
+  data: GipCriteriaPayload,
+});
+export type AttestGipBody = Static<typeof AttestGipBodySchema>;
+
+export const ReassessGipBodySchema = Type.Object({
+  criterionStillMet: Type.Boolean(),
+  rationale: Type.String({ minLength: 50, maxLength: 4000 }),
+  triggeredByEncounterId: Type.Optional(id),
+});
+export type ReassessGipBody = Static<typeof ReassessGipBodySchema>;
+
+export const GipCriteriaViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  criterionKind: Type.String(),
+  attestedAt: Type.String(),
+  version: Type.Integer(),
+});
+
+// ── IRC cap override (§4.1 route 21) ───────────────────────────────────────────────────────────────────
+export const IrcOverrideBodySchema = Type.Object({
+  reason: Type.String({ minLength: 100, maxLength: 4000 }),
+  extensionDays: Type.Integer({ minimum: 1, maximum: 2 }),
+});
+export type IrcOverrideBody = Static<typeof IrcOverrideBodySchema>;
+
+export const IrcEpisodeViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  state: Type.String(),
+  consecutiveDayCount: Type.Integer(),
+  capOverrideInvoked: Type.Boolean(),
+  version: Type.Integer(),
+});
 
 // ── bed cleaning-status (§4.1 route 9) ─────────────────────────────────────────────────────────────────
 export const BedCleaningBodySchema = Type.Object({

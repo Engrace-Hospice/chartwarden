@@ -8,11 +8,14 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
+  computeIrcState,
   normalizeReassessmentInterval,
+  planCapOverride,
   planReassessmentOutcome,
   planOpenAdmission,
   transitionAdmission,
   transitionBedCleaning,
+  validateGipCriteriaPayload,
   validateRestraintApply,
 } from "@wardenx/inpatient";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -22,19 +25,35 @@ import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   ApplyRestraintBody,
   AssignBedBody,
+  AttestGipBody,
   BedCleaningBody,
+  ConfirmBody,
+  ConfirmTransferBody,
   CreateBedBody,
   CreateRoomBody,
   CreateUnitBody,
   DischargeBody,
+  InitiateTransferBody,
+  IrcOverrideBody,
   OpenAdmissionBody,
+  ReassessGipBody,
   ReassessRestraintBody,
   RequestBedBody,
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
 } from "./ipu-typebox";
-import type { AdmissionView, BedView, CensusView, IpuRouteService, RestraintView, RoomView, UnitView } from "./service";
+import type {
+  AdmissionView,
+  BedView,
+  CensusView,
+  GipCriteriaView,
+  IpuRouteService,
+  IrcEpisodeView,
+  RestraintView,
+  RoomView,
+  UnitView,
+} from "./service";
 
 /** The transactional-outbox port the composition root binds (the catalog-validating `m37` publisher). */
 export interface WriteOutboxPort {
@@ -81,6 +100,36 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
     isActive: r.isActive,
     version: r.version,
   });
+
+  const GC = schema.gipAdmissionCriteria;
+  const IE = schema.ircEpisode;
+  const gipView = (r: typeof GC.$inferSelect): GipCriteriaView => ({
+    id: r.id,
+    ipuAdmissionId: r.ipuAdmissionId,
+    criterionKind: r.criterionKind,
+    attestedAt: iso(r.attestedAt),
+    version: r.version,
+  });
+  const ircView = (r: typeof IE.$inferSelect): IrcEpisodeView => ({
+    id: r.id,
+    ipuAdmissionId: r.ipuAdmissionId,
+    state: r.state,
+    consecutiveDayCount: r.consecutiveDayCount,
+    capOverrideInvoked: r.capOverrideInvoked,
+    version: r.version,
+  });
+
+  /** Resolve the active bed for an admission (the un-ended bed_assignment's bed) + its cleaning status. */
+  async function activeBedFor(t: DbClient, admissionId: string): Promise<{ id: string; status: string } | null> {
+    const [ba] = await t
+      .select()
+      .from(schema.ipuBedAssignment)
+      .where(eq(schema.ipuBedAssignment.ipuAdmissionId, admissionId))
+      .limit(1);
+    if (!ba) return null;
+    const [bed] = await t.select().from(B).where(eq(B.id, ba.bedId)).limit(1);
+    return bed ? { id: bed.id, status: bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS } : null;
+  }
 
   const restraintView = (r: typeof RE.$inferSelect): RestraintView => ({
     id: r.id,
@@ -511,6 +560,157 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         await applyAdmissionTransition(t, actor, adm, transition, { sourceBedId, sourceBedStatus });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
+      });
+    },
+
+    async confirm(actor: IpuWriteActor, admissionId: string, _body: ConfirmBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        if (!adm) throw new NotFoundError("ipu_admission not found");
+        const [gip] = await t.select({ id: GC.id }).from(GC).where(eq(GC.ipuAdmissionId, admissionId)).limit(1);
+        const bed = await activeBedFor(t, admissionId);
+        // The route IS the M6 LCP ack handler (or force-flagged), so lcpConfirmed holds.
+        const transition = transitionAdmission(adm.state, adm.kind, {
+          type: "confirm",
+          lcpConfirmed: true,
+          gipCriteriaExists: gip !== undefined,
+        });
+        await applyAdmissionTransition(t, actor, adm, transition, bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {});
+        await t.update(A).set({ activatedAt: new Date() }).where(eq(A.id, admissionId));
+        const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        return admissionView(updated ?? adm);
+      });
+    },
+
+    async initiateTransfer(actor: IpuWriteActor, admissionId: string, body: InitiateTransferBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        if (!adm) throw new NotFoundError("ipu_admission not found");
+        // For a to_unit transfer, resolve the destination unit's RN coverage for the current hour.
+        let destinationRnCoverage = true;
+        if (body.targetKind === "to_unit" && body.destinationUnitId) {
+          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+          const [cov] = await t
+            .select()
+            .from(schema.ipuRnCoverageWindow)
+            .where(and(eq(schema.ipuRnCoverageWindow.unitId, body.destinationUnitId), eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart)))
+            .limit(1);
+          destinationRnCoverage = cov?.isCovered === true;
+        }
+        const transition = transitionAdmission(adm.state, adm.kind, { type: "initiateTransfer", targetKind: body.targetKind, destinationRnCoverage });
+        // Persist the §2.2 transition ledger row + drive the machine's state/history/outbox effects.
+        await t.insert(schema.ipuAdmissionTransition).values({
+          organizationId: actor.organizationId,
+          ipuAdmissionId: admissionId,
+          kind: body.targetKind,
+          destinationUnitId: body.destinationUnitId ?? null,
+          destinationFacilityId: body.destinationFacilityId ?? null,
+          reason: body.reason ?? null,
+          initiatedBy: actor.membershipId,
+        });
+        await applyAdmissionTransition(t, actor, adm, transition);
+        const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        return admissionView(updated ?? adm);
+      });
+    },
+
+    async confirmTransfer(actor: IpuWriteActor, admissionId: string, body: ConfirmTransferBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        if (!adm) throw new NotFoundError("ipu_admission not found");
+        const bed = await activeBedFor(t, admissionId);
+        const transition = transitionAdmission(adm.state, adm.kind, { type: "confirmTransfer", destinationAcknowledged: body.destinationAcknowledged });
+        await applyAdmissionTransition(t, actor, adm, transition, bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {});
+        if (bed) {
+          await t.update(schema.ipuBedAssignment).set({ endedAt: new Date(), unassignReason: "transfer" }).where(and(eq(schema.ipuBedAssignment.ipuAdmissionId, admissionId)));
+        }
+        const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        return admissionView(updated ?? adm);
+      });
+    },
+
+    async attestGip(actor: IpuWriteActor, admissionId: string, body: AttestGipBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
+        if (!adm) throw new NotFoundError("ipu_admission not found");
+        const payload = validateGipCriteriaPayload(body.data); // 422 GIP_CRITERIA_INVALID_PAYLOAD on mismatch
+        const [row] = await t
+          .insert(GC)
+          .values({
+            organizationId: actor.organizationId,
+            ipuAdmissionId: admissionId,
+            criterionKind: payload.criterion_kind,
+            data: payload,
+            attestingPhysicianId: body.attestingPhysicianId,
+            attestingMembershipId: actor.membershipId,
+            stepUpAssertionId: actor.membershipId,
+          })
+          .returning();
+        if (!row) throw new ConflictError("gip criteria insert failed");
+        return gipView(row);
+      });
+    },
+
+    async reassessGip(actor: IpuWriteActor, admissionId: string, body: ReassessGipBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [crit] = await t.select().from(GC).where(eq(GC.ipuAdmissionId, admissionId)).limit(1);
+        if (!crit) throw new NotFoundError("gip_admission_criteria not found");
+        await t.insert(schema.gipCriteriaReassessment).values({
+          organizationId: actor.organizationId,
+          gipAdmissionCriteriaId: crit.id,
+          ipuAdmissionId: admissionId,
+          triggeredByEncounterId: body.triggeredByEncounterId ?? null,
+          reassessedByMembershipId: actor.membershipId,
+          criterionStillMet: body.criterionStillMet,
+          rationale: body.rationale,
+          stepUpAssertionId: body.criterionStillMet ? null : actor.membershipId,
+        });
+        await outbox.publish(t, {
+          eventName: "m37.gip_criteria.reassessment_completed",
+          payload: { ipuAdmissionId: admissionId, organizationId: actor.organizationId, criterionStillMet: body.criterionStillMet },
+          organizationId: actor.organizationId,
+          aggregateKind: "gip_admission_criteria",
+          aggregateId: crit.id,
+        });
+        return gipView(crit);
+      });
+    },
+
+    async overrideIrcCap(actor: IpuWriteActor, admissionId: string, body: IrcOverrideBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [ep] = await t.select().from(IE).where(eq(IE.ipuAdmissionId, admissionId)).limit(1);
+        if (!ep) throw new NotFoundError("irc_episode not found");
+        // §2.5 — break-glass: step-up + reason ≥100 + extension ≤2. Recompute the state under the new cap.
+        const plan = planCapOverride({ reason: body.reason, extensionDays: body.extensionDays, stepUpVerified: actor.stepUpRecent });
+        const nextState = computeIrcState(ep.consecutiveDayCount, plan.extensionDays);
+        const [row] = await t
+          .update(IE)
+          .set({
+            capOverrideInvoked: true,
+            capOverrideInvokedBy: actor.membershipId,
+            capOverrideReason: body.reason,
+            capOverrideExtensionDays: plan.extensionDays,
+            state: nextState,
+            updatedAt: new Date(),
+            version: ep.version + 1,
+          })
+          .where(eq(IE.id, ep.id))
+          .returning();
+        if (!row) throw new ConflictError("irc override failed");
+        await outbox.publish(t, {
+          eventName: "m37.irc_episode.cap_override_invoked",
+          payload: { ipuAdmissionId: admissionId, organizationId: actor.organizationId, extensionDays: plan.extensionDays },
+          organizationId: actor.organizationId,
+          aggregateKind: "irc_episode",
+          aggregateId: ep.id,
+        });
+        return ircView(row);
       });
     },
 

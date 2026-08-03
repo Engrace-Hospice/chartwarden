@@ -9246,6 +9246,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-admissions/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** M6 LCP-ack handler: activate the admission; GIP requires attested criteria (412), IRC opens the episode (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdConfirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/confirm-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete a transfer; dirties the source bed + ends the assignment (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdConfirmtransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-admissions/{id}/discharge": {
         parameters: {
             query?: never;
@@ -9257,6 +9291,74 @@ export interface paths {
         put?: never;
         /** Discharge an admission; dirties the source bed + closes the irc_episode for an IRC stay (§2.2) */
         post: operations["postApiV1IpuadmissionsByIdDischarge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/gip-criteria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attest GIP criteria (step-up); the 3-kind discriminated union (422 on an invalid payload) (§2.4) */
+        post: operations["postApiV1IpuadmissionsByIdGipcriteria"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/gip-criteria/reassess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record a GIP reassessment (rationale >=50) (§2.4) */
+        post: operations["postApiV1IpuadmissionsByIdGipcriteriaReassess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/initiate-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Begin a transfer (RN-coverage gated for to_unit); persists the transition ledger row (§2.2) */
+        post: operations["postApiV1IpuadmissionsByIdInitiatetransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-admissions/{id}/irc-cap-override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Break-glass IRC cap override (step-up; reason >=100; <=2 days) — recomputes the episode state (§2.5) */
+        post: operations["postApiV1IpuadmissionsByIdIrccapoverride"];
         delete?: never;
         options?: never;
         head?: never;
@@ -40509,6 +40611,84 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1IpuadmissionsByIdConfirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    forceFlag?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdConfirmtransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    destinationAcknowledged: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IpuadmissionsByIdDischarge: {
         parameters: {
             query?: never;
@@ -40541,6 +40721,192 @@ export interface operations {
                         unitId: string | null;
                         remoteFacilityId: string | null;
                         openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdGipcriteria: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestingPhysicianId: string;
+                    data: {
+                        /** @constant */
+                        criterion_kind: "acute_symptom_management";
+                        uncontrolled_symptoms: {
+                            symptom: string;
+                            severity_score: number;
+                            duration_hours: number;
+                            interventions_attempted_in_home: string[];
+                        }[];
+                        planned_inpatient_interventions: string[];
+                        rationale: string;
+                    } | {
+                        /** @constant */
+                        criterion_kind: "imminent_death_terminal_care";
+                        clinical_estimate_days_to_death: number;
+                        signs_of_imminent_death: ("terminal_secretions" | "cheyne_stokes_breathing" | "apneic_episodes" | "mottling" | "cold_extremities" | "unresponsiveness" | "hypotension_terminal" | "terminal_agitation" | "other_documented")[];
+                        rationale_for_inpatient_setting: string;
+                        home_environment_assessment_text: string;
+                    } | {
+                        /** @constant */
+                        criterion_kind: "medications_treatments_inpatient_only";
+                        named_medications: {
+                            rx_norm_code: string;
+                            display_name: string;
+                            why_inpatient_only_text: string;
+                        }[];
+                        named_treatments: {
+                            treatment_code: string;
+                            why_inpatient_only_text: string;
+                        }[];
+                        rationale: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        criterionKind: string;
+                        attestedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdGipcriteriaReassess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    criterionStillMet: boolean;
+                    rationale: string;
+                    triggeredByEncounterId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        criterionKind: string;
+                        attestedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdInitiatetransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targetKind: "to_unit" | "to_home" | "to_facility";
+                    destinationUnitId?: string;
+                    destinationFacilityId?: string;
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        kind: string;
+                        state: string;
+                        unitId: string | null;
+                        remoteFacilityId: string | null;
+                        openedAt: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuadmissionsByIdIrccapoverride: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                    extensionDays: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        ipuAdmissionId: string;
+                        state: string;
+                        consecutiveDayCount: number;
+                        capOverrideInvoked: boolean;
                         version: number;
                     };
                 };

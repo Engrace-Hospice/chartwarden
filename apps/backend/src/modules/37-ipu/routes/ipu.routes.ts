@@ -8,14 +8,20 @@ import { P, RN_COVERAGE, STEP_UP } from "./guards";
 import {
   ApplyRestraintBodySchema,
   AssignBedBodySchema,
+  AttestGipBodySchema,
   BedCleaningBodySchema,
+  ConfirmBodySchema,
+  ConfirmTransferBodySchema,
   CreateBedBodySchema,
   CreateRoomBodySchema,
   CreateUnitBodySchema,
   DateParamsSchema,
   DischargeBodySchema,
   IdParamsSchema,
+  InitiateTransferBodySchema,
+  IrcOverrideBodySchema,
   OpenAdmissionBodySchema,
+  ReassessGipBodySchema,
   ReassessRestraintBodySchema,
   RequestBedBodySchema,
   UpdateBedBodySchema,
@@ -172,6 +178,60 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       const { id } = parse(IdParamsSchema, request.params);
       const body = parse(BedCleaningBodySchema, request.body);
       return service.transitionBed(actor, id, body);
+    },
+  );
+
+  // 15. POST /ipu-admissions/:id/confirm — M6 LCP-ack handler (system-internal). §4.1.
+  app.post("/api/v1/ipu-admissions/:id/confirm", { preHandler: [P("m37.ipu_admission.create")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.confirm(actor, id, parse(ConfirmBodySchema, request.body));
+  });
+
+  // 16. POST /ipu-admissions/:id/initiate-transfer — begin a transfer. §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/initiate-transfer",
+    { preHandler: [P("m37.ipu_admission.transfer"), RN_COVERAGE("m37.ipu_admission.transfer")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.initiateTransfer(actor, id, parse(InitiateTransferBodySchema, request.body));
+    },
+  );
+
+  // 17. POST /ipu-admissions/:id/confirm-transfer — complete a transfer. §4.1.
+  app.post("/api/v1/ipu-admissions/:id/confirm-transfer", { preHandler: [P("m37.ipu_admission.transfer")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.confirmTransfer(actor, id, parse(ConfirmTransferBodySchema, request.body));
+  });
+
+  // 19. POST /ipu-admissions/:id/gip-criteria — attest GIP criteria (step-up). §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/gip-criteria",
+    { preHandler: [P("m37.gip_criteria.attest"), STEP_UP("m37.gip_criteria.attest")] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return reply.code(201).send(await service.attestGip(actor, id, parse(AttestGipBodySchema, request.body)));
+    },
+  );
+
+  // 20. POST /ipu-admissions/:id/gip-criteria/reassess — record a reassessment. §4.1.
+  app.post("/api/v1/ipu-admissions/:id/gip-criteria/reassess", { preHandler: [P("m37.gip_criteria.reassess")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.reassessGip(actor, id, parse(ReassessGipBodySchema, request.body));
+  });
+
+  // 21. POST /ipu-admissions/:id/irc-cap-override — break-glass cap override (step-up). §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/irc-cap-override",
+    { preHandler: [P("m37.irc_episode.extend_override"), STEP_UP("m37.irc_episode.extend_override")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.overrideIrcCap(actor, id, parse(IrcOverrideBodySchema, request.body));
     },
   );
 

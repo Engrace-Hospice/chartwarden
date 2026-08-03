@@ -79599,6 +79599,221 @@
         }
       }
     },
+    "/api/v1/ipu-admissions/{id}/confirm": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdConfirm",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "M6 LCP-ack handler: activate the admission; GIP requires attested criteria (412), IRC opens the episode (§2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "forceFlag": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/confirm-transfer": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdConfirmtransfer",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Complete a transfer; dirties the source bed + ends the assignment (§2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "destinationAcknowledged"
+                ],
+                "properties": {
+                  "destinationAcknowledged": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ipu-admissions/{id}/discharge": {
       "post": {
         "operationId": "postApiV1IpuadmissionsByIdDischarge",
@@ -79725,6 +79940,620 @@
                   },
                   "dischargeEventExists": {
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/gip-criteria": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdGipcriteria",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Attest GIP criteria (step-up); the 3-kind discriminated union (422 on an invalid payload) (§2.4)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "criterionKind",
+                    "attestedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "criterionKind": {
+                      "type": "string"
+                    },
+                    "attestedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "attestingPhysicianId",
+                  "data"
+                ],
+                "properties": {
+                  "attestingPhysicianId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "data": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "criterion_kind",
+                          "uncontrolled_symptoms",
+                          "planned_inpatient_interventions",
+                          "rationale"
+                        ],
+                        "properties": {
+                          "criterion_kind": {
+                            "const": "acute_symptom_management",
+                            "type": "string"
+                          },
+                          "uncontrolled_symptoms": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "symptom",
+                                "severity_score",
+                                "duration_hours",
+                                "interventions_attempted_in_home"
+                              ],
+                              "properties": {
+                                "symptom": {
+                                  "minLength": 3,
+                                  "maxLength": 200,
+                                  "type": "string"
+                                },
+                                "severity_score": {
+                                  "minimum": 1,
+                                  "maximum": 10,
+                                  "type": "integer"
+                                },
+                                "duration_hours": {
+                                  "minimum": 0,
+                                  "type": "number"
+                                },
+                                "interventions_attempted_in_home": {
+                                  "type": "array",
+                                  "items": {
+                                    "minLength": 5,
+                                    "maxLength": 500,
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "planned_inpatient_interventions": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "minLength": 5,
+                              "maxLength": 500,
+                              "type": "string"
+                            }
+                          },
+                          "rationale": {
+                            "minLength": 100,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "criterion_kind",
+                          "clinical_estimate_days_to_death",
+                          "signs_of_imminent_death",
+                          "rationale_for_inpatient_setting",
+                          "home_environment_assessment_text"
+                        ],
+                        "properties": {
+                          "criterion_kind": {
+                            "const": "imminent_death_terminal_care",
+                            "type": "string"
+                          },
+                          "clinical_estimate_days_to_death": {
+                            "minimum": 0,
+                            "maximum": 14,
+                            "type": "integer"
+                          },
+                          "signs_of_imminent_death": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "const": "terminal_secretions",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cheyne_stokes_breathing",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "apneic_episodes",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "mottling",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cold_extremities",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unresponsiveness",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "hypotension_terminal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "terminal_agitation",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_documented",
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          },
+                          "rationale_for_inpatient_setting": {
+                            "minLength": 100,
+                            "maxLength": 4000,
+                            "type": "string"
+                          },
+                          "home_environment_assessment_text": {
+                            "minLength": 50,
+                            "maxLength": 2000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "criterion_kind",
+                          "named_medications",
+                          "named_treatments",
+                          "rationale"
+                        ],
+                        "properties": {
+                          "criterion_kind": {
+                            "const": "medications_treatments_inpatient_only",
+                            "type": "string"
+                          },
+                          "named_medications": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "rx_norm_code",
+                                "display_name",
+                                "why_inpatient_only_text"
+                              ],
+                              "properties": {
+                                "rx_norm_code": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "display_name": {
+                                  "minLength": 1,
+                                  "maxLength": 200,
+                                  "type": "string"
+                                },
+                                "why_inpatient_only_text": {
+                                  "minLength": 50,
+                                  "maxLength": 1000,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "named_treatments": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "treatment_code",
+                                "why_inpatient_only_text"
+                              ],
+                              "properties": {
+                                "treatment_code": {
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "why_inpatient_only_text": {
+                                  "minLength": 50,
+                                  "maxLength": 1000,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          },
+                          "rationale": {
+                            "minLength": 100,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/gip-criteria/reassess": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdGipcriteriaReassess",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Record a GIP reassessment (rationale >=50) (§2.4)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "criterionKind",
+                    "attestedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "criterionKind": {
+                      "type": "string"
+                    },
+                    "attestedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "criterionStillMet",
+                  "rationale"
+                ],
+                "properties": {
+                  "criterionStillMet": {
+                    "type": "boolean"
+                  },
+                  "rationale": {
+                    "minLength": 50,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "triggeredByEncounterId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/initiate-transfer": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdInitiatetransfer",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Begin a transfer (RN-coverage gated for to_unit); persists the transition ledger row (§2.2)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "kind",
+                    "state",
+                    "unitId",
+                    "remoteFacilityId",
+                    "openedAt",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "remoteFacilityId": {
+                      "anyOf": [
+                        {
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "openedAt": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "targetKind"
+                ],
+                "properties": {
+                  "targetKind": {
+                    "anyOf": [
+                      {
+                        "const": "to_unit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "to_home",
+                        "type": "string"
+                      },
+                      {
+                        "const": "to_facility",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "destinationUnitId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "destinationFacilityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-admissions/{id}/irc-cap-override": {
+      "post": {
+        "operationId": "postApiV1IpuadmissionsByIdIrccapoverride",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Break-glass IRC cap override (step-up; reason >=100; <=2 days) — recomputes the episode state (§2.5)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "ipuAdmissionId",
+                    "state",
+                    "consecutiveDayCount",
+                    "capOverrideInvoked",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "ipuAdmissionId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "consecutiveDayCount": {
+                      "type": "integer"
+                    },
+                    "capOverrideInvoked": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "extensionDays"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 100,
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "extensionDays": {
+                    "minimum": 1,
+                    "maximum": 2,
+                    "type": "integer"
                   }
                 }
               }
