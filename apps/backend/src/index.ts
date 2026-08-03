@@ -20,6 +20,7 @@ import {
 import type { SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
+import { registerPlatformJob, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
@@ -1190,6 +1191,18 @@ if ((import.meta as { main?: boolean }).main) {
   const dbHandle = process.env.DATABASE_URL
     ? createDbClient({ connectionString: process.env.DATABASE_URL })
     : undefined;
+  // M35 §5.2 platform-ops admin surface runs its cross-tenant reads/writes through a SEPARATE platform
+  // credential — NOT the tenant `wardenx_app` pool. The six PLATFORM-ONLY M35 tables
+  // (revenue_recognition_snapshot, stripe_webhook_event, patient_pseudonym_key, stripe_api_call_audit,
+  // platform_retained_invoice[_line]; migration 0143) have RLS enabled with NO wardenx_app grant, so a
+  // tenant-pool read fails closed with `permission denied`. DATABASE_PLATFORM_URL points at a least-privilege
+  // platform login role (SELECT/write on those tables + the org-scoped M35 tables it reads cross-tenant +
+  // audit_event INSERT + BYPASSRLS). Absent → the M35 platformRunner below stays undefined and the admin
+  // surface is fail-closed (503) — the prod-safe default (never the superuser, never the tenant pool).
+  const platformDbHandle = process.env.DATABASE_PLATFORM_URL
+    ? createDbClient({ connectionString: process.env.DATABASE_PLATFORM_URL })
+    : undefined;
+  if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
@@ -1485,10 +1498,11 @@ if ((import.meta as { main?: boolean }).main) {
           // plugins over the single Drizzle route service. Tenant mutations open their own withOrgContext
           // (RLS scopes every statement to app.org_id) and emit their §4.11 m35.* event through the
           // catalog-validating tx publisher (callerModule `m35`) in the same unit of work (§4.13 outbox-only
-          // Stripe path). The platform-ops cross-tenant reads/writes run through the injected platform
-          // runner — left on its fail-closed default here (the M34 platform-credential bind is the follow-up),
-          // so the admin surface refuses (503) rather than reading nothing under tenant RLS. The §4.3 webhook
-          // stays fail-closed (503) until the live Stripe secret + DEK transport binds.
+          // Stripe path). The platform-ops (§5.2) cross-tenant reads/writes run through the injected platform
+          // runner, bound below to the separate platform credential (DATABASE_PLATFORM_URL) via M1's gated +
+          // audited `withPlatformContext`. When no platform credential is configured the runner is undefined
+          // and the admin surface fails closed (503) — never reading under tenant RLS. The §4.3 webhook stays
+          // fail-closed (503) until the live Stripe secret + DEK transport binds.
           mountM35Routes(app, {
             service: buildDrizzleM35RouteService(dbHandle.db, {
               outbox: m35OutboxPublisher,
@@ -1496,6 +1510,22 @@ if ((import.meta as { main?: boolean }).main) {
               // applied its graceful deny-stub / M2 has registered the real reader), so the platform-ops admin
               // lists label cross-tenant rows with an org display name instead of a raw UUID.
               organizationReader: { readByIds: (ids) => getSeam("OrganizationReader").readByIds(ids) },
+              // Platform-ops cross-tenant runner: each call is ONE allowlisted ("m35-subscription-admin"),
+              // audited (`platform.bypass_invoked` via the shared M34 auditor) `withPlatformContext` tx against
+              // the platform credential. Undefined → fail-closed (503), never a tenant-pool read.
+              platformRunner: platformDbHandle
+                ? (fn) =>
+                    withPlatformContext(
+                      platformDbHandle.db,
+                      {
+                        jobId: "m35-subscription-admin",
+                        reason: "M35 §5.2 platform-ops admin surface",
+                        crossTenant: true,
+                      },
+                      m34PlatformBypassAuditor,
+                      fn,
+                    )
+                : undefined,
             }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
@@ -1825,6 +1855,8 @@ if ((import.meta as { main?: boolean }).main) {
     registerIdentityAuth(app, auth); // AUTH-T02: mount /api/auth/* (needs BETTER_AUTH_SECRET/URL in prod)
     app.addHook("onClose", () => dbHandle.close());
   }
+  // Close the separate M35 platform-ops credential pool on shutdown (when configured).
+  if (platformDbHandle) app.addHook("onClose", () => platformDbHandle.close());
 
   // M1-T10 — boot-populate `outbox_event_catalog` from the FULL catalog (idempotent UPSERT on event_name;
   // platform reference data, NON_ORG_SCOPED). Fail-soft: a failure here logs but never blocks boot (the
