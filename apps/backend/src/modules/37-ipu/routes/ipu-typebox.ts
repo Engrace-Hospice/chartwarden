@@ -243,6 +243,57 @@ export const CensusListSchema = Type.Object({
   ),
 });
 
+// ── shifts + RN coverage (§4.1 routes 25–28) ────────────────────────────────────────────────────────────
+export const CreateShiftBodySchema = Type.Object({
+  unitId: id,
+  shiftStartAt: Type.String({ minLength: 1 }),
+  shiftEndAt: Type.String({ minLength: 1 }),
+  displayLabel: Type.Optional(Type.String({ maxLength: 80 })),
+});
+export type CreateShiftBody = Static<typeof CreateShiftBodySchema>;
+export const ShiftViewSchema = Type.Object({
+  id,
+  unitId: id,
+  shiftStartAt: Type.String(),
+  shiftEndAt: Type.String(),
+  displayLabel: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+});
+export const ShiftListSchema = Type.Object({ items: Type.Array(ShiftViewSchema) });
+
+export const AssignStaffBodySchema = Type.Object({
+  membershipId: id,
+  role: Type.Union([
+    Type.Literal("charge_rn"),
+    Type.Literal("rn"),
+    Type.Literal("np_in_rn_role"),
+    Type.Literal("lpn"),
+    Type.Literal("cna"),
+    Type.Literal("unit_secretary"),
+    Type.Literal("housekeeping"),
+    Type.Literal("pharmacist"),
+    Type.Literal("social_worker_in_unit"),
+    Type.Literal("chaplain_in_unit"),
+    Type.Literal("medical_director_in_unit"),
+  ]),
+});
+export type AssignStaffBody = Static<typeof AssignStaffBodySchema>;
+export const StaffAssignmentViewSchema = Type.Object({
+  id,
+  shiftId: id,
+  membershipId: id,
+  role: Type.String(),
+  state: Type.String(),
+});
+export const UnassignStaffBodySchema = Type.Object({ assignmentId: id });
+export type UnassignStaffBody = Static<typeof UnassignStaffBodySchema>;
+
+export const RnCoverageViewSchema = Type.Object({
+  unitId: id,
+  items: Type.Array(Type.Object({ hourStartAt: Type.String(), isCovered: Type.Boolean() })),
+});
+export const RnBreakGlassViewSchema = Type.Object({ unitId: id, invoked: Type.Boolean() });
+
 // ── restraint (§4.1 routes 22–24) ──────────────────────────────────────────────────────────────────────
 export const ApplyRestraintBodySchema = Type.Object({
   restraintKind: Type.Union([

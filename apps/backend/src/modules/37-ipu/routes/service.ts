@@ -5,12 +5,14 @@ import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   ApplyRestraintBody,
   AssignBedBody,
+  AssignStaffBody,
   AttestGipBody,
   BedCleaningBody,
   ConfirmBody,
   ConfirmTransferBody,
   CreateBedBody,
   CreateRoomBody,
+  CreateShiftBody,
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
@@ -19,6 +21,7 @@ import type {
   ReassessGipBody,
   ReassessRestraintBody,
   RequestBedBody,
+  UnassignStaffBody,
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
@@ -91,6 +94,26 @@ export interface RestraintView {
   readonly version: number;
 }
 
+export interface ShiftView {
+  readonly id: string;
+  readonly unitId: string;
+  readonly shiftStartAt: string;
+  readonly shiftEndAt: string;
+  readonly displayLabel: string | null;
+  readonly version: number;
+}
+export interface StaffAssignmentView {
+  readonly id: string;
+  readonly shiftId: string;
+  readonly membershipId: string;
+  readonly role: string;
+  readonly state: string;
+}
+export interface RnCoverageView {
+  readonly unitId: string;
+  readonly items: ReadonlyArray<{ readonly hourStartAt: string; readonly isCovered: boolean }>;
+}
+
 export interface CensusRow {
   readonly unitId: string | null;
   readonly remoteFacilityId: string | null;
@@ -130,6 +153,12 @@ export interface IpuRouteService {
   attestGip(actor: IpuWriteActor, admissionId: string, body: AttestGipBody): Promise<GipCriteriaView>;
   reassessGip(actor: IpuWriteActor, admissionId: string, body: ReassessGipBody): Promise<GipCriteriaView>;
   overrideIrcCap(actor: IpuWriteActor, admissionId: string, body: IrcOverrideBody): Promise<IrcEpisodeView>;
+  listShifts(actor: IpuReadActor): Promise<readonly ShiftView[]>;
+  createShift(actor: IpuWriteActor, body: CreateShiftBody): Promise<ShiftView>;
+  assignStaff(actor: IpuWriteActor, shiftId: string, body: AssignStaffBody): Promise<StaffAssignmentView>;
+  unassignStaff(actor: IpuWriteActor, shiftId: string, body: UnassignStaffBody): Promise<StaffAssignmentView>;
+  getRnCoverage(actor: IpuReadActor, unitId: string): Promise<RnCoverageView>;
+  invokeRnBreakGlass(actor: IpuWriteActor, unitId: string): Promise<{ unitId: string; invoked: boolean }>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
   applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody): Promise<RestraintView>;

@@ -25,12 +25,14 @@ import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   ApplyRestraintBody,
   AssignBedBody,
+  AssignStaffBody,
   AttestGipBody,
   BedCleaningBody,
   ConfirmBody,
   ConfirmTransferBody,
   CreateBedBody,
   CreateRoomBody,
+  CreateShiftBody,
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
@@ -39,6 +41,7 @@ import type {
   ReassessGipBody,
   ReassessRestraintBody,
   RequestBedBody,
+  UnassignStaffBody,
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
@@ -52,6 +55,9 @@ import type {
   IrcEpisodeView,
   RestraintView,
   RoomView,
+  RnCoverageView,
+  ShiftView,
+  StaffAssignmentView,
   UnitView,
 } from "./service";
 
@@ -711,6 +717,94 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           aggregateId: ep.id,
         });
         return ircView(row);
+      });
+    },
+
+    async listShifts(actor) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const S = schema.ipuShift;
+        const rows = await (tx as DbClient).select().from(S).orderBy(desc(S.shiftStartAt));
+        return rows.map(
+          (r): ShiftView => ({
+            id: r.id,
+            unitId: r.unitId,
+            shiftStartAt: iso(r.shiftStartAt),
+            shiftEndAt: iso(r.shiftEndAt),
+            displayLabel: r.displayLabel,
+            version: r.version,
+          }),
+        );
+      });
+    },
+
+    async createShift(actor: IpuWriteActor, body: CreateShiftBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const S = schema.ipuShift;
+        const [row] = await (tx as DbClient)
+          .insert(S)
+          .values({
+            organizationId: actor.organizationId,
+            unitId: body.unitId,
+            shiftStartAt: new Date(body.shiftStartAt),
+            shiftEndAt: new Date(body.shiftEndAt),
+            displayLabel: body.displayLabel ?? null,
+            createdBy: actor.membershipId,
+          })
+          .returning();
+        if (!row) throw new ConflictError("shift insert failed");
+        return { id: row.id, unitId: row.unitId, shiftStartAt: iso(row.shiftStartAt), shiftEndAt: iso(row.shiftEndAt), displayLabel: row.displayLabel, version: row.version };
+      });
+    },
+
+    async assignStaff(actor: IpuWriteActor, shiftId: string, body: AssignStaffBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const SA = schema.ipuStaffAssignment;
+        const [row] = await (tx as DbClient)
+          .insert(SA)
+          .values({ organizationId: actor.organizationId, shiftId, membershipId: body.membershipId, role: body.role })
+          .returning();
+        if (!row) throw new ConflictError("staff assignment insert failed");
+        return { id: row.id, shiftId: row.shiftId, membershipId: row.membershipId, role: row.role, state: row.state } satisfies StaffAssignmentView;
+      });
+    },
+
+    async unassignStaff(actor: IpuWriteActor, _shiftId: string, body: UnassignStaffBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const SA = schema.ipuStaffAssignment;
+        const t = tx as DbClient;
+        const [cur] = await t.select().from(SA).where(eq(SA.id, body.assignmentId)).limit(1);
+        if (!cur) throw new NotFoundError("ipu_staff_assignment not found");
+        const [row] = await t
+          .update(SA)
+          .set({ state: "cancelled", cancelledAt: new Date(), version: cur.version + 1 })
+          .where(eq(SA.id, body.assignmentId))
+          .returning();
+        if (!row) throw new ConflictError("unassign failed");
+        return { id: row.id, shiftId: row.shiftId, membershipId: row.membershipId, role: row.role, state: row.state } satisfies StaffAssignmentView;
+      });
+    },
+
+    async getRnCoverage(actor, unitId: string): Promise<RnCoverageView> {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const W = schema.ipuRnCoverageWindow;
+        const rows = await (tx as DbClient).select().from(W).where(eq(W.unitId, unitId)).orderBy(W.hourStartAt);
+        return { unitId, items: rows.map((r) => ({ hourStartAt: iso(r.hourStartAt), isCovered: r.isCovered })) };
+      });
+    },
+
+    async invokeRnBreakGlass(actor: IpuWriteActor, unitId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        // §2.3 — the break-glass override is a compliance signal; emit it (M36 critical + compliance log). The
+        // override window semantics live in the @wardenx/inpatient break-glass kernel; there is no dedicated
+        // persistence table, so the ABAC predicate reads the coverage window + this event stream.
+        await outbox.publish(tx as DbClient, {
+          eventName: "m37.rn_coverage.break_glass_invoked",
+          payload: { unitId, organizationId: actor.organizationId, invokedAt: new Date().toISOString() },
+          organizationId: actor.organizationId,
+          aggregateKind: "inpatient_unit",
+          aggregateId: unitId,
+        });
+        return { unitId, invoked: true };
       });
     },
 

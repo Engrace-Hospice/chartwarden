@@ -8,12 +8,14 @@ import { P, RN_COVERAGE, STEP_UP } from "./guards";
 import {
   ApplyRestraintBodySchema,
   AssignBedBodySchema,
+  AssignStaffBodySchema,
   AttestGipBodySchema,
   BedCleaningBodySchema,
   ConfirmBodySchema,
   ConfirmTransferBodySchema,
   CreateBedBodySchema,
   CreateRoomBodySchema,
+  CreateShiftBodySchema,
   CreateUnitBodySchema,
   DateParamsSchema,
   DischargeBodySchema,
@@ -24,6 +26,7 @@ import {
   ReassessGipBodySchema,
   ReassessRestraintBodySchema,
   RequestBedBodySchema,
+  UnassignStaffBodySchema,
   UpdateBedBodySchema,
   UpdateRoomBodySchema,
   UpdateUnitBodySchema,
@@ -265,6 +268,44 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     const { id } = parse(IdParamsSchema, request.params);
     return service.releaseRestraint(actor, id);
   });
+
+  // 25. GET/POST /ipu-shifts — list / create shifts. §4.1.
+  app.get("/api/v1/ipu-shifts", { preHandler: [P("m37.shift.read")] }, async (request) => ({
+    items: await service.listShifts(actorOf(request)),
+  }));
+  app.post("/api/v1/ipu-shifts", { preHandler: [P("m37.shift.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.createShift(actor, parse(CreateShiftBodySchema, request.body)));
+  });
+
+  // 26. POST/DELETE /ipu-shifts/:id/staff — assign / unassign staff. §4.1.
+  app.post("/api/v1/ipu-shifts/:id/staff", { preHandler: [P("m37.shift.assign_staff")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return reply.code(201).send(await service.assignStaff(actor, id, parse(AssignStaffBodySchema, request.body)));
+  });
+  app.delete("/api/v1/ipu-shifts/:id/staff", { preHandler: [P("m37.shift.assign_staff")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.unassignStaff(actor, id, parse(UnassignStaffBodySchema, request.body));
+  });
+
+  // 27. GET /ipu-units/:id/rn-coverage — read the coverage window. §4.1.
+  app.get("/api/v1/ipu-units/:id/rn-coverage", { preHandler: [P("m37.shift.read")] }, async (request) => {
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.getRnCoverage(actorOf(request), id);
+  });
+
+  // 28. POST /ipu-units/:id/rn-coverage/break-glass — invoke override (step-up). §4.1.
+  app.post(
+    "/api/v1/ipu-units/:id/rn-coverage/break-glass",
+    { preHandler: [P("m37.rn_coverage.break_glass"), STEP_UP("m37.rn_coverage.break_glass")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.invokeRnBreakGlass(actor, id);
+    },
+  );
 
   // 38. GET /ipu-census/:date — read census snapshot for a date. §4.1.
   app.get("/api/v1/ipu-census/:date", { preHandler: [P("m37.census.read")] }, async (request) => {

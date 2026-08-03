@@ -81601,6 +81601,506 @@
         }
       }
     },
+    "/api/v1/ipu-shifts": {
+      "get": {
+        "operationId": "getApiV1Ipushifts",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "List IPU shifts (§4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "unitId",
+                          "shiftStartAt",
+                          "shiftEndAt",
+                          "displayLabel",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "unitId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "shiftStartAt": {
+                            "type": "string"
+                          },
+                          "shiftEndAt": {
+                            "type": "string"
+                          },
+                          "displayLabel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Ipushifts",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Create an IPU shift (§4.1)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "unitId",
+                    "shiftStartAt",
+                    "shiftEndAt",
+                    "displayLabel",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "shiftStartAt": {
+                      "type": "string"
+                    },
+                    "shiftEndAt": {
+                      "type": "string"
+                    },
+                    "displayLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "unitId",
+                  "shiftStartAt",
+                  "shiftEndAt"
+                ],
+                "properties": {
+                  "unitId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "shiftStartAt": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "shiftEndAt": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "displayLabel": {
+                    "maxLength": 80,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-shifts/{id}/staff": {
+      "delete": {
+        "operationId": "deleteApiV1IpushiftsByIdStaff",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Cancel a staff assignment (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "shiftId",
+                    "membershipId",
+                    "role",
+                    "state"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "shiftId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "assignmentId"
+                ],
+                "properties": {
+                  "assignmentId": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1IpushiftsByIdStaff",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Assign staff to a shift (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "shiftId",
+                    "membershipId",
+                    "role",
+                    "state"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "shiftId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "membershipId",
+                  "role"
+                ],
+                "properties": {
+                  "membershipId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "role": {
+                    "anyOf": [
+                      {
+                        "const": "charge_rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "np_in_rn_role",
+                        "type": "string"
+                      },
+                      {
+                        "const": "lpn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cna",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unit_secretary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "housekeeping",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pharmacist",
+                        "type": "string"
+                      },
+                      {
+                        "const": "social_worker_in_unit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "chaplain_in_unit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director_in_unit",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-units/{id}/rn-coverage": {
+      "get": {
+        "operationId": "getApiV1IpuunitsByIdRncoverage",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Read the unit's RN-coverage window grid (§2.3)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "unitId",
+                    "items"
+                  ],
+                  "properties": {
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "hourStartAt",
+                          "isCovered"
+                        ],
+                        "properties": {
+                          "hourStartAt": {
+                            "type": "string"
+                          },
+                          "isCovered": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-units/{id}/rn-coverage/break-glass": {
+      "post": {
+        "operationId": "postApiV1IpuunitsByIdRncoverageBreakglass",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Invoke an RN-coverage break-glass override (step-up; max 4h; §2.3)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "unitId",
+                    "invoked"
+                  ],
+                  "properties": {
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "invoked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/level-of-care/{id}": {
       "patch": {
         "operationId": "patchApiV1LevelofcareById",
