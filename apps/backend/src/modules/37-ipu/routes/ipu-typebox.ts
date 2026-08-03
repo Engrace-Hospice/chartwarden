@@ -64,6 +64,67 @@ export const AdmissionViewSchema = Type.Object({
 });
 export const AdmissionListSchema = Type.Object({ items: Type.Array(AdmissionViewSchema) });
 
+// ── unit update / rooms / beds (§4.1 routes 3–8) ───────────────────────────────────────────────────────
+export const UpdateUnitBodySchema = Type.Object({
+  displayName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  rnCoverageHorizonHours: Type.Optional(Type.Integer({ minimum: 8, maximum: 168 })),
+  turnoverSlaMinutes: Type.Optional(Type.Integer({ minimum: 1, maximum: 120 })),
+  gipReassessmentIntervalHours: Type.Optional(Type.Integer({ minimum: 4, maximum: 24 })),
+  ircCapOverrideMaxDays: Type.Optional(Type.Integer({ minimum: 0, maximum: 2 })),
+});
+export type UpdateUnitBody = Static<typeof UpdateUnitBodySchema>;
+
+const roomKind = Type.Union([
+  Type.Literal("private"),
+  Type.Literal("semi_private"),
+  Type.Literal("family"),
+  Type.Literal("shared_overflow"),
+]);
+export const CreateRoomBodySchema = Type.Object({
+  roomNumber: Type.String({ minLength: 1, maxLength: 40 }),
+  kind: roomKind,
+  bedCount: Type.Integer({ minimum: 0, maximum: 16 }),
+  hasWindow: Type.Optional(Type.Boolean()),
+  hasPrivateBathroom: Type.Optional(Type.Boolean()),
+  familyAmenitiesPresent: Type.Optional(Type.Boolean()),
+});
+export type CreateRoomBody = Static<typeof CreateRoomBodySchema>;
+export const UpdateRoomBodySchema = Type.Object({
+  roomNumber: Type.Optional(Type.String({ minLength: 1, maxLength: 40 })),
+  kind: Type.Optional(roomKind),
+  hasWindow: Type.Optional(Type.Boolean()),
+  hasPrivateBathroom: Type.Optional(Type.Boolean()),
+  familyAmenitiesPresent: Type.Optional(Type.Boolean()),
+  isActive: Type.Optional(Type.Boolean()),
+});
+export type UpdateRoomBody = Static<typeof UpdateRoomBodySchema>;
+export const RoomViewSchema = Type.Object({
+  id,
+  unitId: id,
+  roomNumber: Type.String(),
+  kind: Type.String(),
+  bedCount: Type.Integer(),
+  isActive: Type.Boolean(),
+  version: Type.Integer(),
+});
+export const RoomListSchema = Type.Object({ items: Type.Array(RoomViewSchema) });
+
+export const CreateBedBodySchema = Type.Object({
+  bedLabel: Type.String({ minLength: 1, maxLength: 40 }),
+  geofenceLat: Type.Optional(Type.Number()),
+  geofenceLon: Type.Optional(Type.Number()),
+  geofenceRadiusMeters: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+});
+export type CreateBedBody = Static<typeof CreateBedBodySchema>;
+export const UpdateBedBodySchema = Type.Object({
+  bedLabel: Type.Optional(Type.String({ minLength: 1, maxLength: 40 })),
+  geofenceLat: Type.Optional(Type.Number()),
+  geofenceLon: Type.Optional(Type.Number()),
+  geofenceRadiusMeters: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000 })),
+  isActive: Type.Optional(Type.Boolean()),
+});
+export type UpdateBedBody = Static<typeof UpdateBedBodySchema>;
+
 // ── admission transitions (§4.1 routes 13–14, 18) ──────────────────────────────────────────────────────
 export const RequestBedBodySchema = Type.Object({ unitId: id });
 export type RequestBedBody = Static<typeof RequestBedBodySchema>;
@@ -107,6 +168,7 @@ export const BedViewSchema = Type.Object({
   cleaningStatus: Type.String(),
   version: Type.Integer(),
 });
+export const BedListSchema = Type.Object({ items: Type.Array(BedViewSchema) });
 
 // ── census (§4.1 route 38) ───────────────────────────────────────────────────────────────────────────
 export const CensusListSchema = Type.Object({

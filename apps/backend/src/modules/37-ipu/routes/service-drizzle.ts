@@ -23,13 +23,18 @@ import type {
   ApplyRestraintBody,
   AssignBedBody,
   BedCleaningBody,
+  CreateBedBody,
+  CreateRoomBody,
   CreateUnitBody,
   DischargeBody,
   OpenAdmissionBody,
   ReassessRestraintBody,
   RequestBedBody,
+  UpdateBedBody,
+  UpdateRoomBody,
+  UpdateUnitBody,
 } from "./ipu-typebox";
-import type { AdmissionView, BedView, CensusView, IpuRouteService, RestraintView, UnitView } from "./service";
+import type { AdmissionView, BedView, CensusView, IpuRouteService, RestraintView, RoomView, UnitView } from "./service";
 
 /** The transactional-outbox port the composition root binds (the catalog-validating `m37` publisher). */
 export interface WriteOutboxPort {
@@ -65,6 +70,17 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
   const C = schema.ipuCensusSnapshot;
   const RE = schema.ipuRestraintEvent;
   const RR = schema.ipuRestraintReassessment;
+  const RM = schema.ipuRoom;
+
+  const roomView = (r: typeof RM.$inferSelect): RoomView => ({
+    id: r.id,
+    unitId: r.unitId,
+    roomNumber: r.roomNumber,
+    kind: r.kind,
+    bedCount: r.bedCount,
+    isActive: r.isActive,
+    version: r.version,
+  });
 
   const restraintView = (r: typeof RE.$inferSelect): RestraintView => ({
     id: r.id,
@@ -198,6 +214,147 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           .returning();
         if (!row) throw new ConflictError("unit insert failed");
         return unitView(row);
+      });
+    },
+
+    async updateUnit(actor: IpuWriteActor, unitId: string, body: UpdateUnitBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [cur] = await t.select().from(U).where(eq(U.id, unitId)).limit(1);
+        if (!cur) throw new NotFoundError("inpatient_unit not found");
+        const [row] = await t
+          .update(U)
+          .set({
+            displayName: body.displayName ?? cur.displayName,
+            rnCoverageHorizonHours: body.rnCoverageHorizonHours ?? cur.rnCoverageHorizonHours,
+            turnoverSlaMinutes: body.turnoverSlaMinutes ?? cur.turnoverSlaMinutes,
+            gipReassessmentIntervalHours: body.gipReassessmentIntervalHours ?? cur.gipReassessmentIntervalHours,
+            ircCapOverrideMaxDays: body.ircCapOverrideMaxDays ?? cur.ircCapOverrideMaxDays,
+            updatedAt: new Date(),
+            version: cur.version + 1,
+          })
+          .where(eq(U.id, unitId))
+          .returning();
+        if (!row) throw new ConflictError("unit update failed");
+        return unitView(row);
+      });
+    },
+
+    async deactivateUnit(actor: IpuWriteActor, unitId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [cur] = await t.select().from(U).where(eq(U.id, unitId)).limit(1);
+        if (!cur) throw new NotFoundError("inpatient_unit not found");
+        const [row] = await t
+          .update(U)
+          .set({ isActive: false, updatedAt: new Date(), version: cur.version + 1 })
+          .where(eq(U.id, unitId))
+          .returning();
+        if (!row) throw new ConflictError("unit deactivate failed");
+        return unitView(row);
+      });
+    },
+
+    async listRooms(actor, unitId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const rows = await (tx as DbClient).select().from(RM).where(eq(RM.unitId, unitId));
+        return rows.map(roomView);
+      });
+    },
+
+    async createRoom(actor: IpuWriteActor, unitId: string, body: CreateRoomBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const [row] = await (tx as DbClient)
+          .insert(RM)
+          .values({
+            organizationId: actor.organizationId,
+            unitId,
+            roomNumber: body.roomNumber,
+            kind: body.kind,
+            bedCount: body.bedCount,
+            hasWindow: body.hasWindow ?? false,
+            hasPrivateBathroom: body.hasPrivateBathroom ?? false,
+            familyAmenitiesPresent: body.familyAmenitiesPresent ?? false,
+          })
+          .returning();
+        if (!row) throw new ConflictError("room insert failed");
+        return roomView(row);
+      });
+    },
+
+    async updateRoom(actor: IpuWriteActor, roomId: string, body: UpdateRoomBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [cur] = await t.select().from(RM).where(eq(RM.id, roomId)).limit(1);
+        if (!cur) throw new NotFoundError("ipu_room not found");
+        const [row] = await t
+          .update(RM)
+          .set({
+            roomNumber: body.roomNumber ?? cur.roomNumber,
+            kind: body.kind ?? cur.kind,
+            hasWindow: body.hasWindow ?? cur.hasWindow,
+            hasPrivateBathroom: body.hasPrivateBathroom ?? cur.hasPrivateBathroom,
+            familyAmenitiesPresent: body.familyAmenitiesPresent ?? cur.familyAmenitiesPresent,
+            isActive: body.isActive ?? cur.isActive,
+            updatedAt: new Date(),
+            version: cur.version + 1,
+          })
+          .where(eq(RM.id, roomId))
+          .returning();
+        if (!row) throw new ConflictError("room update failed");
+        return roomView(row);
+      });
+    },
+
+    async listBeds(actor, roomId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const rows = await (tx as DbClient).select().from(B).where(eq(B.roomId, roomId));
+        return rows.map(bedView);
+      });
+    },
+
+    async createBed(actor: IpuWriteActor, roomId: string, body: CreateBedBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [room] = await t.select().from(RM).where(eq(RM.id, roomId)).limit(1);
+        if (!room) throw new NotFoundError("ipu_room not found");
+        const [row] = await t
+          .insert(B)
+          .values({
+            organizationId: actor.organizationId,
+            roomId,
+            unitId: room.unitId,
+            bedLabel: body.bedLabel,
+            geofenceLat: body.geofenceLat != null ? String(body.geofenceLat) : null,
+            geofenceLon: body.geofenceLon != null ? String(body.geofenceLon) : null,
+            geofenceRadiusMeters: body.geofenceRadiusMeters ?? 25,
+          })
+          .returning();
+        if (!row) throw new ConflictError("bed insert failed");
+        return bedView(row);
+      });
+    },
+
+    async updateBed(actor: IpuWriteActor, bedId: string, body: UpdateBedBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const [cur] = await t.select().from(B).where(eq(B.id, bedId)).limit(1);
+        if (!cur) throw new NotFoundError("ipu_bed not found");
+        const [row] = await t
+          .update(B)
+          .set({
+            bedLabel: body.bedLabel ?? cur.bedLabel,
+            geofenceLat: body.geofenceLat != null ? String(body.geofenceLat) : cur.geofenceLat,
+            geofenceLon: body.geofenceLon != null ? String(body.geofenceLon) : cur.geofenceLon,
+            geofenceRadiusMeters: body.geofenceRadiusMeters ?? cur.geofenceRadiusMeters,
+            isActive: body.isActive ?? cur.isActive,
+            updatedAt: new Date(),
+            version: cur.version + 1,
+          })
+          .where(eq(B.id, bedId))
+          .returning();
+        if (!row) throw new ConflictError("bed update failed");
+        return bedView(row);
       });
     },
 

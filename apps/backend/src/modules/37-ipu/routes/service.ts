@@ -6,11 +6,16 @@ import type {
   ApplyRestraintBody,
   AssignBedBody,
   BedCleaningBody,
+  CreateBedBody,
+  CreateRoomBody,
   CreateUnitBody,
   DischargeBody,
   OpenAdmissionBody,
   ReassessRestraintBody,
   RequestBedBody,
+  UpdateBedBody,
+  UpdateRoomBody,
+  UpdateUnitBody,
 } from "./ipu-typebox";
 
 export interface UnitView {
@@ -44,6 +49,16 @@ export interface BedView {
   readonly version: number;
 }
 
+export interface RoomView {
+  readonly id: string;
+  readonly unitId: string;
+  readonly roomNumber: string;
+  readonly kind: string;
+  readonly bedCount: number;
+  readonly isActive: boolean;
+  readonly version: number;
+}
+
 export interface RestraintView {
   readonly id: string;
   readonly ipuAdmissionId: string;
@@ -72,6 +87,14 @@ export interface CensusView {
 export interface IpuRouteService {
   listUnits(actor: IpuReadActor): Promise<readonly UnitView[]>;
   createUnit(actor: IpuWriteActor, body: CreateUnitBody): Promise<UnitView>;
+  updateUnit(actor: IpuWriteActor, unitId: string, body: UpdateUnitBody): Promise<UnitView>;
+  deactivateUnit(actor: IpuWriteActor, unitId: string): Promise<UnitView>;
+  listRooms(actor: IpuReadActor, unitId: string): Promise<readonly RoomView[]>;
+  createRoom(actor: IpuWriteActor, unitId: string, body: CreateRoomBody): Promise<RoomView>;
+  updateRoom(actor: IpuWriteActor, roomId: string, body: UpdateRoomBody): Promise<RoomView>;
+  listBeds(actor: IpuReadActor, roomId: string): Promise<readonly BedView[]>;
+  createBed(actor: IpuWriteActor, roomId: string, body: CreateBedBody): Promise<BedView>;
+  updateBed(actor: IpuWriteActor, bedId: string, body: UpdateBedBody): Promise<BedView>;
   listAdmissions(actor: IpuReadActor): Promise<readonly AdmissionView[]>;
   getAdmission(actor: IpuReadActor, id: string): Promise<AdmissionView | null>;
   openAdmission(actor: IpuWriteActor, body: OpenAdmissionBody): Promise<AdmissionView>;

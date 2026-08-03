@@ -9,6 +9,8 @@ import {
   ApplyRestraintBodySchema,
   AssignBedBodySchema,
   BedCleaningBodySchema,
+  CreateBedBodySchema,
+  CreateRoomBodySchema,
   CreateUnitBodySchema,
   DateParamsSchema,
   DischargeBodySchema,
@@ -16,6 +18,9 @@ import {
   OpenAdmissionBodySchema,
   ReassessRestraintBodySchema,
   RequestBedBodySchema,
+  UpdateBedBodySchema,
+  UpdateRoomBodySchema,
+  UpdateUnitBodySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -43,6 +48,60 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       return reply.code(201).send(await service.createUnit(actor, body));
     },
   );
+
+  // 3. PATCH /inpatient-units/:id — update unit config. §4.1. RN-coverage-exempt admin route.
+  app.patch("/api/v1/inpatient-units/:id", { preHandler: [P("m37.unit.update")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.updateUnit(actor, id, parse(UpdateUnitBodySchema, request.body));
+  });
+
+  // 4. POST /inpatient-units/:id/deactivate — deactivate unit (step-up). §4.1.
+  app.post(
+    "/api/v1/inpatient-units/:id/deactivate",
+    { preHandler: [P("m37.unit.update"), STEP_UP("m37.unit.update")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.deactivateUnit(actor, id);
+    },
+  );
+
+  // 5. GET/POST /inpatient-units/:id/rooms — list / create rooms. §4.1.
+  app.get("/api/v1/inpatient-units/:id/rooms", { preHandler: [P("m37.room.read")] }, async (request) => {
+    const { id } = parse(IdParamsSchema, request.params);
+    return { items: await service.listRooms(actorOf(request), id) };
+  });
+  app.post("/api/v1/inpatient-units/:id/rooms", { preHandler: [P("m37.room.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return reply.code(201).send(await service.createRoom(actor, id, parse(CreateRoomBodySchema, request.body)));
+  });
+
+  // 6. PATCH /ipu-rooms/:id — update room config. §4.1.
+  app.patch("/api/v1/ipu-rooms/:id", { preHandler: [P("m37.room.update")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.updateRoom(actor, id, parse(UpdateRoomBodySchema, request.body));
+  });
+
+  // 7. GET/POST /ipu-rooms/:id/beds — list / create beds. §4.1.
+  app.get("/api/v1/ipu-rooms/:id/beds", { preHandler: [P("m37.bed.read")] }, async (request) => {
+    const { id } = parse(IdParamsSchema, request.params);
+    return { items: await service.listBeds(actorOf(request), id) };
+  });
+  app.post("/api/v1/ipu-rooms/:id/beds", { preHandler: [P("m37.bed.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return reply.code(201).send(await service.createBed(actor, id, parse(CreateBedBodySchema, request.body)));
+  });
+
+  // 8. PATCH /ipu-beds/:id — update bed (geofence, label). §4.1.
+  app.patch("/api/v1/ipu-beds/:id", { preHandler: [P("m37.bed.update")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.updateBed(actor, id, parse(UpdateBedBodySchema, request.body));
+  });
 
   // 10. GET /ipu-admissions — list admissions. §4.1.
   app.get("/api/v1/ipu-admissions", { preHandler: [P("m37.ipu_admission.read")] }, async (request) => ({

@@ -8598,6 +8598,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inpatient-units/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update IPU unit config (§4.1) */
+        patch: operations["patchApiV1InpatientunitsById"];
+        trace?: never;
+    };
+    "/api/v1/inpatient-units/{id}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Deactivate an IPU unit (step-up, §4.1) */
+        post: operations["postApiV1InpatientunitsByIdDeactivate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inpatient-units/{id}/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List rooms in a unit (§4.1) */
+        get: operations["getApiV1InpatientunitsByIdRooms"];
+        put?: never;
+        /** Create a room (§4.1) */
+        post: operations["postApiV1InpatientunitsByIdRooms"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/intake/jobs/{id}": {
         parameters: {
             query?: never;
@@ -9245,6 +9297,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-beds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update bed geofence/label (§4.1) */
+        patch: operations["patchApiV1IpubedsById"];
+        trace?: never;
+    };
     "/api/v1/ipu-beds/{id}/cleaning-status": {
         parameters: {
             query?: never;
@@ -9307,6 +9376,41 @@ export interface paths {
         put?: never;
         /** Release a restraint (§2.10) */
         post: operations["postApiV1IpurestraintByIdRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ipu-rooms/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update room config (§4.1) */
+        patch: operations["patchApiV1IpuroomsById"];
+        trace?: never;
+    };
+    "/api/v1/ipu-rooms/{id}/beds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List beds in a room (§4.1) */
+        get: operations["getApiV1IpuroomsByIdBeds"];
+        put?: never;
+        /** Create a bed (§4.1) */
+        post: operations["postApiV1IpuroomsByIdBeds"];
         delete?: never;
         options?: never;
         head?: never;
@@ -38982,6 +39086,159 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    patchApiV1InpatientunitsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    displayName?: string;
+                    rnCoverageHorizonHours?: number;
+                    turnoverSlaMinutes?: number;
+                    gipReassessmentIntervalHours?: number;
+                    ircCapOverrideMaxDays?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        facilityId: string;
+                        displayName: string;
+                        bedCount: number;
+                        isActive: boolean;
+                        rnCoverageHorizonHours: number;
+                        turnoverSlaMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1InpatientunitsByIdDeactivate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        facilityId: string;
+                        displayName: string;
+                        bedCount: number;
+                        isActive: boolean;
+                        rnCoverageHorizonHours: number;
+                        turnoverSlaMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1InpatientunitsByIdRooms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            unitId: string;
+                            roomNumber: string;
+                            kind: string;
+                            bedCount: number;
+                            isActive: boolean;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1InpatientunitsByIdRooms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    roomNumber: string;
+                    kind: "private" | "semi_private" | "family" | "shared_overflow";
+                    bedCount: number;
+                    hasWindow?: boolean;
+                    hasPrivateBathroom?: boolean;
+                    familyAmenitiesPresent?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        unitId: string;
+                        roomNumber: string;
+                        kind: string;
+                        bedCount: number;
+                        isActive: boolean;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1IntakeJobsById: {
         parameters: {
             query?: {
@@ -40373,6 +40630,47 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    patchApiV1IpubedsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bedLabel?: string;
+                    geofenceLat?: number;
+                    geofenceLon?: number;
+                    geofenceRadiusMeters?: number;
+                    isActive?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        roomId: string;
+                        unitId: string;
+                        bedLabel: string;
+                        cleaningStatus: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1IpubedsByIdCleaningstatus: {
         parameters: {
             query?: never;
@@ -40509,6 +40807,122 @@ export interface operations {
                         restraintKind: string;
                         state: string;
                         reassessmentIntervalMinutes: number;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1IpuroomsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    roomNumber?: string;
+                    kind?: "private" | "semi_private" | "family" | "shared_overflow";
+                    hasWindow?: boolean;
+                    hasPrivateBathroom?: boolean;
+                    familyAmenitiesPresent?: boolean;
+                    isActive?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        unitId: string;
+                        roomNumber: string;
+                        kind: string;
+                        bedCount: number;
+                        isActive: boolean;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IpuroomsByIdBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            roomId: string;
+                            unitId: string;
+                            bedLabel: string;
+                            cleaningStatus: string;
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IpuroomsByIdBeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bedLabel: string;
+                    geofenceLat?: number;
+                    geofenceLon?: number;
+                    geofenceRadiusMeters?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        roomId: string;
+                        unitId: string;
+                        bedLabel: string;
+                        cleaningStatus: string;
                         version: number;
                     };
                 };

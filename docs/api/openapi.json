@@ -75184,6 +75184,400 @@
         }
       }
     },
+    "/api/v1/inpatient-units/{id}": {
+      "patch": {
+        "operationId": "patchApiV1InpatientunitsById",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Update IPU unit config (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "facilityId",
+                    "displayName",
+                    "bedCount",
+                    "isActive",
+                    "rnCoverageHorizonHours",
+                    "turnoverSlaMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "facilityId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "bedCount": {
+                      "type": "integer"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "rnCoverageHorizonHours": {
+                      "type": "integer"
+                    },
+                    "turnoverSlaMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "displayName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "rnCoverageHorizonHours": {
+                    "minimum": 8,
+                    "maximum": 168,
+                    "type": "integer"
+                  },
+                  "turnoverSlaMinutes": {
+                    "minimum": 1,
+                    "maximum": 120,
+                    "type": "integer"
+                  },
+                  "gipReassessmentIntervalHours": {
+                    "minimum": 4,
+                    "maximum": 24,
+                    "type": "integer"
+                  },
+                  "ircCapOverrideMaxDays": {
+                    "minimum": 0,
+                    "maximum": 2,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inpatient-units/{id}/deactivate": {
+      "post": {
+        "operationId": "postApiV1InpatientunitsByIdDeactivate",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Deactivate an IPU unit (step-up, §4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "facilityId",
+                    "displayName",
+                    "bedCount",
+                    "isActive",
+                    "rnCoverageHorizonHours",
+                    "turnoverSlaMinutes",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "facilityId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "bedCount": {
+                      "type": "integer"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "rnCoverageHorizonHours": {
+                      "type": "integer"
+                    },
+                    "turnoverSlaMinutes": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/inpatient-units/{id}/rooms": {
+      "get": {
+        "operationId": "getApiV1InpatientunitsByIdRooms",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "List rooms in a unit (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "unitId",
+                          "roomNumber",
+                          "kind",
+                          "bedCount",
+                          "isActive",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "unitId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "roomNumber": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "bedCount": {
+                            "type": "integer"
+                          },
+                          "isActive": {
+                            "type": "boolean"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1InpatientunitsByIdRooms",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Create a room (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "unitId",
+                    "roomNumber",
+                    "kind",
+                    "bedCount",
+                    "isActive",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "roomNumber": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "bedCount": {
+                      "type": "integer"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "roomNumber",
+                  "kind",
+                  "bedCount"
+                ],
+                "properties": {
+                  "roomNumber": {
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "private",
+                        "type": "string"
+                      },
+                      {
+                        "const": "semi_private",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family",
+                        "type": "string"
+                      },
+                      {
+                        "const": "shared_overflow",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "bedCount": {
+                    "minimum": 0,
+                    "maximum": 16,
+                    "type": "integer"
+                  },
+                  "hasWindow": {
+                    "type": "boolean"
+                  },
+                  "hasPrivateBathroom": {
+                    "type": "boolean"
+                  },
+                  "familyAmenitiesPresent": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/intake/jobs/{id}": {
       "get": {
         "operationId": "getApiV1IntakeJobsById",
@@ -79586,6 +79980,105 @@
         }
       }
     },
+    "/api/v1/ipu-beds/{id}": {
+      "patch": {
+        "operationId": "patchApiV1IpubedsById",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Update bed geofence/label (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "roomId",
+                    "unitId",
+                    "bedLabel",
+                    "cleaningStatus",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "roomId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "bedLabel": {
+                      "type": "string"
+                    },
+                    "cleaningStatus": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bedLabel": {
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "geofenceLat": {
+                    "type": "number"
+                  },
+                  "geofenceLon": {
+                    "type": "number"
+                  },
+                  "geofenceRadiusMeters": {
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "type": "integer"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/ipu-beds/{id}/cleaning-status": {
       "post": {
         "operationId": "postApiV1IpubedsByIdCleaningstatus",
@@ -79979,6 +80472,302 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-rooms/{id}": {
+      "patch": {
+        "operationId": "patchApiV1IpuroomsById",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Update room config (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "unitId",
+                    "roomNumber",
+                    "kind",
+                    "bedCount",
+                    "isActive",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "roomNumber": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "bedCount": {
+                      "type": "integer"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "roomNumber": {
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "private",
+                        "type": "string"
+                      },
+                      {
+                        "const": "semi_private",
+                        "type": "string"
+                      },
+                      {
+                        "const": "family",
+                        "type": "string"
+                      },
+                      {
+                        "const": "shared_overflow",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "hasWindow": {
+                    "type": "boolean"
+                  },
+                  "hasPrivateBathroom": {
+                    "type": "boolean"
+                  },
+                  "familyAmenitiesPresent": {
+                    "type": "boolean"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ipu-rooms/{id}/beds": {
+      "get": {
+        "operationId": "getApiV1IpuroomsByIdBeds",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "List beds in a room (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "roomId",
+                          "unitId",
+                          "bedLabel",
+                          "cleaningStatus",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "roomId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "unitId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "bedLabel": {
+                            "type": "string"
+                          },
+                          "cleaningStatus": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1IpuroomsByIdBeds",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "Create a bed (§4.1)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "roomId",
+                    "unitId",
+                    "bedLabel",
+                    "cleaningStatus",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "roomId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "unitId": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "bedLabel": {
+                      "type": "string"
+                    },
+                    "cleaningStatus": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "bedLabel"
+                ],
+                "properties": {
+                  "bedLabel": {
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "type": "string"
+                  },
+                  "geofenceLat": {
+                    "type": "number"
+                  },
+                  "geofenceLon": {
+                    "type": "number"
+                  },
+                  "geofenceRadiusMeters": {
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
           }
         }
       }
