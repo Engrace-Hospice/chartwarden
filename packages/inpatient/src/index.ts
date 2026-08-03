@@ -13,6 +13,8 @@ export * from "./machines/ipu-body-release";
 export * from "./domain/visitor/restriction-evaluator";
 export * from "./domain/equipment/inspection";
 export * from "./domain/meal/intake";
+export * from "./domain/census/bed-day-calculator";
+export * from "./domain/census/snapshot-builder";
 export * from "./domain/gip-criteria/schema";
 export * from "./domain/gip-criteria/validate";
 export * from "./domain/iv-safety/titration-window-catalog";
