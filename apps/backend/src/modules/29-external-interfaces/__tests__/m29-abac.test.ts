@@ -1,11 +1,13 @@
 // apps/backend/src/modules/29-external-interfaces/__tests__/m29-abac.test.ts — M29-T08 §4.8 predicate tests.
 import type { AbacContext, AbacTarget } from "@wardenx/auth";
+import { createPredicateRegistry } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 
 import {
   buildM29AbacPredicates,
   denyStubM29AbacResolver,
   HL7_OWNER_MODULE_WRITE_PERMISSION,
+  M29_ABAC_PREDICATES,
   type M29AbacResolver,
 } from "../abac-predicates";
 
@@ -168,5 +170,45 @@ describe("external_feed_baa_satisfied", () => {
 
     const unreadable = build({}).external_feed_baa_satisfied;
     expect(await unreadable(ctx(), { feedId: "f1" } as AbacTarget)).toBe(false);
+  });
+});
+
+// ── W-XI-15 — Boot Validator Refuses Missing Predicate ──────────────────────────────────────────────
+//
+// The acceptance gate against predicate-name drift: every §4.8 name M29 DECLARES must have a built
+// resolver AND land in M3's registry at boot, and a name that never registered must FAIL CLOSED (deny),
+// never fall open. `arch:abac-predicates` is the CI arm of this; these are the unit arm.
+describe("W-XI-15 — predicate registration completeness (§4.8 / §8)", () => {
+  it("every declared §4.8 name has exactly one built resolver — no drift either direction", () => {
+    const built = Object.keys(buildM29AbacPredicates({ resolver: denyStubM29AbacResolver }));
+    expect(built.sort()).toEqual([...M29_ABAC_PREDICATES].sort());
+  });
+
+  it("registers all six declared predicates into an M3-shaped registry", () => {
+    const registry = createPredicateRegistry();
+    const predicates = buildM29AbacPredicates({ resolver: denyStubM29AbacResolver });
+    for (const name of M29_ABAC_PREDICATES) registry.register(name, predicates[name]);
+
+    for (const name of M29_ABAC_PREDICATES) expect(registry.has(name)).toBe(true);
+    // Single-owner: re-registering the same name is refused (mirrors the shared registry's guard).
+    expect(() =>
+      registry.register(M29_ABAC_PREDICATES[0], predicates[M29_ABAC_PREDICATES[0]]),
+    ).toThrow(/already registered/);
+  });
+
+  it("a missing predicate fails CLOSED — evaluate() denies an unregistered name, never falls open", () => {
+    const registry = createPredicateRegistry();
+    const predicates = buildM29AbacPredicates({ resolver: denyStubM29AbacResolver });
+    // Simulate the W-XI-15 regression: the dual-approval predicate is dropped from the registry.
+    const dropped = "external_feed_compliance_co_approver_distinct" as const;
+    for (const name of M29_ABAC_PREDICATES) {
+      if (name === dropped) continue;
+      registry.register(name, predicates[name]);
+    }
+
+    expect(registry.has(dropped)).toBe(false);
+    // The evaluator returns false (deny) for the unregistered name — the guarantee W-XI-15 protects.
+    const verdict = registry.evaluate(dropped, ctx() as AbacContext, {} as AbacTarget);
+    expect(verdict).toBe(false);
   });
 });
