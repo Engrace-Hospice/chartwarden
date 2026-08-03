@@ -25,6 +25,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type MinimizationProfile,
   type VendorBindingView,
   createVendorBinding,
   errorMessage,
@@ -120,7 +121,8 @@ export function ExternalVendorAdminScreen(): JSX.Element {
       rnCoverageAttested: rnAttested,
       baaInEffect,
       ...(baaExpiresOn ? { baaExpiresOn } : {}),
-      defaultMinimizationPolicy: { profile },
+      // `profile` is always one of MINIMIZATION_PROFILES — the SelectField below offers no other value.
+      defaultMinimizationPolicy: { profile: profile as MinimizationProfile },
     });
     setBusy(false);
     if (res.error) {

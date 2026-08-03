@@ -36,9 +36,11 @@ import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   type AnswerWriteResult,
+  type EscalationTier,
   type TriageAnswerValue,
   type TriageCallDetail,
   type TriageCallProjection,
+  type TriageDispositionData,
   type TriageProtocolView,
   abandonCall,
   applyProtocol,
@@ -49,6 +51,7 @@ import {
   getProtocol,
   getTriageCall,
   identifyPatient,
+  isMedicationContext,
   isStaffProjection,
   listProtocols,
   markAwaitingCallback,
@@ -134,7 +137,7 @@ function buildDispositionData(
     preferredFacility: string;
     transportArrangedBy: string;
   },
-): Record<string, unknown> | null {
+): TriageDispositionData | null {
   switch (disposition) {
     case "caregiver_education_only":
       return f.summary.trim().length >= 30
@@ -197,7 +200,9 @@ function buildDispositionData(
         ? {
             disposition,
             electionText: f.summary,
-            transportArrangedBy: f.transportArrangedBy,
+            // `f.transportArrangedBy` is always one of TRANSPORT_ARRANGERS — it is set only via the
+            // <SelectField> below, whose options are that same closed, compile-time-known set.
+            transportArrangedBy: f.transportArrangedBy as (typeof TRANSPORT_ARRANGERS)[number],
           }
         : null;
     case "pronouncement_scheduled":
@@ -240,7 +245,7 @@ export function TriageCallPanel(): JSX.Element {
   const [overrideReason, setOverrideReason] = useState("");
   const [callbackReason, setCallbackReason] = useState("");
   const [callbackTargetAt, setCallbackTargetAt] = useState("");
-  const [tier, setTier] = useState(DEFAULT_ESCALATION_TIER);
+  const [tier, setTier] = useState<string>(DEFAULT_ESCALATION_TIER);
   const [escalationReason, setEscalationReason] = useState("");
   const [escalateTo, setEscalateTo] = useState("");
   const [handOff, setHandOff] = useState(false);
@@ -295,6 +300,11 @@ export function TriageCallPanel(): JSX.Element {
   }
 
   const staff = isStaffProjection(call) ? (call as TriageCallDetail) : null;
+  const medicationContext =
+    staff && isMedicationContext(staff.medicationContext) ? staff.medicationContext : null;
+  const activeMedications = medicationContext?.activeMedications ?? null;
+  const pendingRefills = medicationContext?.pendingRefills ?? null;
+  const sudRedactedCount = medicationContext?.sudRedactedCount ?? 0;
   const version = call.version;
   const answered = new Set(call.answers.map((a) => a.questionId));
   const nextQuestion =
@@ -697,21 +707,21 @@ export function TriageCallPanel(): JSX.Element {
       {/* ── D15 medication context ──────────────────────────────────────────────────────────────────── */}
       {staff ? (
         <Card title="Medications & refills (read-only)">
-          {!staff.medicationContext ? (
+          {!activeMedications || !pendingRefills ? (
             <span style={mutedStyle}>
               No medication context was loaded for this call — it is fetched once the caller is resolved to
               a served person.
             </span>
           ) : (
             <>
-              {staff.medicationContext.activeMedications.kind === "unavailable" ? (
+              {activeMedications.kind === "unavailable" ? (
                 <Notice tone="warning" live>
                   <strong>Medication list unavailable</strong> —{" "}
-                  {staff.medicationContext.activeMedications.reason}. This is NOT "no active medications":
+                  {activeMedications.reason}. This is NOT "no active medications":
                   an outage rendered as an empty list is how a clinician authorizes against a chart they
                   believe is empty.
                 </Notice>
-              ) : staff.medicationContext.activeMedications.items.length === 0 ? (
+              ) : activeMedications.items.length === 0 ? (
                 <span style={mutedStyle}>No active medications are on file for this patient.</span>
               ) : (
                 <table style={tableStyle}>
@@ -724,7 +734,7 @@ export function TriageCallPanel(): JSX.Element {
                     </tr>
                   </thead>
                   <tbody>
-                    {staff.medicationContext.activeMedications.items.map((m) => (
+                    {activeMedications.items.map((m) => (
                       <tr key={m.medicationOrderId} style={rowLine}>
                         <td style={td}>{m.display}</td>
                         <td style={td}>{m.route}</td>
@@ -741,24 +751,24 @@ export function TriageCallPanel(): JSX.Element {
                   </tbody>
                 </table>
               )}
-              {staff.medicationContext.sudRedactedCount > 0 ? (
+              {sudRedactedCount > 0 ? (
                 <Notice tone="warning" live>
-                  {staff.medicationContext.sudRedactedCount} medication
-                  {staff.medicationContext.sudRedactedCount === 1 ? " is" : "s are"} withheld under 42 CFR
+                  {sudRedactedCount} medication
+                  {sudRedactedCount === 1 ? " is" : "s are"} withheld under 42 CFR
                   Part 2. The list above is incomplete as shown — the count travels so the omission is
                   visible without the content being.
                 </Notice>
               ) : null}
-              {staff.medicationContext.pendingRefills.kind === "unavailable" ? (
+              {pendingRefills.kind === "unavailable" ? (
                 <Notice tone="warning" live>
                   <strong>Refill inbox unavailable</strong> —{" "}
-                  {staff.medicationContext.pendingRefills.reason}. M12 can be half-up; the two slices are
+                  {pendingRefills.reason}. M12 can be half-up; the two slices are
                   reported separately for exactly that reason.
                 </Notice>
               ) : (
                 <span style={mutedStyle}>
-                  {staff.medicationContext.pendingRefills.items.length} pending refill
-                  {staff.medicationContext.pendingRefills.items.length === 1 ? "" : "s"} on file. M19 reads
+                  {pendingRefills.items.length} pending refill
+                  {pendingRefills.items.length === 1 ? "" : "s"} on file. M19 reads
                   M12 and never writes it: an authorization taken on this call becomes the PRN disposition,
                   and M12's own consumer acts on the event that disposition emits.
                 </span>
@@ -1059,7 +1069,8 @@ export function TriageCallPanel(): JSX.Element {
                 void run(
                   () =>
                     escalate(client, triageCallId, version, {
-                      tier,
+                      // `tier` is always one of ESCALATION_TIERS — the SelectField below offers no other value.
+                      tier: tier as EscalationTier,
                       reason: escalationReason,
                       ...(UUID_RE.test(escalateTo) ? { escalatedToMembershipId: escalateTo } : {}),
                       ...(handOff ? { handOffCall: true } : {}),

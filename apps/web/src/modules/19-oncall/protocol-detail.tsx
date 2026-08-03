@@ -21,7 +21,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
+  type EscalationTier,
+  type TriageAnswerType,
   type TriageProtocolView,
+  type TriageRedFlagMatch,
   addProtocolQuestion,
   errorMessage,
   getProtocol,
@@ -87,7 +90,7 @@ function buildMatch(
   boolValue: string,
   threshold: string,
   values: string,
-): Record<string, unknown> | null {
+): TriageRedFlagMatch | null {
   switch (arm) {
     case "bool_is":
       return { kind: "bool_is", value: boolValue === "true" };
@@ -326,7 +329,8 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                     patchProtocol(client, protocol.id, {
                       chiefComplaintLabel: label,
                       requiresMandatoryEscalation: mandatory,
-                      mandatoryEscalationTier: mandatory ? tier : null,
+                      // `tier` is always one of ESCALATION_TIERS — the SelectField below offers no other value.
+                      mandatoryEscalationTier: mandatory ? (tier as EscalationTier) : null,
                     }),
                   "The protocol could not be updated.",
                 )
@@ -374,7 +378,8 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                     addProtocolQuestion(client, protocol.id, {
                       questionOrder: Math.max(1, Number(order) || 1),
                       prompt,
-                      answerType,
+                      // `answerType` is always one of ANSWER_TYPES — the SelectField below offers no other value.
+                      answerType: answerType as TriageAnswerType,
                       ...(answerType === "enum"
                         ? {
                             answerEnumValues: enumValues

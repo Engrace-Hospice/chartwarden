@@ -23,7 +23,13 @@ import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } f
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { type OncallPolicyView, errorMessage, getPolicy, patchPolicy } from "./oncall-api";
+import {
+  type OncallModel,
+  type OncallPolicyView,
+  errorMessage,
+  getPolicy,
+  patchPolicy,
+} from "./oncall-api";
 import { ONCALL_MODELS, humanize } from "./oncall-status";
 import {
   Card,
@@ -136,7 +142,8 @@ export function OnCallPolicyScreen(): JSX.Element {
     setActionError(null);
     setSaved(false);
     const res = await patchPolicy(client, policy.providerEntityId, policy.version, {
-      model,
+      // `model` is always one of ONCALL_MODELS — the SelectField below offers no other value.
+      model: model as OncallModel,
       escalationTiers: tiers,
       callbackSlaPerSeverity: sla,
       stateOverrides: overrides,

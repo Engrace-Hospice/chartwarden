@@ -21,6 +21,8 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type PaperReentryWorklistView,
+  type TriageCallerKind,
+  type TriageInboundChannel,
   errorMessage,
   listPaperReentryWorklist,
   reenterPaperCall,
@@ -133,8 +135,10 @@ export function PaperReentryWorklistScreen(): JSX.Element {
       worklistId: entering.id,
       providerEntityId: entering.providerEntityId,
       paperOriginalOpenedAt: toInstant(openedAt),
-      inboundChannel,
-      callerKind,
+      // Always one of HUMAN_INBOUND_CHANNELS / HUMAN_CALLER_KINDS — the SelectFields below offer no
+      // other value.
+      inboundChannel: inboundChannel as TriageInboundChannel,
+      callerKind: callerKind as TriageCallerKind,
       ...(callerDisplayName ? { callerDisplayName } : {}),
       ...(patientId ? { patientId, admissionId } : {}),
       ...(chiefComplaint ? { chiefComplaintText: chiefComplaint } : {}),

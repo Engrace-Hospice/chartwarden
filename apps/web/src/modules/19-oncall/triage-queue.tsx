@@ -23,6 +23,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type TriageCallListItem,
+  type TriageCallState,
   errorMessage,
   listTriageCalls,
 } from "./oncall-api";
@@ -91,7 +92,8 @@ export function TriageQueueScreen(): JSX.Element {
     // `openOnly` only rides along when no explicit state was picked.
     const res = await listTriageCalls(client, {
       limit: QUEUE_PAGE,
-      ...(state ? { state } : { openOnly: true }),
+      // `state` is always "" (open-only) or one of CALL_STATES — the SelectField below offers no other value.
+      ...(state ? { state: state as TriageCallState } : { openOnly: true }),
     });
     if (res.error) {
       setError(errorMessage(res.error, "The triage queue could not be loaded."));

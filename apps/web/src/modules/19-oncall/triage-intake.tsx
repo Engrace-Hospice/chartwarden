@@ -28,7 +28,12 @@ import { EmptyState, PageHeader, t, useApiClient } from "@wardenx/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { errorMessage, openTriageCall } from "./oncall-api";
+import {
+  type TriageCallerKind,
+  type TriageInboundChannel,
+  errorMessage,
+  openTriageCall,
+} from "./oncall-api";
 import {
   DEFAULT_CALLER_KIND,
   DEFAULT_INBOUND_CHANNEL,
@@ -88,8 +93,10 @@ export function TriageIntakeScreen(): JSX.Element {
     setError(null);
     const res = await openTriageCall(client, {
       providerEntityId,
-      inboundChannel,
-      callerKind,
+      // Always one of HUMAN_INBOUND_CHANNELS / HUMAN_CALLER_KINDS — the SelectFields below offer no
+      // other value.
+      inboundChannel: inboundChannel as TriageInboundChannel,
+      callerKind: callerKind as TriageCallerKind,
       ...(callerDisplayName ? { callerDisplayName } : {}),
       ...(callerPhone ? { callerPhoneE164: callerPhone } : {}),
       ...(callerRelationship ? { callerRelationshipLabel: callerRelationship } : {}),

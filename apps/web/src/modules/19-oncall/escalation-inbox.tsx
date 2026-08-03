@@ -28,6 +28,7 @@ import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
   type EscalationInboxItem,
+  type EscalationTier,
   acknowledgeEscalation,
   errorMessage,
   listEscalations,
@@ -107,7 +108,9 @@ export function EscalationInboxScreen(): JSX.Element {
     setError(null);
     const res = await listEscalations(client, {
       limit: INBOX_PAGE,
-      ...(tier ? { tier } : {}),
+      // `tier` is always "" (every tier) or one of ESCALATION_TIERS — the SelectField below offers no
+      // other value.
+      ...(tier ? { tier: tier as EscalationTier } : {}),
       ...(scope === "all" ? { openOnly: false } : {}),
     });
     if (res.error) {

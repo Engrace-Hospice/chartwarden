@@ -26,6 +26,8 @@ import { Link } from "react-router-dom";
 import {
   type CurrentOnCallView,
   type OnCallShiftView,
+  type ShiftDiscipline,
+  asOnCallActors,
   createShift,
   errorMessage,
   getCurrentOnCall,
@@ -101,7 +103,12 @@ export function OnCallShiftsScreen(): JSX.Element {
     setLoading(true);
     setError(null);
     const [list, now] = await Promise.all([
-      listShifts(client, { limit: SHIFT_PAGE, ...(discipline ? { discipline } : {}) }),
+      // `discipline` is always "" (every discipline) or one of SHIFT_DISCIPLINES — the SelectField below
+      // offers no other value.
+      listShifts(client, {
+        limit: SHIFT_PAGE,
+        ...(discipline ? { discipline: discipline as ShiftDiscipline } : {}),
+      }),
       getCurrentOnCall(client, {}),
     ]);
     if (list.error) {
@@ -149,7 +156,8 @@ export function OnCallShiftsScreen(): JSX.Element {
       providerEntityId,
       shiftStartsAt: toInstant(startsAt),
       shiftEndsAt: toInstant(endsAt),
-      discipline: newDiscipline,
+      // `newDiscipline` is always one of SHIFT_DISCIPLINES — the SelectField below offers no other value.
+      discipline: newDiscipline as ShiftDiscipline,
       ...(isExternal
         ? {
             externalActorId,
@@ -220,31 +228,34 @@ export function OnCallShiftsScreen(): JSX.Element {
               </tr>
             </thead>
             <tbody>
-              {current.perProviderEntity.map((p) => (
-                <tr key={p.providerEntityId} style={rowLine}>
-                  <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(p.providerEntityId)}</td>
-                  <td style={td}>
-                    {p.rnCoverageGap ? (
-                      <StatusPill label="Gap — no RN" tone="error" />
-                    ) : (
-                      <StatusPill label="Covered" tone="success" />
-                    )}
-                  </td>
-                  <td style={td}>
-                    {p.actors.length === 0 ? (
-                      <span style={mutedStyle}>nobody — this is an answer, not an empty result</span>
-                    ) : (
-                      p.actors
-                        .map((a) =>
-                          a.kind === "membership"
-                            ? `${disciplineLabel(a.discipline)} ${shortId(a.membershipId)}${a.isBackup ? " (backup)" : ""}`
-                            : `${a.externalActorLabel ?? "external vendor"} ${shortId(a.externalActorId)}`,
-                        )
-                        .join(" · ")
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {current.perProviderEntity.map((p) => {
+                const actors = asOnCallActors(p.actors);
+                return (
+                  <tr key={p.providerEntityId} style={rowLine}>
+                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(p.providerEntityId)}</td>
+                    <td style={td}>
+                      {p.rnCoverageGap ? (
+                        <StatusPill label="Gap — no RN" tone="error" />
+                      ) : (
+                        <StatusPill label="Covered" tone="success" />
+                      )}
+                    </td>
+                    <td style={td}>
+                      {actors.length === 0 ? (
+                        <span style={mutedStyle}>nobody — this is an answer, not an empty result</span>
+                      ) : (
+                        actors
+                          .map((a) =>
+                            a.kind === "membership"
+                              ? `${disciplineLabel(a.discipline)} ${shortId(a.membershipId)}${a.isBackup ? " (backup)" : ""}`
+                              : `${a.externalActorLabel ?? "external vendor"} ${shortId(a.externalActorId)}`,
+                          )
+                          .join(" · ")
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

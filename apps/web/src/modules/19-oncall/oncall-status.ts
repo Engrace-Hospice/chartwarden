@@ -12,6 +12,17 @@
 // Lantern six-tone alphabet: progress≈in-flight · success≈good/complete · warning≈needs-attention ·
 // error≈breached/failed · critical(gold)≈reserved irreversible/safety · neutral≈inert/terminal.
 import type { StatusTone } from "@wardenx/ui";
+import type {
+  EscalationTier,
+  MinimizationProfile,
+  OncallModel,
+  ShiftDiscipline,
+  TriageAnswerType,
+  TriageCallerKind,
+  TriageCallState,
+  TriageDispositionValue,
+  TriageInboundChannel,
+} from "./oncall-api";
 
 /**
  * `triage_call_state` (§2.2.1 / D6).
@@ -45,7 +56,7 @@ export const CALL_STATE_TONE: Record<string, StatusTone> = {
  *  queue's filter picker. The SERVER decides what `openOnly=true` returns; nothing here re-filters a page
  *  the server already scoped. `documented_pending_encounter` is deliberately IN the set (M19-F06 /
  *  ADR-0022): a call stranded by a down M8 seam must stay on the supervisor board. */
-export const OPEN_CALL_STATES: readonly string[] = [
+export const OPEN_CALL_STATES: readonly TriageCallState[] = [
   "open",
   "protocol_in_progress",
   "awaiting_callback",
@@ -55,7 +66,7 @@ export const OPEN_CALL_STATES: readonly string[] = [
 ];
 
 /** Every `triage_call_state` value, for the queue's state filter. */
-export const CALL_STATES: readonly string[] = [
+export const CALL_STATES: readonly TriageCallState[] = [
   ...OPEN_CALL_STATES,
   "documented",
   "closed",
@@ -64,7 +75,7 @@ export const CALL_STATES: readonly string[] = [
 
 /** `triage_escalation_tier` (D7), in LADDER order — this array order is the escalation ladder the inbox
  *  and the tier picker render, so it must not be re-sorted alphabetically. */
-export const ESCALATION_TIERS: readonly string[] = [
+export const ESCALATION_TIERS: readonly EscalationTier[] = [
   "tier_1_rn_supervisor",
   "tier_2_clinical_manager",
   "tier_3_medical_director",
@@ -111,7 +122,7 @@ export const SHIFT_STATUS_TONE: Record<string, StatusTone> = {
 
 /** `oncall_shift_discipline`. `external` is the Hybrid/Centralized case where the covering actor is a
  *  vendor rather than a membership — structurally a different arm of `OnCallActor`, never a nullable id. */
-export const SHIFT_DISCIPLINES: readonly string[] = [
+export const SHIFT_DISCIPLINES: readonly ShiftDiscipline[] = [
   "clinical_rn",
   "clinical_lpn",
   "medical_director",
@@ -123,7 +134,7 @@ export const SHIFT_DISCIPLINES: readonly string[] = [
 /** `triage_call_inbound_channel` — the transport the call arrived on. The three `inbound_*` values are the
  *  D10 machine-opened ones (M17 no-show, M18 late check-out, M36 delivery failure); a human intake form
  *  offers only the four a person can actually dial in on (see {@link HUMAN_INBOUND_CHANNELS}). */
-export const INBOUND_CHANNELS: readonly string[] = [
+export const INBOUND_CHANNELS: readonly TriageInboundChannel[] = [
   "phone",
   "sms",
   "email",
@@ -137,10 +148,15 @@ export const INBOUND_CHANNELS: readonly string[] = [
  *  consumers; offering them on the intake screen would let a clinician mint a call that claims M17 detected
  *  a missed visit. (The server's own narrowing is `OpenableSource`, which pins `source` to `manual`; the
  *  channel has no such union, so the restriction lives here and is stated on the screen.) */
-export const HUMAN_INBOUND_CHANNELS: readonly string[] = ["phone", "sms", "email", "portal_message"];
+export const HUMAN_INBOUND_CHANNELS: readonly TriageInboundChannel[] = [
+  "phone",
+  "sms",
+  "email",
+  "portal_message",
+];
 
 /** `triage_call_caller_kind`. `system_inbound` is likewise D10-only and absent from the intake picker. */
-export const CALLER_KINDS: readonly string[] = [
+export const CALLER_KINDS: readonly TriageCallerKind[] = [
   "patient",
   "caregiver",
   "external_clinician",
@@ -150,7 +166,7 @@ export const CALLER_KINDS: readonly string[] = [
 ];
 
 /** The caller kinds a human intake may declare (`system_inbound` excluded — see above). */
-export const HUMAN_CALLER_KINDS: readonly string[] = [
+export const HUMAN_CALLER_KINDS: readonly TriageCallerKind[] = [
   "patient",
   "caregiver",
   "external_clinician",
@@ -186,7 +202,7 @@ export const DISPOSITION_TONE: Record<string, StatusTone> = {
 
 /** `triage_protocol_answer_type` — selects which of the three typed value columns the answer writes, and
  *  therefore which D5 red-flag predicate arm may be evaluated against it. */
-export const ANSWER_TYPES: readonly string[] = [
+export const ANSWER_TYPES: readonly TriageAnswerType[] = [
   "boolean",
   "integer",
   "scale_0_10",
@@ -203,10 +219,13 @@ export const RISK_BAND_TONE: Record<string, StatusTone> = {
 };
 
 /** `oncall_model` (D3). `direct` ships live at Phase 1; the other two are behind a per-customer flag. */
-export const ONCALL_MODELS: readonly string[] = ["direct", "hybrid", "centralized"];
+export const ONCALL_MODELS: readonly OncallModel[] = ["direct", "hybrid", "centralized"];
 
 /** The D13 PHI-minimization profiles a vendor binding may declare (§4.2 `CreateVendorBindingBody`). */
-export const MINIMIZATION_PROFILES: readonly string[] = ["hybrid_phi_min", "centralized_phi_min"];
+export const MINIMIZATION_PROFILES: readonly MinimizationProfile[] = [
+  "hybrid_phi_min",
+  "centralized_phi_min",
+];
 
 /**
  * Default picker selections, NAMED rather than written as `SOME_LIST[0]`. Under

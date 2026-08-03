@@ -25,6 +25,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import {
+  type EscalationTier,
+  type ShiftDiscipline,
   type TriageProtocolView,
   createProtocol,
   errorMessage,
@@ -103,7 +105,9 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
     setError(null);
     const res = await listProtocols(client, {
       limit: CATALOG_PAGE,
-      ...(discipline ? { disciplineRequired: discipline } : {}),
+      // `discipline` is always "" (every discipline) or one of SHIFT_DISCIPLINES — the SelectField below
+      // offers no other value.
+      ...(discipline ? { disciplineRequired: discipline as ShiftDiscipline } : {}),
       ...(scope === "all" ? { effectiveOnly: false } : {}),
       ...(search ? { search } : {}),
     });
@@ -142,9 +146,11 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
       key,
       chiefComplaintLabel: label,
       snomedCode: snomed,
-      disciplineRequired: required,
+      // `required`/`tier` are always one of SHIFT_DISCIPLINES / ESCALATION_TIERS — the SelectFields below
+      // offer no other value.
+      disciplineRequired: required as ShiftDiscipline,
       requiresMandatoryEscalation: mandatory,
-      ...(mandatory ? { mandatoryEscalationTier: tier } : {}),
+      ...(mandatory ? { mandatoryEscalationTier: tier as EscalationTier } : {}),
     });
     setBusy(false);
     if (res.error) {
