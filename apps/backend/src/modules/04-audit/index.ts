@@ -39,10 +39,12 @@ export {
 // the composition root) enforcing legal-hold supremacy (§10.6) + Part 2 lifetime retention (§6).
 // TASK-003/ARCH-007: the Drizzle store enumerates REAL row-groups via the sanctioned
 // @wardenx/audit reader and the Drizzle ports carry live legal-hold + patient-lifecycle guards;
-// `performErasure` stays a loud refusal until the packages/audit crypto-erase adapter lands.
+// `performErasure` binds to the packages/audit `createDbAuditEraseExecutor` when a
+// destruction-granted client is injected, and stays a loud refusal until deployment provisions it.
 export {
   type AuditEraserDeps,
   type AuditEraserStore,
+  type DrizzleAuditEraserPortsOptions,
   RIGHT_TO_ERASURE_CERTIFICATE_ID,
   createAuditEraser,
   createDrizzleAuditEraserPorts,

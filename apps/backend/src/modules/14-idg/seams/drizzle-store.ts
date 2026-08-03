@@ -2,8 +2,10 @@
 // seam store (TASK-002; previously a partial overlay that spread the in-memory slice).
 //
 // Every {@link IdgSeamStore} method now answers from the real `idg_*` tables — nothing falls back to
-// the in-memory Map — except `decisionsForCarePlan`, which the schema cannot serve (see
-// {@link IdgSeamSchemaGapError} below): it throws the typed gap error rather than fabricate a link.
+// the in-memory Map. `decisionsForCarePlan` (formerly the one refused read, via the retired
+// IdgSeamSchemaGapError) answers over `idg_decision.care_plan_id` since mig 0155: the write path
+// stamps the link at record time from the patient's ACTIVE plan (M7 CarePlanReader seam), and a row
+// whose link is NULL simply never matches — an honest under-count, never a fabricated link.
 //
 // TENANCY, two shapes (the M21 store-drizzle precedent):
 //   • `packetById` / `decisionsForMeeting` / `meetingsForLocation` / `cadenceForAdmission` take NO
@@ -45,24 +47,6 @@ const isoN = (d: Date | string | null): string | null => (d === null ? null : is
 
 const MS_PER_DAY = 86_400_000;
 
-/**
- * A seam method whose backing fact does not exist in M14's schema. Thrown instead of fabricating:
- * a wrong-but-plausible projection would silently corrupt the consumer (an M30 latency measure
- * scoring the wrong decisions), where a named refusal is diagnosable.
- */
-export class IdgSeamSchemaGapError extends Error {
-  /** The refusing store method. */
-  readonly method: string;
-  /** The schema fact the method needs and `idg_*` does not carry. */
-  readonly missingFact: string;
-  constructor(method: string, missingFact: string, detail: string) {
-    super(`IdgSeamStore.${method}: schema gap — missing fact '${missingFact}'. ${detail}`);
-    this.name = "IdgSeamSchemaGapError";
-    this.method = method;
-    this.missingFact = missingFact;
-  }
-}
-
 /** Project an `idg_decision` row (patient-scoped) onto the §4.8 read DTO. */
 const decisionDto = (r: typeof DEC.$inferSelect): IdgDecisionDto => ({
   id: r.id,
@@ -82,8 +66,8 @@ const decisionDto = (r: typeof DEC.$inferSelect): IdgDecisionDto => ({
 });
 
 /**
- * Build the production Drizzle-backed {@link IdgSeamStore}. No in-memory fallback: every serving
- * method reads M14's tables; the one unservable method refuses with {@link IdgSeamSchemaGapError}.
+ * Build the production Drizzle-backed {@link IdgSeamStore}. No in-memory fallback: every method —
+ * including the by-care-plan read, since mig 0155 — answers from M14's tables.
  */
 export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
   return {
@@ -110,18 +94,21 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
 
     // ── decision reads (IdgDecisionProvider) ───────────────────────────────────────────────────────
     async decisionsForCarePlan(carePlanId): Promise<ReadonlyArray<IdgDecisionDto>> {
-      // REFUSED — schema gap. `idg_decision` carries NO care-plan link: no `care_plan_id` column, the
-      // `care_plan_update` payload's mutations carry element ids only, and the action-item
-      // `linked_artifact_id` back-ref (a care_plan_VERSION id, populated by the D8 auto-close
-      // consumer, not at record time) is neither present at read time nor a plan id. Deriving the
-      // set via the decision's patient would return every decision for the PATIENT — including ones
-      // for a prior plan — silently corrupting M30's decision-to-careplan-update latency measure.
-      throw new IdgSeamSchemaGapError(
-        "decisionsForCarePlan",
-        "idg_decision → care_plan link (no care_plan_id column)",
-        `cannot resolve decisions for care plan '${carePlanId}'; ` +
-          "add the link column (or a decision→plan projection) before binding this read.",
-      );
+      // Answers over `idg_decision.care_plan_id` (mig 0155): stamped at record time from the
+      // patient's ACTIVE plan via M7's CarePlanReader seam — never derived from the decision's
+      // patient here, which would return every decision for the PATIENT (including ones for a prior
+      // plan) and silently corrupt M30's decision-to-careplan-update latency measure. A row whose
+      // link is NULL (pre-0155, or no active plan resolved at record time) simply never matches.
+      return withOrgContextFromRequest(db, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const rows = await t
+          .select()
+          .from(DEC)
+          // Patient-scoped only: the DTO's `patientId` is non-null, matching the outbox emit line.
+          .where(and(eq(DEC.carePlanId, carePlanId), isNotNull(DEC.patientId)))
+          .orderBy(asc(DEC.recordedAt));
+        return rows.map(decisionDto);
+      });
     },
     async decisionsForMeeting(meetingId): Promise<ReadonlyArray<IdgDecisionDto>> {
       return withOrgContextFromRequest(db, async (tx) => {

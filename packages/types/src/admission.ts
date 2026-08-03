@@ -218,6 +218,12 @@ export interface AdmissionSummary {
   readonly patientId: PatientId;
   readonly organizationId: OrgId;
   readonly providerEntityId: ProviderEntityId;
+  /**
+   * The admission's location anchor (task-11 — the M9 capture-siting source; nullable on the row
+   * until activation sites it). Optional so existing in-memory seeds stay valid; the Drizzle
+   * reader always projects it.
+   */
+  readonly locationId?: string | null;
   readonly status: AdmissionStatusValue;
   readonly admissionAt: LocalDate;
   readonly activatedAt: LocalDate | null;

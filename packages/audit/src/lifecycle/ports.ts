@@ -2,8 +2,8 @@
 // destruction/eraser test runs against, mirroring the in-memory adapters in ./query + the M2
 // eraser store. Seed patients (lifecycle), legal holds (which row-groups are held), and a fixed
 // clock; `performErasure` reports a deterministic count so a run's tallies are assertable. The
-// production Drizzle adapter (patient SELECT, legal_hold match, partitioned crypto-erase) is a
-// tracked follow-up — the same forward pattern as the rest of the M4 surface.
+// production adapters live elsewhere: the guard legs (patient SELECT, legal_hold match) in the M4
+// backend module, the partitioned DELETE executor in ./drizzle-erase (destruction-granted client).
 import type { EraseInput, EraserPorts, PatientLifecycle } from "./eraser";
 
 /** Seed shape for the in-memory eraser ports. */

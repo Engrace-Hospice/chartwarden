@@ -230,6 +230,15 @@ export const REQUIRED_ERASERS: readonly DataClass[] = [
   // deletes the FK-ordered satellites + the admission roots + the per-patient visitor restrictions (§7.7 /
   // D8); aggregate census snapshots survive (they carry no patient_id, the D14 reproducibility rule).
   "ipu_record",
+  // TASK-003 follow-up — the seven cast-registered classes are now REQUIRED like every other: a boot
+  // that fails to register any of them refuses to serve (they were previously invisible to this gate).
+  "reporting_class", // M33 — tenant-offboarding operational rows (drilldown audit destruction-blocked)
+  "quality_class", // M30 — operational rows; compliance/survey evidence count-only
+  "cost_report_class", // M27 — operational config; evidence elevated-cert-gated
+  "billing_record", // M23 — per-patient billing destruction (in-flight/surveyor-hold guarded)
+  "remittance", // M25 — per-patient PR-ledger destruction
+  "medicaid_billing_record", // M24 — per-patient redact-to-shred
+  "cap", // M26 — per-patient redact-to-sentinel (D14)
 ];
 
 export function registerEraser(dataClass: DataClass, eraser: DataEraser): void {

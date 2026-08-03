@@ -21,6 +21,15 @@
 // and the license/policy acting membership are a documented sentinel / NULL until the interface carries
 // them. The correction row REUSES the target's `captured_at` (the composite self-FK
 // `(corrects_assessment_id, captured_at) → (id, captured_at)` demands it).
+//
+// CAPTURE SITING (§3.3). Every insert denormalizes `provider_entity_id` from the capture's admission
+// anchor through the published M6 `AdmissionStatusReader` seam (capture-siting.ts — M9 may not import
+// M6's schema, §11). The seam read runs BEFORE `withOrgContext` on its own request-scoped connection;
+// when it cannot answer (no seam / unknown admission / draft-PE gap / no request scope) the row stays
+// UNSITED (NULL) — recording is never blocked by the denormalization and a siting is never invented.
+// `location_id` stays NULL for now: NO published seam carries an admission/patient location (see the
+// capture-siting.ts header). A correction REUSES its target's stored siting when present (faithful to
+// the original capture event) and only falls back to a fresh resolve for legacy-unsited targets.
 import {
   cosignRequiredFor,
   computeScaleLicenseStatus,
@@ -37,6 +46,11 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { ScaleDelta, ScaleSeries, ScaleSeriesPoint, ScaleType } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm";
+import {
+  type AssessmentSitingResolver,
+  type ResolvedCaptureSiting,
+  createSeamAssessmentSitingResolver,
+} from "./capture-siting";
 import type {
   AssessmentAbacResolver,
   AssessmentRouteService,
@@ -101,6 +115,8 @@ const assessmentCols = {
   capturedAt: CA.capturedAt,
   capturedByDiscipline: CA.capturedByDiscipline,
   capturedByMembershipId: CA.capturedByMembershipId,
+  providerEntityId: CA.providerEntityId,
+  locationId: CA.locationId,
   sourceEncounterId: CA.sourceEncounterId,
   cosignRequired: CA.cosignRequired,
   sudContext: CA.sudContext,
@@ -124,6 +140,8 @@ type AssessmentRow = {
   capturedAt: Date | string;
   capturedByDiscipline: string;
   capturedByMembershipId: string;
+  providerEntityId: string | null;
+  locationId: string | null;
   sourceEncounterId: string | null;
   cosignRequired: boolean;
   sudContext: boolean;
@@ -174,6 +192,7 @@ const toView = (r: AssessmentRow, cosignedAt: string | null, redacted: boolean):
 export function createDbAssessmentRouteService(
   db: DbClient,
   outbox: AssessmentWriteOutboxPort = NOOP_OUTBOX,
+  sitingResolver: AssessmentSitingResolver = createSeamAssessmentSitingResolver(),
 ): AssessmentRouteService {
   /** Emit one `m9.*` event on the caller's tx (validated + persisted by the bound publisher; no-op default). */
   async function emit(
@@ -244,6 +263,7 @@ export function createDbAssessmentRouteService(
     patientId: string,
     args: RecordAssessmentArgs,
     scored: { score: number | null; interpretation: string | null },
+    siting: ResolvedCaptureSiting,
     correction: { correctsAssessmentId: string; correctionReason: string; capturedAt: Date; version: number } | null,
   ): Promise<AssessmentView> {
     const row = firstOrThrow(
@@ -253,6 +273,9 @@ export function createDbAssessmentRouteService(
           organizationId: org,
           patientId,
           admissionId: args.admissionId,
+          // §3.3 capture siting resolved via the M6 seam (see the file header); NULL = documented unsited.
+          providerEntityId: siting.providerEntityId,
+          locationId: siting.locationId,
           scaleType: args.scaleType,
           scaleVersion: SCALE_VERSION,
           data: args.data,
@@ -498,15 +521,19 @@ export function createDbAssessmentRouteService(
 
     // ── Record (§10 pipeline: policy/license/discipline gate → server score → insert) ────────────────
     async recordAssessment(organizationId, actorUserId, patientId, args) {
+      // Seam-resolved siting BEFORE the write tx (the M6 store opens its own request-scoped read).
+      const siting = await sitingResolver.resolve(organizationId, patientId, args.admissionId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const scored = await scoredForWrite(t, organizationId, args);
-        return insertScale(t, organizationId, actorUserId, patientId, args, scored, null);
+        return insertScale(t, organizationId, actorUserId, patientId, args, scored, siting, null);
       });
     },
 
     // ── Correct (§2.2.1 append-only amendment; the DB trigger supersedes the target) ─────────────────
     async correctAssessment(organizationId, actorUserId, patientId, targetId, ifVersion, args: CorrectAssessmentArgs) {
+      // Resolved up front (outside the write tx) — used only where the target row is legacy-unsited.
+      const fresh = await sitingResolver.resolve(organizationId, patientId, args.admissionId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [target] = (await t.select(assessmentCols).from(CA).where(eq(CA.id, targetId)).limit(1)) as AssessmentRow[];
@@ -529,9 +556,15 @@ export function createDbAssessmentRouteService(
           },
         );
         const scored = await scoredForWrite(t, organizationId, args);
+        // An amendment documents the SAME capture event — reuse the target's stored siting when it has
+        // one, and fix forward (fresh seam resolve) only for a legacy-unsited target (per column).
+        const siting: ResolvedCaptureSiting = {
+          providerEntityId: target.providerEntityId ?? fresh.providerEntityId,
+          locationId: target.locationId ?? fresh.locationId,
+        };
         // The AFTER-INSERT `clinical_assessment_supersede_on_correction_trg` flips the target to
         // `superseded` + bumps its version; we only insert the amendment (reusing target.captured_at).
-        const view = await insertScale(t, organizationId, actorUserId, patientId, args, scored, {
+        const view = await insertScale(t, organizationId, actorUserId, patientId, args, scored, siting, {
           correctsAssessmentId: plan.supersedeTargetId as string,
           correctionReason: args.correctionReason,
           capturedAt: new Date(toIso(target.capturedAt)),

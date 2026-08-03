@@ -196,6 +196,11 @@ export {
   M6_PROPOSAL_ACCEPTED_CONSUMER_DEFERRED,
   decideProposalAccepted,
 } from "./outbox-consumers/m29-proposal-accepted";
+// task-11 — the INTERIM dispatcher binding (skip m5-owned / dead-letter m6-owned until the applier).
+export {
+  type M6AdmissionEventApplierBinding,
+  buildM6ProposalAcceptedConsumer,
+} from "./outbox-consumers/live-binding";
 
 // M6-T12 — the `admission_record` destruction eraser (§3.6 module-init; M4 destruction-cert, D7/D8).
 // M6 owns its admission-satellite subtree (election/CTI/F2F/LOC/revocation/discharge/transfer/NOR/

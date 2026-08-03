@@ -53,7 +53,7 @@ export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => v
  * `REQUIRED_ERASERS` (apps/backend/src/bootstrap/erasers/registry.ts) so boot fails closed if M23's real
  * eraser is never registered.
  */
-export const BILLING_DATA_CLASS = M23_RETENTION_CLASS as DataClass;
+export const BILLING_DATA_CLASS = M23_RETENTION_CLASS satisfies DataClass;
 
 /** Deps for the M23 eraser registration. */
 export interface BillingEraserDeps {

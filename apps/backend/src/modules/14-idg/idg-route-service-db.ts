@@ -14,7 +14,9 @@
 // transactional outbox — the publisher Value.Checks each and rolls back on mismatch, so the payloads here are
 // the exact events-by-m14.ts shapes (broader than the loose in-mem slice).
 //
-// Documented compromises (the M8–M13 convention; the interface threads no seams into the DB backend):
+// Documented compromises (the M8–M13 convention; the interface threads no seams into the DB backend —
+// with ONE lazy exception: the decision write path resolves M7's CarePlanReader via getSeam, best-effort,
+// to stamp `idg_decision.care_plan_id` — see resolveCarePlanIdForDecision):
 //   (1) `withOrgContext` runs with `userId:""` → the M4 write-audit trigger fires with a NULL actor (the
 //       acting membership is the passed `userId`, stored on coordinator/recorded_by/etc. where a column exists);
 //   (2) wardenx_app has DELETE on NO M14 table (append + status-transition, §3.3) — so `removeAttendance`
@@ -38,8 +40,9 @@ import {
   transitionMeeting,
 } from "@wardenx/idg";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { IdgActionItemStatus, IdgDecisionKind } from "@wardenx/types";
+import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
+import { getCarePlanReader } from "./seams/index";
 import { and, asc, desc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
 import type {
   IdgAbacResolver,
@@ -100,6 +103,31 @@ export interface IdgWriteOutboxPort {
   ): Promise<void>;
 }
 const NOOP_OUTBOX: IdgWriteOutboxPort = { async publish() {} };
+
+/**
+ * Resolve the patient's ACTIVE care plan id through M7's CarePlanReader seam — the
+ * `idg_decision.care_plan_id` stamp (mig 0155) for a `care_plan_update` decision. The plan id cannot
+ * come off the wire: the §2.6 D4 payload's mutations carry element ids only (and this DB backend
+ * writes `payload: {}` — compromise #4). The record-time ACTIVE plan is the semantically correct
+ * link because it is the plan the mutations will land on by construction: M7's apply-idg-decision
+ * consumer refuses any plan that is not the patient's active one (`plan_not_active`, §11 D4/D2).
+ * BEST-EFFORT by design: under the boot deny-stub or outside a request scope (the reader's Drizzle
+ * store runs `withOrgContextFromRequest`) the read throws — the clinical write still lands with a
+ * NULL link, which the by-care-plan seam read simply never matches (an honest miss, never a failed
+ * decision or a fabricated link).
+ */
+async function resolveCarePlanIdForDecision(
+  patientId: string | null,
+  decisionKind: IdgDecisionKind,
+): Promise<string | null> {
+  if (decisionKind !== "care_plan_update" || patientId == null) return null;
+  try {
+    const overdue = await getCarePlanReader().isReviewOverdue(patientId as PatientId);
+    return overdue?.planId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 type MeetingRow = typeof MTG.$inferSelect;
 const toMeetingView = (m: MeetingRow): MeetingView => ({
@@ -634,6 +662,9 @@ export function createDbIdgBackend(
 
     // ── decisions (writes) ─────────────────────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, meetingId, args): Promise<DecisionView> {
+      // Resolved BEFORE the write tx: the seam read opens its own request-scoped tx, and nesting it
+      // inside `withOrg` would re-enter the pool mid-transaction (the M11/M18 write-lifecycle gotcha).
+      const carePlanId = await resolveCarePlanIdForDecision(args.patientId, args.decisionKind);
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, meetingId);
         // `planDecisionRecord` enforces MEETING_NOT_LIVE + INCLUSION_CRITERIA_FAILED and stamps the quorum.
@@ -648,6 +679,7 @@ export function createDbIdgBackend(
             organizationId: orgId,
             idgMeetingId: meetingId,
             patientId: args.patientId,
+            carePlanId, // mig 0155 — the active-plan link (NULL for non-care_plan_update / unresolved)
             agendaItemId: args.agendaItemId ?? null,
             decisionKind: args.decisionKind,
             payload: {},
@@ -673,11 +705,27 @@ export function createDbIdgBackend(
       });
     },
     async updateDecision(orgId, _userId, id, decisionKind): Promise<DecisionView> {
-      return withOrg(orgId, async (tx) => {
+      const prior = await withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_decision");
-        const [updated] = await tx.update(DEC).set({ decisionKind, updatedAt: new Date() }).where(eq(DEC.id, id)).returning();
-        return toDecisionView(updated!);
+        return row;
+      });
+      // The kind may flip into/out of `care_plan_update`: entering it resolves the (previously
+      // unset) active-plan link — the seam read runs between the two txs, never inside one — and
+      // leaving it CLEARS the link, so M30's latency measure never scores a decision that no longer
+      // updates a plan.
+      const carePlanId =
+        decisionKind === "care_plan_update"
+          ? (prior.carePlanId ?? (await resolveCarePlanIdForDecision(prior.patientId, decisionKind)))
+          : null;
+      return withOrg(orgId, async (tx) => {
+        const [updated] = await tx
+          .update(DEC)
+          .set({ decisionKind, carePlanId, updatedAt: new Date() })
+          .where(eq(DEC.id, id))
+          .returning();
+        if (!updated) throw new NotFoundError("idg_decision");
+        return toDecisionView(updated);
       });
     },
     async supersedeDecision(orgId, userId, id): Promise<DecisionView> {
@@ -693,6 +741,7 @@ export function createDbIdgBackend(
             organizationId: orgId,
             idgMeetingId: prior.idgMeetingId,
             patientId: prior.patientId,
+            carePlanId: prior.carePlanId, // the successor supersedes the SAME plan's decision (kind is copied verbatim)
             decisionKind: prior.decisionKind,
             payload: {},
             wasQuorate: true,

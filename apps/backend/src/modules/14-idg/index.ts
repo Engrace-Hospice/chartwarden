@@ -35,7 +35,6 @@ export {
   type IdgSeamSeed,
   type IdgSeamStore,
   type StoredIdgPacket,
-  IdgSeamSchemaGapError,
   createDrizzleIdgSeamStore,
   createIdgDecisionProvider,
   createIdgPacketProvider,

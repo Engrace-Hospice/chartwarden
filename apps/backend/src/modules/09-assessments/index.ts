@@ -69,6 +69,13 @@ export {
   createDbAssessmentAbacResolver,
   createDbAssessmentRouteService,
 } from "./assessments-route-service-db";
+// §3.3 capture-siting resolution (provider_entity_id via the M6 AdmissionStatusReader seam; see file).
+export {
+  type AssessmentSitingResolver,
+  type ResolvedCaptureSiting,
+  UNSITED_CAPTURE,
+  createSeamAssessmentSitingResolver,
+} from "./capture-siting";
 // M9-T06 — the §2.4 outbox contract (the full `m9.*` taxonomy; check-fitness-gaps.ts scans events-by-m9.ts
 // for naming + ownership + declared consumers). `m9.assessment.significant_change` feeds the §4.9 alert.
 export { M9_OUTBOX_EVENTS } from "./events-by-m9";

@@ -21,7 +21,7 @@ import { and, eq } from "drizzle-orm";
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
 
 /** The M26 destruction data class (not yet a `@wardenx/types` DataClass member — cast, the M25/M27 posture). */
-export const CAP_DATA_CLASS = "cap" as DataClass;
+export const CAP_DATA_CLASS = "cap" satisfies DataClass;
 
 /** Build the M26 `DataEraser`: the M4 cert workflow passes the org scope + the PATIENT subject id (D14 redaction). */
 export function createCapEraser(store: CapPatientRedactStore): DataEraser {

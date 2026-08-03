@@ -20,7 +20,7 @@ export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => v
  * M27 `cost_report_class` precedent). The Integrate phase adds `"remittance"` to that union + (optionally)
  * to `REQUIRED_ERASERS` so boot fails closed if M25's real eraser is never registered.
  */
-export const REMITTANCE_DATA_CLASS = "remittance" as DataClass;
+export const REMITTANCE_DATA_CLASS = "remittance" satisfies DataClass;
 
 /** The store the eraser drives (the Drizzle binding deletes PR-ledger rows for one patient under RLS). */
 export interface RemittanceEraseStore {
