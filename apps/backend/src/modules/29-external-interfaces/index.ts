@@ -166,3 +166,55 @@ export {
   decideProposal,
   expireProposal,
 } from "./proposals/decision";
+
+// ── M29-T05: inbound ORU labs — projection · terminology · SUD · abnormal · resolve · attach planning ─────
+export {
+  type ProjectedObr,
+  type ProjectedObx,
+  type ProjectedOru,
+  projectOru,
+} from "./inbound/hl7-oru-projection";
+export {
+  mapAbnormalFlag,
+  selectValueFlag,
+  isCriticalFlagSet,
+  computeAbnormalSummary,
+} from "./inbound/lab-abnormal";
+export {
+  type LabTerminologyPort,
+  type TerminologyCheckInput,
+  classifyObservationTerminology,
+} from "./inbound/lab-terminology";
+export {
+  type LabSudTerminologyPort,
+  type LabConsentPort,
+  type LabSudDecision,
+  type LabSudInput,
+  type LabSudDeps,
+  decideLabSudRedaction,
+} from "./inbound/lab-sud-redaction";
+export {
+  type LabOrderPort,
+  type LabPatientResolution,
+  type LabResolveInput,
+  type LabResolveDeps,
+  resolveLabPatient,
+} from "./inbound/lab-patient-resolver";
+export {
+  OBX_ENCAPSULATED_DATA_TYPE,
+  type ExtractedPdf,
+  decodeEncapsulatedPdf,
+  extractPdfAttachments,
+} from "./inbound/obx-pdf";
+export {
+  SUD_REDACTED_SENTINEL,
+  type LabReceivedPayload,
+  type LabAttachedPayload,
+  type LabAbnormalFlagPayload,
+  type LabUnmatchedPayload,
+  type LabPdfHandshakePayload,
+  type LabOutboxEvent,
+  type LabAttachPlan,
+  type LabAttachInput,
+  planLabAttach,
+} from "./inbound/lab-attach-planner";
