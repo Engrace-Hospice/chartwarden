@@ -8,7 +8,12 @@
 // from the composition root's wireModuleSeams(). All three share ONE injected IdgSeamStore (in-memory slice
 // here; Drizzle in prod, reads under the consumer's RLS) — mirrors the M9/M10/M11/M12/M13 seams/index.ts
 // precedents. None is a mutate path: M14 owns the meeting/decision/packet lifecycle internally.
-import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "@wardenx/types";
+import type {
+  CarePlanReader,
+  IdgDecisionProvider,
+  IdgPacketProvider,
+  IdgScheduleProvider,
+} from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import {
   createIdgDecisionProvider,
@@ -31,9 +36,10 @@ export {
   createIdgScheduleProvider,
 } from "./providers";
 // TASK-002 — the FULL Drizzle-backed store (no in-memory fallback); the composition root binds it as
-// `registerIdgSeams({ store: createDrizzleIdgSeamStore(db) })` (the M8 pattern). One refused read:
-// `decisionsForCarePlan` throws the typed IdgSeamSchemaGapError (idg_decision has no care-plan link).
-export { IdgSeamSchemaGapError, createDrizzleIdgSeamStore } from "./drizzle-store";
+// `registerIdgSeams({ store: createDrizzleIdgSeamStore(db) })` (the M8 pattern). The formerly refused
+// `decisionsForCarePlan` (typed IdgSeamSchemaGapError, now retired) answers over
+// `idg_decision.care_plan_id` since mig 0155.
+export { createDrizzleIdgSeamStore } from "./drizzle-store";
 
 /** Deps for M14's owned-seam registration (slice defaults to the in-memory store). */
 export interface IdgSeamDeps {
@@ -66,4 +72,12 @@ export function getIdgDecisionProvider(): IdgDecisionProvider {
 /** Typed resolver for M14's IdgScheduleProvider (M28 FHIR + M30 cadence measure + M33 consume the read seam). */
 export function getIdgScheduleProvider(): IdgScheduleProvider {
   return getSeam("IdgScheduleProvider");
+}
+
+/** M14 CONSUMES M7's §7.8 CarePlanReader (the M8 seams/index.ts precedent; manifest dependsOn already
+ * carries M7): the record-decision write path resolves the patient's ACTIVE plan from it to stamp
+ * `idg_decision.care_plan_id` on a `care_plan_update` decision (mig 0155) — the D4 payload's mutations
+ * carry element ids only, so the plan can never come off the wire. */
+export function getCarePlanReader(): CarePlanReader {
+  return getSeam("CarePlanReader");
 }

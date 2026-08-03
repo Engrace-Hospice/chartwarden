@@ -4,10 +4,11 @@
 // the adjournment outbox burst, M14-T06) → superseded. PHI-bearing when patient-scoped (`patient_id`) → the
 // three-column tenancy rule (provider_entity_id + location_id), nullable for team-note/administrative
 // decisions with no patient. FK to the meeting (cascade) + agenda item + the tenancy spine; cross-module
-// (M5 patient), self (superseded_by_decision_id), and actor (recorded_by_membership_id → M1 membership)
+// (M5 patient, M7 care_plan — mig 0155), self (superseded_by_decision_id), and actor (recorded_by_membership_id → M1 membership)
 // refs are plain uuid app-validated. Narrative free-text lives INSIDE the `payload` jsonb
 // (rationaleText / noteText / narrative / recommendations / requestedOrders / mutations) → the M4 trigger
 // re-scrubs those nested keys (§3.3). RLS + grants + trigger land in the RLS migration (M14-T02).
+import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { idgDecisionKind, idgDecisionStatus } from "../../enums";
 import { organizations } from "../organizations";
@@ -32,6 +33,12 @@ export const idgDecision = pgTable(
       .notNull()
       .references(() => idgMeeting.id, { onDelete: "cascade" }),
     patientId: uuid("patient_id"), // M5 patient (app-validated; no cross-module FK) — null for team notes
+    // M7 care_plan (app-validated logical ref; no cross-module FK — M7 owns care_plan). Stamped at
+    // record time for `care_plan_update` decisions from the patient's ACTIVE plan via M7's
+    // CarePlanReader seam (the D4 payload's mutations carry element ids only — no plan id on the
+    // wire); NULL when the decision updates no care plan or no active plan resolved. Backs the
+    // IdgDecisionProvider by-care-plan read (mig 0155).
+    carePlanId: uuid("care_plan_id"),
     agendaItemId: uuid("agenda_item_id").references(() => idgAgendaItem.id),
     decisionKind: idgDecisionKind("decision_kind").notNull(),
     payload: jsonb("payload").notNull(), // IdgDecisionPayload — nested narrative keys denylisted (§3.3)
@@ -54,6 +61,10 @@ export const idgDecision = pgTable(
       t.idgMeetingId,
       t.status,
     ),
+    // The seam's by-care-plan read (partial: most decisions carry no plan link; mig 0155).
+    byCarePlan: index("idg_decision_care_plan_idx")
+      .on(t.carePlanId)
+      .where(sql`care_plan_id IS NOT NULL`),
   }),
 );
 

@@ -1262,4 +1262,24 @@ export type DataClass =
   // visitor/meal satellites + per-patient visitor restrictions). M37 registers the REAL eraser via the
   // composition-root hook over this deny-stub — under an M4 destruction certificate it deletes the subtree
   // in FK order (§7.7 / D8); aggregate census snapshots survive (no patient_id, D14). `subjectId` = patient.
-  | "ipu_record";
+  | "ipu_record"
+  // TASK-003 follow-up — the seven classes below were registered through `as DataClass` casts (each
+  // module's registrar invented its literal outside this union, so validateErasers never required
+  // them and a typo'd class was indistinguishable from a new one). Now first-class:
+  // M30 quality: tenant-offboarding operational-row cleanup; compliance/survey evidence
+  // destruction-blocked (count-only). `subjectId` = org.
+  | "quality_class"
+  // M27 cost report: operational-config cleanup; submitted/accepted cost reports are survey
+  // evidence, elevated-cert-gated. `subjectId` = org.
+  | "cost_report_class"
+  // M23: per-PATIENT billing destruction (in-flight/surveyor-hold guarded); MAC-secret shred is the
+  // org-destruction path.
+  | "billing_record"
+  // M25: per-PATIENT patient-responsibility-ledger destruction (835 line history rolls off via the
+  // M4 partition manager, not per patient).
+  | "remittance"
+  // M24: per-PATIENT redact-to-shred (PHI free text + KMS ciphers); the FK chain survives.
+  | "medicaid_billing_record"
+  // M26: per-PATIENT redact-to-sentinel (D14 — aggregates survive so CMS cap reconciliation stays
+  // reproducible).
+  | "cap";

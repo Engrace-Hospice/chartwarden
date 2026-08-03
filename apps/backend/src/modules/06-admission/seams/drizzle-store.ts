@@ -166,6 +166,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
       patientId: string;
       organizationId: string;
       providerEntityId: string | null;
+      locationId: string | null;
       status: AdmissionSummary["status"];
       admissionAt: Date | null;
       activatedAt: Date | null;
@@ -184,6 +185,8 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
       patientId: row.patientId,
       organizationId: row.organizationId,
       providerEntityId: row.providerEntityId,
+      // task-11 — the M9 capture-siting source; honestly null until activation sites the admission.
+      locationId: row.locationId,
       status: row.status,
       admissionAt: localDate(admissionAt as Date),
       activatedAt: localDateN(row.activatedAt),
@@ -198,6 +201,7 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     patientId: ADM.patientId,
     organizationId: ADM.organizationId,
     providerEntityId: ADM.providerEntityId,
+    locationId: ADM.locationId,
     status: ADM.status,
     admissionAt: ADM.admissionAt,
     activatedAt: ADM.activatedAt,

@@ -34,7 +34,7 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * (apps/backend/src/bootstrap/erasers/registry.ts) so boot fails closed if M30's real eraser is never
  * registered. Kept here as the single string literal so that wiring lands in one place.
  */
-export const QUALITY_DATA_CLASS = "quality_class" as DataClass;
+export const QUALITY_DATA_CLASS = "quality_class" satisfies DataClass;
 
 /** Deps for the M30 eraser registration; absent ⇒ the in-memory slice store (prod injects the Drizzle store). */
 export interface QualityEraserDeps {

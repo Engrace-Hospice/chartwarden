@@ -255,6 +255,10 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
       return withOrgContextFromRequest(db, async (tx): Promise<OrderDiscontinuationDto | null> => {
         // No uniqueness on order_record_id (a cascade and a clinician row can coexist) — the latest row
         // is the operative reason, mirroring the route service's single-row detail read.
+        // `target_kind = 'order'` (mig 0156) pins the read to M11 order rows: this is the
+        // OrderProvider's by-ORDER read, and since the ledger now also files `medication_order`
+        // discontinuations (whose `order_record_id` holds an M12 uuid), the discriminator keeps the
+        // read's pre-0156 semantics exact rather than trusting uuid disjointness across two tables.
         const [r] = await tx
           .select({
             id: OD.id,
@@ -264,7 +268,7 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             effectiveAt: OD.effectiveAt,
           })
           .from(OD)
-          .where(eq(OD.orderRecordId, orderId))
+          .where(and(eq(OD.orderRecordId, orderId), eq(OD.targetKind, "order")))
           .orderBy(desc(OD.createdAt))
           .limit(1);
         if (!r) return null;
@@ -458,31 +462,30 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
 
     async insertDiscontinuation(input) {
       const { organizationId } = requireRequestContext();
-      // SCHEMA GAP, refused rather than mis-filed: `order_discontinuation` carries NO `target_kind`
-      // discriminator — `order_record_id` is its only target column — so an M12 `medication_order`
-      // discontinuation cannot be recorded here without lying about what the id refers to. M12's own
-      // backend discontinues locally (its `m12.medication_order.discontinued` ledger); routing one
-      // through this seam is a contract error, not a storable fact.
-      if (input.targetKind !== "order") {
-        throw new NotFoundError(
-          "OrderSeamStore.insertDiscontinuation: order_discontinuation has no target_kind column — a " +
-            "'medication_order' discontinuation is M12's lifecycle and cannot be recorded in M11's ledger",
-        );
-      }
+      // The formerly refused `medication_order` arm is SOUND since mig 0156: `target_kind`
+      // discriminates the ledger, so under 'medication_order' the `order_record_id` column holds the
+      // M12 medication-order uuid without lying about what the id refers to. The guard SEMANTICS that
+      // still apply follow the insertCosignature precedent: for an `order` target the pure
+      // `transitionOrder` refusal runs against the local M11 row; a `medication_order` target has NO
+      // local M11 row to guard against — M12 owns that lifecycle and is the eligibility/state
+      // enforcement point for its discontinuations, so this store records the primitive only.
       return withOrgContextFromRequest(db, async (tx) => {
-        const r = await orderRowForWrite(tx, input.targetId);
-        // Validates ILLEGAL_ORDER_TRANSITION for a terminal order (route-service parity).
-        transitionOrder(r.status as OrderStatus, {
-          type: "discontinue",
-          kind: r.kind as OrderKind,
-          reason: input.reason,
-          fulfillmentInFlight: false,
-        });
+        if (input.targetKind === "order") {
+          const r = await orderRowForWrite(tx, input.targetId);
+          // Validates ILLEGAL_ORDER_TRANSITION for a terminal order (route-service parity).
+          transitionOrder(r.status as OrderStatus, {
+            type: "discontinue",
+            kind: r.kind as OrderKind,
+            reason: input.reason,
+            fulfillmentInFlight: false,
+          });
+        }
         const [row] = await tx
           .insert(OD)
           .values({
             organizationId,
             orderRecordId: input.targetId,
+            targetKind: input.targetKind,
             actorMembershipId: input.actorMembershipId,
             reason: input.reason,
             effectiveAt: new Date(input.effectiveAt),

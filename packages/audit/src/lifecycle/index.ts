@@ -4,4 +4,5 @@
 // (Retention-class registration itself lives in ../retention.ts, M1.)
 export * from "./eraser";
 export * from "./destruction";
+export * from "./drizzle-erase";
 export * from "./ports";

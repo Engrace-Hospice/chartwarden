@@ -149,6 +149,34 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     expect(await eventsFor(v.id)).toContain("m9.assessment.recorded");
   });
 
+  it("capture siting — record persists the resolver's provider_entity_id/location_id; a correction reuses the target's; the default (seam-less) service leaves rows unsited (NULL)", async () => {
+    // The seam registry is not booted in this suite, so the DEFAULT service resolves UNSITED → NULL.
+    const plain = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    const plainRow = (
+      await admin.query("SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1", [plain.id])
+    ).rows[0];
+    expect(plainRow).toEqual({ provider_entity_id: null, location_id: null });
+    // An injected resolver (standing in for the M6 AdmissionStatusReader seam) sites the insert.
+    const sitedSvc = createDbAssessmentRouteService(handle.db, undefined, {
+      resolve: async () => ({ providerEntityId: providerA, locationId: locationA }),
+    });
+    const sited = await sitedSvc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    const sitedRow = (
+      await admin.query("SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1", [sited.id])
+    ).rows[0];
+    expect(sitedRow).toEqual({ provider_entity_id: providerA, location_id: locationA });
+    // A correction documents the SAME capture event — it reuses the target's stored siting even when
+    // the correcting service's resolver cannot answer (the default seam-less service).
+    const corrected = await svc.correctAssessment(ORG_A, recorderOf[ORG_A], PATIENT, sited.id, sited.version, {
+      ...recordArgs({ data: { ...PAINAD, breathing: 2 } }),
+      correctionReason: "siting reuse check",
+    });
+    const correctedRow = (
+      await admin.query("SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1", [corrected.id])
+    ).rows[0];
+    expect(correctedRow).toEqual({ provider_entity_id: providerA, location_id: locationA });
+  });
+
   it("policy gate — a tenant-disabled scale is refused (SCALE_NOT_ENABLED → 403)", async () => {
     await svc.updatePolicy(ORG_A, "painad" as never, false);
     await expect(svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs())).rejects.toMatchObject({

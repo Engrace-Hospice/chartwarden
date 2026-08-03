@@ -48,6 +48,12 @@ export {
   type M29RouteServices,
   type M29Store,
 } from "./routes/index";
+// task-11 — the §4.10 outbox surface: the event catalog + the store's publish port (structural).
+export { M29_OUTBOX_EVENTS } from "./events-by-m29";
+export {
+  type DrizzleM29StoreDeps,
+  type M29WriteOutboxPort,
+} from "./routes/store-drizzle";
 export {
   registerM29PublishedSeams,
   createDrizzleM29PublishedSeamStore,

@@ -24,7 +24,7 @@ import { and, eq } from "drizzle-orm";
 export type RegisterEraserHook = (dataClass: DataClass, eraser: DataEraser) => void;
 
 /** The M24 destruction data class (not a `@wardenx/types` DataClass member — cast, the M25/M26 posture). */
-export const MEDICAID_BILLING_DATA_CLASS = "medicaid_billing_record" as DataClass;
+export const MEDICAID_BILLING_DATA_CLASS = "medicaid_billing_record" satisfies DataClass;
 
 const ERASED = "ERASED";
 

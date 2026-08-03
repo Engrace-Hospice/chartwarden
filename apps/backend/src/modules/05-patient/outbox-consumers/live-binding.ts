@@ -62,6 +62,11 @@ export function buildM29ProposalApplierConsumer(): M5ProposalApplierBinding {
     consumerName: "m5.proposal-applier",
     eventTypes: ["m29.hl7_inbound_proposal.accepted"],
     async handle(event) {
+      // Owner sniff BEFORE the strict parse: an m6-owned acceptance carries admission resource
+      // kinds this parser rightly rejects — but that is M6's applier's business, not a malformed
+      // event. M5 skips everything it does not own without judging its shape.
+      const owner = (event.payload as { ownerModule?: unknown } | null)?.ownerModule;
+      if (owner !== "m5") return;
       const payload = parsePayload(event.payload, event.organizationId);
       const decision = decideProposalApply(payload);
       switch (decision.action) {

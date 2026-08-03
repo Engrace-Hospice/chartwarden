@@ -11,9 +11,10 @@
 //      while the patient is `active`, or `deceased` but within six years of the death date; only a
 //      patient deceased > 6 years lets the row be erased.
 //
-// Like the rest of the M4 surface this is pure logic over injected ports (the production Drizzle
-// adapter — patient lookup, legal-hold match, the partitioned DELETE — is a tracked follow-up); a
-// reusable in-memory adapter lives in ./ports for the route/destruction tests to run against.
+// Like the rest of the M4 surface this is pure logic over injected ports. The production guard
+// adapters (patient lookup, legal-hold match) live in the M4 backend module; the partitioned
+// DELETE executor lives in ./drizzle-erase (audit_event is HELPER-ONLY, so the destruction must
+// happen here); a reusable in-memory adapter lives in ./ports for the route/destruction tests.
 
 /** Audit retention class incl. the Part 2 fourth value (mirrors the query DTO + trigger gen). */
 export type AuditRetentionClass =

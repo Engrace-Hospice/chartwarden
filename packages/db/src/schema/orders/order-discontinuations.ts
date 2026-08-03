@@ -27,6 +27,11 @@ export const orderDiscontinuations = pgTable(
     }),
     locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     orderRecordId: uuid("order_record_id").notNull(), // order_record is partitioned → no single-col SQL FK
+    // §2.8 D14 polymorphic-target discriminator (mig 0156): 'order' → `order_record_id` holds an M11
+    // order_record uuid; 'medication_order' → it holds the M12 medication_order uuid (app-side
+    // logical ref — M12 owns that lifecycle; no cross-module FK). CHECK-constrained in mig 0156;
+    // pre-0156 rows were all M11 route/cascade writes, hence the 'order' default backfill.
+    targetKind: text("target_kind").notNull().default("order"),
 
     actorMembershipId: uuid("actor_membership_id").references(() => memberships.id, {
       onDelete: "restrict",

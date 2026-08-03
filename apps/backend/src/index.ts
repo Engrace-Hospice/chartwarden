@@ -50,6 +50,10 @@ import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
   createOutboxDispatcher,
 } from "./bootstrap/outbox-dispatcher";
+import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
+
+/** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
+const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 import {
   mountIdentityRoutes,
   registerIdentityErasers,
@@ -81,6 +85,7 @@ import {
 import {
   createDrizzleAdmissionReaderStore,
   mountAdmissionRoutes,
+  buildM6ProposalAcceptedConsumer,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
@@ -359,6 +364,7 @@ import {
   mountM29Routes,
   registerM29AbacPredicates,
   registerM29PublishedSeams,
+  M29_OUTBOX_EVENTS,
 } from "./modules/29-external-interfaces/index";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
@@ -696,9 +702,9 @@ export function wireModuleSeams(
   // counterpart M14/M23/M30/M7 consume). Slice/tests keep the in-memory store; the Drizzle-backed store lands
   // with M11's routes/repos (M11-T06+).
   // TASK-002 — OrderProvider + the OrderSignatureProvider WRITE primitive bind the Drizzle store on
-  // a db boot (guard-checked writes in the caller's request scope; the M12 med-order discontinuation
-  // arm refuses — no target_kind discriminator on order_discontinuation — and signer_discipline
-  // records the documented sentinel pending a leaf-type contract change).
+  // a db boot (guard-checked writes in the caller's request scope). Migration 0156 added the
+  // `order_discontinuation.target_kind` discriminator, so the M12 med-order arm records live
+  // (task-11); signer_discipline still records the documented sentinel pending a leaf-type change.
   registerOrderSeams(deps.db ? { store: createDrizzleOrderSeamStore(deps.db) } : {});
   // M12 — the two §2.10 D17 owned READ seams (MedicationOrderProvider — the medication-order read path M13
   // (eMAR administration context) / M14 / M19 / M28 (FHIR) / M30 / M31 (portal) / M33 consume — + RefillInboxProvider
@@ -721,9 +727,9 @@ export function wireModuleSeams(
   // (decision-to-careplan-update latency) + M33 consume — + IdgScheduleProvider — the meeting-schedule +
   // 15-day-cadence read path M28 (FHIR) + M30 (cadence-adherence) + M33 consume). Slice/tests keep the
   // in-memory store; the Drizzle-backed store lands with M14's routes/repos (M14-T05+).
-  // TASK-002 — the three IDG providers bind the full Drizzle store on a db boot. KNOWN GAP:
-  // `decisionsForCarePlan` throws IdgSeamSchemaGapError (idg_decision has no care-plan link column) —
-  // loud, never a patient-wide over-count corrupting M30's latency measure.
+  // TASK-002 — the three IDG providers bind the full Drizzle store on a db boot.
+  // `decisionsForCarePlan` reads the migration-0155 `idg_decision.care_plan_id` link (populated at
+  // record time via M7's CarePlanReader; a NULL link honestly never matches — task-11 closed the gap).
   registerIdgSeams(deps.db ? { store: createDrizzleIdgSeamStore(deps.db) } : {});
   // M15 — the seven §4.3 owned READ seams. Two of them are the LOCKED contracts M17 shipped first and has been
   // consuming as fail-closed deny-stubs since Wave F (M17-F06/ADR-0009): registering `VolunteerComplianceProvider`
@@ -1290,7 +1296,21 @@ const SLICE_M34_ABAC_RESOLVER: TenantPlatformAbacResolver = {
  * eraser stands over its stub. A right-to-erasure request then hits a working eraser, not a
  * silent no-op (M2-T10).
  */
-export function wireModuleErasers(deps: { db?: DbClient; platformDb?: DbClient } = {}): void {
+export function wireModuleErasers(
+  deps: {
+    db?: DbClient;
+    platformDb?: DbClient;
+    /**
+     * The destruction-granted credential (DATABASE_DESTRUCTION_URL → a login role IN ROLE
+     * wardenx_destruction, migration 0157). The append-only clinical/billing tables grant
+     * wardenx_app no DELETE, so per-patient erase stores bind THIS pool when present; absent, they
+     * bind the tenant pool and the first privileged statement fails loudly (permission denied) —
+     * never a certificate for undone work. M4's audit-row executor binds ONLY this (typed UNBOUND
+     * otherwise — audit_event is append-only for every app role).
+     */
+    destructionDb?: DbClient;
+  } = {},
+): void {
   // TASK-003 (ARCH-007) — every registrar below binds its Drizzle erase store on a db boot, so a
   // right-to-erasure request touches REAL rows and its certificate counts what was actually
   // destroyed. Grant caveats (each fails LOUDLY, never a fake certificate): the append-only
@@ -1300,23 +1320,55 @@ export function wireModuleErasers(deps: { db?: DbClient; platformDb?: DbClient }
   // M36's sole-tenant-user leg refuses without a platform membership enumerator (D9 is an
   // inherently cross-tenant read); M40's provisional DELETE awaits its grant.
   const db = deps.db;
+  // Privileged erase pool: the destruction credential when provisioned, else the tenant pool
+  // (whose missing DELETE grants make the erase fail loudly — the honest interim).
+  const eraseDb = deps.destructionDb ?? db;
   registerIdentityErasers(db ? { store: createDrizzleIdentityEraserStore(db) } : {}); // M2 — `identity`
   registerAuditErasers(
-    db ? { store: createDrizzleAuditEraserStore(db), ports: createDrizzleAuditEraserPorts(db) } : {},
-  ); // M4 — `audit_event` (guards live; performErasure typed-UNBOUND until the packages/audit adapter)
-  registerTerminologyErasers(db ? { store: createDrizzleTerminologyEraseStore(db) } : {}); // M38
-  registerMessagingErasers(db ? { store: createDrizzleMessagingEraseStore(db) } : {}); // M36 (sole-tenant leg refuses until the platform enumerator binds)
-  registerMdmErasers(db ? { store: createDrizzleMdmEraseStore(db) } : {}); // M40 — `mdm_tenant_overlays`
-  registerPatientErasers(db ? { store: createDrizzlePatientEraseStore(db) } : {}); // M5 — `clinical_record`
-  registerConsentErasers(db ? { store: createDrizzleConsentEraseStore(db) } : {}); // M39 — `consent`
-  registerAdmissionErasers(db ? { store: createDrizzleAdmissionEraseStore(db) } : {}); // M6 — `admission_record`
-  registerCarePlanErasers(db ? { store: createDrizzleCarePlanEraseStore(db) } : {}); // M7 — `care_plan_record`
-  registerEncounterErasers(db ? { store: createDrizzleEncounterEraseStore(db) } : {}); // M8 — `encounter_record`
-  registerAssessmentErasers(db ? { store: createDrizzleAssessmentEraseStore(db) } : {}); // M9 — `clinical_assessment`
-  registerHopeErasers(db ? { store: createDrizzleHopeEraseStore(db) } : {}); // M10 — `hope_record` (CMS 10-year block in the orchestrator)
-  registerOrderErasers(db ? { store: createDrizzleOrderEraseStore(db) } : {}); // M11 — `order_record`
-  registerDoseSpotErasers(db ? { store: createDrizzleMedicationOrderEraseStore(db) } : {}); // M12 — `medication_order_record`
-  registerEmarErasers(db ? { store: createDrizzleEmarEraseStore(db) } : {}); // M13 — `emar_record`
+    db
+      ? {
+          store: createDrizzleAuditEraserStore(db),
+          // performErasure binds the packages/audit executor ONLY over the destruction credential;
+          // without it the typed UNBOUND throw stands (never the tenant pool — no DELETE grant).
+          ports: createDrizzleAuditEraserPorts(
+            db,
+            deps.destructionDb ? { destructionDb: deps.destructionDb } : {},
+          ),
+        }
+      : {},
+  ); // M4 — `audit_event`
+  registerTerminologyErasers(eraseDb ? { store: createDrizzleTerminologyEraseStore(eraseDb) } : {}); // M38
+  // M36 — the D9 sole-tenant-user leg resolves through the audited platform-context membership
+  // read when the platform credential is present; without it that ONE leg keeps its typed refusal.
+  registerMessagingErasers(
+    db
+      ? {
+          store: createDrizzleMessagingEraseStore(
+            eraseDb ?? db,
+            deps.platformDb
+              ? {
+                  soleTenantUserIds: buildSoleTenantUserResolver({
+                    platformDb: deps.platformDb,
+                    auditBypass: m34PlatformBypassAuditor,
+                    jobId: M36_SOLE_TENANT_JOB_ID,
+                  }),
+                }
+              : {},
+          ),
+        }
+      : {},
+  );
+  registerMdmErasers(eraseDb ? { store: createDrizzleMdmEraseStore(eraseDb) } : {}); // M40 — `mdm_tenant_overlays`
+  registerPatientErasers(eraseDb ? { store: createDrizzlePatientEraseStore(eraseDb) } : {}); // M5 — `clinical_record`
+  registerConsentErasers(eraseDb ? { store: createDrizzleConsentEraseStore(eraseDb) } : {}); // M39 — `consent`
+  registerAdmissionErasers(eraseDb ? { store: createDrizzleAdmissionEraseStore(eraseDb) } : {}); // M6 — `admission_record`
+  registerCarePlanErasers(eraseDb ? { store: createDrizzleCarePlanEraseStore(eraseDb) } : {}); // M7 — `care_plan_record`
+  registerEncounterErasers(eraseDb ? { store: createDrizzleEncounterEraseStore(eraseDb) } : {}); // M8 — `encounter_record`
+  registerAssessmentErasers(eraseDb ? { store: createDrizzleAssessmentEraseStore(eraseDb) } : {}); // M9 — `clinical_assessment`
+  registerHopeErasers(eraseDb ? { store: createDrizzleHopeEraseStore(eraseDb) } : {}); // M10 — `hope_record` (CMS 10-year block in the orchestrator)
+  registerOrderErasers(eraseDb ? { store: createDrizzleOrderEraseStore(eraseDb) } : {}); // M11 — `order_record`
+  registerDoseSpotErasers(eraseDb ? { store: createDrizzleMedicationOrderEraseStore(eraseDb) } : {}); // M12 — `medication_order_record`
+  registerEmarErasers(eraseDb ? { store: createDrizzleEmarEraseStore(eraseDb) } : {}); // M13 — `emar_record`
   // M15-T06 — `discipline_plan_record` (per-PATIENT destruction-cert callback; scrubs the version
   // `state_snapshot` + assessment `data` jsonb FIRST, deletes the discipline subtree, tombstones the plan
   // roots for FK integrity; the workforce-scoped volunteer gate/ledger/hour rows survive, §8.5). The
@@ -1333,8 +1385,8 @@ export function wireModuleErasers(deps: { db?: DbClient; platformDb?: DbClient }
   registerBereavementErasers(
     deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
   );
-  registerIdgErasers(db ? { store: createDrizzleIdgEraseStore(db) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
-  registerDocumentErasers(db ? { store: createDrizzleDocumentEraseStore(db) } : {}); // M22 — `documents` (object destruction refuses via DegradedError BEFORE any row delete until the MinIO adapter — retryable, never orphaned keys)
+  registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
+  registerDocumentErasers(eraseDb ? { store: createDrizzleDocumentEraseStore(eraseDb) } : {}); // M22 — `documents` (object destruction refuses via DegradedError BEFORE any row delete until the MinIO adapter — retryable, never orphaned keys)
   // M34 — `saas_tenant_platform_class` runs entirely under withPlatformContext (subjectId = ORG), so
   // it binds the PLATFORM credential, not the tenant pool; without one the in-memory slice stands
   // and the ledger records it (the M35 platform-runner posture).
@@ -1348,24 +1400,24 @@ export function wireModuleErasers(deps: { db?: DbClient; platformDb?: DbClient }
         }
       : {},
   );
-  registerReportingErasers(db ? { store: createDrizzleReportingEraseStore(db) } : {}); // M33 — `reporting_class` (drilldown audit count-only, destruction-blocked)
-  registerQualityErasers(db ? { store: createDrizzleQualityEraseStore(db) } : {}); // M30 — `quality_class` (compliance/survey evidence count-only, destruction-blocked)
-  registerCostReportErasers(db ? { store: createDrizzleCostReportEraseStore(db) } : {}); // M27 — `cost_report_class` (evidence delete refuses until the M4 elevated destruction-cert binding lands)
+  registerReportingErasers(eraseDb ? { store: createDrizzleReportingEraseStore(eraseDb) } : {}); // M33 — `reporting_class` (drilldown audit count-only, destruction-blocked)
+  registerQualityErasers(eraseDb ? { store: createDrizzleQualityEraseStore(eraseDb) } : {}); // M30 — `quality_class` (compliance/survey evidence count-only, destruction-blocked)
+  registerCostReportErasers(eraseDb ? { store: createDrizzleCostReportEraseStore(eraseDb) } : {}); // M27 — `cost_report_class` (evidence delete refuses until the M4 elevated destruction-cert binding lands)
   registerBillingErasers({
     registerEraser,
-    ...(db ? { store: createDrizzleBillingEraseStore(db) } : {}),
+    ...(db ? { store: createDrizzleBillingEraseStore(eraseDb ?? db) } : {}),
   }); // M23 — `billing_record` (in-flight guards refuse; MAC-secret shred is the org-destruction path). registerEraser INJECTED (M23 may not import the M1 registry).
   registerRemittanceErasers({
     registerEraser,
-    ...(db ? { store: createDrizzleRemittanceEraseStore(db) } : {}),
+    ...(db ? { store: createDrizzleRemittanceEraseStore(eraseDb ?? db) } : {}),
   }); // M25 — `remittance` (PR-ledger only; line/adjustment history rolls off via the M4 partition manager).
   registerMedicaidErasers({
     registerEraser,
-    ...(db ? { store: createDrizzleMedicaidRedactStore(db) } : {}),
+    ...(db ? { store: createDrizzleMedicaidRedactStore(eraseDb ?? db) } : {}),
   }); // M24 — `medicaid_billing_record` (redact-to-shred; FK chain survives). Distinct from M23's class.
   registerCapErasers({
     registerEraser,
-    ...(db ? { store: createDrizzleCapRedactStore(db) } : {}),
+    ...(db ? { store: createDrizzleCapRedactStore(eraseDb ?? db) } : {}),
   }); // M26 — `cap` (redact-to-sentinel, D14 — aggregates survive for CMS reconciliation).
   // M21-T05 — `supply_record` (per-PATIENT destruction-cert callback). UNLIKE every eraser above it does
   // not delete the controlled-substance rows: DEA 21 CFR §1304.04 requires the perpetual inventory record
@@ -1468,7 +1520,22 @@ if ((import.meta as { main?: boolean }).main) {
   const platformDbHandle = process.env.DATABASE_PLATFORM_URL
     ? createDbClient({ connectionString: process.env.DATABASE_PLATFORM_URL })
     : undefined;
+  // TASK-003 follow-up — the DESTRUCTION credential (a login role IN ROLE wardenx_destruction,
+  // migration 0157: DELETE/UPDATE grants scoped to exactly what the erase stores execute, org-pinned
+  // RLS policies — never BYPASSRLS). The append-only clinical/billing tables grant wardenx_app no
+  // DELETE, so without this the per-patient erase paths fail loudly at the first privileged
+  // statement and M4's audit-row executor stays typed-UNBOUND.
+  const destructionDbHandle = process.env.DATABASE_DESTRUCTION_URL
+    ? createDbClient({ connectionString: process.env.DATABASE_DESTRUCTION_URL })
+    : undefined;
+  if (!destructionDbHandle) {
+    console.warn(
+      "⚠️  DATABASE_DESTRUCTION_URL is not configured: right-to-erasure paths over append-only tables (clinical core, billing, audit_event) will fail loudly rather than certify undone work.",
+    );
+  }
   if (platformDbHandle) registerPlatformJob("m35-subscription-admin");
+  // M36 D9 — the sole-tenant membership read the offboarding eraser runs (audited platform entry).
+  if (platformDbHandle) registerPlatformJob(M36_SOLE_TENANT_JOB_ID);
   // audit C1 — RLS is the tenancy control, and a role with BYPASSRLS makes every policy decorative.
   // The migrator now gates that grant on WARDENX_DEV_BYPASSRLS + non-production, but a grant applied
   // by hand (or by an older migrate run against this cluster) would leave no trace at boot. Ask the
@@ -1574,6 +1641,9 @@ if ((import.meta as { main?: boolean }).main) {
     M32_OUTBOX_EVENTS,
     M35_OUTBOX_EVENTS,
     M37_OUTBOX_EVENTS,
+    // task-11 — the m29.* decision events (accept/reject). REQUIRED for the store's §4.10 emit to
+    // validate; the M5/M6 appliers consume `accepted` via the boot dispatcher.
+    M29_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -1589,6 +1659,8 @@ if ((import.meta as { main?: boolean }).main) {
   const m12OutboxPublisher = bindCallerModule(txOutboxPublisher, "m12");
   const m13OutboxPublisher = bindCallerModule(txOutboxPublisher, "m13");
   const m14OutboxPublisher = bindCallerModule(txOutboxPublisher, "m14");
+  // task-11 — the m29 decision events (accept/reject) ride the deciding tx via the store's port.
+  const m29OutboxPublisher = bindCallerModule(txOutboxPublisher, "m29");
   const m17OutboxPublisher = bindCallerModule(txOutboxPublisher, "m17");
   const m18OutboxPublisher = bindCallerModule(txOutboxPublisher, "m18");
   const m15OutboxPublisher = bindCallerModule(txOutboxPublisher, "m15");
@@ -2153,7 +2225,11 @@ if ((import.meta as { main?: boolean }).main) {
           // HL7 message search/replay/retry, NPPES read, and the caseload-scoped lab surface. The compliance
           // decrypt / manual unmatched-lab bind / tenant NPPES trigger fail closed (Phase-1 501/403), each
           // still walking the full guard chain.
-          mountM29Routes(app, { store: createDrizzleM29Store(dbHandle.db) });
+          // task-11 — the accept/reject decision events now RIDE the deciding tx (the M5/M6
+          // appliers consume `m29.hl7_inbound_proposal.accepted` via the boot dispatcher).
+          mountM29Routes(app, {
+            store: createDrizzleM29Store(dbHandle.db, { outbox: m29OutboxPublisher }),
+          });
 
         }
       : undefined,
@@ -2166,7 +2242,11 @@ if ((import.meta as { main?: boolean }).main) {
         outboxPublisher: txOutboxPublisher,
       }),
     registerModuleErasers: () =>
-      wireModuleErasers({ db: dbHandle?.db, platformDb: platformDbHandle?.db }),
+      wireModuleErasers({
+        db: dbHandle?.db,
+        platformDb: platformDbHandle?.db,
+        destructionDb: destructionDbHandle?.db,
+      }),
   });
   // TASK-001 (production-readiness audit 2026-08-03) — ALL wiring is done (bootSeams + every route
   // mount ran inside buildServer above): refuse to boot in production, and loudly list in dev, every
@@ -2180,6 +2260,7 @@ if ((import.meta as { main?: boolean }).main) {
   }
   // Close the separate M35 platform-ops credential pool on shutdown (when configured).
   if (platformDbHandle) app.addHook("onClose", () => platformDbHandle.close());
+  if (destructionDbHandle) app.addHook("onClose", () => destructionDbHandle.close());
 
   // M37 D16 — the AI-prohibited-zone boot validator (§8.6). With a db, M32's real AIPromptRegistry is
   // registered (bootSeams ran inside buildServer), so this asks the D18 table-only query whether any active
@@ -2484,11 +2565,13 @@ if ((import.meta as { main?: boolean }).main) {
           reason: "outbox relay: active-org poll list",
         }),
         consumers: [
-          // M5 §4.10 — the proposal applier (live; correctly idle until M29's accept path publishes
-          // the event — its emit wiring is the M29 follow-up). NOTE: M6's applier for the same event
-          // type must land as a SECOND consumer before that emit ships, or m6-owned acceptances
-          // will complete off M5's documented skip.
+          // M5 §4.10 — the proposal applier (LIVE end-to-end now that M29's accept path publishes
+          // the event; skips everything not m5-owned).
           buildM29ProposalApplierConsumer(),
+          // M6 §4.8.3 — the INTERIM applier binding: skips m5-owned; DEAD-LETTERS m6-owned loudly
+          // until the real facts+service applier lands (task-11 follow-up). Registered as the
+          // second consumer so m6-owned acceptances can never complete off M5's skip.
+          buildM6ProposalAcceptedConsumer(),
         ],
         deferredEventTypes: [
           // M22 §4.11 — the render handshake awaits the live render worker + MinIO adapter; the

@@ -22,11 +22,19 @@
 // row exists for the capture" — one batched query over the series ids (never N+1). This is the row's
 // real detector marker; the route service's series read hardcodes `false`, which the seam must not copy.
 //
-// CAPTURE SITING GAP. `AssessmentCaptureContext` requires non-null `providerEntityId`/`locationId`, but
-// §3.3 relaxed both to nullable (migration 0129) and the production record route does not populate them
-// yet — the backfill source is the M6 admission, whose schema M9 must not read (architecture §11). A
-// latest read that resolves a null-sited row THROWS {@link AssessmentSeamDataGapError} naming the gap
-// rather than fabricating a siting or silently substituting an older, fully-sited capture as "latest".
+// CAPTURE SITING GAP — FIX-FORWARD POSTURE (no backfill migration). `AssessmentCaptureContext`
+// requires non-null `providerEntityId`/`locationId`; §3.3 relaxed both to nullable (migration 0129).
+// The production record/correct paths now populate `provider_entity_id` at INSERT time through the
+// published M6 `AdmissionStatusReader` seam (../capture-siting.ts — M9 must not read M6's schema,
+// architecture §11), so new captures project cleanly on that column. `location_id` remains NULL on
+// every row: NO published seam carries an admission/patient location today (AdmissionSummary exposes
+// only providerEntityId; M5's PatientIdentity carries neither) — populating it needs AdmissionSummary
+// to grow `locationId` (an M6 + @wardenx/types change). Legacy pre-fix rows also stay PE-null.
+// The projection KEEPS THE THROW for both columns: a latest read that resolves a null-sited row THROWS
+// {@link AssessmentSeamDataGapError} naming exactly the missing fact(s) rather than fabricating a
+// siting, lying through the non-null DTO type, or silently substituting an older, fully-sited capture
+// as "latest". Tolerance was considered and rejected — the DTO's `LocationId` is non-null, so any
+// tolerant projection would be a wire-type lie; the honest states are "sited" or "loud, named gap".
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { LatestAssessment, ScaleSeriesPoint, ScaleType } from "@wardenx/types";

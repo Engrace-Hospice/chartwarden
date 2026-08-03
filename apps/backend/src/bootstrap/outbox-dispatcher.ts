@@ -175,7 +175,9 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         // Crash sweep first: dispatching rows past the visibility timeout revert to pending.
         const reclaimed = await tx
           .update(OUTBOX)
-          .set({ status: "pending" })
+          // dispatched_at was doubling as the claim instant — null it so the column keeps its
+          // documented meaning (the SUCCESS instant) on reclaimed rows (live-test finding).
+          .set({ status: "pending", dispatchedAt: null })
           .where(
             and(
               eq(OUTBOX.organizationId, organizationId),
@@ -252,19 +254,25 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       if (!bindings || bindings.length === 0) {
         // No live subscriber and not deferred: the row is the durable record — delivery to zero
         // subscribers is complete.
-        await finalize({ status: "dispatched", dispatchedAt: now, lastError: null });
+        await finalize({ status: "dispatched", dispatchedAt: now, lastError: null, nextAttemptAt: null });
         summary.recordOnly += 1;
         continue;
       }
 
       try {
         for (const binding of bindings) await binding.handle(event);
-        await finalize({ status: "dispatched", dispatchedAt: new Date(clock()), lastError: null });
+        await finalize({
+          status: "dispatched",
+          dispatchedAt: new Date(clock()),
+          lastError: null,
+          nextAttemptAt: null, // a stale retry clock on a dispatched row is a trap (live-test finding)
+        });
         summary.delivered += 1;
       } catch (err) {
         const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         if (row.attemptCount >= maxAttempts) {
-          await finalize({ status: "failed", lastError: message.slice(0, 2000) });
+          // dispatched_at nulled: the row never succeeded, and the column means SUCCESS instant.
+          await finalize({ status: "failed", dispatchedAt: null, lastError: message.slice(0, 2000) });
           summary.deadLettered += 1;
           log(
             `☠️  outbox-dispatcher: '${row.eventType}' (${row.id}) dead-lettered after ${row.attemptCount} attempts — ${message}`,

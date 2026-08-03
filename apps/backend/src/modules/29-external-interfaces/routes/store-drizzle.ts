@@ -52,7 +52,32 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 const num = (v: string | null): number | null => (v === null ? null : Number(v));
 
-export function createDrizzleM29Store(db: DbClient): M29Store {
+/**
+ * The catalog-validating tx outbox publish port (structural — the M30/M33 `WriteOutboxPort`
+ * precedent; M29 never imports the M1 bootstrap). The composition root binds
+ * `bindCallerModule(txOutboxPublisher, "m29")`. UNBOUND, the §4.10 decision events are NOT
+ * persisted — which was the task-11 gap: `decideProposal` has produced these envelopes since
+ * M29-T04 and this store silently discarded them, so the M5/M6 accept consumers starved.
+ */
+export interface M29WriteOutboxPort {
+  publish(
+    tx: DbClient,
+    input: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+
+export interface DrizzleM29StoreDeps {
+  /** The §4.10 outbox publisher — accept/reject decision events ride the deciding tx. */
+  readonly outbox?: M29WriteOutboxPort;
+}
+
+export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDeps = {}): M29Store {
   const FEED = schema.externalFeed;
   const CRED = schema.externalFeedCredential;
   const HEALTH = schema.externalFeedHealth;
@@ -469,11 +494,13 @@ export function createDrizzleM29Store(db: DbClient): M29Store {
           .where(and(eq(PROPOSAL.id, proposalId), eq(PROPOSAL.organizationId, orgId)))
           .limit(1);
         if (!row) throw new NotFoundError("hl7_inbound_proposal", proposalId);
+        const decidedAt = new Date();
+        let decision: ReturnType<typeof decideProposal> | undefined;
         try {
-          decideProposal(snapshotOf(row), {
+          decision = decideProposal(snapshotOf(row), {
             kind: "accept",
             decidedByMembershipId: membershipId,
-            decidedAt: new Date(),
+            decidedAt,
             acceptedAggregateId: args.acceptedAggregateId,
             decisionRationale: args.decisionNote,
           });
@@ -485,12 +512,23 @@ export function createDrizzleM29Store(db: DbClient): M29Store {
           .set({
             proposalStatus: "accepted",
             decidedByMembershipId: membershipId,
-            decidedAt: new Date(),
+            decidedAt,
             decisionRationale: args.decisionNote?.trim() ? args.decisionNote.trim() : null,
             acceptedAggregateId: args.acceptedAggregateId ?? null,
           })
           .where(and(eq(PROPOSAL.id, proposalId), eq(PROPOSAL.organizationId, orgId)))
           .returning();
+        // §4.10 — the accepted event rides the deciding tx (transactional outbox); the M5/M6
+        // appliers consume it. A validation failure rolls the whole accept back — refuse-on-emit.
+        if (decision?.kind === "accepted" && storeDeps.outbox) {
+          await storeDeps.outbox.publish(tx as unknown as DbClient, {
+            eventName: decision.event.name,
+            payload: decision.event.payload as unknown as Record<string, unknown>,
+            organizationId: orgId,
+            aggregateKind: "hl7_inbound_proposal",
+            aggregateId: proposalId,
+          });
+        }
         return proposalDetail(updated!);
       });
     },

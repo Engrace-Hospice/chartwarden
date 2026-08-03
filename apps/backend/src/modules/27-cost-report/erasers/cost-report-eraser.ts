@@ -34,7 +34,7 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * registered. Kept here as the single string literal so that wiring lands in one place (the M30
  * `quality_class` precedent).
  */
-export const COST_REPORT_DATA_CLASS = "cost_report_class" as DataClass;
+export const COST_REPORT_DATA_CLASS = "cost_report_class" satisfies DataClass;
 
 /** Deps for the M27 eraser registration; absent ⇒ the in-memory slice store (prod injects the Drizzle store). */
 export interface CostReportEraserDeps {
