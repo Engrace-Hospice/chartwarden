@@ -1090,7 +1090,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 37,
     name: "Inpatient Unit (IPU) Management",
-    codePaths: ["apps/backend/src/modules/37-ipu", "packages/inpatient"],
+    codePaths: ["apps/backend/src/modules/37-ipu", "packages/inpatient", "apps/web/src/modules/37-ipu"],
     dependsOn: [1, 2, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 15, 17, 18, 21, 22, 23, 26, 27, 36, 38, 40],
     ownedTables: [
       "gip_admission_criteria",

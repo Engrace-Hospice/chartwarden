@@ -6,16 +6,40 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { P, RN_COVERAGE, STEP_UP } from "./guards";
 import {
+  AdmissionIdParamsSchema,
+  AdvanceBodyReleaseBodySchema,
   ApplyRestraintBodySchema,
+  ApplyVisitorRestrictionBodySchema,
   AssignBedBodySchema,
+  AssignEquipmentBedBodySchema,
+  AssignStaffBodySchema,
+  AttestGipBodySchema,
   BedCleaningBodySchema,
+  CheckInVisitorBodySchema,
+  ConfirmBodySchema,
+  ConfirmTransferBodySchema,
+  CreateBedBodySchema,
+  CreateEquipmentBodySchema,
+  CreateRoomBodySchema,
+  CreateShiftBodySchema,
   CreateUnitBodySchema,
   DateParamsSchema,
   DischargeBodySchema,
   IdParamsSchema,
+  InitiateTransferBodySchema,
+  IrcOverrideBodySchema,
+  LiftVisitorRestrictionBodySchema,
+  LogInspectionBodySchema,
+  LogMaintenanceBodySchema,
+  LogMealBodySchema,
   OpenAdmissionBodySchema,
+  ReassessGipBodySchema,
   ReassessRestraintBodySchema,
   RequestBedBodySchema,
+  UnassignStaffBodySchema,
+  UpdateBedBodySchema,
+  UpdateRoomBodySchema,
+  UpdateUnitBodySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -43,6 +67,60 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
       return reply.code(201).send(await service.createUnit(actor, body));
     },
   );
+
+  // 3. PATCH /inpatient-units/:id — update unit config. §4.1. RN-coverage-exempt admin route.
+  app.patch("/api/v1/inpatient-units/:id", { preHandler: [P("m37.unit.update")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.updateUnit(actor, id, parse(UpdateUnitBodySchema, request.body));
+  });
+
+  // 4. POST /inpatient-units/:id/deactivate — deactivate unit (step-up). §4.1.
+  app.post(
+    "/api/v1/inpatient-units/:id/deactivate",
+    { preHandler: [P("m37.unit.update"), STEP_UP("m37.unit.update")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.deactivateUnit(actor, id);
+    },
+  );
+
+  // 5. GET/POST /inpatient-units/:id/rooms — list / create rooms. §4.1.
+  app.get("/api/v1/inpatient-units/:id/rooms", { preHandler: [P("m37.room.read")] }, async (request) => {
+    const { id } = parse(IdParamsSchema, request.params);
+    return { items: await service.listRooms(actorOf(request), id) };
+  });
+  app.post("/api/v1/inpatient-units/:id/rooms", { preHandler: [P("m37.room.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return reply.code(201).send(await service.createRoom(actor, id, parse(CreateRoomBodySchema, request.body)));
+  });
+
+  // 6. PATCH /ipu-rooms/:id — update room config. §4.1.
+  app.patch("/api/v1/ipu-rooms/:id", { preHandler: [P("m37.room.update")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.updateRoom(actor, id, parse(UpdateRoomBodySchema, request.body));
+  });
+
+  // 7. GET/POST /ipu-rooms/:id/beds — list / create beds. §4.1.
+  app.get("/api/v1/ipu-rooms/:id/beds", { preHandler: [P("m37.bed.read")] }, async (request) => {
+    const { id } = parse(IdParamsSchema, request.params);
+    return { items: await service.listBeds(actorOf(request), id) };
+  });
+  app.post("/api/v1/ipu-rooms/:id/beds", { preHandler: [P("m37.bed.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return reply.code(201).send(await service.createBed(actor, id, parse(CreateBedBodySchema, request.body)));
+  });
+
+  // 8. PATCH /ipu-beds/:id — update bed (geofence, label). §4.1.
+  app.patch("/api/v1/ipu-beds/:id", { preHandler: [P("m37.bed.update")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.updateBed(actor, id, parse(UpdateBedBodySchema, request.body));
+  });
 
   // 10. GET /ipu-admissions — list admissions. §4.1.
   app.get("/api/v1/ipu-admissions", { preHandler: [P("m37.ipu_admission.read")] }, async (request) => ({
@@ -116,6 +194,60 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     },
   );
 
+  // 15. POST /ipu-admissions/:id/confirm — M6 LCP-ack handler (system-internal). §4.1.
+  app.post("/api/v1/ipu-admissions/:id/confirm", { preHandler: [P("m37.ipu_admission.create")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.confirm(actor, id, parse(ConfirmBodySchema, request.body));
+  });
+
+  // 16. POST /ipu-admissions/:id/initiate-transfer — begin a transfer. §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/initiate-transfer",
+    { preHandler: [P("m37.ipu_admission.transfer"), RN_COVERAGE("m37.ipu_admission.transfer")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.initiateTransfer(actor, id, parse(InitiateTransferBodySchema, request.body));
+    },
+  );
+
+  // 17. POST /ipu-admissions/:id/confirm-transfer — complete a transfer. §4.1.
+  app.post("/api/v1/ipu-admissions/:id/confirm-transfer", { preHandler: [P("m37.ipu_admission.transfer")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.confirmTransfer(actor, id, parse(ConfirmTransferBodySchema, request.body));
+  });
+
+  // 19. POST /ipu-admissions/:id/gip-criteria — attest GIP criteria (step-up). §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/gip-criteria",
+    { preHandler: [P("m37.gip_criteria.attest"), STEP_UP("m37.gip_criteria.attest")] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return reply.code(201).send(await service.attestGip(actor, id, parse(AttestGipBodySchema, request.body)));
+    },
+  );
+
+  // 20. POST /ipu-admissions/:id/gip-criteria/reassess — record a reassessment. §4.1.
+  app.post("/api/v1/ipu-admissions/:id/gip-criteria/reassess", { preHandler: [P("m37.gip_criteria.reassess")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.reassessGip(actor, id, parse(ReassessGipBodySchema, request.body));
+  });
+
+  // 21. POST /ipu-admissions/:id/irc-cap-override — break-glass cap override (step-up). §4.1.
+  app.post(
+    "/api/v1/ipu-admissions/:id/irc-cap-override",
+    { preHandler: [P("m37.irc_episode.extend_override"), STEP_UP("m37.irc_episode.extend_override")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.overrideIrcCap(actor, id, parse(IrcOverrideBodySchema, request.body));
+    },
+  );
+
   // 22. POST /ipu-admissions/:id/restraint — apply restraint (step-up + RN coverage). §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/restraint",
@@ -145,6 +277,116 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     const actor = writeActorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     return service.releaseRestraint(actor, id);
+  });
+
+  // 25. GET/POST /ipu-shifts — list / create shifts. §4.1.
+  app.get("/api/v1/ipu-shifts", { preHandler: [P("m37.shift.read")] }, async (request) => ({
+    items: await service.listShifts(actorOf(request)),
+  }));
+  app.post("/api/v1/ipu-shifts", { preHandler: [P("m37.shift.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.createShift(actor, parse(CreateShiftBodySchema, request.body)));
+  });
+
+  // 26. POST/DELETE /ipu-shifts/:id/staff — assign / unassign staff. §4.1.
+  app.post("/api/v1/ipu-shifts/:id/staff", { preHandler: [P("m37.shift.assign_staff")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return reply.code(201).send(await service.assignStaff(actor, id, parse(AssignStaffBodySchema, request.body)));
+  });
+  app.delete("/api/v1/ipu-shifts/:id/staff", { preHandler: [P("m37.shift.assign_staff")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.unassignStaff(actor, id, parse(UnassignStaffBodySchema, request.body));
+  });
+
+  // 27. GET /ipu-units/:id/rn-coverage — read the coverage window. §4.1.
+  app.get("/api/v1/ipu-units/:id/rn-coverage", { preHandler: [P("m37.shift.read")] }, async (request) => {
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.getRnCoverage(actorOf(request), id);
+  });
+
+  // 28. POST /ipu-units/:id/rn-coverage/break-glass — invoke override (step-up). §4.1.
+  app.post(
+    "/api/v1/ipu-units/:id/rn-coverage/break-glass",
+    { preHandler: [P("m37.rn_coverage.break_glass"), STEP_UP("m37.rn_coverage.break_glass")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.invokeRnBreakGlass(actor, id);
+    },
+  );
+
+  // 29. POST /ipu-visitors — check-in a visitor. §4.1.
+  app.post("/api/v1/ipu-visitors", { preHandler: [P("m37.visitor.check_in")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.checkInVisitor(actor, parse(CheckInVisitorBodySchema, request.body)));
+  });
+
+  // 30. POST /ipu-visitors/:id/check-out — check-out a visitor. §4.1.
+  app.post("/api/v1/ipu-visitors/:id/check-out", { preHandler: [P("m37.visitor.check_out")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.checkOutVisitor(actor, id);
+  });
+
+  // 31. POST/DELETE /ipu-visitor-restrictions — apply / lift a restriction. §4.1.
+  app.post("/api/v1/ipu-visitor-restrictions", { preHandler: [P("m37.visitor_restriction.apply")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.applyVisitorRestriction(actor, parse(ApplyVisitorRestrictionBodySchema, request.body)));
+  });
+  app.delete("/api/v1/ipu-visitor-restrictions", { preHandler: [P("m37.visitor_restriction.lift")] }, async (request) => {
+    const actor = writeActorOf(request);
+    return service.liftVisitorRestriction(actor, parse(LiftVisitorRestrictionBodySchema, request.body));
+  });
+
+  // 32. POST /ipu-meals — log a meal. §4.1.
+  app.post("/api/v1/ipu-meals", { preHandler: [P("m37.meal.log")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.logMeal(actor, parse(LogMealBodySchema, request.body)));
+  });
+
+  // 33. GET/POST /ipu-equipment — list / create equipment. §4.1.
+  app.get("/api/v1/ipu-equipment", { preHandler: [P("m37.equipment.read")] }, async (request) => ({
+    items: await service.listEquipment(actorOf(request)),
+  }));
+  app.post("/api/v1/ipu-equipment", { preHandler: [P("m37.equipment.create")] }, async (request, reply) => {
+    const actor = writeActorOf(request);
+    return reply.code(201).send(await service.createEquipment(actor, parse(CreateEquipmentBodySchema, request.body)));
+  });
+
+  // 34. POST /ipu-equipment/:id/maintenance — log maintenance. §4.1.
+  app.post("/api/v1/ipu-equipment/:id/maintenance", { preHandler: [P("m37.equipment.maintenance_log")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.logMaintenance(actor, id, parse(LogMaintenanceBodySchema, request.body));
+  });
+
+  // 35. POST /ipu-equipment/:id/inspection — log a biomed inspection. §4.1.
+  app.post("/api/v1/ipu-equipment/:id/inspection", { preHandler: [P("m37.equipment.inspection_record")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.logInspection(actor, id, parse(LogInspectionBodySchema, request.body));
+  });
+
+  // 36. POST /ipu-equipment/:id/assign-bed — assign equipment to a bed/patient (inspection-current gate). §4.1.
+  app.post("/api/v1/ipu-equipment/:id/assign-bed", { preHandler: [P("m37.equipment.assign_bed")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { id } = parse(IdParamsSchema, request.params);
+    return service.assignEquipmentBed(actor, id, parse(AssignEquipmentBedBodySchema, request.body));
+  });
+
+  // 37. GET/POST /ipu-body-release/:admissionId — read / advance body-release state. §4.1.
+  app.get("/api/v1/ipu-body-release/:admissionId", { preHandler: [P("m37.body_release.coordinate")] }, async (request, reply) => {
+    const { admissionId } = parse(AdmissionIdParamsSchema, request.params);
+    const view = await service.getBodyRelease(actorOf(request), admissionId);
+    if (!view) return reply.code(404).send({ code: "NOT_FOUND", message: "ipu_body_release not found" });
+    return view;
+  });
+  app.post("/api/v1/ipu-body-release/:admissionId", { preHandler: [P("m37.body_release.coordinate")] }, async (request) => {
+    const actor = writeActorOf(request);
+    const { admissionId } = parse(AdmissionIdParamsSchema, request.params);
+    return service.advanceBodyRelease(actor, admissionId, parse(AdvanceBodyReleaseBodySchema, request.body));
   });
 
   // 38. GET /ipu-census/:date — read census snapshot for a date. §4.1.

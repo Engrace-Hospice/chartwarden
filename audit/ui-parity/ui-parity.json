@@ -44,6 +44,7 @@
     "34-saas",
     "35-subscription",
     "36-messaging",
+    "37-ipu",
     "38-terminology",
     "39-consent",
     "40-mdm"
@@ -1679,6 +1680,34 @@
       "id": "messaging.notifications",
       "path": "/notifications",
       "permission": "(none)"
+    },
+    {
+      "module": "37-ipu",
+      "moduleId": 37,
+      "id": "ipu.units",
+      "path": "/ipu",
+      "permission": "m37.unit.read"
+    },
+    {
+      "module": "37-ipu",
+      "moduleId": 37,
+      "id": "ipu.admissions",
+      "path": "/ipu/admissions",
+      "permission": "m37.ipu_admission.read"
+    },
+    {
+      "module": "37-ipu",
+      "moduleId": 37,
+      "id": "ipu.census",
+      "path": "/ipu/census",
+      "permission": "m37.census.read"
+    },
+    {
+      "module": "37-ipu",
+      "moduleId": 37,
+      "id": "ipu.equipment",
+      "path": "/ipu/equipment",
+      "permission": "m37.equipment.read"
     },
     {
       "module": "38-terminology",

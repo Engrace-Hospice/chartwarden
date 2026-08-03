@@ -60,8 +60,9 @@ for (const f of [
   "packages/auth/src/permissions/contributed.ts",
 ])
   // Keys are 2- or 3-segment (`assessment.read`, `hope.schedule.read`); capture an optional third segment
-  // so 3-segment contributed keys (M10 HOPE, M38 terminology, …) resolve as valid requiredPermissions.
-  for (const m of read(f).matchAll(/"([a-z_]+\.[a-z_]+(?:\.[a-z_]+)?)"/g)) catalog.add(m[1]!);
+  // so 3-segment contributed keys (M10 HOPE, M38 terminology, …) resolve as valid requiredPermissions. The
+  // first segment may carry a module-number prefix (`m37.unit.read`), so digits are allowed in each segment.
+  for (const m of read(f).matchAll(/"([a-z0-9_]+\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"/g)) catalog.add(m[1]!);
 
 // ---- implemented surface: registered web screens -------------------------------------------
 const mainTsx = read("apps/web/src/main.tsx");
