@@ -103,6 +103,14 @@ export const M37_ERROR_STATUS = {
   VISITOR_IMMEDIATE_FAMILY_ONLY: 412,
   // §2.9 — an assign-equipment-to-patient action on equipment with an overdue biomed inspection.
   EQUIPMENT_INSPECTION_OVERDUE: 412,
+
+  // ── §2.11 D12 post-mortem body-release coordination (M37-T09) ──────────────────────────────────────
+  // §2.11 — the event is not accepted from the body-release's current state (`closed` is terminal).
+  ILLEGAL_BODY_RELEASE_TRANSITION: 409,
+  // §2.11 — identifyFuneralHome without a resolved M40 FuneralHome.
+  BODY_RELEASE_FUNERAL_HOME_UNRESOLVED: 422,
+  // §2.11 — releaseBody without the signed M22 body_release_authorization document.
+  BODY_RELEASE_DOCUMENT_REQUIRED: 412,
 } as const;
 
 /** A machine-readable M37 domain failure code. */

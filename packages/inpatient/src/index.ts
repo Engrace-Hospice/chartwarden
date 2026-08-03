@@ -9,6 +9,7 @@ export * from "./machines/ipu-bed";
 export * from "./machines/ipu-admission";
 export * from "./machines/irc-episode";
 export * from "./machines/ipu-restraint";
+export * from "./machines/ipu-body-release";
 export * from "./domain/visitor/restriction-evaluator";
 export * from "./domain/equipment/inspection";
 export * from "./domain/meal/intake";
