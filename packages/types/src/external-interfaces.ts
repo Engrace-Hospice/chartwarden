@@ -513,7 +513,11 @@ export const M29_PARTITIONED_TABLES: {
     | "lab_observation_value"]: { readonly partitionKey: string };
 } = {
   hl7_message_inbound: { partitionKey: "received_at" },
-  hl7_message_outbound: { partitionKey: "transmitted_at" },
+  // M29-T02 partitions the outbound table on `queued_at`, NOT the spec's `transmitted_at`: transmitted_at
+  // is NULL while a message sits `queued`, and a partition key that is part of the composite PRIMARY KEY
+  // must be NOT NULL. `queued_at` (NOT NULL, always present at insert) is the honest partition key;
+  // transmitted_at stays a nullable data column (PostgreSQL wins over §3.2/§3.3).
+  hl7_message_outbound: { partitionKey: "queued_at" },
   hl7_inbound_proposal: { partitionKey: "proposed_at" },
   lab_observation: { partitionKey: "received_at" },
   lab_observation_value: { partitionKey: "received_at" },

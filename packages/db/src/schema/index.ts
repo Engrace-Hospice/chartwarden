@@ -706,3 +706,10 @@ export * from "./portal/index";
 // invoice retention, copy-then-delete on offboarding). NONE are PHI-bearing by the tenancy heuristic. Enums
 // in enums.ts (M35-T02); tables 0140–0142; RLS/grants + M4 write-audit triggers 0143.
 export * from "./subscription-billing/index";
+
+// Module 29 (External Interfaces) — the eleven owned tables (§3.3). Nine tenant-scoped on canonical
+// app.org_id RLS + the two platform-shared NPPES directory tables (read-all, writes via wardenx_admin).
+// Five are partitioned monthly (hl7_message_inbound/lab_observation/lab_observation_value on received_at,
+// hl7_message_outbound on queued_at, hl7_inbound_proposal on proposed_at) with composite PKs in SQL; RLS +
+// M4 write-audit triggers in migration 0148. Enums in ./external-interfaces/enums.
+export * from "./external-interfaces/index";

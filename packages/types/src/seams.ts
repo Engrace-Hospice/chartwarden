@@ -1197,4 +1197,18 @@ export type DataClass =
   // registered eraser (M31-T06) under an M4 destruction certificate (§3.7 / D15); the recording BYTES in
   // MinIO are crypto-erased by M22's own `telehealth_recording`/`documents` eraser — M31 stores only the
   // refs, which it shreds. `subjectId` is the patient being destroyed.
-  | "portal_record";
+  | "portal_record"
+  // M29 (External Interfaces) per-TENANT interface footprint (§3.7). Registered in M29-T02 (the schema
+  // task) so the contract exists from the moment the tables do; the REAL eraser binds through the
+  // composition-root hook over the Phase-0 deny-stub in a later M29 task. NOT a delete — a targeted shred
+  // that keeps every row: it destroys the per-tenant DEK so every `*_cipher` column (the raw HL7 payloads,
+  // the `external_feed_credential.secret_cipher` channel secret, the ack payloads) becomes unrecoverable,
+  // re-encrypts `hl7_inbound_proposal.proposed_patient_candidate` to null, tombstones the feed
+  // (`status='revoked'`, `revoked_at` set) and cascades `lab_observation → lab_observation_value /
+  // lab_observation_inbound_link` — while every ROW survives with its status, decision, `payload_sha256`
+  // and timestamps intact, because those rows ARE the §164.528 accounting-of-disclosures evidence (an
+  // inbound HL7 message is a receipt-of-disclosure; a lab surfaced to an operator or projected to M28 for
+  // FHIR egress is itself a disclosure). The platform-shared `nppes_provider` / `nppes_sync_run` are the
+  // public CMS directory (rebuildable from a re-sync) and are never touched. Unlike the per-patient classes
+  // above, `subjectId` is the ORG being offboarded — M29-T01 named it `external_interfaces`.
+  | "external_interfaces";
