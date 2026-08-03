@@ -32,21 +32,50 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 // PATH SHAPE: mounted at the shell root (`/safety/...`, `/me/safety/...`) per the
 // M15/M16/M17/M18/M19/M21 convention, rather than under §5.1's sketched `/app/` prefix.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { CheckInLedgerScreen } from "./check-in-ledger";
-import { HighRiskAreasScreen } from "./high-risk-areas";
-import { IncidentDetailScreen } from "./incident-detail";
-import { IncidentLedgerScreen } from "./incident-ledger";
-import { IncidentNewScreen } from "./incident-new";
-import { MyCheckInsScreen } from "./my-check-ins";
-import { MyConsentScreen } from "./my-consent";
-import { MySafetyScreen } from "./my-safety";
-import { SafetyDashboardScreen } from "./safety-dashboard";
-import { SafetyMetricsScreen } from "./safety-metrics";
-import { SafetyPolicyScreen } from "./safety-policy";
-import { ActiveSosScreen } from "./sos-active";
-import { SosDetailScreen } from "./sos-detail";
-import { SupervisorSubscriptionsScreen } from "./supervisor-subscriptions";
+const CheckInLedgerScreen = lazy(() =>
+  import("./check-in-ledger").then((m) => ({ default: m.CheckInLedgerScreen })),
+);
+const HighRiskAreasScreen = lazy(() =>
+  import("./high-risk-areas").then((m) => ({ default: m.HighRiskAreasScreen })),
+);
+const IncidentDetailScreen = lazy(() =>
+  import("./incident-detail").then((m) => ({ default: m.IncidentDetailScreen })),
+);
+const IncidentLedgerScreen = lazy(() =>
+  import("./incident-ledger").then((m) => ({ default: m.IncidentLedgerScreen })),
+);
+const IncidentNewScreen = lazy(() =>
+  import("./incident-new").then((m) => ({ default: m.IncidentNewScreen })),
+);
+const MyCheckInsScreen = lazy(() =>
+  import("./my-check-ins").then((m) => ({ default: m.MyCheckInsScreen })),
+);
+const MyConsentScreen = lazy(() =>
+  import("./my-consent").then((m) => ({ default: m.MyConsentScreen })),
+);
+const MySafetyScreen = lazy(() =>
+  import("./my-safety").then((m) => ({ default: m.MySafetyScreen })),
+);
+const SafetyDashboardScreen = lazy(() =>
+  import("./safety-dashboard").then((m) => ({ default: m.SafetyDashboardScreen })),
+);
+const SafetyMetricsScreen = lazy(() =>
+  import("./safety-metrics").then((m) => ({ default: m.SafetyMetricsScreen })),
+);
+const SafetyPolicyScreen = lazy(() =>
+  import("./safety-policy").then((m) => ({ default: m.SafetyPolicyScreen })),
+);
+const ActiveSosScreen = lazy(() =>
+  import("./sos-active").then((m) => ({ default: m.ActiveSosScreen })),
+);
+const SosDetailScreen = lazy(() =>
+  import("./sos-detail").then((m) => ({ default: m.SosDetailScreen })),
+);
+const SupervisorSubscriptionsScreen = lazy(() =>
+  import("./supervisor-subscriptions").then((m) => ({ default: m.SupervisorSubscriptionsScreen })),
+);
 
 export const fieldSafetyScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 20,

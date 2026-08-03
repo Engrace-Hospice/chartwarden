@@ -21,7 +21,8 @@ export type GlyphName =
   | "dot"
   | "spinner"
   | "sun"
-  | "moon";
+  | "moon"
+  | "menu";
 
 // 24×24 viewBox path data. Stroke-drawn unless listed in FILLED.
 const PATHS: Record<GlyphName, string> = {
@@ -43,6 +44,7 @@ const PATHS: Record<GlyphName, string> = {
   spinner: "M12 3a9 9 0 1 0 9 9",
   sun: "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M12 2v2 M12 20v2 M4 12H2 M22 12h-2 M5.6 5.6L4.2 4.2 M19.8 19.8l-1.4-1.4 M18.4 5.6l1.4-1.4 M4.2 19.8l1.4-1.4",
   moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
+  menu: "M4 7h16 M4 12h16 M4 17h16",
 };
 
 const FILLED: ReadonlySet<GlyphName> = new Set(["sparkle", "dot"]);

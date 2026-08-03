@@ -4,13 +4,22 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // REAL §4.6 M26 key the matching route gates on (already in packages/auth/src/permissions/contributed.ts via
 // Phase 3) — the server stays the authoritative enforcer; this gates nav visibility only. The five tenant
 // surfaces sit under "Billing" (revenue cycle); the platform-constant admin sits under "Platform".
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { CapDashboard } from "./cap-dashboard";
-import { CapEvents } from "./cap-events";
-import { CapPeriods } from "./cap-periods";
-import { CapPlatformConstants } from "./cap-platform-constants";
-import { CapPsrWorkbench } from "./cap-psr-workbench";
-import { CapSettlement } from "./cap-settlement";
+const CapDashboard = lazy(() =>
+  import("./cap-dashboard").then((m) => ({ default: m.CapDashboard })),
+);
+const CapEvents = lazy(() => import("./cap-events").then((m) => ({ default: m.CapEvents })));
+const CapPeriods = lazy(() => import("./cap-periods").then((m) => ({ default: m.CapPeriods })));
+const CapPlatformConstants = lazy(() =>
+  import("./cap-platform-constants").then((m) => ({ default: m.CapPlatformConstants })),
+);
+const CapPsrWorkbench = lazy(() =>
+  import("./cap-psr-workbench").then((m) => ({ default: m.CapPsrWorkbench })),
+);
+const CapSettlement = lazy(() =>
+  import("./cap-settlement").then((m) => ({ default: m.CapSettlement })),
+);
 
 export const capScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 26,

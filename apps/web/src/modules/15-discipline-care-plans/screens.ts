@@ -16,19 +16,40 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // §5.1 modals are NOT separate registry entries — the sign ceremony, the supervisory-visit capture, the
 // volunteer-assignment gate check and the gate create/correct/revoke forms live inside their parent
 // screens, because each one needs the parent's already-read row `version` for its `If-Match`.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AidePocEditor } from "./aide-poc-editor";
-import { AidePocView } from "./aide-poc-view";
-import { AssessmentEditor } from "./assessment-editor";
-import { DisciplinePlansIndex } from "./plans-index";
-import { DisciplinePlansSummary } from "./plans-summary";
-import { DisciplineVersionHistory } from "./version-history";
-import { IdgRevisionReview } from "./idg-revision-review";
-import { MswPlanView } from "./msw-plan";
-import { SpiritualPlanView } from "./spiritual-plan";
-import { VolunteerComplianceGates } from "./volunteer-compliance";
-import { VolunteerHourRatio } from "./volunteer-ratio";
-import { VolunteerPlanView } from "./volunteer-plan";
+const AidePocEditor = lazy(() =>
+  import("./aide-poc-editor").then((m) => ({ default: m.AidePocEditor })),
+);
+const AidePocView = lazy(() => import("./aide-poc-view").then((m) => ({ default: m.AidePocView })));
+const AssessmentEditor = lazy(() =>
+  import("./assessment-editor").then((m) => ({ default: m.AssessmentEditor })),
+);
+const DisciplinePlansIndex = lazy(() =>
+  import("./plans-index").then((m) => ({ default: m.DisciplinePlansIndex })),
+);
+const DisciplinePlansSummary = lazy(() =>
+  import("./plans-summary").then((m) => ({ default: m.DisciplinePlansSummary })),
+);
+const DisciplineVersionHistory = lazy(() =>
+  import("./version-history").then((m) => ({ default: m.DisciplineVersionHistory })),
+);
+const IdgRevisionReview = lazy(() =>
+  import("./idg-revision-review").then((m) => ({ default: m.IdgRevisionReview })),
+);
+const MswPlanView = lazy(() => import("./msw-plan").then((m) => ({ default: m.MswPlanView })));
+const SpiritualPlanView = lazy(() =>
+  import("./spiritual-plan").then((m) => ({ default: m.SpiritualPlanView })),
+);
+const VolunteerComplianceGates = lazy(() =>
+  import("./volunteer-compliance").then((m) => ({ default: m.VolunteerComplianceGates })),
+);
+const VolunteerHourRatio = lazy(() =>
+  import("./volunteer-ratio").then((m) => ({ default: m.VolunteerHourRatio })),
+);
+const VolunteerPlanView = lazy(() =>
+  import("./volunteer-plan").then((m) => ({ default: m.VolunteerPlanView })),
+);
 
 export const disciplinePlanScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 15,

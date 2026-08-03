@@ -63,16 +63,23 @@ export function ActorSessionProvider({
     let cancelled = false;
     void client
       .GET("/api/v1/auth/context")
-      .then(({ data }) => {
+      .then(({ data, response }) => {
         if (cancelled) return;
+        if (data) {
+          setState({ status: "authenticated", session: toSession(data) });
+          return;
+        }
+        // A confirmed 401 is a real "signed out" — anything else (500/503/…) is the backend being
+        // unreachable/unhealthy, not a logout (TASK-033 / FLOW-004): don't force-redirect to /login.
         setState(
-          data
-            ? { status: "authenticated", session: toSession(data) }
-            : { status: "anonymous", session: null },
+          response.status === 401
+            ? { status: "anonymous", session: null }
+            : { status: "outage", session: null },
         );
       })
       .catch(() => {
-        if (!cancelled) setState({ status: "anonymous", session: null });
+        // The fetch itself threw (offline, DNS, timeout, CORS) — no response at all reached us.
+        if (!cancelled) setState({ status: "outage", session: null });
       });
     return () => {
       cancelled = true;

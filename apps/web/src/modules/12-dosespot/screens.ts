@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/12-dosespot — M12 screen registration (Track B, ADR-0030, M12-T09).
 // The §6.1 DoseSpot prescribing read screens that have a backing M12 read route on the generated client: the
 // patient chart Medication list (§6.1), the Medication Detail (§6.1 / the prescribe modal in sign-only mode),
@@ -10,17 +11,33 @@
 // correct / refill-decide / reconcile / roster / policy write surfaces fill in as those write paths harden.
 // The platform-ops EPCS-certification + webhook-explorer screens (apps/admin) are deferred (`dosespot.epcs`
 // OFF in Phase 1); the M13 administration (eMAR) screens land with M13.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { MedicationDetail } from "./medication-detail";
-import { MedicationReconciliation } from "./medication-reconciliation";
-import { MedicationSignInbox } from "./sign-inbox";
-import { PatientMedications } from "./patient-medications";
-import { PrescriberRoster } from "./prescriber-roster";
-import { PrescribingPolicy } from "./prescribing-policy";
-import { RefillDetail } from "./refill-detail";
-import { RefillInbox } from "./refill-inbox";
-import { VerbalMedicationOrdersQueue } from "./verbal-orders-queue";
+const MedicationDetail = lazy(() =>
+  import("./medication-detail").then((m) => ({ default: m.MedicationDetail })),
+);
+const MedicationReconciliation = lazy(() =>
+  import("./medication-reconciliation").then((m) => ({ default: m.MedicationReconciliation })),
+);
+const MedicationSignInbox = lazy(() =>
+  import("./sign-inbox").then((m) => ({ default: m.MedicationSignInbox })),
+);
+const PatientMedications = lazy(() =>
+  import("./patient-medications").then((m) => ({ default: m.PatientMedications })),
+);
+const PrescriberRoster = lazy(() =>
+  import("./prescriber-roster").then((m) => ({ default: m.PrescriberRoster })),
+);
+const PrescribingPolicy = lazy(() =>
+  import("./prescribing-policy").then((m) => ({ default: m.PrescribingPolicy })),
+);
+const RefillDetail = lazy(() =>
+  import("./refill-detail").then((m) => ({ default: m.RefillDetail })),
+);
+const RefillInbox = lazy(() => import("./refill-inbox").then((m) => ({ default: m.RefillInbox })));
+const VerbalMedicationOrdersQueue = lazy(() =>
+  import("./verbal-orders-queue").then((m) => ({ default: m.VerbalMedicationOrdersQueue })),
+);
 
 export const dosespotScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 12,

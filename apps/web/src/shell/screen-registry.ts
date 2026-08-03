@@ -1,9 +1,13 @@
 import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/shell — concrete React binding of the @wardenx/types screen registry (M1, ADR-0030).
-import type { ComponentType } from "react";
+import type { ComponentType, LazyExoticComponent } from "react";
 
-/** A screen is a React component (no required props — it reads context/router params). */
-export type WebScreen = ComponentType;
+/**
+ * A screen is a React component (no required props — it reads context/router params), eager or
+ * `React.lazy`-wrapped (TASK-033 route-level code-splitting). `app.tsx` wraps every screen render
+ * in a `<Suspense>` boundary so a lazy screen resolves regardless of which form a module registers.
+ */
+export type WebScreen = ComponentType | LazyExoticComponent<ComponentType>;
 export type WebScreenDescriptor = ScreenDescriptor<WebScreen>;
 export type WebScreenModule = ScreenRegistryModule<WebScreen>;
 

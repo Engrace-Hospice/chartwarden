@@ -4,10 +4,17 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // M39's first web surface. Until now the module had no `apps/web` codePath in the manifest at all, so
 // `arch:parity` would have failed before any file landed — the manifest entry is the actual unblock, and
 // these three screens are the documented specs it makes buildable.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { ConsentExpirationRenewal } from "./consent-expiration-renewal";
-import { ConsentRecipientsDpoa } from "./consent-recipients-dpoa";
-import { ConsentRecordManager } from "./consent-record-manager";
+const ConsentExpirationRenewal = lazy(() =>
+  import("./consent-expiration-renewal").then((m) => ({ default: m.ConsentExpirationRenewal })),
+);
+const ConsentRecipientsDpoa = lazy(() =>
+  import("./consent-recipients-dpoa").then((m) => ({ default: m.ConsentRecipientsDpoa })),
+);
+const ConsentRecordManager = lazy(() =>
+  import("./consent-record-manager").then((m) => ({ default: m.ConsentRecordManager })),
+);
 
 export const consentScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 39,

@@ -9,14 +9,29 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // direct-intake Admission Create (`/admissions/new`) — a real nav entry, `navGroup: "Admissions"`,
 // same as M20's `incident-new.tsx` precedent for a create-form screen (any non-param path lands in the
 // shell's nav somewhere; the only choice is which group).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AdmissionCensus } from "./admission-census";
-import { AdmissionCreate } from "./admission-create";
-import { AdmissionDetail } from "./admission-detail";
-import { ComplianceDashboard } from "./compliance-dashboard";
-import { PatientElectionCert } from "./patient-election-cert";
-import { ReferralDetail } from "./referral-detail";
-import { ReferralInbox } from "./referral-inbox";
+const AdmissionCensus = lazy(() =>
+  import("./admission-census").then((m) => ({ default: m.AdmissionCensus })),
+);
+const AdmissionCreate = lazy(() =>
+  import("./admission-create").then((m) => ({ default: m.AdmissionCreate })),
+);
+const AdmissionDetail = lazy(() =>
+  import("./admission-detail").then((m) => ({ default: m.AdmissionDetail })),
+);
+const ComplianceDashboard = lazy(() =>
+  import("./compliance-dashboard").then((m) => ({ default: m.ComplianceDashboard })),
+);
+const PatientElectionCert = lazy(() =>
+  import("./patient-election-cert").then((m) => ({ default: m.PatientElectionCert })),
+);
+const ReferralDetail = lazy(() =>
+  import("./referral-detail").then((m) => ({ default: m.ReferralDetail })),
+);
+const ReferralInbox = lazy(() =>
+  import("./referral-inbox").then((m) => ({ default: m.ReferralInbox })),
+);
 
 export const admissionScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 6,

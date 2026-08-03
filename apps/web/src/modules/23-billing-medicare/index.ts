@@ -1,20 +1,6 @@
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare web slice (R2, ADR-0030, §10 PR-J).
+// Screens are lazy-loaded inside ./screens (TASK-033) — this barrel exports ONLY the registration
+// object. Re-exporting each screen component here too would give it a second, static import path
+// alongside screens.ts's dynamic one, which defeats the route-level code-splitting (Rollup/Vite
+// merges a module into whichever chunk reaches it statically, even via an otherwise-unused re-export).
 export { billingScreens } from "./screens";
-export { AcknowledgmentsTimeline } from "./acknowledgments-timeline";
-export { ArDashboard } from "./ar-dashboard";
-export { ClaimAssemblyWizard } from "./claim-assembly-wizard";
-export { ClaimEditor } from "./claim-editor";
-export { ClaimWorkbench } from "./claim-workbench";
-export { EligibilityCenter } from "./eligibility-center";
-export { MacCredentials } from "./mac-credentials";
-export { MetricsSurface } from "./metrics-surface";
-export { NoeDetail } from "./noe-detail";
-export { NoeQueue } from "./noe-queue";
-export { NotrDetail } from "./notr-detail";
-export { NotrQueue } from "./notr-queue";
-export { OverrideAudit } from "./override-audit";
-export { RuleConfigEditor } from "./rule-config";
-export { SequestrationPolicy } from "./sequestration-policy";
-export { SubmissionsTimeline } from "./submissions-timeline";
-export { SurveyorReadView } from "./surveyor-read-view";
-export { ValidationWorklist } from "./validation-worklist";

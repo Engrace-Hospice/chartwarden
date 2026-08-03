@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/18-evv — M18 EVV screen registration (Track B, ADR-0030, M18-T07).
 // The §5.1 EVV read screens that have a backing M18 read route on the generated client: the org-wide EVV
 // Dashboard + Metrics (the EvvMetricsProvider seam), the coordinate-free Event Ledger + single Event Detail,
@@ -9,15 +10,27 @@
 // surfaces are the Capacitor mobile flow (§5.2, owned by the M17 visit-detail CTA), not web screens; the
 // resolution-attest / device-approve / policy-edit / resubmit write surfaces and the M31 portal arrival view
 // fill in as those write/Phase-2 paths land.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { EvvAggregatorSubmissions } from "./aggregator-submissions";
-import { EvvDevicesPending, EvvMyDevices } from "./devices";
-import { EvvEventDetail } from "./event-detail";
-import { EvvEvents } from "./events";
-import { EvvGeofencePolicy } from "./geofence-policy";
-import { EvvDashboard, EvvMetrics } from "./metrics";
-import { EvvMissingResolutions } from "./missing-resolutions";
+const EvvAggregatorSubmissions = lazy(() =>
+  import("./aggregator-submissions").then((m) => ({ default: m.EvvAggregatorSubmissions })),
+);
+const EvvDevicesPending = lazy(() =>
+  import("./devices").then((m) => ({ default: m.EvvDevicesPending })),
+);
+const EvvMyDevices = lazy(() => import("./devices").then((m) => ({ default: m.EvvMyDevices })));
+const EvvEventDetail = lazy(() =>
+  import("./event-detail").then((m) => ({ default: m.EvvEventDetail })),
+);
+const EvvEvents = lazy(() => import("./events").then((m) => ({ default: m.EvvEvents })));
+const EvvGeofencePolicy = lazy(() =>
+  import("./geofence-policy").then((m) => ({ default: m.EvvGeofencePolicy })),
+);
+const EvvDashboard = lazy(() => import("./metrics").then((m) => ({ default: m.EvvDashboard })));
+const EvvMetrics = lazy(() => import("./metrics").then((m) => ({ default: m.EvvMetrics })));
+const EvvMissingResolutions = lazy(() =>
+  import("./missing-resolutions").then((m) => ({ default: m.EvvMissingResolutions })),
+);
 
 export const evvScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 18,

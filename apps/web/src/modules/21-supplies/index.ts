@@ -3,13 +3,3 @@
 // per-lot perpetual log and the §2.6 return reconciliation; and the agency operations surfaces — the D4
 // vendor-routing ladder, the D5 par shelf, the D3 kit templates and the D11 SKU catalog.
 export { supplyScreens } from "./screens";
-export { SupplyTeamDashboard } from "./supply-dashboard";
-export { SupplyRequestDetailScreen } from "./supply-request-detail";
-export { ComfortKitDispatchCreate } from "./dispatch-create";
-export { ComfortKitDispatchDetail } from "./dispatch-detail";
-export { ComfortKitPerpetualLog } from "./perpetual-log";
-export { ComfortKitReturnReconciliation } from "./return-reconciliation";
-export { ParStockAdmin } from "./par-stock-admin";
-export { VendorRoutingAdmin } from "./vendor-routing-admin";
-export { ComfortKitTemplateAdmin } from "./comfort-kit-template-admin";
-export { SupplyItemCatalog } from "./supply-item-catalog";

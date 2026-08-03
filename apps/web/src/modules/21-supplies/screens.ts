@@ -24,17 +24,38 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 // PATH SHAPE: §5.1's routes are followed verbatim (`/supplies/...`), which already matches the M15/M16/M17
 // convention of mounting module screens at the shell root.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { ComfortKitDispatchCreate } from "./dispatch-create";
-import { ComfortKitDispatchDetail } from "./dispatch-detail";
-import { ComfortKitPerpetualLog } from "./perpetual-log";
-import { ComfortKitReturnReconciliation } from "./return-reconciliation";
-import { ComfortKitTemplateAdmin } from "./comfort-kit-template-admin";
-import { ParStockAdmin } from "./par-stock-admin";
-import { SupplyItemCatalog } from "./supply-item-catalog";
-import { SupplyRequestDetailScreen } from "./supply-request-detail";
-import { SupplyTeamDashboard } from "./supply-dashboard";
-import { VendorRoutingAdmin } from "./vendor-routing-admin";
+const ComfortKitDispatchCreate = lazy(() =>
+  import("./dispatch-create").then((m) => ({ default: m.ComfortKitDispatchCreate })),
+);
+const ComfortKitDispatchDetail = lazy(() =>
+  import("./dispatch-detail").then((m) => ({ default: m.ComfortKitDispatchDetail })),
+);
+const ComfortKitPerpetualLog = lazy(() =>
+  import("./perpetual-log").then((m) => ({ default: m.ComfortKitPerpetualLog })),
+);
+const ComfortKitReturnReconciliation = lazy(() =>
+  import("./return-reconciliation").then((m) => ({ default: m.ComfortKitReturnReconciliation })),
+);
+const ComfortKitTemplateAdmin = lazy(() =>
+  import("./comfort-kit-template-admin").then((m) => ({ default: m.ComfortKitTemplateAdmin })),
+);
+const ParStockAdmin = lazy(() =>
+  import("./par-stock-admin").then((m) => ({ default: m.ParStockAdmin })),
+);
+const SupplyItemCatalog = lazy(() =>
+  import("./supply-item-catalog").then((m) => ({ default: m.SupplyItemCatalog })),
+);
+const SupplyRequestDetailScreen = lazy(() =>
+  import("./supply-request-detail").then((m) => ({ default: m.SupplyRequestDetailScreen })),
+);
+const SupplyTeamDashboard = lazy(() =>
+  import("./supply-dashboard").then((m) => ({ default: m.SupplyTeamDashboard })),
+);
+const VendorRoutingAdmin = lazy(() =>
+  import("./vendor-routing-admin").then((m) => ({ default: m.VendorRoutingAdmin })),
+);
 
 export const supplyScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 21,

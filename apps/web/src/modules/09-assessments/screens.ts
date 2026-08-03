@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/09-assessments — M9 screen registration (Track B, ADR-0030).
 // The §5 Clinical Assessments screens that have a backing M9 read route on the generated client: the
 // patient-scoped Assessment Timeline (§5.2), the Per-scale Trend (§5.2), the per-patient Significant-change
@@ -5,14 +6,24 @@
 // (§5.2). Nav visibility is gated by the matching M9 permission key; the SERVER stays the only enforcement point
 // (no frontend authz). The record-assessment modal and the ack/renew/policy write surfaces (§5.2) fill in as
 // their write paths harden.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { AssessmentSummary } from "./assessment-summary";
-import { AssessmentTimeline } from "./assessment-timeline";
-import { ScaleLicenseRegistry } from "./scale-license-registry";
-import { ScalePolicyEditor } from "./scale-policy-editor";
-import { ScaleTrend } from "./scale-trend";
-import { SignificantChangeInbox } from "./significant-change-inbox";
+const AssessmentSummary = lazy(() =>
+  import("./assessment-summary").then((m) => ({ default: m.AssessmentSummary })),
+);
+const AssessmentTimeline = lazy(() =>
+  import("./assessment-timeline").then((m) => ({ default: m.AssessmentTimeline })),
+);
+const ScaleLicenseRegistry = lazy(() =>
+  import("./scale-license-registry").then((m) => ({ default: m.ScaleLicenseRegistry })),
+);
+const ScalePolicyEditor = lazy(() =>
+  import("./scale-policy-editor").then((m) => ({ default: m.ScalePolicyEditor })),
+);
+const ScaleTrend = lazy(() => import("./scale-trend").then((m) => ({ default: m.ScaleTrend })));
+const SignificantChangeInbox = lazy(() =>
+  import("./significant-change-inbox").then((m) => ({ default: m.SignificantChangeInbox })),
+);
 
 export const assessmentScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 9,

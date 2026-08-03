@@ -12,15 +12,22 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // over the spec proposal on conflict, so M35's SaaS-subscription surfaces are namespaced under
 // `/subscription/*` (a "Subscription" navGroup), keeping them cleanly separate from the clinical revenue
 // cycle.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { BillingOverview } from "./billing-overview";
-import { BillingPlan } from "./billing-plan";
-import { Dunning } from "./dunning";
-import { InvoiceDetail } from "./invoice-detail";
-import { Invoices } from "./invoices";
-import { PaymentMethods } from "./payment-methods";
-import { Promos } from "./promos";
-import { Usage } from "./usage";
+const BillingOverview = lazy(() =>
+  import("./billing-overview").then((m) => ({ default: m.BillingOverview })),
+);
+const BillingPlan = lazy(() => import("./billing-plan").then((m) => ({ default: m.BillingPlan })));
+const Dunning = lazy(() => import("./dunning").then((m) => ({ default: m.Dunning })));
+const InvoiceDetail = lazy(() =>
+  import("./invoice-detail").then((m) => ({ default: m.InvoiceDetail })),
+);
+const Invoices = lazy(() => import("./invoices").then((m) => ({ default: m.Invoices })));
+const PaymentMethods = lazy(() =>
+  import("./payment-methods").then((m) => ({ default: m.PaymentMethods })),
+);
+const Promos = lazy(() => import("./promos").then((m) => ({ default: m.Promos })));
+const Usage = lazy(() => import("./usage").then((m) => ({ default: m.Usage })));
 
 export const subscriptionScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 35,

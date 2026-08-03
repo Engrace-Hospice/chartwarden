@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/11-orders — M11 screen registration (Track B, ADR-0030).
 // The §5 Orders read screens that have a backing M11 read route on the generated client: the global
 // physician Signature Inbox (§5, pending-signature), the per-patient Orders list (§5, "Use Patient
@@ -7,15 +8,25 @@
 // (no frontend authz, ADR-0030). The draft modal (all 8 kinds), the sign step-up, the record-verbal /
 // cosign / discontinue / mark-reviewed / correct write surfaces, and the verbal-policy admin fill in as
 // those write paths harden.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { CosignQueue } from "./cosign-queue";
-import { OrderDetail } from "./order-detail";
-import { OrdersSignInbox } from "./orders-sign-inbox";
-import { PatientOrders } from "./patient-orders";
-import { ResultsReviewQueue } from "./results-review-queue";
-import { StandingOrders } from "./standing-orders";
-import { VerbalExpiringQueue } from "./verbal-expiring-queue";
+const CosignQueue = lazy(() => import("./cosign-queue").then((m) => ({ default: m.CosignQueue })));
+const OrderDetail = lazy(() => import("./order-detail").then((m) => ({ default: m.OrderDetail })));
+const OrdersSignInbox = lazy(() =>
+  import("./orders-sign-inbox").then((m) => ({ default: m.OrdersSignInbox })),
+);
+const PatientOrders = lazy(() =>
+  import("./patient-orders").then((m) => ({ default: m.PatientOrders })),
+);
+const ResultsReviewQueue = lazy(() =>
+  import("./results-review-queue").then((m) => ({ default: m.ResultsReviewQueue })),
+);
+const StandingOrders = lazy(() =>
+  import("./standing-orders").then((m) => ({ default: m.StandingOrders })),
+);
+const VerbalExpiringQueue = lazy(() =>
+  import("./verbal-expiring-queue").then((m) => ({ default: m.VerbalExpiringQueue })),
+);
 
 export const orderScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 11,

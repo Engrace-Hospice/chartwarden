@@ -5,13 +5,26 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // packages/auth/src/permissions/contributed.ts) — the server stays the authoritative enforcer; this gates
 // nav visibility only. All six surfaces sit under "Billing" (the revenue cycle). Aligned to the realigned
 // Form CMS-1984-14 worksheet model (A → B/B-1 → C per-diem; no D/E-1/G/H).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { CostReportBadDebt } from "./cost-report-bad-debt";
-import { CostReportList } from "./cost-report-list";
-import { CostReportRules } from "./cost-report-rules";
-import { CostReportSnapshots } from "./cost-report-snapshots";
-import { CostReportValidation } from "./cost-report-validation";
-import { CostReportWorkspace } from "./cost-report-workspace";
+const CostReportBadDebt = lazy(() =>
+  import("./cost-report-bad-debt").then((m) => ({ default: m.CostReportBadDebt })),
+);
+const CostReportList = lazy(() =>
+  import("./cost-report-list").then((m) => ({ default: m.CostReportList })),
+);
+const CostReportRules = lazy(() =>
+  import("./cost-report-rules").then((m) => ({ default: m.CostReportRules })),
+);
+const CostReportSnapshots = lazy(() =>
+  import("./cost-report-snapshots").then((m) => ({ default: m.CostReportSnapshots })),
+);
+const CostReportValidation = lazy(() =>
+  import("./cost-report-validation").then((m) => ({ default: m.CostReportValidation })),
+);
+const CostReportWorkspace = lazy(() =>
+  import("./cost-report-workspace").then((m) => ({ default: m.CostReportWorkspace })),
+);
 
 export const costReportScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 27,

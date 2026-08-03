@@ -3,14 +3,3 @@
 // and opening, the D4 touchpoint book, the D3/D17 risk ledger, the complicated-grief screen and the
 // §7.15 survey-reconstruction history.
 export { bereavementScreens } from "./screens";
-export { BereavementCounselorDashboard } from "./counselor-dashboard";
-export { BereavementSupervisorDashboard } from "./supervisor-dashboard";
-export { BereavementIntakeQueue } from "./intake-queue";
-export { BereavementPlanDetail } from "./plan-detail";
-export { BereavementRosterSeed } from "./roster-seed";
-export { BereavedContactDetail } from "./contact-detail";
-export { BereavementOutreachPlanner } from "./outreach-planner";
-export { BereavementRiskView } from "./risk-view";
-export { BereavementGriefScreen } from "./grief-screen";
-export { BereavementCloseoutView } from "./closeout-view";
-export { BereavementPlanHistory } from "./plan-history";

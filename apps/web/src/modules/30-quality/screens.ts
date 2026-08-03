@@ -3,9 +3,12 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //
 // M30's first web surface. Until now the module had no `apps/web` codePath in the manifest, so
 // `arch:parity` would have failed before any file landed — the manifest entry is the actual unblock.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { QapiIncidents } from "./qapi-incidents";
-import { QualityHub } from "./quality-hub";
+const QapiIncidents = lazy(() =>
+  import("./qapi-incidents").then((m) => ({ default: m.QapiIncidents })),
+);
+const QualityHub = lazy(() => import("./quality-hub").then((m) => ({ default: m.QualityHub })));
 
 export const qualityScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 30,

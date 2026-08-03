@@ -43,3 +43,25 @@ describe("createApiClient — Idempotency-Key middleware (TASK-020)", () => {
     expect(requests[0]?.headers.get("Idempotency-Key")).toBe("caller-chosen-key");
   });
 });
+
+describe("createApiClient — onResponseStatus hook (TASK-033)", () => {
+  it("reports the HTTP status of every response, success or error", async () => {
+    const statuses: number[] = [];
+    const fetchImpl = (async () =>
+      new Response("{}", { status: 503, headers: { "content-type": "application/json" } })) as typeof fetch;
+    const client = createApiClient({
+      fetch: fetchImpl,
+      baseUrl: "http://localhost",
+      onResponseStatus: (status) => statuses.push(status),
+    });
+    await client.GET("/api/v1/billing/claims" as never, {} as never);
+    expect(statuses).toEqual([503]);
+  });
+
+  it("does not observe responses when no hook is given (leaf-safe default)", async () => {
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.GET("/api/v1/billing/claims" as never, {} as never);
+    expect(requests).toHaveLength(1); // no throw, no behavior change
+  });
+});

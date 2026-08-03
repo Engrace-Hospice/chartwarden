@@ -1,3 +1,4 @@
+import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/22-documents — M22 Document Management screen registration (Track B, ADR-0030, M22-T10).
 // The §5.1 read surfaces that have a backing M22 read route on the generated client: DOC.Explorer (tenant-wide
 // document browse + filter), DOC.VersionHistory (the per-document version chain), INTAKE.BatchDetail (the
@@ -9,13 +10,23 @@
 // SUD content + legal-hold blocks are server-side, never a frontend hide). The upload dialog / tag editor /
 // signed-URL preview / DocLens side-by-side review / overlay editor write+modal surfaces fill in as those write
 // paths harden; the portal §5.3 surfaces are M31 Phase-2 forward-seams.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import type { ScreenRegistryModule } from "@wardenx/types";
-import { DocumentExplorer } from "./document-explorer";
-import { IntakeBatchDetail } from "./intake-batch-detail";
-import { PatientDocuments } from "./patient-documents";
-import { TemplateLibrary } from "./template-library";
-import { VersionHistory } from "./version-history";
+const DocumentExplorer = lazy(() =>
+  import("./document-explorer").then((m) => ({ default: m.DocumentExplorer })),
+);
+const IntakeBatchDetail = lazy(() =>
+  import("./intake-batch-detail").then((m) => ({ default: m.IntakeBatchDetail })),
+);
+const PatientDocuments = lazy(() =>
+  import("./patient-documents").then((m) => ({ default: m.PatientDocuments })),
+);
+const TemplateLibrary = lazy(() =>
+  import("./template-library").then((m) => ({ default: m.TemplateLibrary })),
+);
+const VersionHistory = lazy(() =>
+  import("./version-history").then((m) => ({ default: m.VersionHistory })),
+);
 
 export const documentScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 22,
