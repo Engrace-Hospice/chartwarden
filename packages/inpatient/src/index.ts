@@ -15,6 +15,7 @@ export * from "./domain/equipment/inspection";
 export * from "./domain/meal/intake";
 export * from "./domain/census/bed-day-calculator";
 export * from "./domain/census/snapshot-builder";
+export * from "./ai-block";
 export * from "./domain/gip-criteria/schema";
 export * from "./domain/gip-criteria/validate";
 export * from "./domain/iv-safety/titration-window-catalog";

@@ -418,7 +418,7 @@ describe("M32-T06 — D18's prohibited-zone registry", () => {
     approvedAt: null,
   });
 
-  it("declares all six D18 zones", () => {
+  it("declares all seven D18 zones", () => {
     expect(AI_PROHIBITED_ZONES.map((z) => z.module)).toEqual([
       "m12",
       "m13",
@@ -426,6 +426,7 @@ describe("M32-T06 — D18's prohibited-zone registry", () => {
       "m21",
       "m27",
       "m28",
+      "m37",
     ]);
   });
 
