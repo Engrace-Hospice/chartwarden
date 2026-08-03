@@ -185,11 +185,17 @@ export interface SubscriptionAdminView extends SubscriptionView {
   readonly planTier: PlanTier;
   readonly stripeSubscriptionId: string | null;
   readonly startedAt: string;
+  /** The tenant's org display name, resolved via the M2 `OrganizationReader` seam (M35A-T03). Empty
+   *  string when the reader is unbound / the org is not found — the console falls back to the raw id. */
+  readonly organizationName: string;
 }
 
 export interface RefundView {
   readonly id: string;
   readonly organizationId: string;
+  /** The tenant's org display name, resolved via the M2 `OrganizationReader` seam (M35A-T03). Empty
+   *  string when the reader is unbound / the org is not found — the refund queue falls back to the raw id. */
+  readonly organizationName: string;
   readonly invoiceId: string;
   readonly amountCents: number;
   readonly kind: RefundKind;
@@ -231,6 +237,24 @@ export interface DunningView {
   readonly stage: DunningStage;
   readonly enteredAt: string;
   readonly nextAttemptAt: string | null;
+}
+
+/** One row of the §5.2 dunning screen: a subscription currently in an OPEN dunning stage, labelled with its
+ *  org display name (M2 seam) + plan so the console can render the queue without a second round-trip. */
+export interface DunningListItemView {
+  readonly subscriptionId: string;
+  readonly organizationId: string;
+  readonly organizationName: string;
+  readonly planName: string;
+  readonly subscriptionStatus: SubscriptionStatus;
+  readonly stage: DunningStage;
+  readonly enteredAt: string;
+  readonly nextAttemptAt: string | null;
+}
+
+/** Filters for the cross-tenant dunning list (§5.2). `stage` narrows to one open dunning stage. */
+export interface DunningListFilters {
+  readonly stage?: DunningStage;
 }
 
 export interface RevenueSnapshotView {
@@ -371,6 +395,7 @@ export interface M35RouteService {
 
   // ── platform-ops plans (§4.2) ──
   adminListPlans(): Promise<PlanAdminView[]>;
+  adminGetPlan(planId: string): Promise<PlanAdminView>;
   adminCreatePlan(actor: M35WriteActor, args: CreatePlanArgs): Promise<PlanAdminView>;
   adminUpdatePlan(actor: M35WriteActor, planId: string, args: UpdatePlanArgs): Promise<PlanAdminView>;
   adminActivatePlan(actor: M35WriteActor, planId: string): Promise<PlanAdminView>;
@@ -388,6 +413,7 @@ export interface M35RouteService {
   adminRevokePromo(actor: M35WriteActor, subscriptionId: string, applicationId: string): Promise<AckView>;
 
   // ── platform-ops dunning (§4.2) ──
+  adminListDunning(filters: DunningListFilters, cursor?: string, limit?: number): Promise<CursorPage<DunningListItemView>>;
   adminSkipDunningStage(actor: M35WriteActor, subscriptionId: string): Promise<DunningView>;
   adminResetDunning(actor: M35WriteActor, subscriptionId: string): Promise<DunningView>;
 
@@ -396,9 +422,11 @@ export interface M35RouteService {
   approveRefund(actor: M35WriteActor, refundId: string): Promise<RefundView>;
   denyRefund(actor: M35WriteActor, refundId: string, reason: string): Promise<RefundView>;
   listRefunds(cursor?: string, limit?: number): Promise<CursorPage<RefundView>>;
+  adminGetRefund(refundId: string): Promise<RefundView>;
 
   // ── platform-ops promos (§4.2) ──
   adminListPromos(): Promise<PromoView[]>;
+  adminGetPromo(promoId: string): Promise<PromoView>;
   adminCreatePromo(actor: M35WriteActor, args: CreatePromoArgs): Promise<PromoView>;
   adminUpdatePromo(actor: M35WriteActor, promoId: string, args: UpdatePromoArgs): Promise<PromoView>;
   adminDeactivatePromo(actor: M35WriteActor, promoId: string): Promise<PromoView>;

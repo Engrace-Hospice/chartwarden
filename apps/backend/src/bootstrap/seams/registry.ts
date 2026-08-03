@@ -132,6 +132,7 @@ import {
   supplyCostProviderDenyStub,
   supplyFulfillmentProviderDenyStub,
   tenantOrgCreationProviderDenyStub,
+  organizationReaderDenyStub,
   terminologyProviderDenyStub,
   triageCallMetricsProviderDenyStub,
   triageCallProviderDenyStub,
@@ -236,6 +237,17 @@ export const REQUIRED_SEAMS = [
     ownerModule: 2,
     phi: false,
     denyStub: tenantOrgCreationProviderDenyStub,
+  },
+  // M2 (org display metadata) — the by-id `organization` label reader M35's platform-ops admin lists consume
+  // to render a cross-tenant row's org NAME instead of a raw UUID (M35A-T03). Owned by M2 (it owns the
+  // `organization` table); org display metadata (name/slug), not a patient record → not PHI. Fail-closed
+  // default RESOLVES NO NAMES (graceful — a display enrichment never fails an authorized list) until M2
+  // registers the real Drizzle-backed reader at init.
+  {
+    key: "OrganizationReader",
+    ownerModule: 2,
+    phi: false,
+    denyStub: organizationReaderDenyStub,
   },
   // M38 (Terminology) — the version-aware code/value-set resolution surface every clinical and
   // billing module imports (§4.5). Reference data, not a patient record → not PHI; still

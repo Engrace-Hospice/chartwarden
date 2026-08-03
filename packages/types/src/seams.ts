@@ -148,6 +148,7 @@ export type SeamName =
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
   | "TenantOrgCreationProvider" // M2 — create/attach the per-tenant org M34's provision worker needs (§7.1)
+  | "OrganizationReader" // M2 — resolve org display metadata by id (M35 admin lists label cross-tenant rows)
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
   | "AlertEmitter" // M36 — emit an event; M36 resolves rules + recipients + fan-out (every module)
   | "MessagingProvider" // M36 — channel/message surface (DEK-encrypted bodies; PHI read surface)
@@ -548,6 +549,29 @@ export interface TenantOrgCreationProvider {
   createOrganizationForTenant(intent: TenantOrgCreationIntent): Promise<TenantOrgCreationResult>;
 }
 
+/** A PHI-free display summary of one tenant `organization` row (M2 owns the table). Carries only the
+ *  non-sensitive labels a cross-tenant admin surface renders — the display name + legal name + slug —
+ *  never secrets, contact PII, or config. `organizationId` echoes the requested id so a caller can build
+ *  a lookup map without positional assumptions. */
+export interface OrganizationSummary {
+  readonly organizationId: string;
+  readonly displayName: string;
+  readonly legalName: string;
+  readonly slug: string;
+}
+
+/**
+ * M2 — resolve display metadata for a set of organizations by id. M2 owns the `organization` table (the
+ * tenancy root, NON_ORG_SCOPED), so it is the natural producer; M35's platform-ops admin lists CONSUME this
+ * to label cross-tenant rows with an org NAME instead of a raw UUID (M35A-T03). Consumed through the M1 seam
+ * registry (no new `dependsOn` edge — neither module imports the other's package; the contract is leaf-typed
+ * here). BATCH by design (the caller resolves a page of ids at once → no N+1); ids with no matching org are
+ * simply omitted from the result (the consumer falls back to the raw id), never fabricated. Read-only.
+ */
+export interface OrganizationReader {
+  readByIds(organizationIds: readonly string[]): Promise<readonly OrganizationSummary[]>;
+}
+
 /** Map from seam name → its interface type, so the registry is type-safe. */
 export interface SeamContracts {
   CaseloadProvider: CaseloadProvider;
@@ -581,6 +605,9 @@ export interface SeamContracts {
   // M2 — LEAF-TYPED: M34's provision worker (CONSUMER) and M2 (PRODUCER) can't import each other's
   // package, so the contract lives here. M2 registers the real Drizzle-backed provider over the deny-stub.
   TenantOrgCreationProvider: TenantOrgCreationProvider;
+  // M2 — LEAF-TYPED: M35's platform-ops admin lists (CONSUMER) and M2 (PRODUCER) can't import each other's
+  // package, so the contract lives here. M2 registers the real Drizzle-backed reader over the deny-stub.
+  OrganizationReader: OrganizationReader;
   // M38's `TerminologyProvider` is intentionally OPAQUE (`unknown`) here. Its rich interface
   // (per-system generics, FHIR projections) lives in the feature package @wardenx/terminology,
   // which this leaf may not import (`leaves-stay-leaves`, ARCHITECTURE §25.15). Unlike the

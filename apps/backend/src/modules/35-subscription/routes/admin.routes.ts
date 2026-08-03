@@ -17,6 +17,7 @@ import {
   CreatePlanBodySchema,
   CreatePromoBodySchema,
   DenyRefundBodySchema,
+  DunningListQuerySchema,
   IdParamsSchema,
   ListQuerySchema,
   OrgUsageParamsSchema,
@@ -43,6 +44,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   // ── plans ──
   app.get("/api/admin/plans", { preHandler: [P("plan.admin.read"), PLATFORM_SCOPE("plan.admin.read")] }, async () =>
     service.adminListPlans(),
+  );
+  app.get(
+    "/api/admin/plans/:id",
+    { preHandler: [P("plan.admin.read"), PLATFORM_SCOPE("plan.admin.read")] },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.adminGetPlan(id);
+    },
   );
   app.post(
     "/api/admin/plans",
@@ -166,6 +175,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
 
   // ── dunning ──
+  app.get(
+    "/api/admin/dunning",
+    { preHandler: [P("dunning.admin.read"), PLATFORM_SCOPE("dunning.admin.read")] },
+    async (request) => {
+      const q = parse(DunningListQuerySchema, request.query);
+      return service.adminListDunning({ stage: q.stage }, q.cursor, q.limit);
+    },
+  );
   app.post(
     "/api/admin/dunning/:subscriptionId/skip_stage",
     { preHandler: [P("dunning.admin.override"), PLATFORM_SCOPE("dunning.admin.override"), STEP_UP("dunning.admin.override"), IDEMPOTENT] },
@@ -218,10 +235,26 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
     const q = parse(ListQuerySchema, request.query);
     return service.listRefunds(q.cursor, q.limit);
   });
+  app.get(
+    "/api/admin/refunds/:id",
+    { preHandler: [P("refund.read"), PLATFORM_SCOPE("refund.read")] },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.adminGetRefund(id);
+    },
+  );
 
   // ── promos ──
   app.get("/api/admin/promos", { preHandler: [P("promo.admin.read"), PLATFORM_SCOPE("promo.admin.read")] }, async () =>
     service.adminListPromos(),
+  );
+  app.get(
+    "/api/admin/promos/:id",
+    { preHandler: [P("promo.admin.read"), PLATFORM_SCOPE("promo.admin.read")] },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.adminGetPromo(id);
+    },
   );
   app.post(
     "/api/admin/promos",

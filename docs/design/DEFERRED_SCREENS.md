@@ -777,14 +777,33 @@ Subscription (M35; done³⁰), IPU Bed Board (M37). See each spec's `Module:` li
 > M35's SaaS-subscription surfaces are namespaced under `/subscription/*` to stay cleanly separate from the
 > clinical revenue cycle (the `arch:ui-parity` duplicate-path gate is what surfaced the collision).
 >
-> **Honest gaps, stated rather than faked.** The platform-ops **§5.2 admin console** (`/admin/plans`,
-> `/admin/subscriptions`, `/admin/refunds`, `/admin/revenue`, `/admin/webhooks/stripe`, …) is a separate
-> forward surface — it belongs to `apps/admin` and is NOT registered here. There is no tenant-facing
-> `promo`/`dunning` **read** key, so those two screens gate nav on `subscription.read` (server-authoritative
-> as always); the promo screen applies a code but the read DTO does not return the list of already-applied
-> promos, so that is stated on the screen rather than fabricated. Mutating actions (change plan, add/detach
-> card, apply promo) present the entry and surface the server's outcome; the card-entry Stripe Element +
-> setup-intent handshake is wired against the live routes but the vendor SDK mounts in the running app.
+> **§5.2 platform-ops admin console now LIVE (Wave Admin-Console, M35A-T03–T08) — `done`.** The 14
+> WardenX-staff screens live under `apps/admin/src/modules/35-subscription-billing`, registered into the
+> **M34-owned** `apps/admin` shell via `subscriptionAdminScreens` (`apps/admin/src/main.tsx`, ADR-0030 — M34
+> owns the shell, M35 contributes a slice, exactly as M1 owns `apps/web`). They cover Plans (list + create +
+> the meter/pricing editor with Activate→Stripe-sync), Promos (CRUD + redemption counts), Subscriptions
+> (cross-tenant list with status filter + detail with usage/refund drill-down + the pause & apply-promo gated
+> actions), Refunds (the sensitive four-eyes path: queue → request → approve/deny, surfacing the
+> `REFUND_FOUR_EYES` 403 and a stale step-up as first-class outcomes), Dunning (over the new
+> `GET /api/admin/dunning`, per-subscription skip/reset overrides), Revenue (MRR/ARR KPIs + trailing
+> new/expansion/contraction/churn snapshots), tenant Usage drill-down, and the Stripe webhook explorer with
+> Replay. Nav gating uses the real §4.7 `billing_admin.*` keys (`plan.admin.read`, `subscription.admin.read`,
+> `refund.read`/`refund.request`/`refund.approve`, `dunning.admin.read` — the M35A-T03 read key, `revenue.admin.read`,
+> `usage.admin.read`, `stripe.admin.read`, …); the SERVER stays the only enforcement point. Built to Lantern
+> (CSS-var tokens, tabular-nums, the §6.6 StatusPill taxonomy resolved once through `status.ts`). The
+> ui-parity/frame-fidelity gates scan `apps/web` only, so `apps/admin` is covered by a registry unit test
+> substitute (`__tests__/screens.test.ts`: component binding, unique ids/paths, `requiredPermission` validated
+> against the real `packages/auth` catalog, dup-registration throw). The cross-tenant admin list DTOs carry an
+> org DISPLAY NAME resolved via the M2 `OrganizationReader` seam (M35A-T03), not a raw UUID. Phase-3 flags
+> stay OFF: the "Sync to Stripe"/"Replay" CTAs drive the existing outbox-only routes; the vendor SDK does not
+> mount in this surface.
+>
+> **Tenant-side honest gaps (unchanged).** There is no tenant-facing `promo`/`dunning` **read** key, so those
+> two §5.1 screens gate nav on `subscription.read` (server-authoritative as always); the tenant promo screen
+> applies a code but the read DTO does not return the list of already-applied promos, so that is stated on the
+> screen rather than fabricated. Mutating tenant actions present the entry and surface the server's outcome;
+> the card-entry Stripe Element + setup-intent handshake is wired against the live routes but the vendor SDK
+> mounts in the running app.
 
 ---
 

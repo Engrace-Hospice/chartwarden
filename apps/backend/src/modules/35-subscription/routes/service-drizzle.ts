@@ -15,8 +15,8 @@
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { ConflictError, NotFoundError, type OrganizationReader, WardenXError } from "@wardenx/types";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 import type {
@@ -30,6 +30,8 @@ import type {
   CreatePromoArgs,
   CreateSubscriptionArgs,
   CurrentRevenueView,
+  DunningListFilters,
+  DunningListItemView,
   DunningView,
   InvoiceDetailView,
   InvoiceListItemView,
@@ -96,6 +98,9 @@ const failClosedPlatformRunner: PlatformRunner = async () => {
 export interface M35RouteServiceDeps {
   readonly outbox?: WriteOutboxPort;
   readonly platformRunner?: PlatformRunner;
+  /** M2 `OrganizationReader` seam — labels cross-tenant platform-ops list rows with an org display NAME
+   *  (M35A-T03). Absent → names resolve to "" (the console falls back to the raw id); never fabricated. */
+  readonly organizationReader?: OrganizationReader;
   readonly now?: () => Date;
 }
 
@@ -199,12 +204,14 @@ function subscriptionAdminView(
   plan: PlanRow | null,
   pm: PmRow | null,
   dunningStage: SubscriptionView["dunningStage"],
+  organizationName: string,
 ): SubscriptionAdminView {
   return {
     ...subscriptionView(sub, plan, pm, dunningStage),
     planTier: (plan?.tier ?? "starter") as SubscriptionAdminView["planTier"],
     stripeSubscriptionId: sub.stripeSubscriptionId,
     startedAt: isoReq(sub.startedAt),
+    organizationName,
   };
 }
 
@@ -236,11 +243,12 @@ function invoiceListItemView(inv: InvRow): InvoiceListItemView {
   };
 }
 
-function refundView(r: RefundRow | undefined): RefundView {
+function refundView(r: RefundRow | undefined, organizationName: string): RefundView {
   r = req(r, "refund");
   return {
     id: r.id,
     organizationId: r.organizationId,
+    organizationName,
     invoiceId: r.invoiceId,
     amountCents: r.amountCents,
     kind: r.kind as RefundView["kind"],
@@ -387,6 +395,23 @@ export function buildDrizzleM35RouteService(
     if (!sub.defaultPaymentMethodId) return null;
     const [row] = await tx.select().from(PM).where(eq(PM.id, sub.defaultPaymentMethodId)).limit(1);
     return row ?? null;
+  }
+
+  /**
+   * Resolve org id → display name via the M2 `OrganizationReader` seam (M35A-T03), batched to avoid N+1.
+   * The reader owns its own (non-org-scoped) db handle, so this is safe to call inside a platform-context
+   * block. Absent reader / unresolved id → the id is simply absent from the map; the caller falls back to "".
+   */
+  async function orgNameMap(orgIds: readonly string[]): Promise<Map<string, string>> {
+    const ids = [...new Set(orgIds.filter((id) => id.length > 0))];
+    if (ids.length === 0 || !deps.organizationReader) return new Map();
+    const rows = await deps.organizationReader.readByIds(ids);
+    return new Map(rows.map((r) => [r.organizationId, r.displayName]));
+  }
+
+  /** Single-org convenience over {@link orgNameMap}: the display name, or "" when unresolved. */
+  async function orgNameOf(orgId: string): Promise<string> {
+    return (await orgNameMap([orgId])).get(orgId) ?? "";
   }
 
   return {
@@ -897,6 +922,15 @@ export function buildDrizzleM35RouteService(
       });
     },
 
+    async adminGetPlan(planId) {
+      return platform(async (tx) => {
+        const [plan] = await tx.select().from(PL).where(eq(PL.id, planId)).limit(1);
+        if (!plan) throw new NotFoundError("plan not found");
+        const meters = await tx.select().from(PMTR).where(eq(PMTR.planId, planId));
+        return planAdminView(plan, meters);
+      });
+    },
+
     async adminCreatePlan(_actor, args: CreatePlanArgs) {
       return platform(async (tx) => {
         const [plan] = await tx
@@ -1017,11 +1051,14 @@ export function buildDrizzleM35RouteService(
           .where(conds.length ? and(...conds) : undefined)
           .orderBy(desc(S.startedAt), desc(S.id));
         const page = pageOf(rows, (r) => isoReq(r.startedAt), cursor, limit);
+        const names = await orgNameMap(page.items.map((s) => s.organizationId));
         const items: SubscriptionAdminView[] = [];
         for (const sub of page.items) {
           const plan = await loadPlan(tx, sub.planId);
           const pm = await loadDefaultPm(tx, sub);
-          items.push(subscriptionAdminView(sub, plan, pm, await openDunningStage(tx, sub.id)));
+          items.push(
+            subscriptionAdminView(sub, plan, pm, await openDunningStage(tx, sub.id), names.get(sub.organizationId) ?? ""),
+          );
         }
         return { items, nextCursor: page.nextCursor, hasMore: page.hasMore };
       });
@@ -1033,7 +1070,7 @@ export function buildDrizzleM35RouteService(
         if (!sub) throw new NotFoundError("subscription not found");
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView(sub, plan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionAdminView(sub, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
       });
     },
 
@@ -1063,7 +1100,7 @@ export function buildDrizzleM35RouteService(
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView({ ...sub, status: "paused", pausedAt: at, pausedUntil: until }, plan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionAdminView({ ...sub, status: "paused", pausedAt: at, pausedUntil: until }, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
       });
     },
 
@@ -1092,7 +1129,7 @@ export function buildDrizzleM35RouteService(
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView({ ...sub, status: "active" }, plan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionAdminView({ ...sub, status: "active" }, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
       });
     },
 
@@ -1121,7 +1158,7 @@ export function buildDrizzleM35RouteService(
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView({ ...sub, status: "canceled", canceledAt: at }, plan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionAdminView({ ...sub, status: "canceled", canceledAt: at }, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
       });
     },
 
@@ -1171,6 +1208,32 @@ export function buildDrizzleM35RouteService(
     },
 
     // ── platform-ops: dunning ──────────────────────────────────────────────────────────────────────
+    async adminListDunning(filters: DunningListFilters, cursor, limit) {
+      return platform(async (tx) => {
+        const conds = [isNull(DUN.exitedAt)];
+        if (filters.stage) conds.push(eq(DUN.stage, filters.stage));
+        const rows = await tx.select().from(DUN).where(and(...conds)).orderBy(desc(DUN.enteredAt), desc(DUN.id));
+        const page = pageOf(rows, (r) => isoReq(r.enteredAt), cursor, limit);
+        const names = await orgNameMap(page.items.map((d) => d.organizationId));
+        const items: DunningListItemView[] = [];
+        for (const d of page.items) {
+          const [sub] = await tx.select().from(S).where(eq(S.id, d.subscriptionId)).limit(1);
+          const plan = sub ? await loadPlan(tx, sub.planId) : null;
+          items.push({
+            subscriptionId: d.subscriptionId,
+            organizationId: d.organizationId,
+            organizationName: names.get(d.organizationId) ?? "",
+            planName: plan?.name ?? "",
+            subscriptionStatus: (sub?.status ?? "past_due") as DunningListItemView["subscriptionStatus"],
+            stage: d.stage as DunningListItemView["stage"],
+            enteredAt: isoReq(d.enteredAt),
+            nextAttemptAt: iso(d.nextAttemptAt),
+          });
+        }
+        return { items, nextCursor: page.nextCursor, hasMore: page.hasMore };
+      });
+    },
+
     async adminSkipDunningStage(_actor, subscriptionId): Promise<DunningView> {
       return platform(async (tx) => {
         const [open] = await tx
@@ -1230,7 +1293,7 @@ export function buildDrizzleM35RouteService(
           "refund",
           ref.id,
         );
-        return refundView(ref);
+        return refundView(ref, await orgNameOf(inv.organizationId));
       });
     },
 
@@ -1257,7 +1320,7 @@ export function buildDrizzleM35RouteService(
           "refund",
           ref.id,
         );
-        return refundView(updated);
+        return refundView(updated, await orgNameOf(ref.organizationId));
       });
     },
 
@@ -1272,7 +1335,7 @@ export function buildDrizzleM35RouteService(
           .set({ status: "denied", deniedByMembershipId: actor.membershipId, deniedAt: at, deniedReason: reason })
           .where(eq(REF.id, refundId))
           .returning();
-        return refundView(updated);
+        return refundView(updated, await orgNameOf(ref.organizationId));
       });
     },
 
@@ -1280,7 +1343,20 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const rows = await tx.select().from(REF).orderBy(desc(REF.requestedAt), desc(REF.id));
         const page = pageOf(rows, (r) => isoReq(r.requestedAt), cursor, limit);
-        return { items: page.items.map(refundView), nextCursor: page.nextCursor, hasMore: page.hasMore };
+        const names = await orgNameMap(page.items.map((r) => r.organizationId));
+        return {
+          items: page.items.map((r) => refundView(r, names.get(r.organizationId) ?? "")),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
+      });
+    },
+
+    async adminGetRefund(refundId): Promise<RefundView> {
+      return platform(async (tx) => {
+        const [ref] = await tx.select().from(REF).where(eq(REF.id, refundId)).limit(1);
+        if (!ref) throw new NotFoundError("refund not found");
+        return refundView(ref, await orgNameOf(ref.organizationId));
       });
     },
 
@@ -1289,6 +1365,14 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const rows = await tx.select().from(PROMO).orderBy(desc(PROMO.createdAt));
         return rows.map(promoView);
+      });
+    },
+
+    async adminGetPromo(promoId) {
+      return platform(async (tx) => {
+        const [promo] = await tx.select().from(PROMO).where(eq(PROMO.id, promoId)).limit(1);
+        if (!promo) throw new NotFoundError("promo not found");
+        return promoView(promo);
       });
     },
 

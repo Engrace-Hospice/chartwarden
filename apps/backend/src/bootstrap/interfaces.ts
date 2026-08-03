@@ -68,6 +68,8 @@ export type {
   OnCallProvider,
   OrderProvider,
   OrderSignatureProvider,
+  OrganizationReader,
+  OrganizationSummary,
   ReconciliationProvider,
   RefillInboxProvider,
   ScaleSeriesProvider,

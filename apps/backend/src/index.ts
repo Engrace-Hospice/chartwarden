@@ -1490,7 +1490,13 @@ if ((import.meta as { main?: boolean }).main) {
           // so the admin surface refuses (503) rather than reading nothing under tenant RLS. The §4.3 webhook
           // stays fail-closed (503) until the live Stripe secret + DEK transport binds.
           mountM35Routes(app, {
-            service: buildDrizzleM35RouteService(dbHandle.db, { outbox: m35OutboxPublisher }),
+            service: buildDrizzleM35RouteService(dbHandle.db, {
+              outbox: m35OutboxPublisher,
+              // M35A-T03 — resolve the M2 `OrganizationReader` seam LAZILY (per call, after validateSeams has
+              // applied its graceful deny-stub / M2 has registered the real reader), so the platform-ops admin
+              // lists label cross-tenant rows with an org display name instead of a raw UUID.
+              organizationReader: { readByIds: (ids) => getSeam("OrganizationReader").readByIds(ids) },
+            }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every

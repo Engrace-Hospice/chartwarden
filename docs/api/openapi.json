@@ -6,6 +6,229 @@
     "description": "Generated from backend routes + TypeBox enrichments (ADR-0032). Source of truth for the typed frontend client until routes are wired to Fastify schema."
   },
   "paths": {
+    "/api/admin/dunning": {
+      "get": {
+        "operationId": "getApiAdminDunning",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "List subscriptions in dunning (admin)",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "day_1",
+                  "type": "string"
+                },
+                {
+                  "const": "day_7",
+                  "type": "string"
+                },
+                {
+                  "const": "day_14",
+                  "type": "string"
+                },
+                {
+                  "const": "day_21",
+                  "type": "string"
+                },
+                {
+                  "const": "day_28_suspend",
+                  "type": "string"
+                },
+                {
+                  "const": "day_60_cancel",
+                  "type": "string"
+                },
+                {
+                  "const": "resolved",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "subscriptionId",
+                          "organizationId",
+                          "organizationName",
+                          "planName",
+                          "subscriptionStatus",
+                          "stage",
+                          "enteredAt",
+                          "nextAttemptAt"
+                        ],
+                        "properties": {
+                          "subscriptionId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationName": {
+                            "type": "string"
+                          },
+                          "planName": {
+                            "type": "string"
+                          },
+                          "subscriptionStatus": {
+                            "anyOf": [
+                              {
+                                "const": "trialing",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past_due",
+                                "type": "string"
+                              },
+                              {
+                                "const": "at_risk",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "canceled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "paused",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "stage": {
+                            "anyOf": [
+                              {
+                                "const": "none",
+                                "type": "string"
+                              },
+                              {
+                                "const": "day_1",
+                                "type": "string"
+                              },
+                              {
+                                "const": "day_7",
+                                "type": "string"
+                              },
+                              {
+                                "const": "day_14",
+                                "type": "string"
+                              },
+                              {
+                                "const": "day_21",
+                                "type": "string"
+                              },
+                              {
+                                "const": "day_28_suspend",
+                                "type": "string"
+                              },
+                              {
+                                "const": "day_60_cancel",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "enteredAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "nextAttemptAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/admin/dunning/{subscriptionId}/reset": {
       "post": {
         "operationId": "postApiAdminDunningBySubscriptionIdReset",
@@ -640,6 +863,192 @@
       }
     },
     "/api/admin/plans/{id}": {
+      "get": {
+        "operationId": "getApiAdminPlansById",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Read a plan (admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "slug",
+                        "name",
+                        "description",
+                        "tier",
+                        "cadence",
+                        "basePriceCents",
+                        "currencyCode",
+                        "trialPeriodDays",
+                        "meters"
+                      ],
+                      "properties": {
+                        "slug": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "tier": {
+                          "anyOf": [
+                            {
+                              "const": "starter",
+                              "type": "string"
+                            },
+                            {
+                              "const": "professional",
+                              "type": "string"
+                            },
+                            {
+                              "const": "enterprise",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "cadence": {
+                          "anyOf": [
+                            {
+                              "const": "monthly",
+                              "type": "string"
+                            },
+                            {
+                              "const": "annual",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "basePriceCents": {
+                          "type": "integer"
+                        },
+                        "currencyCode": {
+                          "type": "string"
+                        },
+                        "trialPeriodDays": {
+                          "type": "integer"
+                        },
+                        "meters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "eventType",
+                              "label",
+                              "inclusiveQuantity",
+                              "overageUnitPriceCents",
+                              "billingAggregation"
+                            ],
+                            "properties": {
+                              "eventType": {
+                                "type": "string"
+                              },
+                              "label": {
+                                "type": "string"
+                              },
+                              "inclusiveQuantity": {
+                                "type": "integer"
+                              },
+                              "overageUnitPriceCents": {
+                                "type": "integer"
+                              },
+                              "billingAggregation": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "isActive",
+                        "deprecatedAt",
+                        "stripeProductId",
+                        "stripePriceId"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "isActive": {
+                          "type": "boolean"
+                        },
+                        "deprecatedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "stripeProductId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "stripePriceId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiAdminPlansById",
         "tags": [
@@ -1806,6 +2215,138 @@
       }
     },
     "/api/admin/promos/{id}": {
+      "get": {
+        "operationId": "getApiAdminPromosById",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Read a promo (admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "code",
+                    "kind",
+                    "percentOff",
+                    "fixedOffCents",
+                    "duration",
+                    "durationInMonths",
+                    "validFrom",
+                    "validTo",
+                    "maxRedemptions",
+                    "redemptionCount",
+                    "isActive"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "percentOff": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fixedOffCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "duration": {
+                      "type": "string"
+                    },
+                    "durationInMonths": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "validFrom": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "validTo": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "maxRedemptions": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "redemptionCount": {
+                      "type": "integer"
+                    },
+                    "isActive": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "patch": {
         "operationId": "patchApiAdminPromosById",
         "tags": [
@@ -2140,6 +2681,7 @@
                         "required": [
                           "id",
                           "organizationId",
+                          "organizationName",
                           "invoiceId",
                           "amountCents",
                           "kind",
@@ -2160,6 +2702,9 @@
                           },
                           "organizationId": {
                             "format": "uuid",
+                            "type": "string"
+                          },
+                          "organizationName": {
                             "type": "string"
                           },
                           "invoiceId": {
@@ -2319,6 +2864,7 @@
                   "required": [
                     "id",
                     "organizationId",
+                    "organizationName",
                     "invoiceId",
                     "amountCents",
                     "kind",
@@ -2339,6 +2885,9 @@
                     },
                     "organizationId": {
                       "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationName": {
                       "type": "string"
                     },
                     "invoiceId": {
@@ -2534,6 +3083,184 @@
         }
       }
     },
+    "/api/admin/refunds/{id}": {
+      "get": {
+        "operationId": "getApiAdminRefundsById",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Read a refund (admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "organizationName",
+                    "invoiceId",
+                    "amountCents",
+                    "kind",
+                    "reasonCode",
+                    "status",
+                    "requestedByMembershipId",
+                    "requestedAt",
+                    "approvedByMembershipId",
+                    "approvedAt",
+                    "deniedReason",
+                    "executedAt",
+                    "stripeRefundId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationName": {
+                      "type": "string"
+                    },
+                    "invoiceId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "amountCents": {
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "full",
+                          "type": "string"
+                        },
+                        {
+                          "const": "partial",
+                          "type": "string"
+                        },
+                        {
+                          "const": "credit_only",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reasonCode": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "approved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "denied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "executed_success",
+                          "type": "string"
+                        },
+                        {
+                          "const": "executed_failed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedByMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "approvedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "approvedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deniedReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "executedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stripeRefundId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/admin/refunds/{id}/approve": {
       "post": {
         "operationId": "postApiAdminRefundsByIdApprove",
@@ -2561,6 +3288,7 @@
                   "required": [
                     "id",
                     "organizationId",
+                    "organizationName",
                     "invoiceId",
                     "amountCents",
                     "kind",
@@ -2581,6 +3309,9 @@
                     },
                     "organizationId": {
                       "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationName": {
                       "type": "string"
                     },
                     "invoiceId": {
@@ -2735,6 +3466,7 @@
                   "required": [
                     "id",
                     "organizationId",
+                    "organizationName",
                     "invoiceId",
                     "amountCents",
                     "kind",
@@ -2755,6 +3487,9 @@
                     },
                     "organizationId": {
                       "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationName": {
                       "type": "string"
                     },
                     "invoiceId": {
@@ -3437,7 +4172,8 @@
                             "required": [
                               "planTier",
                               "stripeSubscriptionId",
-                              "startedAt"
+                              "startedAt",
+                              "organizationName"
                             ],
                             "properties": {
                               "planTier": {
@@ -3468,6 +4204,9 @@
                               },
                               "startedAt": {
                                 "format": "date-time",
+                                "type": "string"
+                              },
+                              "organizationName": {
                                 "type": "string"
                               }
                             }
@@ -3713,7 +4452,8 @@
                       "required": [
                         "planTier",
                         "stripeSubscriptionId",
-                        "startedAt"
+                        "startedAt",
+                        "organizationName"
                       ],
                       "properties": {
                         "planTier": {
@@ -3744,6 +4484,9 @@
                         },
                         "startedAt": {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        "organizationName": {
                           "type": "string"
                         }
                       }
@@ -4051,7 +4794,8 @@
                       "required": [
                         "planTier",
                         "stripeSubscriptionId",
-                        "startedAt"
+                        "startedAt",
+                        "organizationName"
                       ],
                       "properties": {
                         "planTier": {
@@ -4082,6 +4826,9 @@
                         },
                         "startedAt": {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        "organizationName": {
                           "type": "string"
                         }
                       }
@@ -4311,7 +5058,8 @@
                       "required": [
                         "planTier",
                         "stripeSubscriptionId",
-                        "startedAt"
+                        "startedAt",
+                        "organizationName"
                       ],
                       "properties": {
                         "planTier": {
@@ -4342,6 +5090,9 @@
                         },
                         "startedAt": {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        "organizationName": {
                           "type": "string"
                         }
                       }
@@ -4587,7 +5338,8 @@
                       "required": [
                         "planTier",
                         "stripeSubscriptionId",
-                        "startedAt"
+                        "startedAt",
+                        "organizationName"
                       ],
                       "properties": {
                         "planTier": {
@@ -4618,6 +5370,9 @@
                         },
                         "startedAt": {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        "organizationName": {
                           "type": "string"
                         }
                       }

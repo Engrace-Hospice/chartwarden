@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1135,
-    "enriched": 1129,
+    "routes": 1139,
+    "enriched": 1133,
     "deficit": 6,
     "mutating": 647,
     "mutatingNoBody": 104,
-    "gets": 460,
+    "gets": 464,
     "getsNoResponse": 62
   },
   "modules": [
@@ -331,12 +331,12 @@
     },
     {
       "module": "35-subscription",
-      "routes": 50,
-      "enriched": 50,
+      "routes": 54,
+      "enriched": 54,
       "deficit": 0,
       "mutating": 30,
       "mutatingNoBody": 15,
-      "gets": 19,
+      "gets": 23,
       "getsNoResponse": 0
     },
     {
