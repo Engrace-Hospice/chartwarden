@@ -1,0 +1,891 @@
+// apps/backend/__tests__/portal-inject.test.ts — M31 (Patient/Family Portal & Telehealth) HTTP-layer
+// route-inventory smoke suite (TASK-050A, TEST-001 closure for Module 31).
+//
+// Module 31 had ZERO Fastify `.inject()` coverage before this file: `portal-abac-routes.test.ts`,
+// `portal-lifecycle.test.ts`, `portal-read-surfaces.test.ts`, `portal-seams.test.ts`,
+// `portal-telehealth.test.ts` and `portal-write-paths.test.ts` all exercise pure functions / the ABAC
+// predicate builder directly, so a mis-wired guard, a typo'd permission key, or a schema that never reaches
+// the handler is invisible to every one of them — only a real `inject()` through the FULL M1 middleware
+// chain (auth → RBAC → ABAC → TypeBox → handler) catches that class of bug. This file is that pass, cloned
+// from `orders-routes.test.ts` / the more recent `discipline-plans-inject.test.ts` `ROUTE_CASES` +
+// `describe.each` shape (the current TASK-050A template, two batches of 14 modules in): `buildServer()`
+// mounts the host, `mountM31Routes()` mounts the §4.1 fifty-three-route inventory over a hand-rolled
+// in-memory `PortalStore` (M31 ships no `createInMemory*Backend`/`createInMemoryPortalStore` export the way
+// M11 does — `createInMemoryM31SeamStores` in `seams/stores.ts` covers only the seven seam ports, not the
+// extra owned-table route ops `PortalOwnedTableOps` needs, so this file owns its own fake, seeded through
+// the SAME `PortalAbacResolver` shape the real §4.7 predicates consume via `buildPortalAbacResolverFromStore`).
+// A fresh predicate registry is built per server from `buildPortalAbacPredicates` (the M11-T06 precedent);
+// `step_up_recent` (M3's predicate, not M31's) is stubbed to always-pass so the six step-up routes' 2xx path
+// is actually exercised.
+//
+// PORTAL AUTH SURFACE: unlike a plain staff module, M31 has TWO acting session shapes. Staff/admin routes
+// (`/api/v1/admin/...`, the staff-side telehealth join/leave/stop-recording/end) run under the ordinary
+// header-auth shim with no portal attributes (`actor.sessionClass` defaults `"staff"`, guards.ts's
+// `ABAC_IN_ORG`). Patient/caregiver-facing routes (`/api/v1/portal/...`, the portal-side telehealth
+// join/leave) need `request.context.attributes.sessionClass` ∈ {patient_portal, caregiver_portal,
+// bereaved_portal} PLUS `.portalAccountId` / `.portalPatientId` — the session anchors `actor.ts` reads
+// (never a body/query field, §8.3.1). The header-auth shim below is extended with
+// `x-test-session-class` / `x-test-portal-account` / `x-test-portal-patient` (the `bereavement-inject.test.ts`
+// precedent for exactly this class of module-specific session attribute).
+//
+// This is a WIRING smoke test, not a re-test of the §7/§8 write-path or ABAC RULES (already pinned by the
+// six pure-function suites above): the fake store applies each route's implied read/mutation directly rather
+// than re-deriving M31's write-path guards, so every 2xx case exists to prove the route is MOUNTED, gated on
+// the right §4.6 permission key + §4.7 ABAC predicate, and returns the documented status code.
+//
+// THREE GENUINE FINDINGS surfaced while grounding this file in the real route source (documented here, NOT
+// papered over — see the dedicated "M31 route smoke — findings" describe block below):
+//
+//   1. `POST /api/v1/portal/sessions/select-patient` — the whole point of this route is to bind the FIRST
+//      patient a portal session is scoped to (§8.1/D2). But its `ABAC_GRANT` guard (routes/guards.ts) reads
+//      its `patientId` target from `context.attributes.portalPatientId` — the SESSION — not from the request
+//      BODY the caller is trying to select. A freshly-minted session (no patient selected yet) therefore
+//      ALWAYS 403s at select-patient, even for a valid active grant, because the ABAC target-mapper demands
+//      the very fact the route exists to establish. The route's own comment ("the grant target is the
+//      SESSION account") suggests only the ACCOUNT id was meant to be session-sourced; `patientId` reads from
+//      the session too. A 2xx is reachable ONLY by pre-seeding the session's `portalPatientId` to the same
+//      value being "selected" — exactly the workaround the ROUTE_CASES table below documents.
+//   2. `POST /api/v1/portal/administrations/caregiver-attested` — `write.routes.ts`'s local `MedSummaryArm`
+//      structural interface types the medication-summary row as `{ medicationOrderId?: string; redacted?:
+//      boolean }` and gates on `!m.redacted`. The REAL upstream DTO (`PortalMedicationSummary` in
+//      `@wardenx/types`) has NO `redacted` field — it is named `isRedacted`. Because `arm<T>()` is an
+//      unchecked `as T` cast over `getSeam(...)`, this compiles cleanly but `m.redacted` is always
+//      `undefined` at runtime, so `!m.redacted` is always `true` — the "exclude SUD-redacted orders" check is
+//      a permanent no-op. A caregiver can attest a dose against an order M12 marked redacted. Same drift
+//      class as the M16 `ExternalSourceMetadata` field-name bug found in a prior TASK-050A batch.
+//   3. `POST /api/v1/portal/documents/upload-init` — the route comment says magic-byte verification is
+//      deferred to upload-complete ("init validates the declared MIME... magic-byte verification runs on the
+//      real bytes at upload-complete"), but the handler calls `planDocumentUpload({ ..., magicBytes: [] })` —
+//      hardcoded empty — and `planDocumentUpload` unconditionally magic-byte-checks. `magicBytesMatch(mime,
+//      [])` can never match any of the five allowed MIME signatures, so EVERY upload-init call throws
+//      `UPLOAD_MAGIC_BYTE_MISMATCH` (415), regardless of a fully valid declared MIME + size. The route cannot
+//      succeed as currently coded — the ROUTE_CASES table below asserts the REAL current behaviour (415), not
+//      a fabricated 2xx.
+import {
+  createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@wardenx/auth";
+import type {
+  ExternalGriefResource,
+  ExternalGriefResourceReader,
+  IsoInstant,
+  MedicationOrderProvider,
+  PatientId,
+  PortalAccessGrantDigest,
+  PortalAccountDigest,
+  PortalScopeSet,
+  TelehealthEndReason,
+  TelehealthLifecycleState,
+  TelehealthVisitDigest,
+} from "@wardenx/types";
+import type { FastifyRequest } from "fastify";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { __resetSeamsForTest, buildServer, registerSeam } from "../src/bootstrap/index";
+import {
+  type PortalAbacPorts,
+  buildPortalAbacPredicates,
+} from "../src/modules/31-portal/abac-predicates";
+import {
+  M31_PERMISSION_KEY_LIST,
+  buildPortalAbacResolverFromStore,
+  mountM31Routes,
+  type PortalRouteDeps,
+  type PortalStore,
+  type TelehealthAdapterPort,
+} from "../src/modules/31-portal/index";
+
+// ── the header-auth test shim (the M11 `orders-routes.test.ts` precedent), extended with the portal
+// session attributes M31's `actor.ts` reads (`bereavement-inject.test.ts`'s `x-test-portal-account`
+// precedent, widened with a patient anchor + a session-class knob — M31 needs both). ──────────────────────
+function headerAuth(request: FastifyRequest): void {
+  const user = request.headers["x-test-user"];
+  if (typeof user !== "string" || user.length === 0) return;
+  request.context.userId = user;
+  const org = request.headers["x-test-org"];
+  request.context.organizationId = typeof org === "string" ? org : "";
+  const roles = request.headers["x-test-roles"];
+  request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  const sessionClass = request.headers["x-test-session-class"];
+  if (typeof sessionClass === "string" && sessionClass.length > 0) {
+    request.context.attributes.sessionClass = sessionClass;
+  }
+  const portalAccount = request.headers["x-test-portal-account"];
+  if (typeof portalAccount === "string" && portalAccount.length > 0) {
+    request.context.attributes.portalAccountId = portalAccount;
+  }
+  const portalPatient = request.headers["x-test-portal-patient"];
+  if (typeof portalPatient === "string" && portalPatient.length > 0) {
+    request.context.attributes.portalPatientId = portalPatient;
+  }
+}
+
+// ── fixed ids (the M15/M11-style valid-uuid-format constants) ──────────────────────────────────────────
+const ORG = "org_a";
+const ACCOUNT = "11111111-1111-4111-8111-111111111111";
+const ACCOUNT_USER_ID = "user-caregiver-1";
+const PATIENT = "22222222-2222-4222-8222-222222222222";
+const GRANT_ID = "33333333-3333-4333-8333-333333333333";
+const MED_ORDER_ID = "44444444-4444-4444-8444-444444444444";
+const DOCUMENT_ID = "55555555-5555-4555-8555-555555555555";
+const UPLOAD_ID = "66666666-6666-4666-8666-666666666666";
+const PREFERENCE_ID = "77777777-7777-4777-8777-777777777777";
+const INVITATION_ID = "88888888-8888-4888-8888-888888888888";
+const VISIT_ROOM_MINTED = "99999999-9999-4999-8999-999999999999";
+const VISIT_ACTIVE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const M17_VISIT_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const CLINICIAN_MEMBERSHIP = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const NOW = "2026-07-30T12:00:00.000Z";
+
+// ── the in-memory M31 store (this file's own — `createInMemoryM31SeamStores` covers only the seven §4.3
+// seam ports, not the `PortalOwnedTableOps` the §4.1 routes additionally need) ─────────────────────────────
+function createFakePortalStore(): {
+  readonly store: PortalStore;
+  seedAccount(digest: PortalAccountDigest): void;
+  seedGrant(digest: PortalAccessGrantDigest): void;
+  seedVisit(digest: TelehealthVisitDigest): void;
+} {
+  const accounts = new Map<string, PortalAccountDigest>();
+  const grants = new Map<string, PortalAccessGrantDigest>();
+  const visits = new Map<string, TelehealthVisitDigest>();
+
+  const findActiveGrant = (portalAccountId: string, patientId: string): PortalAccessGrantDigest | null =>
+    [...grants.values()].find(
+      (g) => g.portalAccountId === portalAccountId && g.patientId === patientId && g.revokedAt === null,
+    ) ?? null;
+
+  const store: PortalStore = {
+    accounts: {
+      async countByStatus() {
+        const rows = [...accounts.values()];
+        return {
+          active: rows.filter((r) => r.status === "active").length,
+          invited: rows.filter((r) => r.status === "invited").length,
+          revoked: rows.filter((r) => r.status === "revoked").length,
+          bereaved: rows.filter((r) => r.status === "bereaved").length,
+        };
+      },
+      async accountsForPatient(_orgId, patientId: PatientId) {
+        return [...grants.values()]
+          .filter((g) => g.patientId === patientId && g.revokedAt === null)
+          .map((g) => accounts.get(g.portalAccountId))
+          .filter((a): a is PortalAccountDigest => a !== undefined);
+      },
+      async accountByUserId(_orgId, userId) {
+        return [...accounts.values()].find((a) => a.userId === userId) ?? null;
+      },
+    },
+    grants: {
+      async activeGrantsForAccount(_orgId, portalAccountId) {
+        return [...grants.values()].filter(
+          (g) => g.portalAccountId === portalAccountId && g.revokedAt === null,
+        );
+      },
+      async activeGrantForAccountAndPatient(_orgId, portalAccountId, patientId) {
+        return findActiveGrant(portalAccountId, patientId);
+      },
+      async patientsWithActiveGrantsInOrg() {
+        const byPatient = new Map<string, number>();
+        for (const g of grants.values()) {
+          if (g.revokedAt !== null) continue;
+          byPatient.set(g.patientId, (byPatient.get(g.patientId) ?? 0) + 1);
+        }
+        return [...byPatient.entries()].map(([patientId, grantCount]) => ({ patientId, grantCount }));
+      },
+    },
+    engagement: {
+      async engagementForPatient() {
+        return {
+          hasActiveAccount: true,
+          daysActive: 3,
+          lastViewedAt: NOW as IsoInstant,
+          messagesSent: 0,
+          documentsViewed: 0,
+          amendmentsSubmitted: 0,
+          administrationsAttested: 0,
+        };
+      },
+      async engagementMetricsForOrg() {
+        return {
+          accountsActive: accounts.size,
+          accountsInvited: 0,
+          accountsRevoked: 0,
+          accountsBereaved: 0,
+          patientsWithActiveGrant: grants.size,
+          sessionsInWindow: 0,
+        };
+      },
+    },
+    telehealth: {
+      async getById(_orgId, id) {
+        return visits.get(id) ?? null;
+      },
+      async getByM17VisitId(_orgId, m17VisitId) {
+        return [...visits.values()].find((v) => v.m17VisitId === m17VisitId) ?? null;
+      },
+      async metricsForOrg() {
+        const rows = [...visits.values()];
+        return {
+          visitsTotal: rows.length,
+          visitsCompletedClean: rows.filter((r) => r.lifecycleState === "ended_clean").length,
+          visitsCompletedAborted: rows.filter((r) => r.lifecycleState === "ended_aborted").length,
+          audioOnlyFallbackRate: 0,
+          recordingRate: 0,
+          vendorOutageDurationMin: 0,
+        };
+      },
+      async minutesByTenant() {
+        return { totalMinutes: 0, recordedMinutes: 0 };
+      },
+    },
+    sessions: {
+      async createSmartLaunchSession() {
+        return { sessionId: "smart-session-1" };
+      },
+    },
+    disclosures: {
+      async disclosuresForPatient() {
+        return [];
+      },
+    },
+    async accountById(_orgId, id) {
+      return accounts.get(id) ?? null;
+    },
+    async accountList() {
+      return [...accounts.values()];
+    },
+    async grantsForAccount(_orgId, portalAccountId) {
+      return [...grants.values()].filter((g) => g.portalAccountId === portalAccountId);
+    },
+    async activeGrant(_orgId, portalAccountId, patientId) {
+      return findActiveGrant(portalAccountId, patientId);
+    },
+    async suspendAccount(_orgId, _userId, id) {
+      const row = accounts.get(id);
+      if (!row) return null;
+      const updated = { ...row, status: "suspended" as const };
+      accounts.set(id, updated);
+      return updated;
+    },
+    async reinstateAccount(_orgId, _userId, id) {
+      const row = accounts.get(id);
+      if (!row) return null;
+      const updated = { ...row, status: "active" as const };
+      accounts.set(id, updated);
+      return updated;
+    },
+    async telehealthById(_orgId, id) {
+      return visits.get(id) ?? null;
+    },
+    async telehealthList() {
+      return [...visits.values()];
+    },
+    async updateTelehealthLifecycle(_orgId, _userId, id, patch) {
+      const row = visits.get(id);
+      if (!row) return null;
+      const updated: TelehealthVisitDigest = {
+        ...row,
+        lifecycleState: (patch.lifecycleState ?? row.lifecycleState) as TelehealthLifecycleState,
+        audioOnlyFallbackActive: patch.audioOnlyFallbackActive ?? row.audioOnlyFallbackActive,
+        visitStartedAt: patch.visitStartedAt ? (patch.visitStartedAt.toISOString() as IsoInstant) : row.visitStartedAt,
+        visitEndedAt: patch.visitEndedAt ? (patch.visitEndedAt.toISOString() as IsoInstant) : row.visitEndedAt,
+        endReason: (patch.endReason ?? row.endReason) as TelehealthEndReason | null,
+        totalDurationSec: patch.totalDurationSec ?? row.totalDurationSec,
+      };
+      visits.set(id, updated);
+      return updated;
+    },
+  };
+
+  return {
+    store,
+    seedAccount: (digest) => accounts.set(digest.portalAccountId, digest),
+    seedGrant: (digest) => grants.set(digest.grantId, digest),
+    seedVisit: (digest) => visits.set(digest.telehealthVisitId, digest),
+  };
+}
+
+const SCOPE_SET: PortalScopeSet = {
+  categories: {
+    care_plan: true,
+    medications: true,
+    administrations: true,
+    assessments: true,
+    visits: true,
+    documents: true,
+    messages: true,
+    supplies: true,
+    triage: true,
+    bereavement: true,
+  },
+  floorVersion: "v1",
+};
+
+const FAKE_TELEHEALTH_ADAPTER: TelehealthAdapterPort = {
+  vendor: "daily_co",
+  async mintParticipantToken() {
+    return { token: "tok-1", expiresAt: NOW };
+  },
+  async endRoom() {},
+  async startRecording() {
+    return { vendorRecordingId: "rec-1" };
+  },
+  async stopRecording() {
+    return { recordingUrl: "https://vendor.invalid/rec-1", durationSec: 120 };
+  },
+  verifyWebhookSignature() {
+    return true;
+  },
+};
+
+// ── server assembly (the M11/M15 `makeServer()` precedent) ─────────────────────────────────────────────
+function makeServer(opts: { readonly medicationOrderRedacted?: boolean } = {}) {
+  const backend = createFakePortalStore();
+
+  backend.seedAccount({
+    portalAccountId: ACCOUNT,
+    userId: ACCOUNT_USER_ID,
+    relationship: "family_caregiver",
+    status: "active",
+    activatedAt: NOW,
+    lastActiveAt: NOW,
+  });
+  backend.seedGrant({
+    grantId: GRANT_ID,
+    portalAccountId: ACCOUNT,
+    patientId: PATIENT,
+    grantKind: "family_caregiver",
+    scopeSet: SCOPE_SET,
+    grantedAt: NOW,
+    revokedAt: null,
+  });
+  backend.seedVisit({
+    telehealthVisitId: VISIT_ROOM_MINTED,
+    m17VisitId: M17_VISIT_ID,
+    patientId: PATIENT,
+    assignedMembershipId: CLINICIAN_MEMBERSHIP,
+    lifecycleState: "room_minted",
+    vendor: "daily_co",
+    scheduledVisitSetting: "patient_home_with_video",
+    audioOnlyFallbackActive: false,
+    visitStartedAt: null,
+    visitEndedAt: null,
+    totalDurationSec: null,
+    endReason: null,
+    linkedEncounterId: null,
+  });
+  backend.seedVisit({
+    telehealthVisitId: VISIT_ACTIVE,
+    m17VisitId: `${M17_VISIT_ID}-active`,
+    patientId: PATIENT,
+    assignedMembershipId: CLINICIAN_MEMBERSHIP,
+    lifecycleState: "in_progress",
+    vendor: "daily_co",
+    scheduledVisitSetting: "patient_home_with_video",
+    audioOnlyFallbackActive: false,
+    visitStartedAt: NOW,
+    visitEndedAt: null,
+    totalDurationSec: null,
+    endReason: null,
+    linkedEncounterId: null,
+  });
+
+  // seams M31 reads through `getSeam` — deny-stubs fail every OTHER read route closed to a 200-with-empty
+  // view (by design, see the file banner), so only the three seams below need a real fake registered.
+  __resetSeamsForTest();
+  const fakeMedicationOrderProvider = {
+    async getPortalMedicationSummary() {
+      return {
+        summary: [
+          {
+            medicationOrderId: MED_ORDER_ID,
+            displayName: "Morphine sulfate 10mg/mL",
+            instructions: "0.5mL sublingual every 4 hours as needed for pain",
+            status: "active",
+            isRedacted: opts.medicationOrderRedacted ?? false,
+          },
+        ],
+      };
+    },
+  };
+  registerSeam("MedicationOrderProvider", fakeMedicationOrderProvider as unknown as MedicationOrderProvider);
+  const fakeMessagingProvider = {
+    async syncCareTeamChannel() {
+      return { channelId: "channel-1" };
+    },
+    async openChannel() {
+      return { channelId: "channel-1" };
+    },
+    async sendMessage() {
+      return { messageId: "msg-1" };
+    },
+  };
+  registerSeam("MessagingProvider", fakeMessagingProvider);
+  const fakeExternalGriefResourceReader: ExternalGriefResourceReader = {
+    async resourcesForOrg(): Promise<readonly ExternalGriefResource[]> {
+      return [];
+    },
+  };
+  registerSeam("ExternalGriefResourceReader", fakeExternalGriefResourceReader);
+
+  const grantStore = createInMemoryEffectivePermissionStore([
+    { orgId: ORG, userId: "caregiver_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M31_PERMISSION_KEY_LIST] }] },
+    { orgId: ORG, userId: "staff_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M31_PERMISSION_KEY_LIST] }] },
+    { orgId: ORG, userId: "no_perms_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+  ]);
+  registerEffectivePermissionResolver(grantStore.store);
+
+  // A FRESH predicate registry per server (the M11-T06 precedent — the shared registry would otherwise
+  // close over a PRIOR test's backend). The six §4.7 predicates M31 owns, built over THIS backend's
+  // resolver, plus a permissive `step_up_recent` stub (M3's predicate, not M31's) so the six step-up
+  // routes' 2xx path is actually exercised rather than left permanently 403.
+  const resolver = buildPortalAbacResolverFromStore(backend.store);
+  const ports: PortalAbacPorts = {
+    async consentActive() {
+      return true;
+    },
+    async bereavedWindowOpen() {
+      return true;
+    },
+    async primaryCaregiverUserId() {
+      return ACCOUNT_USER_ID;
+    },
+    async patientResidenceState() {
+      return "TX"; // a one-party recording-consent state — simplifies the recording-consent 2xx path
+    },
+  };
+  const reg = createPredicateRegistry();
+  for (const [name, predicate] of Object.entries(buildPortalAbacPredicates({ resolver, ports, now: () => new Date(NOW) }))) {
+    reg.register(name, predicate);
+  }
+  reg.register("step_up_recent", async () => true);
+  registerAbacRegistry(reg);
+
+  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const deps: PortalRouteDeps = { store: backend.store, telehealth: FAKE_TELEHEALTH_ADAPTER, now: () => new Date(NOW) };
+  mountM31Routes(app, deps);
+  return { app, backend };
+}
+
+const CAREGIVER = {
+  "x-test-user": "caregiver_user",
+  "x-test-org": ORG,
+  "x-test-roles": "portal_caregiver",
+  "x-test-session-class": "caregiver_portal",
+  "x-test-portal-account": ACCOUNT,
+  "x-test-portal-patient": PATIENT,
+};
+const CAREGIVER_NO_PATIENT_SELECTED = {
+  "x-test-user": "caregiver_user",
+  "x-test-org": ORG,
+  "x-test-roles": "portal_caregiver",
+  "x-test-session-class": "caregiver_portal",
+  "x-test-portal-account": ACCOUNT,
+};
+const STAFF = { "x-test-user": "staff_user", "x-test-org": ORG, "x-test-roles": "org_admin" };
+const NO_PERMS_CAREGIVER = {
+  "x-test-user": "no_perms_user",
+  "x-test-org": ORG,
+  "x-test-roles": "portal_caregiver",
+  "x-test-session-class": "caregiver_portal",
+  "x-test-portal-account": ACCOUNT,
+  "x-test-portal-patient": PATIENT,
+};
+
+beforeEach(() => {
+  resetAuthorizationContract();
+  resetRbacEngine();
+  resetAbacRegistry();
+  __resetSeamsForTest();
+});
+afterEach(() => {
+  resetAuthorizationContract();
+  resetRbacEngine();
+  resetAbacRegistry();
+  __resetSeamsForTest();
+});
+
+// ── §4.1 401 / 403 / 422 boundary cases ──────────────────────────────────────────────────────────────────
+describe("M31 route smoke — the M1 boundary", () => {
+  it("401s with no session at all", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/portal/sessions/current" });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("403s a permission-gated route for a portal session holding NO M31 grants", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/portal/sessions/current", headers: NO_PERMS_CAREGIVER });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("422s a malformed body from an otherwise-authorized caller (TypeBox validation, M1 envelope)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/messages/send",
+      headers: { ...CAREGIVER, "idempotency-key": "k-422" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+// ── one legitimately-authorized 2xx call per route (the bulk of the file) ──────────────────────────────
+interface RouteCase {
+  readonly label: string;
+  readonly method: "GET" | "POST" | "PATCH";
+  readonly url: string;
+  readonly headers: Record<string, string>;
+  readonly payload?: Record<string, unknown>;
+  readonly expectStatus: number;
+}
+
+const IDEMP = (key: string) => ({ "idempotency-key": key });
+
+const ROUTE_CASES: readonly RouteCase[] = [
+  // 1–4 — the portal session surface.
+  {
+    // See finding #1 in the file banner: the ABAC target reads the SESSION's portalPatientId, not the
+    // body, so a 2xx is reachable only by pre-seeding the session with the patient being "selected".
+    label: "1 POST /portal/sessions/select-patient (session-anchor quirk, see finding #1)",
+    method: "POST",
+    url: "/api/v1/portal/sessions/select-patient",
+    headers: CAREGIVER,
+    payload: { patientId: PATIENT },
+    expectStatus: 200,
+  },
+  { label: "2 GET /portal/sessions/current", method: "GET", url: "/api/v1/portal/sessions/current", headers: CAREGIVER, expectStatus: 200 },
+  { label: "3 POST /portal/sessions/logout", method: "POST", url: "/api/v1/portal/sessions/logout", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "4 POST /portal/sessions/step-up",
+    method: "POST",
+    url: "/api/v1/portal/sessions/step-up",
+    headers: CAREGIVER,
+    payload: { totpCode: "123456" },
+    expectStatus: 200,
+  },
+
+  // 5–23 — the lay-language read surfaces (every one fails CLOSED to an empty 200 view when its upstream
+  // seam is a deny-stub, EXCEPT bereavement/resources which 501s on a missing seam — see makeServer()).
+  { label: "5 GET /portal/care-summary", method: "GET", url: "/api/v1/portal/care-summary", headers: CAREGIVER, expectStatus: 200 },
+  { label: "6 GET /portal/care-plan/summary", method: "GET", url: "/api/v1/portal/care-plan/summary", headers: CAREGIVER, expectStatus: 200 },
+  { label: "7 GET /portal/discipline-plans/summary", method: "GET", url: "/api/v1/portal/discipline-plans/summary", headers: CAREGIVER, expectStatus: 200 },
+  { label: "8 GET /portal/visits/upcoming", method: "GET", url: "/api/v1/portal/visits/upcoming", headers: CAREGIVER, expectStatus: 200 },
+  { label: "9 GET /portal/visits/history", method: "GET", url: "/api/v1/portal/visits/history", headers: CAREGIVER, expectStatus: 200 },
+  { label: "10 GET /portal/medications/active", method: "GET", url: "/api/v1/portal/medications/active", headers: CAREGIVER, expectStatus: 200 },
+  { label: "11 GET /portal/administrations/recent", method: "GET", url: "/api/v1/portal/administrations/recent", headers: CAREGIVER, expectStatus: 200 },
+  { label: "12 GET /portal/assessments/trend", method: "GET", url: "/api/v1/portal/assessments/trend", headers: CAREGIVER, expectStatus: 200 },
+  { label: "13 GET /portal/hope/timepoints", method: "GET", url: "/api/v1/portal/hope/timepoints", headers: CAREGIVER, expectStatus: 200 },
+  { label: "14 GET /portal/orders/non-medication", method: "GET", url: "/api/v1/portal/orders/non-medication", headers: CAREGIVER, expectStatus: 200 },
+  { label: "15 GET /portal/supplies/upcoming", method: "GET", url: "/api/v1/portal/supplies/upcoming", headers: CAREGIVER, expectStatus: 200 },
+  { label: "16 GET /portal/triage-entries", method: "GET", url: "/api/v1/portal/triage-entries", headers: CAREGIVER, expectStatus: 200 },
+  { label: "17 GET /portal/triage-entries/me", method: "GET", url: "/api/v1/portal/triage-entries/me", headers: CAREGIVER, expectStatus: 200 },
+  { label: "18 GET /portal/documents", method: "GET", url: "/api/v1/portal/documents", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "19 GET /portal/documents/:documentId/download-url",
+    method: "GET",
+    url: `/api/v1/portal/documents/${DOCUMENT_ID}/download-url`,
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  { label: "20 GET /portal/messages/channel", method: "GET", url: "/api/v1/portal/messages/channel", headers: CAREGIVER, expectStatus: 200 },
+  { label: "21 GET /portal/notification-preferences", method: "GET", url: "/api/v1/portal/notification-preferences", headers: CAREGIVER, expectStatus: 200 },
+  { label: "22 GET /portal/bereavement/program", method: "GET", url: "/api/v1/portal/bereavement/program", headers: CAREGIVER, expectStatus: 200 },
+  { label: "23 GET /portal/bereavement/resources", method: "GET", url: "/api/v1/portal/bereavement/resources", headers: CAREGIVER, expectStatus: 200 },
+
+  // 24–31 — the write surfaces.
+  {
+    label: "24 POST /portal/administrations/caregiver-attested",
+    method: "POST",
+    url: "/api/v1/portal/administrations/caregiver-attested",
+    headers: { ...CAREGIVER, ...IDEMP("k24") },
+    payload: {
+      medicationOrderId: MED_ORDER_ID,
+      administeredAt: NOW,
+      administeredAmount: 0.5,
+      administeredUnit: "mL",
+      route: "sublingual",
+      caregiverAttestationText: "Given as scheduled; patient tolerated well.",
+    },
+    expectStatus: 202,
+  },
+  {
+    // See finding #3 in the file banner: upload-init hardcodes `magicBytes: []`, so `planDocumentUpload`'s
+    // magic-byte re-check ALWAYS fails for any declared MIME — this is the route's REAL current behaviour,
+    // not a fabricated pass.
+    label: "25 POST /portal/documents/upload-init (BUG: always 415, see finding #3)",
+    method: "POST",
+    url: "/api/v1/portal/documents/upload-init",
+    headers: { ...CAREGIVER, ...IDEMP("k25") },
+    payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 1024 },
+    expectStatus: 415,
+  },
+  {
+    label: "26 POST /portal/documents/upload-complete/:uploadId",
+    method: "POST",
+    url: `/api/v1/portal/documents/upload-complete/${UPLOAD_ID}`,
+    headers: { ...CAREGIVER, ...IDEMP("k26") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "27 POST /portal/amendments/submit",
+    method: "POST",
+    url: "/api/v1/portal/amendments/submit",
+    headers: { ...CAREGIVER, ...IDEMP("k27") },
+    payload: { targetKind: "patient_demographic", requestedChange: "Correct the date of birth to 1950-01-01." },
+    expectStatus: 202,
+  },
+  { label: "28 GET /portal/amendments", method: "GET", url: "/api/v1/portal/amendments", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "29 POST /portal/messages/send",
+    method: "POST",
+    url: "/api/v1/portal/messages/send",
+    headers: { ...CAREGIVER, ...IDEMP("k29") },
+    payload: { body: "Hello, just checking in on dad today." },
+    expectStatus: 200,
+  },
+  {
+    label: "30 PATCH /portal/notification-preferences/:id",
+    method: "PATCH",
+    url: `/api/v1/portal/notification-preferences/${PREFERENCE_ID}`,
+    headers: CAREGIVER,
+    payload: { enabled: true },
+    expectStatus: 200,
+  },
+  {
+    label: "31 POST /portal/bereavement/opt-out",
+    method: "POST",
+    url: "/api/v1/portal/bereavement/opt-out",
+    headers: { ...CAREGIVER, ...IDEMP("k31") },
+    payload: {},
+    expectStatus: 200,
+  },
+
+  // 32–40 — telehealth (portal-side join/leave, staff-side join/leave/record/end, the two vendor webhooks).
+  {
+    label: "32 POST /portal/telehealth/visits/:visitId/join",
+    method: "POST",
+    url: `/api/v1/portal/telehealth/visits/${VISIT_ROOM_MINTED}/join`,
+    headers: { ...CAREGIVER, ...IDEMP("k32") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "33 POST /portal/telehealth/visits/:visitId/leave",
+    method: "POST",
+    url: `/api/v1/portal/telehealth/visits/${VISIT_ROOM_MINTED}/leave`,
+    headers: { ...CAREGIVER, ...IDEMP("k33") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "34 POST /telehealth/visits/:visitId/join (clinician)",
+    method: "POST",
+    url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/join`,
+    headers: { ...STAFF, ...IDEMP("k34") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "35 POST /telehealth/visits/:visitId/leave (clinician)",
+    method: "POST",
+    url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/leave`,
+    headers: { ...STAFF, ...IDEMP("k35") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "36 POST /telehealth/visits/:visitId/start-recording",
+    method: "POST",
+    url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/start-recording`,
+    headers: { ...STAFF, ...IDEMP("k36") },
+    payload: { acknowledgesStateRules: true, acknowledgesPatientConsent: true },
+    expectStatus: 200,
+  },
+  {
+    label: "37 POST /telehealth/visits/:visitId/stop-recording",
+    method: "POST",
+    url: `/api/v1/telehealth/visits/${VISIT_ROOM_MINTED}/stop-recording`,
+    headers: { ...STAFF, ...IDEMP("k37") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "38 POST /telehealth/visits/:visitId/end",
+    method: "POST",
+    url: `/api/v1/telehealth/visits/${VISIT_ACTIVE}/end`,
+    headers: { ...STAFF, ...IDEMP("k38") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "39 POST /telehealth/webhooks/daily-co",
+    method: "POST",
+    url: "/api/v1/telehealth/webhooks/daily-co",
+    headers: {},
+    payload: { type: "recording.ready" },
+    expectStatus: 200,
+  },
+  {
+    label: "40 POST /telehealth/webhooks/twilio-video",
+    method: "POST",
+    url: "/api/v1/telehealth/webhooks/twilio-video",
+    headers: {},
+    payload: { type: "recording.ready" },
+    expectStatus: 200,
+  },
+
+  // 41–53 — the staff admin surface.
+  {
+    label: "41 POST /admin/portal-invitations",
+    method: "POST",
+    url: "/api/v1/admin/portal-invitations",
+    headers: { ...STAFF, ...IDEMP("k41") },
+    payload: {
+      patientId: PATIENT,
+      relationship: "family_caregiver",
+      inviteeDisplayName: "Jane Roe",
+      inviteeEmail: "jane.roe@example.com",
+      proposedScopeSet: ["care_plan", "medications"],
+    },
+    expectStatus: 202,
+  },
+  { label: "42 GET /admin/portal-invitations", method: "GET", url: "/api/v1/admin/portal-invitations", headers: STAFF, expectStatus: 200 },
+  {
+    label: "43 POST /admin/portal-invitations/:id/revoke",
+    method: "POST",
+    url: `/api/v1/admin/portal-invitations/${INVITATION_ID}/revoke`,
+    headers: { ...STAFF, ...IDEMP("k43") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "44 POST /admin/portal-accounts/:id/invite-bereaved",
+    method: "POST",
+    url: `/api/v1/admin/portal-accounts/${ACCOUNT}/invite-bereaved`,
+    headers: { ...STAFF, ...IDEMP("k44") },
+    payload: { bereavedContactId: PATIENT, inviteeDisplayName: "John Doe", inviteeEmail: "john.doe@example.com" },
+    expectStatus: 202,
+  },
+  {
+    label: "45 POST /admin/portal-accounts/:id/suspend",
+    method: "POST",
+    url: `/api/v1/admin/portal-accounts/${ACCOUNT}/suspend`,
+    headers: { ...STAFF, ...IDEMP("k45") },
+    payload: { reason: "caregiver requested account suspension" },
+    expectStatus: 200,
+  },
+  {
+    label: "46 POST /admin/portal-accounts/:id/reinstate",
+    method: "POST",
+    url: `/api/v1/admin/portal-accounts/${ACCOUNT}/reinstate`,
+    headers: { ...STAFF, ...IDEMP("k46") },
+    payload: {},
+    expectStatus: 200,
+  },
+  { label: "47 GET /admin/portal-accounts", method: "GET", url: "/api/v1/admin/portal-accounts", headers: STAFF, expectStatus: 200 },
+  {
+    label: "48 GET /admin/portal-accounts/:id/access-grants",
+    method: "GET",
+    url: `/api/v1/admin/portal-accounts/${ACCOUNT}/access-grants`,
+    headers: STAFF,
+    expectStatus: 200,
+  },
+  {
+    label: "49 GET /admin/portal-accounts/:id/audit-views",
+    method: "GET",
+    url: `/api/v1/admin/portal-accounts/${ACCOUNT}/audit-views`,
+    headers: STAFF,
+    expectStatus: 200,
+  },
+  { label: "50 GET /admin/telehealth/visits", method: "GET", url: "/api/v1/admin/telehealth/visits", headers: STAFF, expectStatus: 200 },
+  {
+    label: "51 GET /admin/telehealth/visits/:id",
+    method: "GET",
+    url: `/api/v1/admin/telehealth/visits/${VISIT_ROOM_MINTED}`,
+    headers: STAFF,
+    expectStatus: 200,
+  },
+  {
+    label: "52 POST /admin/telehealth/visits/:id/halt-recording",
+    method: "POST",
+    url: `/api/v1/admin/telehealth/visits/${VISIT_ROOM_MINTED}/halt-recording`,
+    headers: { ...STAFF, ...IDEMP("k52") },
+    payload: {},
+    expectStatus: 200,
+  },
+  {
+    label: "53 GET /auditor/portal-engagement/:engagementId",
+    method: "GET",
+    url: `/api/v1/auditor/portal-engagement/${PATIENT}`,
+    headers: STAFF,
+    expectStatus: 200,
+  },
+];
+
+describe.each(ROUTE_CASES)("M31 route smoke — $label", (c) => {
+  it(`reaches its handler and returns ${c.expectStatus}`, async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    expect(res.statusCode).toBe(c.expectStatus);
+    await app.close();
+  });
+});
+
+// ── the three genuine findings from grounding this file in the real route source (see the file banner) ────
+describe("M31 route smoke — findings", () => {
+  it("finding #1: select-patient's ABAC target reads the SESSION, not the body — a fresh session (no patient selected yet) 403s even against a real active grant", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/sessions/select-patient",
+      headers: CAREGIVER_NO_PATIENT_SELECTED,
+      payload: { patientId: PATIENT },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("finding #2: caregiver-attested-administration's redaction check reads `m.redacted`, but the real DTO field is `isRedacted` — an order M12 marked redacted is still attestable (202)", async () => {
+    const { app } = makeServer({ medicationOrderRedacted: true });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/administrations/caregiver-attested",
+      headers: { ...CAREGIVER, ...IDEMP("k-finding-2") },
+      payload: {
+        medicationOrderId: MED_ORDER_ID,
+        administeredAt: NOW,
+        administeredAmount: 0.5,
+        administeredUnit: "mL",
+        route: "sublingual",
+        caregiverAttestationText: "Given as scheduled; patient tolerated well.",
+      },
+    });
+    // A field-name-correct check would refuse this (the order is redacted); the route's `!m.redacted`
+    // check is always true instead (the field does not exist on the real DTO), so it accepts.
+    expect(res.statusCode).toBe(202);
+    await app.close();
+  });
+
+  it("finding #3: document upload-init hardcodes empty magicBytes, so a fully valid PDF upload still 415s", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/documents/upload-init",
+      headers: { ...CAREGIVER, ...IDEMP("k-finding-3") },
+      payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 2048 },
+    });
+    expect(res.statusCode).toBe(415);
+    expect(res.json().code ?? res.json().error).toBeDefined();
+    await app.close();
+  });
+});

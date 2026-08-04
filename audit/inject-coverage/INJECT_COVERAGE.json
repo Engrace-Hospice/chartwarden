@@ -1,9 +1,9 @@
 {
   "totals": {
     "modules": 39,
-    "covered": 31,
+    "covered": 39,
     "routes": 1214,
-    "coveredRoutes": 847
+    "coveredRoutes": 1214
   },
   "modules": [
     {
@@ -241,44 +241,58 @@
     {
       "module": "29-external-interfaces",
       "routes": 33,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/external-interfaces-inject.test.ts"
+      ]
     },
     {
       "module": "30-quality",
       "routes": 60,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/quality-inject.test.ts"
+      ]
     },
     {
       "module": "31-portal",
       "routes": 53,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/portal-inject.test.ts"
+      ]
     },
     {
       "module": "32-ai-platform",
       "routes": 32,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/ai-platform-inject.test.ts"
+      ]
     },
     {
       "module": "33-reporting",
       "routes": 42,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/reporting-inject.test.ts"
+      ]
     },
     {
       "module": "34-saas-tenant-platform",
       "routes": 48,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/saas-tenant-platform-inject.test.ts"
+      ]
     },
     {
       "module": "35-subscription",
       "routes": 54,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/subscription-inject.test.ts"
+      ]
     },
     {
       "module": "36-messaging",
@@ -293,8 +307,10 @@
     {
       "module": "37-ipu",
       "routes": 45,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/ipu-inject.test.ts"
+      ]
     },
     {
       "module": "38-terminology",

@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 31/39 modules covered (79%) · 847/1214 route defs sit behind a covered module
+**Totals:** 39/39 modules covered (100%) · 1214/1214 route defs sit behind a covered module
 
 | Module | Routes | Covered | Suite file(s) |
 |---|--:|:--:|---|
@@ -35,15 +35,15 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 26-cap | 27 | ✅ | apps/backend/__tests__/cap-inject.test.ts |
 | 27-cost-report | 45 | ✅ | apps/backend/__tests__/cost-report-inject.test.ts |
 | 28-fhir | 35 | ✅ | apps/backend/__tests__/fhir-inject.test.ts |
-| 29-external-interfaces | 33 | ❌ | — |
-| 30-quality | 60 | ❌ | — |
-| 31-portal | 53 | ❌ | — |
-| 32-ai-platform | 32 | ❌ | — |
-| 33-reporting | 42 | ❌ | — |
-| 34-saas-tenant-platform | 48 | ❌ | — |
-| 35-subscription | 54 | ❌ | — |
+| 29-external-interfaces | 33 | ✅ | apps/backend/__tests__/external-interfaces-inject.test.ts |
+| 30-quality | 60 | ✅ | apps/backend/__tests__/quality-inject.test.ts |
+| 31-portal | 53 | ✅ | apps/backend/__tests__/portal-inject.test.ts |
+| 32-ai-platform | 32 | ✅ | apps/backend/__tests__/ai-platform-inject.test.ts |
+| 33-reporting | 42 | ✅ | apps/backend/__tests__/reporting-inject.test.ts |
+| 34-saas-tenant-platform | 48 | ✅ | apps/backend/__tests__/saas-tenant-platform-inject.test.ts |
+| 35-subscription | 54 | ✅ | apps/backend/__tests__/subscription-inject.test.ts |
 | 36-messaging | 22 | ✅ | apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
-| 37-ipu | 45 | ❌ | — |
+| 37-ipu | 45 | ✅ | apps/backend/__tests__/ipu-inject.test.ts |
 | 38-terminology | 8 | ✅ | apps/backend/__tests__/terminology-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts |
 | 39-consent | 27 | ✅ | apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts |
 | 40-mdm | 14 | ✅ | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

@@ -662,6 +662,68 @@
       - **M27:** `cost_report_period_active` guard is exported but composed into zero routes —
         dead code, not a defect, but worth a cleanup pass.
     - Remaining 8 modules for 050A + 050B/C/D are the last follow-up work.
+  - **Status (2026-08-04): 050A COMPLETE — batch 3 (final 8 modules) landed, 39/39 modules now
+    covered (was 31/39).** M29 External Interfaces (33/33 routes, 28 tests), M30 HQRP/Quality
+    (60/60, 63 tests), M31 Portal (53/53, 59 tests), M32 AI Platform (32/32, 18 tests), M33
+    Reporting (42/42, 24 tests), M34 SaaS Tenant Platform (48/48, 17 tests), M35 Subscription
+    (54/54, 58 tests), M37 IPU (45/45, 15 tests) — 282 new tests. All 22 inject suites (620 tests)
+    green together, `arch:fitness` green, full suite 7511 passing (was 6891 before 050A started).
+    `TASK-050A is DONE` — every module with a `routes/` dir now carries a genuine `.inject()`
+    HTTP-layer smoke suite; the ratchet baseline is empty (0 modules missing) and the gate now
+    enforces "no new module ships without one" going forward with zero slack.
+    - **Full defect list surfaced by TASK-050A, ranked by severity — none fixed here (out of scope
+      for a coverage task), all documented inline in the relevant test file and here for
+      follow-up:**
+      1. **[SEVERE] M37 IPU** — `RN_COVERAGE`'s `getTarget: () => ({})` never reads the request,
+         so `rn_coverage_active` always evaluates against an empty target and denies
+         unconditionally. **Open admission, request-bed, assign-bed, initiate-transfer, and
+         restraint are unreachable for every caller today, including a fully-permissioned,
+         step-up-satisfied actor** — nobody can open an IPU admission through the API right now.
+      2. **[SEVERE] M31 Portal** — `POST /portal/sessions/select-patient` reads its ABAC target
+         from `context.attributes.portalPatientId`, which only gets populated by this route
+         succeeding — a bootstrapping deadlock that blocks a fresh portal session from ever
+         selecting its first patient.
+      3. **[SEVERE, compliance] M31 Portal** — `write.routes.ts`'s local `MedSummaryArm` types the
+         redaction flag `redacted?: boolean`, but the real upstream DTO
+         (`PortalMedicationSummary`) names it `isRedacted`; the mismatch is hidden behind an
+         unchecked cast, so the "exclude SUD-redacted orders from caregiver attestation" check is
+         a permanent no-op — same field-name-drift class as the M16 bug found in a prior audit.
+      4. **[HIGH] M31 Portal** — `POST /portal/documents/upload-init` hardcodes
+         `magicBytes: []` into a function that unconditionally magic-byte-checks, so every
+         upload-init call 415s regardless of a valid file — blocks all portal document uploads.
+      5. **[HIGH] M23 Billing Medicare** — 3 rule-config mutation routes unreachable for every
+         caller including org_admin (see batch-2 note above).
+      6. **[MEDIUM] M33 Reporting** — `GET /reporting/dashboards/:dashboardId` has no `getTarget`
+         override on its `dashboard_visibility` guard, so it reads `target.viewId` off a param
+         that only carries `dashboardId` — unconditional 403, even for the dashboard's own owner.
+         **Second instance of the "correct predicate, no `getTarget` override" class** (after
+         M23) — worth a dedicated sweep of every route composing a predicate with
+         resource-scoped semantics for a missing/wrong `getTarget`. Candidate TASK-053.
+      7. **[MEDIUM, security] M26 Cap** — cap-period reopen still accepts a client-supplied
+         `stepUpAssertionId` (see batch-2 note above).
+      8. **Third `*-typebox.ts` FormatRegistry gap** already counted at batch 2 (M25, M26) — no
+         new instances in batch 3; M29/M30(N/A, no format)/M32/M34/M35 were all checked clean.
+      9. **[LOW] M30 + M27** — `actorHoldsPermission()` reads `context.attributes.permissions`,
+         which is never populated anywhere in `packages/auth/src` — the "OR holds an admin
+         permission grant" branch of several predicates (`ownsQapiProject`, `ownsSraCycle`,
+         `incidentVisibility`, `abuseAllegationAccess`) is unreachable in production. Not a
+         lockout (the ownership-based branch still works) but dead-by-construction.
+      10. **[LOW] M34 SaaS Platform** — DSAR fulfill/extend/deny/download routes' target-mapper
+          defaults to `request.params` (never carries `patientId`), so a non-org_admin caseload
+          member fail-closes there — an existing gap the route file's own comments acknowledge.
+      11. **[LOW] M27 Cost Report** — `cost_report_period_active` guard exported, composed into
+          zero routes (dead code).
+      12. **[Test-infra note, not a product bug] M33** — `light-my-request`'s `Response.end`
+          doesn't reproduce Node's `http.ServerResponse.end(callback)` single-arg overload
+          detection, so `.inject()` cannot smoke-test the CSV-export route that relies on it
+          (`csvSinkOf(reply).end(resolve)`); asserted the real rejection rather than faking a pass.
+    - **Candidate follow-up tasks**, none started: TASK-051 "fix the 4 universal-deny ABAC-wiring
+      bugs (M23, M33, M37, plus the M31 select-patient deadlock)" — P0 given M37 blocks all
+      admissions and M31 blocks portal onboarding entirely; TASK-052 "sweep every `*-typebox.ts`
+      for missing `FormatRegistry` self-registration"; TASK-053 "audit every `getTarget` on a
+      resource-scoped ABAC predicate for a missing/wrong param mapping" (the M23/M33 class).
+    - TASK-050B (shared in-memory/Drizzle conformance spec), 050C (jsdom smoke-render), 050D
+      (planted-violation self-tests) remain unstarted — separate follow-up work.
 
 ## Lower-priority (P2/P3) tasks
 
