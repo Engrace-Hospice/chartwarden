@@ -12,6 +12,20 @@ import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.wardenx.app/errors";
 
+/**
+ * A Fastify framework error (malformed JSON, an oversized body, an unsupported content-type) — built
+ * via `@fastify/error`, which stamps `code`/`statusCode` onto a plain `Error` rather than a distinct
+ * class, so `instanceof` can't identify one; a runtime shape check is the only option. `setErrorHandler`
+ * types its `error` argument as `unknown` (Fastify's default `TError`), hence the guard.
+ */
+function asFrameworkError(err: unknown): { statusCode: number; code: string; message: string } | null {
+  if (!(err instanceof Error)) return null;
+  const statusCode = (err as { statusCode?: unknown }).statusCode;
+  if (typeof statusCode !== "number" || statusCode < 400 || statusCode >= 500) return null;
+  const code = (err as { code?: unknown }).code;
+  return { statusCode, code: typeof code === "string" ? code : "BAD_REQUEST", message: err.message };
+}
+
 export function applyErrorHandler(app: FastifyInstance): void {
   app.setErrorHandler((err, request, reply) => {
     const correlationId = request.context?.correlationId ?? "unknown";
@@ -25,6 +39,25 @@ export function applyErrorHandler(app: FastifyInstance): void {
           details: err.details,
           correlationId,
           documentationUrl: `${DOCS_BASE}/${err.code}`,
+        },
+      });
+    }
+
+    // These messages are designed to be shown to the caller, unlike a genuinely unexpected internal
+    // error, so pass the real status through instead of collapsing every non-WardenXError into a
+    // blanket 500 (API-009).
+    const frameworkErr = asFrameworkError(err);
+    if (frameworkErr) {
+      request.log.info(
+        { errCode: frameworkErr.code, statusCode: frameworkErr.statusCode },
+        "handled framework error",
+      );
+      return reply.code(frameworkErr.statusCode).send({
+        error: {
+          code: frameworkErr.code,
+          message: frameworkErr.message,
+          correlationId,
+          documentationUrl: `${DOCS_BASE}/${frameworkErr.code}`,
         },
       });
     }

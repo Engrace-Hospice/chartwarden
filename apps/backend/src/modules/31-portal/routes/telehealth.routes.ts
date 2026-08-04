@@ -168,14 +168,21 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     },
   );
 
-  // vendor webhooks — signature-verified ingest (no auth; HMAC only).
-  const webhook = async (request: import("fastify").FastifyRequest) => {
+  // vendor webhooks — signature-verified ingest (no auth; HMAC only). A bad signature is a 401 (API-008)
+  // — mirroring M35's Stripe webhook route (registerWebhookRoutes) — never a 200, so an upstream
+  // misconfiguration (wrong shared secret, a stale vendor key) is visible in the vendor's own delivery
+  // logs instead of being silently swallowed as an accepted, dropped event.
+  const webhook = async (
+    request: import("fastify").FastifyRequest,
+    reply: import("fastify").FastifyReply,
+  ) => {
     const headers = Object.fromEntries(
       Object.entries(request.headers).map(([k, v]) => [k, Array.isArray(v) ? (v[0] ?? "") : String(v ?? "")]),
     );
     const raw = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
     const ok = adapter.verifyWebhookSignature(headers, raw);
-    return { received: ok };
+    if (!ok) return reply.code(401).send({ received: false });
+    return reply.code(200).send({ received: true });
   };
   app.post("/api/v1/telehealth/webhooks/daily-co", webhook);
   app.post("/api/v1/telehealth/webhooks/twilio-video", webhook);

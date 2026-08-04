@@ -1088,4 +1088,25 @@
     full suite 7810 passing (unchanged — no new test coverage needed since these are report/gate
     scripts, not app code).
 - TASK-065 (P2): fix telehealth webhook to 401 on bad signature (API-008); pass through 4xx framework errors (API-009).
+  - **Status (2026-08-04): DONE, merged to main locally.** API-008:
+    `31-portal/routes/telehealth.routes.ts`'s vendor webhook handler verified the HMAC signature but
+    only surfaced the result in the response BODY (`{received: ok}`), always replying 200 — a bad
+    signature (wrong shared secret, a stale rotated key) is real vendor misconfiguration evidence, and
+    dropping it into a 200 masks it from the vendor's own delivery-failure alerting. Fixed to mirror
+    M35's existing Stripe webhook route convention (`registerWebhookRoutes`): bad signature → 401,
+    valid → 200. API-009: `bootstrap/plugins/error-handler.ts` collapsed every non-`WardenXError` into
+    a blanket 500, including Fastify's OWN framework errors (malformed JSON, oversized body,
+    unsupported content-type) which carry a real `statusCode`/`code` via `@fastify/error` and are
+    designed to be client-facing — added a runtime shape-check (`setErrorHandler`'s `error` argument is
+    typed `unknown`, so `instanceof` can't identify a `@fastify/error`-built error; no distinct class
+    exists) that passes the real 4xx status + message through, while a genuinely unexpected `Error`
+    still 500s with the generic no-leak envelope (verified via `.inject()`: malformed JSON body →
+    real 400 `FST_ERR_CTP_INVALID_JSON_BODY`, not 500; a thrown plain `Error("...")` still 500s and its
+    message never appears in the response). New test files/cases: `error-handler.test.ts` (3 cases) +
+    two "fix #4"/"fix #4b" cases added to `portal-inject.test.ts`'s existing "fixed findings" describe
+    block (bad-signature → 401, valid-signature still 200 — not a rubber stamp). Full regression: build
+    clean, `arch:fitness` green, full suite 7815 passing (+5 new tests). Session note: hit a real
+    machine-level disk-full (ENOSPC) mid-task that failed a test run; paused, user freed space, resumed
+    cleanly — no code impact, flagging only because it's a real environment risk worth remembering for
+    future heavy test-suite runs on this machine.
 - TASK-066 (P3): drop time-relative CHECKs, enforce at write time (DB-005); local date-only helper (PARAM-004); react-router bump (PERF-004); confirm/remove behaviorally-suspicious dead tables (ARCH-023).
