@@ -142,8 +142,9 @@ const CONDITIONAL_REDACTIONS: ReadonlyArray<{
     migration: "packages/db/migrations/0164_lab_observation_value_sud_redaction.sql",
     mustContain: [
       "v_denylist",
-      "sud_redaction_status",
-      "'observation_value'",
+      "sud_redacted_at_ingest",
+      "'numeric_value'",
+      "'string_value'",
       "audit_scrub(to_jsonb(OLD), v_denylist)",
       "audit_scrub(to_jsonb(NEW), v_denylist)",
     ],

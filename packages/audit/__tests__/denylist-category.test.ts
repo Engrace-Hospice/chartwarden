@@ -2,9 +2,9 @@
 //
 // PHI denylist category behavior, layered on the M4-T02 trigger generator:
 //   • §5.1 CATEGORY EXPANSION — named categories resolve to columns via the per-table catalog.
-//   • §5.2 ROW-CONDITIONAL `sud_value` — `lab_observation_value.observation_value` is scrubbed
-//     only when the parent observation is SUD-class; the generated trigger gates the scrub with
-//     the catalog's `conditionalCheck` expression at runtime.
+//   • §5.2 ROW-CONDITIONAL `sud_value` — `lab_observation_value.numeric_value`/`.string_value` are
+//     scrubbed only when the parent observation was classified SUD at ingest; the generated
+//     trigger gates the scrub with the catalog's `conditionalCheck` expression at runtime.
 //   • §5.3 DEFENSE-IN-DEPTH — a `compliance_42cfr_part2` trigger scrubs `sud_value` even when the
 //     call site never declared the category (W-M4-11).
 import { describe, expect, it } from "vitest";
@@ -63,13 +63,14 @@ describe("resolveCatalogDenylist — §5.1 category → column expansion", () =>
   });
 
   it("ships the canonical sud_value seed for lab_observation_value", () => {
-    const seed = AUDIT_DENYLIST_CATALOG.find(
+    const seeds = AUDIT_DENYLIST_CATALOG.filter(
       (e) => e.table === "lab_observation_value" && e.category === "sud_value",
     );
-    expect(seed).toBeDefined();
-    expect(seed?.column).toBe("observation_value");
-    expect(seed?.conditionalCheck).toContain("sud_redaction_status");
-    expect(seed?.registeredByModule).toBe("m29");
+    expect(seeds.map((s) => s.column).sort()).toEqual(["numeric_value", "string_value"]);
+    for (const seed of seeds) {
+      expect(seed.conditionalCheck).toContain("sud_redacted_at_ingest");
+      expect(seed.registeredByModule).toBe("m29");
+    }
   });
 });
 
@@ -82,8 +83,8 @@ describe("generateAuditTrigger — §5.2 row-conditional sud_value scrub", () =>
 
   it("declares a runtime denylist variable and gates the column behind the parent-class check", () => {
     expect(ddl).toContain("v_denylist text[] := ARRAY[]::text[];");
-    expect(ddl).toContain("sud_redaction_status <> 'not_applicable'");
-    expect(ddl).toContain("v_denylist := v_denylist || ARRAY['observation_value']::text[];");
+    expect(ddl).toContain("sud_redacted_at_ingest = true");
+    expect(ddl).toContain("v_denylist := v_denylist || ARRAY['numeric_value', 'string_value']::text[];");
   });
 
   it("scrubs the before/after diff through the row-conditional denylist", () => {
@@ -111,8 +112,8 @@ describe("generateAuditTrigger — §5.3 Part 2 defense-in-depth (W-M4-11)", () 
       // NOTE: denylistCategories intentionally omitted — the retention class alone must imply it.
     });
     expect(ddl).toContain("'compliance_42cfr_part2'");
-    expect(ddl).toContain("v_denylist := v_denylist || ARRAY['observation_value']::text[];");
-    expect(ddl).toContain("sud_redaction_status <> 'not_applicable'");
+    expect(ddl).toContain("v_denylist := v_denylist || ARRAY['numeric_value', 'string_value']::text[];");
+    expect(ddl).toContain("sud_redacted_at_ingest = true");
   });
 
   it("does not invent a sud_value scrub for a Part 2 table with no catalog entry", () => {
