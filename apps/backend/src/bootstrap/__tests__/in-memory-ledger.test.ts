@@ -70,7 +70,9 @@ describe("assertNoInMemoryBindingsOnDbBoot", () => {
       assertNoInMemoryBindingsOnDbBoot({
         dbPresent: false,
         env: { WARDENX_INMEM_ASSERT: "enforce" },
-        warn: (m) => (warned = m),
+        warn: (m) => {
+          warned = m;
+        },
       }),
     ).not.toThrow();
     expect(warned).toBe("");
@@ -88,7 +90,9 @@ describe("assertNoInMemoryBindingsOnDbBoot", () => {
     assertNoInMemoryBindingsOnDbBoot({
       dbPresent: true,
       env: { WARDENX_INMEM_ASSERT: "warn" },
-      warn: (m) => (warned = m),
+      warn: (m) => {
+        warned = m;
+      },
     });
     expect(warned).toContain("2 in-memory binding(s)");
     expect(warned).toContain("M98 registerPlantedSeams");
@@ -100,7 +104,9 @@ describe("assertNoInMemoryBindingsOnDbBoot", () => {
     assertNoInMemoryBindingsOnDbBoot({
       dbPresent: true,
       env: { NODE_ENV: "production" },
-      warn: (m) => (warned = m),
+      warn: (m) => {
+        warned = m;
+      },
     });
     expect(warned).toBe("");
   });

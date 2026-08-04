@@ -115,9 +115,9 @@ export function Dunning(): JSX.Element {
         }
       />
       {outcome ? (
-        <div role="status" aria-live="polite">
+        <output aria-live="polite">
           <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
-        </div>
+        </output>
       ) : null}
       {loading && rows.length === 0 ? (
         <LoadingSpinner />

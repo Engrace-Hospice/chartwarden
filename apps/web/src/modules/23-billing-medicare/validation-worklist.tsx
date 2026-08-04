@@ -379,7 +379,7 @@ function ResultsTable({
   if (results.length === 0)
     return <EmptyState title="No results" description="This run produced no per-rule results." />;
   return (
-    <table role="table" style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
       <thead>
         <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
           <th style={thStyle}>Rule</th>

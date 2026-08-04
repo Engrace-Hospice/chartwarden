@@ -75,7 +75,6 @@ const PERMISSION_SEED = [
   },
 ];
 
-// biome-ignore lint/suspicious/noExplicitAny: heterogeneous seed rows for test-only extension.
 type ExtraSeed = { assessments?: any[]; consents?: any[] };
 
 function makeServer(extra: ExtraSeed = {}) {

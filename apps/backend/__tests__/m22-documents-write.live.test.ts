@@ -101,7 +101,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         [templateId],
       )
     ).rows[0].id as string;
-    await admin.query(`UPDATE form_template SET published_active_version_id=$1 WHERE id=$2`, [
+    await admin.query("UPDATE form_template SET published_active_version_id=$1 WHERE id=$2", [
       versionId,
       templateId,
     ]);

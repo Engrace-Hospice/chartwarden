@@ -128,8 +128,8 @@ type DunRow = typeof schema.dunningStateRow.$inferSelect;
 type AggRow = typeof schema.usagePeriodAggregate.$inferSelect;
 type WhRow = typeof schema.stripeWebhookEvent.$inferSelect;
 
-function planCatalogView(plan: PlanRow | undefined, meters: MeterRow[]): PlanCatalogView {
-  plan = req(plan, "plan");
+function planCatalogView(planIn: PlanRow | undefined, meters: MeterRow[]): PlanCatalogView {
+  const plan = req(planIn, "plan");
   return {
     slug: plan.slug,
     name: plan.name,
@@ -149,8 +149,8 @@ function planCatalogView(plan: PlanRow | undefined, meters: MeterRow[]): PlanCat
   };
 }
 
-function planAdminView(plan: PlanRow | undefined, meters: MeterRow[]): PlanAdminView {
-  plan = req(plan, "plan");
+function planAdminView(planIn: PlanRow | undefined, meters: MeterRow[]): PlanAdminView {
+  const plan = req(planIn, "plan");
   return {
     ...planCatalogView(plan, meters),
     id: plan.id,
@@ -161,8 +161,8 @@ function planAdminView(plan: PlanRow | undefined, meters: MeterRow[]): PlanAdmin
   };
 }
 
-function meterView(m: MeterRow | undefined): MeterAdminView {
-  m = req(m, "meter");
+function meterView(mIn: MeterRow | undefined): MeterAdminView {
+  const m = req(mIn, "meter");
   return {
     id: m.id,
     planId: m.planId,
@@ -222,8 +222,8 @@ function subscriptionAdminView(
   };
 }
 
-function paymentMethodView(pm: PmRow | undefined): PaymentMethodView {
-  pm = req(pm, "payment method");
+function paymentMethodView(pmIn: PmRow | undefined): PaymentMethodView {
+  const pm = req(pmIn, "payment method");
   return {
     id: pm.id,
     kind: pm.kind,
@@ -250,8 +250,8 @@ function invoiceListItemView(inv: InvRow): InvoiceListItemView {
   };
 }
 
-function refundView(r: RefundRow | undefined, organizationName: string): RefundView {
-  r = req(r, "refund");
+function refundView(rIn: RefundRow | undefined, organizationName: string): RefundView {
+  const r = req(rIn, "refund");
   return {
     id: r.id,
     organizationId: r.organizationId,
@@ -271,8 +271,8 @@ function refundView(r: RefundRow | undefined, organizationName: string): RefundV
   };
 }
 
-function promoView(p: PromoRow | undefined): PromoView {
-  p = req(p, "promo");
+function promoView(pIn: PromoRow | undefined): PromoView {
+  const p = req(pIn, "promo");
   return {
     id: p.id,
     code: p.code,
@@ -289,8 +289,8 @@ function promoView(p: PromoRow | undefined): PromoView {
   };
 }
 
-function snapshotView(s: SnapRow | undefined): RevenueSnapshotView {
-  s = req(s, "snapshot");
+function snapshotView(sIn: SnapRow | undefined): RevenueSnapshotView {
+  const s = req(sIn, "snapshot");
   return {
     id: s.id,
     snapshotMonth: s.snapshotMonth,

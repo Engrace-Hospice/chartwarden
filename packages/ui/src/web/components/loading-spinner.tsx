@@ -9,7 +9,12 @@ export interface LoadingSpinnerProps {
 
 export function LoadingSpinner({ label = "Loading", size = 20 }: LoadingSpinnerProps): JSX.Element {
   return (
-    <output aria-live="polite" aria-label={label} style={{ display: "inline-flex" }}>
+    <output
+      data-wardenx-loading-spinner
+      aria-live="polite"
+      aria-label={label}
+      style={{ display: "inline-flex" }}
+    >
       <svg
         width={size}
         height={size}

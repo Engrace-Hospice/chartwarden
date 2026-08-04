@@ -501,7 +501,7 @@ export function isMemberOf(
   code: string,
 ): boolean {
   const members = terminology.valueSetMembership[valueSetId];
-  return members !== undefined && members.includes(code);
+  return members?.includes(code) ?? false;
 }
 
 /** True iff a result represents a skip (non-blocking deny-stub / not-applicable). */

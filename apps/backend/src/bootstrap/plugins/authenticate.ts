@@ -68,7 +68,8 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
       if (presented && timingSafeMatch(presented, deps.systemCredential.token)) {
         const orgId = headerOf(request, SYSTEM_ORG_HEADER);
         request.context.userId = "system";
-        (request.context.attributes ??= {}).actorKind = "system";
+        request.context.attributes ??= {};
+        request.context.attributes.actorKind = "system";
         if (orgId) request.context.organizationId = orgId; // absent → org-gated system routes still deny
         return;
       }
@@ -78,7 +79,8 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     request.context.userId = snap.userId; // authenticated (pre-org or org-bound)
     // Expose the real Better Auth session id so route helpers (e.g. select-organization's session
     // writer) can act on the actual session row, not the per-request id. Init the bag if absent.
-    (request.context.attributes ??= {}).sessionId = snap.sessionId;
+    request.context.attributes ??= {};
+    request.context.attributes.sessionId = snap.sessionId;
     // Stamp the PRINCIPAL KIND. This hook only ever resolves an interactive Better Auth session, so
     // the answer here is always "user" — but it must be WRITTEN rather than left absent, because the
     // readers split two ways on it and they disagree about what absence means:

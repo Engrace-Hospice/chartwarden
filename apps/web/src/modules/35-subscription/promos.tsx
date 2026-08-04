@@ -125,9 +125,9 @@ export function Promos(): JSX.Element {
           </button>
         </div>
         {outcome ? (
-          <div role="status" aria-live="polite">
+          <output aria-live="polite">
             <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
-          </div>
+          </output>
         ) : null}
         <p
           style={{

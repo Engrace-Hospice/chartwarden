@@ -549,8 +549,7 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
         // contract error — refuse loudly rather than becoming an unguarded status mutator (the full
         // §2.2 lifecycle lives in orders-route-service-db.ts behind its guards).
         throw new NotFoundError(
-          `OrderSeamStore.applyOrderStatus: unsupported seam-driven status '${status}' (only ` +
-            "active / verbal_pending / discontinued are provider-driven)",
+          `OrderSeamStore.applyOrderStatus: unsupported seam-driven status '${status}' (only active / verbal_pending / discontinued are provider-driven)`,
         );
       });
     },

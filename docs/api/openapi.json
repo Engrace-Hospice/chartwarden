@@ -12176,6 +12176,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 32,
               "type": "string"
             }
           },
@@ -12184,6 +12185,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 64,
               "type": "string"
             }
           },
@@ -12192,6 +12194,8 @@
             "in": "query",
             "required": false,
             "schema": {
+              "minimum": 1,
+              "maximum": 200,
               "type": "integer"
             }
           }
@@ -13078,7 +13082,24 @@
                         "missing": {
                           "type": "array",
                           "items": {
-                            "type": "string"
+                            "anyOf": [
+                              {
+                                "const": "election_signed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "nor_acknowledged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cti_signed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attending_signed",
+                                "type": "string"
+                              }
+                            ]
                           }
                         }
                       }
@@ -38764,18 +38785,34 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "validationResultId",
-                  "reason"
+                  "reason",
+                  "overrideRole"
                 ],
                 "properties": {
-                  "validationResultId": {
-                    "format": "uuid",
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 2000,
                     "type": "string"
                   },
-                  "reason": {
-                    "minLength": 30,
-                    "maxLength": 1000,
-                    "type": "string"
+                  "overrideRole": {
+                    "anyOf": [
+                      {
+                        "const": "billing_manager",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_officer",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medical_director",
+                        "type": "string"
+                      },
+                      {
+                        "const": "org_admin",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
@@ -125912,10 +125949,29 @@
         "summary": "Referral worklist (cursor-paginated)",
         "parameters": [
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 32,
+              "type": "string"
+            }
+          },
+          {
             "name": "cursor",
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 64,
               "type": "string"
             }
           },
@@ -125924,6 +125980,8 @@
             "in": "query",
             "required": false,
             "schema": {
+              "minimum": 1,
+              "maximum": 200,
               "type": "integer"
             }
           }

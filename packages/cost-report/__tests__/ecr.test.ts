@@ -36,15 +36,12 @@ describe("writeEcr — deterministic fixed-field text", () => {
     const text = writeEcr(WORKSHEETS, HEADER);
     const lines = text.split("\r\n").filter((l) => l.length > 0);
 
-    const expectedHeader =
-      "1" + "100001".padEnd(10) + "20260101" + "20261231" + ECR_SPEC_VERSION.padEnd(12);
+    const expectedHeader = `1${"100001".padEnd(10)}2026010120261231${ECR_SPEC_VERSION.padEnd(12)}`;
     // leaf order is lexicographic by key: ccn (alpha) then totalCostCents (money).
-    const expectedCcnLine =
-      "2" + "S-1".padEnd(7) + "1".padStart(5, "0") + "1".padStart(5, "0") + "100001".padEnd(40);
-    const expectedMoneyLine =
-      "3" + "S-1".padEnd(7) + "2".padStart(5, "0") + "1".padStart(5, "0") + "500.00".padStart(40);
+    const expectedCcnLine = `2${"S-1".padEnd(7)}${"1".padStart(5, "0")}${"1".padStart(5, "0")}${"100001".padEnd(40)}`;
+    const expectedMoneyLine = `3${"S-1".padEnd(7)}${"2".padStart(5, "0")}${"1".padStart(5, "0")}${"500.00".padStart(40)}`;
     // header + 2 data records precede the trailer ⇒ recordCount === 3.
-    const expectedTrailer = "9" + "3".padStart(7, "0");
+    const expectedTrailer = `9${"3".padStart(7, "0")}`;
 
     expect(lines).toEqual([expectedHeader, expectedCcnLine, expectedMoneyLine, expectedTrailer]);
   });

@@ -206,11 +206,7 @@ export function createDrizzleAuditEraserPorts(
     async performErasure(input) {
       if (executor) return executor.performErasure(input);
       throw new Error(
-        "M4_ERASER_PERFORM_ERASURE_UNBOUND: audit_event is HELPER_ONLY and wardenx_app has no " +
-          "DELETE grant (migration 0001 append-only guarantee); the packages/audit " +
-          "createDbAuditEraseExecutor requires a destruction-granted client injected as " +
-          "`destructionDb`, which deployment has not provisioned. Refusing to " +
-          `report '${input.resourceKind}/${input.resourceId}' erased while its rows survive.`,
+        `M4_ERASER_PERFORM_ERASURE_UNBOUND: audit_event is HELPER_ONLY and wardenx_app has no DELETE grant (migration 0001 append-only guarantee); the packages/audit createDbAuditEraseExecutor requires a destruction-granted client injected as \`destructionDb\`, which deployment has not provisioned. Refusing to report '${input.resourceKind}/${input.resourceId}' erased while its rows survive.`,
       );
     },
 

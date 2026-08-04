@@ -523,5 +523,4 @@ export interface OrderProvider {
  * §4.4 — internal marker the M1 outbox dispatcher uses to type-check M11 subscribers. M11 performs no
  * direct cross-module writes at the boundary; all downstream communication is the `m11.*` outbox.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export type OrderEventPublisher = {};
+export type OrderEventPublisher = Record<string, never>;

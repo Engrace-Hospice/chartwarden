@@ -198,7 +198,7 @@ async function main(): Promise<void> {
       : allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
     for (const key of keys) {
       await db.query(
-        `INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)`,
+        "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
         [orgId, roleId, key],
       );
     }
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
       const roleId = roleIdByKey.get(key);
       if (!roleId) throw new Error(`user ${u.email} references undefined role '${key}'`);
       await db.query(
-        `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)`,
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
         [orgId, membershipId, roleId],
       );
       for (const p of permKeysByRole.get(key) ?? []) effectivePerms.add(p);

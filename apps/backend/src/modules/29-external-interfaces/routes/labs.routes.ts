@@ -142,12 +142,10 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
         observation.abnormalSummary === "all_normal" ||
         observation.abnormalSummary === "no_flags"
       ) {
-        return reply
-          .code(409)
-          .send({
-            code: "CONFLICT",
-            message: "observation carries no abnormal flag to acknowledge",
-          });
+        return reply.code(409).send({
+          code: "CONFLICT",
+          message: "observation carries no abnormal flag to acknowledge",
+        });
       }
       // The M36 badge clear is M36's concern (M29 owns no out-of-band delivery); the acknowledgment itself
       // is a read-audited clinical action against the observation.

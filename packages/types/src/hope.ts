@@ -371,5 +371,4 @@ export interface HopeOrgRollupProvider {
  * §2.4 — internal marker the M1 outbox dispatcher uses to type-check M10 subscribers. M10 performs no
  * direct cross-module writes at the boundary; all downstream communication is the `m10.*` outbox.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export type HopeEventPublisher = {};
+export type HopeEventPublisher = Record<string, never>;

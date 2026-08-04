@@ -417,7 +417,7 @@ describe.skipIf(!DB_URL)(
 
     it("NOTHING in M20 is partitioned", async () => {
       const { rows } = await db.query<{ relname: string; relkind: string }>(
-        `SELECT relname, relkind FROM pg_class WHERE relname = ANY($1)`,
+        "SELECT relname, relkind FROM pg_class WHERE relname = ANY($1)",
         [ALL_TABLES],
       );
       expect(rows).toHaveLength(ALL_TABLES.length);

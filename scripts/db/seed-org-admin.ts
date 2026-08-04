@@ -137,14 +137,14 @@ async function main(): Promise<void> {
 
   await db.end();
 
-  console.log(`\n✓ org_admin user created`);
+  console.log("\n✓ org_admin user created");
   console.log(`  email:    ${USER.email}`);
   console.log(`  password: ${password}`);
   console.log(`  role:     ${USER.roleKey} (${keys.length} perms, full catalog)`);
   console.log(
     `  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,
   );
-  console.log(`\nAdd this account to CREDENTIALS.local.md.`);
+  console.log("\nAdd this account to CREDENTIALS.local.md.");
 }
 
 main().catch((err) => {

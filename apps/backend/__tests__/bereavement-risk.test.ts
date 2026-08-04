@@ -123,7 +123,7 @@ describe("MSW vocabulary → the 8 D17 rubric slots", () => {
   });
 
   it("maps §7.3's `sole_caregiver_isolation` onto socialIsolation", () => {
-    expect(MSW_FACTOR_ALIASES["sole_caregiver_isolation"]).toBe("socialIsolation");
+    expect(MSW_FACTOR_ALIASES.sole_caregiver_isolation).toBe("socialIsolation");
   });
 
   it("surfaces an MSW finding with no rubric slot instead of weighting or dropping it", () => {

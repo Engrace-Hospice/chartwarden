@@ -147,10 +147,10 @@ export function MedicaidValidationQueue(): JSX.Element {
             </span>
           ) : null}
           {truncated ? (
-            <span role="status" style={mutedStyle}>
+            <output style={mutedStyle}>
               This is a partial view — the worklist scan hit its cap, so more blocked claims exist
               than are grouped here.
-            </span>
+            </output>
           ) : null}
         </div>
       }

@@ -31,10 +31,9 @@ export const noeTimeliness5d: Rule = {
         fixAction: "file_noe",
       });
     }
-    const warnDay =
-      typeof params["warnDay"] === "number" ? (params["warnDay"] as number) : NOE_WARN_DAY;
+    const warnDay = typeof params.warnDay === "number" ? (params.warnDay as number) : NOE_WARN_DAY;
     const blockDay =
-      typeof params["blockDay"] === "number" ? (params["blockDay"] as number) : NOE_BLOCK_DAY;
+      typeof params.blockDay === "number" ? (params.blockDay as number) : NOE_BLOCK_DAY;
     const noe = ctx.noe;
 
     if (noe.state === "ack_accepted") {

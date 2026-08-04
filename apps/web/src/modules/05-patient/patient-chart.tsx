@@ -85,7 +85,7 @@ function NavIcon({ name }: { name: NavIconName }): JSX.Element {
       strokeWidth="1.6"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden
+      aria-hidden="true"
       style={{ flexShrink: 0 }}
     >
       <path d={NAV_ICON_PATHS[name]} />

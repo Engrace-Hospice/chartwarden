@@ -246,14 +246,12 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(SelfRegisterDeviceRequest, request.body);
-      return reply
-        .code(201)
-        .send(
-          service.selfRegisterDevice(organizationId, userId, {
-            platform: b.platform,
-            modelDescription: b.modelDescription,
-          }),
-        );
+      return reply.code(201).send(
+        service.selfRegisterDevice(organizationId, userId, {
+          platform: b.platform,
+          modelDescription: b.modelDescription,
+        }),
+      );
     },
   );
 
@@ -322,15 +320,13 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     async (request, reply) => {
       const { organizationId } = actorOf(request);
       const b = parse(CreatePerAddressOverrideRequest, request.body);
-      return reply
-        .code(201)
-        .send(
-          service.createPerAddressOverride(organizationId, {
-            patientAddressId: b.patientAddressId,
-            radiusM: b.radiusM,
-            maxAccuracyM: b.maxAccuracyM,
-          }),
-        );
+      return reply.code(201).send(
+        service.createPerAddressOverride(organizationId, {
+          patientAddressId: b.patientAddressId,
+          radiusM: b.radiusM,
+          maxAccuracyM: b.maxAccuracyM,
+        }),
+      );
     },
   );
 

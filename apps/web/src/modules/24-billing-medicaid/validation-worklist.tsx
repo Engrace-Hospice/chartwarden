@@ -252,7 +252,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
           ) : sorted.length === 0 ? (
             <EmptyState title="No results" description="This run produced no per-rule results." />
           ) : (
-            <table role="table" style={tableStyle}>
+            <table style={tableStyle}>
               <thead>
                 <tr>
                   <th style={th}>Rule</th>

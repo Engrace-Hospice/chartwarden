@@ -81,7 +81,7 @@ export async function resolveLabPatient(
       organizationId: input.organizationId,
       placerOrderNumber: placer,
     });
-    if (order && order.patientId) {
+    if (order?.patientId) {
       return {
         kind: "matched",
         patientId: order.patientId,

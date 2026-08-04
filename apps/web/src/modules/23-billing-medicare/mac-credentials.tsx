@@ -429,6 +429,7 @@ function UpsertCeremony({
   }, [client, draft, onSaved]);
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a React-conditionally-mounted drawer, not the native <dialog> (would need imperative showModal()/close() wiring)
     <div role="dialog" aria-label="MAC credential upsert" style={drawerStyle}>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", maxWidth: "30rem" }}>
         <h2

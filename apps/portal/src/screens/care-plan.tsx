@@ -71,6 +71,7 @@ export function PortalCarePlanView(): JSX.Element {
                   </div>
                   <ul style={{ margin: "0 0 0.6rem", paddingLeft: "1.1rem", fontSize: "0.92rem" }}>
                     {p.goals.map((g, i) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: goals are plain strings with no id; a read-only, never-reordered list
                       <li key={i}>{g}</li>
                     ))}
                   </ul>

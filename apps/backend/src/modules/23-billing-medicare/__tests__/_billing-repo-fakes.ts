@@ -58,7 +58,6 @@ export function buildFakeRepositories(): {
   };
 
   class ClaimRepository {
-    constructor(_tx: unknown) {}
     async create(input: any): Promise<any> {
       const row = {
         version: 0,
@@ -111,7 +110,6 @@ export function buildFakeRepositories(): {
   }
 
   class ClaimLineRepository {
-    constructor(_tx: unknown) {}
     async insertBatch(rows: readonly any[]): Promise<any[]> {
       return rows.map((r) => {
         const row = { id: newId("line"), ...r };
@@ -122,7 +120,6 @@ export function buildFakeRepositories(): {
   }
 
   class HippsCalculationRepository {
-    constructor(_tx: unknown) {}
     async append(v: any): Promise<any> {
       const row = { id: newId("hipps"), ...v };
       store.hipps.push(row);
@@ -131,7 +128,6 @@ export function buildFakeRepositories(): {
   }
 
   class SiaCalculationRepository {
-    constructor(_tx: unknown) {}
     async append(v: any): Promise<any> {
       const row = { id: newId("sia"), ...v };
       store.sia.push(row);
@@ -140,7 +136,6 @@ export function buildFakeRepositories(): {
   }
 
   class ClaimStateHistoryRepository {
-    constructor(_tx: unknown) {}
     async append(v: any): Promise<any> {
       const row = { id: newId("hist"), ...v };
       store.history.push(row);
@@ -149,7 +144,6 @@ export function buildFakeRepositories(): {
   }
 
   class ValidationRunRepository {
-    constructor(_tx: unknown) {}
     async append(v: any): Promise<any> {
       // Idempotent on (claimId, trigger, runInputHash) — mirrors the real onConflictDoNothing append.
       const existing = [...store.runs.values()].find(
@@ -181,7 +175,6 @@ export function buildFakeRepositories(): {
   }
 
   class ValidationResultRepository {
-    constructor(_tx: unknown) {}
     async appendBatch(values: readonly any[]): Promise<any[]> {
       return values.map((v) => {
         const row = { id: newId("res"), recordedAt: new Date(), ...v };
@@ -208,7 +201,6 @@ export function buildFakeRepositories(): {
   }
 
   class ValidationOverrideRepository {
-    constructor(_tx: unknown) {}
     async append(v: any): Promise<any> {
       // Idempotent on resultId — mirrors the real onConflictDoNothing(target=result_id) append.
       const existing = [...store.overrides.values()].find((o) => o.resultId === v.resultId);

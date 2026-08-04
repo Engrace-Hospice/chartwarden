@@ -169,8 +169,7 @@ export async function applyMigrations(
 
   if (opts.strict && drifted.length > 0) {
     throw new Error(
-      `--strict: ${drifted.length} already-applied migration(s) have checksum drift: ` +
-        drifted.join(", "),
+      `--strict: ${drifted.length} already-applied migration(s) have checksum drift: ${drifted.join(", ")}`,
     );
   }
   return { ran, pending, drifted };
@@ -218,8 +217,7 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
       console.log("✗ WARDENX_DEV_BYPASSRLS ignored: NODE_ENV=production. BYPASSRLS revoked.");
     } else {
       console.log(
-        `RLS enforced for ${APP_ROLE} (set WARDENX_DEV_BYPASSRLS=1 for the local single-org demo;\n` +
-          "  without it, pre-org reads such as /auth/memberships return no rows and org-select is empty).",
+        `RLS enforced for ${APP_ROLE} (set WARDENX_DEV_BYPASSRLS=1 for the local single-org demo;\n  without it, pre-org reads such as /auth/memberships return no rows and org-select is empty).`,
       );
     }
   }
@@ -239,9 +237,7 @@ async function main(): Promise<void> {
   // A guessable default password on a LOGIN role is only tolerable on a throwaway local cluster.
   if (IS_PRODUCTION && !SCHEMA_ONLY && !process.env.WARDENX_APP_PASSWORD) {
     throw new Error(
-      "WARDENX_APP_PASSWORD is required when NODE_ENV=production — refusing to set the default " +
-        `login password on ${APP_ROLE}. (Pass --schema-only for the per-deploy step, which never ` +
-        "touches this credential.)",
+      `WARDENX_APP_PASSWORD is required when NODE_ENV=production — refusing to set the default login password on ${APP_ROLE}. (Pass --schema-only for the per-deploy step, which never touches this credential.)`,
     );
   }
   const appPassword = process.env.WARDENX_APP_PASSWORD ?? "wardenx_app";

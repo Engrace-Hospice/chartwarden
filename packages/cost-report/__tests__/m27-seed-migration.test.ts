@@ -38,8 +38,8 @@ function parseSeedRows(sql: string): ParsedSeedRow[] {
   const re =
     /\(\s*'([^']+)',\s*'([^']+)',\s*'([^']+)',\s*(true|false),\s*'([^']+)',\s*'([^']*)'\s*\)/g;
   const rows: ParsedSeedRow[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(sql)) !== null) {
+  let m: RegExpExecArray | null = re.exec(sql);
+  while (m !== null) {
     rows.push({
       ruleCode: m[1]!,
       category: m[2]!,
@@ -48,6 +48,7 @@ function parseSeedRows(sql: string): ParsedSeedRow[] {
       macJurisdictionScope: m[5]!,
       description: m[6]!,
     });
+    m = re.exec(sql);
   }
   return rows;
 }

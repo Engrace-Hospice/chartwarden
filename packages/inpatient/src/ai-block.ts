@@ -58,9 +58,7 @@ export async function validateIpuAIBlock(registry: IpuAiPromptRegistryPort): Pro
     if (hits.length > 0) {
       const h = hits[0]!;
       throw new IpuAIBlockViolation(
-        `Prompt ${h.promptTemplateId} (templateKey='${h.templateKey}') targets IPU output-entity zone ` +
-          `'${h.outputEntityTargetPrefix}' — D16 prohibits AI synthesis/attestation of GIP criteria, ` +
-          `IRC cap-override, restraint, or body-release records`,
+        `Prompt ${h.promptTemplateId} (templateKey='${h.templateKey}') targets IPU output-entity zone '${h.outputEntityTargetPrefix}' — D16 prohibits AI synthesis/attestation of GIP criteria, IRC cap-override, restraint, or body-release records`,
       );
     }
   }

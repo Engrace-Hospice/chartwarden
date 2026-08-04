@@ -22,8 +22,8 @@ export const f2fAttestedForRecert: Rule = {
   defaultParameters: { minSequenceRequiringF2f: 3 },
   check: (ctx, params) => {
     const min =
-      typeof params["minSequenceRequiringF2f"] === "number"
-        ? (params["minSequenceRequiringF2f"] as number)
+      typeof params.minSequenceRequiringF2f === "number"
+        ? (params.minSequenceRequiringF2f as number)
         : 3;
     const recertPeriods = periodsOverlappingClaim(ctx.claim, ctx.electionPeriods).filter(
       (p) => p.sequence >= min,

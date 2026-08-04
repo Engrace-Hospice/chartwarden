@@ -35,8 +35,7 @@ export class MedicaidAdapterRegistry {
     for (const cfg of mdmStatePrograms.filter((c) => c.active)) {
       if (!this.byVendor.has(cfg.adapterVendor)) {
         throw new Error(
-          `M40 catalog references active adapter vendor "${cfg.adapterVendor}" for state ${cfg.stateCode} ` +
-            `but no such adapter is registered. Either disable the state in M40 or implement/register the adapter.`,
+          `M40 catalog references active adapter vendor "${cfg.adapterVendor}" for state ${cfg.stateCode} but no such adapter is registered. Either disable the state in M40 or implement/register the adapter.`,
         );
       }
     }

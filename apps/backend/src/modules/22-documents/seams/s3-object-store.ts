@@ -67,11 +67,11 @@ export interface S3ObjectStoreDeps {
 export function s3ObjectStoreConfigFromEnv(
   env: Record<string, string | undefined>,
 ): S3ObjectStoreConfig | null {
-  const endpoint = env["MINIO_ENDPOINT"]?.trim();
-  const accessKeyId = env["MINIO_ACCESS_KEY"]?.trim();
-  const secretAccessKey = env["MINIO_SECRET_KEY"]?.trim();
+  const endpoint = env.MINIO_ENDPOINT?.trim();
+  const accessKeyId = env.MINIO_ACCESS_KEY?.trim();
+  const secretAccessKey = env.MINIO_SECRET_KEY?.trim();
   if (!endpoint || !accessKeyId || !secretAccessKey) return null;
-  const region = env["MINIO_REGION"]?.trim();
+  const region = env.MINIO_REGION?.trim();
   return {
     endpoint,
     accessKeyId,

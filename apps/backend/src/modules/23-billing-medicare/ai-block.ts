@@ -98,8 +98,7 @@ export class AiBlockViolationError extends Error {
   constructor(offending: readonly PromptTemplateDescriptor[]) {
     const detail = offending.map((t) => `${t.key} → ${t.outputType}`).join(", ");
     super(
-      "M23 AI-block (D13) violated: M32 prompt template(s) target an M23-owned table and may NOT write " +
-        `billing rows: ${detail}`,
+      `M23 AI-block (D13) violated: M32 prompt template(s) target an M23-owned table and may NOT write billing rows: ${detail}`,
     );
     this.name = "AiBlockViolationError";
     this.offendingTemplateKeys = offending.map((t) => t.key);

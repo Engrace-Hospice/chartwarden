@@ -5,7 +5,7 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 // — the M13 caregiver-attested write path (M31-T06). The write is server-gated by ABAC
 // `portal_caregiver_is_primary_or_dpoa`; a family (non-primary) caregiver still SEES the panel but the server
 // answers 403, which we surface plainly rather than hiding the affordance and pretending it doesn't exist.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { day, humanize, readError } from "./portal-format";
 import {
@@ -64,7 +64,7 @@ export function PortalMedicationList(): JSX.Element {
   const [attestText, setAttestText] = useState("");
   const [submitState, setSubmitState] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     const [mRes, aRes] = await Promise.all([
       client.GET("/api/v1/portal/medications/active", {}),
@@ -74,7 +74,7 @@ export function PortalMedicationList(): JSX.Element {
     else setMeds((mRes.data?.items ?? []) as unknown as Medication[]);
     if (!aRes.error) setLog((aRes.data?.items ?? []) as unknown as Administration[]);
     setLoading(false);
-  }
+  }, [client]);
 
   useEffect(() => {
     let active = true;
@@ -84,8 +84,7 @@ export function PortalMedicationList(): JSX.Element {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client]);
+  }, [load]);
 
   async function attest(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -231,6 +230,7 @@ export function PortalMedicationList(): JSX.Element {
           <PortalCard heading="Recent doses given">
             <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.88rem" }}>
               {log.map((a, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: server payload has no stable id; a read-only, never-reordered list
                 <li key={i}>
                   {day(a.administeredAt)} — {a.drugName ?? "Medication"}
                   {a.administeredAmount != null

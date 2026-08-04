@@ -380,16 +380,15 @@ export function TextAreaField({
         </span>
       ) : null}
       {minChars === undefined ? null : (
-        <span
+        <output
           id={`${slug}-count`}
-          role="status"
           aria-live="polite"
           style={{ ...mutedStyle, color: owed > 0 ? t.error : t.onSurfaceVariant }}
         >
           {owed > 0
             ? `${owed} more character${owed === 1 ? "" : "s"} required — the server asks for at least ${minChars}.`
             : `Minimum of ${minChars} characters met.`}
-        </span>
+        </output>
       )}
     </label>
   );

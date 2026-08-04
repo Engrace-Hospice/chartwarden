@@ -207,9 +207,7 @@ export function createPredicateRegistry(
     }
     if (existing.toString() === predicate.toString()) return; // same-source reboot — no-op
     throw new Error(
-      `ABAC predicate '${name}' is already registered with a DIFFERENT resolver (single-owner per ` +
-        `§4.2) — two modules named the same predicate; namespace one (e.g. 'm8.${name}') to resolve ` +
-        "the collision. This is NOT a re-boot: a re-boot re-registers byte-identical source.",
+      `ABAC predicate '${name}' is already registered with a DIFFERENT resolver (single-owner per §4.2) — two modules named the same predicate; namespace one (e.g. 'm8.${name}') to resolve the collision. This is NOT a re-boot: a re-boot re-registers byte-identical source.`,
     );
   };
 

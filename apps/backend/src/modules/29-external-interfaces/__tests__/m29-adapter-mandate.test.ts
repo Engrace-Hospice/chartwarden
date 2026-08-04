@@ -42,9 +42,10 @@ function m29SourceFiles(): string[] {
 function importSpecifiers(source: string): string[] {
   const specs: string[] = [];
   const re = /(?:from|import|require\()\s*["']([^"']+)["']/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(source)) !== null) {
+  let m: RegExpExecArray | null = re.exec(source);
+  while (m !== null) {
     if (m[1]) specs.push(m[1]);
+    m = re.exec(source);
   }
   return specs;
 }

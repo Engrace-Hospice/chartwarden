@@ -246,7 +246,7 @@ describe.skipIf(!DB_URL)("M13 eMAR — RLS cross-tenant denial — LIVE Postgres
 
     const administrationPolicy = (
       await db.query(
-        `INSERT INTO administration_policy (organization_id) VALUES ($1) RETURNING id`,
+        "INSERT INTO administration_policy (organization_id) VALUES ($1) RETURNING id",
         [org],
       )
     ).rows[0].id as string;

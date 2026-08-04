@@ -138,7 +138,7 @@ describe.skipIf(!DB_URL)(
       // partial unique index; first/last name are the only NOT NULLs.
       const externalPhysician = (
         await db.query(
-          `INSERT INTO external_physician (first_name, last_name) VALUES ($1,$2) RETURNING id`,
+          "INSERT INTO external_physician (first_name, last_name) VALUES ($1,$2) RETURNING id",
           [`Gregory${n}`, `House${n}`],
         )
       ).rows[0].id as string;

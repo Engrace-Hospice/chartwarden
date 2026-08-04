@@ -29,8 +29,8 @@ export const bereavementDischargeLegitimacy: Rule = {
   check: (ctx, params) => {
     const c = ctx.claim;
     const bereavementCode =
-      typeof params["bereavementRevenueCode"] === "string"
-        ? (params["bereavementRevenueCode"] as string)
+      typeof params.bereavementRevenueCode === "string"
+        ? (params.bereavementRevenueCode as string)
         : BEREAVEMENT_REVENUE_CODE;
     const defects: string[] = [];
 

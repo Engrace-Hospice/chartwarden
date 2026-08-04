@@ -161,7 +161,7 @@ describe("verifyStripeWebhook (§4.14)", () => {
     const header = signedHeader(raw, created);
     expect(() =>
       verifyStripeWebhook({
-        rawBody: raw + " ",
+        rawBody: `${raw} `,
         signatureHeader: header,
         webhookSecret: SECRET,
         nowMs,
@@ -294,7 +294,15 @@ describe("dispatchStripeCall (§4.13)", () => {
     const apply = vi.fn();
     const mirror: StripeMirrorApplier = { apply };
     let t = 1000;
-    const deps: StripeDispatcherDeps = { client, auditStore: store, mirror, nowMs: () => (t += 5) };
+    const deps: StripeDispatcherDeps = {
+      client,
+      auditStore: store,
+      mirror,
+      nowMs: () => {
+        t += 5;
+        return t;
+      },
+    };
     const out = await dispatchStripeCall(deps, dispatchEvent);
     expect(out.kind).toBe("succeeded");
     expect(calls.success).toBe(1);

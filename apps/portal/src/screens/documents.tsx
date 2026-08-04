@@ -4,7 +4,7 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 // URL (GET .../download-url). Inbound: the M31-T06 upload path — init (signed URL + 50 MB / MIME allowlist
 // enforced server-side) → PUT the bytes → complete, which hands the file to the M22 intake + virus-scan
 // pipeline. M31 never stores the blob; it brokers the signed URL and records the intent.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ChangeEvent, JSX } from "react";
 import { day, humanize, readError } from "./portal-format";
 import {
@@ -55,13 +55,13 @@ export function PortalDocumentList(): JSX.Element {
   const [uploadMsg, setUploadMsg] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     const res = await client.GET("/api/v1/portal/documents", {});
     if (res.error) setError(readError(res.response?.status));
     else setDocs((res.data?.items ?? []) as unknown as PortalDoc[]);
     setLoading(false);
-  }
+  }, [client]);
 
   useEffect(() => {
     let active = true;
@@ -71,8 +71,7 @@ export function PortalDocumentList(): JSX.Element {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client]);
+  }, [load]);
 
   async function download(documentId: string): Promise<void> {
     const res = await client.GET("/api/v1/portal/documents/{documentId}/download-url", {
