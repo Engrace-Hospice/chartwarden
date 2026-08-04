@@ -161,8 +161,8 @@
       "dependencies": {
         "@sinclair/typebox": "^0.34.0",
         "@wardenx/db": "workspace:*",
+        "@wardenx/shared": "workspace:*",
         "@wardenx/types": "workspace:*",
-        "decimal.js": "^10.6.0",
       },
     },
     "packages/cahps-vendors": {
@@ -179,6 +179,7 @@
       "dependencies": {
         "@sinclair/typebox": "^0.34.0",
         "@wardenx/db": "workspace:*",
+        "@wardenx/shared": "workspace:*",
         "@wardenx/types": "workspace:*",
       },
     },
@@ -193,9 +194,9 @@
         "@sinclair/typebox": "^0.34.0",
         "@wardenx/db": "workspace:*",
         "@wardenx/gusto-client": "workspace:*",
+        "@wardenx/shared": "workspace:*",
         "@wardenx/types": "workspace:*",
         "@wardenx/xero-client": "workspace:*",
-        "decimal.js": "^10.6.0",
       },
     },
     "packages/db": {
@@ -372,6 +373,9 @@
     "packages/shared": {
       "name": "@wardenx/shared",
       "version": "0.0.0",
+      "dependencies": {
+        "decimal.js": "^10.6.0",
+      },
     },
     "packages/subscription-billing": {
       "name": "@wardenx/subscription-billing",
