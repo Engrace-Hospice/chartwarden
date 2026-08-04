@@ -71,6 +71,7 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
 
   it("walks the admission lifecycle open → request-bed → assign-bed → discharge with bed cross-effects", async () => {
     const [unit] = await svc.listUnits(readActor);
+    if (!unit) throw new Error("expected the unit from the 'creates a unit and lists it' test to exist");
     // Seed a room + a ready bed + an RN-coverage window for the current hour (as admin).
     const roomId = (
       await admin.query(
