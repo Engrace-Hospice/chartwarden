@@ -276,8 +276,7 @@
   `buildMetricsRegistry()` (default Node process metrics), `registerHttpMetrics()` (Fastify
   `onResponse` hook; `wardenx_http_requests_total` / `wardenx_http_request_duration_seconds`, labeled
   by the ROUTE PATTERN via `request.routeOptions.url`, never the raw URL — a 404 labels `"unmatched"`,
-  both deliberate cardinality guards), `registerBullMQQueueMetrics()` (`wardenx_bullmq_queue_jobs{queue,
-  state}` via prom-client's lazy `collect()` — read from Redis only when `/metrics` is actually
+  both deliberate cardinality guards), `registerBullMQQueueMetrics()` (`wardenx_bullmq_queue_jobs{queue, state}` via prom-client's lazy `collect()` — read from Redis only when `/metrics` is actually
   scraped, no background polling interval to manage/leak), `registerOutboxMetrics()`
   (`wardenx_outbox_events_total{status}` + `wardenx_outbox_tick_duration_seconds` — the latter is the
   documented "claim latency" proxy, since a truer per-row age metric would need touching every
@@ -358,9 +357,7 @@
   (`"hope:windows"`), which BullMQ's `Worker`/`Queue` constructors reject outright (`:` is reserved for
   BullMQ's own Redis key scheme) — a LATENT defect in that catalog that predates this task; nothing had
   ever constructed a real M10 `Worker` before TASK-040D's `cron-workers.ts` did. Fixed by switching to
-  `.` (the M7/M9 convention). Re-verified: boot log shows the exact expected queue counts — `M7 §4.6
-  BullMQ care-plan.gates cron constructed` (queues:1), `M9 §4.8 BullMQ compliance-scan crons
-  constructed` (queues:3), `M10 §4.8 BullMQ HOPE watchdog crons constructed` (queues:2) — `/health`+
+  `.` (the M7/M9 convention). Re-verified: boot log shows the exact expected queue counts — `M7 §4.6 BullMQ care-plan.gates cron constructed` (queues:1), `M9 §4.8 BullMQ compliance-scan crons constructed` (queues:3), `M10 §4.8 BullMQ HOPE watchdog crons constructed` (queues:2) — `/health`+
   `/ready` both 200 (`db`/`valkey`/`outbox` all "ok"), and a live `🚨 DLQ promotion [...]` alert line
   fired for real (an M33/M23 pre-existing unbound-port failure, not a new-code failure — proves the
   DLQ-alerting retrofit onto the 7 pre-existing modules works, not just the 3 new ones). SIGTERM drained
@@ -542,8 +539,7 @@
     string-interpolated into a shell command.
   - **Two real bugs found and fixed by actually running it** (typecheck alone could never have
     caught either): (1) pgBackRest's default connecting role is the CURRENT OS USER (libpq's
-    `PQconnectdb` fallback), not `"postgres"` as assumed — `stanza-create` failed with `role
-    "fabrice" does not exist` until `pg1-user=postgres` was added explicitly to the generated
+    `PQconnectdb` fallback), not `"postgres"` as assumed — `stanza-create` failed with `role "fabrice" does not exist` until `pg1-user=postgres` was added explicitly to the generated
     config. (2) pgBackRest's default `log-path` (`/var/log/pgbackrest/`) isn't writable/doesn't
     exist on a dev machine — added an explicit `log-path` under the script's own temp work dir.
   - **Socket-path-length gotcha reused from TASK-040E's live-migration testing**: the OS tmpdir
@@ -577,13 +573,67 @@
     scaffold-only task; flagging it as a legitimate follow-up rather than doing it silently or
     pretending it's out of scope by omission.
   - Gate-verified: typecheck, build, `arch:fitness` (17/17), full 6891-test suite unchanged (this is
-    an operational script exercised manually, not a vitest test file).
+    an operational script exercised manually, not a vitest test file)./
 
 ## TASK-050 — Test coverage: per-module HTTP smoke suites + real-auth conformance + jsdom
 
 - Priority: P1 · Severity: High · Phase: 7
 - Objective: a table-driven inject smoke suite per module (401/403/422/one 2xx); a fitness check requiring one per `routes/` dir; a shared conformance spec across in-memory and Drizzle backends; a jsdom smoke-render across the three registries; planted-violation self-tests for the 4 highest-value un-red-tested gates.
 - Evidence: TEST-001/003/004/005. Complexity: L.
+- **Status (2026-08-04): broken into TASK-050A–D — L-complexity, spans ~950 route defs across 22
+  modules with zero HTTP-layer test, so it cannot land in one pass (same reasoning as TASK-040's
+  A–G split).** As of this note only 17/39 modules with a `routes/` dir have a genuine `.inject()`
+  smoke suite (`02,03,04,05,06,07,08,09,10,11,12,13,22,36,38,39,40`); the 22 missing are
+  `14,15,16,17,18,19,20,21,23,24,25,26,27,28,29,30,31,32,33,34,35,37` — route-def counts per missing
+  module range 28–66 (`grep -rEho '\.(get|post|put|patch|delete)\(' <module>/routes | wc -l`).
+  - **TASK-050A** — TEST-001, the bulk of the L: a `scripts/report-inject-coverage.ts` ratchet gate
+    (mirrors `report-openapi-coverage.ts`'s baseline pattern exactly — same shape as
+    `audit/openapi-coverage/baseline.json`) wired into `arch:fitness` as `arch:inject-coverage`,
+    seeded with the 22 missing modules as the starting floor so the gate lands green on day one and
+    a NEW module can never ship with zero HTTP-layer coverage again; then table-driven
+    401(no auth)/403(no permission)/422(empty body)/one-2xx-per-route smoke suites per missing
+    module, tightening the baseline (`--update`) as each lands. Expected to span several sessions —
+    tracked incrementally, not as one commit.
+  - **TASK-050B** — TEST-003: a shared conformance spec run against both the in-memory and the
+    Drizzle-backed service per module (session→context binding + 412/409/pagination parity), plus
+    one real-session→module-route case added to `auth.live.test.ts`.
+  - **TASK-050C** — TEST-004: a jsdom vitest project (web/portal/admin all currently `environment: "node"`, no jsdom/RTL declared anywhere) + a registry-driven smoke-render of every `screens.ts`
+    entry across the three SPAs.
+  - **TASK-050D** — TEST-005: planted-violation (goes-red) self-tests for the 4 highest-value
+    currently-un-red-tested gates (`abac-predicates`, `design-tokens`, `ui-parity`, `client:check`),
+    added to `scripts/__tests__/fitness-gates.test.ts` alongside the existing 6.
+  - Do this work in 050A→050D order — 050A is the highest-severity finding (TEST-001, P1) and its
+    ratchet-gate pattern is the template TASK-050D's own planted-violation tests will exercise.
+  - **Status (2026-08-04): 050A infra + first batch DONE.** `scripts/report-inject-coverage.ts`
+    (mirrors `report-openapi-coverage.ts`'s ratchet exactly) landed wired into `arch:fitness` as
+    `arch:inject-coverage`, seeded at 22/39 missing so the gate was green from commit one. First
+    batch of 6 modules now covered (23/39, up from 17/39): M14 IDG (27/27 routes, 9 tests), M15
+    Discipline Care Plans (28/28, 32 tests), M16 Bereavement (33/33, 10 tests), M17 Scheduling
+    (29/29, 19 tests), M18 EVV (25/25, 28 tests), M19 On-Call (38/38, 10 tests) — 108 new tests,
+    all green together, `arch:fitness` green, full suite 6999 passing (was 6891). Baseline
+    re-tightened to the remaining 16 modules:
+    `20,21,23,24,25,26,27,28,29,30,31,32,33,34,35,37`.
+    - **Real defects surfaced purely by driving the route layer for the first time** (exactly what
+      TEST-001 predicted a pure-function test can't catch):
+      - M17 `SchedulingRouteService.publishProposal` has an admitted placeholder bug
+        (`assignedMembershipId: proposal.id` — the module's own comment says the real value should
+        come from the proposal). Not fixed here (out of TASK-050's scope); worth its own task.
+      - M14's in-memory backend mints non-UUID sub-resource ids (`idg-att-00000001`) while every
+        `:id` route param validates `format: "uuid"` — 10 of 27 routes 422 on a fully-permissioned,
+        well-formed call and were asserted as such (not faked to 2xx). M18 hit the same class of
+        bug in its own in-memory backend and worked around it in-test (documented inline) rather
+        than leave routes uncovered. M11's in-memory backend avoids this by minting
+        UUID-shaped ids from the start — worth retrofitting M14/M18 (and checking the rest) to
+        match that convention. Candidate follow-up: TASK-051 "in-memory test backends must mint
+        uuid-shaped ids to match TypeBox `format: uuid` params."
+    - Modules without a module-exported in-memory backend (M15, M16, M19 — unlike M11/M14/M17/M18)
+      got a hand-rolled in-memory service built inside the test file against the module's real
+      service interfaces; each documents this choice inline. M15/M16/M19 also had to stub the
+      M3-owned `step_up_recent` predicate locally (a fresh predicate registry per test starts
+      empty) to get genuine 2xx coverage on step-up-gated routes rather than leaving them
+      permanently 403.
+    - Remaining 16 modules + 050B/C/D are follow-up work (multi-session, per the ratchet design —
+      each new suite lands as a `--update` that tightens the floor further).
 
 ## Lower-priority (P2/P3) tasks
 

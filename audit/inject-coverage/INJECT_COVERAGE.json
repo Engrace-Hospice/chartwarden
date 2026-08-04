@@ -1,0 +1,312 @@
+{
+  "totals": {
+    "modules": 39,
+    "covered": 23,
+    "routes": 1214,
+    "coveredRoutes": 560
+  },
+  "modules": [
+    {
+      "module": "02-identity",
+      "routes": 17,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/authz-idor.test.ts",
+        "apps/backend/__tests__/authz-validation.test.ts",
+        "apps/backend/__tests__/session-step-up.test.ts",
+        "apps/backend/__tests__/audit-accounting.test.ts",
+        "apps/backend/__tests__/identity-routes.test.ts",
+        "apps/backend/__tests__/audit-routes.test.ts",
+        "apps/backend/__tests__/authz-routes.test.ts"
+      ]
+    },
+    {
+      "module": "03-authorization",
+      "routes": 17,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/authz-idor.test.ts",
+        "apps/backend/__tests__/authz-validation.test.ts",
+        "apps/backend/__tests__/authz-routes.test.ts"
+      ]
+    },
+    {
+      "module": "04-audit",
+      "routes": 4,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/audit-accounting.test.ts",
+        "apps/backend/__tests__/audit-routes.test.ts"
+      ]
+    },
+    {
+      "module": "05-patient",
+      "routes": 14,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/patient-routes.test.ts"
+      ]
+    },
+    {
+      "module": "06-admission",
+      "routes": 47,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/admission-routes.test.ts",
+        "apps/backend/__tests__/admission-intake.test.ts",
+        "apps/backend/__tests__/admission-certification.test.ts",
+        "apps/backend/__tests__/admission-discharge.test.ts"
+      ]
+    },
+    {
+      "module": "07-care-plan",
+      "routes": 19,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/care-plan-routes.test.ts"
+      ]
+    },
+    {
+      "module": "08-encounters",
+      "routes": 31,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/encounter-routes.test.ts",
+        "apps/backend/__tests__/encounter-authoring.test.ts"
+      ]
+    },
+    {
+      "module": "09-assessments",
+      "routes": 18,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/assessment-routes.test.ts"
+      ]
+    },
+    {
+      "module": "10-hope",
+      "routes": 20,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/hope-routes.test.ts"
+      ]
+    },
+    {
+      "module": "11-orders",
+      "routes": 28,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/orders-routes.test.ts"
+      ]
+    },
+    {
+      "module": "12-dosespot",
+      "routes": 31,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/dosespot-routes.test.ts"
+      ]
+    },
+    {
+      "module": "13-emar",
+      "routes": 28,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/emar-caregiver-barcode.test.ts",
+        "apps/backend/__tests__/emar-routes.test.ts"
+      ]
+    },
+    {
+      "module": "14-idg",
+      "routes": 27,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/idg-inject.test.ts"
+      ]
+    },
+    {
+      "module": "15-discipline-care-plans",
+      "routes": 28,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/discipline-plans-inject.test.ts"
+      ]
+    },
+    {
+      "module": "16-bereavement",
+      "routes": 33,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/bereavement-inject.test.ts"
+      ]
+    },
+    {
+      "module": "17-scheduling",
+      "routes": 29,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/scheduling-inject.test.ts"
+      ]
+    },
+    {
+      "module": "18-evv",
+      "routes": 25,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/evv-inject.test.ts"
+      ]
+    },
+    {
+      "module": "19-oncall",
+      "routes": 38,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/oncall-inject.test.ts"
+      ]
+    },
+    {
+      "module": "20-field-safety",
+      "routes": 30,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "21-supplies",
+      "routes": 37,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "22-documents",
+      "routes": 35,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/document-routes.test.ts",
+        "apps/backend/__tests__/document-doclens.test.ts",
+        "apps/backend/__tests__/document-workflow-acceptance.test.ts"
+      ]
+    },
+    {
+      "module": "23-billing-medicare",
+      "routes": 43,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "24-billing-medicaid",
+      "routes": 39,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "25-remittance",
+      "routes": 31,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "26-cap",
+      "routes": 27,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "27-cost-report",
+      "routes": 45,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "28-fhir",
+      "routes": 35,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "29-external-interfaces",
+      "routes": 33,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "30-quality",
+      "routes": 60,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "31-portal",
+      "routes": 53,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "32-ai-platform",
+      "routes": 32,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "33-reporting",
+      "routes": 42,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "34-saas-tenant-platform",
+      "routes": 48,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "35-subscription",
+      "routes": 54,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "36-messaging",
+      "routes": 22,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/messaging-routes.test.ts",
+        "apps/backend/__tests__/messaging-routes-mount.test.ts",
+        "apps/backend/__tests__/messaging-webhooks.test.ts"
+      ]
+    },
+    {
+      "module": "37-ipu",
+      "routes": 45,
+      "covered": false,
+      "suiteFiles": []
+    },
+    {
+      "module": "38-terminology",
+      "routes": 8,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/terminology-routes.test.ts",
+        "apps/backend/__tests__/terminology-routes-mount.test.ts"
+      ]
+    },
+    {
+      "module": "39-consent",
+      "routes": 27,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/consent-routes-mount.test.ts",
+        "apps/backend/__tests__/consent-routes.test.ts",
+        "apps/backend/__tests__/consent-surface.test.ts"
+      ]
+    },
+    {
+      "module": "40-mdm",
+      "routes": 14,
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/mdm-routes-mount.test.ts",
+        "apps/backend/__tests__/mdm-routes.test.ts"
+      ]
+    }
+  ]
+}
