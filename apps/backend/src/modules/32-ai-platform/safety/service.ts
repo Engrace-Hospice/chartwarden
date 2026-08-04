@@ -345,7 +345,7 @@ export async function executeAiHallucinationFollowUp(
   const planned = aiHallucinationDemotionPlan(plan, lifecycleState);
 
   const existing = await deps.killSwitches.findScopedRow(null, capabilityId);
-  if (existing !== null && existing.active) {
+  if (existing?.active) {
     return {
       action: plan.action,
       killSwitch: null,

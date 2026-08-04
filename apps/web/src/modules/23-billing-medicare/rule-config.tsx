@@ -57,6 +57,14 @@ function idemKey(): string {
   return crypto.randomUUID();
 }
 
+function mutationError(status: number | undefined): string {
+  if (status === 412) return "This rule changed since you opened it — reopen to retry.";
+  if (status === 403) return "This rule is regulatory-required and cannot be changed.";
+  if (status === 422) return "The overlay was rejected — review the rule parameters.";
+  if (status === 503) return "Billing write seam unavailable — try again shortly.";
+  return "The change could not be saved.";
+}
+
 export function RuleConfigEditor(): JSX.Element {
   const client = useApiClient();
   const [rules, setRules] = useState<RuleConfigView[]>([]);
@@ -211,14 +219,6 @@ function RuleDetail({
   const [actionError, setActionError] = useState<string | null>(null);
 
   const locked = rule.regulatoryRequiredSnapshot;
-
-  const mutationError = (status: number | undefined): string => {
-    if (status === 412) return "This rule changed since you opened it — reopen to retry.";
-    if (status === 403) return "This rule is regulatory-required and cannot be changed.";
-    if (status === 422) return "The overlay was rejected — review the rule parameters.";
-    if (status === 503) return "Billing write seam unavailable — try again shortly.";
-    return "The change could not be saved.";
-  };
 
   const save = useCallback(async () => {
     setBusy(true);

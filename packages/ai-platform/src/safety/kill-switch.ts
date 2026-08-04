@@ -260,7 +260,7 @@ export function evaluateAiKillSwitchActivation(
   lifecycleState: AiCapabilityLifecycleState,
   at: string,
 ): AiKillSwitchActivationDecision {
-  if (current !== null && current.active) {
+  if (current?.active) {
     return aiGovernanceRefusal(
       "AI_KILL_SWITCH_ALREADY_ACTIVE",
       `capability ${request.capabilityId} already has an active ${aiKillSwitchScopeOf(request.organizationId)} kill switch (activated ${current.activatedAt ?? "at an unrecorded instant"}); lift it before re-activating so the first incident's attribution survives`,

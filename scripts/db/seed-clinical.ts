@@ -156,7 +156,7 @@ async function main(): Promise<void> {
   if (!rn || !md) throw new Error("demo users not found — run db:seed first");
 
   const pats = await db.query<{ id: string }>(
-    `SELECT id FROM patient WHERE organization_id = $1 ORDER BY legal_last_name`,
+    "SELECT id FROM patient WHERE organization_id = $1 ORDER BY legal_last_name",
     [org],
   );
   if (pats.rowCount !== DETAIL.length) {
@@ -188,7 +188,7 @@ async function main(): Promise<void> {
   await db.query(`DELETE FROM patient_identifier WHERE patient_id = ANY($1) AND kind = 'mbi'`, [
     ids,
   ]);
-  await db.query(`DELETE FROM patient_privacy_flag_snapshot WHERE patient_id = ANY($1)`, [ids]);
+  await db.query("DELETE FROM patient_privacy_flag_snapshot WHERE patient_id = ANY($1)", [ids]);
   // orphan caregivers from a prior run (not referenced by any patient_caregiver)
   await db.query(
     `DELETE FROM caregiver c WHERE organization_id = $1

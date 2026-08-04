@@ -12,8 +12,10 @@ const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
 const ORIGINAL_KEY = process.env.M13_WITNESS_SIGNING_KEY;
 
 afterEach(() => {
+  // biome-ignore lint/performance/noDelete: process.env values stringify — `= undefined` sets the string "undefined", not an absent key.
   if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
   else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  // biome-ignore lint/performance/noDelete: process.env values stringify — `= undefined` sets the string "undefined", not an absent key.
   if (ORIGINAL_KEY === undefined) delete process.env.M13_WITNESS_SIGNING_KEY;
   else process.env.M13_WITNESS_SIGNING_KEY = ORIGINAL_KEY;
   vi.resetModules();
@@ -23,6 +25,7 @@ describe("M13 witness signing key (TASK-008)", () => {
   it("refuses to load in production without M13_WITNESS_SIGNING_KEY set", async () => {
     vi.resetModules();
     process.env.NODE_ENV = "production";
+    // biome-ignore lint/performance/noDelete: process.env values stringify — `= undefined` sets the string "undefined", not an absent key.
     delete process.env.M13_WITNESS_SIGNING_KEY;
     await expect(import("../emar-route-service-db")).rejects.toThrow(
       /M13_WITNESS_SIGNING_KEY is required in production/,

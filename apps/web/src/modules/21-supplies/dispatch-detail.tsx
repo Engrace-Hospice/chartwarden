@@ -122,7 +122,7 @@ export function ComfortKitDispatchDetail(): JSX.Element {
 
   const timeline = [
     {
-      label: "Dispatched from " + humanize(dispatch.dispatchSource),
+      label: `Dispatched from ${humanize(dispatch.dispatchSource)}`,
       at: dateTime(dispatch.dispatchedAt),
       by: shortId(dispatch.dispatchedByMembershipId),
     },

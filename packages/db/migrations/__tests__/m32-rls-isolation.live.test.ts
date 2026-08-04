@@ -472,7 +472,7 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
 
   it("lets a tenant READ the platform-wide kill row", async () => {
     const seen = await withOrg(ORG_A, () =>
-      db.query(`SELECT id FROM ai_kill_switch_state WHERE id = $1`, [platformKillId]),
+      db.query("SELECT id FROM ai_kill_switch_state WHERE id = $1", [platformKillId]),
     );
     // A tenant that could not see the platform row would have no way to explain to its clinicians why
     // a capability stopped.
@@ -494,13 +494,13 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
 
   it("refuses a tenant an UPDATE of the platform row, so a SEV-1 cannot be lifted from inside a tenant", async () => {
     const updated = await withOrg(ORG_A, () =>
-      db.query(`UPDATE ai_kill_switch_state SET active = false WHERE id = $1`, [platformKillId]),
+      db.query("UPDATE ai_kill_switch_state SET active = false WHERE id = $1", [platformKillId]),
     );
     // Not an error: the UPDATE policy's USING clause simply makes the row invisible to the write, so
     // zero rows match. Silent, and correct — the tenant's own row is the one it may edit.
     expect(updated.rowCount).toBe(0);
     const stillTheirs = await withOrg(ORG_A, () =>
-      db.query(`UPDATE ai_kill_switch_state SET active = false WHERE id = $1`, [a.tenantKill]),
+      db.query("UPDATE ai_kill_switch_state SET active = false WHERE id = $1", [a.tenantKill]),
     );
     expect(stillTheirs.rowCount).toBe(1);
   });

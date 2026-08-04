@@ -268,7 +268,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
           attemptCount: row.attemptCount - 1,
           dispatchedAt: null,
           nextAttemptAt: new Date(now.getTime() + deferredRetryMs),
-          lastError: `deferred: declared consumer not yet live (TASK-006 routing)`,
+          lastError: "deferred: declared consumer not yet live (TASK-006 routing)",
         });
         summary.deferred += 1;
         continue;

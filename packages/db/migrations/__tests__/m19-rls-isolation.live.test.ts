@@ -341,7 +341,7 @@ describe.skipIf(!DB_URL)(
 
     it("NOTHING in M19 is partitioned — the D10 redelivery guard and the one-answer rule depend on it", async () => {
       const { rows } = await db.query<{ relname: string; relkind: string }>(
-        `SELECT relname, relkind FROM pg_class WHERE relname = ANY($1)`,
+        "SELECT relname, relkind FROM pg_class WHERE relname = ANY($1)",
         [ALL_TABLES],
       );
       expect(rows).toHaveLength(ALL_TABLES.length);

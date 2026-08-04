@@ -312,7 +312,17 @@ function NoticeTable({
             return (
               <tr
                 key={id}
+                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                role="button"
+                tabIndex={0}
+                aria-pressed={id === selectedId}
                 onClick={() => onSelect(r)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    onSelect(r);
+                  }
+                }}
                 style={{
                   cursor: "pointer",
                   background:
@@ -582,7 +592,7 @@ function NoticeActions({
       setCancelReason("");
       onChanged();
     },
-    [client, config, id, record.version, cancelReason],
+    [client, config, id, record.version, cancelReason, onChanged],
   );
 
   const canSubmit = record.state === "draft" || record.state === "ready";
@@ -680,8 +690,7 @@ function VisuallyHiddenLive({
   message,
 }: { tone: "assertive" | "polite"; message: string }): JSX.Element {
   return (
-    <span
-      role="status"
+    <output
       aria-live={tone}
       style={{
         position: "absolute",
@@ -696,7 +705,7 @@ function VisuallyHiddenLive({
       }}
     >
       {message}
-    </span>
+    </output>
   );
 }
 

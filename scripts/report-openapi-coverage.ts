@@ -234,10 +234,11 @@ for (const c of coverage) {
   if (c.deficit > deficitFloor) {
     const added = c.routes - (base?.routes ?? 0);
     violations.push(
-      `${c.module}: ${c.deficit} unenriched routes exceeds baseline ${deficitFloor}` +
-        (added > 0
+      `${c.module}: ${c.deficit} unenriched routes exceeds baseline ${deficitFloor}${
+        added > 0
           ? ` (+${added} route(s) since baseline, ${c.deficit - deficitFloor} unenriched)`
-          : ""),
+          : ""
+      }`,
     );
   } else if (c.deficit < deficitFloor) {
     stale.push(`${c.module}: ${c.deficit} unenriched, baseline still claims ${deficitFloor}`);

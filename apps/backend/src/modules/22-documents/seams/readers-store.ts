@@ -115,7 +115,9 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
 } {
   const rendered = [...(seed.rendered ?? [])];
   const documents = [...(seed.documents ?? [])];
+  // `consent` is read by the PortalDocumentReader impl through the dedicated consent port (below), not here.
   const consent = seed.sudConsentByPatient ?? {};
+  void consent;
   const metrics = [...(seed.intakeMetrics ?? [])];
   const provenance = [...(seed.provenance ?? [])];
 
@@ -191,8 +193,6 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
       },
     },
   };
-  // `consent` is read by the PortalDocumentReader impl through the dedicated consent port (below), not here.
-  void consent;
 }
 
 /**

@@ -59,9 +59,11 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       </header>
       <div className="wx-body">
         {navOpen ? (
-          // biome-ignore lint/a11y/noStaticElementInteractions: a dismiss backdrop, not a control.
+          // biome-ignore lint/a11y/useKeyWithClickEvents: a dismiss backdrop, not a control.
           <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
         ) : null}
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: closes the mobile nav on a bubbled click from
+            a NavLink descendant, which is already keyboard-navigable — the nav itself isn't a control. */}
         <nav
           id="wx-primary-nav"
           className={navOpen ? "wx-nav wx-nav-open" : "wx-nav"}

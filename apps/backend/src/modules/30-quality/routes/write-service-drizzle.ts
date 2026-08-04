@@ -764,10 +764,9 @@ export function buildDrizzleM30WriteService(
             suppressedMinCellCount: 0,
           };
         }
-        const minCell =
-          ports.cahps && ports.cahps.has(actor.organizationId)
-            ? ports.cahps.resolve(actor.organizationId).minimumCellSize()
-            : 30; // CMS small-cell default
+        const minCell = ports.cahps?.has(actor.organizationId)
+          ? ports.cahps.resolve(actor.organizationId).minimumCellSize()
+          : 30; // CMS small-cell default
         const topBox: schema.CahpsTopBoxPercentages = {};
         const measuresAffected: string[] = [];
         let suppressed = 0;

@@ -303,5 +303,4 @@ export interface ScaleSeriesProvider {
  * §2.4 — internal marker the M1 outbox dispatcher uses to type-check M9 subscribers. M9 performs no
  * direct cross-module writes at the boundary; all downstream communication is the `m9.*` outbox.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-export type AssessmentEventPublisher = {};
+export type AssessmentEventPublisher = Record<string, never>;

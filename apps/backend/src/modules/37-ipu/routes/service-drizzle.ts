@@ -1501,15 +1501,13 @@ export function buildDrizzleIpuRouteService(
               .update(B)
               .set({ cleaningStatus: bedResult.to, cleaningStatusChangedAt: new Date() })
               .where(eq(B.id, bed.id));
-            await t
-              .insert(BCE)
-              .values({
-                organizationId: actor.organizationId,
-                bedId: bed.id,
-                fromStatus: bedResult.from,
-                toStatus: bedResult.to,
-                byMembershipId: actor.membershipId,
-              });
+            await t.insert(BCE).values({
+              organizationId: actor.organizationId,
+              bedId: bed.id,
+              fromStatus: bedResult.from,
+              toStatus: bedResult.to,
+              byMembershipId: actor.membershipId,
+            });
           }
         }
         const [row] = await t

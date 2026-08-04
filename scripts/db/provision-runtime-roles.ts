@@ -145,7 +145,7 @@ async function main(): Promise<void> {
           CREATE ROLE wardenx_platform NOLOGIN;
         END IF;
       END $$;`);
-      await run(`GRANT USAGE ON SCHEMA public TO wardenx_platform;`);
+      await run("GRANT USAGE ON SCHEMA public TO wardenx_platform;");
       for (const t of PLATFORM_READ_TABLES) {
         await run(`GRANT SELECT ON "${t}" TO wardenx_platform;`);
       }
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
       await run(
         `ALTER ROLE wardenx_platform_login LOGIN BYPASSRLS PASSWORD ${quoteLiteral(platformPassword)};`,
       );
-      await run(`GRANT wardenx_platform TO wardenx_platform_login;`);
+      await run("GRANT wardenx_platform TO wardenx_platform_login;");
       console.log("✓ wardenx_platform_login provisioned (carrier wardenx_platform + BYPASSRLS)");
       console.log(
         "  → set DATABASE_PLATFORM_URL=postgres://wardenx_platform_login:<pw>@<host>/<db>",
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
       await run(
         `ALTER ROLE wardenx_destruction_login LOGIN NOBYPASSRLS PASSWORD ${quoteLiteral(destructionPassword)};`,
       );
-      await run(`GRANT wardenx_destruction TO wardenx_destruction_login;`);
+      await run("GRANT wardenx_destruction TO wardenx_destruction_login;");
       console.log(
         "✓ wardenx_destruction_login provisioned (carrier wardenx_destruction, NOBYPASSRLS)",
       );

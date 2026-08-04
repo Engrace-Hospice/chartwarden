@@ -3,7 +3,7 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 // for a correction to the record. The submit (POST /portal/amendments/submit) goes to M5, which owns the
 // amendment workflow; M31 holds only the reference + a status mirror it lists back (GET /portal/amendments).
 // The portal never edits the record directly — it forwards a request and reflects its state.
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { day, humanize, readError, statusTone } from "./portal-format";
 import {
@@ -52,13 +52,13 @@ export function PortalAmendments(): JSX.Element {
   const [requestedChange, setRequestedChange] = useState("");
   const [submitState, setSubmitState] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
 
-  async function load(): Promise<void> {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true);
     const res = await client.GET("/api/v1/portal/amendments", {});
     if (res.error) setError(readError(res.response?.status));
     else setRows((res.data?.items ?? []) as unknown as Amendment[]);
     setLoading(false);
-  }
+  }, [client]);
 
   useEffect(() => {
     let active = true;
@@ -68,8 +68,7 @@ export function PortalAmendments(): JSX.Element {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client]);
+  }, [load]);
 
   async function submit(e: FormEvent): Promise<void> {
     e.preventDefault();

@@ -53,6 +53,7 @@ export function PortalSignIn(): JSX.Element {
       footer={<a href="/help">Need help signing in?</a>}
     >
       {sent ? (
+        // biome-ignore lint/a11y/useSemanticElements: <output> can't hold the h1/p block children this needs
         <div role="status" aria-live="polite">
           <h1 style={{ margin: "0 0 0.5rem", fontSize: "1.15rem" }}>Check your email</h1>
           <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.9rem" }}>

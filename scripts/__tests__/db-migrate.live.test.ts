@@ -82,7 +82,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
 
   it("--strict fails on checksum drift in an already-applied file; the default mode only warns", async () => {
     const { rows } = await db.query<{ filename: string }>(
-      `SELECT filename FROM _wardenx_migration ORDER BY filename LIMIT 1`,
+      "SELECT filename FROM _wardenx_migration ORDER BY filename LIMIT 1",
     );
     const target = rows[0]!.filename;
     await db.query(

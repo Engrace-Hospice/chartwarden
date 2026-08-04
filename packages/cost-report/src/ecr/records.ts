@@ -146,7 +146,7 @@ export function ecrDollarsToCents(text: string): Cents {
   if (!/^\d*$/.test(dollarsPart) || !/^\d*$/.test(centsPartRaw)) {
     throw new RangeError(`ecrDollarsToCents: malformed dollars value "${text}"`);
   }
-  const centsPart = (centsPartRaw + "00").slice(0, 2);
+  const centsPart = `${centsPartRaw}00`.slice(0, 2);
   const magnitude =
     Number.parseInt(dollarsPart || "0", 10) * 100 + Number.parseInt(centsPart || "0", 10);
   return negative ? -magnitude : magnitude;

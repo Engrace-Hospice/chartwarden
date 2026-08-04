@@ -32,7 +32,8 @@ import {
   drainAndShutdown,
 } from "../listener/supervisor";
 
-const ADT = `MSH|^~\\&|SENDAPP|SENDFAC|RECVAPP|RECVFAC|20260802120000||ADT^A01|MSGID123|P|2.5.1\rPID|1||MRN^^^H`;
+const ADT =
+  "MSH|^~\\&|SENDAPP|SENDFAC|RECVAPP|RECVFAC|20260802120000||ADT^A01|MSGID123|P|2.5.1\rPID|1||MRN^^^H";
 
 function frameBytes(payload: string): Buffer {
   return encodeMllpFrame(payload);

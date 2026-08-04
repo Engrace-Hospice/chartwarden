@@ -192,8 +192,8 @@ export function BereavementRosterSeed(): JSX.Element {
           </span>
         ) : (
           drafts.map((d, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: a draft row has no id until the server assigns one
             <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: a draft row has no id until the server assigns one
               key={i}
               style={{
                 display: "grid",

@@ -925,14 +925,12 @@ export function createDbAdmissionRouteService(
           { "m6.admission.draft_created": { patientId, referralId: id } },
         );
         // Seed benefit period 1 (the §7.1 cascade — not a state-machine effect).
-        await tx
-          .insert(EP)
-          .values({
-            organizationId,
-            admissionId: adm.id,
-            sequenceNumber: 1,
-            periodKind: "ninety_day",
-          });
+        await tx.insert(EP).values({
+          organizationId,
+          admissionId: adm.id,
+          sequenceNumber: 1,
+          periodKind: "ninety_day",
+        });
         // Advance the referral to accepted.
         const r = firstOrThrow(
           await tx

@@ -297,7 +297,7 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       reply.code(200).header("content-type", FHIR_JSON_CONTENT_TYPE);
       return {
         transactionTime: job.completedAt,
-        request: `/fhir/r4/$export`,
+        request: "/fhir/r4/$export",
         requiresAccessToken: true,
         output: [],
       };

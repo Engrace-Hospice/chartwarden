@@ -22606,7 +22606,7 @@ export interface operations {
                         version: number;
                         activationGate: {
                             ready: boolean;
-                            missing: string[];
+                            missing: ("election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed")[];
                         };
                     };
                 };
@@ -29446,9 +29446,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: uuid */
-                    validationResultId: string;
                     reason: string;
+                    overrideRole: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
                 };
             };
         };
@@ -54129,6 +54128,8 @@ export interface operations {
     getApiV1Referrals: {
         parameters: {
             query?: {
+                status?: string;
+                source?: string;
                 cursor?: string;
                 limit?: number;
             };

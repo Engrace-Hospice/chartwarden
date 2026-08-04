@@ -9,7 +9,7 @@ export function isValidNpi(npi: string): boolean {
   if (typeof npi !== "string") return false;
   if (!/^\d{10}$/.test(npi)) return false;
 
-  const prefixed = "80840" + npi.slice(0, 9);
+  const prefixed = `80840${npi.slice(0, 9)}`;
   const expectedCheck = Number.parseInt(npi.charAt(9), 10);
   return luhnCheckDigit(prefixed) === expectedCheck;
 }

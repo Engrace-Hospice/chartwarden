@@ -195,7 +195,7 @@ describe.skipIf(!DB_URL)("M11 Drizzle read service — LIVE Postgres (M11L)", ()
   it("writes are live (M11L): a created draft persists and reads back under RLS", async () => {
     // drafter_membership_id FKs membership.id — resolve org A's seeded membership (USER is a user_id).
     const membershipA = (
-      await admin.query(`SELECT id FROM membership WHERE organization_id=$1 LIMIT 1`, [ORG_A])
+      await admin.query("SELECT id FROM membership WHERE organization_id=$1 LIMIT 1", [ORG_A])
     ).rows[0].id as string;
     const draft = await service.createDraft(ORG_A, membershipA, {
       patientId: PATIENT,

@@ -51,9 +51,7 @@ export function suggestRuleFromRejection(mcrefRejectionCode: string): RuleDef | 
   return {
     ruleCode: `mac.rejection.${suffix}`,
     category: "mac_specific",
-    description:
-      `Draft platform-suggestion from unmatched MAC rejection code '${mcrefRejectionCode.trim()}' ` +
-      "(anonymized; pending platform-team review and a curated predicate).",
+    description: `Draft platform-suggestion from unmatched MAC rejection code '${mcrefRejectionCode.trim()}' (anonymized; pending platform-team review and a curated predicate).`,
     severity: "info",
     regulatoryRequired: false,
     macJurisdictionScope: "all",

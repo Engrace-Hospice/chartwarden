@@ -567,7 +567,8 @@ export function SosDetailScreen(): JSX.Element {
           />
           <span style={mutedStyle}>
             The checkbox chooses between two <em>different</em> terminal states, not between two
-            ways of saying the same thing: unticked closes the alert as <strong>resolved</strong>;
+            ways of saying the same thing: unticked closes the alert as <strong>resolved</strong>
+            {"; "}
             ticked closes it as <strong>incident opened</strong> and creates the incident the
             workers-comp timeline hangs off. Neither can be undone from here.
           </span>

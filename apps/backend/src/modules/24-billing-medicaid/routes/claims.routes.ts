@@ -195,14 +195,12 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
     async (request, reply) => {
       const body = parse(ReplaceClaimBody, request.body);
-      return reply
-        .code(201)
-        .send(
-          await writeService.replaceClaim(writeActorOf(request), pParam(request, "id"), {
-            expectedVersion: vParam(request),
-            reason: body.reason,
-          }),
-        );
+      return reply.code(201).send(
+        await writeService.replaceClaim(writeActorOf(request), pParam(request, "id"), {
+          expectedVersion: vParam(request),
+          reason: body.reason,
+        }),
+      );
     },
   );
 
@@ -220,14 +218,12 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
     async (request, reply) => {
       const body = parse(VoidClaimBody, request.body);
-      return reply
-        .code(201)
-        .send(
-          await writeService.voidClaim(writeActorOf(request), pParam(request, "id"), {
-            expectedVersion: vParam(request),
-            reason: body.reason,
-          }),
-        );
+      return reply.code(201).send(
+        await writeService.voidClaim(writeActorOf(request), pParam(request, "id"), {
+          expectedVersion: vParam(request),
+          reason: body.reason,
+        }),
+      );
     },
   );
 

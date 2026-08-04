@@ -7,6 +7,7 @@
       "node_modules",
       "dist",
       "graphify-out",
+      "scratchpad/**/*.workflow.js",
       ".vscode",
       "**/*.tsbuildinfo",
       "packages/ui/src/core/api/schema.ts",

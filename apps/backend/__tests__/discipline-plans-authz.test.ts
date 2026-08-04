@@ -296,7 +296,13 @@ describe("M15-T06 §7.8/§7.9 disclosure gate", () => {
     const decision = await resolveDisclosure(
       actor({ roles: ["rn_case_manager"] }),
       PATIENT,
-      port({ part2: false, fvRedacted: false, onPart2: () => (consulted = true) }),
+      port({
+        part2: false,
+        fvRedacted: false,
+        onPart2: () => {
+          consulted = true;
+        },
+      }),
     );
     expect(decision.sudAllowed).toBe(true);
     expect(decision.familyViolenceAllowed).toBe(true);

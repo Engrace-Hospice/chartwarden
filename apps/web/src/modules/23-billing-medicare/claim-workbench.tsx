@@ -244,7 +244,17 @@ function ClaimTable({
         {claims.map((c, i) => (
           <tr
             key={c.claimId}
+            // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+            role="button"
+            tabIndex={0}
+            aria-pressed={c.claimId === selectedId}
             onClick={() => onSelect(c)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter" || ev.key === " ") {
+                ev.preventDefault();
+                onSelect(c);
+              }
+            }}
             style={{
               cursor: "pointer",
               background:

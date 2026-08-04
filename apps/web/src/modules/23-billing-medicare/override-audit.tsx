@@ -241,8 +241,7 @@ export function OverrideAudit(): JSX.Element {
             <option value="info">Info</option>
           </select>
           {degraded ? (
-            <span
-              role="status"
+            <output
               style={{
                 alignSelf: "center",
                 fontSize: "0.8rem",
@@ -250,7 +249,7 @@ export function OverrideAudit(): JSX.Element {
               }}
             >
               Some claims could not be read — the audit is partial.
-            </span>
+            </output>
           ) : null}
         </FilterBar>
       }

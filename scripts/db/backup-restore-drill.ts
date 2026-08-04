@@ -129,20 +129,13 @@ async function main(): Promise<void> {
 
     appendFileSync(
       join(sourceData, "postgresql.conf"),
-      `\nport = ${PORT}\nunix_socket_directories = '${sockDir}'\narchive_mode = on\n` +
-        `archive_command = 'pgbackrest --config=${confPath} --stanza=${STANZA} archive-push %p'\n` +
-        `wal_level = replica\n`,
+      `\nport = ${PORT}\nunix_socket_directories = '${sockDir}'\narchive_mode = on\narchive_command = 'pgbackrest --config=${confPath} --stanza=${STANZA} archive-push %p'\nwal_level = replica\n`,
     );
 
     // repo1 ONLY — see the file header for why repo2/repo3 are out of scope for a live run.
     Bun.write(
       confPath,
-      `[global]\nrepo1-path=${repo1}\nrepo1-retention-full=2\nlog-path=${logPath}\n` +
-        `log-level-console=info\nlog-level-file=detail\nstart-fast=y\n\n` +
-        `[${STANZA}]\npg1-path=${sourceData}\npg1-port=${PORT}\npg1-socket-path=${sockDir}\n` +
-        // pgBackRest's connection default is the OS user (libpq's PQconnectdb fallback), NOT
-        // "postgres" — explicit, or stanza-create fails as "role '<os user>' does not exist".
-        `pg1-user=postgres\nrecovery-option=recovery_target_action=promote\n`,
+      `[global]\nrepo1-path=${repo1}\nrepo1-retention-full=2\nlog-path=${logPath}\nlog-level-console=info\nlog-level-file=detail\nstart-fast=y\n\n[${STANZA}]\npg1-path=${sourceData}\npg1-port=${PORT}\npg1-socket-path=${sockDir}\npg1-user=postgres\nrecovery-option=recovery_target_action=promote\n`,
     );
 
     console.log("• starting source cluster …");

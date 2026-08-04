@@ -1634,7 +1634,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     const row = (bypassing as unknown as { rows?: Array<{ rolbypassrls?: boolean }> }).rows?.[0];
     if (row?.rolbypassrls === true) {
       const message =
-        `the database role this process connects as (current_user) has BYPASSRLS: ` +
+        "the database role this process connects as (current_user) has BYPASSRLS: " +
         "row-level security is NOT enforced for any query, on any table.";
       if (process.env.NODE_ENV === "production") {
         throw new Error(`Refusing to boot — ${message} Revoke it (ALTER ROLE … NOBYPASSRLS).`);

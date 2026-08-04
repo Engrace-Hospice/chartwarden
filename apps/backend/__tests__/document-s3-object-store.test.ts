@@ -432,10 +432,9 @@ describe("createS3ObjectStore putObject (mocked fetch)", () => {
     expect(call.headers["x-amz-content-sha256"]).toBe(expectedSha);
     expect(call.headers["x-amz-date"]).toBe(AWS_EXAMPLE_AMZ_DATE);
     expect(call.headers["content-type"]).toBe("application/octet-stream");
-    expect(call.headers["authorization"]).toMatch(
+    expect(call.headers.authorization).toMatch(
       new RegExp(
-        `^AWS4-HMAC-SHA256 Credential=${AWS_EXAMPLE_ACCESS_KEY}/${AWS_EXAMPLE_SCOPE}, ` +
-          "SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date, Signature=[0-9a-f]{64}$",
+        `^AWS4-HMAC-SHA256 Credential=${AWS_EXAMPLE_ACCESS_KEY}/${AWS_EXAMPLE_SCOPE}, SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date, Signature=[0-9a-f]{64}$`,
       ),
     );
     // The signature is independently reproducible from the same canonical inputs.
@@ -459,7 +458,7 @@ describe("createS3ObjectStore putObject (mocked fetch)", () => {
         canonicalRequest: text,
       }),
     );
-    expect(call.headers["authorization"]).toBe(
+    expect(call.headers.authorization).toBe(
       `AWS4-HMAC-SHA256 Credential=${AWS_EXAMPLE_ACCESS_KEY}/${AWS_EXAMPLE_SCOPE}, SignedHeaders=${signedHeaders}, Signature=${expectedSignature}`,
     );
   });

@@ -291,7 +291,7 @@ describe.skipIf(!DB_URL)("M17 Scheduling — RLS cross-tenant denial — LIVE Po
 
   it("`visit` and `visit_state_history` are RANGE-partitioned; the other five are plain tables", async () => {
     const { rows } = await db.query<{ relname: string; relkind: string }>(
-      `SELECT relname, relkind FROM pg_class WHERE relname = ANY($1)`,
+      "SELECT relname, relkind FROM pg_class WHERE relname = ANY($1)",
       [ALL_TABLES],
     );
     const kind = new Map(rows.map((r) => [r.relname, r.relkind]));

@@ -38,8 +38,8 @@ export const levelOfCareCoherence: Rule = {
   check: (ctx, params) => {
     const revenueCodeByLoc = paramStringMap(params, "revenueCodeByLoc", REVENUE_CODE_BY_LOC);
     const chcMinHours =
-      typeof params["chcMinDocumentedHours"] === "number"
-        ? (params["chcMinDocumentedHours"] as number)
+      typeof params.chcMinDocumentedHours === "number"
+        ? (params.chcMinDocumentedHours as number)
         : CHC_MIN_DOCUMENTED_HOURS;
 
     const defects: string[] = [];

@@ -50,7 +50,7 @@ export function bulkExportObjectKey(
  */
 export function serializeNdjson(resources: readonly unknown[]): string {
   if (resources.length === 0) return "";
-  return resources.map((r) => JSON.stringify(r)).join("\n") + "\n";
+  return `${resources.map((r) => JSON.stringify(r)).join("\n")}\n`;
 }
 
 /** The checksum an artifact row records — sha256 (hex) of the NDJSON body, the `X-Checksum-SHA256` header

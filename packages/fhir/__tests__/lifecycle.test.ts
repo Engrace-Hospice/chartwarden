@@ -160,7 +160,7 @@ describe("§2.2 fhir_inbound_resource FSM", () => {
     expect(fhirInboundRejectRationaleValid("too short")).toBe(false);
     expect(fhirInboundRejectRationaleValid("x".repeat(40))).toBe(true);
     expect(fhirInboundRejectRationaleValid(null)).toBe(false);
-    expect(fhirInboundRejectRationaleValid("   " + "x".repeat(39))).toBe(false); // trimmed length counts
+    expect(fhirInboundRejectRationaleValid(`   ${"x".repeat(39)}`)).toBe(false); // trimmed length counts
   });
 
   it("resolves the owner module or null (→ 501) for unknown types", () => {

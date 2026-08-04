@@ -72,9 +72,9 @@ export function Field({
 /** A first-class outcome banner (success/error) surfacing a server result to the operator. */
 export function OutcomeBanner({ ok, message }: { ok: boolean; message: string }): JSX.Element {
   return (
-    <div role="status" aria-live="polite">
+    <output aria-live="polite">
       <StatusPill label={message} tone={ok ? "success" : "error"} />
-    </div>
+    </output>
   );
 }
 

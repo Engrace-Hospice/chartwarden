@@ -75,6 +75,7 @@ export function PortalBereavement(): JSX.Element {
           <PortalCard heading="Your bereavement program">
             <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.9rem" }}>
               {program.map((p, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: server payload has no stable id; a read-only, never-reordered list
                 <li key={i}>
                   <strong>{p.label ?? "Program"}</strong>
                   {p.detail ? ` — ${p.detail}` : ""}
@@ -88,6 +89,7 @@ export function PortalBereavement(): JSX.Element {
           <PortalCard heading="Resources">
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
               {resources.map((r, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: server payload has no stable id; a read-only, never-reordered list
                 <div key={i}>
                   <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
                     {r.title ?? "Resource"}
@@ -117,10 +119,10 @@ export function PortalBereavement(): JSX.Element {
 
         <PortalCard heading="Communication preferences">
           {optedOut ? (
-            <p role="status" style={{ margin: 0, fontSize: "0.88rem" }}>
+            <output style={{ display: "block", margin: 0, fontSize: "0.88rem" }}>
               You've opted out of bereavement outreach. You can always reach back out to your
               hospice team.
-            </p>
+            </output>
           ) : (
             <>
               <p style={{ margin: "0 0 0.75rem", fontSize: "0.88rem", color: t.onSurfaceVariant }}>

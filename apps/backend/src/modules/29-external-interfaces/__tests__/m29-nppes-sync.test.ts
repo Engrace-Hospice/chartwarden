@@ -187,7 +187,12 @@ function statusResponse(status: number): HttpFetchResponse {
 describe("NppesClient", () => {
   it("Luhn-invalid NPI short-circuits without a request", async () => {
     let calls = 0;
-    const client = new NppesClient({ fetch: async () => ((calls += 1), jsonResponse({})) });
+    const client = new NppesClient({
+      fetch: async () => {
+        calls += 1;
+        return jsonResponse({});
+      },
+    });
     const res = await client.fetchByNpi("0000000000");
     expect(res.kind).toBe("invalid_format");
     expect(calls).toBe(0);

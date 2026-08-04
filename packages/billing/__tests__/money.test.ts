@@ -48,7 +48,10 @@ describe("allocateProportional — sum-preservation invariant (no penny drift)",
 
   it("never drifts across a large fuzz of (total, weights) draws (deterministic LCG)", () => {
     let seed = 0x2bad_c0de;
-    const next = () => (seed = (seed * 1_103_515_245 + 12_345) & 0x7fff_ffff);
+    const next = () => {
+      seed = (seed * 1_103_515_245 + 12_345) & 0x7fff_ffff;
+      return seed;
+    };
     for (let t = 0; t < 2_000; t++) {
       const total = (next() % 2_000_001) - 1_000_000; // ±$10,000
       const n = (next() % 8) + 1;

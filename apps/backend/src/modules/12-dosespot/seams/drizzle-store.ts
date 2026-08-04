@@ -90,10 +90,7 @@ export function costBasisOfLines(
   if (unpriced > 0) {
     throw new DoseSpotSeamGapError(
       "costBasisForAdmissionMonth",
-      `${unpriced} of ${lines.length} medication_order lines for admission ${admissionId} month ${monthKey} ` +
-        "carry no acquisition_cost_cents (NULL = not priced); the rollup refuses rather than zero-fill — " +
-        "M27's Worksheet S-7 must never ingest a fabricated $0 drug spend. The DoseSpot fill/NDC pricing " +
-        "feed (or a pricing backfill) must price every line before this month can be materialized.",
+      `${unpriced} of ${lines.length} medication_order lines for admission ${admissionId} month ${monthKey} carry no acquisition_cost_cents (NULL = not priced); the rollup refuses rather than zero-fill — M27's Worksheet S-7 must never ingest a fabricated $0 drug spend. The DoseSpot fill/NDC pricing feed (or a pricing backfill) must price every line before this month can be materialized.`,
     );
   }
   let totalCostCents = 0;
@@ -137,7 +134,7 @@ function monthWindowOf(monthIso: string): { start: Date; end: Date; key: string 
 function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
   const root: Record<string, unknown> =
     typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
-  const nested = root["sigStructured"];
+  const nested = root.sigStructured;
   const src: Record<string, unknown> =
     typeof nested === "object" && nested !== null ? (nested as Record<string, unknown>) : root;
 
@@ -147,11 +144,11 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
     typeof v === "string" && v.length > 0 ? v : undefined;
 
   const durationSrc =
-    typeof src["duration"] === "object" && src["duration"] !== null
-      ? (src["duration"] as Record<string, unknown>)
+    typeof src.duration === "object" && src.duration !== null
+      ? (src.duration as Record<string, unknown>)
       : undefined;
-  const durationValue = num(durationSrc?.["durationValue"]);
-  const durationUnit = str(durationSrc?.["durationUnit"]);
+  const durationValue = num(durationSrc?.durationValue);
+  const durationUnit = str(durationSrc?.durationUnit);
   let duration: SigStructuredDto["duration"];
   if (
     durationValue !== undefined &&
@@ -159,14 +156,14 @@ function sigStructuredOf(data: unknown, rowRoute: string): SigStructuredDto {
   ) {
     duration = { durationValue, durationUnit };
   }
-  const asNeededReasonCode = str(src["asNeededReasonCode"]);
+  const asNeededReasonCode = str(src.asNeededReasonCode);
 
   return {
-    doseQuantity: num(src["doseQuantity"]) ?? 0,
-    doseUnit: str(src["doseUnit"]) ?? "",
-    route: str(src["route"]) ?? rowRoute,
-    frequencyCode: str(src["frequencyCode"]) ?? "",
-    asNeeded: typeof src["asNeeded"] === "boolean" ? src["asNeeded"] : false,
+    doseQuantity: num(src.doseQuantity) ?? 0,
+    doseUnit: str(src.doseUnit) ?? "",
+    route: str(src.route) ?? rowRoute,
+    frequencyCode: str(src.frequencyCode) ?? "",
+    asNeeded: typeof src.asNeeded === "boolean" ? src.asNeeded : false,
     ...(duration !== undefined ? { duration } : {}),
     ...(asNeededReasonCode !== undefined ? { asNeededReasonCode } : {}),
   };
@@ -298,9 +295,7 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
       // into the comfort-kit-timeliness measure, so this refuses loudly instead.
       throw new DoseSpotSeamGapError(
         "comfortKitTimelineForAdmission",
-        `M12 owns no comfort-kit deployment table (admission ${admissionId}); resolve the timeline through ` +
-          "M13's MedicationAdministrationProvider.getComfortKitDeploymentTimeline (backed by " +
-          "comfort_kit_deployment + administration_record), which M12 cannot read (§25.15 table ownership).",
+        `M12 owns no comfort-kit deployment table (admission ${admissionId}); resolve the timeline through M13's MedicationAdministrationProvider.getComfortKitDeploymentTimeline (backed by comfort_kit_deployment + administration_record), which M12 cannot read (§25.15 table ownership).`,
       );
     },
 

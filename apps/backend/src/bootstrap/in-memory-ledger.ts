@@ -91,10 +91,7 @@ export function assertNoInMemoryBindingsOnDbBoot(opts: {
   const pending = inMemoryBindingNotes();
   if (pending.length === 0) return;
   const lines = pending.map((n) => `  · [${n.kind}] ${n.label} → ${n.task}`);
-  const message =
-    `${pending.length} in-memory binding(s) are standing behind production contracts on a ` +
-    `DATABASE_URL boot — each one fakes success against a per-process Map ` +
-    `(production-readiness audit TASK-001):\n${lines.join("\n")}`;
+  const message = `${pending.length} in-memory binding(s) are standing behind production contracts on a DATABASE_URL boot — each one fakes success against a per-process Map (production-readiness audit TASK-001):\n${lines.join("\n")}`;
   const mode = resolveInMemoryAssertMode(opts.env ?? process.env);
   if (mode === "enforce") {
     throw new InMemoryBindingError(

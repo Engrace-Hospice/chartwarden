@@ -143,11 +143,11 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
       [patient, org, from],
     );
     const phone = await one(
-      `INSERT INTO patient_phone (patient_id, organization_id, e164) VALUES ($1,$2,$3) RETURNING id`,
+      "INSERT INTO patient_phone (patient_id, organization_id, e164) VALUES ($1,$2,$3) RETURNING id",
       [patient, org, `+150055500${n}0`],
     );
     const email = await one(
-      `INSERT INTO patient_email (patient_id, organization_id, email) VALUES ($1,$2,$3) RETURNING id`,
+      "INSERT INTO patient_email (patient_id, organization_id, email) VALUES ($1,$2,$3) RETURNING id",
       [patient, org, `p${n}@example.test`],
     );
     const payer = await one(
@@ -175,7 +175,7 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
       [patient, org, user, from],
     );
     const commPref = await one(
-      `INSERT INTO patient_communication_preference (patient_id, organization_id) VALUES ($1,$2) RETURNING patient_id AS id`,
+      "INSERT INTO patient_communication_preference (patient_id, organization_id) VALUES ($1,$2) RETURNING patient_id AS id",
       [patient, org],
     );
     const privacyFlags = await one(
