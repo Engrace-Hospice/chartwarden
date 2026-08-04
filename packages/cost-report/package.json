@@ -11,8 +11,8 @@
     "@sinclair/typebox": "^0.34.0",
     "@wardenx/db": "workspace:*",
     "@wardenx/gusto-client": "workspace:*",
+    "@wardenx/shared": "workspace:*",
     "@wardenx/types": "workspace:*",
-    "@wardenx/xero-client": "workspace:*",
-    "decimal.js": "^10.6.0"
+    "@wardenx/xero-client": "workspace:*"
   }
 }

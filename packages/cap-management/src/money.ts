@@ -3,11 +3,13 @@
 // = ~$200M max, comfortably within JS safe-integer range (2^53 ≈ $90 trillion in cents), so `number` cents
 // arithmetic is exact here. Percentages are computed as `number` ratios with explicit rounding at the
 // 4-decimal grain the schema stores (numeric(7,4)) — the 19.99% vs 20.00% inpatient-breach edge matters.
-
-/** Round a fractional cents value to a whole-cent integer (half-away-from-zero, the accounting convention). */
-export function roundCents(value: number): number {
-  return value < 0 ? -Math.round(-value) : Math.round(value);
-}
+// `roundCents` delegates to the shared kernel (packages/shared/src/money/kernel.ts, ARCH-021) — same
+// half-away-from-zero convention as billing/cost-report's `fromDecimal`, so the one CMS-conventional
+// rounding rule is implemented once. `ratio`/`round4`/`asPercent`/`clamp` stay local: unlike the shared
+// kernel's `ratio` (a `decimal.js` value that throws on a zero denominator), these operate on plain
+// `number` fractions and return `0` on a zero denominator (an open period with a zero cap denominator
+// reads as 0% utilization, never NaN/Infinity) — a genuinely different domain, not a duplicate.
+export { roundCents } from "@wardenx/shared/money";
 
 /**
  * Ratio of `part` to `whole` as a fraction (e.g. 0.9512 = 95.12%). Returns 0 when `whole` is 0 — an open

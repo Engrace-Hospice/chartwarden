@@ -1,3 +1,4 @@
+
 # 14 — Task Backlog
 
 **0Audit date:** 2026-08-03. Implementation-ready tasks derived from the roadmap. Each is scoped for a focused session where practical. IDs are stable and cross-referenced from the finding reports.
@@ -902,6 +903,24 @@
 ## Lower-priority (P2/P3) tasks
 
 - TASK-060 (P2): extract `@wardenx/money`; converge the three kernels (ARCH-021).
+  - **Status (2026-08-04): DONE, not yet committed.** Extracted the byte-identical
+    `toDecimal`/`fromDecimal`/`sumCents`/`ratio`/`allocateProportional` kernel — previously copied
+    verbatim into `packages/billing/src/domain/money.ts` and `packages/cost-report/src/domain/money.ts`
+    — into `packages/shared/src/money/kernel.ts`, exposed as the `@wardenx/shared/money` subpath export
+    (precedent: `@wardenx/auth`'s `./client`, `@wardenx/db`'s `./schema`). Both module files now
+    `export * from "@wardenx/shared/money"`; billing keeps only its module-specific rate primitives
+    (`perDiemAmountCents`/`lineChargeCents`/`applyWageIndexFactor`/`applySequestration`), cost-report's
+    file is now a pure re-export (it had no module-specific additions). `packages/cap-management/src/
+    money.ts`'s `roundCents` — a differently-implemented but behaviorally-identical half-away-from-zero
+    rounding (verified equivalent to `decimal.js` `ROUND_HALF_UP`) — now delegates to the shared kernel
+    too; its `ratio`/`round4`/`asPercent`/`clamp` stay local since they operate on plain-`number`
+    fractions with a zero-denominator-returns-0 convention, genuinely different from the shared
+    Decimal-returning `ratio` (throws on zero) — not a duplicate to converge. `decimal.js` moved from a
+    direct dependency of billing/cost-report to `@wardenx/shared` alone (only consumer post-refactor).
+    No manifest/dependency-cruiser change needed — `packages/shared` was already a LEAF_PACKAGE
+    importable by every module without a `dependsOn` edge. Full regression: build clean, `arch:fitness`
+    green, full suite 7809 passing (unchanged pass count — all three money test files pass unmodified
+    against the new re-exported symbols).
 - TASK-061 (P2): decimal-string money in M25 events; integer-cents aging sums (PARAM-003).
 - TASK-062 (P2): join the AI capability catalog three ways + seed path (ARCH-019).
 - TASK-063 (P2): drive per-table audit denylists from one source (ARCH-020).
