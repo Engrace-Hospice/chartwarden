@@ -1006,6 +1006,19 @@ export function buildDrizzleM23WriteService(
       actor,
       args: ForwardDateSequestrationArgs,
     ): Promise<SequestrationPolicyView> {
+      // Forward-only, enforced HERE at write time (DB-005) — an `effectiveFrom > CURRENT_DATE`
+      // CHECK constraint would re-validate on every future write using the CURRENT date, not the
+      // date the row was created, so the CURRENTLY-ACTIVE policy (the normal, expected steady
+      // state once a formerly-future effectiveFrom naturally arrives) becomes unupdatable, and
+      // `pg_restore`'s COPY-time re-validation rejects any such row restored after its start date.
+      const todayIso = now().toISOString().slice(0, 10);
+      if (args.effectiveFrom <= todayIso) {
+        throw new WardenXError(
+          "SEQUESTRATION_POLICY_NOT_FORWARD_DATED",
+          "a new sequestration policy must be forward-dated (effectiveFrom after today)",
+          422,
+        );
+      }
       return inOrgCtx(actor, async (tx) => {
         const repo = new repositories.SequestrationPolicyRepository(tx);
         // Close the currently-active (open) policy at the new effective date so the successor takes over;

@@ -8,6 +8,7 @@ import {
   SealedBlock,
   StatusPill,
   type StatusTone,
+  ageYears,
   cardSurface,
   useApiClient,
   useToast,
@@ -372,15 +373,6 @@ function SummaryTab({ patient }: { patient: PatientSummary }): JSX.Element {
 }
 
 // Whole-years age from a YYYY-MM-DD DOB; null when unparseable or out of a sane range.
-function ageYears(dob: string): number | null {
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let age = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
-  return age >= 0 && age < 150 ? age : null;
-}
 
 // A mono identifier rendered as a tonal pill (§3.1 mono face on a No-Line surface-container chip).
 function MonoChip({ children, title }: { children: ReactNode; title?: string }): JSX.Element {

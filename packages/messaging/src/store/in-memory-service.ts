@@ -425,6 +425,16 @@ export function createInMemoryMessagingService(
             409,
           );
         }
+        // A forward target pairs with a future expiry (DB-005 — enforced here at write time, the
+        // same invariant the Drizzle-backed store enforces; mirrored so this in-memory reference
+        // stays behaviorally accurate, not just structurally similar).
+        if (!input.vacationUntil || new Date(input.vacationUntil).getTime() <= Date.now()) {
+          throw new WardenXError(
+            "VACATION_UNTIL_NOT_FUTURE",
+            "vacationUntil must be set and in the future when vacationForwardToUserId is set",
+            422,
+          );
+        }
       }
       const key = `${orgId}:${userId}`;
       const existing = preferences.get(key);

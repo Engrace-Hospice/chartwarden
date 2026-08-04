@@ -39,5 +39,8 @@ export { useIsDegraded } from "./hooks/use-system-status";
 // Theme tokens (plain data — no styling runtime)
 export { brandColors, colors, statusColors } from "./theme/colors";
 
+// Date-only helpers (PARAM-004 — local-calendar parsing, never a UTC-instant off-by-one)
+export { ageYears, parseLocalDateOnly } from "./dates";
+
 // Native-capability ports + web adapters (ADR-0035; Capacitor adapters wired at the native entry)
 export * from "./capabilities";

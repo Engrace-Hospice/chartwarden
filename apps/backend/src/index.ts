@@ -47,6 +47,7 @@ import {
   buildTxOutboxPublisher,
   wireOutboxCatalog,
 } from "./bootstrap/outbox-persister";
+import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
 import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
   type OutboxDispatcher,
@@ -2461,6 +2462,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (dbHandle) {
     wireOutboxCatalog(dbHandle.db, bootOutboxCatalog).catch((err) => {
       app.log.error(err, "outbox_event_catalog population failed");
+    });
+  }
+
+  // ARCH-023 / TASK-066 — boot-populate `organization_settings_registry` from the in-code registry
+  // (idempotent UPSERT on settings_key; platform reference data, NON_ORG_SCOPED). The row was never
+  // written before this: migration 0003's collision-guard trigger reads it to decide whether a
+  // settings key is `uniqueAcrossTenants`, and treats an absent row as "no opinion" rather than
+  // failing closed — so leaving this unwired never blocked a settings write, it just left the W-M1-08
+  // uniqueness guard permanently inert for every module that declared one. Fail-soft, fire-and-forget,
+  // same posture as the outbox-catalog boot above.
+  if (dbHandle) {
+    wireOrganizationSettingsRegistry(dbHandle.db).catch((err) => {
+      app.log.error(err, "organization_settings_registry population failed");
     });
   }
 

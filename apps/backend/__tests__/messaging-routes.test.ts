@@ -409,6 +409,41 @@ describe("M36-T07 messaging route inventory", () => {
       await app.close();
     });
 
+    it("rejects a vacationUntil that is not in the future (422, DB-005 — enforced at write time, not a DB CHECK)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/notifications/preferences",
+        headers: RN1,
+        payload: {
+          routingMap: {},
+          quietHours: { tz: "UTC", ranges: [], severityOverride: "critical" },
+          vacationForwardToUserId: "rn_2",
+          vacationUntil: "2020-01-01T00:00:00Z",
+        },
+      });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.code).toBe("VACATION_UNTIL_NOT_FUTURE");
+      await app.close();
+    });
+
+    it("accepts a genuinely future vacationUntil paired with a forward target (not a rubber stamp)", async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "PUT",
+        url: "/api/v1/notifications/preferences",
+        headers: RN1,
+        payload: {
+          routingMap: {},
+          quietHours: { tz: "UTC", ranges: [], severityOverride: "critical" },
+          vacationForwardToUserId: "rn_2",
+          vacationUntil: "2099-01-01T00:00:00Z",
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      await app.close();
+    });
+
     it("registers an sms endpoint (pending), rejects a wrong token, verifies, deletes", async () => {
       const { app } = makeServer();
       const reg = await app.inject({

@@ -4,6 +4,7 @@ import {
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  ageYears,
   cardSurface,
   t,
   useApiClient,
@@ -370,15 +371,6 @@ function BundleCell({
   );
 }
 
-function ageYears(dob: string): number | null {
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-  return a >= 0 && a < 150 ? a : null;
-}
 // ISO timestamp or YYYY-MM-DD date → date-only display; "—" when absent.
 function fmtDate(v: string | null): string {
   if (!v) return "—";
