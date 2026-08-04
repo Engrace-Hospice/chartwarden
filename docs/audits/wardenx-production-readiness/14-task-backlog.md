@@ -601,8 +601,7 @@
       - **Real-session→module-route case** — a new `it()` in `auth.live.test.ts` wires the actual
         production composition (`createSessionAuthenticate` + `getIdentitySession` +
         `createSessionContextResolver` over `createDbSessionContextStore`, `registerIdentityAuth`
-        mounting Better Auth's real HTTP handler) and drives it with a genuine HTTP sign-in (`POST
-        /api/auth/sign-in/email`) → real `Set-Cookie` → `GET /api/v1/auth/context` +
+        mounting Better Auth's real HTTP handler) and drives it with a genuine HTTP sign-in (`POST /api/auth/sign-in/email`) → real `Set-Cookie` → `GET /api/v1/auth/context` +
         `GET /api/v1/patients` + `POST /api/v1/auth/select-organization`, all with the SAME cookie,
         no `x-test-user` shim anywhere. Confirms a real hook distinguishes anonymous / authenticated-
         pre-org / authenticated-org-bound (401/401/200+403-then-200) — a state the header shim can't
@@ -671,8 +670,7 @@
     re-tightened to the final 8 modules: `29,30,31,32,33,34,35,37`.
     - **More real defects surfaced, same TEST-001 mechanism (routes driven through `.inject()` for
       the first time):**
-      - **M23 (high severity):** the three rule-config mutation routes (`POST
-        /billing/rule-configs/custom`, `PATCH .../{id}`, `DELETE .../{id}`) are **unreachable for
+      - **M23 (high severity):** the three rule-config mutation routes (`POST /billing/rule-configs/custom`, `PATCH .../{id}`, `DELETE .../{id}`) are **unreachable for
         every caller, including org_admin** — `RULE_PROTECTED`'s default `getTarget` maps the
         route's `:id` onto `ruleConfigId`, but `regulatory_required_rule_protected`'s
         `resolveRuleKey` only ever reads `ruleKey`/`validationResultId`, never `ruleConfigId`, and
@@ -788,8 +786,85 @@
           UNFIXED** — lower severity (M23/M33 deny a subset of routes; M37/M31 blocked core
           clinical/portal-onboarding workflows entirely) and not yet started.
     - TASK-050B (shared in-memory/Drizzle conformance spec) is DONE (pilot scope, see above).
-      TASK-050C (jsdom smoke-render), 050D (planted-violation self-tests) remain unstarted —
-      separate follow-up work.
+    - **TASK-050C (TEST-004, jsdom smoke-render) is DONE (2026-08-04).** Root `vitest.config.ts`
+      gained a jsdom carve-out (`environmentMatchGlobs: [["apps/**/*.dom.test.tsx", "jsdom"]]` —
+      functional but flagged deprecated by vitest 3.2 in favor of `test.projects`; left as-is since
+      migrating risks the other ~7500 tests for a cosmetic warning, noted as a follow-up) +
+      `@vitejs/plugin-react` + a shared `vitest.setup.dom.ts` (jest-dom matchers, `afterEach(cleanup)`).
+      New devDeps: `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`,
+      `@vitejs/plugin-react`. One `*.dom.test.tsx` per SPA — `apps/web/src/shell/screens-smoke.dom.test.tsx`
+      (253 cases), `apps/portal/__tests__/screens-smoke.dom.test.tsx` (14), `apps/admin/__tests__/screens-smoke.dom.test.tsx`
+      (15) — each **registry-driven**: `import.meta.glob`-discovers every module's `screens.ts` (web/admin)
+      or reuses the existing `portalScreens` registry (portal), mounts the real app shell
+      (`AppShell`/`PortalApp`/`AdminApp`, not a hand-built harness) once per registered route with a
+      concrete UUID substituted for every `:param`, and asserts it settles (no leftover
+      `LoadingSpinner`, no ErrorBoundary/react-router-default-error fallback, non-empty DOM).
+      apps/web/tsconfig.json needed `"types": ["vite/client"]` for `import.meta.glob`'s ambient type
+      (only apps/web's test lives inside its `tsc -b`-checked `src/`; portal/admin's live under
+      `__tests__/`, outside their `include`).
+      - **Two stubbing gotchas, both fixed in the harness, neither an app bug**: (1) jsdom's
+        `Request`/`fetch` have no `document.baseURI` to resolve a relative `/api/v1/...` URL against
+        (`new URL()` throws) — fixed with an explicit `baseUrl: "http://localhost"` on the test-only
+        `createApiClient`. (2) Better Auth's client (`authClient.getSession()`/`passkey.*`, called
+        directly by 5 identity/messaging/search screens, bypassing `@wardenx/ui`'s typed client)
+        calls the global `fetch` itself; jsdom ships its own `AbortController`/`AbortSignal` (DOM
+        event aborting) that is a DIFFERENT class than the one Node's real undici-backed fetch
+        checks `RequestInit.signal` against, so it threw `RequestInit: Expected signal... to be an instance of AbortSignal` the moment Better Auth aborted a stale request — fixed by
+        `vi.stubGlobal("fetch", ...)` in each test file's `beforeEach` (no production code changed).
+      - **The stub response is a 404, not a 200-with-empty-`{}` body** — deliberately: every real
+        backend 200 satisfies its TypeBox response contract, so an empty-object body is a shape no
+        real endpoint ever returns; it only trips `(data as T) ?? null`-style unchecked casts into
+        rendering with every field `undefined` (a synthetic crash no real deployment can hit, first
+        seen on `apps/portal/src/screens/account.tsx`'s `humanize(ctx.relationship)`). A 404
+        exercises the same "can't load right now" path every screen already defends against instead.
+      - **A false-positive lesson**: the first crash-detection assertion queried any
+        `[role="alert"]`, which also matches legitimate inline validation alerts (e.g. staff-management's
+        "No active organization is bound to your session.") — narrowed to a dedicated
+        `data-wardenx-error-boundary` marker added to `packages/ui/src/web/components/error-boundary.tsx`'s
+        fallback (the ONLY safe way to detect it — `ServerError`'s own M1 `/error` system page
+        legitimately headlines the identical "Something went wrong" text the ErrorBoundary fallback
+        uses, so a text match false-positived on that route too).
+      - **Two real, pre-existing bugs found and fixed** (both the same class: an error branch that
+        sets an error message but never clears the `null`-means-still-loading sentinel, so the
+        `LoadingSpinner` spins forever alongside the error text instead of settling): M2
+        `security-passkeys.tsx`'s `load()` on a `listUserPasskeys()` error, and M2
+        `staff-management.tsx` in TWO places — the `useEffect` when `authClient.getSession()`
+        resolves with no bound org, and `load()` on a `members` fetch error. Both real production
+        UX bugs (a genuine backend hiccup left the screen stuck on a spinner forever), not artifacts
+        of the stub. Every OTHER screen across all 3 apps rendered clean on the first stub-fetch
+        pass with no code changes.
+      - Full-suite regression: build clean (`apps/web/tsconfig.json`'s new `vite/client` types didn't
+        regress anything else), `arch:fitness` green (39/39 inject-coverage held, ui-parity/openapi
+        ratchets held), full suite 7800 passing (was 7518; +282 = 253+14+15 new dom tests).
+    - **TASK-050D (TEST-005, planted-violation self-tests) is DONE (2026-08-04).** Added 4 RED
+      tests + 4 matching GREEN-baseline tests to `scripts/__tests__/fitness-gates.test.ts` for the
+      4 highest-value previously-un-red-tested gates: `abac-predicates`, `design-tokens`,
+      `ui-parity`, `client:check` (was 6/17 gates red-tested, now 10/17). One new fixture dir each
+      under `scripts/__fixtures__/`: `abac-predicates/` (a `requireAbac(..., "totally_unregistered_predicate")`
+      nothing declares), `ui-parity/` (a `screens.ts` that exists but the fixture's `main.tsx` never
+      registers — the M30/M39 import-without-register failure class), `client-check/` (a
+      `packages/ui/src/core/api/schema.ts` deliberately stale relative to the fixture's
+      `docs/api/openapi.json`).
+      - **`design-tokens/` needed one production-code change**, not just a fixture:
+        `check-design-tokens.ts` deliberately roots itself off its OWN file location
+        (`dirname(fileURLToPath(import.meta.url))`), not `process.cwd()` — unlike every other gate
+        here — specifically so it always validates the real repo no matter what directory it's
+        invoked from. That means the fixture-dir-as-cwd trick every other red test uses can't reach
+        it. Fixed by adding a `WARDENX_FITNESS_ROOT` env-var override (falls back to the
+        `import.meta.url` root when unset, so every real invocation is unaffected) rather than
+        duplicating the ~115-line script into the fixture tree (which would silently drift from the
+        real script on the next edit). The fixture itself plants a raw hex literal in a
+        `apps/web/src/*.tsx` file, with a matching `index.css`/`colors.ts` pair so only Rule 1
+        (raw-color-in-render) trips, not Rule 2 (source-of-truth sync) too.
+      - `client:check` is a raw shell pipeline in `package.json`, not a standalone script file, so
+        it got its own test runner (`clientCheck()`) instead of reusing `gate()`: the
+        `openapi-typescript` binary is invoked by absolute path (`node_modules/.bin/...` — running
+        it via `bun run` would resolve against the wrong tree once cwd is swapped to the fixture),
+        and each call writes its diff target to a dedicated `/tmp/wardenx-client-schema-fixture-*.ts`
+        file so a concurrent real `client:check` run can never race it.
+      - All 8 new tests passed on the first real run (no fixture rework needed). Full regression:
+        build clean, `arch:fitness` green, full suite 7808 passing (was 7800; +8).
+      - **TASK-050 (all of A/B/C/D) is now fully complete.**
 
 ## Lower-priority (P2/P3) tasks
 

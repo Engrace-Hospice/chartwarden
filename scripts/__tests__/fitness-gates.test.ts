@@ -14,13 +14,37 @@ const FIX = join(SCRIPTS, "__fixtures__");
 const DEPCRUISE = join(ROOT, "node_modules", ".bin", "depcruise");
 const CFG = join(ROOT, "architecture", ".dependency-cruiser.cjs");
 
-function run(cmd: string, args: string[], cwd: string) {
-  const r = spawnSync(cmd, args, { cwd, encoding: "utf8" });
+function run(cmd: string, args: string[], cwd: string, env?: Record<string, string | undefined>) {
+  const r = spawnSync(cmd, args, { cwd, encoding: "utf8", env: env ? { ...process.env, ...env } : undefined });
   return { status: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 const gate = (script: string, cwd: string) => run("bun", ["run", join(SCRIPTS, script)], cwd);
 const boundaries = (paths: string[], cwd: string) =>
   run(DEPCRUISE, [...paths, "--config", CFG], cwd);
+
+// check-design-tokens.ts roots itself off its OWN file location (import.meta.url), not cwd — by
+// design, so it always validates the real repo regardless of the caller's working directory. That
+// means the cwd-swap trick every other fixture here uses can't point it at a fixture tree; instead
+// the script honors a test-only WARDENX_FITNESS_ROOT env override (unset in every real invocation).
+const designTokensGate = (fixtureRoot: string) =>
+  run("bun", ["run", join(SCRIPTS, "check-design-tokens.ts")], ROOT, {
+    WARDENX_FITNESS_ROOT: fixtureRoot,
+  });
+
+// client:check (package.json) is a raw shell pipeline, not a standalone script file, so it needs
+// its own runner rather than gate(). The openapi-typescript binary is invoked by absolute path
+// (not through `bun run`, which would resolve node_modules/.bin against the wrong tree) and the
+// diff target is a fixture-dedicated tmp file so a concurrent real `client:check` run never races it.
+const OPENAPI_TS_BIN = join(ROOT, "node_modules", ".bin", "openapi-typescript");
+const clientCheck = (cwd: string, outFile: string) =>
+  run(
+    "bash",
+    [
+      "-c",
+      `${OPENAPI_TS_BIN} docs/api/openapi.json -o ${outFile} && diff -q packages/ui/src/core/api/schema.ts ${outFile} || (echo 'FAIL packages/ui/src/core/api/schema.ts is out of date. Run: bun run client:gen' && exit 1)`,
+    ],
+    cwd,
+  );
 
 describe("each gate goes RED on its planted violation", () => {
   it("tenancy — PHI table missing organization_id", () => {
@@ -85,6 +109,36 @@ describe("each gate goes RED on its planted violation", () => {
     expect(r.out).toMatch(/LOST enrichment coverage/);
     expect(r.out).toMatch(/exceeds baseline 0/);
   });
+
+  // TASK-050D (TEST-005) — the 4 highest-value gates with no planted-violation self-test.
+
+  it("abac-predicates — requireAbac names a predicate nothing declares", () => {
+    const r = gate("check-abac-predicates.ts", join(FIX, "abac-predicates"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/NOTHING declares/);
+    expect(r.out).toMatch(/totally_unregistered_predicate/);
+  });
+
+  it("design-tokens — raw hex literal in render code", () => {
+    const r = designTokensGate(join(FIX, "design-tokens"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/raw-color-in-render/);
+    expect(r.out).toMatch(/bad-component\.tsx/);
+  });
+
+  it("ui-parity — a screens.ts that exists but main.tsx never registers", () => {
+    const r = run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], join(FIX, "ui-parity"));
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/UNREGISTERED SCREENS/);
+    expect(r.out).toMatch(/99-fixture/);
+  });
+
+  it("client:check — schema.ts stale relative to openapi.json", () => {
+    const r = clientCheck(join(FIX, "client-check"), "/tmp/wardenx-client-schema-fixture-red.ts");
+    expect(r.status).not.toBe(0);
+    expect(r.out).toMatch(/FAIL/);
+    expect(r.out).toMatch(/out of date/);
+  });
 });
 
 describe("every gate stays GREEN on the repo-root baseline", () => {
@@ -102,4 +156,12 @@ describe("every gate stays GREEN on the repo-root baseline", () => {
     expect(
       run("bun", ["run", join(SCRIPTS, "report-openapi-coverage.ts"), "--check"], ROOT).status,
     ).toBe(0));
+  it("abac-predicates", () => expect(gate("check-abac-predicates.ts", ROOT).status).toBe(0));
+  it("design-tokens", () => expect(gate("check-design-tokens.ts", ROOT).status).toBe(0));
+  it("ui-parity", () =>
+    expect(run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], ROOT).status).toBe(
+      0,
+    ));
+  it("client:check", () =>
+    expect(clientCheck(ROOT, "/tmp/wardenx-client-schema-fixture-green.ts").status).toBe(0));
 });

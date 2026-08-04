@@ -22,7 +22,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Rooted off the script's own file location (not process.cwd()) so it always validates the real
+// repo regardless of the caller's working directory. `WARDENX_FITNESS_ROOT` is a test-only escape
+// hatch (scripts/__tests__/fitness-gates.test.ts) letting the planted-violation fixture point this
+// gate at an isolated tree instead of the real one — unset in every real invocation.
+const REPO_ROOT =
+  process.env.WARDENX_FITNESS_ROOT ?? join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Render trees the rule covers.
 const SCAN_DIRS = ["apps/web/src", "packages/ui/src/web"];
