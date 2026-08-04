@@ -903,7 +903,7 @@
 ## Lower-priority (P2/P3) tasks
 
 - TASK-060 (P2): extract `@wardenx/money`; converge the three kernels (ARCH-021).
-  - **Status (2026-08-04): DONE, not yet committed.** Extracted the byte-identical
+  - **Status (2026-08-04): DONE, merged to main locally (`0792ef4`).** Extracted the byte-identical
     `toDecimal`/`fromDecimal`/`sumCents`/`ratio`/`allocateProportional` kernel — previously copied
     verbatim into `packages/billing/src/domain/money.ts` and `packages/cost-report/src/domain/money.ts`
     — into `packages/shared/src/money/kernel.ts`, exposed as the `@wardenx/shared/money` subpath export
@@ -922,6 +922,37 @@
     green, full suite 7809 passing (unchanged pass count — all three money test files pass unmodified
     against the new re-exported symbols).
 - TASK-061 (P2): decimal-string money in M25 events; integer-cents aging sums (PARAM-003).
+  - **Status (2026-08-04): DONE, merged to main locally.** Fixed all 4 cited edges. (1)
+    `events-by-m25.ts`'s shared `money` TypeBox alias changed from `Type.Number()` to
+    `Type.String({ description: "Decimal string — never a float" })`, converging onto the identical
+    convention already used for the same field names on the HTTP read side (`m25-typebox.ts`,
+    `read-service.ts`) — every backing column is `numeric(12,2)`, never `bigint` cents, so a decimal
+    string (not the `@wardenx/shared/money` integer-cents kernel) is the correct wire type here; the
+    one live producer (`write-service-drizzle.ts`'s write-off-denial `prAmount` stub) updated from the
+    now-invalid literal `0` to `"0.00"`. (2) `read-service-drizzle.ts`'s `denialMetrics` aging-total
+    float accumulator (`totalDollar += Number(row.dollar)`) replaced with a `RegulatoryDecimal`
+    accumulation (`@wardenx/shared/money`) so up to 100k open-denial dollar values sum exact, not
+    float-drifted, before `.toFixed(2)` — the response contract already declared this field a decimal
+    string, so the implementation now actually earns that claim. (3)
+    `cap-projection-adapter.ts`'s `projectedCents` (`Math.round((pct/100) * Number(str))`) rewritten as
+    `fromDecimal(new RegulatoryDecimal(str).times(pct).div(100))` — decimal-exact before rounding,
+    gates real M23 claim submission. (4) the "decimal-aware weight kernel":
+    `packages/cap-management/src/domain/methodology.ts`'s `agencyAllocatedCap` summed its
+    `beneficiaryWeights` (up to ~5,000 `numeric(7,6)` proportional weights) via plain-float
+    `Array.reduce`; changed to a `RegulatoryDecimal` accumulation with the final cents multiply done in
+    the same decimal domain (`fromDecimal(unitsDecimal.times(perBeneficiaryCapCents))`) — covers both
+    `write-service-drizzle.ts` call sites (`recompute` calls `agencyAllocatedCap` directly;
+    `proposeSettlement` via `computeSettlement`). Left `Number(a.weight)`/`Number(period.inpatientCapPct)`
+    at the Drizzle-row boundary unchanged (precision(7,6)/(5,4) values are not lossy at that single-value
+    parse; the audit's flagged risk was the vector *summation*, not the individual-value parse).
+    **Found but explicitly out of scope, not fixed**: M26's `handleRemittancePosted` consumer
+    (`26-cap/consumers/handlers.ts:41-56`) reads field names (`p.paidAmountCents`,
+    `p.remittanceLineId ?? p.remittanceAdviceId`, `p.serviceFrom ?? p.serviceFromDate`) that don't
+    exist on the actual `m25.remittance.advice_posted` payload shape at all — a pre-existing,
+    independent event-shape-drift bug (not float-vs-string), currently silent because nothing live
+    produces this event yet (no x12-worker in this repo snapshot). Worth its own follow-up task before
+    M25↔M26 remittance wiring goes live. Full regression: build clean, `arch:fitness` green, full suite
+    7809 passing (unchanged count — all touched test files pass unmodified).
 - TASK-062 (P2): join the AI capability catalog three ways + seed path (ARCH-019).
 - TASK-063 (P2): drive per-table audit denylists from one source (ARCH-020).
 - TASK-064 (P2): extend UI parity/frame gates to portal + admin (UI-011); set `/admin/staff` permission (UI-012).
