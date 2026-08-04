@@ -3,7 +3,15 @@
 node_modules/
 .DS_Store
 .vscode/
-.claude/settings.local.json
+
+# AI coding-agent tool config/state — personal/local, not part of the WardenX corpus.
+.agents/
+.claude/
+.codex/
+.cursor/
+
+# Local scratch file (provenance untracked; not part of the corpus).
+scratchpad_list.txt
 
 # TypeScript project-reference build output (regenerable via `tsc -b`).
 dist/

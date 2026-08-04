@@ -1,0 +1,194 @@
+# WardenX Documentation — Master Index
+
+Single entry point for **every document under `docs/`**. Each entry links to its
+canonical location; nothing here duplicates content — the sub-indexes and specs
+remain the source of truth.
+
+> **Repo-level guides** ([`../CLAUDE.md`](../CLAUDE.md), [`../AGENTS.md`](../AGENTS.md))
+> live at the repository root, not under `docs/`, and are intentionally left in place.
+
+## Authority rule
+
+**Architecture documents are authoritative.** Module specs and UI screen specs are
+**implementation proposals**. If a module or screen spec conflicts with architecture,
+**architecture wins** (see [`architecture/`](#architecture-authoritative)). Where an
+[ADR](#architecture-decision-records-adrs) and an older spec sentence disagree, the ADR
+wins until the spec is re-locked.
+
+## Map of `docs/`
+
+| Area | Location | Index |
+|---|---|---|
+| Getting started & runbooks | `docs/*.md` | [below](#getting-started--runbooks) |
+| Architecture (authoritative) | [`architecture/`](./architecture/) | [below](#architecture-authoritative) |
+| Module specifications (40) | [`modules/`](./modules/) | [`modules/README.md`](./modules/README.md) |
+| Design & UI corpus | [`design/`](./design/) | [`design/README.md`](./design/README.md) |
+| Architecture Decision Records | [`adr/`](./adr/) | [`adr/README.md`](./adr/README.md) |
+| AI capability catalog (18) | [`ai/capabilities/`](./ai/capabilities/) | [below](#ai-capability-catalog) |
+| Roadmap & phase plans | `docs/*PHASE*` · `IMPLEMENTATION_ROADMAP.md` | [below](#roadmap--phase-plans) |
+| Execution plans (waves) | [`plans/`](./plans/) | [below](#execution-plans-waves) |
+| Reference sources | [`reference/`](./reference/) | [below](#reference-sources) |
+| Governance & history | audit + remediation pointers | [below](#governance--history) |
+
+---
+
+## Getting started & runbooks
+
+| Document | Purpose |
+|---|---|
+| [`DEVELOPMENT.md`](./DEVELOPMENT.md) | Development runbook + "how to add a module". **Start here to build/extend.** |
+| [`PHASE_0_SCAFFOLD_PLAN.md`](./PHASE_0_SCAFFOLD_PLAN.md) | Phase 0 scaffold plan — the manifest→tree generation model (ADR-0027). |
+| [`ARCHON_SETUP.md`](./ARCHON_SETUP.md) | WardenX × Archon deterministic-coding setup. |
+
+---
+
+## Architecture (authoritative)
+
+These **win over module and screen specs** in any conflict. All in [`architecture/`](./architecture/):
+
+| Document | Scope |
+|---|---|
+| [`WARDENX_ARCHITECTURE_v0_11.md`](./architecture/WARDENX_ARCHITECTURE_v0_11.md) | System architecture (top authority). |
+| [`WARDENX_SYSTEM_DESIGN_v0.3.md`](./architecture/WARDENX_SYSTEM_DESIGN_v0.3.md) | System design document. |
+| [`WARDENX_SECURITY_HARDENING_v0_2.md`](./architecture/WARDENX_SECURITY_HARDENING_v0_2.md) | Security hardening guide. |
+| [`WARDENX_AI_GOVERNANCE_v0.2.md`](./architecture/WARDENX_AI_GOVERNANCE_v0.2.md) | AI governance (see also the [capability catalog](#ai-capability-catalog)). |
+| [`WARDENX_DR_BCP_v0.1.md`](./architecture/WARDENX_DR_BCP_v0.1.md) | Disaster recovery & business continuity. |
+| [`WARDENX_OPS_RUNBOOK_v0.1.md`](./architecture/WARDENX_OPS_RUNBOOK_v0.1.md) | Operations runbook. |
+| [`WARDENX_INTEGRATIONS_v0_1.md`](./architecture/WARDENX_INTEGRATIONS_v0_1.md) | Integration catalog. |
+| [`ARCHITECTURE_25_15_FITNESS.md`](./architecture/ARCHITECTURE_25_15_FITNESS.md) | Architecture-fitness & boundary-enforcement rules (the gates). |
+
+---
+
+## Module specifications
+
+All 40 module specs live in [`modules/`](./modules/) — see the full versioned table in
+**[`modules/README.md`](./modules/README.md)**. The Module 29 forward-engineering sub-tasks
+(T-29.01–T-29.13) are in [`modules/module-29-tasks/`](./modules/module-29-tasks/).
+
+---
+
+## Design & UI corpus
+
+The design language, 113 screen specs, layout glossary, and Pencil prompts live in
+[`design/`](./design/) — mapped by **[`design/README.md`](./design/README.md)**. Key entries:
+
+| Document | Answers |
+|---|---|
+| [`design/DESIGN.md`](./design/DESIGN.md) | The "Lantern" visual system — tokens, components, Guardrail/Sensitivity/Provenance rules. |
+| [`design/WARDENX_UI_LAYOUT_PATTERNS.md`](./design/WARDENX_UI_LAYOUT_PATTERNS.md) | Layout-pattern glossary (source of truth for the `docs:ui` gate). |
+| [`design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md`](./design/WARDENX_UI_COMPLETE_SCREEN_INDEX.md) | Canonical screen list (drives the `docs:ui` parity gate). |
+| [`design/screens/`](./design/screens/) | 113 screen specs — admin · clinical · compliance · core · integration · mobile · platform · portal · revenue · staffing. |
+| [`design/SCREENS.md`](./design/SCREENS.md) | Module ↔ Pencil ledger (owner + design status per screen). |
+| [`design/pencil-prompts/`](./design/pencil-prompts/) | Phase-batched Pencil generation prompts + MCP workflow ([`pencil-prompts/README.md`](./design/pencil-prompts/README.md)). |
+| [`design/FRAME_FIDELITY_PLAYBOOK.md`](./design/FRAME_FIDELITY_PLAYBOOK.md) | Built-screen ↔ Pencil-frame fidelity process (`frame:fidelity` tracker). |
+| [`design/DEFERRED_SCREENS.md`](./design/DEFERRED_SCREENS.md) | Frontend implementation tracking (Track B / ADR-0030). |
+| [`design/UI_README.md`](./design/UI_README.md) · [`design/DESIGN_REVIEW.md`](./design/DESIGN_REVIEW.md) · [`design/FRONTEND_RECONCILIATION_SCOPE.md`](./design/FRONTEND_RECONCILIATION_SCOPE.md) | Supporting design-corpus notes. |
+
+---
+
+## Architecture Decision Records (ADRs)
+
+35 ADRs (ADR-0001…ADR-0035) in [`adr/`](./adr/) — full titles, resolved findings, and status
+in **[`adr/README.md`](./adr/README.md)**.
+
+---
+
+## AI capability catalog
+
+The 18 governed AI capabilities registered against M32 (per
+[`architecture/WARDENX_AI_GOVERNANCE_v0.2.md`](./architecture/WARDENX_AI_GOVERNANCE_v0.2.md)),
+in [`ai/capabilities/`](./ai/capabilities/):
+
+| Capability | File |
+|---|---|
+| AI Copilot — Clinical | [`ai-copilot-clinical.md`](./ai/capabilities/ai-copilot-clinical.md) |
+| AI Copilot — Administrative | [`ai-copilot-administrative.md`](./ai/capabilities/ai-copilot-administrative.md) |
+| DocLens Classifier | [`doclens-classifier.md`](./ai/capabilities/doclens-classifier.md) |
+| DocLens Extractor | [`doclens-extractor.md`](./ai/capabilities/doclens-extractor.md) |
+| DocLens SUD Indicator Detection | [`doclens-sud-detection.md`](./ai/capabilities/doclens-sud-detection.md) |
+| DocLens Vision Verification | [`doclens-vision-verification.md`](./ai/capabilities/doclens-vision-verification.md) |
+| HearthNote Layer 2 | [`hearthnote-layer-2.md`](./ai/capabilities/hearthnote-layer-2.md) |
+| HearthNote IDG Aggregation (Layer 2) | [`hearthnote-idg-aggregation-layer-2.md`](./ai/capabilities/hearthnote-idg-aggregation-layer-2.md) |
+| Semantic Search | [`semantic-search.md`](./ai/capabilities/semantic-search.md) |
+| Embeddings Generation | [`embeddings-generation.md`](./ai/capabilities/embeddings-generation.md) |
+| 30-Day Hospitalization Risk | [`hospitalization-risk-30d.md`](./ai/capabilities/hospitalization-risk-30d.md) |
+| Mortality / Decline Prediction | [`mortality-decline-prediction.md`](./ai/capabilities/mortality-decline-prediction.md) |
+| Level of Care Prediction | [`level-of-care-prediction.md`](./ai/capabilities/level-of-care-prediction.md) |
+| Falls Risk Prediction | [`falls-risk-prediction.md`](./ai/capabilities/falls-risk-prediction.md) |
+| Bereavement Risk Narrative | [`bereavement-risk-narrative.md`](./ai/capabilities/bereavement-risk-narrative.md) |
+| On-Call Triage Protocol Suggestion | [`protocol-suggestion-oncall.md`](./ai/capabilities/protocol-suggestion-oncall.md) |
+| Denial Outcome / Appeal Prediction | [`denial-outcome-prediction.md`](./ai/capabilities/denial-outcome-prediction.md) |
+| Aggregate Cap Projection | [`aggregate-cap-projection.md`](./ai/capabilities/aggregate-cap-projection.md) |
+
+---
+
+## Roadmap & phase plans
+
+Historical/forward roadmap at the `docs/` root. These are **planning records** (phases 1–4);
+per-module build truth is the generated matrix (`bun run status:matrix`).
+
+| Document | Scope |
+|---|---|
+| [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) | Roadmap index across all phases. |
+| [`PHASE_1_PLAN.md`](./PHASE_1_PLAN.md) | Phase 1 — Engrace go-live. |
+| [`PHASE_2_PLAN.md`](./PHASE_2_PLAN.md) | Phase 2 — AI activation + operational depth. |
+| [`PHASE_3_PLAN.md`](./PHASE_3_PLAN.md) | Phase 3 — multi-tenant scale + inpatient. |
+| [`PHASE_4_PLAN.md`](./PHASE_4_PLAN.md) | Phase 4 — state expansion, enterprise & certifications. |
+
+---
+
+## Execution plans (waves)
+
+Per-wave Archon task plans in [`plans/`](./plans/). These are **authority inputs to the
+deterministic build harness** and are read-only to automation — the `arch:plan-integrity`
+gate fails on any change under `docs/plans/**` (human override: `ALLOW_PLAN_EDITS=1`). Most
+represent **completed, merged** waves and are retained as historical governance records.
+
+| Plan | Wave / scope |
+|---|---|
+| [`M01-M02_VERTICAL_SLICE_PLAN.md`](./plans/M01-M02_VERTICAL_SLICE_PLAN.md) | Phase 1 vertical slice — M1 Foundation + M2 Identity. |
+| [`WAVE_AUTH_BETTER_AUTH_PLAN.md`](./plans/WAVE_AUTH_BETTER_AUTH_PLAN.md) | Better Auth mount + M2 sign-in front door. |
+| [`AUTH_T06_SCHEMA_RECONCILE.md`](./plans/AUTH_T06_SCHEMA_RECONCILE.md) | Better Auth ↔ M1 schema reconciliation. |
+| [`WAVE_A_M3-M4_PLAN.md`](./plans/WAVE_A_M3-M4_PLAN.md) | Wave A — M3 Authorization + M4 Audit. |
+| [`WAVE_B_M36-M38-M40_PLAN.md`](./plans/WAVE_B_M36-M38-M40_PLAN.md) | Wave B — M36 Messaging + M38 Terminology + M40 MDM. |
+| [`WAVE_C_M5-M39_PLAN.md`](./plans/WAVE_C_M5-M39_PLAN.md) | Wave C — M5 Patient + M39 Consent. |
+| [`WAVE_D_M6-M7-M8_PLAN.md`](./plans/WAVE_D_M6-M7-M8_PLAN.md) | Wave D — M6 Admission + M7 Care Plan + M8 Encounters. |
+| [`WAVE_M6_LIVE_WIRE_PLAN.md`](./plans/WAVE_M6_LIVE_WIRE_PLAN.md) | M6 Admission live-wire. |
+| [`WAVE_E_M9-M13_PLAN.md`](./plans/WAVE_E_M9-M13_PLAN.md) | Wave E — clinical depth (M9 · M10 · M11 · M12 · M13). |
+| [`WAVE_F_M14-M17-M18-M22_PLAN.md`](./plans/WAVE_F_M14-M17-M18-M22_PLAN.md) | Wave F — M14 IDG · M17 Scheduling · M18 EVV · M22 Documents. |
+| [`WAVE_G_M23-M25-M26_PLAN.md`](./plans/WAVE_G_M23-M25-M26_PLAN.md) | Wave G — revenue cycle (M23 · M25 · M26). |
+| [`WAVE_H_M28-M29-M30-M32-M34_PLAN.md`](./plans/WAVE_H_M28-M29-M30-M32-M34_PLAN.md) | Wave H — M28 FHIR · M29 Interfaces · M30 HQRP · M32 AI · M34 SaaS. |
+| [`WAVE_P2-1_M15-M16-M21-M24_PLAN.md`](./plans/WAVE_P2-1_M15-M16-M21-M24_PLAN.md) | Wave P2-1 — M15 · M16 · M21 · M24. |
+| [`WAVE_P2-2_M19-M20_PLAN.md`](./plans/WAVE_P2-2_M19-M20_PLAN.md) | Wave P2-2 — M19 On-Call · M20 Field Safety. |
+| [`WAVE_P2-3_M27-M31-M33-M35_PLAN.md`](./plans/WAVE_P2-3_M27-M31-M33-M35_PLAN.md) | Wave P2-3 — M27 · M31 · M33 · M35. |
+| [`WAVE_P3_M37_IPU_PLAN.md`](./plans/WAVE_P3_M37_IPU_PLAN.md) | Phase 3 — M37 Inpatient Unit (IPU). |
+| [`WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md`](./plans/WAVE_ADMIN_CONSOLE_M35_SUBSCRIPTION_PLAN.md) | Admin console — M34 shell + M35 §5.2 platform-ops screens. |
+| [`WAVE_FRONTEND_BACKLOG_PLAN.md`](./plans/WAVE_FRONTEND_BACKLOG_PLAN.md) | Frontend backlog (Track A). |
+| [`FRONTEND_INTEGRATION_PLAN.md`](./plans/FRONTEND_INTEGRATION_PLAN.md) | Frontend integration (Foundation + backlog + per-module). |
+| [`PHASE_2A_UPGRADES_PLAN.md`](./plans/PHASE_2A_UPGRADES_PLAN.md) | Phase 2 Part A — flag-activation upgrades. |
+| [`PHASE_3_UPGRADES_PLAN.md`](./plans/PHASE_3_UPGRADES_PLAN.md) | Phase 3 — flag activations. |
+| [`ARCHON_RUN_TRACKER.md`](./plans/ARCHON_RUN_TRACKER.md) | Archon run tracker (execution log). |
+
+---
+
+## Reference sources
+
+| Document | Scope |
+|---|---|
+| [`reference/cms/README.md`](./reference/cms/README.md) | CMS primary sources — Form CMS-1984-14 (hospice cost report). |
+
+---
+
+## Governance & history
+
+| Document | Scope |
+|---|---|
+| [`REMEDIATION_SUMMARY.md`](./REMEDIATION_SUMMARY.md) | Architecture remediation summary (phases 0–6). |
+| [`adr/`](./adr/) | Decision records — see [`adr/README.md`](./adr/README.md). |
+| [`../audit/`](../audit/) | Point-in-time audit & fitness-enforcement reports (outside `docs/`). |
+
+---
+
+*This index is hand-maintained. When adding a document under `docs/`, add a row here in the
+matching section. The design corpus (`design/`) and wave plans (`plans/`) are additionally
+guarded by the `docs:ui` and `arch:plan-integrity` gates respectively.*
