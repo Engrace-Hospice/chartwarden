@@ -23,12 +23,15 @@ import {
 // (+ /cosignature, + the patient summary for the banner); the server enforces every scope (ADR-0030).
 //
 // Write ceremonies (TASK-031): Sign / Acknowledge cosignature / Sign cosignature / Supervisor release, each
-// a CeremonyModal committing to the matching M8 route. Honest gap carried into the ceremony: the sign/
-// cosign-sign routes take a client-supplied `stepUpAuthAt` and only check it's ≤5 minutes old
-// (encounters-routes.ts) — not a real M2 step-up event the way M23's STEP_UP_REQUIRED 403 is. Real step-up
-// wiring for M8 is a backend contract change, not this UI task's to invent, so the ceremony stamps the
-// current time at commit — satisfying the literal contract — and `write-workflow.ts`'s authFailureRedirect
-// stays ready for the day the route does emit STEP_UP_REQUIRED.
+// a CeremonyModal committing to the matching M8 route. PARAM-004/CoP-418.104(c) follow-up: the sign/
+// cosign-sign routes now gate on a REAL M2 step-up (requireStepUp("encounter.sign"/"encounter.cosign")),
+// server-verified from the session — the client no longer sends (and the server no longer trusts) a
+// `stepUpAuthAt` timestamp. What's STILL a gap (pre-existing, cross-module — packages/auth's
+// `requireAbac`/`requireStepUp` never emit a distinguishable `STEP_UP_REQUIRED` error code the way M23's
+// pattern this file mirrors assumes): a stale/missing step-up surfaces as a PLAIN 403, so
+// `write-workflow.ts`'s authFailureRedirect can't route this ceremony to `/step-up` specifically — it
+// falls into the generic "you do not have permission" message below. Fixing that needs a
+// packages/auth-level change (every `requireStepUp` caller, not just M8), out of scope here.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -133,6 +136,8 @@ export function EncounterRead(): JSX.Element {
       }
       setBusy(true);
       setActionError(null);
+      // SupervisorReleaseSchema still requires stepUpAuthAt (untouched by this follow-up — the
+      // supervisor-release route never actually reads it, but the body schema still demands it).
       const stepUpAuthAt = new Date().toISOString();
       const path =
         mode === "sign"
@@ -144,7 +149,7 @@ export function EncounterRead(): JSX.Element {
               : "/api/v1/encounters/{encounterId}/cosignature/supervisor-release";
       const body =
         mode === "sign" || mode === "cosign-sign"
-          ? { stepUpAuthAt, attestationConfirmed: true as const }
+          ? { attestationConfirmed: true as const }
           : mode === "supervisor-release"
             ? { reason: reason.trim(), stepUpAuthAt }
             : undefined;

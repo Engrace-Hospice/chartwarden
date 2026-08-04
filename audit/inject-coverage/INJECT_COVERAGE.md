@@ -9,7 +9,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | Module | Routes | Covered | Suite file(s) |
 |---|--:|:--:|---|
 | 02-identity | 17 | ✅ | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/identity-routes.test.ts, apps/backend/__tests__/session-step-up.test.ts |
-| 03-authorization | 17 | ✅ | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts |
+| 03-authorization | 17 | ✅ | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
 | 04-audit | 4 | ✅ | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts |
 | 05-patient | 14 | ✅ | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 06-admission | 47 | ✅ | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |

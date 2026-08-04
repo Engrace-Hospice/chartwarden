@@ -42,7 +42,14 @@ export type CosignatureEvent =
       readonly at: LocalDate;
     }
   /** A qualified RN signs as cosigner — request becomes terminal; encounter → `cosigned` (§7.2/§7.3). */
-  | { readonly type: "sign"; readonly isQualifiedRn: boolean; readonly at: LocalDate };
+  | {
+      readonly type: "sign";
+      readonly isQualifiedRn: boolean;
+      /** CoP 418.104(c) — same fresh-step-up floor the primary/addendum sign events already gate on
+       *  (§4.1/D13); a cosignature is a signature event too. Was structurally absent until this fix. */
+      readonly stepUpFresh: boolean;
+      readonly at: LocalDate;
+    };
 
 export type CosignatureTransition = TransitionResult<CosignatureState, CosignatureEvent["type"]>;
 
@@ -153,6 +160,7 @@ export function transitionCosignature(
         "NOT_COSIGN_ELIGIBLE",
         "a cosignature must be signed by a qualified RN",
       );
+      require_(event.stepUpFresh, "STEP_UP_AUTH_REQUIRED", "cosignature requires fresh step-up auth");
       return result(from, event.type, "signed", [
         { kind: "set_timestamp", field: "signed_at", at: event.at },
         { kind: "audit" },

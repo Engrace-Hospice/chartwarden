@@ -10,6 +10,8 @@
 // predicate (RN ∧ not-self-author).
 import {
   createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
+  createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -19,11 +21,13 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   createInMemoryEncounterBackend,
   registerEncounterAbacPredicates,
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
+import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -33,6 +37,11 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // The sign/cosign-sign routes' requireStepUp(...) gate + signingActorOf() both read these — reusing
+  // the test user id as both the membership id and the M2 session id keeps it consistent with the
+  // in-memory backend's `authoredByUserId` seed data (self-cosign checks key off the same identifier).
+  request.context.attributes.membershipId = user;
+  request.context.attributes.sessionId = user;
 }
 
 const ORG = "org_a";
@@ -106,16 +115,34 @@ function makeServer() {
   resetAbacRegistry();
   registerAbacRegistry();
   registerEncounterAbacPredicates({ resolver: backend.resolver });
+  registerAuthorizationAbacPredicates();
+  // Every seeded actor starts with a FRESH step-up (real M3 step_up_recent, real M2 seam) — the sign/
+  // cosign-sign routes' requireStepUp(...) gate needs this to reach the route handler at all. `put`
+  // lets an individual test push a STALE session for one actor to exercise the deny path for real.
+  __resetSeamsForTest();
+  const sessions = createInMemorySessionContextStore(
+    PERMISSION_SEED.map((s) => ({
+      sessionId: s.userId,
+      userId: s.userId,
+      membershipId: s.userId,
+      organizationId: ORG,
+      roles: [],
+      providerEntityIds: [],
+      locationIds: [],
+      lastStepUpAt: new Date(),
+      lastStepUpFactor: "webauthn" as const,
+    })),
+  );
+  registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerEncounterRoutes(app, { service: backend.service });
-  return { app, backend };
+  return { app, backend, sessions };
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const LPN_COSIGNER = { "x-test-user": "lpn_cos", "x-test-org": ORG, "x-test-roles": "lpn" };
-const freshStepUp = () => new Date().toISOString();
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -235,14 +262,14 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
       method: "POST",
       url: `/api/v1/encounters/${id}/sign`,
       headers: RN,
-      payload: { stepUpAuthAt: freshStepUp(), attestationConfirmed: true },
+      payload: { attestationConfirmed: true },
     });
     expect(sign.statusCode).toBe(200);
     expect(sign.json().status).toBe("signed");
   });
 
-  it("412 STEP_UP_AUTH_REQUIRED when the step-up timestamp is stale", async () => {
-    const { app } = makeServer();
+  it("403 (requireStepUp) when the caller's session step-up is stale", async () => {
+    const { app, sessions } = makeServer();
     const draft = await app.inject({
       method: "POST",
       url: "/api/v1/encounters",
@@ -262,15 +289,28 @@ describe("M8-T09 — finalize → sign happy path (§2.3)", () => {
       headers: RN,
       payload: {},
     });
+    // Push rn_1's session past the 300s step-up floor (PARAM-004/CoP-418.104(c) follow-up — freshness
+    // is now a real server-side check via requireStepUp, not a client-supplied timestamp; a stale
+    // step-up denies at the ABAC gate (403) rather than reaching the old service-layer 412 domain check.
+    sessions.put({
+      sessionId: "rn_1",
+      userId: "rn_1",
+      membershipId: "rn_1",
+      organizationId: ORG,
+      roles: [],
+      providerEntityIds: [],
+      locationIds: [],
+      lastStepUpAt: new Date(Date.now() - 10 * 60 * 1000),
+      lastStepUpFactor: "webauthn",
+    });
 
     const sign = await app.inject({
       method: "POST",
       url: `/api/v1/encounters/${id}/sign`,
       headers: RN,
-      payload: { stepUpAuthAt: "2020-01-01T00:00:00.000Z", attestationConfirmed: true },
+      payload: { attestationConfirmed: true },
     });
-    expect(sign.statusCode).toBe(412);
-    expect(sign.json().error.code).toBe("STEP_UP_AUTH_REQUIRED");
+    expect(sign.statusCode).toBe(403);
   });
 });
 

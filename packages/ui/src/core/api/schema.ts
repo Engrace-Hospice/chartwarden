@@ -35109,8 +35109,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: date-time */
-                    stepUpAuthAt: string;
                     /** @constant */
                     attestationConfirmed: true;
                 };
@@ -35292,8 +35290,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: date-time */
-                    stepUpAuthAt: string;
                     /** @constant */
                     attestationConfirmed: true;
                 };
@@ -35651,8 +35647,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** Format: date-time */
-                    stepUpAuthAt: string;
                     /** @constant */
                     attestationConfirmed: true;
                 };

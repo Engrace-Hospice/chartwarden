@@ -1328,8 +1328,53 @@ still open.
     `org_timezone` default under real RLS (unlike the M29 migration, this work had no live-only
     bugs to fix — it passed clean on the first live run).
 
-- **`encounter_signature` (CoP 418.104(c)) — still OPEN.** Not attempted in this follow-up; the
-  right next step is the write path itself (signature method + session id + fresh-step-up
-  provenance per signature event, integrated with the existing `signedAt`/`cosignedAt` lifecycle
-  transitions and M3's step-up session tracking), not further investigation — the investigation
-  already happened in TASK-066.
+- **`encounter_signature` (CoP 418.104(c)) — RESOLVED.** Built the real write path: every primary
+  sign / cosignature / addendum-sign now writes an `encounter_signature` row (method, session id,
+  step-up timestamp, attestation text, discipline) inside the same transaction as the status
+  transition, insert-then-emit (M11 Orders' `order_signature` idiom).
+  - **Step-up moved fully server-side.** The old routes trusted a client-supplied `stepUpAuthAt`
+    timestamp (`stepUpFreshFrom`, a plain `Date.parse` age check) — never a real re-authentication
+    event — and the cosignature-sign route had NO step-up check at all despite the module spec's
+    own route table listing one. Both fixed: `SignEncounterSchema` no longer accepts
+    `stepUpAuthAt`; the sign/cosign-sign/addendum-sign routes gate on `requireStepUp("encounter.
+    sign"|"encounter.cosign"|"encounter.addendum.sign")` (real, server-verified, via M3's
+    `step_up_recent` predicate over M2's `SessionContextResolver` seam — the same mechanism every
+    other step-up-gated route in the codebase already uses). Added `stepUpFresh` to
+    `CosignatureEvent`'s `sign` variant and `transitionCosignature`'s guard — it was structurally
+    absent before, a real gap this closes.
+  - **The signer's real identity, not the author's.** `sign`/`cosignSign`/`signAddendum` all used
+    `authoredByMembershipId`/`routedToMembershipId` as a stand-in for "who signed" — wrong whenever
+    the actual caller differs from the encounter's author (the RN cosigner, an addendum author).
+    Fixed: routes now thread the caller's real `membershipId` (from `request.context.attributes`,
+    stamped by M2's authenticate hook) and `sessionId` through a new `SigningActor` service
+    parameter; the service re-resolves the session's step-up state itself (mirrors M11's
+    "re-derive, don't trust a passed-through claim" idiom) rather than trusting a boolean the route
+    computed.
+  - **`StepUpFactor` → `signature_method` mapping**: `webauthn` → `passkey` (the session seam
+    doesn't distinguish passkey vs. platform-biometric — both are WebAuthn ceremonies), `totp` →
+    `password_plus_otp`. `sms` can't reach this code path (`STEP_UP_POLICY` excludes it from
+    qualifying factors) — defensively throws if it somehow did.
+  - **The in-memory reference slice** (not mounted in production) accepts the same new signatures
+    but always reports a fresh, `"UTC"`-flavored step-up (`method: "passkey"`, no real session
+    infra) — consistent with how it already handles other unthreaded compliance fields.
+  - **A real, live-caught bug of my own along the way**: the first cut added a hard "must be sited
+    (provider entity + location) before signing" guard, since `encounter_signature.provider_
+    entity_id`/`.location_id` are NOT NULL — but `createDraft` never actually sets an encounter's
+    siting anywhere in this write-lifecycle slice (a PRE-EXISTING gap the module's own header
+    comment already flags: "siting backfills from the admission/visit when present" — an
+    aspiration, not yet implemented). The live write-lifecycle test's `draft()` helper had to start
+    seeding real FK-valid `provider_entity`/`location` rows and stamping them onto every created
+    encounter for signing to work at all — confirming this is a genuine, separate, already-existing
+    gap (encounters are universally unsited today), not something this task should silently paper
+    over with a fake sentinel.
+  - New tests: `encounter-cosignature.test.ts` gained the cosignature stepUpFresh gate's
+    stale-step-up case (matching the existing encounter/addendum machine pattern); the 3 HTTP-level
+    and 1 live-Postgres test files needed real `SessionContextResolver` seam wiring (previously
+    absent — those routes' step-up gate was untestable before because nothing exercised
+    `requireStepUp` for real).
+  - **Live-verified against real Postgres**: `m8-rls-isolation.live.test.ts` (15, including the
+    `encounter_signature` cross-tenant-denial case) and `m8-encounters-write.live.test.ts` (12,
+    including the stale-step-up-is-412 and both cosignature-flow cases) both pass clean.
+  - Full regression: build clean, `arch:fitness` green (openapi.json + generated client
+    regenerated — `SignEncounterSchema`'s shape changed), full suite 8061 passing (same 34
+    pre-existing unrelated failures as before this work, confirmed by name).

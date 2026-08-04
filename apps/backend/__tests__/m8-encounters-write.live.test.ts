@@ -16,10 +16,12 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type EncounterWriteOutboxPort,
   M8_OUTBOX_EVENTS,
@@ -37,12 +39,25 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 /** A recent-but-past service date (the encounter_service_date_not_future CHECK forbids the future). */
 const SERVICE_DATE = "2026-01-15";
+// `encounter_signature.session_id` is a uuid column — session ids in this system are uuids.
+const SESSION_A = "66666666-6666-6666-6666-666666666666";
+/** A session id the store never seeds — `resolveStepUpState` resolves it to `null` (never fresh). */
+const STALE_SESSION = "77777777-7777-7777-7777-777777777777";
 
 describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T02)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbEncounterRouteService>;
   const membershipOf: Record<string, string> = {};
+  /** The real caller signing (§3.3/D13) — `resolveSignatureProvenance` resolves SESSION_A's step-up
+   *  through the SessionContextResolver seam registered in beforeAll (fresh, webauthn). */
+  let ACTOR_A: { membershipId: string; sessionId: string };
+  /** PARAM-004/CoP-418.104(c) follow-up — signing now writes an `encounter_signature` row, which has
+   *  NOT NULL provider_entity_id/location_id. `createDraft` never sets an encounter's siting (a
+   *  pre-existing gap this write-lifecycle slice doesn't backfill from the admission/visit yet — see
+   *  the file header's "siting backfills... when present" note), so the test seeds real FK-valid
+   *  siting and `draft()` stamps it onto every created encounter directly. */
+  let SITING_A: { providerEntityId: string; locationId: string };
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -101,6 +116,32 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m8w@x.test')`, [USER]);
     await seedOrg(ORG_A, "org-a");
     await seedOrg(ORG_B, "org-b");
+    const pe = await admin.query(
+      `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1, '01-1234', 'M8 Test PE', '1234567890', 'enc', '12-31') RETURNING id`,
+      [ORG_A],
+    );
+    const loc = await admin.query(
+      `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+       VALUES ($1, 'M8 Test Loc', '1 Main St', 'Town', 'NY', '10001', 'America/New_York') RETURNING id`,
+      [pe.rows[0].id],
+    );
+    SITING_A = { providerEntityId: pe.rows[0].id as string, locationId: loc.rows[0].id as string };
+    ACTOR_A = { membershipId: membershipOf[ORG_A], sessionId: SESSION_A };
+    const sessions = createInMemorySessionContextStore([
+      {
+        sessionId: SESSION_A,
+        userId: USER,
+        membershipId: membershipOf[ORG_A],
+        organizationId: ORG_A,
+        roles: [],
+        providerEntityIds: [],
+        locationIds: [],
+        lastStepUpAt: new Date(),
+        lastStepUpFactor: "webauthn",
+      },
+    ]);
+    registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
     await admin.query("ALTER ROLE wardenx_app LOGIN");
     handle = createDbClient({
       connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
@@ -131,6 +172,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       serviceDate: SERVICE_DATE as never,
       ...extra,
     });
+    await admin.query("UPDATE encounter SET provider_entity_id=$1, location_id=$2 WHERE id=$3", [
+      SITING_A.providerEntityId,
+      SITING_A.locationId,
+      d.id,
+    ]);
     return d.id;
   }
 
@@ -187,7 +233,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const [row] = (await admin.query("SELECT vocab_version_id FROM encounter WHERE id=$1", [id]))
       .rows;
     expect(row.vocab_version_id).not.toBeNull(); // D11 pinned at finalize
-    const signed = await svc.sign(ORG_A, id, { stepUpFresh: true, at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     expect(signed.status).toBe("signed");
     expect(signed.cosignatureRequestId).toBeNull();
     const events = await eventsFor(id);
@@ -199,14 +245,14 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     await expect(
-      svc.sign(ORG_A, id, { stepUpFresh: false, at: SERVICE_DATE as never }),
+      svc.sign(ORG_A, id, { membershipId: membershipOf[ORG_A], sessionId: STALE_SESSION }, { at: SERVICE_DATE as never }),
     ).rejects.toMatchObject({ statusCode: 412 });
   });
 
   it("LPN sign routes to cosign_pending; acknowledge → cosign signs the encounter (§2.4/§7.2)", async () => {
     const id = await draft("routine_visit", "lpn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    const signed = await svc.sign(ORG_A, id, { stepUpFresh: true, at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     expect(signed.status).toBe("cosign_pending");
     expect(signed.cosignatureRequestId).not.toBeNull();
     expect(await eventsFor(id)).toContain("m8.encounter.signed");
@@ -217,7 +263,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(queue.encounters.some((e) => e.id === id)).toBe(true);
     const ack = await svc.cosignAcknowledge(ORG_A, id, SERVICE_DATE as never);
     expect(ack.status).toBe("acknowledged");
-    const done = await svc.cosignSign(ORG_A, id, { isQualifiedRn: true, at: SERVICE_DATE as never });
+    const done = await svc.cosignSign(ORG_A, id, ACTOR_A, { isQualifiedRn: true, at: SERVICE_DATE as never });
     expect(done.status).toBe("cosigned");
     expect(done.cosignedAt).toBeTruthy();
     expect(await eventsFor(id)).toContain("m8.encounter.cosigned");
@@ -228,12 +274,12 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const bare = await draft("face_to_face", "md");
     await svc.finalize(ORG_A, bare, SERVICE_DATE as never);
     await expect(
-      svc.sign(ORG_A, bare, { stepUpFresh: true, at: SERVICE_DATE as never }),
+      svc.sign(ORG_A, bare, ACTOR_A, { at: SERVICE_DATE as never }),
     ).rejects.toMatchObject({ statusCode: 412 });
     // With it present, the sign completes as `signed` (MD/NP never route to cosignature).
     const f2f = await draft("face_to_face", "md", { faceToFaceEncounterId: randomUUID() });
     await svc.finalize(ORG_A, f2f, SERVICE_DATE as never);
-    const signed = await svc.sign(ORG_A, f2f, { stepUpFresh: true, at: SERVICE_DATE as never });
+    const signed = await svc.sign(ORG_A, f2f, ACTOR_A, { at: SERVICE_DATE as never });
     expect(signed.status).toBe("signed");
     expect(await eventsFor(f2f)).toContain("m8.encounter.signed");
   });
@@ -254,16 +300,13 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("addendum on a signed encounter: draft → finalize → sign; emits m8.encounter.addendum_signed", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, { stepUpFresh: true, at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     const a = await svc.createAddendum(ORG_A, id);
     expect(a.status).toBe("draft");
     await svc.updateAddendumSelections(ORG_A, id, a.id);
     const fin = await svc.finalizeAddendum(ORG_A, id, a.id);
     expect(fin.status).toBe("finalized");
-    const signed = await svc.signAddendum(ORG_A, id, a.id, {
-      stepUpFresh: true,
-      at: SERVICE_DATE as never,
-    });
+    const signed = await svc.signAddendum(ORG_A, id, a.id, ACTOR_A, { at: SERVICE_DATE as never });
     expect(signed.status).toBe("signed");
     expect(await eventsFor(id)).toContain("m8.encounter.addendum_signed");
   });
@@ -278,7 +321,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("§2.7 immutability — editing a signed encounter is refused (IMMUTABLE_AFTER_SIGN → 409)", async () => {
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
-    await svc.sign(ORG_A, id, { stepUpFresh: true, at: SERVICE_DATE as never });
+    await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     await expect(svc.captureVitals(ORG_A, id, { heartRate: 72 })).rejects.toMatchObject({
       statusCode: 409,
     });

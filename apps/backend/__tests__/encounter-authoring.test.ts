@@ -8,6 +8,8 @@
 // write the dual-write requests of M6.
 import {
   createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
+  createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -17,6 +19,7 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
   computeBmi,
   createInMemoryEncounterBackend,
@@ -28,6 +31,7 @@ import {
   registerEncounterRoutes,
   resolveMiles,
 } from "../src/modules/08-encounters/index";
+import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
 
 /** Assert `fn` throws an EncounterStateError carrying the given §2.7 machine code. */
 function expectCode(fn: () => unknown, code: string): void {
@@ -193,33 +197,51 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // The sign route's requireStepUp(...) gate + signingActorOf() both read these.
+  request.context.attributes.membershipId = user;
+  request.context.attributes.sessionId = user;
 }
 
 function makeServer() {
   const backend = createInMemoryEncounterBackend();
+  const actors = ["rn_1", "md_1"];
   const grantStore = createInMemoryEffectivePermissionStore(
-    [
-      { userId: "rn_1", permissions: AUTHOR_KEYS },
-      { userId: "md_1", permissions: AUTHOR_KEYS },
-    ].map((s) => ({
+    actors.map((userId) => ({
       orgId: ORG,
-      userId: s.userId,
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
+      userId,
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: AUTHOR_KEYS }],
     })),
   );
   registerEffectivePermissionResolver(grantStore.store);
   resetAbacRegistry();
   registerAbacRegistry();
   registerEncounterAbacPredicates({ resolver: backend.resolver });
+  registerAuthorizationAbacPredicates();
+  // Every seeded actor starts with a FRESH step-up (real M3 step_up_recent, real M2 seam) — the sign
+  // route's requireStepUp(...) gate needs this to reach the route handler at all.
+  __resetSeamsForTest();
+  const sessions = createInMemorySessionContextStore(
+    actors.map((userId) => ({
+      sessionId: userId,
+      userId,
+      membershipId: userId,
+      organizationId: ORG,
+      roles: [],
+      providerEntityIds: [],
+      locationIds: [],
+      lastStepUpAt: new Date(),
+      lastStepUpFactor: "webauthn" as const,
+    })),
+  );
+  registerSeam("SessionContextResolver", createSessionContextResolver(sessions.store));
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerEncounterRoutes(app, { service: backend.service });
-  return { app, backend };
+  return { app, backend, sessions };
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
 const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "md" };
-const freshStepUp = () => new Date().toISOString();
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -299,7 +321,7 @@ describe("M8-T10 — §7.1 RN routine visit happy path", () => {
       method: "POST",
       url: `/api/v1/encounters/${id}/sign`,
       headers: RN,
-      payload: { stepUpAuthAt: freshStepUp(), attestationConfirmed: true },
+      payload: { attestationConfirmed: true },
     });
     expect(sign.statusCode).toBe(200);
     expect(sign.json().status).toBe("signed");
@@ -341,7 +363,7 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
       method: "POST",
       url: `/api/v1/encounters/${id}/sign`,
       headers: MD,
-      payload: { stepUpAuthAt: freshStepUp(), attestationConfirmed: true },
+      payload: { attestationConfirmed: true },
     });
     expect(sign.statusCode).toBe(200);
     expect(sign.json().status).toBe("signed");
@@ -385,7 +407,7 @@ describe("M8-T10 — §7.4 MD/NP F2F dual-write with M6 (D1)", () => {
       method: "POST",
       url: `/api/v1/encounters/${id}/sign`,
       headers: MD,
-      payload: { stepUpAuthAt: freshStepUp(), attestationConfirmed: true },
+      payload: { attestationConfirmed: true },
     });
     expect(sign.statusCode).toBe(412);
     expect(sign.json().error.code).toBe("F2F_DUAL_WRITE_REQUIRED");

@@ -19,10 +19,12 @@
 // them; (3) no `encounter_signature` provenance row and no `hearthnote_selection`/Layer-2 row is written
 // (the interface carries neither the session/attestation nor the selection tree) — the encounter's
 // status + signed_at/cosigned_at carry the signed state, exactly as the in-memory reference models it.
+import { isStepUpRecent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { type LocalDate, NotFoundError } from "@wardenx/types";
+import { type LocalDate, NotFoundError, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { getSeam } from "../../bootstrap/index";
 import {
   planF2fDualWrite,
   planMileageCapture,
@@ -52,6 +54,78 @@ const COSIGN = schema.cosignatureRequests;
 const ADDENDUM = schema.encounterAddenda;
 const VITALS = schema.vitals;
 const MILEAGE = schema.mileage;
+const SIG = schema.encounterSignatures;
+
+// ── §3.3/D13 signature provenance (CoP 418.104(c), 21 CFR Part 11 principles) ─────────────────────────
+//
+// Every primary sign / cosignature / addendum-sign writes one `encounter_signature` row carrying WHO
+// signed (the caller's real membership, not the encounter's author), WHAT method authenticated them,
+// and WHEN their step-up was verified — sourced from M2's `SessionContextResolver` seam (the same
+// source M3's `step_up_recent` predicate reads), never from a client-supplied timestamp. The route's
+// `requireStepUp(...)` preHandler already denied the request if this resolves stale; resolving it again
+// here (rather than threading a boolean through) mirrors the established "re-derive, don't trust a
+// passed-through client claim" idiom (M11 Orders re-derives the cosigner role the same way).
+
+/** `signature_method` has no `sms` value — STEP_UP_POLICY excludes sms from qualifying factors, so a
+ *  fresh step-up can only ever be webauthn or totp by the time this runs (the route's requireStepUp
+ *  gate already enforced that). `webauthn` covers both passkey and platform-biometric ceremonies; the
+ *  session seam doesn't distinguish them, so passkey is the faithful default for the FIDO2 credential
+ *  type (see catalog note in packages/audit for the analogous "don't invent a distinction the seam
+ *  can't make" precedent). */
+function stepUpFactorToSignatureMethod(
+  factor: StepUpFactor,
+): (typeof schema.signatureMethod.enumValues)[number] {
+  switch (factor) {
+    case "webauthn":
+      return "passkey";
+    case "totp":
+      return "password_plus_otp";
+    case "sms":
+      throw new EncounterStateError(
+        "STEP_UP_AUTH_REQUIRED",
+        "sms does not qualify as a fresh step-up factor for a clinical signature",
+      );
+  }
+}
+
+/** The exact attestation language presented for each signature kind (§3.3 `attestation_text`, ≥ 50
+ *  chars). Standard, fixed statements — not free-form user text — matching `layer2_involved_at_signing`
+ *  always being `false` in this slice (no Layer-2/HearthNote provenance is captured yet; see
+ *  `enhanceHearthnote`/`recordModificationDecision` above). Real product/legal copy TBD; these are the
+ *  placeholder-but-real-shaped strings the file already uses this idiom for (see SIGNIFICANT_LATE_REASON
+ *  et al. above). */
+const PRIMARY_ATTESTATION_TEXT =
+  "I attest that this clinical documentation is accurate and complete to the best of my knowledge, and that I am the practitioner responsible for the care described (primary signature, pending final legal copy).";
+const COSIGNATURE_ATTESTATION_TEXT =
+  "I attest, as the qualified RN cosigner, that I have reviewed this clinical documentation and concur with the care described (cosignature, pending final legal copy).";
+const ADDENDUM_ATTESTATION_TEXT =
+  "I attest that this addendum is accurate and complete to the best of my knowledge (addendum signature, pending final legal copy).";
+
+/** Resolved, server-verified signature provenance for one sign event. `stepUpFresh` is what the pure
+ *  lifecycle machines gate on; `method`/`stepUpAuthAt` are only meaningful (and only read) when fresh. */
+interface SignatureProvenance {
+  readonly stepUpFresh: boolean;
+  readonly method: (typeof schema.signatureMethod.enumValues)[number];
+  readonly stepUpAuthAt: Date;
+}
+
+async function resolveSignatureProvenance(
+  organizationId: string,
+  sessionId: string,
+): Promise<SignatureProvenance> {
+  const state = await getSeam("SessionContextResolver").resolveStepUpState(
+    { orgId: organizationId },
+    sessionId,
+  );
+  if (!isStepUpRecent(state, STEP_UP_POLICY, Date.now()) || !state?.lastStepUpAt || !state.lastStepUpFactor) {
+    return { stepUpFresh: false, method: "passkey", stepUpAuthAt: new Date(0) };
+  }
+  return {
+    stepUpFresh: true,
+    method: stepUpFactorToSignatureMethod(state.lastStepUpFactor),
+    stepUpAuthAt: state.lastStepUpAt,
+  };
+}
 
 /**
  * The §2.7 D11 pinned vocabulary version. In prod the active `code_system_version` id comes from M38's
@@ -636,15 +710,25 @@ export function createDbEncounterRouteService(
     },
 
     // ── Sign (§2.3 — the LOCKED clinical-record trigger; §7.4 D1 F2F dual-write + LPN/CHHA cosign) ──────
-    async sign(organizationId, encounterId, args) {
+    async sign(organizationId, encounterId, actor, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadEnc(t, encounterId);
         const now = new Date();
-        const signedByMembershipId = r.authoredByMembershipId;
+        // The REAL caller signs, not the encounter's author (that was the pre-fix bug — see the
+        // module-header compromise list above, item (2)).
+        const signedByMembershipId = actor.membershipId;
         const evvBracketState = (r.evvBracketState ?? "evv_present") as
           | "evv_present"
           | "evv_missing_documented";
+        const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
+        if (!r.providerEntityId || !r.locationId) {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "encounter must be sited (provider entity + location) before it can be signed",
+          );
+        }
+        const siting = { providerEntityId: r.providerEntityId, locationId: r.locationId };
 
         // §7.4 D1 — an F2F encounter signs as one atomic dual-write (M8 note + the M6 attestation row).
         // The plan throws on a failed gate / stale step-up / missing M6 id → neither side is written.
@@ -658,13 +742,27 @@ export function createDbEncounterRouteService(
               null) as Parameters<typeof planF2fDualWrite>[0]["faceToFaceEncounterId"],
             discipline: r.discipline,
             gatePassed: true,
-            stepUpFresh: args.stepUpFresh,
+            stepUpFresh: provenance.stepUpFresh,
             at: args.at,
           });
           await t
             .update(ENC)
             .set({ status: plan.encounter.to, signedAt: now, updatedAt: now })
             .where(eq(ENC.id, encounterId));
+          await t.insert(SIG).values({
+            organizationId,
+            ...siting,
+            encounterId,
+            kind: "primary",
+            signedByMembershipId,
+            signedByDiscipline: r.discipline,
+            signedAt: now,
+            method: provenance.method,
+            sessionId: actor.sessionId,
+            stepUpAuthAt: provenance.stepUpAuthAt,
+            attestationText: PRIMARY_ATTESTATION_TEXT,
+            layer2InvolvedAtSigning: false,
+          });
           await emit(t, organizationId, "m8.encounter.signed", "encounter", encounterId, {
             encounterId,
             patientId: r.patientId,
@@ -688,7 +786,7 @@ export function createDbEncounterRouteService(
           type: "sign",
           discipline: r.discipline,
           gatePassed: true,
-          stepUpFresh: args.stepUpFresh,
+          stepUpFresh: provenance.stepUpFresh,
           isF2f: false,
           f2fDualWriteSatisfied: true,
           eligibleCosignerExists: true,
@@ -699,6 +797,20 @@ export function createDbEncounterRouteService(
           .update(ENC)
           .set({ status: trans.to, signedAt: now, updatedAt: now })
           .where(eq(ENC.id, encounterId));
+        await t.insert(SIG).values({
+          organizationId,
+          ...siting,
+          encounterId,
+          kind: "primary",
+          signedByMembershipId,
+          signedByDiscipline: r.discipline,
+          signedAt: now,
+          method: provenance.method,
+          sessionId: actor.sessionId,
+          stepUpAuthAt: provenance.stepUpAuthAt,
+          attestationText: PRIMARY_ATTESTATION_TEXT,
+          layer2InvolvedAtSigning: false,
+        });
         await emit(t, organizationId, "m8.encounter.signed", "encounter", encounterId, {
           encounterId,
           patientId: r.patientId,
@@ -829,14 +941,16 @@ export function createDbEncounterRouteService(
         return { status: trans.to };
       });
     },
-    async cosignSign(organizationId, encounterId, args) {
+    async cosignSign(organizationId, encounterId, actor, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const cr = await loadCosign(t, encounterId);
         const now = new Date();
+        const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
         const ct = transitionCosignature(cr.status, {
           type: "sign",
           isQualifiedRn: args.isQualifiedRn,
+          stepUpFresh: provenance.stepUpFresh,
           at: args.at,
         });
         await t
@@ -849,9 +963,32 @@ export function createDbEncounterRouteService(
           .update(ENC)
           .set({ status: et.to, cosignedAt: now, updatedAt: now })
           .where(eq(ENC.id, encounterId));
+        if (!enc.providerEntityId || !enc.locationId) {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "encounter must be sited (provider entity + location) before it can be cosigned",
+          );
+        }
+        await t.insert(SIG).values({
+          organizationId,
+          providerEntityId: enc.providerEntityId,
+          locationId: enc.locationId,
+          encounterId,
+          kind: "cosignature",
+          // The RN cosigner's discipline: the ct transition above already required isQualifiedRn true,
+          // so 'rn' is the only discipline a cosignature can legally carry.
+          signedByMembershipId: actor.membershipId,
+          signedByDiscipline: "rn",
+          signedAt: now,
+          method: provenance.method,
+          sessionId: actor.sessionId,
+          stepUpAuthAt: provenance.stepUpAuthAt,
+          attestationText: COSIGNATURE_ATTESTATION_TEXT,
+          layer2InvolvedAtSigning: false,
+        });
         await emit(t, organizationId, "m8.encounter.cosigned", "encounter", encounterId, {
           encounterId,
-          cosignedByMembershipId: cr.routedToMembershipId,
+          cosignedByMembershipId: actor.membershipId,
           cosignedAt: now.toISOString(),
         });
         return { status: et.to, cosignedAt: now.toISOString() };
@@ -937,25 +1074,49 @@ export function createDbEncounterRouteService(
         return { status: "finalized" };
       });
     },
-    async signAddendum(organizationId, encounterId, addendumId, args) {
+    async signAddendum(organizationId, encounterId, addendumId, actor, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const a = await loadAddendum(t, encounterId, addendumId);
+        const enc = await loadEnc(t, encounterId);
         const now = new Date();
+        const provenance = await resolveSignatureProvenance(organizationId, actor.sessionId);
+        if (!enc.providerEntityId || !enc.locationId) {
+          throw new EncounterStateError(
+            "ILLEGAL_TRANSITION",
+            "encounter must be sited (provider entity + location) before an addendum can be signed",
+          );
+        }
         const trans = transitionAddendum(a.status as "draft" | "finalized" | "signed", {
           type: "sign",
           gatePassed: true,
-          stepUpFresh: args.stepUpFresh,
+          stepUpFresh: provenance.stepUpFresh,
           at: args.at,
         });
         await t
           .update(ADDENDUM)
           .set({ status: trans.to, signedAt: now, updatedAt: now })
           .where(eq(ADDENDUM.id, addendumId));
+        await t.insert(SIG).values({
+          organizationId,
+          providerEntityId: enc.providerEntityId,
+          locationId: enc.locationId,
+          encounterId,
+          addendumId,
+          kind: "addendum",
+          signedByMembershipId: actor.membershipId,
+          signedByDiscipline: enc.discipline,
+          signedAt: now,
+          method: provenance.method,
+          sessionId: actor.sessionId,
+          stepUpAuthAt: provenance.stepUpAuthAt,
+          attestationText: ADDENDUM_ATTESTATION_TEXT,
+          layer2InvolvedAtSigning: false,
+        });
         await emit(t, organizationId, "m8.encounter.addendum_signed", "encounter", encounterId, {
           encounterId,
           addendumId,
-          signedByMembershipId: a.authoredByMembershipId,
+          signedByMembershipId: actor.membershipId,
           signedAt: now.toISOString(),
           reason: a.reason,
         });

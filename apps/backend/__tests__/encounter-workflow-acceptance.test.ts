@@ -12,6 +12,9 @@ const ORG_B = "org_b";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const ADMISSION = "33333333-3333-4333-8333-333333333333";
 const PAST = "2020-01-01"; // a non-future service date (createDraft rejects future dates)
+// The in-memory backend's sign/cosignSign/signAddendum ignore the actor's step-up state (no real
+// session infra in the slice — see routes/service.ts); the shape just needs to be well-formed.
+const ACTOR = { membershipId: "actor_1", sessionId: "sess_1" };
 
 /** Create a draft routine_visit for the given discipline and return the backend + the new encounter id. */
 async function draft(discipline: "rn" | "lpn") {
@@ -31,7 +34,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     const { svc, id } = await draft("rn");
     const fin = await svc.finalize(ORG, id, PAST);
     expect(fin.status).toBe("finalized");
-    const signed = await svc.sign(ORG, id, { stepUpFresh: true, at: PAST });
+    const signed = await svc.sign(ORG, id, ACTOR, { at: PAST });
     expect(signed.status).toBe("signed");
     expect(signed.cosignatureRequestId).toBeNull();
     expect((await svc.getEncounter(ORG, id)).status).toBe("signed");
@@ -40,11 +43,11 @@ describe("M8-T12 §7 workflow acceptance", () => {
   it("§7.2 — LPN routine visit routes a cosignature: sign → cosign_pending → ack → RN signs → cosigned", async () => {
     const { svc, id } = await draft("lpn");
     await svc.finalize(ORG, id, PAST);
-    const signed = await svc.sign(ORG, id, { stepUpFresh: true, at: PAST });
+    const signed = await svc.sign(ORG, id, ACTOR, { at: PAST });
     expect(signed.status).toBe("cosign_pending");
     expect((await svc.getCosignature(ORG, id)).status).toBe("routed");
     expect((await svc.cosignAcknowledge(ORG, id, PAST)).status).toBe("acknowledged");
-    const cos = await svc.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST });
+    const cos = await svc.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST });
     expect(cos.status).toBe("cosigned");
     expect(cos.cosignedAt).not.toBeNull();
   });
@@ -67,7 +70,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
     const id = "e0000000-0000-4000-8000-0000000000aa";
     // A cosigner cannot sign while hard-capped — the encounter is locked.
     await expect(
-      backend.service.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST }),
+      backend.service.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST }),
     ).rejects.toThrow();
     const released = await backend.service.supervisorRelease(ORG, id, {
       isSupervisor: true,
@@ -75,7 +78,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
       at: PAST,
     });
     expect(released.status).toBe("supervisor_released");
-    const cos = await backend.service.cosignSign(ORG, id, { isQualifiedRn: true, at: PAST });
+    const cos = await backend.service.cosignSign(ORG, id, ACTOR, { isQualifiedRn: true, at: PAST });
     expect(cos.status).toBe("cosigned");
   });
 
@@ -95,12 +98,12 @@ describe("M8-T12 §7 workflow acceptance", () => {
   it("§7.9 — an addendum can be created on a signed encounter and signed independently", async () => {
     const { svc, id } = await draft("rn");
     await svc.finalize(ORG, id, PAST);
-    await svc.sign(ORG, id, { stepUpFresh: true, at: PAST });
+    await svc.sign(ORG, id, ACTOR, { at: PAST });
     const add = await svc.createAddendum(ORG, id);
     expect(add.status).toBe("draft");
     await svc.updateAddendumSelections(ORG, id, add.id);
     await svc.finalizeAddendum(ORG, id, add.id);
-    const sa = await svc.signAddendum(ORG, id, add.id, { stepUpFresh: true, at: PAST });
+    const sa = await svc.signAddendum(ORG, id, add.id, ACTOR, { at: PAST });
     expect(sa.status).toBe("signed");
     // The parent encounter status is unchanged by the addendum (append-only, §3.6).
     expect((await svc.getEncounter(ORG, id)).status).toBe("signed");
@@ -121,7 +124,7 @@ describe("M8-T12 §7 workflow acceptance", () => {
   it("the cosignature queue + my-drafts surfaces are org-scoped over the backend", async () => {
     const { backend, svc, id } = await draft("lpn");
     await svc.finalize(ORG, id, PAST);
-    await svc.sign(ORG, id, { stepUpFresh: true, at: PAST }); // → cosign_pending
+    await svc.sign(ORG, id, ACTOR, { at: PAST }); // → cosign_pending
     const queue = await svc.cosignatureQueue(ORG);
     expect(queue.encounters.some((e) => e.id === id)).toBe(true);
     expect((await svc.cosignatureQueue(ORG_B)).encounters).toEqual([]);
