@@ -1242,11 +1242,41 @@ still open.
   - Both migrations only ADD `CREATE OR REPLACE TRIGGER` statements alongside the function
     replacement — the sync gate's table-name parse needed a `CREATE (?:OR REPLACE )?TRIGGER`
     regex fix to still resolve the owning table when a migration has no bare `CREATE TRIGGER`.
-  - **Could not verify against live Postgres** — Docker Desktop's backend VM was unresponsive for
-    this entire session (likely fallout from TASK-065's disk-full event), so this rests on the
-    golden-output tests + all-green static gates, not a live-RLS trigger run. Re-verify live once
-    Docker recovers.
-  - Merged to `main` locally (branch `followup-m7-m29-redaction`); full suite 7838 passing.
+  - **Later verified against live Postgres, mid-session, once Docker recovered — and the M29 half
+    was BROKEN.** Static gates (build, arch:fitness, the golden-output tests comparing the
+    migration to `generateAuditTrigger()`'s own output) all stayed green because they only checked
+    internal consistency between the migration and the TS catalog it was generated from — nothing
+    checked the catalog's column/table references against the actually-shipped schema. Spun up a
+    throwaway Postgres 18 + pgvector cluster (`docs/DEVELOPMENT.md`/local-live-RLS recipe) and ran
+    the M29 live-RLS suite; it failed immediately with `column lo.sud_redaction_status does not
+    exist`. Root cause: **the `AUDIT_DENYLIST_CATALOG` entry this was generated from referenced two
+    columns that never existed** — `lab_observation.sud_redaction_status` and
+    `lab_observation_value.observation_value` — both names lifted from the T-29.11 SUD-hardening
+    forward-engineering spec, whose richer `sud_redaction_status` enum + its own migration
+    (`0034_external_interfaces_sud_hardening.sql`) were never actually built (0034 in this repo is
+    the unrelated M10 HOPE migration). Fixing that surfaced two MORE real bugs, each only
+    reachable by actually exercising the trigger: (1) the row-conditional trigger is the first one
+    in the repo to `SELECT` a sibling table from inside its `SECURITY DEFINER` body —
+    `wardenx_audit_writer` had no grant or RLS policy letting it read `lab_observation`, so it hit
+    `permission denied`; added a least-privilege, org-scoped `SELECT` policy mirroring the app
+    policy's own condition. (2) `audit_retention_class` never actually had `compliance_42cfr_part2`
+    added to it, despite five OTHER migrations' comments (0102/0106/0116/0139/0153) describing the
+    enum as if it already had four values — every one of them stamps the ordinary `compliance`
+    class in practice, so the gap was silent until this migration became the first to actually try
+    writing that value; added the missing `ALTER TYPE ... ADD VALUE`. Repointed the catalog at
+    what really shipped (`lab_observation.sud_redacted_at_ingest` boolean;
+    `lab_observation_value.numeric_value`/`.string_value`, there is no single `observation_value`
+    column), regenerated migration 0164 from the corrected catalog via the real generator (never
+    hand-typed), updated the 3 tests that hardcoded the old phantom names. Re-ran: all 165
+    migrations apply cleanly from scratch AND idempotently on replay, M7/M8/M29 live cross-tenant
+    RLS suites all pass (12/15/15 tests). This is the strongest evidence in the whole session for
+    why "static gates + golden-output tests" is not the same claim as "verified" — see
+    `docs/audits/wardenx-production-readiness/` audit methodology notes.
+  - Merged to `main` locally (branch `followup-m7-m29-redaction`, then a same-day correction commit
+    `fix-m29-live-verification-corrections`); full suite 8060 passing (post-correction count; some
+    pre-existing unrelated flakes in the 34-fail baseline — billing-medicare `vi.mock`
+    incompatibility, jsdom portal smoke render, a 5s test-timeout on two fitness-gate subprocess
+    tests — are untouched by this work, confirmed by name against the pre-fix baseline).
 
 - **PARAM-004 backend half (org-local "today") — RESOLVED.** Built the org-timezone
   infrastructure TASK-066 identified as missing, reusing the `organization_settings_registry`
@@ -1289,10 +1319,14 @@ still open.
     reader), a new bereavement PARAM-004 test proving `America/Los_Angeles` and `UTC` disagree on
     the calendar date for the same instant. Full backend scheduling test suite (53 tests across
     4 files) and `bun run build`/`arch:fitness` both green.
-  - **Not verified against live Postgres** for the same Docker-unresponsive reason as the M7/M29
-    fix above — `m17-scheduling-*.live.test.ts` need a live cluster; re-run those once Docker
-    recovers, particularly to confirm `organization_settings_registry`'s boot-populated defaults
-    resolve correctly under real RLS.
+  - **Later verified against live Postgres, same session, once Docker recovered.** Ran
+    `m17-rls-isolation.live.test.ts` (16 tests), `m17-scheduling-read-service.live.test.ts` (4),
+    `m17-scheduling-write.live.test.ts` (12), plus `m9-assessments-write.live.test.ts` (10) and
+    `m37-ipu-write.live.test.ts` (7) — all pass against the same throwaway Postgres 18 + pgvector
+    cluster the M7/M29 re-verification above used, confirming `organizationTimezone`/
+    `todayForOrganization` correctly resolve `organization_settings_registry`'s boot-populated
+    `org_timezone` default under real RLS (unlike the M29 migration, this work had no live-only
+    bugs to fix — it passed clean on the first live run).
 
 - **`encounter_signature` (CoP 418.104(c)) — still OPEN.** Not attempted in this follow-up; the
   right next step is the write path itself (signature method + session id + fresh-step-up
