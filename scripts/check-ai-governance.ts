@@ -2,12 +2,22 @@
  * WardenX - AI governance catalog check
  * -------------------------------------
  * Enforces the source files required by docs/architecture/WARDENX_AI_GOVERNANCE_v0.2.md
- * section 4.1 and 4.4. This is intentionally narrow: it proves the catalog and docs exist
- * for the architecture-listed capabilities while M32 and AI runtime enforcement remain
- * disabled/deny-stubbed.
+ * section 4.1 and 4.4, AND joins the three parallel AI-capability registries that used to have
+ * no gate connecting them (ARCH-019 / TASK-062):
+ *
+ *   1. docs/ai/capability-catalog.yaml   — the governance catalog (`id` + `capability_key` per entry)
+ *   2. REQUIRED below                    — architecture-listed capability ids this gate enforces
+ *   3. AI_PHASE_1_CAPABILITIES           — M32's §2.4 runtime inventory (`capabilityKey` +
+ *                                          `governanceCatalogId`), packages/ai-platform
+ *
+ * Previously this only checked REQUIRED against the catalog (one direction, one pair). It never read
+ * the runtime inventory at all, so a capability could be registrable+servable with no governance doc
+ * (the six `governanceCatalogId: null` rows M32-T01 shipped), or the catalog could name a
+ * `capability_key` that no registry row actually carries, and every gate would stay green either way.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { AI_PHASE_1_CAPABILITIES } from "../packages/ai-platform/src/inventory/capabilities";
 
 const ROOT = process.cwd();
 const CATALOG = "docs/ai/capability-catalog.yaml";
@@ -36,6 +46,27 @@ const REQUIRED = [
   "level-of-care-prediction",
 ] as const;
 
+interface CatalogEntry {
+  readonly capabilityKey: string | null;
+}
+
+/** Hand-rolled — the catalog is flat (a list of scalar-field maps under `capabilities:`), so a real
+ *  YAML parser is not worth a new dependency for one file this shape. Splits on each `  - id: ` list
+ *  item and reads `capability_key:` within that block, same tolerance the original id/doc checks had
+ *  for trailing `# comment` text. */
+function parseCatalogEntries(yaml: string): Map<string, CatalogEntry> {
+  const entries = new Map<string, CatalogEntry>();
+  const blocks = yaml.split(/\n(?=  - id: )/);
+  for (const block of blocks) {
+    const idMatch = block.match(/^\s*-\s*id:\s*(\S+)/);
+    if (!idMatch) continue;
+    const keyMatch = block.match(/^\s*capability_key:\s*(\S+)/m);
+    const raw = keyMatch?.[1];
+    entries.set(idMatch[1]!, { capabilityKey: !raw || raw === "null" ? null : raw });
+  }
+  return entries;
+}
+
 const violations: string[] = [];
 const catalogPath = join(ROOT, CATALOG);
 
@@ -43,6 +74,22 @@ if (!existsSync(catalogPath)) {
   violations.push(`${CATALOG} is missing`);
 } else {
   const catalog = readFileSync(catalogPath, "utf8");
+  const catalogEntries = parseCatalogEntries(catalog);
+  const requiredSet = new Set<string>(REQUIRED);
+
+  // ── 1. REQUIRED ⇔ catalog id set (bidirectional) ──────────────────────────────────────────────────
+  for (const id of REQUIRED) {
+    if (!catalogEntries.has(id)) violations.push(`${CATALOG} does not declare id: ${id}`);
+  }
+  for (const id of catalogEntries.keys()) {
+    if (!requiredSet.has(id)) {
+      violations.push(
+        `${CATALOG} declares id: ${id} but it is not in REQUIRED (scripts/check-ai-governance.ts) — add it there or explain why an architecture-catalog entry is exempt`,
+      );
+    }
+  }
+
+  // ── per-id doc + heading checks (unchanged) ───────────────────────────────────────────────────────
   for (const id of REQUIRED) {
     const doc = `docs/ai/capabilities/${id}.md`;
     if (!new RegExp(`\\bid:\\s*${id}\\b`).test(catalog)) {
@@ -67,10 +114,50 @@ if (!existsSync(catalogPath)) {
       if (!body.includes(heading)) violations.push(`${doc} is missing ${heading}`);
     }
   }
+
+  // ── 2. registry → catalog: every AI_PHASE_1_CAPABILITIES row must resolve to a real catalog id,
+  //      AND that catalog entry's capability_key must name THIS row back (a broken pairing is worse
+  //      than a missing one — it looks joined but resolves to the wrong governance doc) ─────────────
+  for (const cap of AI_PHASE_1_CAPABILITIES) {
+    if (cap.governanceCatalogId === null) {
+      violations.push(
+        `ai-platform registry capability '${cap.capabilityKey}' has governanceCatalogId: null — every registered capability needs a governance catalog id (packages/ai-platform/src/inventory/capabilities.ts)`,
+      );
+      continue;
+    }
+    const entry = catalogEntries.get(cap.governanceCatalogId);
+    if (!entry) {
+      violations.push(
+        `ai-platform registry capability '${cap.capabilityKey}' names governanceCatalogId '${cap.governanceCatalogId}', which ${CATALOG} does not declare`,
+      );
+      continue;
+    }
+    if (entry.capabilityKey !== cap.capabilityKey) {
+      violations.push(
+        `${CATALOG} id '${cap.governanceCatalogId}' has capability_key: ${entry.capabilityKey ?? "null"}, but the ai-platform registry entry it should join to has capabilityKey '${cap.capabilityKey}' — the join is broken in one direction`,
+      );
+    }
+  }
+
+  // ── 3. catalog → registry: every catalog entry with a non-null capability_key must resolve to a
+  //      real registry row. `capability_key: null` is an EXPLICIT, documented non-registration (e.g.
+  //      aggregate-cap-projection) and is not a violation — the whole point is that gap is visible in
+  //      the YAML rather than silently absent. ─────────────────────────────────────────────────────
+  const registryKeys = new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.capabilityKey));
+  for (const [id, entry] of catalogEntries) {
+    if (entry.capabilityKey === null) continue;
+    if (!registryKeys.has(entry.capabilityKey)) {
+      violations.push(
+        `${CATALOG} id '${id}' names capability_key '${entry.capabilityKey}', but no ai-platform registry entry has that capabilityKey (packages/ai-platform/src/inventory/capabilities.ts)`,
+      );
+    }
+  }
 }
 
 if (violations.length === 0) {
-  console.log(`OK ai-governance: ${REQUIRED.length} architecture-listed capabilities cataloged`);
+  console.log(
+    `OK ai-governance: ${REQUIRED.length} architecture-listed capabilities cataloged · ${AI_PHASE_1_CAPABILITIES.length} registry capabilities joined`,
+  );
   process.exit(0);
 }
 
