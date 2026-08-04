@@ -42,15 +42,28 @@ export interface DenylistCatalogEntry {
  * Part 2 scrubbing (§5.2) and the W-M4-11 acceptance depend on.
  */
 export const AUDIT_DENYLIST_CATALOG: readonly DenylistCatalogEntry[] = [
-  // M29 lab observation values are Part 2 / SUD-sensitive only when the parent observation is
-  // SUD-class (`lab_observation.sud_redaction_status <> 'not_applicable'`, M29 v0.3 §2). Scrub the
-  // value column row-conditionally so non-SUD results stay legible in the diff (§5.2).
+  // M29 lab observation values are Part 2 / SUD-sensitive only when the parent observation was
+  // classified SUD at ingest (`lab_observation.sud_redacted_at_ingest`, the actually-shipped
+  // boolean — the richer `sud_redaction_status` enum T-29.11 proposed was never built; see
+  // packages/db/src/schema/external-interfaces/lab-observation.ts). Scrub both value columns
+  // row-conditionally so non-SUD results stay legible in the diff (§5.2). NOTE: the app-layer
+  // ingest path (lab-attach-planner.ts) already replaces a SUD-class row's `numeric_value` with
+  // NULL and `string_value` with the `[REDACTED_SUD]` sentinel BEFORE persist, so this trigger is
+  // defense-in-depth against a future ingest-path bug, not the primary protection.
   {
     table: "lab_observation_value",
-    column: "observation_value",
+    column: "numeric_value",
     category: "sud_value",
     conditionalCheck:
-      "EXISTS (SELECT 1 FROM lab_observation lo WHERE lo.id = COALESCE(NEW.observation_id, OLD.observation_id) AND lo.sud_redaction_status <> 'not_applicable')",
+      "EXISTS (SELECT 1 FROM lab_observation lo WHERE lo.id = COALESCE(NEW.observation_id, OLD.observation_id) AND lo.sud_redacted_at_ingest = true)",
+    registeredByModule: "m29",
+  },
+  {
+    table: "lab_observation_value",
+    column: "string_value",
+    category: "sud_value",
+    conditionalCheck:
+      "EXISTS (SELECT 1 FROM lab_observation lo WHERE lo.id = COALESCE(NEW.observation_id, OLD.observation_id) AND lo.sud_redacted_at_ingest = true)",
     registeredByModule: "m29",
   },
 ];
