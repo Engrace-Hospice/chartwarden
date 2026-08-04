@@ -11,7 +11,7 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
-import { P, RULE_PROTECTED } from "./guards";
+import { P, RULE_PROTECTED, targetRuleKeyFromBody } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
 import {
@@ -29,7 +29,12 @@ export interface RuleConfigRouteDeps {
 
 const READ = P("billing.rule_config.read");
 const EDIT = P("billing.rule_config.edit");
+// PATCH/DELETE target an EXISTING overlay row by `:id` (the default targetRuleConfigId mapper); CREATE
+// has no `:id` yet, so it targets the rule key being created directly (TASK-051 fix — the default mapper
+// on CREATE used to project an empty `ruleConfigId` the resolver could never bridge to a rule key,
+// denying all three mutations for every caller).
 const EDIT_ABAC = RULE_PROTECTED("billing.rule_config.edit");
+const CREATE_ABAC = RULE_PROTECTED("billing.rule_config.edit", targetRuleKeyFromBody);
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 const IF_MATCH = requireIfMatch();
@@ -78,7 +83,7 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
   // POST /billing/rule-configs/custom — create a tenant custom rule (regulatory-required forbidden). §4.1 #20.
   app.post(
     "/api/v1/billing/rule-configs/custom",
-    { preHandler: [EDIT, EDIT_ABAC, NO_AI, IDEMPOTENT] },
+    { preHandler: [EDIT, CREATE_ABAC, NO_AI, IDEMPOTENT] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(CreateRuleConfigBodySchema, request.body);

@@ -22,20 +22,19 @@
 // / `ClaimAssemblyService`), so it is not a fit here and is not imported; this file hand-rolls its own
 // backend directly against the route-service interfaces, per the module's own guidance.
 //
-// DOCUMENTED DEVIATION — a real wiring gap this file's inject() coverage surfaced (not fabricated): the
+// FIXED FINDING (TASK-051) — this file's inject() coverage originally surfaced a real wiring gap in the
 // three rule-config MUTATION routes (`POST .../rule-configs/custom`, `PATCH .../rule-configs/:id`,
-// `DELETE .../rule-configs/:id`) all compose `RULE_PROTECTED(...)` with its DEFAULT `getTarget`
-// (`targetRuleConfigId` in routes/guards.ts), which projects the route's `:id` param onto a target keyed
-// `ruleConfigId`. But the `regulatory_required_rule_protected` predicate (abac-predicates.ts
-// `resolveRuleKey`) only ever reads a target's `ruleKey` or `validationResultId` field — never
-// `ruleConfigId` — and `ReadingM23AbacResolver` (abac-resolver-drizzle.ts) has no `loadRuleConfig` method to
-// bridge the two. So `resolveRuleKey` always returns `null` for these three routes, and the predicate's own
-// fail-closed rule (`if (!ruleKey) return false`) denies EVERY caller, including an org_admin holding every
-// M23 permission key. With `notFoundOnDeny: true` that denial surfaces as 404, not the 2xx these three
-// mutations are meant to reach. This is exactly the class of bug an inject() suite exists to catch that a
-// pure-function test cannot (the ABAC wiring, not the predicate's internal logic, is broken) — so these
-// three cases assert the REAL observed 404 rather than a fabricated 2xx, with the wiring gap documented
-// inline at each case.
+// `DELETE .../rule-configs/:id`): all three composed `RULE_PROTECTED(...)` with its default `getTarget`
+// (`targetRuleConfigId`), which projects the route's `:id` param onto a target keyed `ruleConfigId` — but
+// `regulatory_required_rule_protected`'s `resolveRuleKey` only ever read a target's `ruleKey` or
+// `validationResultId` field, never `ruleConfigId`, and `ReadingM23AbacResolver` had no `loadRuleConfig`
+// method to bridge the two. `resolveRuleKey` always returned `null`, and the predicate's own fail-closed
+// rule (`if (!ruleKey) return false`) denied EVERY caller, including an org_admin holding every M23
+// permission key — with `notFoundOnDeny: true` that denial surfaced as 404, not the 2xx these three
+// mutations are meant to reach. Fixed by (1) adding `loadRuleConfig` to the resolver (loads the overlay
+// row's rule key by `:id` under RLS — PATCH/DELETE target an EXISTING row) and (2) giving the CREATE route
+// its own target mapper, `targetRuleKeyFromBody` (nothing exists yet to load by id on create, so it
+// targets the rule key being created directly). These three cases now assert the real 2xx.
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -745,6 +744,12 @@ function createM23TestBackend(): {
       // `override_role_eligible` genuinely evaluates true rather than being stubbed out.
       return { validationResultId, organizationId: ORG, ruleKey: "duplicate_billing_check" };
     },
+    async loadRuleConfig(ctx, ruleConfigId) {
+      if (ctx.organizationId !== ORG) return null;
+      const row = ruleConfigs.get(ruleConfigId);
+      if (!row) return null;
+      return { ruleConfigId: row.ruleConfigId, organizationId: ORG, ruleKey: row.ruleKey };
+    },
   };
 
   return { readService, writeService, assemblyService, internalSeam, abacResolver };
@@ -935,32 +940,32 @@ const ROUTE_CASES: readonly RouteCase[] = [
     expectStatus: 201,
   },
 
-  // ── rule-config overlay (routes #18-21) — GETs are clean; the 3 mutations hit the documented ABAC
-  // wiring gap (see the file banner) and 404 for EVERY caller, so this table asserts that REAL behavior. ─
+  // ── rule-config overlay (routes #18-21) — TASK-051: the 3 mutations now genuinely resolve the
+  // regulatory_required_rule_protected target and reach the write service (see the file banner). ──────
   { label: "18 GET /billing/rule-configs", method: "GET", url: "/api/v1/billing/rule-configs", headers: SUPER_HEADERS, expectStatus: 200 },
   { label: "19 GET /billing/rule-configs/:id", method: "GET", url: `/api/v1/billing/rule-configs/${RULE_CONFIG}`, headers: SUPER_HEADERS, expectStatus: 200 },
   {
-    label: "20 POST /billing/rule-configs/custom [DEVIATION: regulatory_required_rule_protected can never resolve a ruleKey from this route's target — see file banner — denies 404 for every caller]",
+    label: "20 POST /billing/rule-configs/custom",
     method: "POST",
     url: "/api/v1/billing/rule-configs/custom",
     headers: { ...SUPER_HEADERS, ...IDEMP("r20") },
     payload: { ruleKey: "custom_rule_new", severity: "warn", setReason: "a sufficiently long setup reason for this custom rule" },
-    expectStatus: 404,
+    expectStatus: 201,
   },
   {
-    label: "21 PATCH /billing/rule-configs/:id [DEVIATION: same ABAC wiring gap as #20 — 404 for every caller]",
+    label: "21 PATCH /billing/rule-configs/:id",
     method: "PATCH",
     url: `/api/v1/billing/rule-configs/${RULE_CONFIG}`,
     headers: { ...SUPER_HEADERS, ...IDEMP("r21"), ...IFM },
     payload: { enabled: false, setReason: "a sufficiently long reason to disable this overlay row" },
-    expectStatus: 404,
+    expectStatus: 200,
   },
   {
-    label: "22 DELETE /billing/rule-configs/:id [DEVIATION: same ABAC wiring gap as #20 — 404 for every caller]",
+    label: "22 DELETE /billing/rule-configs/:id",
     method: "DELETE",
     url: `/api/v1/billing/rule-configs/${RULE_CONFIG}`,
     headers: { ...SUPER_HEADERS, ...IDEMP("r22"), ...IFM },
-    expectStatus: 404,
+    expectStatus: 204,
   },
 
   // ── NOE fast path (routes #24-27, numbered per the module header) ──────────────────────────────────

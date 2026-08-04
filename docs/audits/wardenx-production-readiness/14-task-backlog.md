@@ -180,6 +180,16 @@
   windows + a draft CTI exist and the CTI carries the submitted hospice-MD/attending ids; acknowledge NOR
   with a non-default method/role → the persisted NOR row reflects it, not the hardcoded default.
 - Complexity: M.
+- **Status: DONE (2026-08-03, commit `31f75cf` `feat(task-031/034)`, already merged to main).** All
+  four defects fixed exactly as scoped: `createAdmission` now runs the same `transitionAdmission`
+  state-machine event `acceptReferral` uses (lands on `pending`, not the DB-default `referred`),
+  writes `attendingPhysicianId` into the correct column, seeds election period 1 + the compliance
+  windows, and drafts a CTI carrying the submitted `hospiceMedicalDirectorId`/`attendingPhysicianId`.
+  `acknowledgeNor` now reads `input.deliveryMethod`/`input.acknowledgedByRole` (translated to the
+  DB's `election_signer_kind` enum) instead of hardcoded patient/electronic-witnessed defaults.
+  `m6.cti.drafted`'s declared payload matches its real emit. This entry was missing a Status line,
+  which made the already-done work look unstarted in a later backlog scan — worth double-checking
+  git history/source before assuming an unmarked entry is open.
 
 ## TASK-040 — Ops substrate: worker entrypoint, readiness probe, metrics, deploy + backup
 
@@ -748,8 +758,7 @@
       blocked portal onboarding entirely; TASK-052 "sweep every `*-typebox.ts` for missing
       `FormatRegistry` self-registration"; TASK-053 "audit every `getTarget` on a resource-scoped
       ABAC predicate for a missing/wrong param mapping" (the M23/M33 class).
-      - **TASK-051 status (2026-08-04): M37 + M31 DONE (the 2 most severe findings); M23 + M33
-        NOT started.**
+      - **TASK-051 status (2026-08-04): DONE — all four (M37, M31, M23, M33).**
         - **M37 RN_COVERAGE** (`routes/guards.ts`, `routes/ipu.routes.ts`,
           `routes/service-drizzle.ts`): removed the broken preHandler entirely — `requireAbac`'s
           `getTarget` is synchronous and can never query the materialized
@@ -782,9 +791,33 @@
           rewritten `portal-inject.test.ts` "fixed findings" block that proves each fix positively
           AND proves the surrounding checks still refuse illegitimate input (not a rubber stamp).
         - Full-suite regression: build clean, `arch:fitness` green, 7518 passing (was 7511).
-        - **M23 (3 unreachable rule-config routes) and M33 (dashboard-read universal-deny) are
-          UNFIXED** — lower severity (M23/M33 deny a subset of routes; M37/M31 blocked core
-          clinical/portal-onboarding workflows entirely) and not yet started.
+        - **M23 rule-config mutations (2026-08-04): FIXED.** Root cause was a missing bridge, not a
+          missing guard: `RULE_PROTECTED`'s default `getTarget` (`targetRuleConfigId`) correctly
+          projected PATCH/DELETE's `:id` onto `ruleConfigId`, but `regulatory_required_rule_protected`'s
+          `resolveRuleKey` (abac-predicates.ts) only ever read a target's `ruleKey` or
+          `validationResultId` — never `ruleConfigId` — and `ReadingM23AbacResolver`
+          (abac-resolver-drizzle.ts) had no method to bridge the two, so `resolveRuleKey` always
+          returned `null` and the predicate's own fail-closed rule denied every caller. Fixed by (1)
+          adding `loadRuleConfig` to the resolver (loads the overlay row's rule key by id under RLS)
+          and threading it into `resolveRuleKey` as a third resolution path, and (2) giving the
+          CREATE route (`POST .../rule-configs/custom`, which has no `:id` — nothing exists yet to
+          load by id) its own target mapper, `targetRuleKeyFromBody`, targeting the rule key being
+          created directly. `billing-medicare-inject.test.ts`'s 3 previously-404-asserting cases now
+          assert their real 201/200/204.
+        - **M33 dashboard-detail (2026-08-04): FIXED.** `dashboards-tiles.routes.ts`'s `VISIBILITY`
+          composed `dashboard_visibility` with NO `getTarget` override, so it evaluated against the
+          default target (`request.params`, carrying `{dashboardId}`) — but the predicate
+          (abac-predicates.ts) reads `target.viewId`, which was never present, so it denied
+          unconditionally for every actor including the dashboard's own owner. The sibling
+          `views-shares.routes.ts` already had the correct pattern (`{viewId: params.id}`) two files
+          over; `VISIBILITY` now does the same (`{viewId: params.dashboardId}`) plus
+          `notFoundOnDeny: true` (existence non-leak, matching the sibling). `reporting-inject.test.ts`
+          needed a seeded saved-view fixture (the READ dashboard catalog and the WRITE views store are
+          two independent in-memory stores in this test file) so the fix could be proven end-to-end,
+          not just at the route layer; its "KNOWN BUG" 403 case is now two "fixed finding" cases (owner
+          reaches 200; a dashboard id with no matching view still 404s).
+        - Full-suite regression: build clean, `arch:fitness` green, full suite 7809 passing (was
+          7808; net +1 — M23's 3 cases kept their labels, M33's 1 case became 2).
     - TASK-050B (shared in-memory/Drizzle conformance spec) is DONE (pilot scope, see above).
     - **TASK-050C (TEST-004, jsdom smoke-render) is DONE (2026-08-04).** Root `vitest.config.ts`
       gained a jsdom carve-out (`environmentMatchGlobs: [["apps/**/*.dom.test.tsx", "jsdom"]]` —

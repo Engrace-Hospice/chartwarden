@@ -16,19 +16,23 @@
 // `step_up_recent` stand-in (M3's predicate, composed-but-not-owned by M33's step-up-gated routes — the
 // M28/M34 precedent for stubbing a foreign predicate locally).
 //
-// TWO REAL, NOT-FABRICATED GAPS SURFACED PURELY BY DRIVING THE ROUTE LAYER FOR THE FIRST TIME (exactly
-// what TEST-001 predicted a pure-function test can't catch — documented here, not papered over):
+// ONE REAL, NOT-FABRICATED GAP SURFACED PURELY BY DRIVING THE ROUTE LAYER FOR THE FIRST TIME (exactly
+// what TEST-001 predicted a pure-function test can't catch — documented here, not papered over) — FIXED
+// under TASK-051:
 //
-//   1. UNIVERSAL-DENY ABAC TARGET-MAPPER BUG on `GET /api/v1/reporting/dashboards/:dashboardId` (#2).
-//      `dashboards-tiles.routes.ts`'s `DASH_READ_VIS` binds `requireAbac("report.dashboard.read",
-//      "dashboard_visibility")` with NO `getTarget` override, so the predicate evaluates against the
+//   1. [FIXED] UNIVERSAL-DENY ABAC TARGET-MAPPER BUG on `GET /api/v1/reporting/dashboards/:dashboardId`
+//      (#2). `dashboards-tiles.routes.ts`'s `VISIBILITY` bound `requireAbac("report.dashboard.read",
+//      "dashboard_visibility")` with NO `getTarget` override, so the predicate evaluated against the
 //      DEFAULT target (`request.params`, which carries `{ dashboardId }`). But `dashboard_visibility`
-//      (abac-predicates.ts) reads `target.viewId`, which is never present on this route's params — so
-//      `targetStr(target, "viewId")` is always `null` and the predicate returns `false` UNCONDITIONALLY,
-//      for every actor, including the dashboard's own org_admin/owner. Contrast with
+//      (abac-predicates.ts) reads `target.viewId`, which was never present on this route's params — so
+//      `targetStr(target, "viewId")` was always `null` and the predicate returned `false`
+//      UNCONDITIONALLY, for every actor, including the dashboard's own org_admin/owner. Contrast with
 //      `views-shares.routes.ts`'s `VIS` helper, which DOES map `{ viewId: params.id }` explicitly — the
-//      fix pattern already exists two files over. This route is asserted at its real 403 below, not
-//      faked to 2xx (the M14/M17 TASK-050 precedent for an honestly-documented defect).
+//      fix pattern already existed two files over; `VISIBILITY` now does the same (mapping
+//      `dashboardId` → `viewId`, plus `notFoundOnDeny: true` for the §2.2 existence-non-leak rule the
+//      sibling route already carried). See #2's describe block below for the now-passing case (a seeded
+//      saved view backs the READ_SEED dashboard row so the fix is proven end-to-end, not just at the
+//      route layer).
 //
 //   2. `GET /api/v1/reporting/schedules/runs/:runId` (#31) can never return 2xx against this in-memory
 //      backend: no route in the MUTATING surface ever creates a `ScheduleRunView` (the `runs` map inside
@@ -153,7 +157,21 @@ function buildTestAbacResolver(writeService: M33WriteRouteService): ReportingAba
 
 function makeServer() {
   const read = createInMemoryM33ReadBackend(READ_SEED);
-  const write = createInMemoryM33WriteBackend();
+  // The dashboard/tile READ catalog (READ_SEED.dashboards) and the saved-VIEW store the
+  // dashboard_visibility predicate resolves against (via loadReportView → writeService.getView) are two
+  // independent stores — seeding a view here at the SAME id as the READ_SEED dashboard row, owned by
+  // SUPER's membership, is what lets #2's fixed-route test genuinely reach ALLOW end-to-end (TASK-051).
+  const write = createInMemoryM33WriteBackend({
+    views: [
+      {
+        id: DASHBOARD_ID,
+        organizationId: ORG,
+        ownerMembershipId: MEMBER_SUPER,
+        displayName: "Ops Dashboard",
+        shareScope: "org",
+      },
+    ],
+  });
   const exportDrilldown = createInMemoryM33ExportDrilldownBackend();
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -333,16 +351,28 @@ describe("M33-reporting-inject — admin MV commands (#38-39)", () => {
   });
 });
 
-// ── #2 — KNOWN, DOCUMENTED BUG: dashboard-detail visibility target-mapper mismatch ─────────────────────
-describe("M33-reporting-inject — #2 GET dashboard detail (KNOWN BUG, see file header)", () => {
-  it("even the dashboard's own org_admin actor is denied — dashboard_visibility reads target.viewId but the route's default getTarget carries only {dashboardId}, so the predicate fails closed on EVERY call, not just a cross-tenant one", async () => {
+// ── #2 — FIXED FINDING (TASK-051): dashboard-detail visibility target-mapper mismatch ────────────────
+describe("M33-reporting-inject — #2 GET dashboard detail (fixed, see file header)", () => {
+  it("the dashboard's own org_admin actor now reaches it — dashboards-tiles.routes.ts's VISIBILITY now maps {dashboardId} onto {viewId}, so dashboard_visibility genuinely resolves the seeded org-shared view instead of failing closed on every caller", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
       url: `/api/v1/reporting/dashboards/${DASHBOARD_ID}`,
       headers: SUPER,
     });
-    expect(res.statusCode).toBe(403); // real, current behavior — not a fabricated pass
+    expect(res.statusCode).toBe(200);
+    expect(res.json().dashboardId).toBe(DASHBOARD_ID);
+    await app.close();
+  });
+
+  it("still 404s a dashboard id with no matching saved view (existence non-leak — notFoundOnDeny)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/reporting/dashboards/99999999-9999-4999-8999-999999999999",
+      headers: SUPER,
+    });
+    expect(res.statusCode).toBe(404);
     await app.close();
   });
 });

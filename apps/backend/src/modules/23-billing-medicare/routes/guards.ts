@@ -12,7 +12,9 @@
 //   - provider_entity_billing_scope     → `providerEntityId` (direct) | `noeId` | `notrId` | `claimId`
 //   - claim_in_billing_manager_caseload → `claimId`
 //   - override_role_eligible            → `claimId` + `validationResultId`
-//   - regulatory_required_rule_protected→ `ruleConfigId`
+//   - regulatory_required_rule_protected→ `ruleConfigId` (PATCH/DELETE the EXISTING overlay row, resolved
+//                                          to its rule key via the resolver) | `ruleKey` directly (POST
+//                                          .../custom — nothing exists yet to load by id, TASK-051)
 // `notFoundOnDeny:true` realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404).
 // `inOrg` (M3) and `caseload_or_scope` (M5) are RE-USED base predicates owned + registered by their modules.
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
@@ -39,6 +41,13 @@ export const targetClaimId = (request: TargetRequest): TargetMap => paramId(requ
 export const targetNoeId = (request: TargetRequest): TargetMap => paramId(request, "noeId");
 export const targetNotrId = (request: TargetRequest): TargetMap => paramId(request, "notrId");
 export const targetRuleConfigId = (request: TargetRequest): TargetMap => paramId(request, "ruleConfigId");
+
+/** RuleKey from the create-custom-rule body — POST .../rule-configs/custom has no `:id` (nothing exists
+ *  yet to target by ruleConfigId), so `regulatory_required_rule_protected` targets the key being created. */
+export const targetRuleKeyFromBody = (request: TargetRequest): TargetMap => {
+  const body = request.body as { ruleKey?: string } | undefined;
+  return { ruleKey: body?.ruleKey ?? "" };
+};
 
 /** Override route: the validation result is `:resultId`, scoped under the claim `:id`. */
 export const targetOverride = (request: TargetRequest): TargetMap => {

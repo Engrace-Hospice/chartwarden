@@ -39,6 +39,14 @@ export interface ValidationResultRuleFacts {
   readonly ruleKey: string;
 }
 
+/** The rule key a `validation_rule_config` overlay row carries — the regulatory-protection axis of
+ *  `regulatory_required_rule_protected` for the PATCH/DELETE `:id` (ruleConfigId) target. */
+export interface RuleConfigRuleFacts {
+  readonly ruleConfigId: string;
+  readonly organizationId: string;
+  readonly ruleKey: string;
+}
+
 /**
  * Loads the org-scoped scope/rule facts the M23 predicates resolve (Drizzle under RLS in prod via
  * {@link buildDrizzleM23AbacResolver}; an in-memory stub in unit tests). Every load is against an
@@ -56,6 +64,8 @@ export interface ReadingM23AbacResolver {
     ctx: M23AbacReadContext,
     validationResultId: string,
   ): Promise<ValidationResultRuleFacts | null>;
+  /** Load a `validation_rule_config` overlay row's rule key (by `:id`, i.e. `ruleConfigId`); `null` → deny. */
+  loadRuleConfig(ctx: M23AbacReadContext, ruleConfigId: string): Promise<RuleConfigRuleFacts | null>;
 }
 
 /**
@@ -69,6 +79,7 @@ export function buildDrizzleM23AbacResolver(db: BillingDb): ReadingM23AbacResolv
   const NOE = schema.noeRecord;
   const NOTR = schema.notrRecord;
   const VR = schema.validationResult;
+  const RC = schema.validationRuleConfig;
 
   return {
     async loadClaim(ctx, claimId) {
@@ -156,6 +167,26 @@ export function buildDrizzleM23AbacResolver(db: BillingDb): ReadingM23AbacResolv
         if (!row) return null;
         return {
           validationResultId: row.id,
+          organizationId: row.organizationId,
+          ruleKey: row.ruleKey,
+        };
+      });
+    },
+
+    async loadRuleConfig(ctx, ruleConfigId) {
+      return withOrgContext(db, ctx, async (tx) => {
+        const [row] = await tx
+          .select({
+            id: RC.id,
+            organizationId: RC.organizationId,
+            ruleKey: RC.ruleKey,
+          })
+          .from(RC)
+          .where(and(eq(RC.organizationId, ctx.organizationId), eq(RC.id, ruleConfigId)))
+          .limit(1);
+        if (!row) return null;
+        return {
+          ruleConfigId: row.id,
           organizationId: row.organizationId,
           ruleKey: row.ruleKey,
         };

@@ -52,6 +52,7 @@ export {
   type BillingEntityScopeFacts,
   type M23AbacReadContext,
   type ReadingM23AbacResolver,
+  type RuleConfigRuleFacts,
   type ValidationResultRuleFacts,
   buildDrizzleM23AbacResolver,
 } from "./abac-resolver-drizzle";
@@ -157,6 +158,9 @@ export const denyStubM23AbacResolver: ReadingM23AbacResolver = {
   async loadValidationResult() {
     return null;
   },
+  async loadRuleConfig() {
+    return null;
+  },
 };
 
 // ---- shared helpers ---------------------------------------------------------
@@ -234,9 +238,12 @@ function requiredOverrideRole(ruleKey: string): OverrideRole | undefined {
 }
 
 /**
- * Resolve the `validation_result`'s rule key for an override evaluation: the route may name the rule
- * directly (`ruleKey`, e.g. on a bulk override) OR carry only the `validationResultId` (the resolver loads
- * the recorded rule key under RLS). A target that resolves to neither fails closed (null → deny).
+ * Resolve the rule key a target names, one of three ways: directly (`ruleKey`, e.g. a bulk override or
+ * the rule-config CREATE route — nothing exists yet to load by id, so the route targets the key being
+ * created), via a `validationResultId` (the resolver loads the recorded rule key under RLS — the
+ * override-eligibility routes), or via a `ruleConfigId` (the resolver loads the overlay row's rule key
+ * under RLS — the rule-config PATCH/DELETE `:id` routes, which target the EXISTING row, not its key). A
+ * target that resolves to none of the three fails closed (null → deny).
  */
 async function resolveRuleKey(
   resolver: ReadingM23AbacResolver,
@@ -246,9 +253,16 @@ async function resolveRuleKey(
   const direct = targetStr(target, "ruleKey");
   if (direct) return direct;
   const validationResultId = targetStr(target, "validationResultId");
-  if (!validationResultId) return null;
-  const facts = await resolver.loadValidationResult(readContextOf(context), validationResultId);
-  return facts?.ruleKey ?? null;
+  if (validationResultId) {
+    const facts = await resolver.loadValidationResult(readContextOf(context), validationResultId);
+    if (facts) return facts.ruleKey;
+  }
+  const ruleConfigId = targetStr(target, "ruleConfigId");
+  if (ruleConfigId) {
+    const facts = await resolver.loadRuleConfig(readContextOf(context), ruleConfigId);
+    if (facts) return facts.ruleKey;
+  }
+  return null;
 }
 
 /**

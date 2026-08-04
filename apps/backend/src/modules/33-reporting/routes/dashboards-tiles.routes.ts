@@ -31,8 +31,18 @@ export interface DashboardTileRouteDeps {
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 // `reportable_scope` is the cross-cutting D8 read-scope predicate M33 owns (./abac-predicates).
 const SCOPE = (key: string): PreHandler => requireAbac(key, "reportable_scope") as PreHandler;
-// `dashboard_visibility` decides read on a saved view/dashboard (share-scope ladder, §4.7.2).
-const VISIBILITY = (key: string): PreHandler => requireAbac(key, "dashboard_visibility") as PreHandler;
+// `dashboard_visibility` (§4.7.2) decides read on a saved view/dashboard (share-scope ladder). The
+// predicate reads the target `viewId` (abac-predicates.ts `targetStr(target, "viewId")`) — the default
+// target is `request.params`, which carries `dashboardId`, not `viewId` — so without an explicit mapper
+// the predicate always fails closed (deny for every caller, including the dashboard's own owner). Mirrors
+// views-shares.routes.ts `VIS`, the sibling route file that maps this SAME predicate correctly.
+const VISIBILITY = (key: string): PreHandler =>
+  requireAbac(key, "dashboard_visibility", {
+    getTarget: (request) => ({
+      viewId: (request.params as { dashboardId?: string }).dashboardId ?? "",
+    }),
+    notFoundOnDeny: true, // §2.2 existence non-leak — a 403 would reveal a dashboard the actor may not see
+  }) as PreHandler;
 
 const DASH_LIST = P("report.dashboard.list");
 const DASH_READ = P("report.dashboard.read");
