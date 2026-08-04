@@ -77,6 +77,40 @@ describe("generateAuditTrigger — phi-guards acceptance (arch:gaps)", () => {
   });
 });
 
+describe("generateAuditTrigger — row-conditional denylist (§5.2, W-M4-11)", () => {
+  // The catalog's ONE row-conditional entry (lab_observation_value.observation_value, SUD-class
+  // gated) — this path was never exercised by a real migration until TASK-063's follow-up
+  // (0164_lab_observation_value_sud_redaction.sql); this test proves the SHAPE the generator
+  // produces for it, independent of what got hand-embedded in that migration file (see the
+  // separate golden-output test below, which proves the migration matches THIS).
+  const ddl = generateAuditTrigger({
+    table: "lab_observation_value",
+    resourceKind: "lab_observation_value",
+    denylistCategories: ["sud_value"],
+    retentionClass: "compliance_42cfr_part2",
+  });
+
+  it("declares a v_denylist variable seeded from the always-scrubbed (empty) set", () => {
+    expect(ddl).toContain("v_denylist text[] := ARRAY[]::text[];");
+  });
+
+  it("appends the conditional column inside an IF guard using the catalog's own check expression", () => {
+    expect(ddl).toContain(
+      "IF EXISTS (SELECT 1 FROM lab_observation lo WHERE lo.id = COALESCE(NEW.observation_id, OLD.observation_id) AND lo.sud_redaction_status <> 'not_applicable') THEN",
+    );
+    expect(ddl).toContain("v_denylist := v_denylist || ARRAY['observation_value']::text[];");
+  });
+
+  it("passes the v_denylist variable (not a static ARRAY literal) into both audit_scrub calls", () => {
+    expect(ddl).toContain("audit_scrub(to_jsonb(OLD), v_denylist)");
+    expect(ddl).toContain("audit_scrub(to_jsonb(NEW), v_denylist)");
+  });
+
+  it("files under the compliance_42cfr_part2 retention class", () => {
+    expect(ddl).toContain("'compliance_42cfr_part2'");
+  });
+});
+
 describe("resolveDenylist — explicit columns ∪ named categories (§5.1, D10)", () => {
   it("unions explicit columns with category-expanded columns, deduped and sorted", () => {
     const cols = resolveDenylist({
