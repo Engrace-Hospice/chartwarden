@@ -169,6 +169,7 @@ describe("M8-T06 §7.2 — LPN routine visit with 24-hour cosignature", () => {
     const signed = transitionCosignature(ack.to, {
       type: "sign",
       isQualifiedRn: true,
+      stepUpFresh: true,
       at: "2026-06-21",
     });
     expect(signed.to).toBe("signed");
@@ -177,12 +178,26 @@ describe("M8-T06 §7.2 — LPN routine visit with 24-hour cosignature", () => {
     expect(outboxEvents(signed.effects)).toEqual([]);
   });
 
+  it("a stale step-up is rejected STEP_UP_AUTH_REQUIRED (PARAM-004/CoP-418.104(c))", () => {
+    expectCode(
+      () =>
+        transitionCosignature("acknowledged", {
+          type: "sign",
+          isQualifiedRn: true,
+          stepUpFresh: false,
+          at: "2026-06-21",
+        }),
+      "STEP_UP_AUTH_REQUIRED",
+    );
+  });
+
   it("a non-RN cosignature attempt is rejected NOT_COSIGN_ELIGIBLE", () => {
     expectCode(
       () =>
         transitionCosignature("acknowledged", {
           type: "sign",
           isQualifiedRn: false,
+          stepUpFresh: true,
           at: "2026-06-21",
         }),
       "NOT_COSIGN_ELIGIBLE",
@@ -239,7 +254,13 @@ describe("M8-T06 §7.3 — 48-hour hard cap and supervisor release", () => {
 
     // Locked: a qualified RN cannot sign until a supervisor releases.
     expectCode(
-      () => transitionCosignature(state, { type: "sign", isQualifiedRn: true, at: "2026-06-23" }),
+      () =>
+        transitionCosignature(state, {
+          type: "sign",
+          isQualifiedRn: true,
+          stepUpFresh: true,
+          at: "2026-06-23",
+        }),
       "COSIGNATURE_LOCKED",
     );
 
@@ -260,6 +281,7 @@ describe("M8-T06 §7.3 — 48-hour hard cap and supervisor release", () => {
     const signed = transitionCosignature(state, {
       type: "sign",
       isQualifiedRn: true,
+      stepUpFresh: true,
       at: "2026-06-23",
     });
     expect(signed.to).toBe("signed");

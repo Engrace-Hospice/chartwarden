@@ -35,6 +35,14 @@ import {
   checkVersion,
 } from "../lifecycle/validation";
 
+/** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — the acting membership +
+ *  session id the CoP 418.104(c) provenance row (`encounter_signature`) is written under. Never the
+ *  encounter's author; the caller may be a different clinician entirely (e.g. an RN cosigner). */
+export interface SigningActor {
+  readonly membershipId: string;
+  readonly sessionId: string;
+}
+
 /** The §4.6 owner facts the `m8.cosigner_role_match` predicate resolves for one encounter (RLS-backstopped). */
 export interface EncounterAbacFacts {
   readonly encounterId: string;
@@ -160,7 +168,8 @@ export interface EncounterRouteService {
   sign(
     organizationId: string,
     encounterId: string,
-    args: { stepUpFresh: boolean; at: LocalDate },
+    actor: SigningActor,
+    args: { at: LocalDate },
   ): Promise<{
     status: "signed" | "cosign_pending";
     signedAt: string;
@@ -191,6 +200,7 @@ export interface EncounterRouteService {
   cosignSign(
     organizationId: string,
     encounterId: string,
+    actor: SigningActor,
     args: { isQualifiedRn: boolean; at: LocalDate },
   ): Promise<{ status: EncounterStatus; cosignedAt: string }>;
   supervisorRelease(
@@ -216,7 +226,8 @@ export interface EncounterRouteService {
     organizationId: string,
     encounterId: string,
     addendumId: string,
-    args: { stepUpFresh: boolean; at: LocalDate },
+    actor: SigningActor,
+    args: { at: LocalDate },
   ): Promise<{ status: "signed"; signedAt: string }>;
   listEncounters(organizationId: string): Promise<{ encounters: EncounterView[] }>;
   cosignatureQueue(organizationId: string): Promise<{ encounters: EncounterView[] }>;
@@ -489,8 +500,12 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       return { modificationId: modId };
     },
 
-    async sign(organizationId, encounterId, args) {
+    async sign(organizationId, encounterId, _actor, args) {
       const r = load(organizationId, encounterId);
+      // In-memory reference slice: no real session/step-up infra (not mounted in production — see the
+      // module header), so step-up is always treated as fresh here. The production Drizzle backend
+      // resolves this for real via M2's SessionContextResolver seam.
+      const stepUpFresh = true;
       // §7.4 D1 — an F2F encounter signs as one atomic dual-write: the M8 clinical note + the M6
       // `face_to_face_encounter` attestation row. The plan produces the M6 write descriptor; the slice
       // records it here (the composition root hands it to M6's writer in prod). A failed gate / stale
@@ -502,7 +517,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
           faceToFaceEncounterId: r.faceToFaceEncounterId,
           discipline: r.discipline,
           gatePassed: true,
-          stepUpFresh: args.stepUpFresh,
+          stepUpFresh,
           at: args.at,
         });
         r.status = plan.encounter.to;
@@ -515,7 +530,7 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
         type: "sign",
         discipline: r.discipline,
         gatePassed: true,
-        stepUpFresh: args.stepUpFresh,
+        stepUpFresh,
         isF2f: false,
         f2fDualWriteSatisfied: true,
         eligibleCosignerExists: true,
@@ -565,11 +580,13 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       r.cosignature = t.to;
       return { status: t.to };
     },
-    async cosignSign(organizationId, encounterId, args) {
+    async cosignSign(organizationId, encounterId, _actor, args) {
       const r = load(organizationId, encounterId);
       const ct = transitionCosignature(r.cosignature ?? "routed", {
         type: "sign",
         isQualifiedRn: args.isQualifiedRn,
+        // In-memory reference slice: no real step-up infra (not mounted in production).
+        stepUpFresh: true,
         at: args.at,
       });
       r.cosignature = ct.to;
@@ -617,14 +634,15 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
       a.status = t.to;
       return { status: "finalized" };
     },
-    async signAddendum(organizationId, encounterId, addendumId, args) {
+    async signAddendum(organizationId, encounterId, addendumId, _actor, args) {
       const r = load(organizationId, encounterId);
       const a = r.addenda.get(addendumId);
       if (!a) throw new NotFoundError("addendum");
       const t = transitionAddendum(a.status, {
         type: "sign",
         gatePassed: true,
-        stepUpFresh: args.stepUpFresh,
+        // In-memory reference slice: no real step-up infra (not mounted in production).
+        stepUpFresh: true,
         at: args.at,
       });
       a.status = t.to;

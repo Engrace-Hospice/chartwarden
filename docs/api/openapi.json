@@ -61249,14 +61249,9 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "stepUpAuthAt",
                   "attestationConfirmed"
                 ],
                 "properties": {
-                  "stepUpAuthAt": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
@@ -61704,14 +61699,9 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "stepUpAuthAt",
                   "attestationConfirmed"
                 ],
                 "properties": {
-                  "stepUpAuthAt": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"
@@ -62596,14 +62586,9 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "stepUpAuthAt",
                   "attestationConfirmed"
                 ],
                 "properties": {
-                  "stepUpAuthAt": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
                   "attestationConfirmed": {
                     "const": true,
                     "type": "boolean"

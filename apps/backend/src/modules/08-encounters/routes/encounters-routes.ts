@@ -9,10 +9,9 @@
 // the selections PATCH carries `If-Match` (the row version) → 412 VERSION_MISMATCH on skew. Sign routes
 // (14/20/21/25) carry the client's step-up timestamp; freshness (≤ 5 min, §2.7 D13) is verified here and
 // injected into the lifecycle machine (STEP_UP_AUTH_REQUIRED → 412 when stale).
-import { requireAbac, requirePermission } from "@wardenx/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { STEP_UP_MAX_AGE_SECONDS } from "../lifecycle/validation";
 import { ifMatchVersionOf, requireIfMatch } from "./concurrency";
 import {
   AddendumParamsSchema,
@@ -57,17 +56,25 @@ function actorOf(request: FastifyRequest): {
   return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
 }
 
+/** The real caller signing an encounter/cosignature/addendum (§3.3/D13) — membership id + M2 session
+ *  id, the `encounter_signature` provenance row's actor. `requireStepUp` (composed on the sign routes)
+ *  already denied the request if this session's step-up isn't fresh; the service re-resolves the same
+ *  seam to capture method/timestamp for real (never trusts a client-supplied claim — see the removed
+ *  `stepUpAuthAt` request-body field, git history). Both attributes are stamped by M2's authenticate
+ *  hook (`apps/backend/src/bootstrap/plugins/authenticate.ts`) onto every authenticated request. */
+function signingActorOf(request: FastifyRequest): { membershipId: string; sessionId: string } {
+  const ctx = request.context;
+  const membershipId = ctx?.attributes.membershipId;
+  const sessionId = ctx?.attributes.sessionId;
+  if (typeof membershipId !== "string" || typeof sessionId !== "string") throw new UnauthorizedError();
+  return { membershipId, sessionId };
+}
+
 const encounterIdOf = (request: FastifyRequest): string =>
   parse(EncounterParamsSchema, request.params).encounterId;
 
 /** Today (org-TZ resolved upstream in prod; the slice uses the server clock for the transition stamp). */
 const today = (): string => new Date().toISOString().slice(0, 10);
-
-/** §2.7 D13 — is the client's step-up timestamp ≤ 5 minutes old (the freshness the sign machine needs). */
-function stepUpFreshFrom(stepUpAuthAt: string): boolean {
-  const age = (Date.now() - Date.parse(stepUpAuthAt)) / 1000;
-  return age >= 0 && age <= STEP_UP_MAX_AGE_SECONDS;
-}
 
 const isRn = (roles: readonly string[]): boolean =>
   roles.includes("rn") || roles.includes("rn_case_manager");
@@ -92,6 +99,10 @@ const MILEAGE = P("mileage.author");
 
 // §4.6 — the m8.cosigner_role_match ABAC guard M8 owns (target = request.params → encounterId).
 const ABAC_COSIGN = requireAbac("encounter.cosign", "m8.cosigner_role_match") as PreHandler;
+
+// §2.7 D13 / CoP 418.104(c) — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate
+// (real, server-verified freshness; replaces the removed client-timestamp-trusting check).
+const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
 
 // §7.7 — the selections PATCH carries the read version in If-Match.
 const IF_MATCH = requireIfMatch() as PreHandler;
@@ -300,14 +311,17 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   );
 
   // 14 — sign (Layer-3 gate enforced; D13 step-up).
-  app.post("/api/v1/encounters/:encounterId/sign", { preHandler: [SIGN] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const body = parse(SignEncounterSchema, request.body);
-    return service.sign(organizationId, encounterIdOf(request), {
-      stepUpFresh: stepUpFreshFrom(body.stepUpAuthAt),
-      at: today(),
-    });
-  });
+  app.post(
+    "/api/v1/encounters/:encounterId/sign",
+    { preHandler: [SIGN, STEP_UP("encounter.sign")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
+      return service.sign(organizationId, encounterIdOf(request), signingActorOf(request), {
+        at: today(),
+      });
+    },
+  );
 
   // 15 — significant late-entry tier override (supervisor).
   app.post(
@@ -374,11 +388,11 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
-    { preHandler: [COSIGN, ABAC_COSIGN] },
+    { preHandler: [COSIGN, ABAC_COSIGN, STEP_UP("encounter.cosign")] },
     async (request) => {
       const { organizationId, roles } = actorOf(request);
-      parse(SignEncounterSchema, request.body); // validates the attestation + step-up timestamp shape
-      return service.cosignSign(organizationId, encounterIdOf(request), {
+      parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
+      return service.cosignSign(organizationId, encounterIdOf(request), signingActorOf(request), {
         isQualifiedRn: isRn(roles),
         at: today(),
       });
@@ -437,15 +451,18 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 25 — sign addendum (D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/sign",
-    { preHandler: [ADDENDUM_SIGN] },
+    { preHandler: [ADDENDUM_SIGN, STEP_UP("encounter.addendum.sign")] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      const body = parse(SignEncounterSchema, request.body);
-      return service.signAddendum(organizationId, encounterId, addendumId, {
-        stepUpFresh: stepUpFreshFrom(body.stepUpAuthAt),
-        at: today(),
-      });
+      parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
+      return service.signAddendum(
+        organizationId,
+        encounterId,
+        addendumId,
+        signingActorOf(request),
+        { at: today() },
+      );
     },
   );
 

@@ -170,8 +170,12 @@ export const ModificationDecisionSchema = Type.Object({
   editedText: Type.Optional(Type.String({ maxLength: 4000 })),
 });
 
+// PARAM-004/CoP-418.104(c) follow-up: `stepUpAuthAt` used to be a client-supplied timestamp the route
+// trusted at face value (see git history) — the actual freshness/method/session provenance now comes
+// server-side from M2's SessionContextResolver seam (packages/auth's requireStepUp preHandler + the
+// route's own re-resolution), never from anything the client asserts. `attestationConfirmed` stays: a
+// real "I attest" client confirmation, independent of how the signature is cryptographically proven.
 export const SignEncounterSchema = Type.Object({
-  stepUpAuthAt: Type.String({ format: "date-time" }),
   attestationConfirmed: Type.Literal(true),
 });
 
