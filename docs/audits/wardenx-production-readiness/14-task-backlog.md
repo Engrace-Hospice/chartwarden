@@ -1062,5 +1062,30 @@
       passing (unchanged — none of the 9 fixed constants have test coverage, confirming they really
       were dead code as the audit said).
 - TASK-064 (P2): extend UI parity/frame gates to portal + admin (UI-011); set `/admin/staff` permission (UI-012).
+  - **Status (2026-08-04): DONE, merged to main locally.** UI-011: `scripts/report-ui-parity.ts`
+    and `scripts/report-frame-fidelity.ts` scanned `apps/web` only, so the 27 built portal (M31) +
+    admin (M35) screens were invisible to every dup-id/dup-path/permission/wiring check. Rewrote
+    `report-ui-parity.ts` to scan all three apps via their actual (different) registration shapes:
+    web/admin register per-module `modules/<dir>/screens.ts` files into `main.tsx` (reused the
+    existing scan logic, generalized to take a `modulesRoot`/`mainTsxPath` pair); portal registers
+    ONE flat manifest (`screens/manifest.ts`) bound to components in `screens/registry.ts` via
+    `app.tsx`, not `main.tsx` — a structurally different pattern with no "imported but not
+    registered" failure mode (the registry throws at import time if a manifest id has no bound
+    component), so that path gets its own `UNBOUND PORTAL SCREEN` check instead of the
+    web/admin-style `UNREGISTERED SCREENS` one. Dup-id/dup-path checks are scoped PER APP (three
+    separate SPAs — `/account` legitimately existing in both portal and admin is not a collision).
+    `report-frame-fidelity.ts`'s screen-id validation set widened the same way (web + admin module
+    dirs + the portal manifest) so a future frame mapping for a portal/admin screen resolves
+    instead of false-failing as UNKNOWN SCREEN. Verified both scanners actually work: clean run
+    found 244 web + 14 admin + 13 portal = 271 screens (zero pre-existing defects in the
+    newly-covered apps — the admin console and portal really were already correctly wired, just
+    unchecked); planted a fake permission in `apps/admin/.../screens.ts` and confirmed the widened
+    `ui-parity` gate caught it, then reverted. UI-012: **found already resolved** — `/admin/staff`
+    (`apps/web/src/modules/02-identity/screens.ts:95`) already carries
+    `requiredPermission: "member.manage"`, a real catalog key; git history shows this landed in an
+    earlier session (task-030) after the audit's 2026-08-03 snapshot. No code change needed; verified,
+    not assumed. Full regression: build clean, `arch:fitness` green (including both widened gates),
+    full suite 7810 passing (unchanged — no new test coverage needed since these are report/gate
+    scripts, not app code).
 - TASK-065 (P2): fix telehealth webhook to 401 on bad signature (API-008); pass through 4xx framework errors (API-009).
 - TASK-066 (P3): drop time-relative CHECKs, enforce at write time (DB-005); local date-only helper (PARAM-004); react-router bump (PERF-004); confirm/remove behaviorally-suspicious dead tables (ARCH-023).

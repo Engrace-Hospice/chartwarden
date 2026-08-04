@@ -15,8 +15,10 @@
  *   - DUP SCREEN        — two registry rows map the same screen id. (Two screens MAY share one frame
  *                          node — a single Pencil frame can hold several screen-cards, e.g. the auth
  *                          frame's Sign in + 2FA cards — so that is allowed.)
- *   - UNKNOWN SCREEN     — a registry `screenId` is neither a registered apps/web screen nor a
- *                          `shell.*` app-shell surface (a dangling mapping).
+ *   - UNKNOWN SCREEN     — a registry `screenId` is neither a registered web/portal/admin screen
+ *                          nor a `shell.*` app-shell surface (a dangling mapping). UI-011 widened
+ *                          this from apps/web only to all three apps, so a future frame mapping
+ *                          for a portal/admin screen resolves instead of false-failing.
  *
  * Modes:
  *   bun run scripts/report-frame-fidelity.ts            → regenerate the report
@@ -46,15 +48,19 @@ const read = (rel: string): string => {
 const screensMd = read("docs/design/SCREENS.md");
 const frameNodes = new Set([...screensMd.matchAll(/node:([A-Za-z0-9]+)/g)].map((m) => m[1]!));
 
-// ---- built screens: every `id:` in a module screens.ts (+ app-shell `shell.*` ids) ---------
+// ---- built screens: every `id:` across web/admin module screens.ts files, the portal manifest,
+//      and app-shell `shell.*` ids (UI-011: was apps/web only) ------------------------------
 const screenIds = new Set<string>();
-const modulesDir = join(ROOT, "apps/web/src/modules");
-if (existsSync(modulesDir)) {
+for (const modulesRoot of ["apps/web/src/modules", "apps/admin/src/modules"]) {
+  const modulesDir = join(ROOT, modulesRoot);
+  if (!existsSync(modulesDir)) continue;
   for (const dir of readdirSync(modulesDir)) {
-    const src = read(`apps/web/src/modules/${dir}/screens.ts`);
+    const src = read(`${modulesRoot}/${dir}/screens.ts`);
     for (const m of src.matchAll(/id:\s*["']([^"']+)["']/g)) screenIds.add(m[1]!);
   }
 }
+for (const m of read("apps/portal/src/screens/manifest.ts").matchAll(/id:\s*["']([^"']+)["']/g))
+  screenIds.add(m[1]!);
 
 // ---- validate the registry -----------------------------------------------------------------
 const failures: string[] = [];
