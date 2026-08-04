@@ -38,26 +38,26 @@
  */
 import { readFileSync } from "node:fs";
 import { M6_AUDIT_DENYLIST } from "../packages/types/src/admission";
-import { M7_AUDIT_DENYLIST } from "../packages/types/src/care-plan";
-import { M8_AUDIT_DENYLIST } from "../packages/types/src/encounter";
+import { M32_AUDIT_DENYLIST } from "../packages/types/src/ai-platform";
 import { M9_AUDIT_DENYLIST } from "../packages/types/src/assessment";
-import { M10_AUDIT_DENYLIST } from "../packages/types/src/hope";
-import { M11_AUDIT_DENYLIST } from "../packages/types/src/orders";
+import { M16_AUDIT_DENYLIST } from "../packages/types/src/bereavement";
+import { M7_AUDIT_DENYLIST } from "../packages/types/src/care-plan";
+import { M15_AUDIT_DENYLIST } from "../packages/types/src/discipline-plans";
+import { M22_AUDIT_DENYLIST } from "../packages/types/src/documents";
 import { M12_AUDIT_DENYLIST } from "../packages/types/src/dosespot";
 import { M13_AUDIT_DENYLIST } from "../packages/types/src/emar";
-import { M14_AUDIT_DENYLIST } from "../packages/types/src/idg";
-import { M15_AUDIT_DENYLIST } from "../packages/types/src/discipline-plans";
-import { M16_AUDIT_DENYLIST } from "../packages/types/src/bereavement";
-import { M17_AUDIT_DENYLIST } from "../packages/types/src/scheduling";
+import { M8_AUDIT_DENYLIST } from "../packages/types/src/encounter";
 import { M18_AUDIT_DENYLIST } from "../packages/types/src/evv";
-import { M19_AUDIT_DENYLIST } from "../packages/types/src/oncall";
-import { M20_AUDIT_DENYLIST } from "../packages/types/src/safety";
-import { M21_AUDIT_DENYLIST } from "../packages/types/src/supplies";
-import { M22_AUDIT_DENYLIST } from "../packages/types/src/documents";
-import { M28_AUDIT_DENYLIST } from "../packages/types/src/fhir";
 import { M29_AUDIT_DENYLIST } from "../packages/types/src/external-interfaces";
+import { M28_AUDIT_DENYLIST } from "../packages/types/src/fhir";
+import { M10_AUDIT_DENYLIST } from "../packages/types/src/hope";
+import { M14_AUDIT_DENYLIST } from "../packages/types/src/idg";
+import { M19_AUDIT_DENYLIST } from "../packages/types/src/oncall";
+import { M11_AUDIT_DENYLIST } from "../packages/types/src/orders";
 import { M31_AUDIT_DENYLIST } from "../packages/types/src/portal";
-import { M32_AUDIT_DENYLIST } from "../packages/types/src/ai-platform";
+import { M20_AUDIT_DENYLIST } from "../packages/types/src/safety";
+import { M17_AUDIT_DENYLIST } from "../packages/types/src/scheduling";
+import { M21_AUDIT_DENYLIST } from "../packages/types/src/supplies";
 
 const MODULES: ReadonlyArray<{
   readonly mod: string;
@@ -69,7 +69,11 @@ const MODULES: ReadonlyArray<{
    *  gets a second entry here only when a later migration patches one of its triggers. */
   readonly migrations: readonly string[];
 }> = [
-  { mod: "M6", denylist: M6_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0027_admission_m6_rls_audit_triggers.sql"] },
+  {
+    mod: "M6",
+    denylist: M6_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0027_admission_m6_rls_audit_triggers.sql"],
+  },
   {
     mod: "M7",
     denylist: M7_AUDIT_DENYLIST,
@@ -79,22 +83,86 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0163_care_plan_version_state_snapshot_redaction.sql",
     ],
   },
-  { mod: "M8", denylist: M8_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0031_encounters_m8_rls_audit_triggers.sql"] },
-  { mod: "M9", denylist: M9_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0033_assessment_m9_rls_audit_triggers.sql"] },
-  { mod: "M10", denylist: M10_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0035_hope_m10_rls_audit_triggers.sql"] },
-  { mod: "M11", denylist: M11_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0037_orders_m11_rls_audit_triggers.sql"] },
-  { mod: "M12", denylist: M12_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0039_dosespot_m12_rls_audit_triggers.sql"] },
-  { mod: "M13", denylist: M13_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0041_emar_m13_rls_audit_triggers.sql"] },
-  { mod: "M14", denylist: M14_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql"] },
-  { mod: "M15", denylist: M15_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0099_discipline_plans_m15_rls_audit_triggers.sql"] },
-  { mod: "M16", denylist: M16_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql"] },
-  { mod: "M17", denylist: M17_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql"] },
-  { mod: "M18", denylist: M18_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0047_evv_m18_rls_audit_triggers.sql"] },
-  { mod: "M19", denylist: M19_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0108_oncall_m19_rls_audit_triggers.sql"] },
-  { mod: "M20", denylist: M20_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0111_field_safety_m20_rls_audit_triggers.sql"] },
-  { mod: "M21", denylist: M21_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0106_supplies_m21_rls_audit_triggers.sql"] },
-  { mod: "M22", denylist: M22_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0049_documents_m22_rls_audit_triggers.sql"] },
-  { mod: "M28", denylist: M28_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0137_fhir_gateway_m28_rls_audit_triggers.sql"] },
+  {
+    mod: "M8",
+    denylist: M8_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0031_encounters_m8_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M9",
+    denylist: M9_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0033_assessment_m9_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M10",
+    denylist: M10_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0035_hope_m10_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M11",
+    denylist: M11_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0037_orders_m11_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M12",
+    denylist: M12_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0039_dosespot_m12_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M13",
+    denylist: M13_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0041_emar_m13_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M14",
+    denylist: M14_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0043_idg_m14_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M15",
+    denylist: M15_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0099_discipline_plans_m15_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M16",
+    denylist: M16_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M17",
+    denylist: M17_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M18",
+    denylist: M18_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0047_evv_m18_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M19",
+    denylist: M19_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0108_oncall_m19_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M20",
+    denylist: M20_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0111_field_safety_m20_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M21",
+    denylist: M21_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0106_supplies_m21_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M22",
+    denylist: M22_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0049_documents_m22_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M28",
+    denylist: M28_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0137_fhir_gateway_m28_rls_audit_triggers.sql"],
+  },
   {
     mod: "M29",
     denylist: M29_AUDIT_DENYLIST,
@@ -104,8 +172,16 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0164_lab_observation_value_sud_redaction.sql",
     ],
   },
-  { mod: "M31", denylist: M31_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0139_portal_m31_rls_audit_triggers.sql"] },
-  { mod: "M32", denylist: M32_AUDIT_DENYLIST, migrations: ["packages/db/migrations/0116_ai_platform_m32_rls_audit_triggers.sql"] },
+  {
+    mod: "M31",
+    denylist: M31_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0139_portal_m31_rls_audit_triggers.sql"],
+  },
+  {
+    mod: "M32",
+    denylist: M32_AUDIT_DENYLIST,
+    migrations: ["packages/db/migrations/0116_ai_platform_m32_rls_audit_triggers.sql"],
+  },
 ];
 
 /** [module, table] pairs this gate deliberately does not enforce — see the file header. Each entry here
@@ -164,7 +240,9 @@ function parseMigrations(paths: readonly string[]): Record<string, string[]> {
     const funcRe =
       /CREATE OR REPLACE FUNCTION audit_phi_write_\w+\(\)[\s\S]*?(?=CREATE OR REPLACE FUNCTION audit_phi_write_\w+\(\)|$)/g;
     for (const block of src.match(funcRe) ?? []) {
-      const tableMatch = block.match(/CREATE (?:OR REPLACE )?TRIGGER\s+"[^"]+"\s+AFTER[^\n]*ON\s+(\w+)/);
+      const tableMatch = block.match(
+        /CREATE (?:OR REPLACE )?TRIGGER\s+"[^"]+"\s+AFTER[^\n]*ON\s+(\w+)/,
+      );
       if (!tableMatch) continue;
       const table = tableMatch[1]!;
       const arrMatch = block.match(/audit_scrub\([^,]+,\s*ARRAY\[([^\]]*)\]/);

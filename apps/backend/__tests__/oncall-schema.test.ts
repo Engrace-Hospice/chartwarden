@@ -13,10 +13,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  type M19TableName,
   M19_AUDIT_DENYLIST,
   M19_AUDIT_RETENTION_CLASS,
   M19_TABLE_NAMES,
-  type M19TableName,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
@@ -138,9 +138,7 @@ describe("M19-T02 migration 0108 — RLS, grants and the M4 write-audit denylist
   });
 
   it("never grants DELETE to wardenx_app, and no UPDATE on the two append-only tables", () => {
-    const grants = rls
-      .split("\n")
-      .filter((l) => /^GRANT/.test(l) && /wardenx_app/.test(l));
+    const grants = rls.split("\n").filter((l) => /^GRANT/.test(l) && /wardenx_app/.test(l));
     expect(grants.length).toBe(10);
     for (const g of grants) expect(g).not.toMatch(/\bDELETE\b/);
     for (const t of ["triage_call_answer", "triage_call_state_history"]) {
@@ -171,7 +169,9 @@ describe("M19-T02 migration 0108 — RLS, grants and the M4 write-audit denylist
   it("encodes §2.2.1's transition table as a whitelist, incl. the two legal 'backwards' moves", () => {
     const guard = rls.slice(rls.indexOf("m19_enforce_triage_call_forward_state"));
     // The §2.3 documented exception: the caller rang back.
-    expect(guard).toContain(`WHEN 'awaiting_callback' THEN ARRAY['protocol_in_progress','abandoned']`);
+    expect(guard).toContain(
+      `WHEN 'awaiting_callback' THEN ARRAY['protocol_in_progress','abandoned']`,
+    );
     // The move a rank ordering would have silently forbidden.
     expect(guard).toContain(
       `WHEN 'escalated_unresolved' THEN ARRAY['documented_pending_encounter','abandoned']`,

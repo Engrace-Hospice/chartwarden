@@ -21,17 +21,17 @@ import { abacRegistry } from "@wardenx/auth";
 import { M30_PERMISSIONS } from "@wardenx/quality";
 import { describe, expect, it } from "vitest";
 import {
+  type IncidentAbacFacts,
   M30_CONTRIBUTED_PERMISSIONS,
   M30_PERMISSION_KEYS,
   M30_REGISTERED_ABAC_PREDICATES,
-  buildM30AbacPredicates,
-  denyStubM30AbacResolver,
-  registerM30AbacPredicates,
-  type IncidentAbacFacts,
   type MortalityReviewAbacFacts,
   type QapiProjectAbacFacts,
   type ReadingM30AbacResolver,
   type SraCycleAbacFacts,
+  buildM30AbacPredicates,
+  denyStubM30AbacResolver,
+  registerM30AbacPredicates,
 } from "../src/modules/30-quality/index";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -84,10 +84,9 @@ describe("M30 §4.6 contributed-permission catalog", () => {
     );
     // ...and every declared catalog key is actually gated on by at least one route (no dead grant).
     const catalogOrphans = [...catalog].filter((k) => !routeKeys.has(k));
-    expect(
-      catalogOrphans,
-      `catalog keys no route gates on: ${catalogOrphans.join(", ")}`,
-    ).toEqual([]);
+    expect(catalogOrphans, `catalog keys no route gates on: ${catalogOrphans.join(", ")}`).toEqual(
+      [],
+    );
   });
 });
 
@@ -299,10 +298,9 @@ describe("M30 §4.7 QAPI / SRA ownership + two-actor close predicates", () => {
     });
     expect(await p.ownsSraCycle!(ctx({ membershipId: OWNER }), { cycleId: "cyc-1" })).toBe(true);
     expect(
-      await p.ownsSraCycle!(
-        ctx({ membershipId: STRANGER, permissions: ["sra.admin"] }),
-        { cycleId: "cyc-1" },
-      ),
+      await p.ownsSraCycle!(ctx({ membershipId: STRANGER, permissions: ["sra.admin"] }), {
+        cycleId: "cyc-1",
+      }),
     ).toBe(true);
     // SO caller + CO cosigner, distinct → grant
     const caller = ctx({ roles: ["hipaa_security_officer"], membershipId: OWNER });
@@ -353,9 +351,9 @@ describe("M30 §6.7 fail-closed predicates (Part 2 redaction + abuse access)", (
       }),
     ).toBe(false);
     // a missing retention class is fail-closed (the route MUST supply it)
-    expect(await p.part2Redisclosure!(ctx({ membershipId: REPORTER }), { patientId: "pat-1" })).toBe(
-      false,
-    );
+    expect(
+      await p.part2Redisclosure!(ctx({ membershipId: REPORTER }), { patientId: "pat-1" }),
+    ).toBe(false);
     // a Part-2 row with no resolvable patient link → redact
     expect(
       await p.part2Redisclosure!(ctx({ membershipId: REPORTER }), {
@@ -396,8 +394,8 @@ describe("M30 ABAC registry wiring", () => {
     expect(await p.ownsQapiProject!(ctx({ membershipId: OWNER }), { projectId: "prj-1" })).toBe(
       false,
     );
-    expect(await p.assignedToMortality!(ctx({ membershipId: ASSIGNEE }), { reviewId: "rev-1" })).toBe(
-      false,
-    );
+    expect(
+      await p.assignedToMortality!(ctx({ membershipId: ASSIGNEE }), { reviewId: "rev-1" }),
+    ).toBe(false);
   });
 });

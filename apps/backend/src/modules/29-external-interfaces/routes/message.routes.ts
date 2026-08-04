@@ -9,13 +9,8 @@ import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
-import {
-  InboundMessageListQuery,
-  OutboundMessageListQuery,
-  parseQuery,
-} from "./m29-typebox";
-import { M29StoreError, type M29Store } from "./store";
-
+import { InboundMessageListQuery, OutboundMessageListQuery, parseQuery } from "./m29-typebox";
+import { type M29Store, M29StoreError } from "./store";
 
 export interface MessageRouteDeps {
   readonly store: M29Store;
@@ -60,7 +55,8 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
       const actor = actorOf(request);
       const { messageId } = request.params as { messageId: string };
       const message = await store.getInboundMessage(actor.organizationId, messageId);
-      if (!message) return reply.code(404).send({ code: "NOT_FOUND", message: "message not found" });
+      if (!message)
+        return reply.code(404).send({ code: "NOT_FOUND", message: "message not found" });
       return { message };
     },
   );
@@ -146,7 +142,8 @@ export function registerMessageRoutes(app: FastifyInstance, deps: MessageRouteDe
       const actor = actorOf(request);
       const { messageId } = request.params as { messageId: string };
       const message = await store.getOutboundMessage(actor.organizationId, messageId);
-      if (!message) return reply.code(404).send({ code: "NOT_FOUND", message: "message not found" });
+      if (!message)
+        return reply.code(404).send({ code: "NOT_FOUND", message: "message not found" });
       return { message };
     },
   );

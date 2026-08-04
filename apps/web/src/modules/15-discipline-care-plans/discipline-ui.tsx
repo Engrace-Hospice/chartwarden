@@ -28,7 +28,11 @@ export const td: CSSProperties = {
   verticalAlign: "top",
 };
 export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
+export const tdNum: CSSProperties = {
+  ...td,
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+};
 export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */

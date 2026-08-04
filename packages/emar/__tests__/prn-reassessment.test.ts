@@ -1,11 +1,11 @@
 // @wardenx/emar — §2.4 D3 PRN reassessment trigger — M13-T04.
 import { describe, expect, it } from "vitest";
 import {
+  REASSESSMENT_WINDOW_DEFAULT_BY_CATEGORY,
   buildPrnReassessmentTrigger,
   computeReassessmentDueAt,
   recommendReassessmentScale,
   resolveReassessmentWindowMinutes,
-  REASSESSMENT_WINDOW_DEFAULT_BY_CATEGORY,
 } from "../src/prn";
 
 const ADMINISTERED = "2026-06-22T14:35:00.000Z";
@@ -61,7 +61,11 @@ describe("§2.4 resolveReassessmentWindowMinutes (order → tenant → category)
   });
   it("ignores a non-positive / non-finite candidate at any tier", () => {
     expect(
-      resolveReassessmentWindowMinutes({ orderWindowMinutes: 0, tenantDefaultMinutes: -5, category: "antiemetic" }),
+      resolveReassessmentWindowMinutes({
+        orderWindowMinutes: 0,
+        tenantDefaultMinutes: -5,
+        category: "antiemetic",
+      }),
     ).toBe(60);
   });
 });
@@ -98,7 +102,11 @@ describe("§2.4 D3 buildPrnReassessmentTrigger", () => {
   });
 
   it("the order's window overrides the category default", () => {
-    const t = buildPrnReassessmentTrigger({ ...base, category: "analgesic", orderWindowMinutes: 60 });
+    const t = buildPrnReassessmentTrigger({
+      ...base,
+      category: "analgesic",
+      orderWindowMinutes: 60,
+    });
     expect(t.reassessmentWindowMinutes).toBe(60);
     expect(t.reassessmentDueAt).toBe("2026-06-22T15:35:00.000Z");
   });

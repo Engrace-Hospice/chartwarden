@@ -13,7 +13,10 @@ const id = Type.String({ minLength: 1 });
 export function parse<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
     const first = [...Value.Errors(schema, value)][0];
-    throw new ValidationError(`Invalid request${first ? ` at '${first.path}': ${first.message}` : ""}`, []);
+    throw new ValidationError(
+      `Invalid request${first ? ` at '${first.path}': ${first.message}` : ""}`,
+      [],
+    );
   }
   return value as Static<T>;
 }
@@ -153,7 +156,11 @@ export const ConfirmBodySchema = Type.Object({
 export type ConfirmBody = Static<typeof ConfirmBodySchema>;
 
 export const InitiateTransferBodySchema = Type.Object({
-  targetKind: Type.Union([Type.Literal("to_unit"), Type.Literal("to_home"), Type.Literal("to_facility")]),
+  targetKind: Type.Union([
+    Type.Literal("to_unit"),
+    Type.Literal("to_home"),
+    Type.Literal("to_facility"),
+  ]),
   destinationUnitId: Type.Optional(id),
   destinationFacilityId: Type.Optional(id),
   reason: Type.Optional(Type.String({ maxLength: 1000 })),
@@ -328,10 +335,21 @@ export const RestraintViewSchema = Type.Object({
 
 // ── visitor (§4.1 routes 29–31) ────────────────────────────────────────────────────────────────────────
 const relationship = Type.Union([
-  Type.Literal("spouse"), Type.Literal("parent"), Type.Literal("child"), Type.Literal("sibling"),
-  Type.Literal("grandparent"), Type.Literal("grandchild"), Type.Literal("in_law"), Type.Literal("aunt_uncle"),
-  Type.Literal("cousin"), Type.Literal("friend"), Type.Literal("clergy"), Type.Literal("volunteer"),
-  Type.Literal("caregiver_paid"), Type.Literal("legal_representative"), Type.Literal("other"),
+  Type.Literal("spouse"),
+  Type.Literal("parent"),
+  Type.Literal("child"),
+  Type.Literal("sibling"),
+  Type.Literal("grandparent"),
+  Type.Literal("grandchild"),
+  Type.Literal("in_law"),
+  Type.Literal("aunt_uncle"),
+  Type.Literal("cousin"),
+  Type.Literal("friend"),
+  Type.Literal("clergy"),
+  Type.Literal("volunteer"),
+  Type.Literal("caregiver_paid"),
+  Type.Literal("legal_representative"),
+  Type.Literal("other"),
 ]);
 export const CheckInVisitorBodySchema = Type.Object({
   ipuAdmissionId: id,
@@ -353,14 +371,22 @@ export const ApplyVisitorRestrictionBodySchema = Type.Object({
   unitId: Type.Optional(id),
   patientId: Type.Optional(id),
   restrictionKind: Type.Union([
-    Type.Literal("full_block"), Type.Literal("immediate_family_only"), Type.Literal("mask_required"),
-    Type.Literal("time_limited"), Type.Literal("no_overnight"),
+    Type.Literal("full_block"),
+    Type.Literal("immediate_family_only"),
+    Type.Literal("mask_required"),
+    Type.Literal("time_limited"),
+    Type.Literal("no_overnight"),
   ]),
   rationale: Type.String({ minLength: 1, maxLength: 2000 }),
   sourceKind: Type.String({ minLength: 1, maxLength: 60 }),
 });
 export type ApplyVisitorRestrictionBody = Static<typeof ApplyVisitorRestrictionBodySchema>;
-export const VisitorRestrictionViewSchema = Type.Object({ id, scope: Type.String(), restrictionKind: Type.String(), liftedAt: Type.Union([Type.String(), Type.Null()]) });
+export const VisitorRestrictionViewSchema = Type.Object({
+  id,
+  scope: Type.String(),
+  restrictionKind: Type.String(),
+  liftedAt: Type.Union([Type.String(), Type.Null()]),
+});
 export const LiftVisitorRestrictionBodySchema = Type.Object({ restrictionId: id });
 export type LiftVisitorRestrictionBody = Static<typeof LiftVisitorRestrictionBodySchema>;
 
@@ -368,20 +394,38 @@ export type LiftVisitorRestrictionBody = Static<typeof LiftVisitorRestrictionBod
 export const LogMealBodySchema = Type.Object({
   ipuAdmissionId: id,
   serviceDate: Type.String({ minLength: 8, maxLength: 10 }),
-  mealSlot: Type.Union([Type.Literal("breakfast"), Type.Literal("lunch"), Type.Literal("dinner"), Type.Literal("snack")]),
+  mealSlot: Type.Union([
+    Type.Literal("breakfast"),
+    Type.Literal("lunch"),
+    Type.Literal("dinner"),
+    Type.Literal("snack"),
+  ]),
   intakeFraction: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
   refusalReason: Type.Optional(Type.String({ maxLength: 500 })),
   caregiverAssistedFeeding: Type.Optional(Type.Boolean()),
   oralCareCompleted: Type.Optional(Type.Boolean()),
 });
 export type LogMealBody = Static<typeof LogMealBodySchema>;
-export const MealViewSchema = Type.Object({ id, ipuAdmissionId: id, serviceDate: Type.String(), mealSlot: Type.String() });
+export const MealViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  serviceDate: Type.String(),
+  mealSlot: Type.String(),
+});
 
 // ── equipment (§4.1 routes 33–36) ──────────────────────────────────────────────────────────────────────
 const equipmentType = Type.Union([
-  Type.Literal("hospital_bed"), Type.Literal("oxygen_concentrator"), Type.Literal("suction_machine"),
-  Type.Literal("iv_pump"), Type.Literal("bipap"), Type.Literal("cpap"), Type.Literal("lift"),
-  Type.Literal("scale"), Type.Literal("vitals_monitor"), Type.Literal("comfort_mattress"), Type.Literal("low_air_loss_mattress"),
+  Type.Literal("hospital_bed"),
+  Type.Literal("oxygen_concentrator"),
+  Type.Literal("suction_machine"),
+  Type.Literal("iv_pump"),
+  Type.Literal("bipap"),
+  Type.Literal("cpap"),
+  Type.Literal("lift"),
+  Type.Literal("scale"),
+  Type.Literal("vitals_monitor"),
+  Type.Literal("comfort_mattress"),
+  Type.Literal("low_air_loss_mattress"),
 ]);
 export const CreateEquipmentBodySchema = Type.Object({
   serialNumber: Type.String({ minLength: 1, maxLength: 120 }),
@@ -391,7 +435,14 @@ export const CreateEquipmentBodySchema = Type.Object({
   yearOfManufacture: Type.Optional(Type.Integer({ minimum: 1950, maximum: 2100 })),
 });
 export type CreateEquipmentBody = Static<typeof CreateEquipmentBodySchema>;
-export const EquipmentViewSchema = Type.Object({ id, serialNumber: Type.String(), equipmentType: Type.String(), currentStatus: Type.String(), nextInspectionDueDate: Type.Union([Type.String(), Type.Null()]), version: Type.Integer() });
+export const EquipmentViewSchema = Type.Object({
+  id,
+  serialNumber: Type.String(),
+  equipmentType: Type.String(),
+  currentStatus: Type.String(),
+  nextInspectionDueDate: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+});
 export const EquipmentListSchema = Type.Object({ items: Type.Array(EquipmentViewSchema) });
 export const LogMaintenanceBodySchema = Type.Object({
   maintenanceKind: Type.String({ minLength: 1, maxLength: 120 }),
@@ -400,8 +451,18 @@ export const LogMaintenanceBodySchema = Type.Object({
 });
 export type LogMaintenanceBody = Static<typeof LogMaintenanceBodySchema>;
 export const LogInspectionBodySchema = Type.Object({
-  inspectionKind: Type.Union([Type.Literal("annual_biomed"), Type.Literal("per_use_safety"), Type.Literal("post_repair_safety"), Type.Literal("recall_response")]),
-  outcome: Type.Union([Type.Literal("pass"), Type.Literal("fail"), Type.Literal("conditional_pass"), Type.Literal("retired")]),
+  inspectionKind: Type.Union([
+    Type.Literal("annual_biomed"),
+    Type.Literal("per_use_safety"),
+    Type.Literal("post_repair_safety"),
+    Type.Literal("recall_response"),
+  ]),
+  outcome: Type.Union([
+    Type.Literal("pass"),
+    Type.Literal("fail"),
+    Type.Literal("conditional_pass"),
+    Type.Literal("retired"),
+  ]),
   notes: Type.Optional(Type.String({ maxLength: 2000 })),
   nextInspectionDueDate: Type.String({ minLength: 8, maxLength: 10 }),
 });
@@ -411,13 +472,22 @@ export type AssignEquipmentBedBody = Static<typeof AssignEquipmentBedBodySchema>
 
 // ── body release (§4.1 route 37) ───────────────────────────────────────────────────────────────────────
 export const AdvanceBodyReleaseBodySchema = Type.Object({
-  action: Type.Union([Type.Literal("identifyFuneralHome"), Type.Literal("releaseBody"), Type.Literal("postClose")]),
+  action: Type.Union([
+    Type.Literal("identifyFuneralHome"),
+    Type.Literal("releaseBody"),
+    Type.Literal("postClose"),
+  ]),
   funeralHomeId: Type.Optional(id),
   releaseDocumentId: Type.Optional(id),
   releasedToRepresentativeName: Type.Optional(Type.String({ maxLength: 200 })),
 });
 export type AdvanceBodyReleaseBody = Static<typeof AdvanceBodyReleaseBodySchema>;
-export const BodyReleaseViewSchema = Type.Object({ id, ipuAdmissionId: id, state: Type.String(), version: Type.Integer() });
+export const BodyReleaseViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  state: Type.String(),
+  version: Type.Integer(),
+});
 export const AdmissionIdParamsSchema = Type.Object({ admissionId: id });
 
 export const IdParamsSchema = Type.Object({ id });

@@ -5,7 +5,7 @@
 // Money fields (e.g. home-office cost allocation) are INTEGER CENTS.
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** A single owner / officer / related-party disclosure row. */
 const OwnerDisclosure = Type.Object({

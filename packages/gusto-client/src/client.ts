@@ -7,7 +7,7 @@
 // {@link GUSTO_NOT_CONNECTED}.
 import { GUSTO_PAYROLLS_PATH } from "./constants";
 import { normalizeWageData } from "./normalize";
-import { requestWithRefresh, type GustoHttpPort, type GustoSession } from "./oauth";
+import { type GustoHttpPort, type GustoSession, requestWithRefresh } from "./oauth";
 import type { GustoTokens, TokenStore } from "./token-store";
 import type { GustoClient, NormalizedWageData } from "./types";
 
@@ -52,6 +52,9 @@ export class LiveGustoClient implements GustoClient {
 
   /** Explicit reconnect: rotate the tokens via the store and adopt them for subsequent calls. */
   async refreshTokens(): Promise<void> {
-    this.session.tokens = await this.deps.tokenStore.refresh(this.deps.organizationId, this.session.tokens);
+    this.session.tokens = await this.deps.tokenStore.refresh(
+      this.deps.organizationId,
+      this.session.tokens,
+    );
   }
 }

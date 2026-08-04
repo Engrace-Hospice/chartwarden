@@ -34,4 +34,8 @@ export { buildIpuSeams, registerIpuSeams } from "./seams";
 
 // D16 — the AI-prohibited-zone boot validator (§8.6). Re-exported from @wardenx/inpatient; the composition
 // root invokes it in a db-present onReady hook against the real M32 AIPromptRegistry seam.
-export { type IpuAiPromptRegistryPort, IpuAIBlockViolation, validateIpuAIBlock } from "@wardenx/inpatient";
+export {
+  type IpuAiPromptRegistryPort,
+  IpuAIBlockViolation,
+  validateIpuAIBlock,
+} from "@wardenx/inpatient";

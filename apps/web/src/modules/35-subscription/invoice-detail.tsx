@@ -108,7 +108,9 @@ export function InvoiceDetail(): JSX.Element {
         />
       }
       aside={
-        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div
+          style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <Kv label="Status">
             <StatusPill label={cap(invoice.status)} tone={invoiceTone(invoice.status)} />
           </Kv>
@@ -160,10 +162,20 @@ export function InvoiceDetail(): JSX.Element {
           ))}
         </tbody>
         <tfoot>
-          <TotalRow label="Subtotal" value={formatCents(invoice.subtotalCents, invoice.currencyCode)} />
+          <TotalRow
+            label="Subtotal"
+            value={formatCents(invoice.subtotalCents, invoice.currencyCode)}
+          />
           <TotalRow label="Tax" value={formatCents(invoice.taxCents, invoice.currencyCode)} />
-          <TotalRow label="Total" value={formatCents(invoice.totalCents, invoice.currencyCode)} strong />
-          <TotalRow label="Paid" value={formatCents(invoice.amountPaidCents, invoice.currencyCode)} />
+          <TotalRow
+            label="Total"
+            value={formatCents(invoice.totalCents, invoice.currencyCode)}
+            strong
+          />
+          <TotalRow
+            label="Paid"
+            value={formatCents(invoice.amountPaidCents, invoice.currencyCode)}
+          />
         </tfoot>
       </table>
     </DetailPageLayout>

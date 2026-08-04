@@ -232,7 +232,10 @@ export async function runEffects(
         set("cancellationReason", effect.reason);
         // `requiredVendorConfirmation` is NOT a column — it rides the §4.5.2 `cancelled` payload, where
         // M11 reads it to tell an immediate cancellation from one the vendor had to answer.
-        set(effect.requiredVendorConfirmation ? "cancellationPendingAt" : "cancelledAt", new Date(effect.at));
+        set(
+          effect.requiredVendorConfirmation ? "cancellationPendingAt" : "cancelledAt",
+          new Date(effect.at),
+        );
         break;
       case "set_dispatch_status":
         set("dispatchStatus", effect.status);

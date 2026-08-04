@@ -29,7 +29,11 @@ export interface BuildAckInput {
   /** The inbound frame's parsed MSH envelope (roles are reversed into the ACK's MSH). */
   readonly inbound: Pick<
     MshEnvelope,
-    "messageControlId" | "sendingApplication" | "sendingFacility" | "receivingApplication" | "receivingFacility"
+    | "messageControlId"
+    | "sendingApplication"
+    | "sendingFacility"
+    | "receivingApplication"
+    | "receivingFacility"
   >;
   /** The ACK's own MSH-10 control id (INJECTED — a uuid/ulid the caller minted). */
   readonly ackControlId: string;
@@ -63,7 +67,9 @@ export function buildAckMessage(input: BuildAckInput): string {
     "2.5.1",
   ].join("|");
   // MSA-1 = ack code, MSA-2 = original inbound control id, MSA-3 = optional text.
-  const msa = ["MSA", code, inbound.messageControlId, input.text ?? ""].join("|").replace(/\|+$/, "");
+  const msa = ["MSA", code, inbound.messageControlId, input.text ?? ""]
+    .join("|")
+    .replace(/\|+$/, "");
   return `${msh}\r${msa}`;
 }
 

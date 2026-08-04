@@ -8,10 +8,14 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
+import {
+  CostReportIdParamsSchema,
+  DeadlineExtensionBodySchema,
+  parse,
+} from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";
 import type { M27WriteRouteService } from "./write-service";
-import { CostReportIdParamsSchema, DeadlineExtensionBodySchema, parse } from "./cost-report-typebox";
 
 export interface ComplianceRouteDeps {
   readonly readService: M27ReadRouteService;
@@ -28,15 +32,11 @@ export function registerComplianceRoutes(app: FastifyInstance, deps: ComplianceR
   const { readService, writeService } = deps;
 
   // GET /cost-reports/:id/compliance-window — read the filing-deadline window state (or null). §4.1.
-  app.get(
-    "/api/v1/cost-reports/:id/compliance-window",
-    { preHandler: [READ] },
-    async (request) => {
-      const actor = actorOf(request);
-      const { id } = parse(CostReportIdParamsSchema, request.params);
-      return readService.getComplianceWindow(actor, id);
-    },
-  );
+  app.get("/api/v1/cost-reports/:id/compliance-window", { preHandler: [READ] }, async (request) => {
+    const actor = actorOf(request);
+    const { id } = parse(CostReportIdParamsSchema, request.params);
+    return readService.getComplianceWindow(actor, id);
+  });
 
   // POST /cost-reports/:id/deadline-extensions — record a MAC-granted extension. §4.1.
   app.post(

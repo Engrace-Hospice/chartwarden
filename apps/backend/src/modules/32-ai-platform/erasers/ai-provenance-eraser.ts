@@ -208,7 +208,10 @@ export function createAiProvenanceEraser(
 /** Register M32's REAL §3.7 erasers over the Phase-0 deny-stubs (before validateErasers()). */
 export function registerAiProvenanceErasers(deps: AiProvenanceEraserDeps = {}): void {
   const store = deps.store ?? createInMemoryAiProvenanceEraseStore().store;
-  registerEraser("clinical_record_ai_provenance", createAiProvenanceEraser("clinical_record", store));
+  registerEraser(
+    "clinical_record_ai_provenance",
+    createAiProvenanceEraser("clinical_record", store),
+  );
   registerEraser("intake_ai_provenance", createAiProvenanceEraser("intake", store));
 }
 

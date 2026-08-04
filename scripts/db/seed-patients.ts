@@ -16,25 +16,60 @@ const ORG_SLUG = "wardenx-demo";
 const ADMIN_EMAIL = "admin@wardenx.local";
 
 const PATIENTS = [
-  { lastName: "Whitfield", firstName: "Eleanor", dob: "1939-03-12", administrativeSex: "female",
-    primaryAddress: { line1: "42 Camellia Ln", city: "Asheville", postalCode: "28801" }, phone: "+18285551042" },
-  { lastName: "Okonkwo", firstName: "Samuel", dob: "1945-11-02", administrativeSex: "male",
-    primaryAddress: { line1: "1187 Birch St", city: "Asheville", postalCode: "28805" }, phone: "+18285552187" },
-  { lastName: "Delgado", firstName: "Rosa", dob: "1951-06-28", administrativeSex: "female",
-    primaryAddress: { line1: "9 Mountain View Ct", city: "Hendersonville", postalCode: "28792" } },
-  { lastName: "Nakamura", firstName: "Henry", dob: "1936-01-19", administrativeSex: "male",
-    primaryAddress: { line1: "330 Sweeten Creek Rd", city: "Asheville", postalCode: "28803" }, phone: "+18285553301" },
-  { lastName: "Brandt", firstName: "Margaret", dob: "1948-09-05", administrativeSex: "female",
-    primaryAddress: { line1: "76 Riverside Dr", city: "Asheville", postalCode: "28804" } },
-  { lastName: "Fairbanks", firstName: "Walter", dob: "1942-12-30", administrativeSex: "male",
-    primaryAddress: { line1: "215 Oak Knoll Dr", city: "Black Mountain", postalCode: "28711" }, phone: "+18285554215" },
+  {
+    lastName: "Whitfield",
+    firstName: "Eleanor",
+    dob: "1939-03-12",
+    administrativeSex: "female",
+    primaryAddress: { line1: "42 Camellia Ln", city: "Asheville", postalCode: "28801" },
+    phone: "+18285551042",
+  },
+  {
+    lastName: "Okonkwo",
+    firstName: "Samuel",
+    dob: "1945-11-02",
+    administrativeSex: "male",
+    primaryAddress: { line1: "1187 Birch St", city: "Asheville", postalCode: "28805" },
+    phone: "+18285552187",
+  },
+  {
+    lastName: "Delgado",
+    firstName: "Rosa",
+    dob: "1951-06-28",
+    administrativeSex: "female",
+    primaryAddress: { line1: "9 Mountain View Ct", city: "Hendersonville", postalCode: "28792" },
+  },
+  {
+    lastName: "Nakamura",
+    firstName: "Henry",
+    dob: "1936-01-19",
+    administrativeSex: "male",
+    primaryAddress: { line1: "330 Sweeten Creek Rd", city: "Asheville", postalCode: "28803" },
+    phone: "+18285553301",
+  },
+  {
+    lastName: "Brandt",
+    firstName: "Margaret",
+    dob: "1948-09-05",
+    administrativeSex: "female",
+    primaryAddress: { line1: "76 Riverside Dr", city: "Asheville", postalCode: "28804" },
+  },
+  {
+    lastName: "Fairbanks",
+    firstName: "Walter",
+    dob: "1942-12-30",
+    administrativeSex: "male",
+    primaryAddress: { line1: "215 Oak Knoll Dr", city: "Black Mountain", postalCode: "28711" },
+    phone: "+18285554215",
+  },
 ];
 
 function adminPassword(): string {
   const md = readFileSync(join(process.cwd(), "CREDENTIALS.local.md"), "utf8");
   const line = md.split("\n").find((l) => l.includes(ADMIN_EMAIL));
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
-  if (!m) throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
+  if (!m)
+    throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
   return m[2];
 }
 
@@ -64,8 +99,12 @@ async function main(): Promise<void> {
   absorb(jar, signIn);
 
   // 2) resolve org id from memberships, then select it
-  const mem = await fetch(`${API}/api/v1/auth/memberships`, { headers: { cookie: cookieHeader(jar) } });
-  const memBody = (await mem.json()) as { memberships: Array<{ organizationId: string; organizationName: string }> };
+  const mem = await fetch(`${API}/api/v1/auth/memberships`, {
+    headers: { cookie: cookieHeader(jar) },
+  });
+  const memBody = (await mem.json()) as {
+    memberships: Array<{ organizationId: string; organizationName: string }>;
+  };
   const org = memBody.memberships[0];
   if (!org) throw new Error("admin has no memberships — run db:seed first");
 
@@ -97,7 +136,9 @@ async function main(): Promise<void> {
       console.log(`  ✗ ${p.firstName} ${p.lastName}: HTTP ${res.status} ${await res.text()}`);
     }
   }
-  console.log(`\n✓ patient seed: ${created} admitted, ${dup} already present (of ${PATIENTS.length}).`);
+  console.log(
+    `\n✓ patient seed: ${created} admitted, ${dup} already present (of ${PATIENTS.length}).`,
+  );
 }
 
 main().catch((err) => {

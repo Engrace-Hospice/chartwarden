@@ -7,10 +7,10 @@
 // mutating route declares Idempotency-Key (§F08).
 import type { FastifyInstance } from "fastify";
 import { registerCapRoutes } from "./cap.routes";
+import type { M26RouteServices } from "./index";
 import { registerPlatformRoutes } from "./platform.routes";
 import { registerPsrRoutes } from "./psr.routes";
 import { registerSettlementRoutes } from "./settlement.routes";
-import type { M26RouteServices } from "./index";
 
 export { registerCapRoutes, type CapRouteDeps } from "./cap.routes";
 export { registerPsrRoutes, type PsrRouteDeps } from "./psr.routes";

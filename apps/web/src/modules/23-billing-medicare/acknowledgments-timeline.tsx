@@ -61,7 +61,9 @@ export function AcknowledgmentsTimeline(): JSX.Element {
       params: { path: { id: claimId } },
     });
     if (err) {
-      setError("Acknowledgments unavailable — the billing read seam is not bound, or you lack scope.");
+      setError(
+        "Acknowledgments unavailable — the billing read seam is not bound, or you lack scope.",
+      );
       setLoading(false);
       return;
     }
@@ -117,7 +119,9 @@ export function AcknowledgmentsTimeline(): JSX.Element {
               const isOpen = expanded === r.acknowledgmentId;
               return (
                 <Fragment key={r.acknowledgmentId}>
-                  <tr style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}>
+                  <tr
+                    style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
+                  >
                     <td style={tdStyle}>{ackKindLabel(r.kind)}</td>
                     <td style={tdStyle}>
                       <StatusPill
@@ -125,8 +129,12 @@ export function AcknowledgmentsTimeline(): JSX.Element {
                         tone={ackOutcomeTone(r.outcomeStatus)}
                       />
                     </td>
-                    <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.macJurisdiction}</td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{r.ackReceivedAt}</td>
+                    <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>
+                      {r.macJurisdiction}
+                    </td>
+                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                      {r.ackReceivedAt}
+                    </td>
                     <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{r.parsedAt}</td>
                     <td style={tdStyle}>
                       <button
@@ -141,12 +149,13 @@ export function AcknowledgmentsTimeline(): JSX.Element {
                     </td>
                   </tr>
                   {isOpen ? (
-                    <tr style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}>
+                    <tr
+                      style={{
+                        background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent",
+                      }}
+                    >
                       <td colSpan={6} style={{ padding: "0.25rem 0.75rem 0.75rem" }}>
-                        <pre
-                          id={`ack-payload-${r.acknowledgmentId}`}
-                          style={payloadStyle}
-                        >
+                        <pre id={`ack-payload-${r.acknowledgmentId}`} style={payloadStyle}>
                           {JSON.stringify(r.parsedPayload, null, 2)}
                         </pre>
                       </td>

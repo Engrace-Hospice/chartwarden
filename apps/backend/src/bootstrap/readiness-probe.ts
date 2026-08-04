@@ -36,7 +36,10 @@ const DEFAULT_TIMEOUT_MS = 3_000;
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
   });
   try {
     return await Promise.race([promise, timeout]);
@@ -56,7 +59,9 @@ async function checkReachable(
     await withTimeout(probe(), timeoutMs, name);
     return "ok";
   } catch (err) {
-    log(`⚠️  readiness probe: ${name} unreachable — ${err instanceof Error ? err.message : String(err)}`);
+    log(
+      `⚠️  readiness probe: ${name} unreachable — ${err instanceof Error ? err.message : String(err)}`,
+    );
     return "fail";
   }
 }
@@ -76,7 +81,9 @@ async function checkOutboxDepth(
     }
     return "ok";
   } catch (err) {
-    log(`⚠️  readiness probe: outbox depth check failed — ${err instanceof Error ? err.message : String(err)}`);
+    log(
+      `⚠️  readiness probe: outbox depth check failed — ${err instanceof Error ? err.message : String(err)}`,
+    );
     return "fail";
   }
 }

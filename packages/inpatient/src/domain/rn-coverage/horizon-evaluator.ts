@@ -17,7 +17,10 @@ const HOUR_MS = 3_600_000;
 
 /** §2.3 — clamp a configured horizon into the schema-legal [8, 168] range. */
 export function normalizeHorizonHours(configuredHours: number): number {
-  return Math.min(RN_COVERAGE_HORIZON_MAX_HOURS, Math.max(RN_COVERAGE_HORIZON_FLOOR_HOURS, configuredHours));
+  return Math.min(
+    RN_COVERAGE_HORIZON_MAX_HOURS,
+    Math.max(RN_COVERAGE_HORIZON_FLOOR_HOURS, configuredHours),
+  );
 }
 
 /** Index a coverage grid by hour-start for O(1) lookup. */
@@ -83,7 +86,10 @@ export function projectCoverageGap(
  * `activationMs`? A unit cannot exit `provisional` until this holds. Every hour in the forward window must be
  * covered (fail-closed on any unbuilt/uncovered hour).
  */
-export function hasActivationCoverage(windows: readonly CoverageHour[], activationMs: number): boolean {
+export function hasActivationCoverage(
+  windows: readonly CoverageHour[],
+  activationMs: number,
+): boolean {
   const byHour = indexByHour(windows);
   const startHour = hourStartOf(activationMs);
   for (let i = 0; i < RN_ACTIVATION_FORWARD_HOURS; i++) {

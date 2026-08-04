@@ -29,7 +29,7 @@ import type {
   IdgMeetingDigest,
   PacketSnapshot,
 } from "@wardenx/types";
-import { and, asc, eq, gte, inArray, isNotNull, lte, lt, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, lt, lte, notInArray, sql } from "drizzle-orm";
 import type { IdgCadenceAdherence, IdgSeamStore, StoredIdgPacket } from "./store";
 
 const M = schema.idgMeeting;
@@ -265,25 +265,29 @@ export function createDrizzleIdgSeamStore(db: DbClient): IdgSeamStore {
      * cadence.
      */
     cadenceCountsForOrg(organizationId, window) {
-      return withOrgContext(db, { organizationId, userId: IDG_READER_SYSTEM_USER_ID }, async (tx) => {
-        const [row] = await tx
-          .select({
-            denominator: sql<number>`count(*)::int`,
-            numerator: sql<number>`count(*) filter (where ${M.actualStart} is not null and ${M.actualStart} <= ${M.scheduledEnd})::int`,
-          })
-          .from(M)
-          .where(
-            and(
-              eq(M.organizationId, organizationId),
-              gte(M.scheduledStart, new Date(window.from)),
-              lt(M.scheduledStart, new Date(window.to)),
-            ),
-          );
-        return {
-          numerator: Number(row?.numerator) || 0,
-          denominator: Number(row?.denominator) || 0,
-        };
-      });
+      return withOrgContext(
+        db,
+        { organizationId, userId: IDG_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({
+              denominator: sql<number>`count(*)::int`,
+              numerator: sql<number>`count(*) filter (where ${M.actualStart} is not null and ${M.actualStart} <= ${M.scheduledEnd})::int`,
+            })
+            .from(M)
+            .where(
+              and(
+                eq(M.organizationId, organizationId),
+                gte(M.scheduledStart, new Date(window.from)),
+                lt(M.scheduledStart, new Date(window.to)),
+              ),
+            );
+          return {
+            numerator: Number(row?.numerator) || 0,
+            denominator: Number(row?.denominator) || 0,
+          };
+        },
+      );
     },
   };
 }

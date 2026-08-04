@@ -3,14 +3,18 @@
 // advisory lock, idempotency, the org-scoped `order_verbal_policy` being left untouched, and that M11
 // registers the REAL eraser over the Phase-0 deny-stub so validateErasers() passes at a real boot.
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
-import { buildServer } from "../src/bootstrap/index";
 import {
-  createInMemoryOrderEraseStore as makeEraseStore,
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
+import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
+import {
   eraseOrderRecord,
+  createInMemoryOrderEraseStore as makeEraseStore,
   registerOrderErasers,
 } from "../src/modules/11-orders/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 const NOW = "2026-06-22T00:00:00.000Z";
 

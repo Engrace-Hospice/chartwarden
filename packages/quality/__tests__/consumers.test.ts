@@ -1,10 +1,3 @@
-// @wardenx/quality — M30 §4.10 upstream-consumer unit tests (PURE; in-memory ports; no DB).
-//
-// The inbound half of M30: the topic→effect subscription map (the §4.10 single source of truth) and the
-// per-topic handlers that project a structurally-minimal upstream event into its M30 effect and fan it out
-// through INJECTED ports. These tests inject in-memory ports (never a DB / queue), assert each upstream
-// topic projects to the correct effect(s), and pin the handlers' field mapping + the ±-day HVLDL guard.
-import { describe, expect, it } from "vitest";
 import type { schema } from "@wardenx/db";
 import {
   type CahpsCandidateAddRequest,
@@ -15,13 +8,13 @@ import {
   type HopeSubmissionAcceptedEvent,
   type IncidentTriggerEvent,
   type M30ConsumerPorts,
-  type MortalityReviewAutoCreateResult,
-  type RecomputeEnqueueRequest,
   M30_OUTBOX_SUBSCRIPTIONS,
   M30_OUTBOX_SUBSCRIPTION_TOPICS,
   M30_UPSTREAM_CONSUMER_NAME,
   M30_UPSTREAM_SUBSCRIPTIONS,
   M30_UPSTREAM_SUBSCRIPTIONS_DEFERRED,
+  type MortalityReviewAutoCreateResult,
+  type RecomputeEnqueueRequest,
   effectKindsForTopic,
   effectsForTopic,
   handleClaimAdjudicated,
@@ -32,6 +25,13 @@ import {
   handleMedicationErrorReported,
   measureCodesForFamilies,
 } from "@wardenx/quality";
+// @wardenx/quality — M30 §4.10 upstream-consumer unit tests (PURE; in-memory ports; no DB).
+//
+// The inbound half of M30: the topic→effect subscription map (the §4.10 single source of truth) and the
+// per-topic handlers that project a structurally-minimal upstream event into its M30 effect and fan it out
+// through INJECTED ports. These tests inject in-memory ports (never a DB / queue), assert each upstream
+// topic projects to the correct effect(s), and pin the handlers' field mapping + the ±-day HVLDL guard.
+import { describe, expect, it } from "vitest";
 
 // ── in-memory effect ports (capture every fan-out, never touch I/O) ──────────────────────────────────────
 

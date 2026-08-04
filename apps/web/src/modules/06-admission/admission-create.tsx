@@ -37,29 +37,48 @@ export function AdmissionCreate(): JSX.Element {
   const submit = useCallback(async () => {
     setSaving(true);
     setError(null);
-    const { data, error: err, response } = await client.POST("/api/v1/admissions", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/admissions", {
       body: {
         patientId: patientId.trim(),
         ...(referralId.trim() ? { referralId: referralId.trim() } : {}),
         intakeMethod,
-        ...(attendingPhysicianId.trim() ? { attendingPhysicianId: attendingPhysicianId.trim() } : {}),
+        ...(attendingPhysicianId.trim()
+          ? { attendingPhysicianId: attendingPhysicianId.trim() }
+          : {}),
         hospiceMedicalDirectorId: hospiceMedicalDirectorId.trim(),
       },
     });
     if (err || !data) {
-      const redirect = authFailureRedirect(response?.status, err?.error?.code, window.location.pathname);
+      const redirect = authFailureRedirect(
+        response?.status,
+        err?.error?.code,
+        window.location.pathname,
+      );
       if (redirect) {
         navigate(redirect);
         return;
       }
       setSaving(false);
       if (response?.status === 422) setError("Validation failed — check the ids and try again.");
-      else if (response?.status === 403) setError("You do not have permission to create an admission.");
+      else if (response?.status === 403)
+        setError("You do not have permission to create an admission.");
       else setError("The admission was not created.");
       return;
     }
     navigate(`/admissions/${data.id}`);
-  }, [client, patientId, referralId, intakeMethod, attendingPhysicianId, hospiceMedicalDirectorId, navigate]);
+  }, [
+    client,
+    patientId,
+    referralId,
+    intakeMethod,
+    attendingPhysicianId,
+    hospiceMedicalDirectorId,
+    navigate,
+  ]);
 
   return (
     <div style={columnStyle}>
@@ -189,7 +208,12 @@ const primaryBtn: CSSProperties = {
   border: "none",
   cursor: "pointer",
 };
-const disabledBtn: CSSProperties = { ...primaryBtn, background: "var(--color-surface-container)", color: "var(--color-on-surface-variant)", cursor: "not-allowed" };
+const disabledBtn: CSSProperties = {
+  ...primaryBtn,
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface-variant)",
+  cursor: "not-allowed",
+};
 const ghostBtn: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",

@@ -34,8 +34,6 @@ import { requireAbac, requirePermission, resolveActorPermissions } from "@warden
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import type { IncidentListFilter, M30ReadRouteService } from "./read-service";
-import type { M30WriteRouteService } from "./write-service";
 import {
   AbuseAllegationListQuerySchema,
   AddInvestigationNoteBodySchema,
@@ -49,6 +47,8 @@ import {
   UpdateIncidentBodySchema,
   parse,
 } from "./quality-typebox";
+import type { IncidentListFilter, M30ReadRouteService } from "./read-service";
+import type { M30WriteRouteService } from "./write-service";
 
 export interface IncidentRouteDeps {
   readonly readService: M30ReadRouteService;
@@ -57,7 +57,8 @@ export interface IncidentRouteDeps {
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 // §4.7 ABAC composed AFTER RBAC; the default target is `request.params` (the `:incidentId`).
-const ABAC = (key: string, predicate: string): PreHandler => requireAbac(key, predicate) as PreHandler;
+const ABAC = (key: string, predicate: string): PreHandler =>
+  requireAbac(key, predicate) as PreHandler;
 
 // RBAC keys (§4.6).
 const INC_READ = P("incident.read");
@@ -110,7 +111,10 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
   // detail route keeps `incidentVisibility`, where it has an id and belongs.
   app.get(
     "/api/v1/quality/incidents",
-    { preHandler: [INC_READ, READ_INORG], config: { auditRead: { resourceKind: "quality_incident", list: true } } },
+    {
+      preHandler: [INC_READ, READ_INORG],
+      config: { auditRead: { resourceKind: "quality_incident", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(IncidentListQuerySchema, request.query);
@@ -132,7 +136,10 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
   // Registered before the `:incidentId` detail route — Fastify resolves static segments ahead of params.
   app.get(
     "/api/v1/quality/incidents/abuse-allegations",
-    { preHandler: [INC_ABUSE, ABUSE_INORG, ABUSE_ACCESS], config: { auditRead: { resourceKind: "quality_incident_abuse_allegation", list: true } } },
+    {
+      preHandler: [INC_ABUSE, ABUSE_INORG, ABUSE_ACCESS],
+      config: { auditRead: { resourceKind: "quality_incident_abuse_allegation", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(AbuseAllegationListQuerySchema, request.query);
@@ -161,7 +168,10 @@ export function registerIncidentRoutes(app: FastifyInstance, deps: IncidentRoute
   // R-52 — incident detail (state history + investigation notes + CAP plan). §4.1.
   app.get(
     "/api/v1/quality/incidents/:incidentId",
-    { preHandler: [INC_READ, READ_INORG, READ_VISIBILITY], config: { auditRead: { resourceKind: "quality_incident", resourceIdParam: "incidentId" } } },
+    {
+      preHandler: [INC_READ, READ_INORG, READ_VISIBILITY],
+      config: { auditRead: { resourceKind: "quality_incident", resourceIdParam: "incidentId" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { incidentId } = parse(IncidentIdParamsSchema, request.params);

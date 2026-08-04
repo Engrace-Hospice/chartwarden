@@ -31,8 +31,8 @@ import {
   INCIDENT_SEVERITIES,
   INCIDENT_STATES,
   dateTime,
-  incidentCategoryLabel,
   humanize,
+  incidentCategoryLabel,
   shortDate,
   shortId,
 } from "./safety-status";
@@ -181,9 +181,10 @@ export function IncidentLedgerScreen(): JSX.Element {
           ]}
         />
         <span style={mutedStyle}>
-          Every figure counts the rows <strong>on this page</strong>. §4.1.1 publishes no total, on purpose:
-          a count is an enumeration oracle — it would tell a caller who cannot read an incident how many
-          there are. Page through with the button below to widen what these tiles cover.
+          Every figure counts the rows <strong>on this page</strong>. §4.1.1 publishes no total, on
+          purpose: a count is an enumeration oracle — it would tell a caller who cannot read an
+          incident how many there are. Page through with the button below to widen what these tiles
+          cover.
         </span>
       </Card>
 
@@ -234,19 +235,19 @@ export function IncidentLedgerScreen(): JSX.Element {
           />
         </FilterRow>
         <span style={mutedStyle}>
-          The two marked <strong>server</strong> re-query; the three marked <strong>this page</strong>{" "}
-          narrow only the rows already fetched, because §4.1's list query takes no category, severity or
-          date parameter. That distinction is on the labels rather than buried here: filtering to one
-          category and reading the count as a total is exactly the mistake a compliance ledger must not
-          invite.
+          The two marked <strong>server</strong> re-query; the three marked{" "}
+          <strong>this page</strong> narrow only the rows already fetched, because §4.1's list query
+          takes no category, severity or date parameter. That distinction is on the labels rather
+          than buried here: filtering to one category and reading the count as a total is exactly
+          the mistake a compliance ledger must not invite.
         </span>
       </Card>
 
       <Card title="Ledger">
         {shown.length === 0 ? (
           <Notice tone="info" live>
-            No incidents match. If a filter marked "this page" is set, widen it or page further — those
-            filters cannot reach rows the server has not sent.
+            No incidents match. If a filter marked "this page" is set, widen it or page further —
+            those filters cannot reach rows the server has not sent.
           </Notice>
         ) : (
           <table style={tableStyle}>
@@ -287,7 +288,11 @@ export function IncidentLedgerScreen(): JSX.Element {
                   <td style={td}>
                     {r.oshaReportable ? (
                       <StatusPill
-                        label={r.oshaReportableSignedOffAt ? "Reportable — signed" : "Reportable — UNSIGNED"}
+                        label={
+                          r.oshaReportableSignedOffAt
+                            ? "Reportable — signed"
+                            : "Reportable — UNSIGNED"
+                        }
                         tone={r.oshaReportableSignedOffAt ? "critical" : "error"}
                       />
                     ) : (
@@ -330,18 +335,18 @@ export function IncidentLedgerScreen(): JSX.Element {
           </button>
         ) : (
           <span style={mutedStyle}>
-            That is every row the server sent for these filters. It is not necessarily every incident in
-            the agency — it is every one you may read.
+            That is every row the server sent for these filters. It is not necessarily every
+            incident in the agency — it is every one you may read.
           </span>
         )}
       </Card>
 
       <Card title="What the narratives say">
         <span style={mutedStyle}>
-          No incident narrative appears on this page, deliberately: the free text rides the per-tenant
-          encryption envelope and is fetched only by the detail read, which carries its own audit entry.
-          A ledger that spread every clinician's account of being threatened across a browser cache would
-          have made the encryption ornamental.
+          No incident narrative appears on this page, deliberately: the free text rides the
+          per-tenant encryption envelope and is fetched only by the detail read, which carries its
+          own audit entry. A ledger that spread every clinician's account of being threatened across
+          a browser cache would have made the encryption ornamental.
         </span>
       </Card>
     </div>

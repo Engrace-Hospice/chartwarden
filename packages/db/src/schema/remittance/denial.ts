@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M25 Remittance & Denials §3.3 — the denial worklist cluster:
 //   denial_case (worklist aggregate) ─┬─ denial_case_assignment (assignee history)
 //                                     └─ appeal_case (spawned; in appeal.ts)
@@ -29,7 +30,6 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import {
   m25DenialCategory,
@@ -74,9 +74,7 @@ export const denialCase = pgTable(
   },
   (t) => ({
     byAssignee: index("ix_denial_assignee").on(t.assigneeMembershipId, t.state),
-    byClaim: index("ix_denial_claim")
-      .on(t.claimId)
-      .where(sql`claim_id IS NOT NULL`),
+    byClaim: index("ix_denial_claim").on(t.claimId).where(sql`claim_id IS NOT NULL`),
     byCarc: index("ix_denial_carc").on(t.carcCode),
     byAging: index("ix_denial_aging")
       .on(t.agingBucketDays, t.state)

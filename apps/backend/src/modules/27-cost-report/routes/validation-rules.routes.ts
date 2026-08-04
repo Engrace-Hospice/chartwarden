@@ -10,15 +10,15 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { P } from "./guards";
-import type { M27ReadRouteService } from "./read-service";
-import type { M27WriteRouteService } from "./write-service";
 import {
   CreateValidationRuleBodySchema,
   RuleIdParamsSchema,
   UpdateValidationRuleBodySchema,
   parse,
 } from "./cost-report-typebox";
+import { P } from "./guards";
+import type { M27ReadRouteService } from "./read-service";
+import type { M27WriteRouteService } from "./write-service";
 
 export interface ValidationRuleRouteDeps {
   readonly readService: M27ReadRouteService;

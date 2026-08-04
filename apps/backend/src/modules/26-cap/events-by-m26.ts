@@ -10,13 +10,13 @@
 import {
   AccrualRecordedPayload,
   ProjectionUpdatedPayload,
-  ThresholdCrossedPayload,
-  YearOpenedPayload,
-  YearClosingPayload,
-  YearClosedPayload,
-  SettlementProposedPayload,
-  SettlementFinalizedPayload,
   PsrVarianceRaisedPayload,
+  SettlementFinalizedPayload,
+  SettlementProposedPayload,
+  ThresholdCrossedPayload,
+  YearClosedPayload,
+  YearClosingPayload,
+  YearOpenedPayload,
 } from "@wardenx/cap-management";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -24,7 +24,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m26.cap.accrual_recorded",
     moduleOwner: "m26",
-    description: "A remittance-derived cap accrual line was recorded; the per-beneficiary roll-up updated.",
+    description:
+      "A remittance-derived cap accrual line was recorded; the per-beneficiary roll-up updated.",
     payloadSchema: AccrualRecordedPayload,
     declaredConsumers: ["m27", "m33"],
     isOutboxOnly: true,
@@ -56,7 +57,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m26.cap.year_closing",
     moduleOwner: "m26",
-    description: "A cap period transitioned active → in_settlement (Sep 30 + grace, or manual close).",
+    description:
+      "A cap period transitioned active → in_settlement (Sep 30 + grace, or manual close).",
     payloadSchema: YearClosingPayload,
     declaredConsumers: ["m27", "m33"],
     isOutboxOnly: true,

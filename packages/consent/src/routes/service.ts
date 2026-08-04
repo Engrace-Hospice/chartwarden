@@ -29,14 +29,13 @@ import {
   nextCascadeStatus,
 } from "../lifecycle/cascade-machine";
 import { consentTerminatesOnDeath } from "../lifecycle/death";
-import { removeRecipient as decideRemoveRecipient, recipientActive } from "../lifecycle/recipient-machine";
+import {
+  removeRecipient as decideRemoveRecipient,
+  recipientActive,
+} from "../lifecycle/recipient-machine";
 import { closeRenewalCycle } from "../lifecycle/renewal-machine";
 import { nextConsentStatus } from "../lifecycle/status-machine";
-import {
-  type ConsentTypeFloor,
-  type ConsentTypeOverlay,
-  validateConsentOverlay,
-} from "../overlay";
+import { type ConsentTypeFloor, type ConsentTypeOverlay, validateConsentOverlay } from "../overlay";
 import {
   validateBereavementGrantor,
   validateDpoaAgents,
@@ -629,7 +628,8 @@ export function createInMemoryConsentRouteService(data: Partial<InMemoryConsentR
     return record;
   };
 
-  const floorFor = (typeKey: ConsentTypeKey): ConsentTypeFloor => store.floors[typeKey] ?? DEFAULT_FLOOR;
+  const floorFor = (typeKey: ConsentTypeKey): ConsentTypeFloor =>
+    store.floors[typeKey] ?? DEFAULT_FLOOR;
 
   const recipientView = (r: ConsentRecipientView, nowMs: number): ConsentRecipientView => ({
     ...r,
@@ -642,8 +642,7 @@ export function createInMemoryConsentRouteService(data: Partial<InMemoryConsentR
 
   const dpoaView = (a: ConsentDpoaAgentView, nowMs: number): ConsentDpoaAgentView => ({
     ...a,
-    active:
-      a.removedAt === null && (a.termUntil === null || Date.parse(a.termUntil) > nowMs),
+    active: a.removedAt === null && (a.termUntil === null || Date.parse(a.termUntil) > nowMs),
   });
 
   const service: SyncConsentRouteService = {
@@ -657,7 +656,8 @@ export function createInMemoryConsentRouteService(data: Partial<InMemoryConsentR
       const overlay: ConsentTypeOverlay = {
         tighterExpirationSeconds: input.tighterExpirationSeconds,
         tighterCaptureMethods: input.tighterCaptureMethods,
-        tighterReminderCadence: input.tighterReminderCadence as ConsentTypeOverlay["tighterReminderCadence"],
+        tighterReminderCadence:
+          input.tighterReminderCadence as ConsentTypeOverlay["tighterReminderCadence"],
         jurisdictionCodeRequired: input.jurisdictionCodeRequired,
       };
       const v = validateConsentOverlay(floorFor(input.typeKey), overlay);
@@ -1037,7 +1037,8 @@ export function createInMemoryConsentRouteService(data: Partial<InMemoryConsentR
         throw new ConsentRouteError("invalid_transition", "DPOA agent is already removed");
 
       if (input.scopeKind !== undefined) row.scopeKind = input.scopeKind;
-      if (input.activationCondition !== undefined) row.activationCondition = input.activationCondition;
+      if (input.activationCondition !== undefined)
+        row.activationCondition = input.activationCondition;
       if (input.termKind !== undefined) row.termKind = input.termKind;
       if (input.termUntil !== undefined) row.termUntil = input.termUntil;
       if (input.remove === true) row.removedAt = nowIso;
@@ -1059,7 +1060,9 @@ export function createInMemoryConsentRouteService(data: Partial<InMemoryConsentR
           .map((r) => r.id),
       );
       const match = store.dpoaAgents
-        .filter((a) => a.organizationId === organizationId && activeDpoaConsents.has(a.consentRecordId))
+        .filter(
+          (a) => a.organizationId === organizationId && activeDpoaConsents.has(a.consentRecordId),
+        )
         .map((a) => dpoaView(a, nowMs))
         .find((a) => a.active && a.agentKind === "primary");
       return match ?? null;
@@ -1107,7 +1110,9 @@ export function createInMemoryConsentRouteService(data: Partial<InMemoryConsentR
       const pageRows = rows.slice(0, page.pageSize);
       const last = pageRows[pageRows.length - 1];
       const nextCursor =
-        rows.length > page.pageSize && last ? encodeCursor(last.expiresAt as string, last.id) : null;
+        rows.length > page.pageSize && last
+          ? encodeCursor(last.expiresAt as string, last.id)
+          : null;
       return { rows: pageRows, nextCursor };
     },
 

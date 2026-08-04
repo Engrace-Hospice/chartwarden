@@ -1,3 +1,11 @@
+import { describe, expect, it } from "vitest";
+import {
+  PLATFORM_FLOOR_SETTINGS,
+  assertTightenOnly,
+  missingResolutionBlocksBilling,
+  missingResolutionDisposition,
+  resolveEffectivePolicy,
+} from "../src/modules/18-evv/domain/index";
 // apps/backend/__tests__/evv-workflow-acceptance.test.ts — M18-T08 the §9 workflow-acceptance suite (the FINAL
 // M18 task, closing M18 EVV). It pins the §12 sign-off behaviours that pure code + the in-memory route service
 // reach deterministically, and the §9.4 LAYER-INDEPENDENCE half the application layer owns (org-pinned
@@ -20,14 +28,6 @@ import {
   isAggregatorSubmissionCancellable,
   isAggregatorSubmissionResubmittable,
 } from "../src/modules/18-evv/index";
-import {
-  PLATFORM_FLOOR_SETTINGS,
-  assertTightenOnly,
-  missingResolutionBlocksBilling,
-  missingResolutionDisposition,
-  resolveEffectivePolicy,
-} from "../src/modules/18-evv/domain/index";
-import { describe, expect, it } from "vitest";
 
 const ORG = "org_a";
 const ORG_B = "org_b";
@@ -55,11 +55,32 @@ function service(): EvvRouteService {
       },
     ],
     resolutions: [
-      { organizationId: ORG, id: "mr-open", visitId: VISIT, kind: "missing_checkout", status: "open" },
+      {
+        organizationId: ORG,
+        id: "mr-open",
+        visitId: VISIT,
+        kind: "missing_checkout",
+        status: "open",
+      },
     ],
     submissions: [
-      { organizationId: ORG, id: "sub-rejected", visitId: VISIT, stateCode: "TX", aggregatorVendor: "sandata", status: "rejected" },
-      { organizationId: ORG, id: "sub-accepted", visitId: VISIT, stateCode: "TX", aggregatorVendor: "sandata", status: "accepted", aggregatorTransactionId: "txn-1" },
+      {
+        organizationId: ORG,
+        id: "sub-rejected",
+        visitId: VISIT,
+        stateCode: "TX",
+        aggregatorVendor: "sandata",
+        status: "rejected",
+      },
+      {
+        organizationId: ORG,
+        id: "sub-accepted",
+        visitId: VISIT,
+        stateCode: "TX",
+        aggregatorVendor: "sandata",
+        status: "accepted",
+        aggregatorTransactionId: "txn-1",
+      },
     ],
   });
 }
@@ -107,17 +128,25 @@ describe("M18-T08 §12 workflow acceptance", () => {
     // A visit at ADDR resolves to the per-address override (narrowest).
     expect(resolveEffectivePolicy(layers, ADDR)).toEqual({ radiusM: 60, maxAccuracyM: 20 });
     // A visit at a different address falls back to the tenant default.
-    expect(resolveEffectivePolicy(layers, "other-addr")).toEqual({ radiusM: 100, maxAccuracyM: 40 });
+    expect(resolveEffectivePolicy(layers, "other-addr")).toEqual({
+      radiusM: 100,
+      maxAccuracyM: 40,
+    });
     // The tenant layer tightens the platform floor; loosening is refused.
-    expect(() => assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 100, maxAccuracyM: 40 })).not.toThrow();
-    expect(() => assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 300, maxAccuracyM: 40 })).toThrowError(
-      expect.objectContaining({ code: "GEOFENCE_POLICY_NOT_TIGHTENING" }),
-    );
+    expect(() =>
+      assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 100, maxAccuracyM: 40 }),
+    ).not.toThrow();
+    expect(() =>
+      assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 300, maxAccuracyM: 40 }),
+    ).toThrowError(expect.objectContaining({ code: "GEOFENCE_POLICY_NOT_TIGHTENING" }));
   });
 
   it("D3 — the route service enforces tighten-only on a tenant policy edit (may not loosen past the platform floor)", () => {
     const svc = service();
-    expect(svc.editTenantPolicy(ORG, { radiusM: 80, maxAccuracyM: 30 }).tenant).toEqual({ radiusM: 80, maxAccuracyM: 30 });
+    expect(svc.editTenantPolicy(ORG, { radiusM: 80, maxAccuracyM: 30 }).tenant).toEqual({
+      radiusM: 80,
+      maxAccuracyM: 30,
+    });
     expect(() => svc.editTenantPolicy(ORG, { radiusM: 250, maxAccuracyM: 30 })).toThrowError(
       expect.objectContaining({ code: "CONFLICT" }),
     );
@@ -126,7 +155,8 @@ describe("M18-T08 §12 workflow acceptance", () => {
   it("D6 — a clinician self-attest closes the open resolution; ADR-0008 then reports it documented (non-blocking)", () => {
     const svc = service();
     expect(missingResolutionBlocksBilling("open")).toBe(true); // unresolved_missing blocks (ADR-0008)
-    const reason = "Patient's cellular signal dropped at the rural home; verified by tablet signature at the door.";
+    const reason =
+      "Patient's cellular signal dropped at the rural home; verified by tablet signature at the door.";
     const closed = svc.clinicianAttestResolution(ORG, MEM_RN, "mr-open", reason);
     expect(closed.status).toBe("closed_clinician_attested");
     expect(closed.resolvedByMembershipId).toBe(MEM_RN);
@@ -136,17 +166,18 @@ describe("M18-T08 §12 workflow acceptance", () => {
 
   it("D6 — a too-short self-attest reason is refused by the pure machine (the §7.3 ≥40-char floor)", () => {
     const svc = service();
-    expect(() => svc.clinicianAttestResolution(ORG, MEM_RN, "mr-open", "signal dropped")).toThrowError(
-      expect.objectContaining({ code: "EVV_RESOLUTION_REASON_TOO_SHORT" }),
-    );
+    expect(() =>
+      svc.clinicianAttestResolution(ORG, MEM_RN, "mr-open", "signal dropped"),
+    ).toThrowError(expect.objectContaining({ code: "EVV_RESOLUTION_REASON_TOO_SHORT" }));
   });
 
   it("D6 — a supervisor override requires fresh step-up; without it the machine refuses", () => {
     const svc = service();
-    const reason = "Supervisor override after review of the route log, the device sync history, and the patient call.";
-    expect(() => svc.supervisorOverrideResolution(ORG, "mem_sup", "mr-open", reason, false)).toThrowError(
-      expect.objectContaining({ code: "EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED" }),
-    );
+    const reason =
+      "Supervisor override after review of the route log, the device sync history, and the patient call.";
+    expect(() =>
+      svc.supervisorOverrideResolution(ORG, "mem_sup", "mr-open", reason, false),
+    ).toThrowError(expect.objectContaining({ code: "EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED" }));
     const ok = svc.supervisorOverrideResolution(ORG, "mem_sup", "mr-open", reason, true);
     expect(ok.status).toBe("closed_supervisor_override");
   });
@@ -200,7 +231,9 @@ describe("M18-T08 §9.3 / §9.4 layer-independence (org-pinned non-leak, ABAC fa
     });
     // Org A reads its own bracket; Org B is denied with a non-leaking NotFound.
     expect(svc.bracketForVisit(ORG, VISIT).visitId).toBe(VISIT);
-    expect(() => svc.bracketForVisit(ORG_B, VISIT)).toThrowError(expect.objectContaining({ code: "NOT_FOUND" }));
+    expect(() => svc.bracketForVisit(ORG_B, VISIT)).toThrowError(
+      expect.objectContaining({ code: "NOT_FOUND" }),
+    );
     // Cross-tenant list reads return empty (org-pinned), never another tenant's rows.
     expect(svc.listEvents(ORG_B, { visit: VISIT })).toEqual([]);
     expect(svc.listAggregatorSubmissions(ORG_B, {})).toEqual([]);
@@ -213,20 +246,33 @@ describe("M18-T08 §9.3 / §9.4 layer-independence (org-pinned non-leak, ABAC fa
     expect(() => svc.resubmitSubmission(ORG_B, "u1", "sub-rejected")).toThrowError(
       expect.objectContaining({ code: "NOT_FOUND" }),
     );
-    expect(() => svc.clinicianAttestResolution(ORG_B, MEM_RN, "mr-open", "x".repeat(40))).toThrowError(
-      expect.objectContaining({ code: "NOT_FOUND" }),
-    );
+    expect(() =>
+      svc.clinicianAttestResolution(ORG_B, MEM_RN, "mr-open", "x".repeat(40)),
+    ).toThrowError(expect.objectContaining({ code: "NOT_FOUND" }));
   });
 
   it("§4.7/§9.4 `assigned_clinician_for_visit` passes only for the visit's clinician and fails closed cross-tenant", async () => {
     const svc = service();
     const predicates = buildEvvAbacPredicates({ resolver: svc });
-    const pass = await predicates.assigned_clinician_for_visit!(ctx(), { visitId: VISIT, membershipId: MEM_RN });
+    const pass = await predicates.assigned_clinician_for_visit!(ctx(), {
+      visitId: VISIT,
+      membershipId: MEM_RN,
+    });
     expect(pass).toBe(true);
     // A different membership is denied.
-    expect(await predicates.assigned_clinician_for_visit!(ctx(), { visitId: VISIT, membershipId: "other" })).toBe(false);
+    expect(
+      await predicates.assigned_clinician_for_visit!(ctx(), {
+        visitId: VISIT,
+        membershipId: "other",
+      }),
+    ).toBe(false);
     // A cross-tenant caller is denied (the resolver returns null for org_b → fail-closed).
-    expect(await predicates.assigned_clinician_for_visit!(ctx(ORG_B), { visitId: VISIT, membershipId: MEM_RN })).toBe(false);
+    expect(
+      await predicates.assigned_clinician_for_visit!(ctx(ORG_B), {
+        visitId: VISIT,
+        membershipId: MEM_RN,
+      }),
+    ).toBe(false);
     // An incomplete target denies (fail-closed) rather than throwing.
     expect(await predicates.assigned_clinician_for_visit!(ctx(), {})).toBe(false);
   });
@@ -234,12 +280,25 @@ describe("M18-T08 §9.3 / §9.4 layer-independence (org-pinned non-leak, ABAC fa
   it("§4.7/§9.4 `evv_within_visit_window` passes inside the window, denies outside it and cross-tenant", async () => {
     const svc = service();
     const predicates = buildEvvAbacPredicates({ resolver: svc });
-    expect(await predicates.evv_within_visit_window!(ctx(), { visitId: VISIT, eventCapturedAt: IN_WINDOW })).toBe(true);
+    expect(
+      await predicates.evv_within_visit_window!(ctx(), {
+        visitId: VISIT,
+        eventCapturedAt: IN_WINDOW,
+      }),
+    ).toBe(true);
     // A capture a full day after the scheduled end is outside the 4h-after window.
     expect(
-      await predicates.evv_within_visit_window!(ctx(), { visitId: VISIT, eventCapturedAt: "2026-06-23T20:00:00.000Z" }),
+      await predicates.evv_within_visit_window!(ctx(), {
+        visitId: VISIT,
+        eventCapturedAt: "2026-06-23T20:00:00.000Z",
+      }),
     ).toBe(false);
     // Cross-tenant → the resolver returns null → fail-closed.
-    expect(await predicates.evv_within_visit_window!(ctx(ORG_B), { visitId: VISIT, eventCapturedAt: IN_WINDOW })).toBe(false);
+    expect(
+      await predicates.evv_within_visit_window!(ctx(ORG_B), {
+        visitId: VISIT,
+        eventCapturedAt: IN_WINDOW,
+      }),
+    ).toBe(false);
   });
 });

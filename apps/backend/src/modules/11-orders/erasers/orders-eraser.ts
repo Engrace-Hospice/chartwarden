@@ -264,7 +264,10 @@ export interface OrderEraserDeps {
 }
 
 /** Build M11's `order_record` DataEraser. `subjectId` is the patient being destroyed (D7/D8). */
-export function createOrderEraser(store: OrderEraseStore, options: OrderEraseOptions = {}): DataEraser {
+export function createOrderEraser(
+  store: OrderEraseStore,
+  options: OrderEraseOptions = {},
+): DataEraser {
   return {
     async erase(scope, subjectId) {
       const { erased } = await eraseOrderRecord(scope.orgId, subjectId, store, options);
@@ -323,10 +326,7 @@ export function createMedicationOrderSignatureCascade(
       const verbalOrders = await tx
         .delete(VO)
         .where(
-          and(
-            eq(VO.targetKind, "medication_order"),
-            inArray(VO.targetId, [...medicationOrderIds]),
-          ),
+          and(eq(VO.targetKind, "medication_order"), inArray(VO.targetId, [...medicationOrderIds])),
         )
         .returning({ id: VO.id });
       return { signatures: signatures.length, verbalOrders: verbalOrders.length };

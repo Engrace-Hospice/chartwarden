@@ -78,8 +78,16 @@ export function OrdersSignInbox(): JSX.Element {
         // all-clear on a clinical queue. "—" until the load actually answered.
         <KpiStrip>
           <KpiCard label="Awaiting signature" value={loading || error ? "—" : counts.total} />
-          <KpiCard label="STAT" value={loading || error ? "—" : counts.stat} onSelect={() => setKind("")} />
-          <KpiCard label="ASAP" value={loading || error ? "—" : counts.asap} onSelect={() => setKind("")} />
+          <KpiCard
+            label="STAT"
+            value={loading || error ? "—" : counts.stat}
+            onSelect={() => setKind("")}
+          />
+          <KpiCard
+            label="ASAP"
+            value={loading || error ? "—" : counts.asap}
+            onSelect={() => setKind("")}
+          />
           <KpiCard label="Cosign pending" value={loading || error ? "—" : counts.cosign} />
         </KpiStrip>
       }

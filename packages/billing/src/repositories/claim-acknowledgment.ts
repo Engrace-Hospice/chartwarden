@@ -13,8 +13,8 @@ import * as schema from "@wardenx/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   type BillingDb,
-  buildCursorPage,
   type CursorPage,
+  buildCursorPage,
   decodeCursor,
   keysetBefore,
   pageSizeOf,
@@ -42,7 +42,8 @@ export class ClaimAcknowledgmentRepository {
       .returning();
     if (inserted) return inserted;
     const existing = await this.findByFile(values.macJurisdiction, values.ackFileUri);
-    if (!existing) throw new Error("claim_acknowledgment append: conflict but no existing row found");
+    if (!existing)
+      throw new Error("claim_acknowledgment append: conflict but no existing row found");
     return existing;
   }
 

@@ -198,9 +198,8 @@ export function createDrizzleDisciplinePlanEraseStore(db: DbClient): DisciplineP
         const planIds = await planIdsFor(tx, patientId);
         if (planIds.length === 0) return ZERO;
         const boundary = new Date(retentionAsOf);
-        const del = async <T extends { id: string }>(
-          run: () => Promise<T[]>,
-        ): Promise<number> => (await run()).length;
+        const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
+          (await run()).length;
 
         // Children first (FK order): signatures → versions; goals / interventions / assessments /
         // supervisory visits / volunteer assignments are independent leaves of the plan root.

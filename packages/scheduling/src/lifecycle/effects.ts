@@ -8,7 +8,12 @@
 // visit's optimistic-locked transaction (load FOR UPDATE on `version` → run guards → update row → append
 // `visit_state_history` → audit() → outbox.publish()). Keeping them as data makes the machines
 // deterministic and unit-testable with no DB.
-import type { M17EventName, SchedulingAlertPayload, EvvBracketState, VisitStatus } from "@wardenx/types";
+import type {
+  EvvBracketState,
+  M17EventName,
+  SchedulingAlertPayload,
+  VisitStatus,
+} from "@wardenx/types";
 
 /** The §4.9 typed-alert discriminator the `alert` effect names (the payload is assembled in M17-T08). */
 export type SchedulingAlertKind = SchedulingAlertPayload["kind"];
@@ -46,7 +51,11 @@ export type SchedulingSideEffect =
   /** Stamp the §1.1 / D3 EVV-bracket flag on the visit row (`evv_present` | `evv_missing_documented`). */
   | { readonly kind: "set_evv_bracket"; readonly state: EvvBracketState }
   /** Persist a denylisted free-text reason on the aggregate (§3.6 audit scrub records `<changed>`). */
-  | { readonly kind: "capture_reason"; readonly field: SchedulingReasonField; readonly value: string }
+  | {
+      readonly kind: "capture_reason";
+      readonly field: SchedulingReasonField;
+      readonly value: string;
+    }
   /** Set a timestamp/marker column on the aggregate (e.g. `published_at`, `completed_at`, `approved_at`). */
   | { readonly kind: "set_timestamp"; readonly field: string }
   /** §2.2.1 `reschedule` — point the original row's `rescheduled_into_visit_id` at the new visit (id minted

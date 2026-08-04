@@ -90,7 +90,10 @@ export interface CarePlanSummaryInput {
 
 /** The M9/M10 HOPE summary — `null` when the patient has no HOPE context (non-Medicare or pre-HOPE). */
 export interface HopeContextInput {
-  readonly upcomingTimepoints: ReadonlyArray<{ readonly timepoint: string; readonly dueAt: IsoInstant }>;
+  readonly upcomingTimepoints: ReadonlyArray<{
+    readonly timepoint: string;
+    readonly dueAt: IsoInstant;
+  }>;
   readonly openSfvCount: number;
 }
 
@@ -131,55 +134,69 @@ function buildHighlights(
   carryForward: readonly PacketActionItemCarryForwardDigest[],
 ): Highlight[] {
   return [
-    ...since.encounters.map((e): Highlight => ({
-      sourceKind: "encounter",
-      sourceId: e.encounterId,
-      label: e.encounterType,
-      summary: `${e.authorDiscipline} encounter signed ${e.signedAt}`,
-      severity: "info",
-    })),
-    ...since.significantAssessmentChanges.map((a): Highlight => ({
-      sourceKind: "assessment",
-      sourceId: a.assessmentId,
-      label: a.scaleKind,
-      summary: `${a.changeKind} change on ${a.scaleKind}`,
-      severity: "attention",
-    })),
-    ...since.j2051Triggers.map((h): Highlight => ({
-      sourceKind: "hope",
-      sourceId: h.hopeAssessmentId,
-      label: h.triggerKind,
-      summary: `HOPE ${h.triggerKind} fired ${h.firedAt}`,
-      severity: "attention",
-    })),
-    ...since.ordersChanged.map((o): Highlight => ({
-      sourceKind: "order",
-      sourceId: o.orderId,
-      label: o.orderKind,
-      summary: `${o.changeKind} (${o.orderKind})`,
-      severity: "info",
-    })),
-    ...since.medicationsChanged.map((m): Highlight => ({
-      sourceKind: "medication",
-      sourceId: m.medicationOrderId,
-      label: m.drugLabel,
-      summary: `${m.changeKind}: ${m.drugLabel}`,
-      severity: "info",
-    })),
-    ...since.flaggedEvents.map((f): Highlight => ({
-      sourceKind: "flag",
-      sourceId: f.sourceId,
-      label: f.kind,
-      summary: `${f.kind} occurred ${f.occurredAt}`,
-      severity: f.severity,
-    })),
-    ...carryForward.map((c): Highlight => ({
-      sourceKind: "action_item",
-      sourceId: c.actionItemId,
-      label: "carry-forward action item",
-      summary: `overdue ${c.dueDate} (carried ${c.carryForwardCount}×)`,
-      severity: c.carryForwardCount >= 3 ? "urgent" : "attention",
-    })),
+    ...since.encounters.map(
+      (e): Highlight => ({
+        sourceKind: "encounter",
+        sourceId: e.encounterId,
+        label: e.encounterType,
+        summary: `${e.authorDiscipline} encounter signed ${e.signedAt}`,
+        severity: "info",
+      }),
+    ),
+    ...since.significantAssessmentChanges.map(
+      (a): Highlight => ({
+        sourceKind: "assessment",
+        sourceId: a.assessmentId,
+        label: a.scaleKind,
+        summary: `${a.changeKind} change on ${a.scaleKind}`,
+        severity: "attention",
+      }),
+    ),
+    ...since.j2051Triggers.map(
+      (h): Highlight => ({
+        sourceKind: "hope",
+        sourceId: h.hopeAssessmentId,
+        label: h.triggerKind,
+        summary: `HOPE ${h.triggerKind} fired ${h.firedAt}`,
+        severity: "attention",
+      }),
+    ),
+    ...since.ordersChanged.map(
+      (o): Highlight => ({
+        sourceKind: "order",
+        sourceId: o.orderId,
+        label: o.orderKind,
+        summary: `${o.changeKind} (${o.orderKind})`,
+        severity: "info",
+      }),
+    ),
+    ...since.medicationsChanged.map(
+      (m): Highlight => ({
+        sourceKind: "medication",
+        sourceId: m.medicationOrderId,
+        label: m.drugLabel,
+        summary: `${m.changeKind}: ${m.drugLabel}`,
+        severity: "info",
+      }),
+    ),
+    ...since.flaggedEvents.map(
+      (f): Highlight => ({
+        sourceKind: "flag",
+        sourceId: f.sourceId,
+        label: f.kind,
+        summary: `${f.kind} occurred ${f.occurredAt}`,
+        severity: f.severity,
+      }),
+    ),
+    ...carryForward.map(
+      (c): Highlight => ({
+        sourceKind: "action_item",
+        sourceId: c.actionItemId,
+        label: "carry-forward action item",
+        summary: `overdue ${c.dueDate} (carried ${c.carryForwardCount}×)`,
+        severity: c.carryForwardCount >= 3 ? "urgent" : "attention",
+      }),
+    ),
   ];
 }
 
@@ -215,18 +232,31 @@ function deriveDiscussionFlags(
   const recertDueSoon =
     cover.f2fWindowState === "overdue" ||
     cover.f2fWindowState === "window_open" ||
-    (cover.nextRecertDueAt !== null && daysBetween(builtAt, cover.nextRecertDueAt) <= RECERT_FLAG_WINDOW_DAYS);
+    (cover.nextRecertDueAt !== null &&
+      daysBetween(builtAt, cover.nextRecertDueAt) <= RECERT_FLAG_WINDOW_DAYS);
   if (recertDueSoon) {
-    flags.push({ kind: "recert_due", detail: `recert/F2F window: ${cover.f2fWindowState ?? "within 30 days"}` });
+    flags.push({
+      kind: "recert_due",
+      detail: `recert/F2F window: ${cover.f2fWindowState ?? "within 30 days"}`,
+    });
   }
   if (since.flaggedEvents.some((f) => f.kind === "hospitalisation" || f.kind === "er_visit")) {
-    flags.push({ kind: "level_of_care_candidate", detail: "hospitalisation / ER event since last IDG" });
+    flags.push({
+      kind: "level_of_care_candidate",
+      detail: "hospitalisation / ER event since last IDG",
+    });
   }
   if (since.significantAssessmentChanges.length > 0 || since.j2051Triggers.length > 0) {
-    flags.push({ kind: "complex_symptoms", detail: "significant assessment change or HOPE symptom-impact trigger" });
+    flags.push({
+      kind: "complex_symptoms",
+      detail: "significant assessment change or HOPE symptom-impact trigger",
+    });
   }
   if (cover.activeSudFlag) {
-    flags.push({ kind: "sud_pattern_review", detail: "active SUD-flagged content — 42 CFR Part 2 applies" });
+    flags.push({
+      kind: "sud_pattern_review",
+      detail: "active SUD-flagged content — 42 CFR Part 2 applies",
+    });
   }
   return flags;
 }
@@ -240,12 +270,20 @@ function deriveDiscussionFlags(
  * is `null` (the M26 cap deny-stub ships in a later wave). The service freezes + upserts the result.
  */
 export function buildPacketSnapshot(input: PacketBuildInput): BuiltPacket {
-  const { context, cover, sinceLastIdg, carePlanSummary, hopeContext, carryForwardActionItems } = input;
-  const { sinceCursorIso, sinceContext } = resolveSinceCursor(context.priorIdgAdjournedAt, context.admissionActivatedAt);
+  const { context, cover, sinceLastIdg, carePlanSummary, hopeContext, carryForwardActionItems } =
+    input;
+  const { sinceCursorIso, sinceContext } = resolveSinceCursor(
+    context.priorIdgAdjournedAt,
+    context.admissionActivatedAt,
+  );
 
   const sinceLastIdgFiltered: PacketSnapshot["sinceLastIdg"] = {
     encounters: after(sinceLastIdg.encounters, sinceCursorIso, (e) => e.signedAt),
-    significantAssessmentChanges: after(sinceLastIdg.significantAssessmentChanges, sinceCursorIso, (a) => a.occurredAt),
+    significantAssessmentChanges: after(
+      sinceLastIdg.significantAssessmentChanges,
+      sinceCursorIso,
+      (a) => a.occurredAt,
+    ),
     j2051Triggers: after(sinceLastIdg.j2051Triggers, sinceCursorIso, (h) => h.firedAt),
     ordersChanged: after(sinceLastIdg.ordersChanged, sinceCursorIso, (o) => o.changedAt),
     medicationsChanged: after(sinceLastIdg.medicationsChanged, sinceCursorIso, (m) => m.changedAt),

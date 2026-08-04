@@ -14,9 +14,9 @@
 // wireOutboxCatalog in ./outbox-persister.ts) — same idempotent UPSERT-on-primary-key pattern, same
 // NON_ORG_SCOPED platform-reference-data posture, same fail-soft (never blocks boot) call site.
 import {
-  bootOrganizationSettingsRegistry,
   type DbClient,
   type RegistryRowUpserter,
+  bootOrganizationSettingsRegistry,
   schema,
 } from "@wardenx/db";
 

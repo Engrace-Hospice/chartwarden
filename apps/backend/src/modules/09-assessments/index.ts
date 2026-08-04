@@ -6,12 +6,12 @@
 // contributes to M3 live in @wardenx/auth (M9_CONTRIBUTED_PERMISSIONS).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { registerAssessmentAbacPredicates as _registerM9Abac } from "./abac-predicates";
 import {
   type AssessmentWriteOutboxPort,
   createDbAssessmentAbacResolver,
   createDbAssessmentRouteService,
 } from "./assessments-route-service-db";
-import { registerAssessmentAbacPredicates as _registerM9Abac } from "./abac-predicates";
 import { registerAssessmentRoutes as _registerM9Routes } from "./routes/assessments-routes";
 
 /**

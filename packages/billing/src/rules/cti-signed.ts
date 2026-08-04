@@ -1,10 +1,10 @@
+import { periodsOverlappingClaim } from "./_util";
 // @wardenx/billing — §4.5 rule `cti_signed_per_period` (cert, error, regulatory). A signed Certification
 // of Terminal Illness (CTI) must exist for every election period the claim's service window touches; for
 // period 1 the attending physician's co-signature is required when the patient has an attending (42 CFR
 // §418.22). Reads the resolved `electionPeriods` + `certifications` snapshots. PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
-import { periodsOverlappingClaim } from "./_util";
 
 const KEY = "cti_signed_per_period";
 
@@ -23,11 +23,16 @@ export const ctiSignedPerPeriod: Rule = {
   check: (ctx) => {
     const periods = periodsOverlappingClaim(ctx.claim, ctx.electionPeriods);
     if (periods.length === 0) {
-      return fail(KEY, "error", "No election period overlaps the claim window; cannot verify CTI.", {
-        summary: "Correct the claim dates or election period (M6).",
-        blameTarget: "election_period",
-        fixAction: "edit_in_m6",
-      });
+      return fail(
+        KEY,
+        "error",
+        "No election period overlaps the claim window; cannot verify CTI.",
+        {
+          summary: "Correct the claim dates or election period (M6).",
+          blameTarget: "election_period",
+          fixAction: "edit_in_m6",
+        },
+      );
     }
     const unsigned: number[] = [];
     const missingCosign: number[] = [];
@@ -40,11 +45,16 @@ export const ctiSignedPerPeriod: Rule = {
       if (cert.attendingCosignRequired && !cert.attendingCosigned) missingCosign.push(p.sequence);
     }
     if (unsigned.length === 0 && missingCosign.length === 0) {
-      return pass(KEY, "error", "A signed CTI (with required co-signatures) exists for every period.");
+      return pass(
+        KEY,
+        "error",
+        "A signed CTI (with required co-signatures) exists for every period.",
+      );
     }
     const parts: string[] = [];
     if (unsigned.length > 0) parts.push(`${unsigned.length} period(s) lack a signed CTI`);
-    if (missingCosign.length > 0) parts.push(`${missingCosign.length} period(s) lack the attending co-sign`);
+    if (missingCosign.length > 0)
+      parts.push(`${missingCosign.length} period(s) lack the attending co-sign`);
     return fail(
       KEY,
       "error",

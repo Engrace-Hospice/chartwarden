@@ -10,7 +10,11 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError("IDEMPOTENCY_KEY_REQUIRED", "an Idempotency-Key header is required", 400);
+      throw new WardenXError(
+        "IDEMPOTENCY_KEY_REQUIRED",
+        "an Idempotency-Key header is required",
+        400,
+      );
     }
   };
 }
@@ -27,7 +31,7 @@ export function ifMatchVersion(request: { headers: Record<string, unknown> }): n
 
 /** Clamp a `limit` query param into [1, 100], default 50. */
 export function clampLimit(raw: unknown): number {
-  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
   if (!Number.isFinite(n)) return 50;
   return Math.min(100, Math.max(1, Math.floor(n)));
 }

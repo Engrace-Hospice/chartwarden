@@ -10,12 +10,28 @@
 //   • `isSpawnDue` / `assertSpawnAllowed` — the active/signed/effective-window/max-spawns gate.
 //   • `planStandingCreation` / `planStandingSpawn` / `planStandingDiscontinuation` — side-effect plans.
 // Every fact (now, the template's status/signature/counters, the org timezone) is injected as data.
-import type { IsoInstant, LocalDate, OrderKind, StandingOrderCadence, StandingOrderSpawnedBy, M11EventName } from "@wardenx/types";
+import type {
+  IsoInstant,
+  LocalDate,
+  M11EventName,
+  OrderKind,
+  StandingOrderCadence,
+  StandingOrderSpawnedBy,
+} from "@wardenx/types";
 import { KIND_CATALOG, STANDING_ELIGIBLE_KINDS } from "../catalog";
-import { addCalendarDays, atOrgLocalHour, dayOfWeekIndex, orgLocalDate, weekdayKey, WEEKDAY_KEYS, DEFAULT_ORG_TIME_ZONE, type WeekdayKey } from "./time";
-import { type OrderSideEffect } from "./effects";
+import type { OrderSideEffect } from "./effects";
 import { require_ } from "./errors";
 import { signerEligible } from "./signer-eligible";
+import {
+  DEFAULT_ORG_TIME_ZONE,
+  WEEKDAY_KEYS,
+  type WeekdayKey,
+  addCalendarDays,
+  atOrgLocalHour,
+  dayOfWeekIndex,
+  orgLocalDate,
+  weekdayKey,
+} from "./time";
 
 /** §2.4 — the org-local hour-of-day a scheduled spawn fires (W-SO-01 "next monday 06:00 org-tz"). */
 export const DEFAULT_SPAWN_HOUR = 6;
@@ -143,10 +159,26 @@ export function isSpawnDue(facts: StandingOrderSpawnFacts, now: IsoInstant): boo
  * `STANDING_MAX_SPAWNS_REACHED`. (The scheduled worker uses {@link isSpawnDue} for its bulk filter.)
  */
 export function assertSpawnAllowed(facts: StandingOrderSpawnFacts, now: IsoInstant): void {
-  require_(facts.status === "active", "STANDING_ORDER_NOT_ACTIVE", `the standing order is '${facts.status}', not active.`);
-  require_(facts.isSigned, "STANDING_ORDER_NOT_SIGNED", "the standing order is not yet signed (the spawn signature anchor is missing).");
-  require_(withinEffectiveWindow(facts, now), "STANDING_OUTSIDE_EFFECTIVE_WINDOW", "the standing order's effective window does not cover now.");
-  require_(underSpawnCap(facts), "STANDING_MAX_SPAWNS_REACHED", "the standing order's max_spawns cap has been reached.");
+  require_(
+    facts.status === "active",
+    "STANDING_ORDER_NOT_ACTIVE",
+    `the standing order is '${facts.status}', not active.`,
+  );
+  require_(
+    facts.isSigned,
+    "STANDING_ORDER_NOT_SIGNED",
+    "the standing order is not yet signed (the spawn signature anchor is missing).",
+  );
+  require_(
+    withinEffectiveWindow(facts, now),
+    "STANDING_OUTSIDE_EFFECTIVE_WINDOW",
+    "the standing order's effective window does not cover now.",
+  );
+  require_(
+    underSpawnCap(facts),
+    "STANDING_MAX_SPAWNS_REACHED",
+    "the standing order's max_spawns cap has been reached.",
+  );
 }
 
 /**
@@ -220,7 +252,9 @@ export interface StandingDiscontinuationPlan {
   readonly alsoDiscontinueInstances: boolean;
 }
 
-export function planStandingDiscontinuation(alsoDiscontinueInstances: boolean): StandingDiscontinuationPlan {
+export function planStandingDiscontinuation(
+  alsoDiscontinueInstances: boolean,
+): StandingDiscontinuationPlan {
   return {
     effects: [{ kind: "audit" }, { kind: "outbox", event: "m11.order.standing_discontinued" }],
     alsoDiscontinueInstances,

@@ -22,11 +22,11 @@
 // that from becoming a permanent orphan — but until it arrives, a return-required for that kit
 // dead-letters rather than opening a return against a kit M21 cannot identify.
 import type {
+  ComfortKitDeploymentId,
   ComfortKitDispatchId,
   ComfortKitDispatchStatus,
   ComfortKitReturnId,
   ComfortKitReturnState,
-  ComfortKitDeploymentId,
   ControlledSubstanceSchedule,
   IsoInstant,
   M21SubscribedEventName,

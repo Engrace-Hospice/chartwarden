@@ -23,11 +23,31 @@ export interface MessageTypeRouting {
  * new_patient row for an M5 reviewer to create.
  */
 export const MESSAGE_TYPE_ROUTING: Readonly<Record<AdtMessageType, MessageTypeRouting>> = {
-  "ADT^A01": { resourceKind: "admission_event", ownerModule: "m6", noMatchBehavior: "propose_new_patient" },
-  "ADT^A04": { resourceKind: "admission_event", ownerModule: "m6", noMatchBehavior: "propose_new_patient" },
-  "ADT^A08": { resourceKind: "patient_demographic_update", ownerModule: "m5", noMatchBehavior: "propose_new_patient" },
-  "ADT^A03": { resourceKind: "discharge_event", ownerModule: "m6", noMatchBehavior: "drop_with_audit" },
-  "ADT^A11": { resourceKind: "cancel_admission", ownerModule: "m6", noMatchBehavior: "drop_with_audit" },
+  "ADT^A01": {
+    resourceKind: "admission_event",
+    ownerModule: "m6",
+    noMatchBehavior: "propose_new_patient",
+  },
+  "ADT^A04": {
+    resourceKind: "admission_event",
+    ownerModule: "m6",
+    noMatchBehavior: "propose_new_patient",
+  },
+  "ADT^A08": {
+    resourceKind: "patient_demographic_update",
+    ownerModule: "m5",
+    noMatchBehavior: "propose_new_patient",
+  },
+  "ADT^A03": {
+    resourceKind: "discharge_event",
+    ownerModule: "m6",
+    noMatchBehavior: "drop_with_audit",
+  },
+  "ADT^A11": {
+    resourceKind: "cancel_admission",
+    ownerModule: "m6",
+    noMatchBehavior: "drop_with_audit",
+  },
 };
 
 /** True when `messageType` is one of the five supported ADT triggers (narrows to {@link AdtMessageType}). */

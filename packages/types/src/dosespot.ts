@@ -16,7 +16,7 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, AdmissionId } from "./admission";
+import type { AdmissionId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
 
 // ── M12-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
@@ -70,11 +70,7 @@ export type DoseSpotSendState =
 export type RefillRequestStatus = "pending" | "approved" | "denied" | "expired";
 
 /** The §2.7 refill-decision channel (mirrors `refill_response_channel`). */
-export type RefillResponseChannel =
-  | "electronic_via_dosespot"
-  | "phone"
-  | "fax"
-  | "in_person";
+export type RefillResponseChannel = "electronic_via_dosespot" | "phone" | "fax" | "in_person";
 
 /** The §2.8 medication-history provenance (mirrors `medication_history_source`). */
 export type MedicationHistorySource =
@@ -91,12 +87,7 @@ export type DoseSpotWebhookEventType =
   | "prescriber_status_changed";
 
 /** The §2.4 §1311.115 IAL2 identity-proofing status (mirrors `ial2_status`). */
-export type Ial2Status =
-  | "not_started"
-  | "in_progress"
-  | "verified"
-  | "expired"
-  | "revoked";
+export type Ial2Status = "not_started" | "in_progress" | "verified" | "expired" | "revoked";
 
 /** The §2.4 D18 per-tenant EPCS certification gate (mirrors `epcs_certification_status`). */
 export type EpcsCertificationStatus =
@@ -403,10 +394,7 @@ export interface MedicationOrderProvider {
     patientId: string,
     sinceIso: string,
   ): Promise<MedicationOrderDto[]>;
-  getMedicationOrder(
-    orgId: string,
-    medicationOrderId: string,
-  ): Promise<MedicationOrderDto | null>;
+  getMedicationOrder(orgId: string, medicationOrderId: string): Promise<MedicationOrderDto | null>;
   listForAdmission(
     orgId: string,
     admissionId: string,
@@ -464,8 +452,5 @@ export interface RefillInboxProvider {
     prescriberMembershipId: string,
   ): Promise<RefillRequestDto[]>;
   getPendingRefillsForPatient(orgId: string, patientId: string): Promise<RefillRequestDto[]>;
-  getRefillRequestById(
-    orgId: string,
-    refillRequestId: string,
-  ): Promise<RefillRequestDto | null>;
+  getRefillRequestById(orgId: string, refillRequestId: string): Promise<RefillRequestDto | null>;
 }

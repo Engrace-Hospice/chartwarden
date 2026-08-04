@@ -11,21 +11,10 @@
 // PURE: a static filesystem read of the .sql text + a parse — no DB, no Fastify, no network.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_VALIDATION_RULES, NGS_J6_RULES, type RuleDef } from "@wardenx/cost-report";
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_VALIDATION_RULES,
-  NGS_J6_RULES,
-  type RuleDef,
-} from "@wardenx/cost-report";
 
-const SEED_PATH = join(
-  __dirname,
-  "..",
-  "..",
-  "db",
-  "migrations",
-  "0073_cost_report_m27_seed.sql",
-);
+const SEED_PATH = join(__dirname, "..", "..", "db", "migrations", "0073_cost_report_m27_seed.sql");
 
 const seedSql = readFileSync(SEED_PATH, "utf8");
 
@@ -146,7 +135,7 @@ describe("M27 seed migration 0073 — platform-default discipline", () => {
     expect(seedSql).toContain('"rule_set_version"');
   });
 
-  it("uses the {\"ruleCode\": ...} predicate descriptor pointing at the code-side evaluate", () => {
+  it('uses the {"ruleCode": ...} predicate descriptor pointing at the code-side evaluate', () => {
     expect(seedSql).toContain("jsonb_build_object('ruleCode', v.\"rule_code\")");
   });
 

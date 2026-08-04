@@ -24,16 +24,11 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import {
-  hopeRfaKind,
-  hopeDischargeReason,
-  hopeAssessmentStatus,
-  j2051Severity,
-} from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
+import { hopeAssessmentStatus, hopeDischargeReason, hopeRfaKind, j2051Severity } from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { hopeTimepointSchedules } from "./hope-timepoint-schedules";
 
 export const hopeAssessments = pgTable(

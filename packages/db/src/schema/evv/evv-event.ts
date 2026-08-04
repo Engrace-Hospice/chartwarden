@@ -17,12 +17,22 @@
 // append-only immutability trigger (refuse UPDATE except superseded_at/superseded_by_event_id; refuse DELETE)
 // also lands in 0047 (§3.2 Phase C). References TO `evv_event` (evv_geofence_evaluation.evv_event_id) carry
 // NO SQL FK — plain uuid app-validated. RLS + grants + the M4 write-audit trigger land in 0047.
-import { boolean, index, integer, pgTable, primaryKey, real, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  real,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { evvEventGpsQuality, evvEventKind } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { evvDevice } from "./evv-device";
 
 export const evvEvent = pgTable(

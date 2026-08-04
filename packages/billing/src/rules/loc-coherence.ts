@@ -3,9 +3,9 @@
 // requires 8+ documented hours/day, GIP requires admission criteria documented (D7 / 42 CFR §418.302).
 // Reads the resolved `lines` + `levelOfCarePeriods` snapshots. PURE: reads ctx only.
 import type { LevelOfCare } from "../contracts";
+import { locPeriodCoveringDate, paramStringMap } from "./_util";
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
-import { locPeriodCoveringDate, paramStringMap } from "./_util";
 
 const KEY = "level_of_care_coherence";
 
@@ -31,7 +31,10 @@ export const levelOfCareCoherence: Rule = {
   severity: "error",
   regulatoryRequired: true,
   overrideRoleRequired: "billing_manager",
-  defaultParameters: { revenueCodeByLoc: REVENUE_CODE_BY_LOC, chcMinDocumentedHours: CHC_MIN_DOCUMENTED_HOURS },
+  defaultParameters: {
+    revenueCodeByLoc: REVENUE_CODE_BY_LOC,
+    chcMinDocumentedHours: CHC_MIN_DOCUMENTED_HOURS,
+  },
   check: (ctx, params) => {
     const revenueCodeByLoc = paramStringMap(params, "revenueCodeByLoc", REVENUE_CODE_BY_LOC);
     const chcMinHours =
@@ -52,7 +55,9 @@ export const levelOfCareCoherence: Rule = {
       }
       const expectedRevenue = revenueCodeByLoc[line.levelOfCare];
       if (expectedRevenue !== undefined && line.revenueCode !== expectedRevenue) {
-        defects.push(`${line.serviceDate}: revenue ${line.revenueCode} ≠ expected ${expectedRevenue}`);
+        defects.push(
+          `${line.serviceDate}: revenue ${line.revenueCode} ≠ expected ${expectedRevenue}`,
+        );
       }
       if (
         period.levelOfCare === "continuous_home_care" &&
@@ -68,14 +73,19 @@ export const levelOfCareCoherence: Rule = {
       }
     }
     if (defects.length === 0) {
-      return pass(KEY, "error", "Every claim line's LOC/revenue/Q-code coheres with its LOC period.");
+      return pass(
+        KEY,
+        "error",
+        "Every claim line's LOC/revenue/Q-code coheres with its LOC period.",
+      );
     }
     return fail(
       KEY,
       "error",
       `${defects.length} claim line(s) have level-of-care coherence defects.`,
       {
-        summary: "Correct the line's revenue/Q-code/LOC or document CHC hours / GIP criteria (M8/M6).",
+        summary:
+          "Correct the line's revenue/Q-code/LOC or document CHC hours / GIP criteria (M8/M6).",
         blameTarget: "claim_line",
         fixAction: "edit_in_m8",
       },

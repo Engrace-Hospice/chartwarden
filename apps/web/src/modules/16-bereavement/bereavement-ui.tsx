@@ -33,7 +33,11 @@ export const td: CSSProperties = {
   verticalAlign: "top",
 };
 export const tdMono: CSSProperties = { ...td, fontFamily: t.fontMono };
-export const tdNum: CSSProperties = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
+export const tdNum: CSSProperties = {
+  ...td,
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+};
 export const rowLine: CSSProperties = { borderTop: `1px solid ${t.surfaceContainer}` };
 
 /** Screen-reader-only text — keeps a control labelled without occupying visual space (§16 WCAG AA). */
@@ -329,7 +333,13 @@ export function CheckboxField({
 }: { label: string; checked: boolean; onChange: (v: boolean) => void }): JSX.Element {
   return (
     <label
-      style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: t.onSurface }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5rem",
+        fontSize: "0.85rem",
+        color: t.onSurface,
+      }}
     >
       <input
         type="checkbox"
@@ -421,9 +431,7 @@ export function Notice({
  * "not disclosed", which is a different fact from "no tier computed" (`null`), and the two must not
  * collapse into one badge.
  */
-export function RiskTierPill({
-  tier,
-}: { tier?: string | null | undefined }): JSX.Element {
+export function RiskTierPill({ tier }: { tier?: string | null | undefined }): JSX.Element {
   if (tier === undefined) return <StatusPill label="Not disclosed" tone="neutral" />;
   if (tier === null) return <StatusPill label="Not yet scored" tone="neutral" />;
   const glyph = RISK_TIER_GLYPH[tier] ?? "○";

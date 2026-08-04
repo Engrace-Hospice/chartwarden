@@ -10,10 +10,10 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
+  type DenialState,
   canTransitionAppeal,
   canTransitionDenial,
   computeTierDeadline,
-  type DenialState,
   nextTier,
 } from "../domain";
 import type { M25WriteActor } from "./actor";
@@ -59,7 +59,12 @@ export function buildDrizzleM25WriteService(
   /** Read a denial's current (state, version) or throw NOT_FOUND. */
   async function denialState(tx: M25Tx, id: string) {
     const rows = await tx
-      .select({ state: DC.state, version: DC.version, providerEntityId: DC.providerEntityId, claimId: DC.claimId })
+      .select({
+        state: DC.state,
+        version: DC.version,
+        providerEntityId: DC.providerEntityId,
+        claimId: DC.claimId,
+      })
       .from(DC)
       .where(eq(DC.id, id))
       .limit(1);
@@ -96,7 +101,11 @@ export function buildDrizzleM25WriteService(
   return {
     async replayAdvice(actor, adviceId) {
       await withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select({ status: RA.parseStatus }).from(RA).where(eq(RA.id, adviceId)).limit(1);
+        const rows = await tx
+          .select({ status: RA.parseStatus })
+          .from(RA)
+          .where(eq(RA.id, adviceId))
+          .limit(1);
         if (!rows[0]) throw new NotFoundError("remittance advice not found");
         if (rows[0].status !== "failed") {
           throw new WardenXError("INVALID_STATE", "only a failed advice can be replayed", 409);
@@ -114,10 +123,18 @@ export function buildDrizzleM25WriteService(
 
     async manualMatch(actor, lineId, input: ManualMatchInput) {
       await withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select({ id: RL.id, matchState: RL.matchState }).from(RL).where(eq(RL.id, lineId)).limit(1);
+        const rows = await tx
+          .select({ id: RL.id, matchState: RL.matchState })
+          .from(RL)
+          .where(eq(RL.id, lineId))
+          .limit(1);
         if (!rows[0]) throw new NotFoundError("remittance line not found");
         if (rows[0].matchState !== "unmatched") {
-          throw new WardenXError("INVALID_STATE", "only an unmatched line can be manually matched", 409);
+          throw new WardenXError(
+            "INVALID_STATE",
+            "only an unmatched line can be manually matched",
+            409,
+          );
         }
         await tx
           .update(RL)
@@ -135,16 +152,27 @@ export function buildDrizzleM25WriteService(
           organizationId: actor.organizationId,
           aggregateKind: "remittance_line",
           aggregateId: lineId,
-          payload: { remittanceLineId: lineId, claimId: input.proposedClaimId, matchedByMembershipId: actor.membershipId },
+          payload: {
+            remittanceLineId: lineId,
+            claimId: input.proposedClaimId,
+            matchedByMembershipId: actor.membershipId,
+          },
         });
       });
     },
 
     async overrideAdjustment(actor, adjustmentId, input: AdjustmentOverrideInput) {
       await withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select({ id: ADJ.id }).from(ADJ).where(eq(ADJ.id, adjustmentId)).limit(1);
+        const rows = await tx
+          .select({ id: ADJ.id })
+          .from(ADJ)
+          .where(eq(ADJ.id, adjustmentId))
+          .limit(1);
         if (!rows[0]) throw new NotFoundError("remittance adjustment not found");
-        await tx.update(ADJ).set({ postAction: input.newPostAction }).where(eq(ADJ.id, adjustmentId));
+        await tx
+          .update(ADJ)
+          .set({ postAction: input.newPostAction })
+          .where(eq(ADJ.id, adjustmentId));
       });
     },
 
@@ -227,11 +255,19 @@ export function buildDrizzleM25WriteService(
         let anchor = anchorRows[0]?.openedAt ?? new Date();
         const lineId = anchorRows[0]?.remittanceLineId;
         if (lineId) {
-          const lr = await tx.select({ receivedAt: RL.receivedAt }).from(RL).where(eq(RL.id, lineId)).limit(1);
+          const lr = await tx
+            .select({ receivedAt: RL.receivedAt })
+            .from(RL)
+            .where(eq(RL.id, lineId))
+            .limit(1);
           if (lr[0]?.receivedAt) anchor = lr[0].receivedAt;
         }
-        const deadline = computeTierDeadline(tier, anchor instanceof Date ? anchor : new Date(anchor));
-        if (!cur.claimId) throw new WardenXError("INVALID_STATE", "the denial has no claim to appeal", 409);
+        const deadline = computeTierDeadline(
+          tier,
+          anchor instanceof Date ? anchor : new Date(anchor),
+        );
+        if (!cur.claimId)
+          throw new WardenXError("INVALID_STATE", "the denial has no claim to appeal", 409);
         const inserted = await tx
           .insert(AC)
           .values({
@@ -253,7 +289,10 @@ export function buildDrizzleM25WriteService(
         });
         // Move the denial onto the appealed track when the edge is legal (escalated → appealed).
         if (canTransitionDenial(cur.state, "appealed")) {
-          await tx.update(DC).set({ state: "appealed", version: cur.version + 1 }).where(eq(DC.id, denialCaseId));
+          await tx
+            .update(DC)
+            .set({ state: "appealed", version: cur.version + 1 })
+            .where(eq(DC.id, denialCaseId));
         }
         return { id: appealId, version: inserted[0]!.version };
       });
@@ -287,7 +326,10 @@ export function buildDrizzleM25WriteService(
         ifMatch,
         {
           submittedAt: sql`now()`,
-          appealNarrative: { narrative: input.appealNarrative, documents: input.attachedDocumentIds },
+          appealNarrative: {
+            narrative: input.appealNarrative,
+            documents: input.attachedDocumentIds,
+          },
         },
         async (tx, cur) => {
           await outbox.publish(tx, {
@@ -295,7 +337,12 @@ export function buildDrizzleM25WriteService(
             organizationId: actor.organizationId,
             aggregateKind: "appeal_case",
             aggregateId: id,
-            payload: { appealCaseId: id, denialCaseId: cur.denialCaseId, tier: cur.tier, submittedAt: new Date(0).toISOString() },
+            payload: {
+              appealCaseId: id,
+              denialCaseId: cur.denialCaseId,
+              tier: cur.tier,
+              submittedAt: new Date(0).toISOString(),
+            },
           });
           await outbox.publish(tx, {
             eventName: "m25.appeal_packet.render_requested",
@@ -315,7 +362,8 @@ export function buildDrizzleM25WriteService(
     async decideAppeal(actor, id, input: AppealDecideInput, ifMatch) {
       const result = await withOrgContext(db, actor, async (tx) => {
         const cur = await appealRow(tx, id);
-        if (!canTransitionAppeal(cur.state, "decided")) throw new InvalidTransitionError(cur.state, "decided");
+        if (!canTransitionAppeal(cur.state, "decided"))
+          throw new InvalidTransitionError(cur.state, "decided");
         const updated = await tx
           .update(AC)
           .set({
@@ -356,7 +404,12 @@ export function buildDrizzleM25WriteService(
             organizationId: actor.organizationId,
             aggregateKind: "appeal_case",
             aggregateId: id,
-            payload: { denialCaseId: cur.denialCaseId, appealCaseId: id, claimId: cur.claimId, tier: cur.tier },
+            payload: {
+              denialCaseId: cur.denialCaseId,
+              appealCaseId: id,
+              claimId: cur.claimId,
+              tier: cur.tier,
+            },
           });
         }
         return { id: updated[0].id, version: updated[0].version };
@@ -374,7 +427,11 @@ export function buildDrizzleM25WriteService(
 
     async editTaxonomyOverlay(actor, carcCode, input: TaxonomyOverlayInput, ifMatch) {
       return withOrgContext(db, actor, async (tx) => {
-        const rows = await tx.select({ id: TO.id, version: TO.version }).from(TO).where(eq(TO.carcCode, carcCode)).limit(1);
+        const rows = await tx
+          .select({ id: TO.id, version: TO.version })
+          .from(TO)
+          .where(eq(TO.carcCode, carcCode))
+          .limit(1);
         if (rows[0]) {
           const updated = await tx
             .update(TO)
@@ -382,8 +439,8 @@ export function buildDrizzleM25WriteService(
               rarcCode: input.rarcCode ?? null,
               plainLanguageOverride: input.plainLanguageOverride ?? null,
               suggestedAction: input.suggestedAction,
-              ownerRole: input.ownerRole as typeof TO.ownerRole.enumValues[number],
-              severity: input.severity as typeof TO.severity.enumValues[number],
+              ownerRole: input.ownerRole as (typeof TO.ownerRole.enumValues)[number],
+              severity: input.severity as (typeof TO.severity.enumValues)[number],
               version: rows[0].version + 1,
               updatedAt: sql`now()`,
             })
@@ -400,8 +457,8 @@ export function buildDrizzleM25WriteService(
             rarcCode: input.rarcCode ?? null,
             plainLanguageOverride: input.plainLanguageOverride ?? null,
             suggestedAction: input.suggestedAction,
-            ownerRole: input.ownerRole as typeof TO.ownerRole.enumValues[number],
-            severity: input.severity as typeof TO.severity.enumValues[number],
+            ownerRole: input.ownerRole as (typeof TO.ownerRole.enumValues)[number],
+            severity: input.severity as (typeof TO.severity.enumValues)[number],
           })
           .returning({ id: TO.id, version: TO.version });
         return { id: inserted[0]!.id, version: inserted[0]!.version };

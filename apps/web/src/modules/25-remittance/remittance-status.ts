@@ -73,7 +73,10 @@ export const AGING_BUCKET_TONE: Record<string, StatusTone> = {
 };
 
 /** Resolve a wire enum to a tone with a neutral default (an unknown value never throws / never goes red). */
-export function toneOf(map: Record<string, StatusTone>, value: string | null | undefined): StatusTone {
+export function toneOf(
+  map: Record<string, StatusTone>,
+  value: string | null | undefined,
+): StatusTone {
   return (value ? map[value] : undefined) ?? "neutral";
 }
 
@@ -85,7 +88,8 @@ export function humanize(value: string | null | undefined): string {
 
 /** Format a numeric(12,2) decimal-dollar string as USD (the M25 wire amounts are dollars, not cents). */
 export function money(value: string | number | null | undefined): string {
-  const n = typeof value === "string" ? Number(value) : typeof value === "number" ? value : NaN;
+  const n =
+    typeof value === "string" ? Number(value) : typeof value === "number" ? value : Number.NaN;
   if (!Number.isFinite(n)) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }

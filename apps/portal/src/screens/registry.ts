@@ -13,9 +13,9 @@ import { PortalDocumentList } from "./documents";
 import { PORTAL_SCREEN_MANIFEST } from "./manifest";
 import { PortalMedicationList } from "./medications";
 import { PortalMessages } from "./messages";
-import { PortalNotificationPreferences } from "./preferences";
 import { PortalPatientDashboard } from "./patient-dashboard";
 import { PortalPatientPicker } from "./patient-picker";
+import { PortalNotificationPreferences } from "./preferences";
 import { PortalSignIn } from "./sign-in";
 import { TelehealthWaitingRoom } from "./telehealth-waiting-room";
 import { PortalVisitList } from "./visits";
@@ -66,7 +66,8 @@ export function createPortalRegistry(): ScreenRegistry<PortalScreen> {
   return {
     register(module) {
       for (const s of module.screens) {
-        if (ids.has(s.id)) throw new Error(`duplicate portal screen id: "${s.id}" (module ${module.slug})`);
+        if (ids.has(s.id))
+          throw new Error(`duplicate portal screen id: "${s.id}" (module ${module.slug})`);
         ids.add(s.id);
       }
       modules.push(module);

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `evv_geofence_policy` (M18 §3.3 / §2.2.2 D3). The three-layer geofence policy with strict
 // precedence: platform floor (seeded scope='platform', radius_m=200, max_accuracy_m=50) → tenant default →
 // per-address override (requires override_reason ≥30 chars, DENYLISTED §3.6). Tenant-scoped configuration
@@ -5,10 +6,9 @@
 // three-column rule does not apply — only org-scope). Retained for the life of the tenant. RLS + grants + M4
 // write-audit trigger land in the RLS migration (M18-T02 / 0047).
 import { bigint, date, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { evvGeofencePolicyScope } from "../../enums";
-import { organizations } from "../organizations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
 
 export const evvGeofencePolicy = pgTable(
   "evv_geofence_policy",

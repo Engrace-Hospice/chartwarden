@@ -5,12 +5,9 @@
 // every byte goes through the injected port. Constructed by `createXeroClientFactory` (index.ts) once a
 // tenant's tokens resolve; the default factory injects the fail-closed port so an un-wired env throws
 // {@link XERO_NOT_CONNECTED}.
-import {
-  XERO_ACCOUNTS_PATH,
-  XERO_TRIAL_BALANCE_PATH,
-} from "./constants";
+import { XERO_ACCOUNTS_PATH, XERO_TRIAL_BALANCE_PATH } from "./constants";
 import { normalizeChartOfAccounts, normalizeTrialBalance } from "./normalize";
-import { requestWithRefresh, type XeroHttpPort, type XeroSession } from "./oauth";
+import { type XeroHttpPort, type XeroSession, requestWithRefresh } from "./oauth";
 import type { TokenStore, XeroTokens } from "./token-store";
 import type { NormalizedAccount, NormalizedTrialBalance, XeroClient } from "./types";
 
@@ -35,7 +32,10 @@ export class LiveXeroClient implements XeroClient {
     this.session = { tokens: deps.tokens };
   }
 
-  async getTrialBalance(input: { fromDate: string; toDate: string }): Promise<NormalizedTrialBalance> {
+  async getTrialBalance(input: {
+    fromDate: string;
+    toDate: string;
+  }): Promise<NormalizedTrialBalance> {
     const response = await requestWithRefresh(
       this.deps.http,
       this.deps.tokenStore,
@@ -72,6 +72,9 @@ export class LiveXeroClient implements XeroClient {
 
   /** Explicit reconnect: rotate the tokens via the store and adopt them for subsequent calls. */
   async refreshTokens(): Promise<void> {
-    this.session.tokens = await this.deps.tokenStore.refresh(this.deps.organizationId, this.session.tokens);
+    this.session.tokens = await this.deps.tokenStore.refresh(
+      this.deps.organizationId,
+      this.session.tokens,
+    );
   }
 }

@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/22-documents — DOC.VersionHistory (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "DOC.VersionHistory" — the per-document version chain with author/version metadata and a
 // signed-URL preview per version (the side-by-side diff + the inline PDF preview fill in as the
@@ -8,7 +15,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
 import { Card, CardTitle, Eyebrow, Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
 interface DocumentHeader {
@@ -27,7 +33,8 @@ interface VersionRow {
   uploadedAt: string;
 }
 
-const kb = (bytes: number): string => (bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`);
+const kb = (bytes: number): string =>
+  bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
 
 export function VersionHistory(): JSX.Element {
   const client = useApiClient();
@@ -64,16 +71,35 @@ export function VersionHistory(): JSX.Element {
 
   return (
     <DetailPageLayout
-      header={<PageHeader title={doc?.title ?? "Document"} breadcrumb={<>Documents / Version history</>} />}
+      header={
+        <PageHeader
+          title={doc?.title ?? "Document"}
+          breadcrumb={<>Documents / Version history</>}
+        />
+      }
       aside={
         doc ? (
           <aside style={{ width: "20rem", flexShrink: 0, padding: "1.5rem" }}>
             <Card>
               <Eyebrow>Current version</Eyebrow>
-              <div style={{ fontSize: "2rem", fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
+              <div
+                style={{
+                  fontSize: "2rem",
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                  lineHeight: 1.1,
+                }}
+              >
                 v{doc.version}
               </div>
-              <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.5rem", fontSize: "0.85rem" }}>
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  display: "grid",
+                  gap: "0.5rem",
+                  fontSize: "0.85rem",
+                }}
+              >
                 <div>
                   <Eyebrow>Status</Eyebrow>
                   <StatusPill tone={lifecycleTone(doc.status)}>{doc.status}</StatusPill>
@@ -95,7 +121,10 @@ export function VersionHistory(): JSX.Element {
       <Card>
         <CardTitle>Version history</CardTitle>
         {versions.length === 0 ? (
-          <EmptyState title="No versions" description="This document has no recorded versions yet." />
+          <EmptyState
+            title="No versions"
+            description="This document has no recorded versions yet."
+          />
         ) : (
           <table className="tabular-nums">
             <thead>

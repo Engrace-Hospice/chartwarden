@@ -31,6 +31,17 @@ import {
   updateVendorRoutingRule,
 } from "./supplies-api";
 import {
+  DEFAULT_FULFILLMENT_MODE,
+  DEFAULT_ROUTING_SCOPE,
+  FULFILLMENT_MODES,
+  PHARMACY_DISPATCH_MODES,
+  ROUTING_SCOPES,
+  TENANT_ROUTING_SCOPES,
+  humanize,
+  shortDate,
+  shortId,
+} from "./supplies-status";
+import {
   Card,
   CheckboxField,
   FilterRow,
@@ -52,17 +63,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import {
-  DEFAULT_FULFILLMENT_MODE,
-  DEFAULT_ROUTING_SCOPE,
-  FULFILLMENT_MODES,
-  PHARMACY_DISPATCH_MODES,
-  ROUTING_SCOPES,
-  TENANT_ROUTING_SCOPES,
-  humanize,
-  shortDate,
-  shortId,
-} from "./supplies-status";
 
 const PAGE = 200;
 
@@ -209,9 +209,10 @@ export function VendorRoutingAdmin(): JSX.Element {
       />
 
       <Notice tone="info">
-        Resolution is deterministic: the most specific matching scope wins (SKU, then Location, then tenant,
-        then platform), and inside a scope the lowest priority number wins. There is no fallback list — the
-        ladder resolves to exactly one rule, so "why this vendor" has exactly one answer.
+        Resolution is deterministic: the most specific matching scope wins (SKU, then Location, then
+        tenant, then platform), and inside a scope the lowest priority number wins. There is no
+        fallback list — the ladder resolves to exactly one rule, so "why this vendor" has exactly
+        one answer.
       </Notice>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
@@ -223,7 +224,11 @@ export function VendorRoutingAdmin(): JSX.Element {
           options={[{ value: "", label: "all scopes" }, ...enumOptions(ROUTING_SCOPES)]}
           onChange={setScopeFilter}
         />
-        <CheckboxField label="Include retired rules" checked={includeRetired} onChange={setIncludeRetired} />
+        <CheckboxField
+          label="Include retired rules"
+          checked={includeRetired}
+          onChange={setIncludeRetired}
+        />
       </FilterRow>
 
       {byScope.map(({ scope, rows }) => (
@@ -236,8 +241,9 @@ export function VendorRoutingAdmin(): JSX.Element {
         >
           {scope === "platform" ? (
             <span style={mutedStyle}>
-              Platform rules are the floor every tenant reads and none may write. A tenant cannot author one:
-              the request schema omits the scope and the database write policy would refuse it anyway.
+              Platform rules are the floor every tenant reads and none may write. A tenant cannot
+              author one: the request schema omits the scope and the database write policy would
+              refuse it anyway.
             </span>
           ) : null}
           {rows.length === 0 ? (
@@ -368,8 +374,8 @@ export function VendorRoutingAdmin(): JSX.Element {
             />
           ) : (
             <Notice tone="info">
-              A tenant-scope rule has no target — it is the agency's default, the last rung before the
-              platform floor.
+              A tenant-scope rule has no target — it is the agency's default, the last rung before
+              the platform floor.
             </Notice>
           )}
           <TextField
@@ -391,8 +397,8 @@ export function VendorRoutingAdmin(): JSX.Element {
           />
           {draft.assignedFulfillmentMode === "vendor" && draft.assignedVendorId.trim() === "" ? (
             <Notice tone="warning">
-              "Vendor" is the one mode that requires a vendor id — the database refuses the pair. On the
-              other three a blank vendor is correct, not an unresolved routing failure.
+              "Vendor" is the one mode that requires a vendor id — the database refuses the pair. On
+              the other three a blank vendor is correct, not an unresolved routing failure.
             </Notice>
           ) : null}
           <SelectField

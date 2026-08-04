@@ -31,6 +31,7 @@ import {
   listSupplyItems,
   updateTenantSupplyItem,
 } from "./supplies-api";
+import { SKU_CLASSES, shortDate } from "./supplies-status";
 import {
   Card,
   CheckboxField,
@@ -52,7 +53,6 @@ import {
   td,
   th,
 } from "./supplies-ui";
-import { SKU_CLASSES, shortDate } from "./supplies-status";
 
 const PAGE = 200;
 
@@ -144,7 +144,8 @@ export function SupplyItemCatalog(): JSX.Element {
 
   const platform = items.filter((i) => i.isPlatform);
   const overlay = items.filter((i) => !i.isPlatform);
-  const ready = draft.name.trim() !== "" && draft.localSkuCode.trim() !== "" && draft.defaultUnit.trim() !== "";
+  const ready =
+    draft.name.trim() !== "" && draft.localSkuCode.trim() !== "" && draft.defaultUnit.trim() !== "";
 
   return (
     <div style={columnStyle}>
@@ -173,9 +174,10 @@ export function SupplyItemCatalog(): JSX.Element {
       />
 
       <Notice tone="info">
-        The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be edited from a
-        tenant session — the permission refuses it and the database write policy refuses it again. Your
-        agency's own shelf items live in the overlay below, and never carry a HCPCS code.
+        The platform catalog is rewritten wholesale by the annual HCPCS loader and cannot be edited
+        from a tenant session — the permission refuses it and the database write policy refuses it
+        again. Your agency's own shelf items live in the overlay below, and never carry a HCPCS
+        code.
       </Notice>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
@@ -237,16 +239,16 @@ export function SupplyItemCatalog(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          "Unclassified" is not "No". A SKU the loader has not yet classified is treated as needing a
-          decision before a controlled dispatch, not as safe.
+          "Unclassified" is not "No". A SKU the loader has not yet classified is treated as needing
+          a decision before a controlled dispatch, not as safe.
         </span>
       </Card>
 
       <Card title={`Tenant overlay (${overlay.length})`}>
         {overlay.length === 0 ? (
           <span style={mutedStyle}>
-            Your agency has no local shelf items. These are the non-billable things that will never have a
-            HCPCS code.
+            Your agency has no local shelf items. These are the non-billable things that will never
+            have a HCPCS code.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -315,7 +317,11 @@ export function SupplyItemCatalog(): JSX.Element {
             </button>
           }
         >
-          <TextField label="Name" value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
+          <TextField
+            label="Name"
+            value={draft.name}
+            onChange={(v) => setDraft({ ...draft, name: v })}
+          />
           <TextField
             label="Local SKU code"
             value={draft.localSkuCode}

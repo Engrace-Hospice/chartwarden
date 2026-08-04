@@ -36,8 +36,8 @@ import {
   listActiveSos,
 } from "./safety-api";
 import {
-  ACK_ACTION_TAKEN_MIN_CHARS,
   ACKNOWLEDGMENT_OUTCOMES,
+  ACK_ACTION_TAKEN_MIN_CHARS,
   DEFAULT_ACK_OUTCOME,
   dateTime,
   durationLabel,
@@ -201,15 +201,15 @@ export function ActiveSosScreen(): JSX.Element {
 
       {board === "unknown" ? (
         <Notice tone="warning" assertive>
-          <strong>This board did not refresh.</strong> {error} What follows is the last answer received,
-          at {dateTime(active.fetchedAt)}. An unreadable board is not a quiet one.
+          <strong>This board did not refresh.</strong> {error} What follows is the last answer
+          received, at {dateTime(active.fetchedAt)}. An unreadable board is not a quiet one.
         </Notice>
       ) : null}
 
       {alerts.length === 0 ? (
         <Notice tone="success" live>
-          <strong>No SOS is open</strong> as of {dateTime(active.fetchedAt)}. That is the server's answer,
-          not an absence of data — the read succeeded and returned nothing.
+          <strong>No SOS is open</strong> as of {dateTime(active.fetchedAt)}. That is the server's
+          answer, not an absence of data — the read succeeded and returned nothing.
         </Notice>
       ) : (
         <Notice tone="error" assertive>
@@ -225,7 +225,11 @@ export function ActiveSosScreen(): JSX.Element {
       <Card title="Open now">
         <CountGrid
           entries={[
-            { label: "Open alerts", value: alerts.length, tone: alerts.length > 0 ? "critical" : undefined },
+            {
+              label: "Open alerts",
+              value: alerts.length,
+              tone: alerts.length > 0 ? "critical" : undefined,
+            },
             {
               label: "Unacknowledged",
               value: unacknowledged,
@@ -291,21 +295,22 @@ export function ActiveSosScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          Sorted with the unacknowledged first and the longest-waiting at the top. Acknowledging records a
-          named human answering; RESOLVING is a separate act on the alert's own page, because "I saw it"
-          and "she is safe" are different claims and only one of them closes the record.
+          Sorted with the unacknowledged first and the longest-waiting at the top. Acknowledging
+          records a named human answering; RESOLVING is a separate act on the alert's own page,
+          because "I saw it" and "she is safe" are different claims and only one of them closes the
+          record.
         </span>
       </Card>
 
       <Card title="Who was paged">
         <span style={mutedStyle}>
-          The dispatched-recipient list §5.1 sketches is <strong>not shown here</strong>, and not because
-          it was skipped: the recipient set is resolved at the moment of the press by the §4.5{" "}
-          <code>field_safety_composed</code> resolver — M20's own supervisor subscriptions unioned with
-          M19's on-call actors after hours — and M36 owns the delivery record. M20 publishes no route that
-          reads it back, so a list here would either be re-derived (and could differ from who was actually
-          rung) or invented. The alert's own page shows the acknowledgment chain, which is the fact that
-          matters: not who we tried, but who answered.
+          The dispatched-recipient list §5.1 sketches is <strong>not shown here</strong>, and not
+          because it was skipped: the recipient set is resolved at the moment of the press by the
+          §4.5 <code>field_safety_composed</code> resolver — M20's own supervisor subscriptions
+          unioned with M19's on-call actors after hours — and M36 owns the delivery record. M20
+          publishes no route that reads it back, so a list here would either be re-derived (and
+          could differ from who was actually rung) or invented. The alert's own page shows the
+          acknowledgment chain, which is the fact that matters: not who we tried, but who answered.
         </span>
       </Card>
 
@@ -330,8 +335,8 @@ export function ActiveSosScreen(): JSX.Element {
         >
           <Notice tone="warning">
             This records that <strong>you</strong> answered, at this moment, and what you did. It is
-            written in the same transaction as the state change, so an acknowledged alert nobody signed
-            cannot exist. It does not close the alert.
+            written in the same transaction as the state change, so an acknowledged alert nobody
+            signed cannot exist. It does not close the alert.
           </Notice>
           <TextAreaField
             label="What did you do?"
@@ -360,9 +365,9 @@ export function ActiveSosScreen(): JSX.Element {
             </Notice>
           ) : null}
           <span style={mutedStyle}>
-            This acknowledgment is stamped against version {ackFor.version} of the alert, read when this
-            dialog opened. If somebody else answers while you are typing, the save is refused rather than
-            overwriting their account of it.
+            This acknowledgment is stamped against version {ackFor.version} of the alert, read when
+            this dialog opened. If somebody else answers while you are typing, the save is refused
+            rather than overwriting their account of it.
           </span>
         </Modal>
       ) : null}

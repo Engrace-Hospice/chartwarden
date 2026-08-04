@@ -42,30 +42,6 @@ import {
   returnSupplyRequest,
 } from "./supplies-api";
 import {
-  Card,
-  Field,
-  Modal,
-  Notice,
-  SummaryGrid,
-  TextAreaField,
-  TextField,
-  Timeline,
-  alertStyle,
-  columnStyle,
-  disabledButtonStyle,
-  enumOptions,
-  ghostButtonStyle,
-  linkStyle,
-  mutedStyle,
-  pageTitleStyle,
-  primaryButtonStyle,
-  rowLine,
-  SelectField,
-  tableStyle,
-  td,
-  th,
-} from "./supplies-ui";
-import {
   DEFAULT_DELIVERY_METHOD,
   DEFAULT_FULFILLMENT_MODE,
   DEFAULT_RECEIPT_ACTOR,
@@ -82,6 +58,30 @@ import {
   shortId,
   toneOf,
 } from "./supplies-status";
+import {
+  Card,
+  Field,
+  Modal,
+  Notice,
+  SelectField,
+  SummaryGrid,
+  TextAreaField,
+  TextField,
+  Timeline,
+  alertStyle,
+  columnStyle,
+  disabledButtonStyle,
+  enumOptions,
+  ghostButtonStyle,
+  linkStyle,
+  mutedStyle,
+  pageTitleStyle,
+  primaryButtonStyle,
+  rowLine,
+  tableStyle,
+  td,
+  th,
+} from "./supplies-ui";
 
 type Ceremony =
   | "assign-vendor"
@@ -194,7 +194,11 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   };
 
   const timeline = [
-    { label: "Requested", at: dateTime(request.createdAt), by: shortId(request.requestedByMembershipId) },
+    {
+      label: "Requested",
+      at: dateTime(request.createdAt),
+      by: shortId(request.requestedByMembershipId),
+    },
     request.orderedAt ? { label: "Ordered with vendor", at: dateTime(request.orderedAt) } : null,
     request.shippedAt ? { label: "Shipped", at: dateTime(request.shippedAt) } : null,
     request.deliveredAt
@@ -211,7 +215,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         }
       : null,
     request.cancellationPendingAt
-      ? { label: "Cancellation requested of the vendor", at: dateTime(request.cancellationPendingAt) }
+      ? {
+          label: "Cancellation requested of the vendor",
+          at: dateTime(request.cancellationPendingAt),
+        }
       : null,
     request.cancelledAt ? { label: "Cancelled", at: dateTime(request.cancelledAt) } : null,
     request.completedAt ? { label: "Completed", at: dateTime(request.completedAt) } : null,
@@ -220,7 +227,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
   return (
     <div style={columnStyle}>
       <PageHeader
-        title={<span style={pageTitleStyle}>Supply request {shortId(request.supplyRequestId)}</span>}
+        title={
+          <span style={pageTitleStyle}>Supply request {shortId(request.supplyRequestId)}</span>
+        }
         breadcrumb={`Supplies — ${requestKindLabel(request.kind)}`}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
@@ -238,16 +247,18 @@ export function SupplyRequestDetailScreen(): JSX.Element {
 
       {request.status === "cancellation_pending" ? (
         <Notice tone="warning">
-          Cancellation has been REQUESTED of the vendor and is not yet a fact. The row keeps its real state
-          until the vendor answers — a DME already on the truck cannot be un-shipped by our writing
-          "cancelled". Their answer arrives through the vendor inbound path, not from this screen.
+          Cancellation has been REQUESTED of the vendor and is not yet a fact. The row keeps its
+          real state until the vendor answers — a DME already on the truck cannot be un-shipped by
+          our writing "cancelled". Their answer arrives through the vendor inbound path, not from
+          this screen.
         </Notice>
       ) : null}
 
       {request.status === "received_confirmed" ? (
         <Notice tone="info">
-          Completion is not a button. A one-shot DME/supply request completes automatically; a comfort kit
-          waits on the M13 deployment ack; a rental DME waits on `m11.order.discontinued`.
+          Completion is not a button. A one-shot DME/supply request completes automatically; a
+          comfort kit waits on the M13 deployment ack; a rental DME waits on
+          `m11.order.discontinued`.
         </Notice>
       ) : null}
 
@@ -327,7 +338,11 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         title="Vendor & routing"
         actions={
           can.assignVendor ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("assign-vendor")}>
+            <button
+              type="button"
+              style={primaryButtonStyle}
+              onClick={() => setCeremony("assign-vendor")}
+            >
               Override vendor
             </button>
           ) : undefined
@@ -339,7 +354,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           <Field label="Vendor order reference" value={request.vendorOrderReference ?? "—"} mono />
           <Field
             label="Tracking"
-            value={request.trackingNumber ? `${request.carrier ?? "—"} · ${request.trackingNumber}` : "—"}
+            value={
+              request.trackingNumber ? `${request.carrier ?? "—"} · ${request.trackingNumber}` : "—"
+            }
             mono
           />
         </SummaryGrid>
@@ -350,18 +367,30 @@ export function SupplyRequestDetailScreen(): JSX.Element {
                 label="Precedence level used"
                 value={humanize(request.routingRuleResolved.precedenceLevelUsed)}
               />
-              <Field label="Matched rule" value={shortId(request.routingRuleResolved.matchedRuleId)} mono />
+              <Field
+                label="Matched rule"
+                value={shortId(request.routingRuleResolved.matchedRuleId)}
+                mono
+              />
               <Field
                 label="Fulfillment mode"
                 value={humanize(request.routingRuleResolved.assignedFulfillmentMode)}
               />
               <Field label="Resolved" value={dateTime(request.routingRuleResolved.resolvedAt)} />
-              <Field label="Resolver version" value={request.routingRuleResolved.resolverVersion} mono />
-              <Field label="Policy digest" value={shortId(request.routingRuleResolved.routingPolicyDigest)} mono />
+              <Field
+                label="Resolver version"
+                value={request.routingRuleResolved.resolverVersion}
+                mono
+              />
+              <Field
+                label="Policy digest"
+                value={shortId(request.routingRuleResolved.routingPolicyDigest)}
+                mono
+              />
             </SummaryGrid>
             <span style={mutedStyle}>
-              Every rule the D4 ladder evaluated, in precedence order — this is the frozen answer to "why
-              this vendor", and it survives an override.
+              Every rule the D4 ladder evaluated, in precedence order — this is the frozen answer to
+              "why this vendor", and it survives an override.
             </span>
             <table style={tableStyle}>
               <thead>
@@ -391,16 +420,16 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           </>
         ) : (
           <span style={mutedStyle}>
-            No routing has been resolved yet. The D4 ladder runs at vendor assignment and is frozen onto the
-            row from that moment.
+            No routing has been resolved yet. The D4 ladder runs at vendor assignment and is frozen
+            onto the row from that moment.
           </span>
         )}
       </Card>
 
       <Card title="Lifecycle">
         <span style={mutedStyle}>
-          Reconstructed from this request's own timestamp columns. The immutable actor trail — who read it,
-          who was refused, who broke glass — belongs to the M4 audit surface that owns it.
+          Reconstructed from this request's own timestamp columns. The immutable actor trail — who
+          read it, who was refused, who broke glass — belongs to the M4 audit surface that owns it.
         </span>
         {timeline.length === 0 ? (
           <span style={mutedStyle}>Nothing has happened to this request yet.</span>
@@ -492,8 +521,8 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           }
         >
           <Notice tone="info">
-            The D4 ladder still runs. An override is recorded ON TOP of its trace, so the record shows both
-            the rules evaluated and the human decision that overrode them.
+            The D4 ladder still runs. An override is recorded ON TOP of its trace, so the record
+            shows both the rules evaluated and the human decision that overrode them.
           </Notice>
           <TextField
             label="Vendor id (leave blank to route to the internal supply hub)"
@@ -510,7 +539,10 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           <SelectField
             label="Pharmacy dispatch mode (kit kinds)"
             value={pharmacyMode}
-            options={[{ value: "", label: "not applicable" }, ...enumOptions(PHARMACY_DISPATCH_MODES)]}
+            options={[
+              { value: "", label: "not applicable" },
+              ...enumOptions(PHARMACY_DISPATCH_MODES),
+            ]}
             onChange={setPharmacyMode}
           />
           <TextAreaField
@@ -531,7 +563,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
             <button
               type="button"
               disabled={busy || orderReference.trim() === ""}
-              style={busy || orderReference.trim() === "" ? disabledButtonStyle : primaryButtonStyle}
+              style={
+                busy || orderReference.trim() === "" ? disabledButtonStyle : primaryButtonStyle
+              }
               onClick={() =>
                 void run(
                   () =>
@@ -547,8 +581,8 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           }
         >
           <Notice tone="info">
-            Phase 1 records the vendor's portal / email / fax acceptance by hand; Phase 2 fills this from the
-            EDI 855 acknowledgment.
+            Phase 1 records the vendor's portal / email / fax acceptance by hand; Phase 2 fills this
+            from the EDI 855 acknowledgment.
           </Notice>
           <TextField
             label="Vendor order reference"
@@ -622,8 +656,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           }
         >
           <Notice tone="warning">
-            You are attesting as YOURSELF. The delivering membership is stamped from your session and cannot
-            be named in this form — a courier who could name someone else has attested to nothing.
+            You are attesting as YOURSELF. The delivering membership is stamped from your session
+            and cannot be named in this form — a courier who could name someone else has attested to
+            nothing.
           </Notice>
           <TextField label="Delivered at" value={when} onChange={setWhen} type="datetime-local" />
           <SelectField
@@ -667,8 +702,9 @@ export function SupplyRequestDetailScreen(): JSX.Element {
           }
         >
           <Notice tone="info">
-            "System auto-confirm" is not offered. It is the 72-hour fallback the worker writes, and claiming
-            it here would erase the distinction between an unattended timeout and a person who confirmed.
+            "System auto-confirm" is not offered. It is the 72-hour fallback the worker writes, and
+            claiming it here would erase the distinction between an unattended timeout and a person
+            who confirmed.
           </Notice>
           <SelectField
             label="Confirmed by"
@@ -693,8 +729,12 @@ export function SupplyRequestDetailScreen(): JSX.Element {
                 void run(
                   () =>
                     ceremony === "cancel"
-                      ? cancelSupplyRequest(client, supplyRequestId, stamp, { reason: reason.trim() })
-                      : returnSupplyRequest(client, supplyRequestId, stamp, { reason: reason.trim() }),
+                      ? cancelSupplyRequest(client, supplyRequestId, stamp, {
+                          reason: reason.trim(),
+                        })
+                      : returnSupplyRequest(client, supplyRequestId, stamp, {
+                          reason: reason.trim(),
+                        }),
                   ceremony === "cancel"
                     ? "The request could not be cancelled."
                     : "The return could not be initiated.",
@@ -707,13 +747,14 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         >
           {ceremony === "cancel" ? (
             <Notice tone="warning">
-              Before the vendor has the order this cancels immediately. Once ordered or shipping it becomes a
-              REQUEST to the vendor and the row moves to "cancellation pending" until they answer.
+              Before the vendor has the order this cancels immediately. Once ordered or shipping it
+              becomes a REQUEST to the vendor and the row moves to "cancellation pending" until they
+              answer.
             </Notice>
           ) : (
             <Notice tone="info">
-              This opens the §2.6 chain of custody for the kit. Reconciliation — the physical count and its
-              witnessed disposal — happens on the return record, not here.
+              This opens the §2.6 chain of custody for the kit. Reconciliation — the physical count
+              and its witnessed disposal — happens on the return record, not here.
             </Notice>
           )}
           <TextAreaField label="Reason" value={reason} onChange={setReason} rows={3} />

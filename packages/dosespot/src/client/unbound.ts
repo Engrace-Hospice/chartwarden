@@ -32,11 +32,14 @@ export function createUnboundDoseSpotClient(): DoseSpotClient {
     new DegradedError("dosespot", operation, false, UNBOUND_MESSAGE, UNBOUND_CORRELATION_ID);
   return {
     upsertPatient: (): Promise<DoseSpotPatientResponse> => Promise.reject(deny("upsertPatient")),
-    enrollPrescriber: (): Promise<DoseSpotPrescriberResponse> => Promise.reject(deny("enrollPrescriber")),
+    enrollPrescriber: (): Promise<DoseSpotPrescriberResponse> =>
+      Promise.reject(deny("enrollPrescriber")),
     revokePrescriber: (): Promise<void> => Promise.reject(deny("revokePrescriber")),
     transmitNewRx: (): Promise<DoseSpotNewRxResponse> => Promise.reject(deny("transmitNewRx")),
-    lookupRxBenefit: (): Promise<DoseSpotRxBenefitResponse> => Promise.reject(deny("lookupRxBenefit")),
-    pullMedicationHistory: (): Promise<DoseSpotMedHistoryResponse> => Promise.reject(deny("pullMedicationHistory")),
+    lookupRxBenefit: (): Promise<DoseSpotRxBenefitResponse> =>
+      Promise.reject(deny("lookupRxBenefit")),
+    pullMedicationHistory: (): Promise<DoseSpotMedHistoryResponse> =>
+      Promise.reject(deny("pullMedicationHistory")),
     respondToRefillRequest: (): Promise<void> => Promise.reject(deny("respondToRefillRequest")),
     initiateEpcsSigningSession: (): Promise<DoseSpotEpcsSessionResponse> =>
       Promise.reject(deny("initiateEpcsSigningSession")),

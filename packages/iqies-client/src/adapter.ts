@@ -1,3 +1,4 @@
+import type { HopeSubmissionEnvelope } from "./envelope";
 // @wardenx/iqies-client — the typed iQIES adapter surface (M10-T07, spec §4.10 / D6). M10
 // (`apps/backend/src/modules/10-hope`) consumes ONLY these three typed methods and never imports an HTTP
 // client for iQIES; this package is the only place allowed to talk to iQIES. Phase 1 ships the typed
@@ -6,7 +7,6 @@
 // per-tenant credential wiring from M34's secret store. The deny-stub fails with a `retryable: false`
 // {@link DegradedError} so the worker DLQs cleanly rather than blocking — capture (Tier 2) is unaffected.
 import { DegradedError, type IqiesOperation } from "./errors";
-import type { HopeSubmissionEnvelope } from "./envelope";
 
 /** `submitBatch` request — the assembled envelope plus the rendered wire payload + its recorded hash. */
 export interface SubmitBatchRequest {

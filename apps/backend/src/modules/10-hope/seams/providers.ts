@@ -57,7 +57,9 @@ export function createHopeJ2051Provider(store: HopeSeamStore): HopeJ2051Provider
     },
     async openSfvs(patientId: PatientId): Promise<ReadonlyArray<HopeJ2051Event>> {
       const events = await store.j2051EventsForPatient(patientId);
-      return events.filter((e) => e.triggerFired && e.sfvStatus !== null && OPEN_SFV_STATUSES.has(e.sfvStatus));
+      return events.filter(
+        (e) => e.triggerFired && e.sfvStatus !== null && OPEN_SFV_STATUSES.has(e.sfvStatus),
+      );
     },
   };
 }

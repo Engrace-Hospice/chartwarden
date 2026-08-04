@@ -144,7 +144,9 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 /** Pick the JWK to verify against: by `kid` if the header names one, else the first RSA key in the set. */
 function selectJwk(jwks: readonly FhirJwk[], kid: unknown): FhirJwk | null {
-  const rsaKeys = jwks.filter((k) => k.kty === "RSA" && typeof k.n === "string" && typeof k.e === "string");
+  const rsaKeys = jwks.filter(
+    (k) => k.kty === "RSA" && typeof k.n === "string" && typeof k.e === "string",
+  );
   if (typeof kid === "string" && kid.length > 0) {
     return rsaKeys.find((k) => k.kid === kid) ?? null;
   }
@@ -180,8 +182,7 @@ export function verifyClientAssertion(input: FhirAssertionVerifyInput): FhirAsse
 
   // aud = this token endpoint. `aud` may be a string or an array per JWT; accept either shape.
   const audMatches =
-    aud === input.expectedAudience ||
-    (Array.isArray(aud) && aud.includes(input.expectedAudience));
+    aud === input.expectedAudience || (Array.isArray(aud) && aud.includes(input.expectedAudience));
   if (!audMatches) return { ok: false, reason: "AUDIENCE_MISMATCH" };
 
   // exp present + not expired (with skew) + within the lifetime ceiling.
@@ -206,7 +207,9 @@ export function verifyClientAssertion(input: FhirAssertionVerifyInput): FhirAsse
   let verified: boolean;
   try {
     const publicKey = createPublicKey({ key: jwk as Record<string, unknown>, format: "jwk" });
-    verified = createVerify(RS384_NODE_ALGORITHM).update(decoded.signingInput).verify(publicKey, decoded.signature);
+    verified = createVerify(RS384_NODE_ALGORITHM)
+      .update(decoded.signingInput)
+      .verify(publicKey, decoded.signature);
   } catch {
     // A structurally-broken JWK (bad n/e) is not a "no matching key" — it's a signature that cannot verify.
     return { ok: false, reason: "SIGNATURE_INVALID" };

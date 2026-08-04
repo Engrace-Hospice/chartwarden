@@ -10,11 +10,12 @@
 // unlock + the per-state 270/271 adapter), testCredential + submitClaim adapter wire I/O (the state adapter),
 // loadRateSchedule (M40), registerPlatformRule (rules are the frozen code registry). Each is noted at its site.
 import { randomUUID } from "node:crypto";
+import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_MEDICAID_RULES,
   DEFAULT_MEDICAID_RULE_SET_VERSION,
-  deriveMedicaidControlNumber,
   type MedicaidValidationContext,
+  deriveMedicaidControlNumber,
   medicaidClaimMachine,
   parseMedicaidControlNumber,
   rbArrangementMachine,
@@ -22,7 +23,6 @@ import {
   runMedicaidRules,
   voidTob,
 } from "@wardenx/medicaid-adapters";
-import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
@@ -129,15 +129,18 @@ export function buildDrizzleM24WriteService(
   }
   function assertVersion(row: { version: number }, expected: number | null): void {
     if (expected !== null && row.version !== expected) {
-      throw new ConflictError("VERSION_CONFLICT", "the If-Match version is stale; reload and retry");
+      throw new ConflictError(
+        "VERSION_CONFLICT",
+        "the If-Match version is stale; reload and retry",
+      );
     }
   }
   async function recordHistory(
     tx: Tx,
     orgId: string,
     claimId: string,
-    fromState: typeof C.state.enumValues[number] | null,
-    toState: typeof C.state.enumValues[number],
+    fromState: (typeof C.state.enumValues)[number] | null,
+    toState: (typeof C.state.enumValues)[number],
     actorMembershipId: string,
     reason: string | null,
   ): Promise<void> {
@@ -229,7 +232,12 @@ export function buildDrizzleM24WriteService(
         const creds = await tx
           .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
           .from(TP)
-          .where(and(eq(TP.organizationId, actor.organizationId), eq(TP.providerEntityId, input.providerEntityId)));
+          .where(
+            and(
+              eq(TP.organizationId, actor.organizationId),
+              eq(TP.providerEntityId, input.providerEntityId),
+            ),
+          );
         const from = new Date(input.serviceFrom);
         return creds.find((c) => c.activeTo === null || c.activeTo >= from)?.serviceState ?? null;
       });
@@ -250,7 +258,8 @@ export function buildDrizzleM24WriteService(
     async updateDraftClaim(actor, claimId, input: UpdateDraftClaimInput) {
       return withOrgContext(db, actor, async (tx) => {
         const claim = await loadClaim(tx, claimId);
-        if (claim.state !== "DRAFT") throw new ConflictError("CLAIM_NOT_DRAFT", "only a DRAFT claim is editable");
+        if (claim.state !== "DRAFT")
+          throw new ConflictError("CLAIM_NOT_DRAFT", "only a DRAFT claim is editable");
         assertVersion(claim, input.expectedVersion);
         const updated = await tx
           .update(C)
@@ -269,7 +278,8 @@ export function buildDrizzleM24WriteService(
     async deleteDraftClaim(actor, claimId, expectedVersion) {
       await withOrgContext(db, actor, async (tx) => {
         const claim = await loadClaim(tx, claimId);
-        if (claim.state !== "DRAFT") throw new ConflictError("CLAIM_NOT_DRAFT", "only a DRAFT claim is deletable");
+        if (claim.state !== "DRAFT")
+          throw new ConflictError("CLAIM_NOT_DRAFT", "only a DRAFT claim is deletable");
         assertVersion(claim, expectedVersion);
         await tx.delete(C).where(eq(C.id, claimId));
       });
@@ -310,9 +320,12 @@ export function buildDrizzleM24WriteService(
             levelOfCare: l.levelOfCare,
             revenueCode: l.revenueCode,
             qCode: l.qCode,
-            modifiers: [l.hcpcsModifier1, l.hcpcsModifier2, l.hcpcsModifier3, l.hcpcsModifier4].filter(
-              (m): m is string => typeof m === "string" && m.length > 0,
-            ),
+            modifiers: [
+              l.hcpcsModifier1,
+              l.hcpcsModifier2,
+              l.hcpcsModifier3,
+              l.hcpcsModifier4,
+            ].filter((m): m is string => typeof m === "string" && m.length > 0),
             rateAtAssemblyCents: l.rateAtAssemblyCents,
             isRb: l.isRb,
             backingEncounterIds: [],
@@ -388,14 +401,40 @@ export function buildDrizzleM24WriteService(
         const nextState = summary.blockingFailures === 0 ? "READY" : "FAILED_VALIDATION";
         await tx
           .update(C)
-          .set({ state: nextState, validationRunIdLatest: runId, updatedAt: now, updatedByMembershipId: actor.userId })
+          .set({
+            state: nextState,
+            validationRunIdLatest: runId,
+            updatedAt: now,
+            updatedByMembershipId: actor.userId,
+          })
           .where(eq(C.id, claimId));
-        await recordHistory(tx, actor.organizationId, claimId, claim.state, "VALIDATING", actor.userId, "validate");
-        await recordHistory(tx, actor.organizationId, claimId, "VALIDATING", nextState, actor.userId, null);
+        await recordHistory(
+          tx,
+          actor.organizationId,
+          claimId,
+          claim.state,
+          "VALIDATING",
+          actor.userId,
+          "validate",
+        );
+        await recordHistory(
+          tx,
+          actor.organizationId,
+          claimId,
+          "VALIDATING",
+          nextState,
+          actor.userId,
+          null,
+        );
 
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.validation_started",
-          payload: { organizationId: actor.organizationId, claimId, validationRunId: runId, trigger: "manual" },
+          payload: {
+            organizationId: actor.organizationId,
+            claimId,
+            validationRunId: runId,
+            trigger: "manual",
+          },
         });
         await outbox.publish(
           tx,
@@ -406,7 +445,12 @@ export function buildDrizzleM24WriteService(
               }
             : {
                 eventName: "m24.medicaid_claim.validation_failed",
-                payload: { organizationId: actor.organizationId, claimId, validationRunId: runId, failedRuleKeys },
+                payload: {
+                  organizationId: actor.organizationId,
+                  claimId,
+                  validationRunId: runId,
+                  failedRuleKeys,
+                },
               },
         );
         return { validationRunId: runId };
@@ -417,8 +461,11 @@ export function buildDrizzleM24WriteService(
       return withOrgContext(db, actor, async (tx) => {
         const claim = await loadClaim(tx, claimId);
         assertVersion(claim, input.expectedVersion);
-        const reduced = medicaidClaimMachine.reduce(claim.state, "submit", { unresolvedBlockingFailures: 0 });
-        if (reduced.error) throw new ConflictError("INVALID_TRANSITION", `cannot submit from ${claim.state}`);
+        const reduced = medicaidClaimMachine.reduce(claim.state, "submit", {
+          unresolvedBlockingFailures: 0,
+        });
+        if (reduced.error)
+          throw new ConflictError("INVALID_TRANSITION", `cannot submit from ${claim.state}`);
         const submissionId = randomUUID();
         const submittedAt = new Date();
         const channel = input.channelHint ?? "direct_mmis";
@@ -441,10 +488,23 @@ export function buildDrizzleM24WriteService(
         });
         const updated = await tx
           .update(C)
-          .set({ state: "SUBMITTED", version: claim.version + 1, updatedAt: submittedAt, updatedByMembershipId: actor.userId })
+          .set({
+            state: "SUBMITTED",
+            version: claim.version + 1,
+            updatedAt: submittedAt,
+            updatedByMembershipId: actor.userId,
+          })
           .where(eq(C.id, claimId))
           .returning();
-        await recordHistory(tx, actor.organizationId, claimId, claim.state, "SUBMITTED", actor.userId, "submit");
+        await recordHistory(
+          tx,
+          actor.organizationId,
+          claimId,
+          claim.state,
+          "SUBMITTED",
+          actor.userId,
+          "submit",
+        );
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.submit_requested",
           payload: {
@@ -486,13 +546,27 @@ export function buildDrizzleM24WriteService(
         const claim = await loadClaim(tx, claimId);
         assertVersion(claim, expectedVersion);
         const reduced = medicaidClaimMachine.reduce(claim.state, "abandon");
-        if (reduced.error) throw new ConflictError("INVALID_TRANSITION", `cannot abandon from ${claim.state}`);
+        if (reduced.error)
+          throw new ConflictError("INVALID_TRANSITION", `cannot abandon from ${claim.state}`);
         const updated = await tx
           .update(C)
-          .set({ state: "ABANDONED", version: claim.version + 1, updatedAt: new Date(), updatedByMembershipId: actor.userId })
+          .set({
+            state: "ABANDONED",
+            version: claim.version + 1,
+            updatedAt: new Date(),
+            updatedByMembershipId: actor.userId,
+          })
           .where(eq(C.id, claimId))
           .returning();
-        await recordHistory(tx, actor.organizationId, claimId, claim.state, "ABANDONED", actor.userId, "abandon");
+        await recordHistory(
+          tx,
+          actor.organizationId,
+          claimId,
+          claim.state,
+          "ABANDONED",
+          actor.userId,
+          "abandon",
+        );
         return toClaimView(updated[0]!);
       });
     },
@@ -592,7 +666,13 @@ export function buildDrizzleM24WriteService(
         const existing = await tx
           .select()
           .from(RC)
-          .where(and(eq(RC.ruleKey, ruleKey), eq(RC.organizationId, actor.organizationId), eq(RC.isCustom, true)))
+          .where(
+            and(
+              eq(RC.ruleKey, ruleKey),
+              eq(RC.organizationId, actor.organizationId),
+              eq(RC.isCustom, true),
+            ),
+          )
           .limit(1);
         if (!existing[0]) throw new NotFoundError("custom rule not found");
         assertVersion(existing[0], expectedVersion);
@@ -713,12 +793,14 @@ export function buildDrizzleM24WriteService(
         const rows = await tx.select().from(A).where(eq(A.id, arrangementId)).limit(1);
         const arr = rows[0];
         if (!arr) throw new NotFoundError("R&B arrangement not found");
-        if (arr.state !== "DRAFT") throw new ConflictError("ARRANGEMENT_NOT_DRAFT", "only a DRAFT arrangement is editable");
+        if (arr.state !== "DRAFT")
+          throw new ConflictError("ARRANGEMENT_NOT_DRAFT", "only a DRAFT arrangement is editable");
         assertVersion(arr, input.expectedVersion);
         const updated = await tx
           .update(A)
           .set({
-            effectiveTo: input.effectiveTo === undefined ? arr.effectiveTo : new Date(input.effectiveTo),
+            effectiveTo:
+              input.effectiveTo === undefined ? arr.effectiveTo : new Date(input.effectiveTo),
             nfPerDiemRoutineCents: input.nfPerDiemRoutineCents ?? arr.nfPerDiemRoutineCents,
             nfPerDiemRespCents: input.nfPerDiemRespCents ?? arr.nfPerDiemRespCents,
             nfPerDiemGipCents: input.nfPerDiemGipCents ?? arr.nfPerDiemGipCents,
@@ -739,10 +821,17 @@ export function buildDrizzleM24WriteService(
         if (!arr) throw new NotFoundError("R&B arrangement not found");
         assertVersion(arr, expectedVersion);
         const reduced = rbArrangementMachine.reduce(arr.state, "activate");
-        if (reduced.error) throw new ConflictError("INVALID_TRANSITION", `cannot activate from ${arr.state}`);
+        if (reduced.error)
+          throw new ConflictError("INVALID_TRANSITION", `cannot activate from ${arr.state}`);
         const updated = await tx
           .update(A)
-          .set({ state: "ACTIVE", contractStartedAt: new Date(), version: arr.version + 1, updatedAt: new Date(), updatedByMembershipId: actor.userId })
+          .set({
+            state: "ACTIVE",
+            contractStartedAt: new Date(),
+            version: arr.version + 1,
+            updatedAt: new Date(),
+            updatedByMembershipId: actor.userId,
+          })
           .where(eq(A.id, arrangementId))
           .returning();
         const row = updated[0]!;
@@ -768,7 +857,8 @@ export function buildDrizzleM24WriteService(
         if (!arr) throw new NotFoundError("R&B arrangement not found");
         assertVersion(arr, input.expectedVersion);
         const reduced = rbArrangementMachine.reduce(arr.state, "terminate");
-        if (reduced.error) throw new ConflictError("INVALID_TRANSITION", `cannot terminate from ${arr.state}`);
+        if (reduced.error)
+          throw new ConflictError("INVALID_TRANSITION", `cannot terminate from ${arr.state}`);
         const terminatedAt = new Date();
         const updated = await tx
           .update(A)
@@ -838,11 +928,11 @@ export function buildDrizzleM24WriteService(
         const clientSecretCipher =
           input.clientSecret != null
             ? cipher.seal(actor.organizationId, input.clientSecret)
-            : existing[0]?.clientSecretCipher ?? null;
+            : (existing[0]?.clientSecretCipher ?? null);
         const sftpKeyCipher =
           input.sftpKey != null
             ? cipher.seal(actor.organizationId, input.sftpKey)
-            : existing[0]?.sftpKeyCipher ?? null;
+            : (existing[0]?.sftpKeyCipher ?? null);
         let id: string;
         let version: number;
         if (existing[0]) {
@@ -948,7 +1038,10 @@ export function buildDrizzleM24WriteService(
       const original = await loadClaim(tx, originalClaimId);
       assertVersion(original, expectedVersion);
       if (!["ACK_ACCEPTED", "ACK_PARTIAL", "PAID"].includes(original.state)) {
-        throw new ConflictError("CLAIM_NOT_REPLACEABLE", `cannot build a ${tob} from state ${original.state}`);
+        throw new ConflictError(
+          "CLAIM_NOT_REPLACEABLE",
+          `cannot build a ${tob} from state ${original.state}`,
+        );
       }
       const newId = randomUUID();
       const parsed = parseMedicaidControlNumber(original.medicaidClaimControlNumber);
@@ -990,8 +1083,19 @@ export function buildDrizzleM24WriteService(
           updatedByMembershipId: actor.userId,
         })
         .returning();
-      await tx.update(C).set({ replacedByClaimId: newId, updatedAt: new Date() }).where(eq(C.id, originalClaimId));
-      await recordHistory(tx, actor.organizationId, newId, null, "DRAFT", actor.userId, `${tob}:${reason}`);
+      await tx
+        .update(C)
+        .set({ replacedByClaimId: newId, updatedAt: new Date() })
+        .where(eq(C.id, originalClaimId));
+      await recordHistory(
+        tx,
+        actor.organizationId,
+        newId,
+        null,
+        "DRAFT",
+        actor.userId,
+        `${tob}:${reason}`,
+      );
       return toClaimView(inserted[0]!);
     });
   }

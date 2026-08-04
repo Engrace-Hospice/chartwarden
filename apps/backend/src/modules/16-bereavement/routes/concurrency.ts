@@ -21,7 +21,11 @@ export function requireIdempotencyKey(): PreHandler {
     const raw = request.headers["idempotency-key"];
     const value = Array.isArray(raw) ? raw[0] : raw;
     if (typeof value !== "string" || value.length < 1 || value.length > 128) {
-      throw new WardenXError("IDEMPOTENCY_KEY_REQUIRED", "an Idempotency-Key header is required", 400);
+      throw new WardenXError(
+        "IDEMPOTENCY_KEY_REQUIRED",
+        "an Idempotency-Key header is required",
+        400,
+      );
     }
   };
 }

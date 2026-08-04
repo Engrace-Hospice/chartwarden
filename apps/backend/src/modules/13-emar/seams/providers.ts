@@ -131,7 +131,14 @@ export function createMedicationAdministrationProvider(
       for (const o of obligations) {
         // "Documented" = an M9 assessment of the recommended scale captured between the administration and
         // the reassessment-due instant. Aggregate only — no obligation row leaves M13 (D6).
-        if (await coverage.wasReassessed(o.patientId, o.scaleType, o.administeredAt, o.reassessmentDueAt)) {
+        if (
+          await coverage.wasReassessed(
+            o.patientId,
+            o.scaleType,
+            o.administeredAt,
+            o.reassessmentDueAt,
+          )
+        ) {
           numerator++;
         }
       }

@@ -8,7 +8,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4320 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** One step-down pass: a general-service cost center and the total pool it allocated (the result; the basis
  *  that drove it is recorded on Worksheet B-1). */
@@ -16,16 +16,24 @@ const AllocationStatColumn = Type.Object({
   generalServiceCostCenterCode: Type.String(),
   /** The statistical basis label used (mirrors the Worksheet B-1 column), for presentation. */
   allocationBasis: Type.String(),
-  poolAmountCents: Type.Integer({ description: "DERIVED: total overhead pool allocated this pass" }),
+  poolAmountCents: Type.Integer({
+    description: "DERIVED: total overhead pool allocated this pass",
+  }),
 });
 
 /** A direct cost center's fully-allocated result after the full step-down. */
 const SteppedDownCostCenter = Type.Object({
   code: Type.String(),
   name: Type.String(),
-  directCostCents: Type.Integer({ description: "cost from Worksheet A after A-1/A-6 net adjustments" }),
-  allocatedOverheadCents: Type.Integer({ description: "sum of all overhead allocated into this center" }),
-  fullyAllocatedCostCents: Type.Integer({ description: "directCostCents + allocatedOverheadCents" }),
+  directCostCents: Type.Integer({
+    description: "cost from Worksheet A after A-1/A-6 net adjustments",
+  }),
+  allocatedOverheadCents: Type.Integer({
+    description: "sum of all overhead allocated into this center",
+  }),
+  fullyAllocatedCostCents: Type.Integer({
+    description: "directCostCents + allocatedOverheadCents",
+  }),
 });
 
 /** Worksheet B — cost allocation step-down result. */

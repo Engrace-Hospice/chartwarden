@@ -93,4 +93,6 @@ export const BOOTSTRAP_ON_ADMISSION_ACTIVATED: readonly DisciplinePlanKind[] = [
 ] as const;
 
 /** §1.1 / D10 — the kind created lazily rather than at admission. */
-export const BOOTSTRAP_LAZILY_ON_ASSIGNMENT: readonly DisciplinePlanKind[] = ["volunteer_plan"] as const;
+export const BOOTSTRAP_LAZILY_ON_ASSIGNMENT: readonly DisciplinePlanKind[] = [
+  "volunteer_plan",
+] as const;

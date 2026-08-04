@@ -12,7 +12,7 @@
 // override path must reach the handler so the ≥40-char reason is enforced and the failing gates are
 // recorded rather than the request being refused by an opaque 403.
 import type { FastifyInstance } from "fastify";
-import { writeActorOf, actorOf } from "./actor";
+import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_COORDINATOR, ABAC_VOLUNTEER_ACTIVE_UNLESS_OVERRIDE, P } from "./guards";
 import {
@@ -102,7 +102,10 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
       },
     },
     async (request) =>
-      readService.listVolunteerGates(actorOf(request), parseQuery(GateListQuerySchema, request.query)),
+      readService.listVolunteerGates(
+        actorOf(request),
+        parseQuery(GateListQuerySchema, request.query),
+      ),
   );
 
   // 20 — record a gate.
@@ -168,7 +171,10 @@ export function registerVolunteerRoutes(app: FastifyInstance, deps: VolunteerRou
       },
     },
     async (request) =>
-      readService.getVolunteerHourRatio(actorOf(request), parseQuery(HourRatioQuerySchema, request.query)),
+      readService.getVolunteerHourRatio(
+        actorOf(request),
+        parseQuery(HourRatioQuerySchema, request.query),
+      ),
   );
 
   // 24 — a manual hour adjustment on the ledger (the ONLY path that may carry negative minutes).

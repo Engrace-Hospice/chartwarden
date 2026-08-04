@@ -28,8 +28,20 @@ export interface ConditionDomain {
   readonly icd10Code?: string | null;
   readonly icd10Text?: string | null;
   readonly snomedCode?: string | null;
-  readonly clinicalStatus: "active" | "recurrence" | "relapse" | "inactive" | "remission" | "resolved";
-  readonly verificationStatus?: "unconfirmed" | "provisional" | "differential" | "confirmed" | "refuted" | "entered-in-error";
+  readonly clinicalStatus:
+    | "active"
+    | "recurrence"
+    | "relapse"
+    | "inactive"
+    | "remission"
+    | "resolved";
+  readonly verificationStatus?:
+    | "unconfirmed"
+    | "provisional"
+    | "differential"
+    | "confirmed"
+    | "refuted"
+    | "entered-in-error";
   readonly categoryCode?: "problem-list-item" | "encounter-diagnosis" | "health-concern";
   readonly onsetDateTime?: string | null;
   readonly recordedDate?: string | null;
@@ -50,7 +62,16 @@ export interface GoalDomain {
     | "entered-in-error"
     | "rejected";
   readonly description: string;
-  readonly achievementStatus?: "in-progress" | "improving" | "worsening" | "no-change" | "achieved" | "sustaining" | "not-achieved" | "no-progress" | "not-attainable";
+  readonly achievementStatus?:
+    | "in-progress"
+    | "improving"
+    | "worsening"
+    | "no-change"
+    | "achieved"
+    | "sustaining"
+    | "not-achieved"
+    | "no-progress"
+    | "not-attainable";
   readonly targetDueDate?: string | null;
 }
 
@@ -58,7 +79,14 @@ export interface GoalDomain {
 export interface CarePlanDomain {
   readonly id: string;
   readonly patientId: string;
-  readonly status: "draft" | "active" | "on-hold" | "revoked" | "completed" | "entered-in-error" | "unknown";
+  readonly status:
+    | "draft"
+    | "active"
+    | "on-hold"
+    | "revoked"
+    | "completed"
+    | "entered-in-error"
+    | "unknown";
   readonly intent: "proposal" | "plan" | "order" | "option";
   readonly title?: string | null;
   readonly description?: string | null;
@@ -72,7 +100,15 @@ export interface CarePlanDomain {
 export interface MedicationRequestDomain {
   readonly id: string;
   readonly patientId: string;
-  readonly status: "active" | "on-hold" | "cancelled" | "completed" | "entered-in-error" | "stopped" | "draft" | "unknown";
+  readonly status:
+    | "active"
+    | "on-hold"
+    | "cancelled"
+    | "completed"
+    | "entered-in-error"
+    | "stopped"
+    | "draft"
+    | "unknown";
   readonly intent: "proposal" | "plan" | "order" | "original-order";
   readonly rxnormCode?: string | null;
   readonly rxnormText?: string | null;
@@ -88,7 +124,15 @@ export interface MedicationRequestDomain {
 export interface MedicationStatementDomain {
   readonly id: string;
   readonly patientId: string;
-  readonly status: "active" | "completed" | "entered-in-error" | "intended" | "stopped" | "on-hold" | "unknown" | "not-taken";
+  readonly status:
+    | "active"
+    | "completed"
+    | "entered-in-error"
+    | "intended"
+    | "stopped"
+    | "on-hold"
+    | "unknown"
+    | "not-taken";
   readonly rxnormCode?: string | null;
   readonly rxnormText?: string | null;
   readonly medicationText?: string | null;

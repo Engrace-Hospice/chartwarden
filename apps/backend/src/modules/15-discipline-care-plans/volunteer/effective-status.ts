@@ -49,9 +49,9 @@ export function effectiveStatusFor(
     return { membershipId, isActive: false, failingGates: [GATE_STORE_UNAVAILABLE] };
   }
   const clearing = new Set<VolunteerGateKind>(
-    gates.filter((g) => g.volunteerMembershipId === membershipId && isGateClearing(g, now)).map(
-      (g) => g.gateKind,
-    ),
+    gates
+      .filter((g) => g.volunteerMembershipId === membershipId && isGateClearing(g, now))
+      .map((g) => g.gateKind),
   );
   const failingGates = BLOCKING_VOLUNTEER_GATE_KINDS.filter((kind) => !clearing.has(kind));
   return { membershipId, isActive: failingGates.length === 0, failingGates };

@@ -1,3 +1,4 @@
+import type { IncidentKind } from "../contracts";
 // @wardenx/quality · consumers — the §4.10 UPSTREAM outbox-subscription map (the M30 inbound catalog).
 //
 // M30 is not only an event PRODUCER (events-by-m30.ts) — it also SUBSCRIBES to a small set of upstream
@@ -14,7 +15,6 @@
 // contract (no new manifest `dependsOn` edge). A subscribed topic carrying MULTIPLE effects (a death both
 // drafts a mortality review AND seeds the next CAHPS sample) lists them in deterministic order.
 import type { MeasureFamily } from "../measures/registry";
-import type { IncidentKind } from "../contracts";
 
 /**
  * One M30 effect a delivered upstream event projects to (§4.10). Discriminated by `kind` so a new effect
@@ -36,7 +36,11 @@ export type M30SubscriptionEffect =
   /** Auto-create a `draft` `incident_report` of the named kind (the §4.10 / D8 auto-incident path). */
   | { readonly kind: "incident_draft"; readonly incidentKind: IncidentKind; readonly note: string }
   /** Recompute HVLDL when the verified visit sits within ±`windowDays` of a decedent's death (§4.10). */
-  | { readonly kind: "hvldl_near_death_recompute"; readonly windowDays: number; readonly note: string };
+  | {
+      readonly kind: "hvldl_near_death_recompute";
+      readonly windowDays: number;
+      readonly note: string;
+    };
 
 /**
  * The §4.10 catalog: upstream outbox topic → the ordered M30 effects it triggers. Frozen so no consumer

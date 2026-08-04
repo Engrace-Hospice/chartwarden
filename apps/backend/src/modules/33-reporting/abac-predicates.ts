@@ -143,7 +143,13 @@ export async function resolveReportableScope(
       locationId,
     });
     if (ok) {
-      return { kind: "location", organizationId, membershipIds: [], locationIds: [locationId], sealed: true };
+      return {
+        kind: "location",
+        organizationId,
+        membershipIds: [],
+        locationIds: [locationId],
+        sealed: true,
+      };
     }
   }
 
@@ -153,7 +159,13 @@ export async function resolveReportableScope(
     userId: context.userId,
   });
   if (supervised.length > 0) {
-    return { kind: "team", organizationId, membershipIds: supervised, locationIds: [], sealed: true };
+    return {
+      kind: "team",
+      organizationId,
+      membershipIds: supervised,
+      locationIds: [],
+      sealed: true,
+    };
   }
 
   // 4. self — the actor's own membership id (empty if the session carries none → caller fails closed).

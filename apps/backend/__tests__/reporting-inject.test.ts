@@ -59,20 +59,20 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  M33_PERMISSION_KEYS,
+  type ReportingAbacResolver,
   buildM33AbacPredicates,
   denyStubReportingAbacResolver,
-  M33_PERMISSION_KEYS,
   mountM33ExportDrilldownRoutes,
   mountM33ReadRoutes,
   mountM33WriteRoutes,
-  type ReportingAbacResolver,
 } from "../src/modules/33-reporting/index";
 import {
+  type M33ReadRouteSeed,
+  type M33WriteRouteService,
   createInMemoryM33ExportDrilldownBackend,
   createInMemoryM33ReadBackend,
   createInMemoryM33WriteBackend,
-  type M33ReadRouteSeed,
-  type M33WriteRouteService,
 } from "../src/modules/33-reporting/routes/index";
 
 // ── header-auth shim (the M11/M14/M19/M28 precedent) ────────────────────────────────────────────────
@@ -312,7 +312,10 @@ describe("M33-reporting-inject — catalog + admin + metric-seam reads", () => {
     { label: "#37 admin mv list", url: "/api/v1/reporting/admin/mvs" },
     { label: "#40 admin replica lag", url: "/api/v1/reporting/admin/lag" },
     { label: "#41 admin drilldown audit", url: "/api/v1/reporting/admin/audit/drilldowns" },
-    { label: "#42 metrics-seam dashboard metric", url: "/api/v1/reporting/metrics_seam/dashboard/census_count" },
+    {
+      label: "#42 metrics-seam dashboard metric",
+      url: "/api/v1/reporting/metrics_seam/dashboard/census_count",
+    },
   ];
 
   it.each(ROUTES)("$label → 200", async ({ url }) => {
@@ -334,7 +337,10 @@ describe("M33-reporting-inject — admin MV commands (#38-39)", () => {
     });
     expect(res.statusCode).toBe(202);
     expect(res.json().jobId).toBeTypeOf("string");
-    expect(read.inspect.enqueuedJobs()).toContainEqual({ queue: "report.mv_refresh", jobKey: `${MV_KEY}:refresh` });
+    expect(read.inspect.enqueuedJobs()).toContainEqual({
+      queue: "report.mv_refresh",
+      jobKey: `${MV_KEY}:refresh`,
+    });
     await app.close();
   });
 
@@ -346,7 +352,10 @@ describe("M33-reporting-inject — admin MV commands (#38-39)", () => {
       headers: SUPER,
     });
     expect(res.statusCode).toBe(202);
-    expect(read.inspect.enqueuedJobs()).toContainEqual({ queue: "report.mv_refresh", jobKey: `${MV_KEY}:suspend` });
+    expect(read.inspect.enqueuedJobs()).toContainEqual({
+      queue: "report.mv_refresh",
+      jobKey: `${MV_KEY}:suspend`,
+    });
     await app.close();
   });
 });
@@ -398,12 +407,20 @@ describe("M33-reporting-inject — definitions lifecycle (#8-14)", () => {
     const defId = create.json().id as string;
 
     // #9 list
-    const list = await app.inject({ method: "GET", url: "/api/v1/reporting/definitions", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/reporting/definitions",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.map((d: { id: string }) => d.id)).toContain(defId);
 
     // #10 read
-    const read = await app.inject({ method: "GET", url: `/api/v1/reporting/definitions/${defId}`, headers: SUPER });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/reporting/definitions/${defId}`,
+      headers: SUPER,
+    });
     expect(read.statusCode).toBe(200);
     expect(read.json().baseKey).toBe(BASE_KEY);
 
@@ -455,14 +472,22 @@ describe("M33-reporting-inject — views + sharing lifecycle (#15-21)", () => {
     const { app } = makeServer();
 
     // #15 list (empty is a legal 200 before any view exists)
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/reporting/views", headers: SUPER });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/reporting/views",
+      headers: SUPER,
+    });
     expect(list0.statusCode).toBe(200);
 
     // #16 create (via the shared definition→version→view seed helper)
     const viewId = await seedView(app, SUPER, "views-lifecycle");
 
     // #17 read (dashboard_visibility: the actor owns the view it just created)
-    const read = await app.inject({ method: "GET", url: `/api/v1/reporting/views/${viewId}`, headers: SUPER });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/reporting/views/${viewId}`,
+      headers: SUPER,
+    });
     expect(read.statusCode).toBe(200);
 
     // #18 edit
@@ -514,7 +539,11 @@ describe("M33-reporting-inject — scheduled reports lifecycle (#22-31)", () => 
     const viewId = await seedView(app, SUPER, "sched-lifecycle");
 
     // #22 list
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/reporting/schedules", headers: SUPER });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/reporting/schedules",
+      headers: SUPER,
+    });
     expect(list0.statusCode).toBe(200);
 
     // #23 create

@@ -8,10 +8,11 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
-  DegradedError,
   DOSESPOT_CIRCUIT_BREAKER_CONFIG,
+  DegradedError,
   INITIAL_BREAKER_SNAPSHOT,
   PATIENT_SYNC_MAX_RETRIES,
+  type PatientSyncSnapshot,
   RX_TRANSMISSION_MAX_RETRIES,
   RetryableError,
   applyOutcome,
@@ -39,7 +40,6 @@ import {
   verifyWebhookEnvelope,
   webhookBodyDigest,
   webhookDedupKey,
-  type PatientSyncSnapshot,
 } from "../src/index";
 
 // ── client/errors.ts — the INT-009 DegradedError + the in-call RetryableError ─────────────────────────
@@ -86,7 +86,8 @@ describe("per-tenant circuit breaker (§2.5: 5 failures / 60s → open 30s → h
     let snap = INITIAL_BREAKER_SNAPSHOT;
     const base = Date.parse("2026-06-22T00:00:00.000Z");
     // 4 failures inside window, then one 61s later (the first 4 prune out).
-    for (let i = 0; i < 4; i++) snap = applyOutcome(snap, "failure", new Date(base + i * 1000).toISOString());
+    for (let i = 0; i < 4; i++)
+      snap = applyOutcome(snap, "failure", new Date(base + i * 1000).toISOString());
     snap = applyOutcome(snap, "failure", new Date(base + 61_000).toISOString());
     expect(snap.state).toBe("closed");
   });
@@ -94,7 +95,8 @@ describe("per-tenant circuit breaker (§2.5: 5 failures / 60s → open 30s → h
   it("half-opens after the open duration and closes on probe success", () => {
     let snap = INITIAL_BREAKER_SNAPSHOT;
     const base = Date.parse("2026-06-22T00:00:00.000Z");
-    for (let i = 0; i < 5; i++) snap = applyOutcome(snap, "failure", new Date(base + i * 1000).toISOString());
+    for (let i = 0; i < 5; i++)
+      snap = applyOutcome(snap, "failure", new Date(base + i * 1000).toISOString());
     expect(snap.state).toBe("open");
     // Before cooldown → still open, denied (cooldown is measured from the last-failure `openedAt` = base+4s).
     const hot = evaluateBreaker(snap, new Date(base + 10_000).toISOString());
@@ -103,7 +105,11 @@ describe("per-tenant circuit breaker (§2.5: 5 failures / 60s → open 30s → h
     const cooled = evaluateBreaker(snap, new Date(base + 40_000).toISOString());
     expect(cooled).toEqual({ effectiveState: "half_open", allowed: true });
     // Probe success closes + emits the recovered edge.
-    const closed = applyOutcome({ ...snap, state: "half_open" }, "success", new Date(base + 40_500).toISOString());
+    const closed = applyOutcome(
+      { ...snap, state: "half_open" },
+      "success",
+      new Date(base + 40_500).toISOString(),
+    );
     expect(closed.state).toBe("closed");
     expect(didTransition(snap, closed)).toBe("closed");
   });
@@ -153,9 +159,14 @@ describe("createUnboundDoseSpotClient (Phase-1 deny-stub, D11)", () => {
 
 describe("webhook security envelope (§7.4 D7)", () => {
   const secret = "tenant-webhook-secret";
-  const body = JSON.stringify({ organization_id: "org-1", dosespot_event_id: "evt-7", type: "ScriptStatusUpdate" });
+  const body = JSON.stringify({
+    organization_id: "org-1",
+    dosespot_event_id: "evt-7",
+    type: "ScriptStatusUpdate",
+  });
   const nowMs = Date.parse("2026-06-22T12:00:00.000Z");
-  const sign = (b: string, s: string): string => createHmac("sha256", s).update(b, "utf8").digest("hex");
+  const sign = (b: string, s: string): string =>
+    createHmac("sha256", s).update(b, "utf8").digest("hex");
 
   it("accepts a well-formed, in-window, correctly-signed request and returns the body digest", () => {
     const result = verifyWebhookEnvelope({
@@ -243,14 +254,30 @@ describe("webhook security envelope (§7.4 D7)", () => {
 
 describe("D8 NewRx idempotency key", () => {
   it("rxBusinessKey is deterministic and folds cosmetic sig differences", () => {
-    const a = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "81 mg", sigFreeText: "Take 1 tab PO QD." });
-    const b = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "81 mg", sigFreeText: "take  1 tab po qd" });
+    const a = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "Take 1 tab PO QD.",
+    });
+    const b = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "take  1 tab po qd",
+    });
     expect(a).toBe(b);
   });
 
   it("different route/frequency produces a different key", () => {
-    const a = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "81 mg", sigFreeText: "1 tab PO QD" });
-    const b = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "81 mg", sigFreeText: "1 tab PO BID" });
+    const a = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "1 tab PO QD",
+    });
+    const b = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "1 tab PO BID",
+    });
     expect(a).not.toBe(b);
   });
 
@@ -259,20 +286,52 @@ describe("D8 NewRx idempotency key", () => {
   });
 
   it("idempotencyKey binds prescriber + patient + rxBusinessKey (double-sign self-dedups)", () => {
-    const rxKey = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "81 mg", sigFreeText: "1 tab PO QD" });
-    const k1 = computeNewRxIdempotencyKey({ prescriberMembershipId: "pm-1", patientId: "p-1", rxBusinessKey: rxKey });
-    const k2 = computeNewRxIdempotencyKey({ prescriberMembershipId: "pm-1", patientId: "p-1", rxBusinessKey: rxKey });
+    const rxKey = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "1 tab PO QD",
+    });
+    const k1 = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-1",
+      rxBusinessKey: rxKey,
+    });
+    const k2 = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-1",
+      rxBusinessKey: rxKey,
+    });
     expect(k1).toBe(k2);
     // A different patient → distinct key (no cross-patient dedup).
-    const k3 = computeNewRxIdempotencyKey({ prescriberMembershipId: "pm-1", patientId: "p-2", rxBusinessKey: rxKey });
+    const k3 = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-2",
+      rxBusinessKey: rxKey,
+    });
     expect(k1).not.toBe(k3);
   });
 
   it("correction-of-record (changed sig) produces a distinct idempotency key", () => {
-    const orig = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "81 mg", sigFreeText: "1 tab PO QD" });
-    const corrected = computeRxBusinessKey({ rxnormRxcui: "1191", strength: "162 mg", sigFreeText: "1 tab PO QD" });
-    const ka = computeNewRxIdempotencyKey({ prescriberMembershipId: "pm-1", patientId: "p-1", rxBusinessKey: orig });
-    const kb = computeNewRxIdempotencyKey({ prescriberMembershipId: "pm-1", patientId: "p-1", rxBusinessKey: corrected });
+    const orig = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "81 mg",
+      sigFreeText: "1 tab PO QD",
+    });
+    const corrected = computeRxBusinessKey({
+      rxnormRxcui: "1191",
+      strength: "162 mg",
+      sigFreeText: "1 tab PO QD",
+    });
+    const ka = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-1",
+      rxBusinessKey: orig,
+    });
+    const kb = computeNewRxIdempotencyKey({
+      prescriberMembershipId: "pm-1",
+      patientId: "p-1",
+      rxBusinessKey: corrected,
+    });
     expect(ka).not.toBe(kb);
   });
 });
@@ -288,7 +347,11 @@ describe("medication_order_transmission planners (§4.10 / §5.1)", () => {
     expect(plan.status).toBe("queued_for_transmission");
     expect(plan.sendState).toBe("queued");
     expect(plan.event).toBe("m12.medication_order.queued_for_transmission");
-    expect(plan.insert).toMatchObject({ medicationOrderId: "mo-1", idempotencyKey: "idem-1", retryCount: 0 });
+    expect(plan.insert).toMatchObject({
+      medicationOrderId: "mo-1",
+      idempotencyKey: "idem-1",
+      retryCount: 0,
+    });
   });
 
   it("success stamps the prescription id and moves to transmitted", () => {
@@ -375,7 +438,10 @@ describe("patient-sync planner (§2.6 D4)", () => {
     const early = planPatientSyncFailure({ patientId: "p-1", currentRetryCount: 0 });
     expect(early.escalate).toBe(false);
 
-    const terminal = planPatientSyncFailure({ patientId: "p-1", currentRetryCount: PATIENT_SYNC_MAX_RETRIES - 1 });
+    const terminal = planPatientSyncFailure({
+      patientId: "p-1",
+      currentRetryCount: PATIENT_SYNC_MAX_RETRIES - 1,
+    });
     expect(terminal.escalate).toBe(true);
     if (terminal.escalate) {
       expect(terminal.event).toBe("m12.dosespot_patient_sync_failed");

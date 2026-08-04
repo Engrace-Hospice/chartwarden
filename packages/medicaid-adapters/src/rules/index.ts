@@ -5,14 +5,19 @@
 export * from "./types";
 export * from "./_registry";
 
-import type { MedicaidRule } from "./types";
 import { MedicaidRuleRegistry } from "./_registry";
+import type { MedicaidRule } from "./types";
 
+import {
+  medicaidRateSchedulePresentForServiceDate,
+  medicarePrimaryRequiredForDual,
+} from "./cob-rate-rules";
 import {
   medicaidEligibilityActive,
   medicaidEligibilityFreshness30d,
   medicaidRecipientIdFormat,
 } from "./eligibility-rules";
+import { medicaidCapCoherence, medicaidEvvBracketCoherence } from "./evv-cap-rules";
 import { medicaidMcoAssignmentRoutes } from "./mco-rules";
 import {
   medicaidRbArrangementRequiredForNfResident,
@@ -20,14 +25,9 @@ import {
   medicaidRbDayLocCoherence,
 } from "./rb-rules";
 import {
-  medicaidRateSchedulePresentForServiceDate,
-  medicarePrimaryRequiredForDual,
-} from "./cob-rate-rules";
-import {
   medicaidStateSpecificDocumentation,
   medicaidStateSpecificModifiersValid,
 } from "./state-specific-rules";
-import { medicaidCapCoherence, medicaidEvvBracketCoherence } from "./evv-cap-rules";
 
 export {
   medicaidEligibilityActive,

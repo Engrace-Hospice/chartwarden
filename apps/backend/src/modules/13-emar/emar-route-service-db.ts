@@ -49,10 +49,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, ValidationError } from "@wardenx/types";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
-import type {
-  CaregiverReviewAbacFacts,
-  WitnessAbacFacts,
-} from "./abac-predicates";
+import type { CaregiverReviewAbacFacts, WitnessAbacFacts } from "./abac-predicates";
 import type {
   AdministrationPolicyView,
   AdministrationView,
@@ -60,11 +57,11 @@ import type {
   EmarRouteService,
   IvSessionView,
   MissedDoseView,
+  ReconciliationDecisionView,
   RecordAdministrationArgs,
   RecordCaregiverAttestedArgs,
   RecordDecisionArgs,
   RecordRefusalArgs,
-  ReconciliationDecisionView,
   ScheduledDoseView,
   WitnessAttestArgs,
   WorksheetView,
@@ -195,7 +192,13 @@ export function createDbEmarBackend(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: orgId, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: orgId,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Load a single administration_record (RLS-scoped) or the non-leaking 404. */
@@ -243,14 +246,18 @@ export function createDbEmarBackend(
       .from(BSE)
       .where(inArray(BSE.administrationRecordId, ids as string[]));
     for (const row of rows) {
-      if (row.adminId && !out.has(row.adminId)) out.set(row.adminId, row.match as BarcodeMatchResult);
+      if (row.adminId && !out.has(row.adminId))
+        out.set(row.adminId, row.match as BarcodeMatchResult);
     }
     return out;
   }
 
   return {
     // ── EmarAbacResolver (§4.7 predicate facts) ────────────────────────────────────────────────────────
-    async loadWitnessFacts(_orgId: string, _witnessUserId: string): Promise<WitnessAbacFacts | null> {
+    async loadWitnessFacts(
+      _orgId: string,
+      _witnessUserId: string,
+    ): Promise<WitnessAbacFacts | null> {
       // TODO(M13L-T02): witness discipline/membership facts live in M2 (organization_membership), outside
       // M13's tables. Fail closed (deny) until the membership read is wired; gates the controlled-substance
       // witness write path (501 today).
@@ -298,8 +305,14 @@ export function createDbEmarBackend(
         const conds = [eq(ADM.patientId, q.patient)];
         if (q.since) conds.push(gte(ADM.administeredAt, new Date(q.since)));
         if (q.until) conds.push(lte(ADM.administeredAt, new Date(q.until)));
-        const rows = await tx.select().from(ADM).where(and(...conds));
-        const m = await matchResults(tx, rows.map((r) => r.id));
+        const rows = await tx
+          .select()
+          .from(ADM)
+          .where(and(...conds));
+        const m = await matchResults(
+          tx,
+          rows.map((r) => r.id),
+        );
         return rows.map((r) => toAdminView(r, m.get(r.id) ?? null));
       });
     },
@@ -376,7 +389,12 @@ export function createDbEmarBackend(
         const decisions = await tx
           .select()
           .from(RD)
-          .where(inArray(RD.worksheetId, sheets.map((w) => w.id)));
+          .where(
+            inArray(
+              RD.worksheetId,
+              sheets.map((w) => w.id),
+            ),
+          );
         const byWorksheet = new Map<string, ReconciliationDecisionView[]>();
         for (const d of decisions) {
           const list = byWorksheet.get(d.worksheetId) ?? [];
@@ -428,7 +446,12 @@ export function createDbEmarBackend(
           .where(eq(CKD.id, id))
           .limit(1);
         if (!d) throw new NotFoundError("comfort-kit deployment not found");
-        return { id: d.id, patientId: d.patientId, admissionId: d.admissionId, disposalStatus: d.disposalStatus };
+        return {
+          id: d.id,
+          patientId: d.patientId,
+          admissionId: d.admissionId,
+          disposalStatus: d.disposalStatus,
+        };
       });
     },
 
@@ -444,13 +467,21 @@ export function createDbEmarBackend(
           .from(POL)
           .limit(1);
         return p
-          ? { graceWindowMinutes: p.grace, prnMinimumIntervalMinutes: p.prn, emarPdfOnCommit: p.pdf }
+          ? {
+              graceWindowMinutes: p.grace,
+              prnMinimumIntervalMinutes: p.prn,
+              emarPdfOnCommit: p.pdf,
+            }
           : { ...DEFAULT_POLICY };
       });
     },
 
     // ── administration writes (§2.2 lifecycle; the service does the transitions, no DB triggers) ─────────
-    async recordAdministration(orgId, userId, args: RecordAdministrationArgs): Promise<AdministrationView> {
+    async recordAdministration(
+      orgId,
+      userId,
+      args: RecordAdministrationArgs,
+    ): Promise<AdministrationView> {
       return withOrg(orgId, async (tx) => {
         const recordedAt = new Date();
         const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt.toISOString());
@@ -484,7 +515,13 @@ export function createDbEmarBackend(
           if (!verify.ok)
             throw new ValidationError(
               "a controlled-substance administration requires a witness attestation",
-              [{ field: "X-Witness-Attestation", code: "WITNESS_REQUIRED", message: `witness attestation ${verify.reason}` }],
+              [
+                {
+                  field: "X-Witness-Attestation",
+                  code: "WITNESS_REQUIRED",
+                  message: `witness attestation ${verify.reason}`,
+                },
+              ],
             );
           // Single-use burn (TASK-008): a valid, unexpired, in-scope token can still be a REPLAY of one
           // already consumed by an earlier administration. The `administration_witness` unique index on
@@ -499,7 +536,13 @@ export function createDbEmarBackend(
           if (priorBurn.length > 0)
             throw new ValidationError(
               "a controlled-substance administration requires a witness attestation",
-              [{ field: "X-Witness-Attestation", code: "WITNESS_REQUIRED", message: "witness attestation WITNESS_TOKEN_ALREADY_USED" }],
+              [
+                {
+                  field: "X-Witness-Attestation",
+                  code: "WITNESS_REQUIRED",
+                  message: "witness attestation WITNESS_TOKEN_ALREADY_USED",
+                },
+              ],
             );
           witnessMembershipId = verify.claims.witnessMembershipId;
           witnessDigest = verify.digest;
@@ -516,7 +559,10 @@ export function createDbEmarBackend(
             args.administeredAt.slice(0, 10),
           );
           if (barcodeScanBlocks(barcodeMatchResult))
-            throw new AdministrationStateError("BARCODE_VERIFICATION_FAILED", `barcode verification failed: ${barcodeMatchResult}`);
+            throw new AdministrationStateError(
+              "BARCODE_VERIFICATION_FAILED",
+              `barcode verification failed: ${barcodeMatchResult}`,
+            );
         }
 
         const inserted = (
@@ -569,7 +615,8 @@ export function createDbEmarBackend(
             administrationRecordId: inserted.id,
             witnessMembershipId,
             witnessesScope: "administration_only",
-            attestationText: "I attest I observed the controlled-substance administration (§2.6 D7).",
+            attestationText:
+              "I attest I observed the controlled-substance administration (§2.6 D7).",
             attestationTokenDigest: witnessDigest ?? "",
           });
 
@@ -597,26 +644,46 @@ export function createDbEmarBackend(
           scheduledDoseId: args.scheduledDoseId ?? null,
         });
         if (isControlled && witnessMembershipId)
-          await emit(tx, orgId, "m13.administration.controlled_witnessed", "administration_record", inserted.id, {
-            administrationRecordId: inserted.id,
-            witnessMembershipId,
-            witnessesScope: "administration_only",
-          });
+          await emit(
+            tx,
+            orgId,
+            "m13.administration.controlled_witnessed",
+            "administration_record",
+            inserted.id,
+            {
+              administrationRecordId: inserted.id,
+              witnessMembershipId,
+              witnessesScope: "administration_only",
+            },
+          );
         if (args.prn)
-          await emit(tx, orgId, "m13.prn_administration_recorded", "administration_record", inserted.id, {
-            prnAdministrationId: randomUUID(),
-            administrationRecordId: inserted.id,
-            patientId,
-            medicationOrderId: args.medicationOrderId,
-            administeredAt: args.administeredAt,
-            reassessmentDueAt: new Date(Date.parse(args.administeredAt) + 60 * 60000).toISOString(),
-            recommendedReassessmentScale: "esas_r",
-          });
+          await emit(
+            tx,
+            orgId,
+            "m13.prn_administration_recorded",
+            "administration_record",
+            inserted.id,
+            {
+              prnAdministrationId: randomUUID(),
+              administrationRecordId: inserted.id,
+              patientId,
+              medicationOrderId: args.medicationOrderId,
+              administeredAt: args.administeredAt,
+              reassessmentDueAt: new Date(
+                Date.parse(args.administeredAt) + 60 * 60000,
+              ).toISOString(),
+              recommendedReassessmentScale: "esas_r",
+            },
+          );
         return toAdminView(inserted, barcodeMatchResult);
       });
     },
 
-    async mintWitnessToken(orgId, userId, args: WitnessAttestArgs): Promise<{ token: string; expiresInSeconds: number }> {
+    async mintWitnessToken(
+      orgId,
+      userId,
+      args: WitnessAttestArgs,
+    ): Promise<{ token: string; expiresInSeconds: number }> {
       // Stateless HMAC token (compromise #5): mint + verify share the process-fixed secret; the witness's
       // membership is the passed `userId`. No DB write (the single-use Valkey burn is deferred).
       const token = buildWitnessAttestationToken(
@@ -633,7 +700,10 @@ export function createDbEmarBackend(
       return { token, expiresInSeconds: 60 };
     },
 
-    async recordCaregiverAttested(orgId, args: RecordCaregiverAttestedArgs): Promise<AdministrationView> {
+    async recordCaregiverAttested(
+      orgId,
+      args: RecordCaregiverAttestedArgs,
+    ): Promise<AdministrationView> {
       // §2.9 D10 — the caregiver path records pending_caregiver_review (requires_rn_review=true); the double-
       // witness rule does not apply and encounter_id stays null (D9). The M12 five-rights gate is skipped
       // (compromise #3, no order projection threaded).
@@ -660,13 +730,20 @@ export function createDbEmarBackend(
             })
             .returning()
         )[0]!;
-        await emit(tx, orgId, "m13.administration.recorded_caregiver_attested", "administration_record", inserted.id, {
-          administrationRecordId: inserted.id,
-          patientId: args.patientId,
-          medicationOrderId: args.medicationOrderId,
-          caregiverSessionId: args.caregiverSessionId,
-          requiresRnReview: true,
-        });
+        await emit(
+          tx,
+          orgId,
+          "m13.administration.recorded_caregiver_attested",
+          "administration_record",
+          inserted.id,
+          {
+            administrationRecordId: inserted.id,
+            patientId: args.patientId,
+            medicationOrderId: args.medicationOrderId,
+            caregiverSessionId: args.caregiverSessionId,
+            requiresRnReview: true,
+          },
+        );
         return toAdminView(inserted, null);
       });
     },
@@ -676,12 +753,25 @@ export function createDbEmarBackend(
         await loadAdmin(tx, id);
         await tx
           .update(ADM)
-          .set({ requiresRnReview: false, status: "committed", acknowledgedByMembershipId: userId, acknowledgedAt: new Date(), updatedAt: new Date() })
+          .set({
+            requiresRnReview: false,
+            status: "committed",
+            acknowledgedByMembershipId: userId,
+            acknowledgedAt: new Date(),
+            updatedAt: new Date(),
+          })
           .where(eq(ADM.id, id));
-        await emit(tx, orgId, "m13.caregiver_administration.acknowledged", "administration_record", id, {
-          administrationRecordId: id,
-          acknowledgedBy: userId,
-        });
+        await emit(
+          tx,
+          orgId,
+          "m13.caregiver_administration.acknowledged",
+          "administration_record",
+          id,
+          {
+            administrationRecordId: id,
+            acknowledgedBy: userId,
+          },
+        );
         return readAdmin(tx, id);
       });
     },
@@ -691,13 +781,25 @@ export function createDbEmarBackend(
         await loadAdmin(tx, id);
         await tx
           .update(ADM)
-          .set({ requiresRnReview: false, disputed: true, disputeReason: reason, updatedAt: new Date() })
+          .set({
+            requiresRnReview: false,
+            disputed: true,
+            disputeReason: reason,
+            updatedAt: new Date(),
+          })
           .where(eq(ADM.id, id));
-        await emit(tx, orgId, "m13.caregiver_administration.disputed", "administration_record", id, {
-          administrationRecordId: id,
-          disputedBy: userId,
-          disputeReason: reason,
-        });
+        await emit(
+          tx,
+          orgId,
+          "m13.caregiver_administration.disputed",
+          "administration_record",
+          id,
+          {
+            administrationRecordId: id,
+            disputedBy: userId,
+            disputeReason: reason,
+          },
+        );
         return readAdmin(tx, id);
       });
     },
@@ -738,12 +840,22 @@ export function createDbEmarBackend(
             })
             .returning()
         )[0]!;
-        await tx.update(ADM).set({ status: "superseded", updatedAt: new Date() }).where(eq(ADM.id, id));
-        await emit(tx, orgId, "m13.administration.corrected", "administration_record", inserted.id, {
-          originalAdministrationId: id,
-          newAdministrationId: inserted.id,
-          reason,
-        });
+        await tx
+          .update(ADM)
+          .set({ status: "superseded", updatedAt: new Date() })
+          .where(eq(ADM.id, id));
+        await emit(
+          tx,
+          orgId,
+          "m13.administration.corrected",
+          "administration_record",
+          inserted.id,
+          {
+            originalAdministrationId: id,
+            newAdministrationId: inserted.id,
+            reason,
+          },
+        );
         return toAdminView(inserted, null);
       });
     },
@@ -753,7 +865,13 @@ export function createDbEmarBackend(
         await loadAdmin(tx, id);
         await tx
           .update(ADM)
-          .set({ status: "voided", voidedAt: new Date(), voidedBy: userId, voidReason: reason, updatedAt: new Date() })
+          .set({
+            status: "voided",
+            voidedAt: new Date(),
+            voidedBy: userId,
+            voidReason: reason,
+            updatedAt: new Date(),
+          })
           .where(eq(ADM.id, id));
         await emit(tx, orgId, "m13.administration.voided", "administration_record", id, {
           administrationRecordId: id,
@@ -798,7 +916,11 @@ export function createDbEmarBackend(
       });
     },
 
-    async offlineSync(orgId, userId, rows): Promise<{ synced: number; results: AdministrationView[] }> {
+    async offlineSync(
+      orgId,
+      userId,
+      rows,
+    ): Promise<{ synced: number; results: AdministrationView[] }> {
       const results: AdministrationView[] = [];
       for (const r of rows) results.push(await this.recordAdministration(orgId, userId, r));
       return { synced: results.length, results };
@@ -874,19 +996,33 @@ export function createDbEmarBackend(
         )[0]!;
         await tx.update(WS).set({ status: "in_progress" }).where(eq(WS.id, id));
         if (args.decision === "carry_forward" || args.decision === "new_order")
-          await emit(tx, orgId, "m13.reconciliation.draft_order_requested", "reconciliation_worksheet", id, {
-            worksheetId: id,
-            decisionId: decision.id,
-            medicationOrderDraftPayload: {},
-            lineKind: args.lineKind,
-          });
+          await emit(
+            tx,
+            orgId,
+            "m13.reconciliation.draft_order_requested",
+            "reconciliation_worksheet",
+            id,
+            {
+              worksheetId: id,
+              decisionId: decision.id,
+              medicationOrderDraftPayload: {},
+              lineKind: args.lineKind,
+            },
+          );
         if (args.decision === "discontinue")
-          await emit(tx, orgId, "m13.reconciliation.discontinue_requested", "reconciliation_worksheet", id, {
-            worksheetId: id,
-            decisionId: decision.id,
-            medicationOrderId: args.sourceId,
-            reason: "reconciled_discontinue",
-          });
+          await emit(
+            tx,
+            orgId,
+            "m13.reconciliation.discontinue_requested",
+            "reconciliation_worksheet",
+            id,
+            {
+              worksheetId: id,
+              decisionId: decision.id,
+              medicationOrderId: args.sourceId,
+              reason: "reconciled_discontinue",
+            },
+          );
         return readWorksheet(tx, id);
       });
     },
@@ -928,7 +1064,11 @@ export function createDbEmarBackend(
         const decisions = await tx.select({ id: RD.id }).from(RD).where(eq(RD.worksheetId, id));
         if (decisions.length === 0)
           throw new ValidationError("reconciliation incomplete", [
-            { field: "decisions", code: "RECONCILIATION_INCOMPLETE", message: "no reconciliation decision recorded" },
+            {
+              field: "decisions",
+              code: "RECONCILIATION_INCOMPLETE",
+              message: "no reconciliation decision recorded",
+            },
           ]);
         const finalizedAt = new Date();
         await tx
@@ -944,11 +1084,18 @@ export function createDbEmarBackend(
           finalizedBy: userId,
           lineSummary: {},
         });
-        await emit(tx, orgId, "m13.reconciliation.document_requested", "reconciliation_worksheet", id, {
-          worksheetId: id,
-          formTemplate: "reconciliation_worksheet_v1",
-          renderPayload: {},
-        });
+        await emit(
+          tx,
+          orgId,
+          "m13.reconciliation.document_requested",
+          "reconciliation_worksheet",
+          id,
+          {
+            worksheetId: id,
+            formTemplate: "reconciliation_worksheet_v1",
+            renderPayload: {},
+          },
+        );
         return readWorksheet(tx, id);
       });
     },
@@ -973,7 +1120,11 @@ export function createDbEmarBackend(
         const returnedAt = new Date();
         await tx
           .update(CKD)
-          .set({ disposalStatus: "returned", returnedAt, disposalReconciliationStatus: "reconciled" })
+          .set({
+            disposalStatus: "returned",
+            returnedAt,
+            disposalReconciliationStatus: "reconciled",
+          })
           .where(eq(CKD.id, id));
         await emit(tx, orgId, "m13.comfort_kit.returned", "comfort_kit_deployment", id, {
           deploymentId: id,
@@ -981,19 +1132,36 @@ export function createDbEmarBackend(
           finalRemainingByMedication: {},
           disposalReconciliationStatus: "reconciled",
         });
-        return { id: d.id, patientId: d.patientId, admissionId: d.admissionId, disposalStatus: "returned" };
+        return {
+          id: d.id,
+          patientId: d.patientId,
+          admissionId: d.admissionId,
+          disposalStatus: "returned",
+        };
       });
     },
 
     // ── administration policy write (org singleton; UPSERT) ───────────────────────────────────────────
     async putPolicy(orgId, patch): Promise<AdministrationPolicyView> {
       return withOrg(orgId, async (tx) => {
-        const [existing] = await tx.select().from(POL).where(eq(POL.organizationId, orgId)).limit(1);
+        const [existing] = await tx
+          .select()
+          .from(POL)
+          .where(eq(POL.organizationId, orgId))
+          .limit(1);
         const next: AdministrationPolicyView = {
-          graceWindowMinutes: patch.graceWindowMinutes ?? existing?.defaultGraceWindowMinutes ?? DEFAULT_POLICY.graceWindowMinutes,
+          graceWindowMinutes:
+            patch.graceWindowMinutes ??
+            existing?.defaultGraceWindowMinutes ??
+            DEFAULT_POLICY.graceWindowMinutes,
           prnMinimumIntervalMinutes:
-            patch.prnMinimumIntervalMinutes ?? existing?.defaultPrnReassessmentWindowMinutes ?? DEFAULT_POLICY.prnMinimumIntervalMinutes,
-          emarPdfOnCommit: patch.emarPdfOnCommit ?? existing?.emarPerAdministrationPdfEnabled ?? DEFAULT_POLICY.emarPdfOnCommit,
+            patch.prnMinimumIntervalMinutes ??
+            existing?.defaultPrnReassessmentWindowMinutes ??
+            DEFAULT_POLICY.prnMinimumIntervalMinutes,
+          emarPdfOnCommit:
+            patch.emarPdfOnCommit ??
+            existing?.emarPerAdministrationPdfEnabled ??
+            DEFAULT_POLICY.emarPdfOnCommit,
         };
         await tx
           .insert(POL)
@@ -1012,7 +1180,9 @@ export function createDbEmarBackend(
               updatedAt: new Date(),
             },
           });
-        await emit(tx, orgId, "m13.policy.changed", "administration_policy", orgId, { policyDeltaSummary: patch });
+        await emit(tx, orgId, "m13.policy.changed", "administration_policy", orgId, {
+          policyDeltaSummary: patch,
+        });
         return next;
       });
     },

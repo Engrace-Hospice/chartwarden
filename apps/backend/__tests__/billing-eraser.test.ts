@@ -162,7 +162,12 @@ describe("M23-T79 — billing_record §3.7 cascade order (children-first FK unwi
     expect(idx("validation_override")).toBeLessThan(idx("validation_result"));
     expect(idx("validation_result")).toBeLessThan(idx("validation_run"));
     // every claim child precedes the claim row itself.
-    for (const child of ["claim_line", "hipps_calculation", "sia_calculation", "claim_state_history"]) {
+    for (const child of [
+      "claim_line",
+      "hipps_calculation",
+      "sia_calculation",
+      "claim_state_history",
+    ]) {
       expect(idx(child)).toBeLessThan(idx("claim"));
     }
     // noe_record / notr_record are the independent fast-path entities — deleted LAST.
@@ -220,18 +225,18 @@ describe("M23-T79 — the 7-year compliance-class record is destruction-GATED (n
     await expect(createBillingEraser(store).erase({ orgId: ORG }, PATIENT)).rejects.toBeInstanceOf(
       BillingEraseRefused,
     );
-    await expect(
-      createBillingEraser(store).erase({ orgId: ORG }, PATIENT),
-    ).rejects.toThrow(/claim_in_flight/);
+    await expect(createBillingEraser(store).erase({ orgId: ORG }, PATIENT)).rejects.toThrow(
+      /claim_in_flight/,
+    );
     // fail-closed: NOTHING was cascaded (no partial destruction of a still-active claim).
     expect(cascadeTrail).toEqual([]);
   });
 
   it("REFUSES an erase of a record under a surveyor hold", async () => {
     const { store } = makeRecordingStore({ surveyorHold: true });
-    await expect(
-      createBillingEraser(store).erase({ orgId: ORG }, PATIENT),
-    ).rejects.toThrow(/surveyor_hold/);
+    await expect(createBillingEraser(store).erase({ orgId: ORG }, PATIENT)).rejects.toThrow(
+      /surveyor_hold/,
+    );
   });
 
   it("PROCEEDS once the destruction certificate authorizes destroying the held record", async () => {
@@ -246,7 +251,10 @@ describe("M23-T79 — the 7-year compliance-class record is destruction-GATED (n
 
   it("the refusal propagates through the M4-registered eraser boundary (not swallowed)", async () => {
     __resetErasersForTest();
-    registerBillingErasers({ registerEraser, store: makeRecordingStore({ surveyorHold: true }).store });
+    registerBillingErasers({
+      registerEraser,
+      store: makeRecordingStore({ surveyorHold: true }).store,
+    });
     await expect(
       getEraser(BILLING_DATA_CLASS).erase({ orgId: ORG }, PATIENT),
     ).rejects.toBeInstanceOf(BillingEraseRefused);

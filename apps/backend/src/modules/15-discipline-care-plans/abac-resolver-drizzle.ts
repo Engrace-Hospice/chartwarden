@@ -37,7 +37,8 @@ export function buildDrizzleDisciplinePlanAbacResolver(db: DbClient): Discipline
             organizationId: row.organizationId,
             patientId: row.patientId,
             locationId: row.locationId,
-            supervisingRnMembershipId: (row.supervisingRnMembershipId ?? null) as MembershipId | null,
+            supervisingRnMembershipId: (row.supervisingRnMembershipId ??
+              null) as MembershipId | null,
             aideMembershipId: (row.aideMembershipId ?? null) as MembershipId | null,
           };
           return facts;

@@ -55,7 +55,12 @@ export const M36_DELIVERY_FAILED_EVENT: Extract<
 > = "m36.notification.delivery_failed";
 
 /** The recipient classes M36 resolves an alert to. Only `on_call` is M19's business (§4.8). */
-export type M36DeliveryRecipientKind = "on_call" | "role_set" | "care_team" | "individual" | "other";
+export type M36DeliveryRecipientKind =
+  | "on_call"
+  | "role_set"
+  | "care_team"
+  | "individual"
+  | "other";
 
 /** The `m36.notification.delivery_failed` payload M19 requires (forward-declared — see the header). */
 export interface M36DeliveryFailedPayload {

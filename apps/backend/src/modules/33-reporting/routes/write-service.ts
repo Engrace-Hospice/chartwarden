@@ -106,7 +106,13 @@ export interface ScheduleRunView {
   readonly scheduleId: string;
   readonly organizationId: string;
   readonly scheduledFor: string;
-  readonly status: "queued" | "running" | "rendered_pending" | "rendered_complete" | "delivered" | "failed";
+  readonly status:
+    | "queued"
+    | "running"
+    | "rendered_pending"
+    | "rendered_complete"
+    | "delivered"
+    | "failed";
   readonly startedAt: string | null;
   readonly finishedAt: string | null;
   readonly documentId: string | null;
@@ -201,7 +207,10 @@ export function assertBaseActive(baseKey: string, baseStatus: string | null): vo
 }
 
 /** §2.3 PDF_ROW_LIMIT_EXCEEDED — refuse a `pdf` schedule over a view whose spec row_limit > 5000. */
-export function assertPdfRowLimit(format: "pdf" | "xlsx" | "csv", rowLimit: number | undefined): void {
+export function assertPdfRowLimit(
+  format: "pdf" | "xlsx" | "csv",
+  rowLimit: number | undefined,
+): void {
   if (format === "pdf" && (rowLimit ?? 1000) > PDF_MAX_ROW_LIMIT) {
     throw new PdfRowLimitExceededError(rowLimit ?? 1000);
   }
@@ -438,7 +447,8 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
   };
   const ownDefinition = (actor: M33WriteActor, defId: string): DefinitionView => {
     const d = definitions.get(defId);
-    if (!d || d.organizationId !== actor.organizationId) throw new NotFoundError("report definition");
+    if (!d || d.organizationId !== actor.organizationId)
+      throw new NotFoundError("report definition");
     return d;
   };
   const ownSchedule = (actor: M33WriteActor, schId: string): ScheduleView => {
@@ -530,7 +540,8 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
     async publishVersion(actor, definitionId, versionId) {
       const def = ownDefinition(actor, definitionId);
       const version = versions.get(versionId);
-      if (!version || version.definitionId !== definitionId) throw new NotFoundError("report definition version");
+      if (!version || version.definitionId !== definitionId)
+        throw new NotFoundError("report definition version");
       if (version.status === "superseded") {
         throw new ConflictError("a superseded version cannot be published");
       }
@@ -538,7 +549,8 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       // supersede the prior latest (D9).
       if (def.latestVersionId && def.latestVersionId !== versionId) {
         const prior = versions.get(def.latestVersionId);
-        if (prior) versions.set(prior.id, { ...prior, status: "superseded", supersededAt: published });
+        if (prior)
+          versions.set(prior.id, { ...prior, status: "superseded", supersededAt: published });
       }
       const newVersion: DefinitionVersionView = {
         ...version,
@@ -627,7 +639,10 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
       };
       views.set(viewId, updated);
       let share: ShareView | null = null;
-      if (args.shareScope === "role" && (args.shareRoleKeys?.length || args.sharedWithMembershipId)) {
+      if (
+        args.shareScope === "role" &&
+        (args.shareRoleKeys?.length || args.sharedWithMembershipId)
+      ) {
         const shareId = id("d");
         share = {
           id: shareId,
@@ -704,7 +719,8 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
     },
     async updateSchedule(actor, schId, args) {
       const s = ownSchedule(actor, schId);
-      if (s.status === "cancelled") throw new ConflictError("a cancelled schedule cannot be edited");
+      if (s.status === "cancelled")
+        throw new ConflictError("a cancelled schedule cannot be edited");
       const format = args.format ?? s.format;
       assertPdfRowLimit(format, undefined);
       if (args.cronExpression) {
@@ -727,14 +743,16 @@ export function createInMemoryM33WriteBackend(seed: M33WriteRouteSeed = {}): {
     },
     async pauseSchedule(actor, schId) {
       const s = ownSchedule(actor, schId);
-      if (s.status === "cancelled") throw new ConflictError("a cancelled schedule cannot be paused");
+      if (s.status === "cancelled")
+        throw new ConflictError("a cancelled schedule cannot be paused");
       const updated: ScheduleView = { ...s, status: "paused", nextRunAt: null };
       schedules.set(schId, updated);
       return updated;
     },
     async resumeSchedule(actor, schId) {
       const s = ownSchedule(actor, schId);
-      if (s.status === "cancelled") throw new ConflictError("a cancelled schedule cannot be resumed");
+      if (s.status === "cancelled")
+        throw new ConflictError("a cancelled schedule cannot be resumed");
       const next = stubNextRun(new Date(clock)).toISOString();
       const updated: ScheduleView = { ...s, status: "active", nextRunAt: next };
       schedules.set(schId, updated);

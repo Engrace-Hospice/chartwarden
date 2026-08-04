@@ -64,11 +64,22 @@ export function planDecisionRecord(input: {
   readonly patientIncluded: boolean;
   readonly presentDisciplines: readonly string[];
 }): DecisionRecordResult {
-  require_(input.meetingIsLive, "MEETING_NOT_LIVE", "decisions may only be recorded while the meeting is live");
-  require_(input.patientIncluded, "INCLUSION_CRITERIA_FAILED", "the patient is not on this meeting's caseload");
+  require_(
+    input.meetingIsLive,
+    "MEETING_NOT_LIVE",
+    "decisions may only be recorded while the meeting is live",
+  );
+  require_(
+    input.patientIncluded,
+    "INCLUSION_CRITERIA_FAILED",
+    "the patient is not on this meeting's caseload",
+  );
   const quorumSnapshot = evaluateQuorum(input.presentDisciplines);
   const wasQuorate = quorumSnapshot.met;
-  const effects: IdgSideEffect[] = [{ kind: "audit" }, { kind: "outbox", event: "m14.decision.recorded_open" }];
+  const effects: IdgSideEffect[] = [
+    { kind: "audit" },
+    { kind: "outbox", event: "m14.decision.recorded_open" },
+  ];
   if (!wasQuorate) effects.push({ kind: "alert", alert: "m14.decision.non_quorate" });
   return { status: "open", wasQuorate, quorumSnapshot, effects };
 }
@@ -84,9 +95,20 @@ export function planDecisionEmit(decision: {
   readonly status: IdgDecisionStatus;
   readonly kind: IdgDecisionKind;
 }): ReadonlyArray<IdgSideEffect> {
-  require_(decision.status !== "superseded", "DECISION_SUPERSEDED", "a superseded decision cannot be emitted");
-  require_(decision.status === "open", "DECISION_NOT_OPEN", "only an open decision may be emitted on adjournment");
-  const effects: IdgSideEffect[] = [{ kind: "set_timestamp", field: "emitted_at" }, { kind: "audit" }];
+  require_(
+    decision.status !== "superseded",
+    "DECISION_SUPERSEDED",
+    "a superseded decision cannot be emitted",
+  );
+  require_(
+    decision.status === "open",
+    "DECISION_NOT_OPEN",
+    "only an open decision may be emitted on adjournment",
+  );
+  const effects: IdgSideEffect[] = [
+    { kind: "set_timestamp", field: "emitted_at" },
+    { kind: "audit" },
+  ];
   if (isActionableDecisionKind(decision.kind)) {
     effects.push({ kind: "outbox", event: "idg.decision_recorded" });
   }
@@ -99,8 +121,18 @@ export function planDecisionEmit(decision: {
  * Throws `DECISION_SUPERSEDED` if the prior row is already superseded, `DECISION_NOT_OPEN` if it was never
  * committed (only an `emitted` decision may be superseded — an `open` one is corrected before adjournment).
  */
-export function planDecisionSupersede(prior: { readonly status: IdgDecisionStatus }): ReadonlyArray<IdgSideEffect> {
-  require_(prior.status !== "superseded", "DECISION_SUPERSEDED", "this decision is already superseded by another row");
-  require_(prior.status === "emitted", "DECISION_NOT_OPEN", "only an emitted decision may be superseded");
+export function planDecisionSupersede(prior: {
+  readonly status: IdgDecisionStatus;
+}): ReadonlyArray<IdgSideEffect> {
+  require_(
+    prior.status !== "superseded",
+    "DECISION_SUPERSEDED",
+    "this decision is already superseded by another row",
+  );
+  require_(
+    prior.status === "emitted",
+    "DECISION_NOT_OPEN",
+    "only an emitted decision may be superseded",
+  );
   return [{ kind: "set_timestamp", field: "superseded_at" }, { kind: "audit" }];
 }

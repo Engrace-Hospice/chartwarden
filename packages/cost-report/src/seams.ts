@@ -1,3 +1,5 @@
+import type { GustoClient } from "@wardenx/gusto-client";
+import type { XeroClient } from "@wardenx/xero-client";
 // @wardenx/cost-report — the SEVEN published seam interfaces (§4.3) + the published-name tuple the boot
 // assert validates against. M27 publishes read-only reader/factory contracts; consumers import only the
 // interface type, never an M27 schema/table. Registration into the M1 SeamRegistry is port-injected at
@@ -10,8 +12,6 @@ import type {
   ProviderEntityId,
   ValidationOutcome,
 } from "./contracts";
-import type { XeroClient } from "@wardenx/xero-client";
-import type { GustoClient } from "@wardenx/gusto-client";
 
 // -----------------------------------------------------------------------------
 // Seam 1: CostReportProvider — per-day drug cost / per-diem / IPU cap / bad-debt rollups.

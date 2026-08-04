@@ -15,7 +15,7 @@
 // `m22.document.statement_of_disagreement_published`. No DB, no producer import (the M5 payload is a
 // locally-declared structural minimum; M22 deps stay [1, 5]).
 import type { DocumentSideEffect, DocumentTransitionResult } from "../lifecycle/effects";
-import { planAddVersion, type AddVersionPlan } from "../lifecycle/version";
+import { type AddVersionPlan, planAddVersion } from "../lifecycle/version";
 
 /** The `m5.patient.amendment_decided` payload, as M5 hands it on the outbox when an amendment is DENIED
  * (structural minimum — M5 owns the canonical amendment row; M22 reads the SoD text + routing keys). */

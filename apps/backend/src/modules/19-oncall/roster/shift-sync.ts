@@ -60,28 +60,25 @@ import type { OnCallShiftFacts } from "./shift-machine";
  * `external_actor_id` and NO membership per §3.3's `m19_on_call_shift_actor_integrity` CHECK. A Direct sync
  * that emitted one would produce a row PostgreSQL refuses.
  */
-const ROSTER_DISCIPLINE_MAP: Readonly<Record<string, Exclude<OncallShiftDiscipline, "external">>> = {
-  clinical_rn: "clinical_rn",
-  rn: "clinical_rn",
-  clinical_lpn: "clinical_lpn",
-  lpn: "clinical_lpn",
-  medical_director: "medical_director",
-  msw: "msw",
-  chaplain: "chaplain",
-};
+const ROSTER_DISCIPLINE_MAP: Readonly<Record<string, Exclude<OncallShiftDiscipline, "external">>> =
+  {
+    clinical_rn: "clinical_rn",
+    rn: "clinical_rn",
+    clinical_lpn: "clinical_lpn",
+    lpn: "clinical_lpn",
+    medical_director: "medical_director",
+    msw: "msw",
+    chaplain: "chaplain",
+  };
 
 /** §4.5 — the mapped discipline, or `null` when M17 named one M19 has no enum member for. */
-export function rosterDiscipline(
-  raw: string,
-): Exclude<OncallShiftDiscipline, "external"> | null {
+export function rosterDiscipline(raw: string): Exclude<OncallShiftDiscipline, "external"> | null {
   return ROSTER_DISCIPLINE_MAP[raw.trim().toLowerCase()] ?? null;
 }
 
 /** The throwing form, for a caller that has already established the value should map (the §5 shift
  *  editor's server-side validation). The reconciler uses {@link rosterDiscipline} and reports instead. */
-export function requireRosterDiscipline(
-  raw: string,
-): Exclude<OncallShiftDiscipline, "external"> {
+export function requireRosterDiscipline(raw: string): Exclude<OncallShiftDiscipline, "external"> {
   const mapped = rosterDiscipline(raw);
   if (mapped === null) {
     throw new TriageStateError(

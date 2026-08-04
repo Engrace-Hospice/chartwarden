@@ -153,7 +153,11 @@ export function planDocumentUpload(input: PortalUploadInput): PortalUploadPlan {
  *  `m31.portal_document.upload_rejected` event. Maps the internal write-error code to a §2.2.5-style bucket;
  *  internal pipeline detail (virus-scanner name, extractor stack) is NEVER leaked. */
 export function sanitizedRejectionReason(
-  code: "UPLOAD_TOO_LARGE" | "UPLOAD_MIME_NOT_ALLOWED" | "UPLOAD_MAGIC_BYTE_MISMATCH" | "m22_intake_failed",
+  code:
+    | "UPLOAD_TOO_LARGE"
+    | "UPLOAD_MIME_NOT_ALLOWED"
+    | "UPLOAD_MAGIC_BYTE_MISMATCH"
+    | "m22_intake_failed",
 ): "size_limit" | "mime_not_allowed" | "m22_intake_failed" {
   switch (code) {
     case "UPLOAD_TOO_LARGE":

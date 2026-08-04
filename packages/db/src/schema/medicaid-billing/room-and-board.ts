@@ -9,7 +9,16 @@
 // nf_facility_mdm_id (M40), contract_document_id (M22), loc_period_id_snapshot (M6), medicaid_claim_line_id
 // (partitioned), supersedes_arrangement_id (self) are LOGICAL uuid.
 import { sql } from "drizzle-orm";
-import { check, index, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";

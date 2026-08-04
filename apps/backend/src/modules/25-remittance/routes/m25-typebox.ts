@@ -325,8 +325,14 @@ type Conforms<T extends V, V> = T;
 type _VersionedResult = Conforms<Static<typeof VersionedResultSchema>, ServiceVersionedResult>;
 type _AppealEventView = Conforms<Static<typeof AppealEventViewSchema>, ServiceAppealEventView>;
 type _AppealDetail = Conforms<Static<typeof AppealDetailSchema>, ServiceAppealDetail>;
-type _TaxonomyMergedView = Conforms<Static<typeof TaxonomyMergedViewSchema>, ServiceTaxonomyMergedView>;
-type _DenialMetricsView = Conforms<Static<typeof DenialMetricsViewSchema>, ServiceDenialMetricsView>;
+type _TaxonomyMergedView = Conforms<
+  Static<typeof TaxonomyMergedViewSchema>,
+  ServiceTaxonomyMergedView
+>;
+type _DenialMetricsView = Conforms<
+  Static<typeof DenialMetricsViewSchema>,
+  ServiceDenialMetricsView
+>;
 type _PrLedgerRow = Conforms<Static<typeof PrLedgerRowSchema>, ServicePrLedgerRow>;
 type _RemittanceAdviceReader = Conforms<
   Static<typeof RemittanceAdviceReaderResponseSchema>,

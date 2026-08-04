@@ -60,7 +60,9 @@ export function TaxonomyOverlay(): JSX.Element {
   );
 
   return (
-    <DetailPageLayout header={<PageHeader title="Denial Taxonomy" breadcrumb="Revenue Cycle — CARC / RARC" />}>
+    <DetailPageLayout
+      header={<PageHeader title="Denial Taxonomy" breadcrumb="Revenue Cycle — CARC / RARC" />}
+    >
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -91,7 +93,10 @@ export function TaxonomyOverlay(): JSX.Element {
               {view.rarcCode ? ` · RARC ${view.rarcCode}` : ""}
             </h2>
             {view.severity ? (
-              <StatusPill label={humanize(view.severity)} tone={SEVERITY_TONE[view.severity] ?? "neutral"} />
+              <StatusPill
+                label={humanize(view.severity)}
+                tone={SEVERITY_TONE[view.severity] ?? "neutral"}
+              />
             ) : null}
           </header>
 
@@ -102,7 +107,9 @@ export function TaxonomyOverlay(): JSX.Element {
           <Field label="Suggested action">{view.suggestedAction || "—"}</Field>
           <Field label="Owner role">{view.ownerRole ? humanize(view.ownerRole) : "—"}</Field>
           <Field label="Tenant overlay">
-            {view.hasOverlay ? `Present (v${view.overlayVersion ?? "?"})` : "None — using the M38 floor"}
+            {view.hasOverlay
+              ? `Present (v${view.overlayVersion ?? "?"})`
+              : "None — using the M38 floor"}
           </Field>
         </article>
       ) : null}
@@ -112,7 +119,15 @@ export function TaxonomyOverlay(): JSX.Element {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "16rem 1fr", gap: "0.5rem", padding: "0.5rem 0", borderTop: "1px solid var(--color-surface-container)" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "16rem 1fr",
+        gap: "0.5rem",
+        padding: "0.5rem 0",
+        borderTop: "1px solid var(--color-surface-container)",
+      }}
+    >
       <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>{label}</span>
       <span style={{ color: "var(--color-on-surface)" }}>{children}</span>
     </div>

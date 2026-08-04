@@ -172,7 +172,10 @@ export function PatientIdgHistory(): JSX.Element {
                     <span style={{ fontWeight: 700, color: t.onSurface }}>
                       {fmtDate(m.actualStart ?? m.scheduledStart)}
                     </span>
-                    <StatusPill label={stateLabel(m.status)} tone={MEETING_TONE[m.status] ?? "neutral"} />
+                    <StatusPill
+                      label={stateLabel(m.status)}
+                      tone={MEETING_TONE[m.status] ?? "neutral"}
+                    />
                     {m.reviewedAt ? (
                       <span style={{ color: t.muted, fontSize: "0.76rem" }}>
                         reviewed {fmtDate(m.reviewedAt)}
@@ -296,4 +299,8 @@ const rowItem: CSSProperties = {
   flexWrap: "wrap",
   fontSize: "0.85rem",
 };
-const meta: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant, margin: "0.15rem 0 0" };
+const meta: CSSProperties = {
+  fontSize: "0.8rem",
+  color: t.onSurfaceVariant,
+  margin: "0.15rem 0 0",
+};

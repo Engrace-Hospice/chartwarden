@@ -18,26 +18,120 @@ const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 
 // Fixed ids (1111…/2222…/3333… prefixes) so re-runs are stable and easy to identify/clear.
 const PHYSICIANS = [
-  ["11111111-0000-4000-8000-000000000001", "1003000001", "Eleanor", "Whitfield", "MD", false, "207RH0003X", ["NC", "SC"], { line1: "100 Hospice Way", city: "Asheville", state: "NC", postalCode: "28801" }],
-  ["11111111-0000-4000-8000-000000000002", "1003000002", "Marcus", "Delgado", "DO", false, "207RC0000X", ["NC"], { line1: "22 Cardiology Pkwy", city: "Charlotte", state: "NC", postalCode: "28202" }],
-  ["11111111-0000-4000-8000-000000000003", "1003000003", "Priya", "Nair", "NP", true, "363L00000X", ["NC", "VA"], { line1: "7 Palliative Ln", city: "Durham", state: "NC", postalCode: "27701" }],
-  ["11111111-0000-4000-8000-000000000004", "1003000004", "Samuel", "Okonkwo", "MD", false, "2084N0400X", ["NC"], { line1: "410 Neurology Ct", city: "Raleigh", state: "NC", postalCode: "27601" }],
-  ["11111111-0000-4000-8000-000000000005", "1003000005", "Hannah", "Berg", "NP", true, "363LX0001X", ["SC"], { line1: "55 Comfort Rd", city: "Greenville", state: "SC", postalCode: "29601" }],
+  [
+    "11111111-0000-4000-8000-000000000001",
+    "1003000001",
+    "Eleanor",
+    "Whitfield",
+    "MD",
+    false,
+    "207RH0003X",
+    ["NC", "SC"],
+    { line1: "100 Hospice Way", city: "Asheville", state: "NC", postalCode: "28801" },
+  ],
+  [
+    "11111111-0000-4000-8000-000000000002",
+    "1003000002",
+    "Marcus",
+    "Delgado",
+    "DO",
+    false,
+    "207RC0000X",
+    ["NC"],
+    { line1: "22 Cardiology Pkwy", city: "Charlotte", state: "NC", postalCode: "28202" },
+  ],
+  [
+    "11111111-0000-4000-8000-000000000003",
+    "1003000003",
+    "Priya",
+    "Nair",
+    "NP",
+    true,
+    "363L00000X",
+    ["NC", "VA"],
+    { line1: "7 Palliative Ln", city: "Durham", state: "NC", postalCode: "27701" },
+  ],
+  [
+    "11111111-0000-4000-8000-000000000004",
+    "1003000004",
+    "Samuel",
+    "Okonkwo",
+    "MD",
+    false,
+    "2084N0400X",
+    ["NC"],
+    { line1: "410 Neurology Ct", city: "Raleigh", state: "NC", postalCode: "27601" },
+  ],
+  [
+    "11111111-0000-4000-8000-000000000005",
+    "1003000005",
+    "Hannah",
+    "Berg",
+    "NP",
+    true,
+    "363LX0001X",
+    ["SC"],
+    { line1: "55 Comfort Rd", city: "Greenville", state: "SC", postalCode: "29601" },
+  ],
 ] as const;
 
 // [id, ccn|null, npi, kind, name, address, sendingFacilityCodes]
 const FACILITIES = [
-  ["22222222-0000-4000-8000-000000000001", "340001", "1093000001", "hospital", "Mission Regional Medical Center", { line1: "509 Biltmore Ave", city: "Asheville", state: "NC", postalCode: "28801" }, ["MISSION_ADT"]],
-  ["22222222-0000-4000-8000-000000000002", "345012", "1093000002", "snf", "Oakdale Skilled Nursing", { line1: "88 Oakdale Dr", city: "Charlotte", state: "NC", postalCode: "28210" }, []],
-  ["22222222-0000-4000-8000-000000000003", "341500", "1093000003", "ipu", "Engrace Inpatient Hospice Unit", { line1: "12 Serenity Blvd", city: "Durham", state: "NC", postalCode: "27704" }, []],
-  ["22222222-0000-4000-8000-000000000004", null, "1093000004", "alf", "Brookhaven Assisted Living", { line1: "300 Brookhaven Way", city: "Raleigh", state: "NC", postalCode: "27612" }, []],
+  [
+    "22222222-0000-4000-8000-000000000001",
+    "340001",
+    "1093000001",
+    "hospital",
+    "Mission Regional Medical Center",
+    { line1: "509 Biltmore Ave", city: "Asheville", state: "NC", postalCode: "28801" },
+    ["MISSION_ADT"],
+  ],
+  [
+    "22222222-0000-4000-8000-000000000002",
+    "345012",
+    "1093000002",
+    "snf",
+    "Oakdale Skilled Nursing",
+    { line1: "88 Oakdale Dr", city: "Charlotte", state: "NC", postalCode: "28210" },
+    [],
+  ],
+  [
+    "22222222-0000-4000-8000-000000000003",
+    "341500",
+    "1093000003",
+    "ipu",
+    "Engrace Inpatient Hospice Unit",
+    { line1: "12 Serenity Blvd", city: "Durham", state: "NC", postalCode: "27704" },
+    [],
+  ],
+  [
+    "22222222-0000-4000-8000-000000000004",
+    null,
+    "1093000004",
+    "alf",
+    "Brookhaven Assisted Living",
+    { line1: "300 Brookhaven Way", city: "Raleigh", state: "NC", postalCode: "27612" },
+    [],
+  ],
 ] as const;
 
 // [id, kind, stateCode|null, payerId, name]
 const PAYERS = [
   ["33333333-0000-4000-8000-000000000001", "commercial", null, "AETNA", "Aetna"],
-  ["33333333-0000-4000-8000-000000000002", "commercial", "NC", "BCBSNC", "Blue Cross Blue Shield of North Carolina"],
-  ["33333333-0000-4000-8000-000000000003", "medicare_advantage", null, "HUMANA-MA", "Humana Medicare Advantage"],
+  [
+    "33333333-0000-4000-8000-000000000002",
+    "commercial",
+    "NC",
+    "BCBSNC",
+    "Blue Cross Blue Shield of North Carolina",
+  ],
+  [
+    "33333333-0000-4000-8000-000000000003",
+    "medicare_advantage",
+    null,
+    "HUMANA-MA",
+    "Humana Medicare Advantage",
+  ],
 ] as const;
 
 async function main(): Promise<void> {

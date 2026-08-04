@@ -41,7 +41,9 @@ export interface RecommendedReassessmentScale {
 /** §2.4 — the per-category default reassessment window (minutes) when the order doesn't specify and the
  * tenant has no default. Sedatives reassess later (120); breakthrough-pain analgesics sooner (30). */
 export const DEFAULT_REASSESSMENT_WINDOW_MINUTES = 60;
-export const REASSESSMENT_WINDOW_DEFAULT_BY_CATEGORY: Readonly<Record<PrnClinicalCategory, number>> = {
+export const REASSESSMENT_WINDOW_DEFAULT_BY_CATEGORY: Readonly<
+  Record<PrnClinicalCategory, number>
+> = {
   analgesic: 30,
   antipsychotic: 120,
   anxiolytic: 120,
@@ -148,7 +150,10 @@ export function buildPrnReassessmentTrigger(
     tenantDefaultMinutes: input.tenantDefaultMinutes,
     category: input.category,
   });
-  const reassessmentDueAt = computeReassessmentDueAt(input.administeredAt, reassessmentWindowMinutes);
+  const reassessmentDueAt = computeReassessmentDueAt(
+    input.administeredAt,
+    reassessmentWindowMinutes,
+  );
   const scale = recommendReassessmentScale(input.category, {
     hasDementiaContext: input.hasDementiaContext,
   });

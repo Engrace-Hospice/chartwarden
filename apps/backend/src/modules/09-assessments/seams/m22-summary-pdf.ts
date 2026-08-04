@@ -36,7 +36,10 @@ export type AssessmentSummaryPdfResult =
  * stands in.
  */
 export interface AssessmentSummaryPdfRenderer {
-  render(organizationId: string, payload: AssessmentSummaryRenderPayload): Promise<AssessmentSummaryPdfResult>;
+  render(
+    organizationId: string,
+    payload: AssessmentSummaryRenderPayload,
+  ): Promise<AssessmentSummaryPdfResult>;
 }
 
 /**

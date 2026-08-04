@@ -1,7 +1,3 @@
-// @wardenx/cost-report — PURE allocation-input assembler unit suite (Form CMS-1984-14 §4320/§4330). Asserts
-// the worksheet → input shaping of `assembleAllocationInputs`: Worksheet A general-service centers + A-1…A-4
-// LOC direct costs + the Worksheet B-1 statistical basis → the step-down input; the census → per-LOC days.
-import { describe, expect, it } from "vitest";
 import {
   type RawAllocationInputs,
   assembleAllocationInputs,
@@ -9,6 +5,10 @@ import {
   calculatePerDiem,
   stepDownAllocate,
 } from "@wardenx/cost-report";
+// @wardenx/cost-report — PURE allocation-input assembler unit suite (Form CMS-1984-14 §4320/§4330). Asserts
+// the worksheet → input shaping of `assembleAllocationInputs`: Worksheet A general-service centers + A-1…A-4
+// LOC direct costs + the Worksheet B-1 statistical basis → the step-down input; the census → per-LOC days.
+import { describe, expect, it } from "vitest";
 
 function raw(over: Partial<RawAllocationInputs> = {}): RawAllocationInputs {
   return { worksheets: [], monthlyBreakdown: null, ...over };
@@ -19,7 +19,10 @@ describe("assembleAllocationInputs — step-down (A + A-1…A-4 + B-1)", () => {
     const inputs = assembleAllocationInputs(
       raw({
         worksheets: [
-          { worksheetCode: "A", data: { costCenters: [{ code: "AG", name: "A&G", totalCostsCents: 100_000 }] } },
+          {
+            worksheetCode: "A",
+            data: { costCenters: [{ code: "AG", name: "A&G", totalCostsCents: 100_000 }] },
+          },
           { worksheetCode: "A-1", data: { netDirectCostCents: 50_000 } }, // CHC
           { worksheetCode: "A-2", data: { netDirectCostCents: 300_000 } }, // RHC
           { worksheetCode: "A-3", data: { netDirectCostCents: 20_000 } }, // IRC
@@ -45,7 +48,12 @@ describe("assembleAllocationInputs — step-down (A + A-1…A-4 + B-1)", () => {
     const codes = inputs.stepDown.costCenters.map((c) => c.code);
     expect(codes).toEqual(["AG", "CHC", "RHC", "IRC", "GIP"]);
     expect(inputs.stepDown.costCenters.find((c) => c.code === "AG")!.isOverhead).toBe(true);
-    expect(inputs.stepDown.costCenters.filter((c) => !c.isOverhead).map((c) => c.code)).toEqual(["CHC", "RHC", "IRC", "GIP"]);
+    expect(inputs.stepDown.costCenters.filter((c) => !c.isOverhead).map((c) => c.code)).toEqual([
+      "CHC",
+      "RHC",
+      "IRC",
+      "GIP",
+    ]);
     expect(inputs.stepDown.statisticalBases[0]!.allocatingCenterCode).toBe("AG");
     expect(inputs.stepDownColumns[0]!.allocationBasis).toBe("accumulated_cost");
 
@@ -68,7 +76,11 @@ describe("assembleAllocationInputs — per-LOC days (Worksheet C)", () => {
       raw({
         monthlyBreakdown: {
           "2026-01": {
-            rhc: { medicare: { patientDays: 30 }, medicaid: { patientDays: 5 }, other: { patientDays: 2 } },
+            rhc: {
+              medicare: { patientDays: 30 },
+              medicaid: { patientDays: 5 },
+              other: { patientDays: 2 },
+            },
             gip: { medicare: { patientDays: 4 } },
             unknown_loc: { medicare: { patientDays: 99 } },
           },
@@ -76,7 +88,11 @@ describe("assembleAllocationInputs — per-LOC days (Worksheet C)", () => {
         },
       }),
     );
-    expect(inputs.locDays.rhc).toEqual({ totalDays: 30 + 5 + 2 + 28, medicareDays: 58, medicaidDays: 5 });
+    expect(inputs.locDays.rhc).toEqual({
+      totalDays: 30 + 5 + 2 + 28,
+      medicareDays: 58,
+      medicaidDays: 5,
+    });
     expect(inputs.locDays.gip).toEqual({ totalDays: 4, medicareDays: 4, medicaidDays: 0 });
     expect(inputs.locDays.chc).toEqual({ totalDays: 0, medicareDays: 0, medicaidDays: 0 });
   });
@@ -89,7 +105,9 @@ describe("assembleAllocationInputs — end-to-end A → B → C ties", () => {
         worksheets: [
           { worksheetCode: "A-2", data: { netDirectCostCents: 600_000 } }, // RHC direct
         ],
-        monthlyBreakdown: { "2026-01": { rhc: { medicare: { patientDays: 60 }, medicaid: { patientDays: 40 } } } },
+        monthlyBreakdown: {
+          "2026-01": { rhc: { medicare: { patientDays: 60 }, medicaid: { patientDays: 40 } } },
+        },
       }),
     );
     const step = stepDownAllocate(inputs.stepDown);

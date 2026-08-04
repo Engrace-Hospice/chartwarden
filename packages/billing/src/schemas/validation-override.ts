@@ -5,13 +5,7 @@
 // `override_role_required`, and NEVER a `regulatory_required` rule (D5). The typed reason floor is 40
 // chars (server re-enforced).
 import { type Static, Type } from "@sinclair/typebox";
-import {
-  CursorPageQuery,
-  IsoDateTimeSchema,
-  OverrideRoleApi,
-  PageOf,
-  Uuid,
-} from "./common";
+import { CursorPageQuery, IsoDateTimeSchema, OverrideRoleApi, PageOf, Uuid } from "./common";
 
 // ── route #16: apply an override ────────────────────────────────────────────────────────────────────────
 export const ValidationOverrideRequest = Type.Object({

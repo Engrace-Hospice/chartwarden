@@ -88,7 +88,10 @@ export function detectOutbreakClusters(
         continue; // unreachable under noUncheckedIndexedAccess — keeps the index access total.
       }
       // Shrink the window from the left until it spans ≤ 14 days.
-      while (ordered[left] !== undefined && head.observedAtMs - ordered[left]!.observedAtMs > OUTBREAK_WINDOW_MS) {
+      while (
+        ordered[left] !== undefined &&
+        head.observedAtMs - ordered[left]!.observedAtMs > OUTBREAK_WINDOW_MS
+      ) {
         left++;
       }
       const windowCount = right - left + 1;

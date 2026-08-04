@@ -48,7 +48,10 @@ export type MedicationOrderSideEffect =
   /** §2.2 — enqueue the `dosespot.transmit_newrx` BullMQ job (the adapter call lands M12-T06). */
   | { readonly kind: "enqueue_transmission_job" }
   /** §2.2 / §2.12 — write the `medication_order_discontinuation` row capturing actor + reason. */
-  | { readonly kind: "write_discontinuation"; readonly reason: MedicationOrderDiscontinuationReason }
+  | {
+      readonly kind: "write_discontinuation";
+      readonly reason: MedicationOrderDiscontinuationReason;
+    }
   /** §2.2 / §4.10 — set the orthogonal `dosespot_send_state` observed column. */
   | { readonly kind: "set_send_state"; readonly state: DoseSpotSendState }
   /** Set a timestamp/marker column on the aggregate (e.g. `signed_at`, `activated_at`, `discontinued_at`). */

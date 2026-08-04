@@ -6,7 +6,7 @@
 // `Intl` (ICU ships with the runtime) resolves the zone offset, so the spec §2.3 DST edges — spring-forward
 // skips the 0200 slot, fall-back duplicates it — are handled exactly (the duplicate is de-duped by the
 // caller's instant set; the skipped wall time is mapped forward to its post-transition instant).
-import type { LocalDate, IsoInstant } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@wardenx/types";
 
 /** Order timezone default when the patient location timezone is unset (matches the M6/M10/M11 default). */
 export const DEFAULT_ORDER_TIME_ZONE = "America/Los_Angeles";
@@ -39,7 +39,13 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
   });
   const parts = dtf.formatToParts(new Date(utcMs));
   const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
-  const localMinute = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  const localMinute = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+  );
   return localMinute - Math.floor(utcMs / 60_000) * 60_000;
 }
 

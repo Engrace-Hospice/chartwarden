@@ -22,7 +22,16 @@
 // FROM a partitioned child is avoided (the M28 partitioned-table precedent); `organization_id`, `feed_id`,
 // `sending_facility_id`, `destination_facility_id`, `source_aggregate_id` and `matched_patient_id` are all
 // LOGICAL uuids validated at the write boundary. No DB FK crosses a module or a partition edge.
-import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import {
   hl7InboundMatchLevel,
   hl7InboundMatchOutcome,

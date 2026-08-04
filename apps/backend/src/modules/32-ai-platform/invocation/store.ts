@@ -1,3 +1,8 @@
+import type {
+  AiActiveRoutingOverride,
+  AiBackendRoutingRow,
+  AiTokenBudget,
+} from "@wardenx/ai-platform";
 // apps/backend/src/modules/32-ai-platform/invocation/store.ts — the data PORTS the M32-T04 invocation
 // pipeline composes over, plus an in-memory implementation for the slice tests.
 //
@@ -32,7 +37,6 @@ import type {
   AiRoutingReason,
   AiZdrStatus,
 } from "@wardenx/types";
-import type { AiActiveRoutingOverride, AiBackendRoutingRow, AiTokenBudget } from "@wardenx/ai-platform";
 
 // ── projections ────────────────────────────────────────────────────────────────────────────────────
 
@@ -227,7 +231,10 @@ export function createInMemoryAiInvocationStores(seed: InMemoryAiInvocationSeed 
   backends: AiBackendRegistryStore;
   overrides: AiRoutingOverrideStore;
   ledger: AiInvocationLedgerStore;
-  invocationRows: (AiInvocationInsert & { readonly id: string; hitlOutcome: AiInvocationHitlOutcome })[];
+  invocationRows: (AiInvocationInsert & {
+    readonly id: string;
+    hitlOutcome: AiInvocationHitlOutcome;
+  })[];
   accrualRows: (AiTokenLedgerInsert & { readonly id: string })[];
   overrideRows: AiRoutingOverrideRowProjection[];
 } {
@@ -305,12 +312,12 @@ export function createInMemoryAiInvocationStores(seed: InMemoryAiInvocationSeed 
     recordHitlOutcome: async (organizationId, invocationId, invokedAt, outcome) => {
       const row = invocationRows.find(
         (r) =>
-          r.id === invocationId &&
-          r.organizationId === organizationId &&
-          r.invokedAt === invokedAt,
+          r.id === invocationId && r.organizationId === organizationId && r.invokedAt === invokedAt,
       );
       if (row === undefined) {
-        throw new Error(`in-memory ai_invocation ${invocationId} not found for org ${organizationId}`);
+        throw new Error(
+          `in-memory ai_invocation ${invocationId} not found for org ${organizationId}`,
+        );
       }
       row.hitlOutcome = outcome;
     },

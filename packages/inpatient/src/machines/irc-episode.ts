@@ -71,7 +71,11 @@ export function planIrcDailyTick(prev: {
   readonly state: IrcEpisodeState;
   readonly overrideExtensionDays?: number;
 }): IrcTickResult {
-  requireIpu(prev.state !== "closed", "ILLEGAL_IRC_TRANSITION", "A closed irc_episode is not ticked.");
+  requireIpu(
+    prev.state !== "closed",
+    "ILLEGAL_IRC_TRANSITION",
+    "A closed irc_episode is not ticked.",
+  );
   const consecutiveDayCount = prev.consecutiveDayCount + 1;
   const state = computeIrcState(consecutiveDayCount, prev.overrideExtensionDays ?? 0);
   const effects: IrcEffect[] = [
@@ -80,8 +84,10 @@ export function planIrcDailyTick(prev: {
   ];
   // Emit only on a state transition into approaching_cap / breached.
   if (state !== prev.state) {
-    if (state === "approaching_cap") effects.push({ kind: "outbox", event: "m37.irc_episode.cap_approaching" });
-    if (state === "breached") effects.push({ kind: "outbox", event: "m37.irc_episode.cap_breached" });
+    if (state === "approaching_cap")
+      effects.push({ kind: "outbox", event: "m37.irc_episode.cap_approaching" });
+    if (state === "breached")
+      effects.push({ kind: "outbox", event: "m37.irc_episode.cap_breached" });
   }
   return { consecutiveDayCount, state, effects };
 }
@@ -93,12 +99,18 @@ export function planIrcDailyTick(prev: {
  * otherwise a fresh episode starts at day 1.
  */
 export function resumedStartingDayCount(
-  priorEpisodes: ReadonlyArray<{ readonly closedAtMs: number | null; readonly consecutiveDayCount: number }>,
+  priorEpisodes: ReadonlyArray<{
+    readonly closedAtMs: number | null;
+    readonly consecutiveDayCount: number;
+  }>,
   newStartMs: number,
 ): number {
   const windowMs = IRC_RESUMPTION_LOOKBACK_DAYS * 86_400_000;
   const withinWindow = priorEpisodes.filter(
-    (e) => e.closedAtMs !== null && newStartMs - e.closedAtMs <= windowMs && newStartMs - e.closedAtMs >= 0,
+    (e) =>
+      e.closedAtMs !== null &&
+      newStartMs - e.closedAtMs <= windowMs &&
+      newStartMs - e.closedAtMs >= 0,
   );
   if (withinWindow.length === 0) return 1;
   const maxPrior = Math.max(...withinWindow.map((e) => e.consecutiveDayCount));

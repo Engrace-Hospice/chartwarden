@@ -9,7 +9,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4330 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** One level of care's per-diem block (§4330 lines per LOC: total cost / total days / per diem / program cost). */
 const PerDiemLevel = Type.Object({

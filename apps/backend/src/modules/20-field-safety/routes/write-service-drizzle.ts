@@ -46,12 +46,12 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   type IsoInstant,
+  NotFoundError,
+  SAFETY_INCIDENT_CLOSED_STATES,
   type SafetyCoverageGapDto,
   type SafetyPolicyEffectiveDto,
   type SafetyPolygonRings,
   type SafetySosLifecycleState,
-  NotFoundError,
-  SAFETY_INCIDENT_CLOSED_STATES,
   WardenXError,
 } from "@wardenx/types";
 import { and, desc, eq, gte, isNull, sql } from "drizzle-orm";
@@ -85,13 +85,10 @@ import {
 } from "../lifecycle/sos-alert";
 import type { M20WriteActor } from "./actor";
 import { providerEntityOf } from "./actor";
-import {
-  SAFETY_NO_COORDINATE_SENTINEL,
-  encodeCoordinates,
-} from "./coordinates";
+import { SAFETY_NO_COORDINATE_SENTINEL, encodeCoordinates } from "./coordinates";
 import { type EffectPatch, type SosStateHistoryPort, runEffects } from "./effects-runner";
-import { CHECK_IN_AMENDMENT_GRACE_MINUTES } from "./read-service-drizzle";
 import type { M20ReadService } from "./read-service";
+import { CHECK_IN_AMENDMENT_GRACE_MINUTES } from "./read-service-drizzle";
 import type {
   AcknowledgeSosInput,
   AlertPort,
@@ -677,9 +674,7 @@ export function buildDrizzleM20WriteService(
         const [row] = await tx
           .select()
           .from(CHECK_IN)
-          .where(
-            and(eq(CHECK_IN.id, checkInId), eq(CHECK_IN.organizationId, actor.organizationId)),
-          )
+          .where(and(eq(CHECK_IN.id, checkInId), eq(CHECK_IN.organizationId, actor.organizationId)))
           .limit(1);
         if (!row) throw new NotFoundError("safety check-in");
 
@@ -691,10 +686,7 @@ export function buildDrizzleM20WriteService(
         // §4.6's "(within 5-min grace)". After the grace the row is append-only — a clinician's
         // attestation about her own safety must not be editable an hour later, when the supervisor has
         // already acted on it.
-        if (
-          at.getTime() - row.postedAt.getTime() >
-          CHECK_IN_AMENDMENT_GRACE_MINUTES * 60_000
-        ) {
+        if (at.getTime() - row.postedAt.getTime() > CHECK_IN_AMENDMENT_GRACE_MINUTES * 60_000) {
           throw new WardenXError(
             "CHECK_IN_AMENDMENT_WINDOW_CLOSED",
             `the ${CHECK_IN_AMENDMENT_GRACE_MINUTES}-minute amendment grace has closed; post a new check-in instead`,
@@ -956,8 +948,7 @@ export function buildDrizzleM20WriteService(
           // pass; its absence under a policy that requires biometric is a fail. M20 does not verify the
           // token itself — that is M2's — and this layer must not decide that an absent token "probably"
           // passed.
-          biometricResult:
-            input.biometricVerificationToken !== undefined ? "passed" : null,
+          biometricResult: input.biometricVerificationToken !== undefined ? "passed" : null,
         });
 
         const effects: readonly SafetySideEffect[] =
@@ -1381,7 +1372,8 @@ export function buildDrizzleM20WriteService(
         // route (`returned_to_clinician`), never by mutating a filed report: the workers-comp timeline an
         // insurer reads must not change under them. `draft` and `returned_to_clinician` are editable;
         // everything else is not.
-        const editable = row.lifecycleState === "draft" || row.lifecycleState === "returned_to_clinician";
+        const editable =
+          row.lifecycleState === "draft" || row.lifecycleState === "returned_to_clinician";
         requireSafety(
           editable,
           "SOS_INVALID_STATE_TRANSITION",
@@ -1554,7 +1546,9 @@ export function buildDrizzleM20WriteService(
           );
         }
 
-        const closing = (SAFETY_INCIDENT_CLOSED_STATES as readonly string[]).includes(input.toState);
+        const closing = (SAFETY_INCIDENT_CLOSED_STATES as readonly string[]).includes(
+          input.toState,
+        );
         await tx
           .update(INCIDENT)
           .set({
@@ -1740,8 +1734,7 @@ export function buildDrizzleM20WriteService(
             subscriptionModel: merged.subscriptionModel as never,
             afterHoursStartHour: merged.afterHoursStartHour,
             afterHoursEndHour: merged.afterHoursEndHour,
-            oshaReportableAutoFlagCategories:
-              merged.oshaReportableAutoFlagCategories as never,
+            oshaReportableAutoFlagCategories: merged.oshaReportableAutoFlagCategories as never,
             effectiveFrom: at,
             effectiveTo: null,
             createdByMembershipId: actor.membershipId,
@@ -1900,7 +1893,9 @@ export function buildDrizzleM20WriteService(
           subjects: subjects.map((s) => ({
             membershipId: s.membershipId as never,
             locationIds: Array.isArray(s.defaultLocationIds)
-              ? (s.defaultLocationIds as unknown[]).filter((v): v is string => typeof v === "string")
+              ? (s.defaultLocationIds as unknown[]).filter(
+                  (v): v is string => typeof v === "string",
+                )
               : [],
             providerEntityId: s.providerEntityId as string,
             isFieldEligible: true,
@@ -1926,11 +1921,7 @@ export function buildDrizzleM20WriteService(
             aggregateKind: "safety_supervisor_subscription",
             aggregateId: subscriptionId,
             payload: {
-              ...eventBase(
-                (row.providerEntityId ?? providerEntityOf(actor)) as string,
-                actor,
-                at,
-              ),
+              ...eventBase((row.providerEntityId ?? providerEntityOf(actor)) as string, actor, at),
               clinicianMembershipId: gap.clinicianMembershipId,
               reason: gap.reason,
               detectedAt: iso(at),

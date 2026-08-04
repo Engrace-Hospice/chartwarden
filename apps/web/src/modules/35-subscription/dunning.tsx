@@ -13,8 +13,8 @@ import {
 // than 404-ing (the route is always reachable to an org_admin/billing_admin). Lantern: Detail pattern.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { DunningBanner } from "./dunning-banner";
 import { cap, dunningTone } from "./billing-status";
+import { DunningBanner } from "./dunning-banner";
 
 interface BillingStatus {
   status: string;
@@ -50,7 +50,8 @@ export function Dunning(): JSX.Element {
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !status) return <EmptyState title="Unavailable" description={error ?? "No status."} />;
+  if (error || !status)
+    return <EmptyState title="Unavailable" description={error ?? "No status."} />;
 
   if (!IN_DUNNING(status.dunningStage)) {
     return (
@@ -67,7 +68,9 @@ export function Dunning(): JSX.Element {
     <DetailPageLayout
       header={<PageHeader title="Dunning" breadcrumb="Billing" />}
       aside={
-        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div
+          style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <Kv label="Stage">
             <StatusPill label={cap(status.dunningStage)} tone={dunningTone(status.dunningStage)} />
           </Kv>
@@ -88,10 +91,16 @@ export function Dunning(): JSX.Element {
         daysUntilSuspension={status.daysUntilSuspension}
         isBlocked={status.isBlockedByBilling}
       />
-      <p style={{ marginTop: "1.25rem", fontSize: "0.9rem", color: "var(--color-on-surface-variant)" }}>
-        Your subscription has an overdue balance. Update your payment method to clear the balance and
-        restore your account. If the balance is not resolved, access will be suspended and — after the
-        final stage — the subscription will be canceled.
+      <p
+        style={{
+          marginTop: "1.25rem",
+          fontSize: "0.9rem",
+          color: "var(--color-on-surface-variant)",
+        }}
+      >
+        Your subscription has an overdue balance. Update your payment method to clear the balance
+        and restore your account. If the balance is not resolved, access will be suspended and —
+        after the final stage — the subscription will be canceled.
       </p>
     </DetailPageLayout>
   );

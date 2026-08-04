@@ -13,6 +13,16 @@ import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { type PlanListItem, errorMessage, listPlans } from "./discipline-api";
 import {
+  CADENCE_STATUS_TONE,
+  PLAN_STATUS_TONE,
+  dueLabel,
+  humanize,
+  kindLabel,
+  kindRegulation,
+  shortDate,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   Notice,
@@ -23,16 +33,6 @@ import {
   mutedStyle,
   pageTitleStyle,
 } from "./discipline-ui";
-import {
-  CADENCE_STATUS_TONE,
-  PLAN_STATUS_TONE,
-  dueLabel,
-  humanize,
-  kindLabel,
-  kindRegulation,
-  shortDate,
-  toneOf,
-} from "./discipline-status";
 
 /** The §5.1 grid order — the three admission-bootstrapped plans, then the assignment-bootstrapped one. */
 const KINDS = ["aide_poc", "msw_plan", "spiritual_plan", "volunteer_plan"] as const;

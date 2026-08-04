@@ -58,7 +58,7 @@ import {
   type TriageMetricsWindow,
   WardenXError,
 } from "@wardenx/types";
-import type { PortalTriageCallRow, RnCoverageRead, OncallSeamStore } from "./store";
+import type { OncallSeamStore, PortalTriageCallRow, RnCoverageRead } from "./store";
 
 /** The CALLER's org, resolved from the ambient request context (injected so the providers unit-test with
  *  no request scope). Outside a request it answers `""`, which `assertCallerOrg` treats as "no ambient
@@ -132,7 +132,10 @@ export function rateOf(counts: MeasureCounts): number {
  * A PE with no windows at all contributes the WHOLE window. Overlapping windows are merged first, so
  * double-booked coverage never subtracts twice.
  */
-export function coverageGapMinutesOf(window: TriageMetricsWindow, coverage: RnCoverageRead): number {
+export function coverageGapMinutesOf(
+  window: TriageMetricsWindow,
+  coverage: RnCoverageRead,
+): number {
   const from = Date.parse(window.from);
   const to = Date.parse(window.to);
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return 0;
@@ -194,14 +197,16 @@ export const PORTAL_DISPOSITION_LAY_SUMMARY: {
   readonly [K in TriageDisposition]: string;
 } = {
   caregiver_education_only: "The on-call nurse gave guidance over the phone.",
-  prn_intervention_authorized: "The on-call nurse approved use of an as-needed medication already ordered.",
+  prn_intervention_authorized:
+    "The on-call nurse approved use of an as-needed medication already ordered.",
   verbal_order_recorded: "The on-call nurse took a new order from the doctor over the phone.",
   visit_dispatched_now: "A visit was arranged right away.",
   visit_scheduled_first_light: "A visit was arranged for the next morning.",
   gip_admission_proposed: "The care team began arranging a higher level of care.",
   ed_transfer_acknowledged: "The care team was told about a trip to the emergency department.",
   pronouncement_scheduled: "A nurse was arranged to come to the home.",
-  escalated_unresolved: "The call was passed to another member of the care team, who is following up.",
+  escalated_unresolved:
+    "The call was passed to another member of the care team, who is following up.",
   abandoned: "The call ended before it was finished; the team tried to reach you back.",
 };
 

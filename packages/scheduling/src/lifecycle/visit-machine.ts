@@ -19,12 +19,12 @@
 // takes the already-computed `gatePassed` verdict.
 import type { VisitStatus } from "@wardenx/types";
 import { EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH } from "../policy";
+import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
+import { SchedulingStateError, require_ } from "./errors";
 import {
   VISIT_CANCEL_REASON_MIN_LENGTH,
   VISIT_RESCHEDULE_REASON_MIN_LENGTH,
 } from "./reason-floors";
-import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
-import { SchedulingStateError, require_ } from "./errors";
 
 export type VisitState = VisitStatus;
 
@@ -34,7 +34,11 @@ export type VisitAdvanceSource =
   | { readonly via: "evv" }
   /** The assigned clinician self-attested via `POST /visits/:id/start` (no EVV / telephonic) — requires a
    * documented `evv_missing_reason` (≥ 40 chars) + an M2 SESSION_POLICY step-up (§2.2.1 / D3). */
-  | { readonly via: "self_attest"; readonly evvMissingReason: string; readonly stepUpSatisfied: boolean };
+  | {
+      readonly via: "self_attest";
+      readonly evvMissingReason: string;
+      readonly stepUpSatisfied: boolean;
+    };
 
 /** The §2.2.1 visit lifecycle events. Per-event facts are resolved upstream and injected as data. */
 export type VisitEvent =
@@ -155,7 +159,12 @@ export function transitionVisit(from: VisitState, event: VisitEvent): VisitTrans
 
     case "dismiss": {
       // §2.2.4 — a proposed visit was never visible to chart consumers: no caseload/visit-seeding event.
-      return result(from, event.type, "cancelled", trace(from, "cancelled", event.reason ?? null, false));
+      return result(
+        from,
+        event.type,
+        "cancelled",
+        trace(from, "cancelled", event.reason ?? null, false),
+      );
     }
 
     case "start": {
@@ -251,7 +260,13 @@ export function transitionVisit(from: VisitState, event: VisitEvent): VisitTrans
  */
 export function planVisitProposed(): ReadonlyArray<SchedulingSideEffect> {
   return [
-    { kind: "write_state_history", from: "proposed", to: "proposed", reason: null, systemDriven: true },
+    {
+      kind: "write_state_history",
+      from: "proposed",
+      to: "proposed",
+      reason: null,
+      systemDriven: true,
+    },
     { kind: "audit" },
     { kind: "outbox", event: "m17.visit.proposed" },
   ];

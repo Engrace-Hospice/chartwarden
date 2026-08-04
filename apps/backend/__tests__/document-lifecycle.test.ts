@@ -5,6 +5,8 @@
 // every fact is injected.
 import { describe, expect, it } from "vitest";
 import {
+  DocumentStateError,
+  type MergeFacts,
   applyPatientMergeCascade,
   applyRetentionChange,
   assertPart2NotMutated,
@@ -12,9 +14,7 @@ import {
   deriveDispositionDate,
   deriveObjectKey,
   deriveTenantBucket,
-  DocumentStateError,
   isDestructionEligible,
-  type MergeFacts,
   planAccessLog,
   planAddVersion,
   planDestructionForDocument,
@@ -158,9 +158,7 @@ describe("Retention classes & disposition (§8.6 / D9 / D23)", () => {
       dispositionAt: "2020-01-01T00:00:00.000Z",
       legalHoldActive: false,
     });
-    const expected = new Date(
-      Date.UTC(2020, 0, 1) + 7 * 365 * 24 * 60 * 60 * 1000,
-    ).toISOString();
+    const expected = new Date(Date.UTC(2020, 0, 1) + 7 * 365 * 24 * 60 * 60 * 1000).toISOString();
     expect(v.dueAt).toBe(expected);
     expect(v.heldByLegalHold).toBe(false);
   });
@@ -448,10 +446,7 @@ describe("Patient-merge redirect-on-fetch (§2.4 / patient.merged cascade)", () 
   });
 
   it("follows a multi-hop chain to the final survivor (within the hop bound)", () => {
-    const r = resolvePatientRedirect(
-      "pat-1",
-      facts({ "pat-1": "pat-2", "pat-2": "pat-3" }),
-    );
+    const r = resolvePatientRedirect("pat-1", facts({ "pat-1": "pat-2", "pat-2": "pat-3" }));
     expect(r.survivingPatientId).toBe("pat-3");
     expect(r.hops).toBe(2);
   });

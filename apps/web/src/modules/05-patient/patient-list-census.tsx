@@ -1,5 +1,4 @@
 import {
-  cardSurface,
   ConsentBadge,
   EmptyState,
   FilterBar,
@@ -8,6 +7,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  cardSurface,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/05-patient — Patient List / Census (M5, Track A).

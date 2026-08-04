@@ -558,7 +558,9 @@ export function buildFieldSafetyAbacPredicates(
       if (!context.organizationId) return false;
       const sosAlertId = targetStr(target, "sosAlertId", "id");
       if (sosAlertId === null) return false;
-      const alert = await resolver.loadSosAlert(context.organizationId, sosAlertId).catch(() => null);
+      const alert = await resolver
+        .loadSosAlert(context.organizationId, sosAlertId)
+        .catch(() => null);
       if (alert === null) return false;
       const supervises = await supervisesMembership(context, alert.postedByMembershipId);
       // The on-call read is only made when the subscription arm did NOT answer — it is the one read that

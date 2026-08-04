@@ -14,15 +14,7 @@
 // tables/RLS migration. The outbreak-lookup index INCLUDES observed_at and is non-unique, so it is
 // valid on the partitioned parent.
 import { sql } from "drizzle-orm";
-import {
-  index,
-  jsonb,
-  pgTable,
-  primaryKey,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const infectionSurveillanceEvent = pgTable(

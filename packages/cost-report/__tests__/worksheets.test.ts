@@ -1,3 +1,10 @@
+import { Value } from "@sinclair/typebox/value";
+import {
+  WORKSHEET_CODES,
+  WORKSHEET_SCHEMAS,
+  emptyWorksheetData,
+  resolveWorksheetSchema,
+} from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 worksheet-schema registry/resolver pure-domain unit tests (§4.2 / D3).
 //
 // Covers the previously-untested `worksheets/` surface the §4.2 service layer (and the ECR writer) depend
@@ -6,13 +13,6 @@
 // against its own code's schema (the §2.2 lazy-create default) and is deterministic. PURE DOMAIN only — no
 // DB, no Fastify, no network. No PHI (D18).
 import { describe, expect, it } from "vitest";
-import { Value } from "@sinclair/typebox/value";
-import {
-  WORKSHEET_CODES,
-  WORKSHEET_SCHEMAS,
-  emptyWorksheetData,
-  resolveWorksheetSchema,
-} from "@wardenx/cost-report";
 
 describe("WORKSHEET_CODES + registry exhaustiveness (§4.2 / D3)", () => {
   it("declares exactly the 17 CMS-1984-14 worksheet codes", () => {

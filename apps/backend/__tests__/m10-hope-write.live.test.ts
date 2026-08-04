@@ -59,7 +59,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -79,7 +81,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   }
 
   /** Seed an open schedule for (admission, rfa) as superuser; returns its id. */
-  async function seedSchedule(org: string, admissionId: string, rfaKind = "01_admission"): Promise<string> {
+  async function seedSchedule(
+    org: string,
+    admissionId: string,
+    rfaKind = "01_admission",
+  ): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO hope_timepoint_schedule (organization_id, provider_entity_id, location_id, patient_id,
@@ -103,13 +109,21 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m10w@x.test')`, [USER]);
     for (const org of [ORG_A, ORG_B]) {
       memberOf[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER, org],
+        )
       ).rows[0].id as string;
       providerOf[org] = (
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M10W-${org.slice(0, 4)}`, `M10W ${org.slice(0, 4)}`, `NPI-M10W-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M10W-${org.slice(0, 4)}`,
+            `M10W ${org.slice(0, 4)}`,
+            `NPI-M10W-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       locationOf[org] = (
@@ -121,7 +135,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       ).rows[0].id as string;
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M10_OUTBOX_EVENTS]));
     const outbox: HopeWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m10" }),
@@ -201,7 +217,10 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     // Correcting the now-superseded original is refused (409).
     await expect(
       svc.correctTimepoint(ORG_A, memberOf[ORG_A], signed.id, {
-        correctionReason: "second attempt on a superseded row", targetDate: new Date().toISOString(), authorDiscipline: "RN", data: QUIET_DATA,
+        correctionReason: "second attempt on a superseded row",
+        targetDate: new Date().toISOString(),
+        authorDiscipline: "RN",
+        data: QUIET_DATA,
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
   });
@@ -214,10 +233,17 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(updated.status).toBe("draft");
     // Correcting a draft (not signed) is refused.
     await expect(
-      svc.correctTimepoint(ORG_A, memberOf[ORG_A], draft.id, { correctionReason: "cannot correct a draft", targetDate: new Date().toISOString(), authorDiscipline: "RN", data: QUIET_DATA }),
+      svc.correctTimepoint(ORG_A, memberOf[ORG_A], draft.id, {
+        correctionReason: "cannot correct a draft",
+        targetDate: new Date().toISOString(),
+        authorDiscipline: "RN",
+        data: QUIET_DATA,
+      }),
     ).rejects.toMatchObject({ statusCode: 409 });
     await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
-    await expect(svc.updateDraft(ORG_A, draft.id, { A: { A1: "y" } })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.updateDraft(ORG_A, draft.id, { A: { A1: "y" } })).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 
   it("skipSchedule marks the schedule skipped", async () => {
@@ -232,7 +258,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     expect(assembled.status).toBe("queued");
     expect(await eventsFor(assembled.id)).toContain("m10.hope.submission_queued");
     // A queued submission cannot be retried (409).
-    await expect(svc.retrySubmission(ORG_A, assembled.id)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.retrySubmission(ORG_A, assembled.id)).rejects.toMatchObject({
+      statusCode: 409,
+    });
     // Seed a rejected submission → retry re-queues it.
     const rejected = (
       await admin.query(
@@ -258,7 +286,9 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const adm = nextAdmission();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
-    await expect(svc.signTimepoint(ORG_B, memberOf[ORG_B], draft.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.signTimepoint(ORG_B, memberOf[ORG_B], draft.id)).rejects.toMatchObject({
+      statusCode: 404,
+    });
     await expect(svc.getAssessment(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });
   });
 });

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `sequestration_policy` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `operational`). The per-provider-entity sequestration-percentage schedule applied at claim assembly
 // (snapshotted onto claim.sequestration_applied_pct). ORG-SCOPED: organization_id NOT NULL (canonical
@@ -7,7 +8,6 @@
 // `.references(...)`. provider_entity_id (M40) and set_by_membership_id (core memberships) are LOGICAL
 // FKs — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). No PHI (D18).
 import { date, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 
 export const sequestrationPolicy = pgTable(

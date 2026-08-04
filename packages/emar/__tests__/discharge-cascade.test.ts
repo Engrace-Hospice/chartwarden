@@ -1,29 +1,62 @@
 // @wardenx/emar — §2.5/§2.7 D14 admission-discharge + patient-deceased cascade — M13-T05.
 import { describe, expect, it } from "vitest";
 import {
-  evaluateReturnOverdue,
-  planDischargeCascade,
-  RETURN_OVERDUE_DAYS,
   type CascadeActiveDeployment,
   type CascadeScheduledDose,
   type DischargeCascadeInput,
+  RETURN_OVERDUE_DAYS,
+  evaluateReturnOverdue,
+  planDischargeCascade,
 } from "../src/cascade";
 
 const DISCHARGE_AT = "2026-06-22T04:10:00.000Z"; // W-EMAR-09: patient passes at 0345; discharge recorded 0410
 
 // 0800 already past at discharge (administered or sweep-owned); the q4h/q6h doses through the next day future.
 const DOSES: CascadeScheduledDose[] = [
-  { scheduledDoseId: "sd-past-administered", medicationOrderId: "ord-mor", dueAt: "2026-06-22T04:00:00.000Z", status: "administered" },
-  { scheduledDoseId: "sd-past-pending", medicationOrderId: "ord-mor", dueAt: "2026-06-22T00:00:00.000Z", status: "pending" },
-  { scheduledDoseId: "sd-fut-1", medicationOrderId: "ord-mor", dueAt: "2026-06-22T08:00:00.000Z", status: "pending" },
-  { scheduledDoseId: "sd-fut-2", medicationOrderId: "ord-lor", dueAt: "2026-06-22T12:00:00.000Z", status: "pending" },
-  { scheduledDoseId: "sd-fut-cancelled", medicationOrderId: "ord-mor", dueAt: "2026-06-22T16:00:00.000Z", status: "cancelled" },
+  {
+    scheduledDoseId: "sd-past-administered",
+    medicationOrderId: "ord-mor",
+    dueAt: "2026-06-22T04:00:00.000Z",
+    status: "administered",
+  },
+  {
+    scheduledDoseId: "sd-past-pending",
+    medicationOrderId: "ord-mor",
+    dueAt: "2026-06-22T00:00:00.000Z",
+    status: "pending",
+  },
+  {
+    scheduledDoseId: "sd-fut-1",
+    medicationOrderId: "ord-mor",
+    dueAt: "2026-06-22T08:00:00.000Z",
+    status: "pending",
+  },
+  {
+    scheduledDoseId: "sd-fut-2",
+    medicationOrderId: "ord-lor",
+    dueAt: "2026-06-22T12:00:00.000Z",
+    status: "pending",
+  },
+  {
+    scheduledDoseId: "sd-fut-cancelled",
+    medicationOrderId: "ord-mor",
+    dueAt: "2026-06-22T16:00:00.000Z",
+    status: "cancelled",
+  },
 ];
 
 const DEPLOYMENTS: CascadeActiveDeployment[] = [
   { deploymentId: "dep-active", disposalStatus: "deployed", returnRequiredAt: null },
-  { deploymentId: "dep-already-required", disposalStatus: "return_required", returnRequiredAt: "2026-06-22T04:10:00.000Z" },
-  { deploymentId: "dep-returned", disposalStatus: "returned", returnRequiredAt: "2026-06-10T00:00:00.000Z" },
+  {
+    deploymentId: "dep-already-required",
+    disposalStatus: "return_required",
+    returnRequiredAt: "2026-06-22T04:10:00.000Z",
+  },
+  {
+    deploymentId: "dep-returned",
+    disposalStatus: "returned",
+    returnRequiredAt: "2026-06-10T00:00:00.000Z",
+  },
 ];
 
 const BASE: DischargeCascadeInput = {
@@ -39,7 +72,10 @@ const BASE: DischargeCascadeInput = {
 describe("§2.5/§2.7 D14 planDischargeCascade", () => {
   it("cancels only FUTURE pending scheduled doses; never touches past or non-pending doses", () => {
     const plan = planDischargeCascade(BASE);
-    expect(plan.cancellations.map((c) => c.scheduledDoseId).sort()).toEqual(["sd-fut-1", "sd-fut-2"]);
+    expect(plan.cancellations.map((c) => c.scheduledDoseId).sort()).toEqual([
+      "sd-fut-1",
+      "sd-fut-2",
+    ]);
   });
   it("stamps the cancellation reason and source event id onto every cancellation", () => {
     const plan = planDischargeCascade(BASE);
@@ -61,7 +97,9 @@ describe("§2.5/§2.7 D14 planDischargeCascade", () => {
   it("is idempotent: re-running over already-cancelled doses + already-required kits yields an empty plan", () => {
     const plan = planDischargeCascade({
       ...BASE,
-      scheduledDoses: DOSES.map((d) => (d.status === "pending" ? { ...d, status: "cancelled" as const } : d)),
+      scheduledDoses: DOSES.map((d) =>
+        d.status === "pending" ? { ...d, status: "cancelled" as const } : d,
+      ),
       activeDeployments: [DEPLOYMENTS[1]!, DEPLOYMENTS[2]!],
     });
     expect(plan.cancellations).toHaveLength(0);

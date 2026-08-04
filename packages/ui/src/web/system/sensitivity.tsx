@@ -71,7 +71,12 @@ export function MaskedIdentifier({
       <span
         className="wx-masked-id"
         aria-label={label ? `${label}${revealed ? "" : ", masked"}` : undefined}
-        style={{ fontFamily: t.fontMono, fontSize: "0.8125rem", color: t.onSurface, letterSpacing: "0.02em" }}
+        style={{
+          fontFamily: t.fontMono,
+          fontSize: "0.8125rem",
+          color: t.onSurface,
+          letterSpacing: "0.02em",
+        }}
       >
         {shown}
       </span>

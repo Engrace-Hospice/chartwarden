@@ -80,13 +80,19 @@ export function evaluateBarcodeScan(
   // Right drug — prefer RxCUI (terminology-stable) over NDC (package-specific). A scanned identity present on
   // BOTH the scan and the order that disagrees is a wrong-drug catch.
   const rxcuiConflict =
-    scan.scannedRxnormRxcui != null && order.rxnormRxcui != null && !sameToken(scan.scannedRxnormRxcui, order.rxnormRxcui);
+    scan.scannedRxnormRxcui != null &&
+    order.rxnormRxcui != null &&
+    !sameToken(scan.scannedRxnormRxcui, order.rxnormRxcui);
   const ndcConflict =
-    scan.scannedRxnormRxcui == null && scan.scannedNdc != null && order.ndc != null && !sameToken(scan.scannedNdc, order.ndc);
+    scan.scannedRxnormRxcui == null &&
+    scan.scannedNdc != null &&
+    order.ndc != null &&
+    !sameToken(scan.scannedNdc, order.ndc);
   if (rxcuiConflict || ndcConflict) return "wrong_drug";
 
   // Expired — an expiration date on or before the administration date.
-  if (scan.scannedExpirationDate != null && scan.scannedExpirationDate <= asOfDate) return "expired";
+  if (scan.scannedExpirationDate != null && scan.scannedExpirationDate <= asOfDate)
+    return "expired";
 
   return "match";
 }

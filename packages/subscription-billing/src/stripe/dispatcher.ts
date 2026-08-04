@@ -18,14 +18,14 @@
 
 import type { M35StripeApiCallFailedPayload } from "@wardenx/types";
 import { type OutboxIntent, outboxIntent } from "../service/ports";
+import type { StripeClient } from "./client";
 import { deriveIdempotencyKey } from "./idempotency";
 import { redactForAudit } from "./redactor";
-import type { StripeClient } from "./client";
 import {
-  isStripeApiError,
   type StripeApiCallAuditStore,
   type StripeDispatchEvent,
   type StripeMirrorApplier,
+  isStripeApiError,
 } from "./types";
 
 /** The §4.13 max-attempt ceiling: a retryable error at attempt ≥ this stops retrying and goes to the DLQ. */
@@ -97,7 +97,12 @@ export async function dispatchStripeCall(
     const retryable = isStripeApiError(err) ? err.retryable : false;
 
     // (5b) failure — always record before deciding retry-vs-DLQ.
-    await deps.auditStore.recordFailure({ auditId, responseStatusCode: statusCode, errorText, latencyMs });
+    await deps.auditStore.recordFailure({
+      auditId,
+      responseStatusCode: statusCode,
+      errorText,
+      latencyMs,
+    });
 
     if (retryable && event.attemptIndex < STRIPE_MAX_ATTEMPTS) {
       throw err; // BullMQ retries with exponential backoff (a fresh event, attemptIndex+1)
@@ -111,6 +116,9 @@ export async function dispatchStripeCall(
       attemptIndex: event.attemptIndex,
       errorText,
     };
-    return { kind: "failed_permanent", outbox: [outboxIntent("m35.stripe.api_call_failed", payload)] };
+    return {
+      kind: "failed_permanent",
+      outbox: [outboxIntent("m35.stripe.api_call_failed", payload)],
+    };
   }
 }

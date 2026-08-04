@@ -27,7 +27,6 @@
 // forward-seam consumers' concern and is NOT emitted here — mirroring the in-memory reference, which emits
 // only `m11.order.signed`. The returned object IS BOTH the OrderRouteService AND the §4.7 AbacResolver.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import {
   DEFAULT_COSIGN_POLICY,
   type OrderCosignPolicy,
@@ -43,6 +42,7 @@ import {
   transitionOrder,
   validateVerbalWindowHours,
 } from "@wardenx/orders";
+import { withOrgContext } from "@wardenx/tenancy";
 import {
   NotFoundError,
   type OrderDiscontinuationReason,
@@ -203,7 +203,13 @@ export function createDbOrderBackend(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind: "order", aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: org,
+      aggregateKind: "order",
+      aggregateId,
+    });
   }
 
   /** The reusable order-record select — parent partition, left-joined to its unique verbal-order + primary signature. */
@@ -242,7 +248,10 @@ export function createDbOrderBackend(
       .where(where)
       .orderBy(desc(OR.createdAt), desc(OR.id));
 
-  const listWhere = (organizationId: string, extra: SQL | undefined): Promise<{ orders: OrderView[] }> =>
+  const listWhere = (
+    organizationId: string,
+    extra: SQL | undefined,
+  ): Promise<{ orders: OrderView[] }> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const rows = (await selectOrders(tx as DbClient, extra)) as unknown as OrderRow[];
       return { orders: rows.map(toOrderView) };
@@ -300,7 +309,11 @@ export function createDbOrderBackend(
 
   /** Load the raw order row (RLS-scoped) for the write guards, or the non-leaking 404. */
   async function loadOrderRow(tx: DbClient, id: string) {
-    const [r] = (await tx.select().from(OR).where(eq(OR.id, id)).limit(1)) as (typeof OR.$inferSelect)[];
+    const [r] = (await tx
+      .select()
+      .from(OR)
+      .where(eq(OR.id, id))
+      .limit(1)) as (typeof OR.$inferSelect)[];
     if (!r) throw new NotFoundError(`order ${id} not found`);
     return r;
   }
@@ -313,7 +326,8 @@ export function createDbOrderBackend(
       .limit(1)) as { lpn: unknown; np: unknown }[];
     if (!r) return DEFAULT_COSIGN_POLICY;
     return {
-      lpnCosignRequiredKinds: (r.lpn as OrderKind[]) ?? DEFAULT_COSIGN_POLICY.lpnCosignRequiredKinds,
+      lpnCosignRequiredKinds:
+        (r.lpn as OrderKind[]) ?? DEFAULT_COSIGN_POLICY.lpnCosignRequiredKinds,
       npCosignRequiredKinds: (r.np as OrderKind[]) ?? [],
     };
   }
@@ -344,7 +358,9 @@ export function createDbOrderBackend(
   ): Promise<string> {
     // §2.1 / §4.7 author floor (defense-in-depth on top of the route's `discipline_can_order` ABAC).
     if (!disciplineCanOrder(args.drafterDiscipline, args.kind))
-      throw new NotFoundError(`discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`);
+      throw new NotFoundError(
+        `discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`,
+      );
     const isLab = args.kind === "lab";
     const row = firstOrThrow(
       await tx
@@ -397,7 +413,9 @@ export function createDbOrderBackend(
   ): Promise<OrderView> {
     const r = await loadOrderRow(tx, id);
     if (!signerEligible(signerDiscipline, r.kind))
-      throw new NotFoundError(`discipline '${signerDiscipline}' is not eligible to sign a '${r.kind}' order`);
+      throw new NotFoundError(
+        `discipline '${signerDiscipline}' is not eligible to sign a '${r.kind}' order`,
+      );
     const fromVerbal = r.status === "verbal_pending";
     // Throws COSIGN_PENDING / ILLEGAL_ORDER_TRANSITION — the DB apply-trigger is silent on an unmet cosign.
     transitionOrder(r.status, {
@@ -471,7 +489,9 @@ export function createDbOrderBackend(
     },
     async getOrder(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await selectOrders(tx as DbClient, eq(OR.id, id)).limit(1)) as unknown as OrderRow[];
+        const rows = (await selectOrders(tx as DbClient, eq(OR.id, id)).limit(
+          1,
+        )) as unknown as OrderRow[];
         if (!rows[0]) throw new NotFoundError(`order ${id} not found`);
         return toOrderView(rows[0]);
       });
@@ -486,7 +506,10 @@ export function createDbOrderBackend(
       return listWhere(organizationId, eq(OR.cosignStatus, "pending"));
     },
     async resultsPendingReview(organizationId) {
-      return listWhere(organizationId, and(eq(OR.kind, "lab"), eq(OR.resultsStatus, "results_received")));
+      return listWhere(
+        organizationId,
+        and(eq(OR.kind, "lab"), eq(OR.resultsStatus, "results_received")),
+      );
     },
     async suggestions(_organizationId, patientId) {
       // §2.7 assessment/HOPE order suggestions are event-driven projections owed to the consumers track.
@@ -506,10 +529,16 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
-        if (r.status !== "draft") throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
+        if (r.status !== "draft")
+          throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
         await t
           .update(OR)
-          .set({ data: data ?? {}, priority: priority ?? r.priority, version: r.version + 1, updatedAt: new Date() })
+          .set({
+            data: data ?? {},
+            priority: priority ?? r.priority,
+            version: r.version + 1,
+            updatedAt: new Date(),
+          })
           .where(eq(OR.id, id));
         return readOrder(t, id);
       });
@@ -560,15 +589,30 @@ export function createDbOrderBackend(
 
     async signOrder(organizationId, userId, id, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        signInternal(tx as unknown as DbClient, organizationId, userId, id, args.signerDiscipline, false),
+        signInternal(
+          tx as unknown as DbClient,
+          organizationId,
+          userId,
+          id,
+          args.signerDiscipline,
+          false,
+        ),
       );
     },
     async signOnBehalf(organizationId, userId, id, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        signInternal(tx as unknown as DbClient, organizationId, userId, id, args.signerDiscipline, true, {
-          onBehalfOf: args.onBehalfOf,
-          reason: args.reason,
-        }),
+        signInternal(
+          tx as unknown as DbClient,
+          organizationId,
+          userId,
+          id,
+          args.signerDiscipline,
+          true,
+          {
+            onBehalfOf: args.onBehalfOf,
+            reason: args.reason,
+          },
+        ),
       );
     },
 
@@ -631,7 +675,11 @@ export function createDbOrderBackend(
         const r = await loadOrderRow(t, id);
         // `order_record` carries no cosigner_role_needed column; re-derive it from the persisted facts:
         // the LPN axis (drafter+kind driven) demands an RN; the escalation-jump / NP axes both demand MD.
-        const cosignerRoleNeeded = lpnCosignRequired(r.drafterDiscipline, r.kind as OrderKind, await cosignPolicyOf(t))
+        const cosignerRoleNeeded = lpnCosignRequired(
+          r.drafterDiscipline,
+          r.kind as OrderKind,
+          await cosignPolicyOf(t),
+        )
           ? "rn_case_manager"
           : "medical_director";
         // Validates COSIGN_NOT_REQUIRED / ALREADY_COSIGNED / COSIGNER_NOT_ELIGIBLE (incl. self-cosign).
@@ -660,7 +708,10 @@ export function createDbOrderBackend(
             .returning({ id: OS.id }),
           "order_signature (cosignature) insert returned no row",
         );
-        await t.update(OR).set({ cosignStatus: "attached", updatedAt: new Date() }).where(eq(OR.id, id));
+        await t
+          .update(OR)
+          .set({ cosignStatus: "attached", updatedAt: new Date() })
+          .where(eq(OR.id, id));
         await emit(t, organizationId, "m11.order.cosigned", id, {
           orderId: id,
           cosignatureId: cosig.id,
@@ -698,7 +749,12 @@ export function createDbOrderBackend(
         );
         await t
           .update(OR)
-          .set({ status: "discontinued", discontinuedAt: new Date(), version: r.version + 1, updatedAt: new Date() })
+          .set({
+            status: "discontinued",
+            discontinuedAt: new Date(),
+            version: r.version + 1,
+            updatedAt: new Date(),
+          })
           .where(eq(OR.id, id));
         await emit(t, organizationId, "m11.order.discontinued", id, {
           orderId: id,
@@ -734,7 +790,10 @@ export function createDbOrderBackend(
         const r = await loadOrderRow(t, id);
         transitionOrder(r.status, { type: "complete", criterionMet: true });
         const at = new Date();
-        await t.update(OR).set({ status: "completed", completedAt: at, updatedAt: at }).where(eq(OR.id, id));
+        await t
+          .update(OR)
+          .set({ status: "completed", completedAt: at, updatedAt: at })
+          .where(eq(OR.id, id));
         await emit(t, organizationId, "m11.order.completed", id, {
           orderId: id,
           completedAt: at.toISOString(),
@@ -839,10 +898,17 @@ export function createDbOrderBackend(
     async editStandingOrder(organizationId, id, patch) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [existing] = (await t.select().from(SO).where(eq(SO.id, id)).limit(1)) as (typeof SO.$inferSelect)[];
+        const [existing] = (await t
+          .select()
+          .from(SO)
+          .where(eq(SO.id, id))
+          .limit(1)) as (typeof SO.$inferSelect)[];
         if (!existing) throw new NotFoundError(`standing order ${id} not found`);
         if (patch.maxSpawns != null)
-          await t.update(SO).set({ maxSpawns: patch.maxSpawns, updatedAt: new Date() }).where(eq(SO.id, id));
+          await t
+            .update(SO)
+            .set({ maxSpawns: patch.maxSpawns, updatedAt: new Date() })
+            .where(eq(SO.id, id));
         return readStanding(t, id);
       });
     },
@@ -881,10 +947,16 @@ export function createDbOrderBackend(
     async spawnStandingOrder(organizationId, userId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [tmpl] = (await t.select().from(SO).where(eq(SO.id, id)).limit(1)) as (typeof SO.$inferSelect)[];
+        const [tmpl] = (await t
+          .select()
+          .from(SO)
+          .where(eq(SO.id, id))
+          .limit(1)) as (typeof SO.$inferSelect)[];
         if (!tmpl) throw new NotFoundError(`standing order ${id} not found`);
         if (tmpl.status !== "active")
-          throw new NotFoundError(`standing order ${id} is ${tmpl.status}; only an active template may spawn`);
+          throw new NotFoundError(
+            `standing order ${id} is ${tmpl.status}; only an active template may spawn`,
+          );
         const plan = planStandingSpawn({
           kind: tmpl.kind as OrderKind,
           cadence: tmpl.cadence as StandingOrderCadence,
@@ -937,7 +1009,11 @@ export function createDbOrderBackend(
         );
         await t
           .update(SO)
-          .set({ spawnCount: tmpl.spawnCount + 1, nextSpawnAt: plan.nextSpawnAt ? new Date(plan.nextSpawnAt) : tmpl.nextSpawnAt, updatedAt: at })
+          .set({
+            spawnCount: tmpl.spawnCount + 1,
+            nextSpawnAt: plan.nextSpawnAt ? new Date(plan.nextSpawnAt) : tmpl.nextSpawnAt,
+            updatedAt: at,
+          })
           .where(eq(SO.id, id));
         await emit(t, organizationId, "m11.order.standing_spawned", spawned.id, {
           standingOrderId: id,
@@ -985,8 +1061,10 @@ export function createDbOrderBackend(
             organizationId,
             windowHours: args.windowHours,
             businessHoursOnly: args.businessHoursOnly ?? current.businessHoursOnly,
-            lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ?? current.lpnCosignRequiredKinds) as OrderKind[],
-            npCosignRequiredKinds: (args.npCosignRequiredKinds ?? current.npCosignRequiredKinds) as OrderKind[],
+            lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ??
+              current.lpnCosignRequiredKinds) as OrderKind[],
+            npCosignRequiredKinds: (args.npCosignRequiredKinds ??
+              current.npCosignRequiredKinds) as OrderKind[],
             platformFloorWindowHours: 48,
             policyVersion: current.policyVersion,
           })
@@ -995,8 +1073,10 @@ export function createDbOrderBackend(
             set: {
               windowHours: args.windowHours,
               businessHoursOnly: args.businessHoursOnly ?? current.businessHoursOnly,
-              lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ?? current.lpnCosignRequiredKinds) as OrderKind[],
-              npCosignRequiredKinds: (args.npCosignRequiredKinds ?? current.npCosignRequiredKinds) as OrderKind[],
+              lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ??
+                current.lpnCosignRequiredKinds) as OrderKind[],
+              npCosignRequiredKinds: (args.npCosignRequiredKinds ??
+                current.npCosignRequiredKinds) as OrderKind[],
               updatedAt: new Date(),
             },
           });
@@ -1007,12 +1087,21 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
-        if (r.status !== "verbal_pending") throw new NotFoundError(`order ${id} is not verbal_pending`);
+        if (r.status !== "verbal_pending")
+          throw new NotFoundError(`order ${id} is not verbal_pending`);
         const [v] = (await t
-          .select({ id: VO.id, orderingPhysicianMdmId: VO.orderingPhysicianMdmId, recordingMembershipId: VO.recordingMembershipId })
+          .select({
+            id: VO.id,
+            orderingPhysicianMdmId: VO.orderingPhysicianMdmId,
+            recordingMembershipId: VO.recordingMembershipId,
+          })
           .from(VO)
           .where(and(eq(VO.targetKind, "order"), eq(VO.targetId, id)))
-          .limit(1)) as { id: string; orderingPhysicianMdmId: string; recordingMembershipId: string }[];
+          .limit(1)) as {
+          id: string;
+          orderingPhysicianMdmId: string;
+          recordingMembershipId: string;
+        }[];
         if (!v) throw new NotFoundError(`order ${id} has no verbal-order receipt`);
         const policy = await verbalPolicyOf(t);
         const deadlineIso = computeVerbalDeadline(new Date().toISOString(), {
@@ -1020,7 +1109,10 @@ export function createDbOrderBackend(
           businessHoursOnly: policy.businessHoursOnly,
           policyVersion: policy.policyVersion,
         });
-        await t.update(VO).set({ deadlineAt: new Date(deadlineIso) }).where(eq(VO.id, v.id));
+        await t
+          .update(VO)
+          .set({ deadlineAt: new Date(deadlineIso) })
+          .where(eq(VO.id, v.id));
         await emit(t, organizationId, "m11.order.verbal_received", id, {
           orderId: id,
           verbalOrderId: v.id,

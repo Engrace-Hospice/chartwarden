@@ -15,12 +15,13 @@ import {
   fhirClientCredentialKind,
   fhirClientCredentialStatus,
   fhirClientStatus,
-  fhirClientType,
   fhirClientTier,
+  fhirClientType,
   fhirInboundOwnerModule,
   fhirInboundStatus,
   fhirVersionEnum,
 } from "@wardenx/db/schema";
+import { SUPPORTED_SCOPES } from "@wardenx/fhir";
 import {
   FHIR_BULK_EXPORT_ACTIVE_STATUSES,
   FHIR_BULK_EXPORT_REQUEST_KINDS,
@@ -39,13 +40,6 @@ import {
   FHIR_SUPPORTED_SCOPES,
   FHIR_TIER_RATE_LIMIT_FLOOR_RPS,
   FHIR_VERSIONS,
-  M28_AUDIT_DENYLIST,
-  M28_AUDIT_RETENTION_CLASS,
-  M28_CIPHER_COLUMNS,
-  M28_ERASER_DATA_CLASS,
-  M28_PARTITIONED_TABLES,
-  M28_TABLE_NAMES,
-  M28_TABLE_TENANCY,
   type FhirBulkExportRequestKind,
   type FhirBulkExportStatus,
   type FhirClientCredentialKind,
@@ -56,16 +50,30 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
   type FhirVersion,
+  M28_AUDIT_DENYLIST,
+  M28_AUDIT_RETENTION_CLASS,
+  M28_CIPHER_COLUMNS,
+  M28_ERASER_DATA_CLASS,
+  M28_PARTITIONED_TABLES,
+  M28_TABLE_NAMES,
+  M28_TABLE_TENANCY,
 } from "@wardenx/types";
-import { SUPPORTED_SCOPES } from "@wardenx/fhir";
 import { MODULES } from "../../../architecture/module-manifest";
 
 /** Each triple is (SQL type name, the pgEnum's runtime values, the leaf mirror's members). The third
  *  element is a `satisfies`-checked literal array, so a member added to the TS union without being added
  *  here is a COMPILE error and a member added to the pgEnum without the union is a RUNTIME failure. */
 const MIRRORS = [
-  ["fhir_client_type", fhirClientType.enumValues, FHIR_CLIENT_TYPES satisfies readonly FhirClientType[]],
-  ["fhir_client_tier", fhirClientTier.enumValues, FHIR_CLIENT_TIERS satisfies readonly FhirClientTier[]],
+  [
+    "fhir_client_type",
+    fhirClientType.enumValues,
+    FHIR_CLIENT_TYPES satisfies readonly FhirClientType[],
+  ],
+  [
+    "fhir_client_tier",
+    fhirClientTier.enumValues,
+    FHIR_CLIENT_TIERS satisfies readonly FhirClientTier[],
+  ],
   [
     "fhir_client_status",
     fhirClientStatus.enumValues,
@@ -124,7 +132,10 @@ describe("§3.2 pgEnum ↔ @wardenx/types mirror", () => {
       expect(fhirBulkExportStatus.enumValues).toContain(s);
     }
     // A completed/failed/cancelled/expired job does NOT hold the concurrency lock.
-    expect(FHIR_BULK_EXPORT_ACTIVE_STATUSES as readonly string[]).toEqual(["accepted", "in_progress"]);
+    expect(FHIR_BULK_EXPORT_ACTIVE_STATUSES as readonly string[]).toEqual([
+      "accepted",
+      "in_progress",
+    ]);
     for (const s of FHIR_INBOUND_PAYLOAD_ERASE_STATUSES) {
       expect(fhirInboundStatus.enumValues).toContain(s);
     }
@@ -198,7 +209,10 @@ describe("§3.3–§3.7 owned tables ↔ the manifest", () => {
   });
 
   it("denylists exactly the secret + PHI-payload columns", () => {
-    expect(M28_AUDIT_DENYLIST.fhir_client_credential).toEqual(["secret_cipher", "secret_digest_sha256"]);
+    expect(M28_AUDIT_DENYLIST.fhir_client_credential).toEqual([
+      "secret_cipher",
+      "secret_digest_sha256",
+    ]);
     expect(M28_AUDIT_DENYLIST.tenant_fhir_config).toEqual(["cursor_signing_key_cipher"]);
     expect(M28_AUDIT_DENYLIST.fhir_inbound_resource).toEqual(["payload"]);
     // The session table has no PHI and nothing to hide.

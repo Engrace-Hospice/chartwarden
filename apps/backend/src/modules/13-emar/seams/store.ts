@@ -119,7 +119,9 @@ export interface EmarSeamStore {
   ivContinuousSessionById(ivSessionId: string): Promise<IvContinuousSessionRow | null>;
   // ── reconciliation reads (ReconciliationProvider) ─────────────────────────────────────────────────────
   worksheetById(worksheetId: string): Promise<ReconciliationWorksheetDto | null>;
-  worksheetsForAdmission(admissionId: AdmissionId): Promise<ReadonlyArray<ReconciliationWorksheetDto>>;
+  worksheetsForAdmission(
+    admissionId: AdmissionId,
+  ): Promise<ReadonlyArray<ReconciliationWorksheetDto>>;
   reconciliationTimelinessForAdmission(
     admissionId: AdmissionId,
   ): Promise<ReconciliationTimelinessAnchor | null>;

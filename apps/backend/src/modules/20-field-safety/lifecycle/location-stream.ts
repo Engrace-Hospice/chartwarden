@@ -78,7 +78,8 @@ export function isStreamConsentActive(
 ): boolean {
   if (consent === null) return false;
   if (consent.status !== "granted") return false;
-  if (consent.expiresAt !== null && Date.parse(consent.expiresAt) <= Date.parse(atIso)) return false;
+  if (consent.expiresAt !== null && Date.parse(consent.expiresAt) <= Date.parse(atIso))
+    return false;
   return Date.parse(consent.grantedAt) <= Date.parse(atIso);
 }
 
@@ -125,8 +126,7 @@ export function decideLocationStreamSample(input: {
 
   const now = Date.parse(input.nowIso);
   const sunsetMs =
-    Date.parse(input.sosPostedAt) +
-    input.policy.sosContinuousLocationMaxDurationHours * 3_600_000;
+    Date.parse(input.sosPostedAt) + input.policy.sosContinuousLocationMaxDurationHours * 3_600_000;
   if (now >= sunsetMs) return { kind: "stop", reason: "max_duration_reached" };
 
   const cadenceMs = input.policy.sosContinuousLocationSampleSeconds * 1000;

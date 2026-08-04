@@ -213,9 +213,10 @@ export const AI_PHASE_1_CAPABILITIES_BY_KEY: ReadonlyMap<string, AiPhase1Capabil
   new Map(AI_PHASE_1_CAPABILITIES.map((c) => [c.capabilityKey, c]));
 
 /** The three §2.4 marks APPROVED at lock time. Still refused in Phase 1 — `ai.full` is the outer gate. */
-export const AI_PHASE_1_APPROVED_CAPABILITY_KEYS: readonly string[] = AI_PHASE_1_CAPABILITIES.filter(
-  (c) => c.phase1LifecycleState === "APPROVED",
-).map((c) => c.capabilityKey);
+export const AI_PHASE_1_APPROVED_CAPABILITY_KEYS: readonly string[] =
+  AI_PHASE_1_CAPABILITIES.filter((c) => c.phase1LifecycleState === "APPROVED").map(
+    (c) => c.capabilityKey,
+  );
 
 /** True when a capability key is one §2.4 registers. Fails CLOSED. */
 export function isAiPhase1CapabilityKey(key: string): boolean {

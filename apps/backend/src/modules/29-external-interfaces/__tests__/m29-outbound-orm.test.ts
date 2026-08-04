@@ -1,19 +1,25 @@
+import type { OrmRequestedPayload } from "@wardenx/types";
 // apps/backend/src/modules/29-external-interfaces/__tests__ — M29-T06 outbound ORM unit tests (§4.12,
 // W-XI-07/08/09). Every pure core: the ORM^O01 wire builder (D8 OBR-2, HL7 escaping, NTE, PHI-free summary),
 // the BAA-gated dispatch planner (dispatch vs pre-persist refuse), the ACK correlation (AA / AR / AE /
 // orphan), and the D9 retry / DLQ policy.
 import { describe, expect, it } from "vitest";
-import type { OrmRequestedPayload } from "@wardenx/types";
-import { buildOrmO01, escapeHl7, isoToHl7Timestamp, summarizeSegments, type OrmEndpoint } from "../outbound/orm-o01";
+import type { BaaGateDecision } from "../feed/baa-gate";
+import { type CorrelatedOutboundRow, correlateAck, parseAckMsa } from "../outbound/ack-correlation";
 import {
   ORM_SOURCE_KIND,
+  type OutboundDispatchInput,
   outboundIdempotencyKey,
   planOutboundDispatch,
-  type OutboundDispatchInput,
 } from "../outbound/dispatch-planner";
-import { correlateAck, parseAckMsa, type CorrelatedOutboundRow } from "../outbound/ack-correlation";
-import { decideRetry, OUTBOUND_BACKOFF_MS, OUTBOUND_MAX_ATTEMPTS } from "../outbound/retry-policy";
-import type { BaaGateDecision } from "../feed/baa-gate";
+import {
+  type OrmEndpoint,
+  buildOrmO01,
+  escapeHl7,
+  isoToHl7Timestamp,
+  summarizeSegments,
+} from "../outbound/orm-o01";
+import { OUTBOUND_BACKOFF_MS, OUTBOUND_MAX_ATTEMPTS, decideRetry } from "../outbound/retry-policy";
 
 const ORG = "org_engrace";
 const FEED = "feed_quest_engrace_out";
@@ -83,7 +89,9 @@ describe("buildOrmO01", () => {
       messageTimestamp: "20260801120005",
     });
     const segments = wire.split("\r");
-    expect(segments[0]).toBe("MSH|^~\\&|WARDENX|ENGRACE|LAB|QUEST|20260801120005||ORM^O01|MSH10-1|P|2.5.1");
+    expect(segments[0]).toBe(
+      "MSH|^~\\&|WARDENX|ENGRACE|LAB|QUEST|20260801120005||ORM^O01|MSH10-1|P|2.5.1",
+    );
     const obr = segments.find((s) => s.startsWith("OBR"))!;
     const orc = segments.find((s) => s.startsWith("ORC"))!;
     // OBR-2 (index 2) and ORC-2 both carry the placer order number.
@@ -159,7 +167,9 @@ describe("planOutboundDispatch", () => {
     expect(plan.row.sourceAggregateKind).toBe(ORM_SOURCE_KIND);
     expect(plan.row.sourceAggregateId).toBe("ord_NEW_abc");
     expect(plan.row.retryCount).toBe(0);
-    expect(plan.row.idempotencyKey).toBe(outboundIdempotencyKey(FEED, ORM_SOURCE_KIND, "ord_NEW_abc"));
+    expect(plan.row.idempotencyKey).toBe(
+      outboundIdempotencyKey(FEED, ORM_SOURCE_KIND, "ord_NEW_abc"),
+    );
     // The sha256 digest matches the wire the worker will envelope-encrypt.
     expect(plan.wire).toContain("ORM^O01");
     expect(plan.audit.kind).toBe("hl7.outbound.dispatched");
@@ -177,7 +187,11 @@ describe("planOutboundDispatch", () => {
     expect(plan.reason).toBe("expired_baa");
     expect(plan.audit.kind).toBe("hl7.outbound.baa_refuse");
     expect(plan.audit.outboundMessageId).toBeNull();
-    expect(plan.alert).toMatchObject({ severity: "HIGH", channel: "compliance", kind: "external_feed.baa_expired" });
+    expect(plan.alert).toMatchObject({
+      severity: "HIGH",
+      channel: "compliance",
+      kind: "external_feed.baa_expired",
+    });
   });
 
   it("a missing BAA refuses with the missing alert variant", () => {
@@ -190,8 +204,12 @@ describe("planOutboundDispatch", () => {
   });
 
   it("the idempotency key is stable across two dispatches of the same order (permanent dedup)", () => {
-    const a = planOutboundDispatch(dispatchInput({ outboundMessageId: "hmo_1", messageControlId: "c1" }));
-    const b = planOutboundDispatch(dispatchInput({ outboundMessageId: "hmo_2", messageControlId: "c2" }));
+    const a = planOutboundDispatch(
+      dispatchInput({ outboundMessageId: "hmo_1", messageControlId: "c1" }),
+    );
+    const b = planOutboundDispatch(
+      dispatchInput({ outboundMessageId: "hmo_2", messageControlId: "c2" }),
+    );
     if (a.kind !== "dispatch" || b.kind !== "dispatch") throw new Error("expected dispatch");
     expect(a.row.idempotencyKey).toBe(b.row.idempotencyKey);
   });
@@ -200,16 +218,22 @@ describe("planOutboundDispatch", () => {
 // ── ACK correlation ──────────────────────────────────────────────────────────────────────────────────────
 describe("parseAckMsa", () => {
   it("reads MSA-1 code, MSA-2 control id, and MSA-3 text", () => {
-    const ack = parseAckMsa("MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120010||ACK|A1|P|2.5.1\rMSA|AA|MSH10-1");
+    const ack = parseAckMsa(
+      "MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120010||ACK|A1|P|2.5.1\rMSA|AA|MSH10-1",
+    );
     expect(ack).toEqual({ ackCode: "AA", messageControlId: "MSH10-1", text: "" });
   });
 
   it("returns null when there is no MSA segment", () => {
-    expect(parseAckMsa("MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120010||ACK|A1|P|2.5.1")).toBeNull();
+    expect(
+      parseAckMsa("MSH|^~\\&|LAB|QUEST|WARDENX|ENGRACE|20260801120010||ACK|A1|P|2.5.1"),
+    ).toBeNull();
   });
 
   it("captures the MSA-3 reject text on an AR", () => {
-    const ack = parseAckMsa("MSH|^~\\&|LAB|Q|W|E|20260801||ACK|A|P|2.5.1\rMSA|AR|MSH10-1|unknown patient");
+    const ack = parseAckMsa(
+      "MSH|^~\\&|LAB|Q|W|E|20260801||ACK|A|P|2.5.1\rMSA|AR|MSH10-1|unknown patient",
+    );
     expect(ack).toMatchObject({ ackCode: "AR", text: "unknown patient" });
   });
 });
@@ -251,7 +275,11 @@ describe("correlateAck", () => {
     if (r.kind !== "rejected") return;
     expect(r.statusUpdate.status).toBe("naked");
     expect(r.statusUpdate.transmittedAt).toBeNull();
-    expect(r.event.payload).toMatchObject({ reason: "application_reject", detail: "unknown patient", attemptCount: 1 });
+    expect(r.event.payload).toMatchObject({
+      reason: "application_reject",
+      detail: "unknown patient",
+      attemptCount: 1,
+    });
     expect(r.alert).toMatchObject({ severity: "HIGH", channel: "operator-on-call" });
   });
 
@@ -288,12 +316,18 @@ describe("decideRetry", () => {
 
   it("schedules exponential backoff for attempts below the budget", () => {
     for (let retryCount = 0; retryCount < OUTBOUND_MAX_ATTEMPTS - 1; retryCount++) {
-      const d = decideRetry({ outbound: { ...row, retryCount }, now, lastError: "tls_handshake_failed" });
+      const d = decideRetry({
+        outbound: { ...row, retryCount },
+        now,
+        lastError: "tls_handshake_failed",
+      });
       expect(d.kind).toBe("retry");
       if (d.kind !== "retry") return;
       expect(d.statusUpdate.status).toBe("queued");
       expect(d.statusUpdate.retryCount).toBe(retryCount + 1);
-      expect(d.statusUpdate.nextRetryAt).toEqual(new Date(now.getTime() + OUTBOUND_BACKOFF_MS[retryCount]!));
+      expect(d.statusUpdate.nextRetryAt).toEqual(
+        new Date(now.getTime() + OUTBOUND_BACKOFF_MS[retryCount]!),
+      );
     }
   });
 
@@ -308,7 +342,10 @@ describe("decideRetry", () => {
     expect(d.statusUpdate.status).toBe("dlq");
     expect(d.statusUpdate.retryCount).toBe(OUTBOUND_MAX_ATTEMPTS);
     expect(d.statusUpdate.nextRetryAt).toBeNull();
-    expect(d.event.payload).toMatchObject({ reason: "dlq_exhausted", attemptCount: OUTBOUND_MAX_ATTEMPTS });
+    expect(d.event.payload).toMatchObject({
+      reason: "dlq_exhausted",
+      attemptCount: OUTBOUND_MAX_ATTEMPTS,
+    });
     expect(d.alert).toMatchObject({ severity: "HIGH", channel: "operator-on-call" });
     expect(d.audit.kind).toBe("hl7.outbound.dlq");
   });

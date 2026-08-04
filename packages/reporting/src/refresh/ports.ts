@@ -51,7 +51,9 @@ export interface MvMetadataReadPort {
   /** Fetch MV metadata by `mv_key`, or `null` when unregistered. */
   findByKey(mvKey: string): Promise<schema.MaterializedViewMetadata | null>;
   /** List the ACTIVE MVs declaring a given refresh tier (the nightly orchestrator's work-set). */
-  listActiveByStrategy(strategy: RefreshStrategy): Promise<readonly schema.MaterializedViewMetadata[]>;
+  listActiveByStrategy(
+    strategy: RefreshStrategy,
+  ): Promise<readonly schema.MaterializedViewMetadata[]>;
 }
 
 /** The telemetry patch the refresh worker stamps after a refresh (§2.4 — success resets the failure counter

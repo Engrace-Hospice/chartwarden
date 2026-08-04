@@ -3,7 +3,16 @@
 // versions to the target module field path + draft aggregate. Org-scoped; `source_bounding_box` /
 // `target_field_path` are DENYLISTED (§3.6 — structural; field-paths may reveal clinical context).
 // `extraction_decision_id` carries a SQL FK; source/candidate/target ids are plain uuid app-validated.
-import { index, jsonb, pgTable, integer, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { chartTargetModule } from "../../enums";
 import { extractionDecisions } from "./extraction-decision";
 

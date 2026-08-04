@@ -7,6 +7,19 @@
 
 import { describe, expect, it } from "vitest";
 
+import { scopesExceedingGrant, unsupportedScopes } from "../src/auth/scopes";
+import {
+  fhirDefaultRateLimitFor,
+  fhirRateLimitWithinFloor,
+  isCidrShaped,
+} from "../src/domain/validation";
+import {
+  FHIR_BULK_EXPORT_INITIAL_STATUS,
+  FHIR_BULK_EXPORT_TERMINAL_STATUSES,
+  canFhirBulkExportTransition,
+  fhirBulkExportTransition,
+  isFhirBulkExportActive,
+} from "../src/lifecycle/bulk-export";
 import {
   FHIR_CLIENT_CASCADE_ON_ENTRY,
   FHIR_CLIENT_INITIAL_STATUS,
@@ -19,13 +32,6 @@ import {
   fhirDualApprovalSatisfied,
 } from "../src/lifecycle/client";
 import {
-  FHIR_BULK_EXPORT_INITIAL_STATUS,
-  FHIR_BULK_EXPORT_TERMINAL_STATUSES,
-  canFhirBulkExportTransition,
-  fhirBulkExportTransition,
-  isFhirBulkExportActive,
-} from "../src/lifecycle/bulk-export";
-import {
   FHIR_INBOUND_INITIAL_STATUS,
   FHIR_INBOUND_TERMINAL_STATUSES,
   canFhirInboundTransition,
@@ -33,12 +39,6 @@ import {
   fhirInboundOwnerModuleFor,
   fhirInboundRejectRationaleValid,
 } from "../src/lifecycle/inbound";
-import {
-  fhirDefaultRateLimitFor,
-  fhirRateLimitWithinFloor,
-  isCidrShaped,
-} from "../src/domain/validation";
-import { scopesExceedingGrant, unsupportedScopes } from "../src/auth/scopes";
 
 describe("§2.2 fhir_client onboarding FSM", () => {
   it("starts a proposed client in pending_approval with a null from-status", () => {
@@ -87,7 +87,10 @@ describe("§2.2 fhir_client onboarding FSM", () => {
     expect(fhirClientServePosture("active")).toEqual({ kind: "serving" });
     expect(fhirClientServePosture("pending_approval")).toEqual({ kind: "awaiting_approval" });
     expect(fhirClientServePosture("suspended")).toEqual({ kind: "suspended" });
-    expect(fhirClientServePosture("revoked")).toEqual({ kind: "terminated", terminalStatus: "revoked" });
+    expect(fhirClientServePosture("revoked")).toEqual({
+      kind: "terminated",
+      terminalStatus: "revoked",
+    });
   });
 
   it("attaches an audit action to every edge", () => {

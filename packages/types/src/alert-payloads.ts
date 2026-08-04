@@ -144,7 +144,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       daysRemaining: Type.Integer({ minimum: 0 }),
     }),
     requiresResponseTracking: true,
-    description: "SRA due in 60 days — reminder to the Security + Compliance Officers + Administrator.",
+    description:
+      "SRA due in 60 days — reminder to the Security + Compliance Officers + Administrator.",
   },
   {
     payloadType: "m30.alerts.sra_due_30",
@@ -159,7 +160,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       daysRemaining: Type.Integer({ minimum: 0 }),
     }),
     requiresResponseTracking: true,
-    description: "SRA due in 30 days — the escalated reminder to the Security/Compliance Officers + Administrator.",
+    description:
+      "SRA due in 30 days — the escalated reminder to the Security/Compliance Officers + Administrator.",
   },
   {
     payloadType: "m30.alerts.sra_overdue",
@@ -174,7 +176,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       daysOverdue: Type.Integer({ minimum: 0 }),
     }),
     requiresResponseTracking: true,
-    description: "SRA is overdue (past anniversary, cycle open) — the daily escalation to Administrator/Owner/Compliance.",
+    description:
+      "SRA is overdue (past anniversary, cycle open) — the daily escalation to Administrator/Owner/Compliance.",
   },
   {
     payloadType: "m30.alerts.incident_abuse_allegation",
@@ -189,7 +192,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       hasPatientLink: Type.Boolean(),
     }),
     requiresResponseTracking: true,
-    description: "An abuse-allegation incident was submitted — the immediate escalation to Admin/Compliance/Medical Director.",
+    description:
+      "An abuse-allegation incident was submitted — the immediate escalation to Admin/Compliance/Medical Director.",
   },
   {
     payloadType: "m30.alerts.incident_sentinel",
@@ -205,7 +209,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       hasPatientLink: Type.Boolean(),
     }),
     requiresResponseTracking: true,
-    description: "A sentinel-severity incident was submitted — the immediate escalation to Admin/Compliance/MD/QAPI.",
+    description:
+      "A sentinel-severity incident was submitted — the immediate escalation to Admin/Compliance/MD/QAPI.",
   },
   {
     payloadType: "m30.alerts.outbreak_detected",
@@ -221,7 +226,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       firstEventAt: m30IsoInstant,
     }),
     requiresResponseTracking: true,
-    description: "An infection cluster (>=3 events / 14d) was detected — the escalation to Infection Control/MD/Admin.",
+    description:
+      "An infection cluster (>=3 events / 14d) was detected — the escalation to Infection Control/MD/Admin.",
   },
   {
     payloadType: "m30.alerts.measure_threshold_breached",
@@ -238,7 +244,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       threshold: Type.Number(),
     }),
     requiresResponseTracking: true,
-    description: "A QAPI indicator crossed its red threshold — the cadence alert to the QAPI Coordinator + Medical Director.",
+    description:
+      "A QAPI indicator crossed its red threshold — the cadence alert to the QAPI Coordinator + Medical Director.",
   },
   {
     payloadType: "m30.alerts.cap_overdue",
@@ -253,7 +260,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       dueAt: m30IsoInstant,
     }),
     requiresResponseTracking: true,
-    description: "A corrective-action-plan item is overdue — the cadence alert to the owner, verifier, and QAPI Coordinator.",
+    description:
+      "A corrective-action-plan item is overdue — the cadence alert to the owner, verifier, and QAPI Coordinator.",
   },
   {
     payloadType: "m30.alerts.mortality_review_due",
@@ -269,7 +277,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       daysSinceDeath: Type.Integer({ minimum: 0 }),
     }),
     requiresResponseTracking: true,
-    description: "A mortality review is due (25d post-death, not completed) — the cadence reminder to the MD + QAPI Coordinator.",
+    description:
+      "A mortality review is due (25d post-death, not completed) — the cadence reminder to the MD + QAPI Coordinator.",
   },
   {
     payloadType: "m30.alerts.cop_review_overdue",
@@ -283,7 +292,8 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       lastAttestedAt: Type.Union([m30IsoInstant, Type.Null()]),
     }),
     requiresResponseTracking: true,
-    description: "A CoP citation is overdue for re-attestation (>6 months) — the cadence alert to Compliance + Administrator.",
+    description:
+      "A CoP citation is overdue for re-attestation (>6 months) — the cadence alert to Compliance + Administrator.",
   },
   {
     payloadType: "m30.alerts.cahps_sample_ready",
@@ -298,6 +308,7 @@ export const M30_ALERT_PAYLOADS: ModuleAlertContribution = [
       sampleSize: Type.Integer({ minimum: 0 }),
     }),
     requiresResponseTracking: false,
-    description: "The monthly CAHPS decedent sample is built and ready for export — the one-shot notice to the QAPI Coordinator.",
+    description:
+      "The monthly CAHPS decedent sample is built and ready for export — the one-shot notice to the QAPI Coordinator.",
   },
 ];

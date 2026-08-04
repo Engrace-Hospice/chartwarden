@@ -9,7 +9,7 @@
 // appeal.submit / denial.close_with_write_off (the operation key is the permission key so M3-T07 resolves
 // the per-op freshness policy).
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { type PreHandler } from "./actor";
+import type { PreHandler } from "./actor";
 
 type TargetRequest = { readonly params?: unknown; readonly body?: unknown };
 
@@ -43,4 +43,5 @@ export const WITHIN_DEADLINE = (key: string): PreHandler =>
   }) as PreHandler;
 
 /** §D15 step-up gate — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate. */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;

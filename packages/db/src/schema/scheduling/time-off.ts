@@ -7,10 +7,10 @@
 // Not partitioned (O(clinicians), D14). RLS + grants + the M4 write-audit trigger land in M17-T02.
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { timeOffKind, timeOffState } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const timeOff = pgTable(
   "time_off",
@@ -55,11 +55,7 @@ export const timeOff = pgTable(
     // D7 reassignment-scan + the EXCLUDE backstop (added via SQL, M17-T02):
     // EXCLUDE USING gist (membership_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
     //   WHERE (approval_state = 'approved').
-    membershipWindow: index("to_membership_window_idx").on(
-      t.membershipId,
-      t.startsAt,
-      t.endsAt,
-    ),
+    membershipWindow: index("to_membership_window_idx").on(t.membershipId, t.startsAt, t.endsAt),
   }),
 );
 

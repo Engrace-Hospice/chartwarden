@@ -1,20 +1,28 @@
 // @wardenx/emar — §2.3 D2 scheduled-dose materializer + frequency parser — M13-T03.
 import { describe, expect, it } from "vitest";
 import {
-  parseFrequencyCode,
   FrequencyParseError,
-  materializeSchedule,
-  materializeForOrder,
-  type ScheduleFrequency,
   type MaterializableOrder,
+  type ScheduleFrequency,
+  materializeForOrder,
+  materializeSchedule,
+  parseFrequencyCode,
 } from "../src/schedule";
 
 const UTC = "UTC";
 
 describe("§2.3 parseFrequencyCode", () => {
   it("maps interval codes (q4h → every 240 min anchored at midnight)", () => {
-    expect(parseFrequencyCode("q4h")).toEqual({ kind: "interval", everyMinutes: 240, anchor: "00:00" });
-    expect(parseFrequencyCode("Q6H")).toEqual({ kind: "interval", everyMinutes: 360, anchor: "00:00" });
+    expect(parseFrequencyCode("q4h")).toEqual({
+      kind: "interval",
+      everyMinutes: 240,
+      anchor: "00:00",
+    });
+    expect(parseFrequencyCode("Q6H")).toEqual({
+      kind: "interval",
+      everyMinutes: 360,
+      anchor: "00:00",
+    });
   });
   it("maps named-time codes (BID → 08:00/20:00)", () => {
     expect(parseFrequencyCode("BID")).toEqual({ kind: "named_times", times: ["08:00", "20:00"] });
@@ -75,7 +83,11 @@ describe("§2.3 materializeSchedule", () => {
       "2026-06-22T08:00:00.000Z",
       "2026-06-22T20:00:00.000Z",
     ]);
-    expect(rows[0]).toMatchObject({ expectedDoseAmount: 0.5, expectedDoseUnit: "mg", expectedRoute: "PO" });
+    expect(rows[0]).toMatchObject({
+      expectedDoseAmount: 0.5,
+      expectedDoseUnit: "mg",
+      expectedRoute: "PO",
+    });
   });
 
   it("q6h over one day → four rows (00/06/12/18)", () => {
@@ -133,14 +145,28 @@ describe("§2.3 materializeSchedule", () => {
 describe("§2.3 materializeForOrder (M12 projection)", () => {
   const order: MaterializableOrder = {
     route: "PO",
-    sigStructured: { doseQuantity: 0.5, doseUnit: "mg", route: "PO", frequencyCode: "BID", asNeeded: false },
+    sigStructured: {
+      doseQuantity: 0.5,
+      doseUnit: "mg",
+      route: "PO",
+      frequencyCode: "BID",
+      asNeeded: false,
+    },
     activatedAt: "2026-06-22T09:00:00.000Z",
   };
 
   it("projects the order sig into BID rows, dropping the 08:00 (before activation)", () => {
-    const rows = materializeForOrder(order, { timeZone: UTC, windowStartDate: "2026-06-22", windowDays: 1 });
+    const rows = materializeForOrder(order, {
+      timeZone: UTC,
+      windowStartDate: "2026-06-22",
+      windowDays: 1,
+    });
     expect(rows.map((r) => r.dueAt)).toEqual(["2026-06-22T20:00:00.000Z"]);
-    expect(rows[0]).toMatchObject({ expectedDoseAmount: 0.5, expectedDoseUnit: "mg", expectedRoute: "PO" });
+    expect(rows[0]).toMatchObject({
+      expectedDoseAmount: 0.5,
+      expectedDoseUnit: "mg",
+      expectedRoute: "PO",
+    });
   });
 
   it("a PRN order materializes nothing", () => {
@@ -148,9 +174,9 @@ describe("§2.3 materializeForOrder (M12 projection)", () => {
       ...order,
       sigStructured: { ...order.sigStructured, frequencyCode: "PRN", asNeeded: true },
     };
-    expect(materializeForOrder(prn, { timeZone: UTC, windowStartDate: "2026-06-22", windowDays: 7 })).toEqual(
-      [],
-    );
+    expect(
+      materializeForOrder(prn, { timeZone: UTC, windowStartDate: "2026-06-22", windowDays: 7 }),
+    ).toEqual([]);
   });
 });
 

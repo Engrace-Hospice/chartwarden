@@ -22,13 +22,13 @@ import {
 } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
 
+import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
 import {
   ProposalAlreadyDecidedError,
   ProposalRejectRationaleRequiredError,
-  decideProposal,
   type ProposalSnapshot,
+  decideProposal,
 } from "../proposals/decision";
-import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
 import type {
   CredentialSummary,
   FeedDetail,
@@ -389,43 +389,47 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
       });
     },
     async mintCredential(orgId, membershipId, feedId, args) {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx): Promise<CredentialSummary> => {
-        await loadFeed(tx, orgId, feedId);
-        // Rotate: retire the prior active credential of the same kind.
-        await tx
-          .update(CRED)
-          .set({ status: "retired" })
-          .where(
-            and(
-              eq(CRED.feedId, feedId),
-              eq(CRED.organizationId, orgId),
-              eq(CRED.kind, args.kind),
-              eq(CRED.status, "active"),
-            ),
-          );
-        const digest = createHash("sha256").update(args.secret).digest("hex");
-        const [row] = await tx
-          .insert(CRED)
-          .values({
-            feedId,
-            organizationId: orgId,
-            kind: args.kind,
-            // no DEK bound (Phase 1): the NOT-NULL cipher column carries the digest, never the plaintext.
-            secretCipher: digest,
-            fingerprint: digest.slice(0, 8),
-            status: "active",
-          })
-          .returning();
-        return {
-          id: row!.id,
-          feedId: row!.feedId,
-          kind: row!.kind,
-          fingerprint: row!.fingerprint,
-          status: row!.status,
-          rotatedAt: row!.rotatedAt.toISOString(),
-          createdAt: row!.createdAt.toISOString(),
-        };
-      });
+      return withOrgContext(
+        db,
+        ctx(orgId, membershipId),
+        async (tx): Promise<CredentialSummary> => {
+          await loadFeed(tx, orgId, feedId);
+          // Rotate: retire the prior active credential of the same kind.
+          await tx
+            .update(CRED)
+            .set({ status: "retired" })
+            .where(
+              and(
+                eq(CRED.feedId, feedId),
+                eq(CRED.organizationId, orgId),
+                eq(CRED.kind, args.kind),
+                eq(CRED.status, "active"),
+              ),
+            );
+          const digest = createHash("sha256").update(args.secret).digest("hex");
+          const [row] = await tx
+            .insert(CRED)
+            .values({
+              feedId,
+              organizationId: orgId,
+              kind: args.kind,
+              // no DEK bound (Phase 1): the NOT-NULL cipher column carries the digest, never the plaintext.
+              secretCipher: digest,
+              fingerprint: digest.slice(0, 8),
+              status: "active",
+            })
+            .returning();
+          return {
+            id: row!.id,
+            feedId: row!.feedId,
+            kind: row!.kind,
+            fingerprint: row!.fingerprint,
+            status: row!.status,
+            rotatedAt: row!.rotatedAt.toISOString(),
+            createdAt: row!.createdAt.toISOString(),
+          };
+        },
+      );
     },
     async getFeedHealth(orgId, feedId) {
       return withOrgContext(db, ctx(orgId), async (tx): Promise<FeedHealthView | null> => {
@@ -610,25 +614,29 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
       });
     },
     async replayInboundMessage(orgId, membershipId, messageId) {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx): Promise<InboundMessageView> => {
-        const [row] = await tx
-          .select()
-          .from(INBOUND)
-          .where(and(eq(INBOUND.id, messageId), eq(INBOUND.organizationId, orgId)))
-          .limit(1);
-        if (!row) throw new NotFoundError("hl7_message_inbound", messageId);
-        if (row.parseStatus !== "parse_error" && row.parseStatus !== "rejected") {
-          throw new ConflictError(
-            `message ${messageId} is ${row.parseStatus} — only a parse_error/rejected message replays`,
-          );
-        }
-        const [updated] = await tx
-          .update(INBOUND)
-          .set({ parseStatus: "in_progress" })
-          .where(and(eq(INBOUND.id, messageId), eq(INBOUND.organizationId, orgId)))
-          .returning();
-        return inboundView(updated!);
-      });
+      return withOrgContext(
+        db,
+        ctx(orgId, membershipId),
+        async (tx): Promise<InboundMessageView> => {
+          const [row] = await tx
+            .select()
+            .from(INBOUND)
+            .where(and(eq(INBOUND.id, messageId), eq(INBOUND.organizationId, orgId)))
+            .limit(1);
+          if (!row) throw new NotFoundError("hl7_message_inbound", messageId);
+          if (row.parseStatus !== "parse_error" && row.parseStatus !== "rejected") {
+            throw new ConflictError(
+              `message ${messageId} is ${row.parseStatus} — only a parse_error/rejected message replays`,
+            );
+          }
+          const [updated] = await tx
+            .update(INBOUND)
+            .set({ parseStatus: "in_progress" })
+            .where(and(eq(INBOUND.id, messageId), eq(INBOUND.organizationId, orgId)))
+            .returning();
+          return inboundView(updated!);
+        },
+      );
     },
     async listOutboundMessages(orgId, filter) {
       return withOrgContext(db, ctx(orgId), async (tx): Promise<Page<OutboundMessageView>> => {
@@ -660,25 +668,29 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
       });
     },
     async retryOutboundMessage(orgId, membershipId, messageId) {
-      return withOrgContext(db, ctx(orgId, membershipId), async (tx): Promise<OutboundMessageView> => {
-        const [row] = await tx
-          .select()
-          .from(OUTBOUND)
-          .where(and(eq(OUTBOUND.id, messageId), eq(OUTBOUND.organizationId, orgId)))
-          .limit(1);
-        if (!row) throw new NotFoundError("hl7_message_outbound", messageId);
-        if (row.status !== "failed" && row.status !== "dlq") {
-          throw new ConflictError(
-            `message ${messageId} is ${row.status} — only a failed/dlq message is manually retried (D9)`,
-          );
-        }
-        const [updated] = await tx
-          .update(OUTBOUND)
-          .set({ status: "queued", nextRetryAt: new Date() })
-          .where(and(eq(OUTBOUND.id, messageId), eq(OUTBOUND.organizationId, orgId)))
-          .returning();
-        return outboundView(updated!);
-      });
+      return withOrgContext(
+        db,
+        ctx(orgId, membershipId),
+        async (tx): Promise<OutboundMessageView> => {
+          const [row] = await tx
+            .select()
+            .from(OUTBOUND)
+            .where(and(eq(OUTBOUND.id, messageId), eq(OUTBOUND.organizationId, orgId)))
+            .limit(1);
+          if (!row) throw new NotFoundError("hl7_message_outbound", messageId);
+          if (row.status !== "failed" && row.status !== "dlq") {
+            throw new ConflictError(
+              `message ${messageId} is ${row.status} — only a failed/dlq message is manually retried (D9)`,
+            );
+          }
+          const [updated] = await tx
+            .update(OUTBOUND)
+            .set({ status: "queued", nextRetryAt: new Date() })
+            .where(and(eq(OUTBOUND.id, messageId), eq(OUTBOUND.organizationId, orgId)))
+            .returning();
+          return outboundView(updated!);
+        },
+      );
     },
 
     async getNppesProvider(npi) {
@@ -701,10 +713,7 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
           .select({ status: FEED.status })
           .from(FEED)
           .where(eq(FEED.organizationId, orgId));
-        const health = await tx
-          .select()
-          .from(HEALTH)
-          .where(eq(HEALTH.organizationId, orgId));
+        const health = await tx.select().from(HEALTH).where(eq(HEALTH.organizationId, orgId));
         return {
           feedCount: feeds.length,
           activeFeedCount: feeds.filter((f) => f.status === "active").length,
@@ -718,14 +727,8 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     },
     async listenerStatus(orgId) {
       return withOrgContext(db, ctx(orgId), async (tx): Promise<ListenerStatusView[]> => {
-        const feeds = await tx
-          .select()
-          .from(FEED)
-          .where(eq(FEED.organizationId, orgId));
-        const health = await tx
-          .select()
-          .from(HEALTH)
-          .where(eq(HEALTH.organizationId, orgId));
+        const feeds = await tx.select().from(FEED).where(eq(FEED.organizationId, orgId));
+        const health = await tx.select().from(HEALTH).where(eq(HEALTH.organizationId, orgId));
         const latestByFeed = new Map<string, typeof HEALTH.$inferSelect>();
         for (const h of health) {
           const prev = latestByFeed.get(h.feedId);
@@ -754,9 +757,7 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
           .where(eq(OBS.organizationId, orgId))
           .orderBy(desc(OBS.observationDate))
           .limit(filter.limit ?? 50);
-        const caseload = filter.caseloadPatientIds
-          ? new Set(filter.caseloadPatientIds)
-          : null;
+        const caseload = filter.caseloadPatientIds ? new Set(filter.caseloadPatientIds) : null;
         return {
           items: rows
             .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
@@ -777,7 +778,9 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
         const values = await tx
           .select()
           .from(OBS_VALUE)
-          .where(and(eq(OBS_VALUE.observationId, observationId), eq(OBS_VALUE.organizationId, orgId)));
+          .where(
+            and(eq(OBS_VALUE.observationId, observationId), eq(OBS_VALUE.organizationId, orgId)),
+          );
         return {
           ...obsSummary(row),
           values: values.map((v) => ({

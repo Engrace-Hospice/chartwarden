@@ -8,7 +8,10 @@
 export type HvldlDiscipline = "rn" | "msw" | "chaplain" | "aide";
 
 /** FY2025 qualifying disciplines per the CMS HVLDL technical specification. */
-export const HVLDL_QUALIFYING_DISCIPLINES_v2025: readonly HvldlDiscipline[] = ["rn", "msw"] as const;
+export const HVLDL_QUALIFYING_DISCIPLINES_v2025: readonly HvldlDiscipline[] = [
+  "rn",
+  "msw",
+] as const;
 
 /** FY2028-projected qualifying disciplines (CMS-signaled expansion; constant-only change per D3). */
 export const HVLDL_QUALIFYING_DISCIPLINES_v2028: readonly HvldlDiscipline[] = [

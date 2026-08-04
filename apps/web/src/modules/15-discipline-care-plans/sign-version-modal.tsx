@@ -19,8 +19,15 @@ import {
   errorMessage,
   writeHeaders,
 } from "./discipline-api";
-import { Modal, TextAreaField, TextField, alertStyle, mutedStyle, primaryButtonStyle } from "./discipline-ui";
 import { humanize } from "./discipline-status";
+import {
+  Modal,
+  TextAreaField,
+  TextField,
+  alertStyle,
+  mutedStyle,
+  primaryButtonStyle,
+} from "./discipline-ui";
 
 /** How many of a role's required slots are already filled (an acknowledgment fills only an ack slot). */
 function collectedFor(slot: RequiredSignerSlot, signatures: readonly SignatureView[]): number {
@@ -103,11 +110,22 @@ export function SignVersionModal({
             validates it against the sealed set.
           </span>
         ) : (
-          <ul style={{ margin: 0, paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "1.1rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.25rem",
+            }}
+          >
             {requiredSignerSet.map((slot) => {
               const done = collectedFor(slot, version.signatures);
               return (
-                <li key={`${slot.role}-${slot.isAcknowledgment}`} style={{ fontSize: "0.82rem", color: t.onSurface }}>
+                <li
+                  key={`${slot.role}-${slot.isAcknowledgment}`}
+                  style={{ fontSize: "0.82rem", color: t.onSurface }}
+                >
                   {humanize(slot.role)}
                   {slot.isAcknowledgment ? " (acknowledgment)" : ""} —{" "}
                   <StatusPill
@@ -122,7 +140,15 @@ export function SignVersionModal({
       </div>
 
       <TextField label="Signing role" value={signerRole} onChange={setSignerRole} />
-      <label style={{ display: "flex", alignItems: "center", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: t.space2,
+          fontSize: "0.82rem",
+          color: t.onSurface,
+        }}
+      >
         <input
           type="checkbox"
           checked={isAcknowledgment}

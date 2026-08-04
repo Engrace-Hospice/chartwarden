@@ -23,7 +23,11 @@ import { registerEraser } from "../../bootstrap/index";
  * release, remote episode, bed assignment, transition), then the append-only ledgers (state history, visitor,
  * meal), then the per-patient visitor restrictions, then the ipu_admission roots. Returns the total row count.
  */
-export async function eraseIpuRecord(db: DbClient, organizationId: string, patientId: string): Promise<number> {
+export async function eraseIpuRecord(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<number> {
   return withOrgContext(db, { organizationId, userId: "" }, async (txUnknown) => {
     const tx = txUnknown as DbClient;
     const admissions = await tx
@@ -40,26 +44,101 @@ export async function eraseIpuRecord(db: DbClient, organizationId: string, patie
         .where(inArray(schema.ipuRestraintEvent.ipuAdmissionId, ids));
       const reIds = restraintEvents.map((r) => r.id);
       if (reIds.length > 0) {
-        n += (await tx.delete(schema.ipuRestraintReassessment).where(inArray(schema.ipuRestraintReassessment.restraintEventId, reIds)).returning({ id: schema.ipuRestraintReassessment.id })).length;
+        n += (
+          await tx
+            .delete(schema.ipuRestraintReassessment)
+            .where(inArray(schema.ipuRestraintReassessment.restraintEventId, reIds))
+            .returning({ id: schema.ipuRestraintReassessment.id })
+        ).length;
       }
-      n += (await tx.delete(schema.ipuRestraintEvent).where(inArray(schema.ipuRestraintEvent.ipuAdmissionId, ids)).returning({ id: schema.ipuRestraintEvent.id })).length;
-      n += (await tx.delete(schema.gipCriteriaReassessment).where(inArray(schema.gipCriteriaReassessment.ipuAdmissionId, ids)).returning({ id: schema.gipCriteriaReassessment.id })).length;
-      n += (await tx.delete(schema.gipAdmissionCriteria).where(inArray(schema.gipAdmissionCriteria.ipuAdmissionId, ids)).returning({ id: schema.gipAdmissionCriteria.id })).length;
-      n += (await tx.delete(schema.ircEpisode).where(inArray(schema.ircEpisode.ipuAdmissionId, ids)).returning({ id: schema.ircEpisode.id })).length;
-      n += (await tx.delete(schema.ipuIvSafetyOverlay).where(inArray(schema.ipuIvSafetyOverlay.ipuAdmissionId, ids)).returning({ id: schema.ipuIvSafetyOverlay.id })).length;
-      n += (await tx.delete(schema.ipuBodyRelease).where(inArray(schema.ipuBodyRelease.ipuAdmissionId, ids)).returning({ id: schema.ipuBodyRelease.id })).length;
-      n += (await tx.delete(schema.ipuRemoteInpatientEpisode).where(inArray(schema.ipuRemoteInpatientEpisode.ipuAdmissionId, ids)).returning({ id: schema.ipuRemoteInpatientEpisode.id })).length;
-      n += (await tx.delete(schema.ipuBedAssignment).where(inArray(schema.ipuBedAssignment.ipuAdmissionId, ids)).returning({ id: schema.ipuBedAssignment.id })).length;
-      n += (await tx.delete(schema.ipuAdmissionTransition).where(inArray(schema.ipuAdmissionTransition.ipuAdmissionId, ids)).returning({ id: schema.ipuAdmissionTransition.id })).length;
-      n += (await tx.delete(schema.ipuAdmissionStateHistory).where(inArray(schema.ipuAdmissionStateHistory.ipuAdmissionId, ids)).returning({ id: schema.ipuAdmissionStateHistory.id })).length;
-      n += (await tx.delete(schema.ipuVisitor).where(inArray(schema.ipuVisitor.ipuAdmissionId, ids)).returning({ id: schema.ipuVisitor.id })).length;
-      n += (await tx.delete(schema.ipuMealService).where(inArray(schema.ipuMealService.ipuAdmissionId, ids)).returning({ id: schema.ipuMealService.id })).length;
+      n += (
+        await tx
+          .delete(schema.ipuRestraintEvent)
+          .where(inArray(schema.ipuRestraintEvent.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuRestraintEvent.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.gipCriteriaReassessment)
+          .where(inArray(schema.gipCriteriaReassessment.ipuAdmissionId, ids))
+          .returning({ id: schema.gipCriteriaReassessment.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.gipAdmissionCriteria)
+          .where(inArray(schema.gipAdmissionCriteria.ipuAdmissionId, ids))
+          .returning({ id: schema.gipAdmissionCriteria.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ircEpisode)
+          .where(inArray(schema.ircEpisode.ipuAdmissionId, ids))
+          .returning({ id: schema.ircEpisode.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuIvSafetyOverlay)
+          .where(inArray(schema.ipuIvSafetyOverlay.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuIvSafetyOverlay.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuBodyRelease)
+          .where(inArray(schema.ipuBodyRelease.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuBodyRelease.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuRemoteInpatientEpisode)
+          .where(inArray(schema.ipuRemoteInpatientEpisode.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuRemoteInpatientEpisode.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuBedAssignment)
+          .where(inArray(schema.ipuBedAssignment.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuBedAssignment.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuAdmissionTransition)
+          .where(inArray(schema.ipuAdmissionTransition.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuAdmissionTransition.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuAdmissionStateHistory)
+          .where(inArray(schema.ipuAdmissionStateHistory.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuAdmissionStateHistory.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuVisitor)
+          .where(inArray(schema.ipuVisitor.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuVisitor.id })
+      ).length;
+      n += (
+        await tx
+          .delete(schema.ipuMealService)
+          .where(inArray(schema.ipuMealService.ipuAdmissionId, ids))
+          .returning({ id: schema.ipuMealService.id })
+      ).length;
     }
 
     // Per-patient visitor restrictions (scope='patient').
-    n += (await tx.delete(schema.ipuVisitorRestriction).where(eq(schema.ipuVisitorRestriction.patientId, patientId)).returning({ id: schema.ipuVisitorRestriction.id })).length;
+    n += (
+      await tx
+        .delete(schema.ipuVisitorRestriction)
+        .where(eq(schema.ipuVisitorRestriction.patientId, patientId))
+        .returning({ id: schema.ipuVisitorRestriction.id })
+    ).length;
     // The admission roots last.
-    n += (await tx.delete(schema.ipuAdmission).where(eq(schema.ipuAdmission.patientId, patientId)).returning({ id: schema.ipuAdmission.id })).length;
+    n += (
+      await tx
+        .delete(schema.ipuAdmission)
+        .where(eq(schema.ipuAdmission.patientId, patientId))
+        .returning({ id: schema.ipuAdmission.id })
+    ).length;
     return n;
   });
 }

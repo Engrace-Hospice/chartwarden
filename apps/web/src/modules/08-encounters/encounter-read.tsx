@@ -1,14 +1,14 @@
 import {
-  ageYears,
-  cardSurface,
   CeremonyModal,
   EmptyState,
-  ghostBorder,
   Glyph,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  ageYears,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -109,7 +109,9 @@ export function EncounterRead(): JSX.Element {
     });
     const pid = patientId ?? data.patientId;
     const [cos, pat] = await Promise.all([
-      client.GET("/api/v1/encounters/{encounterId}/cosignature", { params: { path: { encounterId } } }),
+      client.GET("/api/v1/encounters/{encounterId}/cosignature", {
+        params: { path: { encounterId } },
+      }),
       client.GET("/api/v1/patients/{id}", { params: { path: { id: pid } } }),
     ]);
     setCosignStatus(cos.data?.status ?? null);
@@ -186,7 +188,8 @@ export function EncounterRead(): JSX.Element {
   );
 
   if (loading) return <LoadingSpinner />;
-  if (error || !encounter) return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  if (error || !encounter)
+    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
 
   const e = encounter;
   const canSign = e.status === "finalized";
@@ -201,7 +204,10 @@ export function EncounterRead(): JSX.Element {
       chips={
         <>
           <MonoChip>{patient.mrn}</MonoChip>
-          <StatusPill label={stateLabel(patient.status)} tone={ENCOUNTER_TONE[patient.status] ?? "neutral"} />
+          <StatusPill
+            label={stateLabel(patient.status)}
+            tone={ENCOUNTER_TONE[patient.status] ?? "neutral"}
+          />
         </>
       }
       actions={
@@ -220,11 +226,30 @@ export function EncounterRead(): JSX.Element {
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* Center — the visit-note document */}
           <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginBottom: "0.25rem" }}>
-              <h1 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1.375rem", color: t.onSurface }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+                marginBottom: "0.25rem",
+              }}
+            >
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily: t.fontDisplay,
+                  fontWeight: 500,
+                  fontSize: "1.375rem",
+                  color: t.onSurface,
+                }}
+              >
                 {stateLabel(e.encounterType)}
               </h1>
-              <StatusPill label={stateLabel(e.status)} tone={ENCOUNTER_TONE[e.status] ?? "neutral"} />
+              <StatusPill
+                label={stateLabel(e.status)}
+                tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
+              />
             </div>
             <p style={meta}>
               {stateLabel(e.discipline)} · <span className="tabular-nums">{e.serviceDate}</span>
@@ -232,11 +257,22 @@ export function EncounterRead(): JSX.Element {
             </p>
 
             {/* Vitals strip — labelled cells; values render once the read exposes the vitals row. */}
-            <section style={{ ...cardSurface, padding: "1rem 1.25rem", marginTop: "1rem", display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+            <section
+              style={{
+                ...cardSurface,
+                padding: "1rem 1.25rem",
+                marginTop: "1rem",
+                display: "flex",
+                gap: "1.5rem",
+                flexWrap: "wrap",
+              }}
+            >
               {["HR", "RR", "Temp", "BP", "SpO₂", "Pain"].map((v) => (
                 <div key={v} style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
                   <span style={vitalLabel}>{v}</span>
-                  <span className="tabular-nums" style={{ fontSize: "1.1rem", color: t.muted }}>—</span>
+                  <span className="tabular-nums" style={{ fontSize: "1.1rem", color: t.muted }}>
+                    —
+                  </span>
                 </div>
               ))}
             </section>
@@ -244,14 +280,22 @@ export function EncounterRead(): JSX.Element {
             {/* SOAP document scaffold */}
             <section style={{ ...cardSurface, padding: "1.5rem", marginTop: "1rem" }}>
               {NOTE_SECTIONS.map((s, i) => (
-                <div key={s} style={{ paddingTop: i === 0 ? 0 : "1.25rem", marginTop: i === 0 ? 0 : "1.25rem", borderTop: i === 0 ? "none" : ghostBorder }}>
+                <div
+                  key={s}
+                  style={{
+                    paddingTop: i === 0 ? 0 : "1.25rem",
+                    marginTop: i === 0 ? 0 : "1.25rem",
+                    borderTop: i === 0 ? "none" : ghostBorder,
+                  }}
+                >
                   <span style={sectionLabel}>{s}</span>
                   <p style={{ ...meta, marginTop: "0.35rem" }}>—</p>
                 </div>
               ))}
               <p style={{ ...meta, marginTop: "1.25rem" }}>
-                The assembled HearthNote body and the captured vitals render here once the encounter read
-                exposes them; this view currently renders the server-assembled, SUD-redacted header.
+                The assembled HearthNote body and the captured vitals render here once the encounter
+                read exposes them; this view currently renders the server-assembled, SUD-redacted
+                header.
               </p>
             </section>
           </div>
@@ -264,25 +308,35 @@ export function EncounterRead(): JSX.Element {
                 <dt style={dt}>Cosignature</dt>
                 <dd style={dd}>
                   {cosignStatus ? (
-                    <StatusPill label={stateLabel(cosignStatus)} tone={COSIGN_TONE[cosignStatus] ?? "neutral"} />
+                    <StatusPill
+                      label={stateLabel(cosignStatus)}
+                      tone={COSIGN_TONE[cosignStatus] ?? "neutral"}
+                    />
                   ) : (
                     <span style={meta}>No request</span>
                   )}
                 </dd>
                 <dt style={dt}>Late-entry</dt>
                 <dd style={dd}>
-                  <StatusPill label={stateLabel(e.lateEntryTier)} tone={lateEntryTone(e.lateEntryTier)} />
+                  <StatusPill
+                    label={stateLabel(e.lateEntryTier)}
+                    tone={lateEntryTone(e.lateEntryTier)}
+                  />
                 </dd>
                 {e.signedAt ? (
                   <>
                     <dt style={dt}>Signed</dt>
-                    <dd style={{ ...dd }} className="tabular-nums">{e.signedAt.slice(0, 16).replace("T", " ")}</dd>
+                    <dd style={{ ...dd }} className="tabular-nums">
+                      {e.signedAt.slice(0, 16).replace("T", " ")}
+                    </dd>
                   </>
                 ) : null}
                 {e.cosignedAt ? (
                   <>
                     <dt style={dt}>Cosigned</dt>
-                    <dd style={{ ...dd }} className="tabular-nums">{e.cosignedAt.slice(0, 16).replace("T", " ")}</dd>
+                    <dd style={{ ...dd }} className="tabular-nums">
+                      {e.cosignedAt.slice(0, 16).replace("T", " ")}
+                    </dd>
                   </>
                 ) : null}
               </dl>
@@ -292,8 +346,8 @@ export function EncounterRead(): JSX.Element {
             <div style={{ ...cardSurface, padding: "1.125rem" }}>
               <h2 style={railTitle}>EVV / visit</h2>
               <p style={meta}>
-                The linked visit window and EVV match surface here once the encounter read joins the M17/M18
-                visit + verification (not exposed on this DTO yet).
+                The linked visit window and EVV match surface here once the encounter read joins the
+                M17/M18 visit + verification (not exposed on this DTO yet).
               </p>
             </div>
           </aside>
@@ -310,7 +364,11 @@ export function EncounterRead(): JSX.Element {
           )}
           <span style={{ flex: 1 }} />
           {canSupervisorRelease ? (
-            <button type="button" onClick={() => setCeremony("supervisor-release")} style={ghostBtn}>
+            <button
+              type="button"
+              onClick={() => setCeremony("supervisor-release")}
+              style={ghostBtn}
+            >
               Supervisor release
             </button>
           ) : null}
@@ -332,7 +390,11 @@ export function EncounterRead(): JSX.Element {
           <button type="button" onClick={() => navigate("/work/cosignatures")} style={ghostBtn}>
             Cosignature queue
           </button>
-          <button type="button" onClick={() => navigate(`/patients/${e.patientId}`)} style={primaryBtn}>
+          <button
+            type="button"
+            onClick={() => navigate(`/patients/${e.patientId}`)}
+            style={primaryBtn}
+          >
             Back to chart
           </button>
         </div>
@@ -459,11 +521,21 @@ export function EncounterRead(): JSX.Element {
   );
 }
 
-function RowField({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }): JSX.Element {
+function RowField({
+  label,
+  value,
+  mono,
+}: { label: string; value: ReactNode; mono?: boolean }): JSX.Element {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
       <span style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>{label}</span>
-      <span style={{ fontSize: "0.85rem", color: t.onSurface, fontFamily: mono ? t.fontMono : undefined }}>
+      <span
+        style={{
+          fontSize: "0.85rem",
+          color: t.onSurface,
+          fontFamily: mono ? t.fontMono : undefined,
+        }}
+      >
         {value}
       </span>
     </div>
@@ -471,21 +543,111 @@ function RowField({ label, value, mono }: { label: string; value: ReactNode; mon
 }
 
 function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return <span style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, background: t.surfaceContainer, borderRadius: "9999px", padding: "0.15rem 0.55rem" }}>{children}</span>;
+  return (
+    <span
+      style={{
+        fontFamily: t.fontMono,
+        fontSize: "0.78rem",
+        color: t.onSurfaceVariant,
+        background: t.surfaceContainer,
+        borderRadius: "9999px",
+        padding: "0.15rem 0.55rem",
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
-const rightRail: CSSProperties = { width: "19rem", flexShrink: 0, overflow: "auto", padding: "1.5rem", background: t.surfaceLow, display: "flex", flexDirection: "column", gap: "1rem" };
-const railTitle: CSSProperties = { margin: "0 0 0.625rem", fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1rem", color: t.onSurface };
-const vitalLabel: CSSProperties = { fontSize: "0.68rem", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", color: t.muted };
-const sectionLabel: CSSProperties = { fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: t.muted };
-const footer: CSSProperties = { display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.875rem 1.5rem", borderTop: ghostBorder, background: t.surfaceLowest, flexShrink: 0 };
-const guardChip: CSSProperties = { display: "inline-flex", alignItems: "center", gap: "0.4rem", fontSize: "0.78rem", fontWeight: 600, color: t.warning, background: "color-mix(in srgb, var(--color-warning) 14%, transparent)", borderRadius: "9999px", padding: "0.3rem 0.7rem" };
-const ghostBtn: CSSProperties = { display: "inline-flex", alignItems: "center", padding: "0.45rem 0.9rem", borderRadius: "9999px", background: t.surfaceContainer, color: t.onSurface, fontSize: "0.8125rem", fontWeight: 600, textDecoration: "none", border: "none", cursor: "pointer" };
-const primaryBtn: CSSProperties = { padding: "0.45rem 1rem", borderRadius: "9999px", background: t.primary, color: t.onPrimary, fontSize: "0.8125rem", fontWeight: 600, border: "none", cursor: "pointer" };
-const lifeGrid: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "center", gap: "0.5rem 1rem", margin: 0, fontSize: "0.8rem" };
+const rightRail: CSSProperties = {
+  width: "19rem",
+  flexShrink: 0,
+  overflow: "auto",
+  padding: "1.5rem",
+  background: t.surfaceLow,
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+};
+const railTitle: CSSProperties = {
+  margin: "0 0 0.625rem",
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  fontSize: "1rem",
+  color: t.onSurface,
+};
+const vitalLabel: CSSProperties = {
+  fontSize: "0.68rem",
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+  color: t.muted,
+};
+const sectionLabel: CSSProperties = {
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: t.muted,
+};
+const footer: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.625rem",
+  padding: "0.875rem 1.5rem",
+  borderTop: ghostBorder,
+  background: t.surfaceLowest,
+  flexShrink: 0,
+};
+const guardChip: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  fontSize: "0.78rem",
+  fontWeight: 600,
+  color: t.warning,
+  background: "color-mix(in srgb, var(--color-warning) 14%, transparent)",
+  borderRadius: "9999px",
+  padding: "0.3rem 0.7rem",
+};
+const ghostBtn: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "0.45rem 0.9rem",
+  borderRadius: "9999px",
+  background: t.surfaceContainer,
+  color: t.onSurface,
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  textDecoration: "none",
+  border: "none",
+  cursor: "pointer",
+};
+const primaryBtn: CSSProperties = {
+  padding: "0.45rem 1rem",
+  borderRadius: "9999px",
+  background: t.primary,
+  color: t.onPrimary,
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  border: "none",
+  cursor: "pointer",
+};
+const lifeGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  alignItems: "center",
+  gap: "0.5rem 1rem",
+  margin: 0,
+  fontSize: "0.8rem",
+};
 const dt: CSSProperties = { fontWeight: 600, color: t.onSurfaceVariant };
 const dd: CSSProperties = { margin: 0, color: t.onSurface };
-const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.25rem 0 0" };
+const meta: CSSProperties = {
+  fontSize: "0.78rem",
+  color: t.onSurfaceVariant,
+  margin: "0.25rem 0 0",
+};
 const alertStyle: CSSProperties = { margin: 0, fontSize: "0.8rem", color: t.error };
 const textareaStyle: CSSProperties = {
   width: "100%",

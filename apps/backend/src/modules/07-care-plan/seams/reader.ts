@@ -66,7 +66,10 @@ export function createCarePlanReader(
       };
     },
 
-    async fifteenDayCycleCountsForOrg(organizationId: string, window: { from: string; to: string }) {
+    async fifteenDayCycleCountsForOrg(
+      organizationId: string,
+      window: { from: string; to: string },
+    ) {
       return store.fifteenDayCycleCountsForOrg(organizationId, window);
     },
     async isReviewOverdue(patientId: PatientId) {

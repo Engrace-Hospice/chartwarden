@@ -35,11 +35,6 @@ import type {
   RenderedDocumentProvider,
 } from "./documents";
 import type { MedicationOrderProvider, RefillInboxProvider } from "./dosespot";
-import type {
-  FhirClientReader,
-  FhirGatewayMetricsProvider,
-  FhirInboundProposalReader,
-} from "./fhir";
 import type { MedicationAdministrationProvider, ReconciliationProvider } from "./emar";
 import type {
   BillableEncounterReader,
@@ -56,12 +51,27 @@ import type {
   EvvVerificationProvider,
 } from "./evv";
 import type {
+  FhirClientReader,
+  FhirGatewayMetricsProvider,
+  FhirInboundProposalReader,
+} from "./fhir";
+import type {
   HopeJ2051Provider,
   HopeOrgRollupProvider,
   HopeSubmissionProvider,
   HopeTimepointProvider,
 } from "./hope";
 import type { IdgDecisionProvider, IdgPacketProvider, IdgScheduleProvider } from "./idg";
+import type {
+  IpuAdmissionReader,
+  IpuBedAssignmentProvider,
+  IpuCensusProvider,
+  IpuIvSafetyOverlayProvider,
+  IpuQualityReader,
+  IpuShiftCoverageReader,
+  IpuTenantPostureReader,
+  IpuVisitorReader,
+} from "./inpatient";
 import type {
   HospitalizationRiskProvider,
   OnCallProvider,
@@ -106,11 +116,6 @@ import type {
   VolunteerComplianceProvider,
 } from "./scheduling";
 import type {
-  ComfortKitDispatchProvider,
-  SupplyCostProvider,
-  SupplyFulfillmentProvider,
-} from "./supplies";
-import type {
   AITokenMeterProvider,
   BillingStatusProvider,
   ExternalInterfaceMetricsProvider,
@@ -122,15 +127,10 @@ import type {
   UsageMeteringIngest,
 } from "./subscription-billing";
 import type {
-  IpuAdmissionReader,
-  IpuBedAssignmentProvider,
-  IpuCensusProvider,
-  IpuIvSafetyOverlayProvider,
-  IpuQualityReader,
-  IpuShiftCoverageReader,
-  IpuTenantPostureReader,
-  IpuVisitorReader,
-} from "./inpatient";
+  ComfortKitDispatchProvider,
+  SupplyCostProvider,
+  SupplyFulfillmentProvider,
+} from "./supplies";
 
 /** Opaque tenant scope every seam call carries (resolved by withOrgContext). */
 export interface OrgScope {

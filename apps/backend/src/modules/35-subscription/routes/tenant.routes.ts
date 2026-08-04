@@ -39,7 +39,14 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   // POST /v1/subscription — create subscription (one-time; selects plan). §4.1.
   app.post(
     "/api/v1/subscription",
-    { preHandler: [P("subscription.create"), BILLING_SCOPE("subscription.create"), STEP_UP("subscription.create"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.create"),
+        BILLING_SCOPE("subscription.create"),
+        STEP_UP("subscription.create"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(CreateSubscriptionBodySchema, request.body);
@@ -51,7 +58,14 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   // PATCH /v1/subscription — change plan (upgrade/downgrade). §4.1.
   app.patch(
     "/api/v1/subscription",
-    { preHandler: [P("subscription.update"), BILLING_SCOPE("subscription.update"), STEP_UP("subscription.update"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.update"),
+        BILLING_SCOPE("subscription.update"),
+        STEP_UP("subscription.update"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const body = parse(ChangePlanBodySchema, request.body);
@@ -62,14 +76,28 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   // POST /v1/subscription/cancel — cancel at period end. §4.1.
   app.post(
     "/api/v1/subscription/cancel",
-    { preHandler: [P("subscription.cancel"), BILLING_SCOPE("subscription.cancel"), STEP_UP("subscription.cancel"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.cancel"),
+        BILLING_SCOPE("subscription.cancel"),
+        STEP_UP("subscription.cancel"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => service.cancelSubscription(writeActorOf(request)),
   );
 
   // POST /v1/subscription/resume — resume after pause. §4.1.
   app.post(
     "/api/v1/subscription/resume",
-    { preHandler: [P("subscription.update"), BILLING_SCOPE("subscription.update"), STEP_UP("subscription.update"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.update"),
+        BILLING_SCOPE("subscription.update"),
+        STEP_UP("subscription.update"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => service.resumeSubscription(writeActorOf(request)),
   );
 
@@ -92,14 +120,29 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   // POST /v1/payment_methods/setup_intent — create a Stripe SetupIntent (dispatcher-provisioned). §4.1.
   app.post(
     "/api/v1/payment_methods/setup_intent",
-    { preHandler: [P("payment_method.write"), BILLING_SCOPE("payment_method.write"), STEP_UP("payment_method.write"), IDEMPOTENT] },
-    async (request, reply) => reply.code(202).send(await service.createSetupIntent(writeActorOf(request))),
+    {
+      preHandler: [
+        P("payment_method.write"),
+        BILLING_SCOPE("payment_method.write"),
+        STEP_UP("payment_method.write"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request, reply) =>
+      reply.code(202).send(await service.createSetupIntent(writeActorOf(request))),
   );
 
   // POST /v1/payment_methods/attach — attach a SetupIntent-completed pm to the org. §4.1.
   app.post(
     "/api/v1/payment_methods/attach",
-    { preHandler: [P("payment_method.write"), BILLING_SCOPE("payment_method.write"), STEP_UP("payment_method.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("payment_method.write"),
+        BILLING_SCOPE("payment_method.write"),
+        STEP_UP("payment_method.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(AttachPaymentMethodBodySchema, request.body);
@@ -110,7 +153,14 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   // PATCH /v1/payment_methods/:id/set_default — set as default. §4.1.
   app.patch(
     "/api/v1/payment_methods/:id/set_default",
-    { preHandler: [P("payment_method.write"), BILLING_SCOPE("payment_method.write"), STEP_UP("payment_method.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("payment_method.write"),
+        BILLING_SCOPE("payment_method.write"),
+        STEP_UP("payment_method.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -121,7 +171,14 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   // DELETE /v1/payment_methods/:id — detach (soft-delete). §4.1.
   app.delete(
     "/api/v1/payment_methods/:id",
-    { preHandler: [P("payment_method.write"), BILLING_SCOPE("payment_method.write"), STEP_UP("payment_method.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("payment_method.write"),
+        BILLING_SCOPE("payment_method.write"),
+        STEP_UP("payment_method.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -144,11 +201,15 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
   });
 
   // GET /v1/invoices/:id/hosted_url — the Stripe-hosted invoice page (org-checked). §4.1.
-  app.get("/api/v1/invoices/:id/hosted_url", { preHandler: [P("invoice.read")] }, async (request) => {
-    const actor = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    return service.getInvoiceHostedUrl(actor, id);
-  });
+  app.get(
+    "/api/v1/invoices/:id/hosted_url",
+    { preHandler: [P("invoice.read")] },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.getInvoiceHostedUrl(actor, id);
+    },
+  );
 
   // GET /v1/invoices/:id/pdf — the invoice PDF url (proxied from Stripe with org check). §4.1.
   app.get("/api/v1/invoices/:id/pdf", { preHandler: [P("invoice.read")] }, async (request) => {
@@ -175,7 +236,11 @@ export function registerTenantRoutes(app: FastifyInstance, deps: TenantRouteDeps
     "/api/v1/billing/status",
     {
       preHandler: [P("subscription.read")],
-      config: { auditRead: { none: "billing status is subscription/dunning lifecycle state; carries no PHI (§8.5)" } },
+      config: {
+        auditRead: {
+          none: "billing status is subscription/dunning lifecycle state; carries no PHI (§8.5)",
+        },
+      },
     },
     async (request) => service.getBillingStatus(actorOf(request)),
   );

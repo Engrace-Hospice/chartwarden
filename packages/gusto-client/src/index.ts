@@ -40,10 +40,10 @@ export { normalizeWageData, dollarsToCents, GUSTO_MALFORMED_RESPONSE } from "./n
 export { LiveGustoClient } from "./client";
 export type { LiveGustoClientDeps } from "./client";
 
-import { GUSTO_NOT_CONNECTED } from "./constants";
-import { NO_TOKEN_STORE, type TokenStore } from "./token-store";
-import { NO_GUSTO_HTTP_PORT, type GustoHttpPort } from "./oauth";
 import { LiveGustoClient } from "./client";
+import { GUSTO_NOT_CONNECTED } from "./constants";
+import { type GustoHttpPort, NO_GUSTO_HTTP_PORT } from "./oauth";
+import { NO_TOKEN_STORE, type TokenStore } from "./token-store";
 
 /** Injected ports the factory binds: the raw transport + the per-tenant token store. */
 export interface GustoClientFactoryDeps {
@@ -61,7 +61,10 @@ export interface GustoClientFactoryDeps {
 export function createGustoClientFactory(deps: GustoClientFactoryDeps): GustoClientFactory {
   return {
     async forTenant(input): Promise<GustoClient> {
-      const tokens = await deps.tokenStore.getTokensForTenant(input.organizationId, input.gustoCompanyId);
+      const tokens = await deps.tokenStore.getTokensForTenant(
+        input.organizationId,
+        input.gustoCompanyId,
+      );
       if (tokens === null) {
         throw new Error(GUSTO_NOT_CONNECTED);
       }

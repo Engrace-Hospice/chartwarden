@@ -93,7 +93,12 @@ export const ESCALATION_TIER_ROLES = [
 export const ROLES_BY_ESCALATION_TIER: {
   readonly [K in TriageEscalationTier]: readonly string[];
 } = {
-  tier_1_rn_supervisor: ["clinical_supervisor", "director_of_nursing", "administrator", "org_admin"],
+  tier_1_rn_supervisor: [
+    "clinical_supervisor",
+    "director_of_nursing",
+    "administrator",
+    "org_admin",
+  ],
   tier_2_clinical_manager: [
     "clinical_manager",
     "clinical_supervisor",
@@ -101,7 +106,12 @@ export const ROLES_BY_ESCALATION_TIER: {
     "administrator",
     "org_admin",
   ],
-  tier_3_medical_director: ["medical_director", "director_of_nursing", "administrator", "org_admin"],
+  tier_3_medical_director: [
+    "medical_director",
+    "director_of_nursing",
+    "administrator",
+    "org_admin",
+  ],
   tier_4_compliance_officer: ["compliance_officer", "administrator", "org_admin"],
   // tier 5 escalates to a VENDOR actor; no in-agency role stands in for it (§3.3's recipient CHECK makes
   // the row's only recipient an `external_triage_vendor` id). An in-agency actor reaches a tier-5 row
@@ -172,7 +182,10 @@ export function triageDisciplineForRoleKeys(
 }
 
 /** M2 session classes that are an external triage VENDOR operator's session (ADR-0026 / §8.3.1). */
-export const VENDOR_SESSION_CLASSES = ["external_triage_vendor", "external_triage_operator"] as const;
+export const VENDOR_SESSION_CLASSES = [
+  "external_triage_vendor",
+  "external_triage_operator",
+] as const;
 
 /** M2 session classes that are a patient/caregiver PORTAL session (§4.1 row 36). */
 export const PORTAL_SESSION_CLASSES = [
@@ -439,7 +452,10 @@ export function decideEscalationRecipient(input: {
   readonly externalActorId: string | null;
 }): boolean {
   const { facts } = input;
-  if (facts.escalatedToMembershipId !== null && facts.escalatedToMembershipId === input.membershipId) {
+  if (
+    facts.escalatedToMembershipId !== null &&
+    facts.escalatedToMembershipId === input.membershipId
+  ) {
     return true;
   }
   // A tier-5 row escalates to a vendor actor; that vendor's own session may acknowledge it.

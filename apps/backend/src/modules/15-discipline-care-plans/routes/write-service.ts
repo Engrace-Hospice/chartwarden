@@ -75,7 +75,11 @@ export interface CreateGoalInput {
 /** Route 9 — edit a goal (status transition and/or the §2.3 revision fields). */
 export interface UpdateGoalInput {
   readonly expectedVersion: number | null;
-  readonly event?: { readonly type: string; readonly revisedText?: string; readonly reason?: string };
+  readonly event?: {
+    readonly type: string;
+    readonly revisedText?: string;
+    readonly reason?: string;
+  };
   readonly measurableOutcome?: string | null;
   readonly targetAt?: string | null;
   readonly frequencyText?: string | null;

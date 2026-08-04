@@ -94,7 +94,10 @@ export function TenantOverview(): JSX.Element {
     await client.POST("/api/v1/platform/tenants/{orgSlug}/shred", {
       params: { path: { orgSlug } },
       // TODO(M34 web): this stub screen should collect the transition reason + destruction-certificate id.
-      body: { transitionReason: "Tenant offboarding via platform console", destructionCertificateId: "" },
+      body: {
+        transitionReason: "Tenant offboarding via platform console",
+        destructionCertificateId: "",
+      },
     });
     setShredOpen(false);
     void load();

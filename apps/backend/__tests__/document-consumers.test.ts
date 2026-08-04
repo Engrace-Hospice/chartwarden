@@ -4,9 +4,12 @@
 // gate, and the §4.12 external-BAA presign gate — plus the two impure real-seam resolvers
 // ({@link resolveSudConsentPresent} / {@link resolveExternalBaaActive}) over fake seams registered into the
 // M1 registry. No DB; the render handshake stays pure, the binding is forward-declared/deferred.
-import { describe, expect, it, afterEach } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  type DocumentRequestEvent,
+  type DocumentRequestFacts,
+  type DocumentRequestPayload,
   M22_DOCUMENT_RENDER_CONSUMER,
   M22_DOCUMENT_REQUEST_BINDINGS,
   M22_DOCUMENT_REQUEST_BINDINGS_DEFERRED,
@@ -14,9 +17,6 @@ import {
   decideDocumentRequest,
   resolveExternalBaaActive,
   resolveSudConsentPresent,
-  type DocumentRequestEvent,
-  type DocumentRequestFacts,
-  type DocumentRequestPayload,
 } from "../src/modules/22-documents/index";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
@@ -82,7 +82,12 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
     aggregateType: DocumentRequestFacts["aggregateType"];
     retentionClass: DocumentRequestFacts["retentionClass"];
   }> = [
-    { event: "m6.document_requested", templateKey: "cti", aggregateType: "cti", retentionClass: "compliance" },
+    {
+      event: "m6.document_requested",
+      templateKey: "cti",
+      aggregateType: "cti",
+      retentionClass: "compliance",
+    },
     {
       event: "m11.order.document_requested",
       templateKey: "order_record",
@@ -113,7 +118,12 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
       aggregateType: "bereavement_letter",
       retentionClass: "bereavement",
     },
-    { event: "m23.abn.document_requested", templateKey: "abn", aggregateType: "abn", retentionClass: "operational" },
+    {
+      event: "m23.abn.document_requested",
+      templateKey: "abn",
+      aggregateType: "abn",
+      retentionClass: "operational",
+    },
     {
       event: "m9.assessment.document_requested",
       templateKey: "encounter",
@@ -171,7 +181,11 @@ describe("M22-T06 — decideDocumentRequest renders + emits a back-ref (§4.11)"
 
 describe("M22-T06 — idempotent re-delivery never double-renders (D14)", () => {
   it("returns idempotent_skip when a prior render already back-refs the (event, aggregate)", () => {
-    const action = decideDocumentRequest("m6.document_requested", payload(), facts({ alreadyRendered: true }));
+    const action = decideDocumentRequest(
+      "m6.document_requested",
+      payload(),
+      facts({ alreadyRendered: true }),
+    );
     expect(action.kind).toBe("idempotent_skip");
   });
 
@@ -252,7 +266,11 @@ describe("M22-T06 — §4.12 external disclosure is blocked when the M40 BAA gat
         templateKey: "order_record",
         externalRecipient: { kind: "facility", mdmEntityId: "fac_partner_lab" },
       }),
-      facts({ aggregateType: "order_record", retentionClass: "clinical_record", externalBaaActive: false }),
+      facts({
+        aggregateType: "order_record",
+        retentionClass: "clinical_record",
+        externalBaaActive: false,
+      }),
     );
     expect(action.kind).toBe("baa_inactive");
     if (action.kind !== "baa_inactive") throw new Error("unreachable");
@@ -266,7 +284,11 @@ describe("M22-T06 — §4.12 external disclosure is blocked when the M40 BAA gat
         templateKey: "order_record",
         externalRecipient: { kind: "facility", mdmEntityId: "fac_partner_lab" },
       }),
-      facts({ aggregateType: "order_record", retentionClass: "clinical_record", externalBaaActive: true }),
+      facts({
+        aggregateType: "order_record",
+        retentionClass: "clinical_record",
+        externalBaaActive: true,
+      }),
     );
     expect(action.kind).toBe("render");
   });

@@ -19,16 +19,7 @@
 // ProviderEntity's whole service area, not one Location, and inventing a Location here would make the
 // roster read lie about scope.
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { oncallShiftDiscipline, oncallShiftStatus } from "../../enums";
 import { memberships } from "../memberships";
 import { organizations } from "../organizations";
@@ -102,10 +93,7 @@ export const onCallShift = pgTable(
       sql`("discipline" = 'external' AND "external_actor_id" IS NOT NULL AND "primary_on_call_membership_id" IS NULL)
           OR ("discipline" <> 'external' AND "primary_on_call_membership_id" IS NOT NULL AND "external_actor_id" IS NULL)`,
     ),
-    rangeIntegrity: check(
-      "m19_on_call_shift_range",
-      sql`"shift_ends_at" > "shift_starts_at"`,
-    ),
+    rangeIntegrity: check("m19_on_call_shift_range", sql`"shift_ends_at" > "shift_starts_at"`),
     // A shift that reached `active` has an open timestamp; one that reached a terminal state has a close
     // timestamp. Without this the §4.3 roster read cannot tell "opened at 19:00" from "never opened".
     openedWhenActive: check(

@@ -74,7 +74,8 @@ export function Usage(): JSX.Element {
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !current) return <EmptyState title="Unavailable" description={error ?? "No usage."} />;
+  if (error || !current)
+    return <EmptyState title="Unavailable" description={error ?? "No usage."} />;
 
   return (
     <WorkQueueLayout
@@ -85,7 +86,14 @@ export function Usage(): JSX.Element {
         />
       }
       table={
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "0 1.5rem 1.5rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "1.25rem",
+            padding: "0 1.5rem 1.5rem",
+          }}
+        >
           {current.meters.length === 0 ? (
             <EmptyState title="No metered usage" description="This plan has no usage meters." />
           ) : (
@@ -143,7 +151,11 @@ function MeterBar({ meter }: { meter: UsageMeter }): JSX.Element {
         : 0;
   const tone = USAGE_THRESHOLD_TONE[meter.thresholdState] ?? "neutral";
   const barColor =
-    tone === "error" ? "var(--color-error)" : tone === "warning" ? "var(--color-warning)" : "var(--color-primary)";
+    tone === "error"
+      ? "var(--color-error)"
+      : tone === "warning"
+        ? "var(--color-warning)"
+        : "var(--color-primary)";
 
   return (
     <div
@@ -157,7 +169,14 @@ function MeterBar({ meter }: { meter: UsageMeter }): JSX.Element {
         padding: "1rem 1.25rem",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.5rem",
+        }}
+      >
         <span style={{ fontWeight: 600 }}>{meter.label}</span>
         <StatusPill label={cap(meter.thresholdState)} tone={tone} />
       </div>
@@ -180,11 +199,13 @@ function MeterBar({ meter }: { meter: UsageMeter }): JSX.Element {
         }}
       >
         <span className="tabular-nums">
-          {meter.totalQuantity.toLocaleString()} / {meter.inclusiveQuantity.toLocaleString()} included ({pct}%)
+          {meter.totalQuantity.toLocaleString()} / {meter.inclusiveQuantity.toLocaleString()}{" "}
+          included ({pct}%)
         </span>
         {meter.overageQuantity > 0 ? (
           <span className="tabular-nums">
-            {meter.overageQuantity.toLocaleString()} overage · {formatCents(meter.projectedOverageCostCents)} projected
+            {meter.overageQuantity.toLocaleString()} overage ·{" "}
+            {formatCents(meter.projectedOverageCostCents)} projected
           </span>
         ) : (
           <span>No overage</span>

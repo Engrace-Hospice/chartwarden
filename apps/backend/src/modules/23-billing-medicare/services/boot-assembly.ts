@@ -14,16 +14,16 @@
 // composition root swaps this for `buildClaimAssemblyService(db, <live seams>)` — the route contract is
 // unchanged. The same outbox publisher the write service uses is threaded in so a future live bundle commits
 // the §4.10 `m23.claim.draft_created` emit in the assemble transaction (D2).
-import { createDefaultBillingRegistry, repositories } from "@wardenx/billing";
+import { createDefaultBillingRegistry, type repositories } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
 
+import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
 import {
   type AssemblyOutboxPort,
   type ClaimAssemblySeams,
   type ClaimAssemblyService,
   buildClaimAssemblyService,
 } from "./claim-assembly";
-import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
 
 type BillingDb = repositories.BillingDb;
 
@@ -46,12 +46,11 @@ export function buildM23BootAssemblyService(
   db: BillingDb,
   ports: { readonly outbox?: AssemblyOutboxPort } = {},
 ): ClaimAssemblyService {
-  const outbox: AssemblyOutboxPort =
-    ports.outbox ?? {
-      async publish() {
-        unbound("AssemblyOutboxPort");
-      },
-    };
+  const outbox: AssemblyOutboxPort = ports.outbox ?? {
+    async publish() {
+      unbound("AssemblyOutboxPort");
+    },
+  };
 
   const seams: ClaimAssemblySeams = {
     patientPayer: { medicarePrimaryForRange: () => unbound("PatientPayerReader") },

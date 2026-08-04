@@ -40,7 +40,10 @@ interface PortalPatientLayArm {
   portalTimepointsForPatient?(orgId: string, patientId: string): Promise<unknown[]>;
   getPortalOrderSummary?(orgId: string, patientId: string): Promise<unknown[]>;
   getPortalDeliveryView?(orgId: string, patientId: string): Promise<unknown[]>;
-  portalSummary?(orgId: string, patientId: string): Promise<{ category: string; problems: unknown[]; redacted: boolean }>;
+  portalSummary?(
+    orgId: string,
+    patientId: string,
+  ): Promise<{ category: string; problems: unknown[]; redacted: boolean }>;
 }
 interface MessagingArm {
   syncCareTeamChannel?(orgId: string, patientId: string): Promise<{ channelId: string }>;
@@ -128,7 +131,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const a = actorOf(request);
       return layList("care_plan", () =>
-        arm<PortalPatientLayArm>("DisciplinePlanReader").portalSummaryForPatient?.(a.organizationId, portalPatientIdOf(a)),
+        arm<PortalPatientLayArm>("DisciplinePlanReader").portalSummaryForPatient?.(
+          a.organizationId,
+          portalPatientIdOf(a),
+        ),
       );
     },
   );
@@ -150,7 +156,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const a = actorOf(request);
       return layList("visits", () =>
-        arm<PortalPatientLayArm>("SignedEncountersReader").portalHistoryForPatient?.(a.organizationId, portalPatientIdOf(a)),
+        arm<PortalPatientLayArm>("SignedEncountersReader").portalHistoryForPatient?.(
+          a.organizationId,
+          portalPatientIdOf(a),
+        ),
       );
     },
   );
@@ -182,7 +191,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const a = actorOf(request);
       return layList("assessments", () =>
-        arm<PortalPatientLayArm>("ScaleSeriesProvider").portalTrendForPatient?.(a.organizationId, portalPatientIdOf(a)),
+        arm<PortalPatientLayArm>("ScaleSeriesProvider").portalTrendForPatient?.(
+          a.organizationId,
+          portalPatientIdOf(a),
+        ),
       );
     },
   );
@@ -194,7 +206,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const a = actorOf(request);
       return layList("assessments", () =>
-        arm<PortalPatientLayArm>("HopeTimepointProvider").portalTimepointsForPatient?.(a.organizationId, portalPatientIdOf(a)),
+        arm<PortalPatientLayArm>("HopeTimepointProvider").portalTimepointsForPatient?.(
+          a.organizationId,
+          portalPatientIdOf(a),
+        ),
       );
     },
   );
@@ -206,7 +221,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const a = actorOf(request);
       return layList("care_plan", () =>
-        arm<PortalPatientLayArm>("OrderProvider").getPortalOrderSummary?.(a.organizationId, portalPatientIdOf(a)),
+        arm<PortalPatientLayArm>("OrderProvider").getPortalOrderSummary?.(
+          a.organizationId,
+          portalPatientIdOf(a),
+        ),
       );
     },
   );
@@ -218,7 +236,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     async (request) => {
       const a = actorOf(request);
       return layList("supplies", () =>
-        arm<PortalPatientLayArm>("SupplyFulfillmentProvider").getPortalDeliveryView?.(a.organizationId, portalPatientIdOf(a)),
+        arm<PortalPatientLayArm>("SupplyFulfillmentProvider").getPortalDeliveryView?.(
+          a.organizationId,
+          portalPatientIdOf(a),
+        ),
       );
     },
   );
@@ -263,7 +284,9 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       const patientId = portalPatientIdOf(actor);
       const { documentId } = request.params as { documentId: string };
       try {
-        const minted = await arm<DocumentDownloadArm>("PortalDocumentReader").mintPortalDownloadUrl?.({
+        const minted = await arm<DocumentDownloadArm>(
+          "PortalDocumentReader",
+        ).mintPortalDownloadUrl?.({
           organizationId: actor.organizationId,
           patientId,
           documentId,
@@ -306,7 +329,11 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
     "/api/v1/portal/notification-preferences",
     {
       preHandler: [P("portal.preferences.read_own"), ABAC_ACCOUNT("portal.preferences.read_own")],
-      config: { auditRead: { none: "static default notification-preference stub; M31 owns no preference table, no patient data" } },
+      config: {
+        auditRead: {
+          none: "static default notification-preference stub; M31 owns no preference table, no patient data",
+        },
+      },
     },
     async (request) => {
       actorOf(request);
@@ -324,7 +351,10 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
   app.get(
     "/api/v1/portal/bereavement/program",
     {
-      preHandler: [P("portal.bereavement.read_program"), ABAC_BEREAVED("portal.bereavement.read_program")],
+      preHandler: [
+        P("portal.bereavement.read_program"),
+        ABAC_BEREAVED("portal.bereavement.read_program"),
+      ],
       config: PHI("portal_bereavement", false),
     },
     async (request) => {

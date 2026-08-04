@@ -27,7 +27,11 @@ export const medicaidMcoAssignmentRoutes: MedicaidRule = {
       return pass(KEY, "error", "Patient is FFS / Open Card; no MCO routing required.");
     }
     if (ctx.mcoRouting.resolvedChannel !== null && ctx.mcoRouting.hasActiveCredentialForChannel) {
-      return pass(KEY, "error", `MCO routes to '${ctx.mcoRouting.resolvedChannel}' with an active credential.`);
+      return pass(
+        KEY,
+        "error",
+        `MCO routes to '${ctx.mcoRouting.resolvedChannel}' with an active credential.`,
+      );
     }
     return fail(
       KEY,

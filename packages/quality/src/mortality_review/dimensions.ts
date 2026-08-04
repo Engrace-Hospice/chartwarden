@@ -86,7 +86,10 @@ const REQUIRED_COMPLIANCE_KEYS = [
 ] as const;
 
 /** Presence check over the open jsonb payload — a member is populated iff present and not null/empty-string. */
-function hasAll(data: Record<string, unknown> | null | undefined, keys: ReadonlyArray<string>): boolean {
+function hasAll(
+  data: Record<string, unknown> | null | undefined,
+  keys: ReadonlyArray<string>,
+): boolean {
   if (data === null || data === undefined) return false;
   return keys.every((k) => {
     const v = data[k];
@@ -97,7 +100,9 @@ function hasAll(data: Record<string, unknown> | null | undefined, keys: Readonly
 }
 
 /** True iff the clinical dimension carries its required structural members (D9). */
-export function isClinicalDimensionComplete(data: schema.ClinicalDimensionData | null | undefined): boolean {
+export function isClinicalDimensionComplete(
+  data: schema.ClinicalDimensionData | null | undefined,
+): boolean {
   return hasAll(data, REQUIRED_CLINICAL_KEYS);
 }
 

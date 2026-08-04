@@ -143,7 +143,9 @@ export type MeasureRecomputeResult =
 /** Raised when the job names a measure code with no registration (a catalog/registry drift — loud). */
 export class MeasureRegistrationMissing extends Error {
   constructor(measureCode: string) {
-    super(`measure '${measureCode}' has no registered calculator — cannot recompute an unregistered measure`);
+    super(
+      `measure '${measureCode}' has no registered calculator — cannot recompute an unregistered measure`,
+    );
     this.name = "MeasureRegistrationMissing";
   }
 }
@@ -219,7 +221,10 @@ export async function handleMeasureRecompute(
     periodEnd,
   );
   if (current !== null && current.snapshotContentHash === snapshotContentHash) {
-    await ports.processingLog.markProcessed(job.jobId, { outcome: "unchanged", valueId: current.id });
+    await ports.processingLog.markProcessed(job.jobId, {
+      outcome: "unchanged",
+      valueId: current.id,
+    });
     return { outcome: "unchanged", measureCode: job.measureCode, valueId: current.id };
   }
 

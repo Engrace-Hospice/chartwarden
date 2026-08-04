@@ -299,12 +299,9 @@ describe.skipIf(!DB_URL)("M13 eMAR — RLS cross-tenant denial — LIVE Postgres
   });
 
   it("every M13 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0041_emar_m13_rls_audit_triggers.sql"),
-      "utf8",
-    );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const rls = readFileSync(join(MIGRATIONS_DIR, "0041_emar_m13_rls_audit_triggers.sql"), "utf8");
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // All twelve M13 tables — including the PARTITIONED administration_record, whose policy sits on the
     // partitioned parent — carry a standard app.org_id `_org` policy block, so the count is COVERED.length.
@@ -351,7 +348,9 @@ describe.skipIf(!DB_URL)("M13 eMAR — RLS cross-tenant denial — LIVE Postgres
 
   it("org B cannot UPDATE org A's administration_record (the USING clause covers writes too)", async () => {
     const res = await withOrg(ORG_B, () =>
-      db.query("UPDATE administration_record SET status='voided' WHERE id=$1", [a.administrationRecord]),
+      db.query("UPDATE administration_record SET status='voided' WHERE id=$1", [
+        a.administrationRecord,
+      ]),
     );
     expect(res.rowCount).toBe(0);
     const still = await db.query("SELECT status FROM administration_record WHERE id=$1", [

@@ -63,11 +63,11 @@ import type {
   ArrivalView,
   CheckResultView,
   DeviceView,
+  EvvRouteService,
   GeofencePolicyView,
   LocationView,
   MetricsView,
   MissingResolutionView,
-  EvvRouteService,
 } from "./routes/service";
 
 const EVENT = schema.evvEvent;
@@ -156,7 +156,10 @@ const NOOP_OUTBOX: EvvWriteOutboxPort = { async publish() {} };
  * {@link EvvRouteService} surface and its {@link EvvAbacResolver} (the same object is passed to
  * `registerEvvRoutes` and `registerEvvAbacPredicates`).
  */
-export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NOOP_OUTBOX): EvvRouteService {
+export function createDbEvvBackend(
+  db: DbClient,
+  outbox: EvvWriteOutboxPort = NOOP_OUTBOX,
+): EvvRouteService {
   async function emit(
     tx: unknown,
     orgId: string,
@@ -165,7 +168,13 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: orgId, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: orgId,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Load the M17 visit siting (RLS-scoped) the capture needs, or the non-leaking 404. */
@@ -194,7 +203,11 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
       .where(and(eq(DEVICE.membershipId, membershipId), eq(DEVICE.status, "approved")))
       .orderBy(desc(DEVICE.approvedAt))
       .limit(1);
-    if (!d) throw new ValidationError("the posting clinician has no approved EVV device to capture with", []);
+    if (!d)
+      throw new ValidationError(
+        "the posting clinician has no approved EVV device to capture with",
+        [],
+      );
     return d;
   }
 
@@ -209,14 +222,26 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
       .limit(1);
     return tenant
       ? { radiusM: tenant.radiusM, maxAccuracyM: tenant.maxAccuracyM, policyId: tenant.id }
-      : { radiusM: PLATFORM_FLOOR.radiusM, maxAccuracyM: PLATFORM_FLOOR.maxAccuracyM, policyId: null };
+      : {
+          radiusM: PLATFORM_FLOOR.radiusM,
+          maxAccuracyM: PLATFORM_FLOOR.maxAccuracyM,
+          policyId: null,
+        };
   }
 
   /** The org's first membership — the placeholder actor for the device/policy admin routes that do not thread
    * the acting membership to the service (compromise #4). */
   async function actingMembership(tx: DbClient, orgId: string): Promise<string> {
-    const [m] = await tx.select({ id: MEM.id }).from(MEM).where(eq(MEM.organizationId, orgId)).limit(1);
-    if (!m) throw new ValidationError("no membership exists in the organization to attribute the action to", []);
+    const [m] = await tx
+      .select({ id: MEM.id })
+      .from(MEM)
+      .where(eq(MEM.organizationId, orgId))
+      .limit(1);
+    if (!m)
+      throw new ValidationError(
+        "no membership exists in the organization to attribute the action to",
+        [],
+      );
     return m.id;
   }
 
@@ -333,7 +358,9 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
           gpsQuality = input.accuracyM <= policy.maxAccuracyM / 2 ? "high" : "acceptable";
           decision = "pass";
         }
-        const coordsCipher = Buffer.from(`${input.coords.lat},${input.coords.lng}`).toString("base64");
+        const coordsCipher = Buffer.from(`${input.coords.lat},${input.coords.lng}`).toString(
+          "base64",
+        );
         const capturedAt = new Date(input.capturedAt);
 
         const [ins] = await tx
@@ -411,12 +438,19 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
             .select({ id: EVENT.id, capturedAt: EVENT.capturedAt })
             .from(EVENT)
             .where(
-              and(eq(EVENT.visitId, input.visitId), eq(EVENT.kind, "check_in"), isNull(EVENT.supersededByEventId)),
+              and(
+                eq(EVENT.visitId, input.visitId),
+                eq(EVENT.kind, "check_in"),
+                isNull(EVENT.supersededByEventId),
+              ),
             )
             .orderBy(desc(EVENT.eventAt))
             .limit(1);
           const serviceDurationMinutes = priorCheckIn
-            ? Math.max(0, (capturedAt.getTime() - new Date(priorCheckIn.capturedAt).getTime()) / 60_000)
+            ? Math.max(
+                0,
+                (capturedAt.getTime() - new Date(priorCheckIn.capturedAt).getTime()) / 60_000,
+              )
             : 0;
           await emit(tx, orgId, "m18.evv.check_out_recorded", "evv_event", eventId, {
             eventId,
@@ -454,7 +488,11 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
     // ── per-visit bracket (§4.1 route 7; M8's EvvBracketResolver reads this) ─────────────────────────────
     async bracketForVisit(orgId: string, visitId: string): Promise<EvvBracketDto> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
-        const [visitRow] = await tx.select({ id: VISIT.id }).from(VISIT).where(eq(VISIT.id, visitId)).limit(1);
+        const [visitRow] = await tx
+          .select({ id: VISIT.id })
+          .from(VISIT)
+          .where(eq(VISIT.id, visitId))
+          .limit(1);
         if (!visitRow) throw new NotFoundError("visit", visitId);
         const events = await tx
           .select()
@@ -530,7 +568,12 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
         const approver = await actingMembership(tx, orgId);
         const [updated] = await tx
           .update(DEVICE)
-          .set({ status: "approved", approvedByMembershipId: approver, approvedAt: new Date(), updatedAt: new Date() })
+          .set({
+            status: "approved",
+            approvedByMembershipId: approver,
+            approvedAt: new Date(),
+            updatedAt: new Date(),
+          })
           .where(eq(DEVICE.id, id))
           .returning();
         await emit(tx, orgId, "m18.evv.device_approved", "evv_device", id, {
@@ -550,7 +593,12 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
         const actor = await actingMembership(tx, orgId);
         const [updated] = await tx
           .update(DEVICE)
-          .set({ status: "rejected", rejectedByMembershipId: actor, rejectedAt: new Date(), updatedAt: new Date() })
+          .set({
+            status: "rejected",
+            rejectedByMembershipId: actor,
+            rejectedAt: new Date(),
+            updatedAt: new Date(),
+          })
           .where(eq(DEVICE.id, id))
           .returning();
         return toDeviceView(updated ?? d);
@@ -618,9 +666,18 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
     },
 
     /** §2.2.2 tighten-only: the tenant may NARROW below the platform floor, never loosen above it. */
-    async editTenantPolicy(orgId: string, body: { radiusM: number; maxAccuracyM: number }): Promise<GeofencePolicyView> {
-      if (body.radiusM > PLATFORM_FLOOR.radiusM || body.maxAccuracyM > PLATFORM_FLOOR.maxAccuracyM) {
-        throw new ValidationError("Tenant geofence policy may not loosen beyond the platform floor (tighten-only).", []);
+    async editTenantPolicy(
+      orgId: string,
+      body: { radiusM: number; maxAccuracyM: number },
+    ): Promise<GeofencePolicyView> {
+      if (
+        body.radiusM > PLATFORM_FLOOR.radiusM ||
+        body.maxAccuracyM > PLATFORM_FLOOR.maxAccuracyM
+      ) {
+        throw new ValidationError(
+          "Tenant geofence policy may not loosen beyond the platform floor (tighten-only).",
+          [],
+        );
       }
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
@@ -630,7 +687,8 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
           .from(POLICY)
           .where(and(eq(POLICY.scope, "tenant"), isNull(POLICY.effectiveTo)))
           .limit(1);
-        if (prior) await tx.update(POLICY).set({ effectiveTo: today() }).where(eq(POLICY.id, prior.id));
+        if (prior)
+          await tx.update(POLICY).set({ effectiveTo: today() }).where(eq(POLICY.id, prior.id));
         const [row] = await tx
           .insert(POLICY)
           .values({
@@ -642,14 +700,21 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
             setByMembershipId: setter,
           })
           .returning({ id: POLICY.id });
-        await emit(tx, orgId, "m18.evv.geofence_policy_changed", "evv_geofence_policy", row?.id ?? orgId, {
-          scope: "tenant",
-          oldRadiusM: prior?.radiusM ?? PLATFORM_FLOOR.radiusM,
-          newRadiusM: body.radiusM,
-          oldMaxAccuracyM: prior?.maxAccuracyM ?? PLATFORM_FLOOR.maxAccuracyM,
-          newMaxAccuracyM: body.maxAccuracyM,
-          setByMembershipId: setter,
-        });
+        await emit(
+          tx,
+          orgId,
+          "m18.evv.geofence_policy_changed",
+          "evv_geofence_policy",
+          row?.id ?? orgId,
+          {
+            scope: "tenant",
+            oldRadiusM: prior?.radiusM ?? PLATFORM_FLOOR.radiusM,
+            newRadiusM: body.radiusM,
+            oldMaxAccuracyM: prior?.maxAccuracyM ?? PLATFORM_FLOOR.maxAccuracyM,
+            newMaxAccuracyM: body.maxAccuracyM,
+            setByMembershipId: setter,
+          },
+        );
         return readPolicyView(tx);
       });
     },
@@ -672,7 +737,8 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
             ),
           )
           .limit(1);
-        if (prior) await tx.update(POLICY).set({ effectiveTo: today() }).where(eq(POLICY.id, prior.id));
+        if (prior)
+          await tx.update(POLICY).set({ effectiveTo: today() }).where(eq(POLICY.id, prior.id));
         const [row] = await tx
           .insert(POLICY)
           .values({
@@ -685,15 +751,22 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
             setByMembershipId: setter,
           })
           .returning({ id: POLICY.id });
-        await emit(tx, orgId, "m18.evv.geofence_policy_changed", "evv_geofence_policy", row?.id ?? orgId, {
-          scope: "per_address",
-          patientAddressId: body.patientAddressId,
-          oldRadiusM: prior?.radiusM ?? PLATFORM_FLOOR.radiusM,
-          newRadiusM: body.radiusM,
-          oldMaxAccuracyM: prior?.maxAccuracyM ?? PLATFORM_FLOOR.maxAccuracyM,
-          newMaxAccuracyM: body.maxAccuracyM,
-          setByMembershipId: setter,
-        });
+        await emit(
+          tx,
+          orgId,
+          "m18.evv.geofence_policy_changed",
+          "evv_geofence_policy",
+          row?.id ?? orgId,
+          {
+            scope: "per_address",
+            patientAddressId: body.patientAddressId,
+            oldRadiusM: prior?.radiusM ?? PLATFORM_FLOOR.radiusM,
+            newRadiusM: body.radiusM,
+            oldMaxAccuracyM: prior?.maxAccuracyM ?? PLATFORM_FLOOR.maxAccuracyM,
+            newMaxAccuracyM: body.maxAccuracyM,
+            setByMembershipId: setter,
+          },
+        );
         return readPolicyView(tx);
       });
     },
@@ -835,12 +908,19 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
     },
 
     /** §7.9 operator-initiated resubmit (rejected/timeout → queued; attempt_count++). */
-    async resubmitSubmission(orgId: string, userId: string, id: string): Promise<EvvAggregatorSubmissionDto> {
+    async resubmitSubmission(
+      orgId: string,
+      userId: string,
+      id: string,
+    ): Promise<EvvAggregatorSubmissionDto> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [s] = await tx.select().from(AGG).where(eq(AGG.id, id)).limit(1);
         if (!s) throw new NotFoundError("evv_aggregator_submission", id);
-        const transition = transitionAggregatorSubmission(s.status as EvvAggregatorSubmissionStatus, { type: "resubmit" });
+        const transition = transitionAggregatorSubmission(
+          s.status as EvvAggregatorSubmissionStatus,
+          { type: "resubmit" },
+        );
         const [updated] = await tx
           .update(AGG)
           .set({
@@ -858,12 +938,19 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
     },
 
     /** §4.1 operator-initiated cancel (non-terminal → cancelled). */
-    async cancelSubmission(orgId: string, userId: string, id: string): Promise<EvvAggregatorSubmissionDto> {
+    async cancelSubmission(
+      orgId: string,
+      userId: string,
+      id: string,
+    ): Promise<EvvAggregatorSubmissionDto> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const [s] = await tx.select().from(AGG).where(eq(AGG.id, id)).limit(1);
         if (!s) throw new NotFoundError("evv_aggregator_submission", id);
-        const transition = transitionAggregatorSubmission(s.status as EvvAggregatorSubmissionStatus, { type: "cancel" });
+        const transition = transitionAggregatorSubmission(
+          s.status as EvvAggregatorSubmissionStatus,
+          { type: "cancel" },
+        );
         const [updated] = await tx
           .update(AGG)
           .set({
@@ -922,7 +1009,8 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
           .where(membership ? eq(EVENT.postingMembershipId, membership) : undefined)
           .orderBy(desc(EVENT.eventAt));
         const latestByMember = new Map<string, (typeof rows)[number]>();
-        for (const r of rows) if (!latestByMember.has(r.membershipId)) latestByMember.set(r.membershipId, r);
+        for (const r of rows)
+          if (!latestByMember.has(r.membershipId)) latestByMember.set(r.membershipId, r);
         return [...latestByMember.values()].map((r) => ({
           membershipId: r.membershipId,
           eventId: r.eventId,
@@ -953,7 +1041,8 @@ export function createDbEvvBackend(db: DbClient, outbox: EvvWriteOutboxPort = NO
 
     /** Guard helper the correction route uses (Clinical Supervisor + step-up; §2.3). */
     assertStepUp(stepUpFresh: boolean): void {
-      if (!stepUpFresh) throw new ForbiddenError("A correction-of-record requires fresh M2 step-up auth.");
+      if (!stepUpFresh)
+        throw new ForbiddenError("A correction-of-record requires fresh M2 step-up auth.");
     },
   };
 

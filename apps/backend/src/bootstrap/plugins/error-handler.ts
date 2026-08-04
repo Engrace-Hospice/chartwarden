@@ -18,12 +18,18 @@ const DOCS_BASE = "https://docs.wardenx.app/errors";
  * class, so `instanceof` can't identify one; a runtime shape check is the only option. `setErrorHandler`
  * types its `error` argument as `unknown` (Fastify's default `TError`), hence the guard.
  */
-function asFrameworkError(err: unknown): { statusCode: number; code: string; message: string } | null {
+function asFrameworkError(
+  err: unknown,
+): { statusCode: number; code: string; message: string } | null {
   if (!(err instanceof Error)) return null;
   const statusCode = (err as { statusCode?: unknown }).statusCode;
   if (typeof statusCode !== "number" || statusCode < 400 || statusCode >= 500) return null;
   const code = (err as { code?: unknown }).code;
-  return { statusCode, code: typeof code === "string" ? code : "BAD_REQUEST", message: err.message };
+  return {
+    statusCode,
+    code: typeof code === "string" ? code : "BAD_REQUEST",
+    message: err.message,
+  };
 }
 
 export function applyErrorHandler(app: FastifyInstance): void {

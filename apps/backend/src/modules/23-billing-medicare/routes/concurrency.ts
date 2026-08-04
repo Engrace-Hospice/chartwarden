@@ -68,7 +68,10 @@ export function parseIfMatch(request: FastifyRequest): number {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string") throw new IfMatchRequiredError();
-  const unquoted = value.trim().replace(/^"(.*)"$/, "$1").replace(/^W\//, "");
+  const unquoted = value
+    .trim()
+    .replace(/^"(.*)"$/, "$1")
+    .replace(/^W\//, "");
   const parsed = Number.parseInt(unquoted, 10);
   if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== unquoted) {
     throw new WardenXError("VALIDATION_FAILED", "the If-Match header is malformed", 400);

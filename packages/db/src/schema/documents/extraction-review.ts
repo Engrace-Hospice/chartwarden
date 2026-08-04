@@ -1,9 +1,9 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `extraction_review` (M22 §3.3 / §2.2.7). The per-batch reviewer session (in_progress
 // →complete|abandoned) tracking decided-vs-total candidate counts. Org-scoped; partial-UNIQUE
 // `(intake_upload_batch_id) WHERE status='in_progress'` enforces at-most-one open review per batch.
 // `intake_upload_batch_id` carries a SQL FK.
 import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { extractionReviewStatus } from "../../enums";
 import { intakeUploadBatches } from "./intake-upload-batch";
 

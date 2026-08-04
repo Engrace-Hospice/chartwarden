@@ -13,8 +13,8 @@ import type { FastifyInstance } from "fastify";
 import { registerAdminRoutes } from "./admin.routes";
 import { registerCheckInRoutes } from "./check-ins.routes";
 import { registerDashboardRoutes } from "./dashboard.routes";
-import type { M20RouteServices } from "./index";
 import { registerIncidentRoutes } from "./incidents.routes";
+import type { M20RouteServices } from "./index";
 import { registerSosRoutes } from "./sos.routes";
 
 export { registerCheckInRoutes, type CheckInRouteDeps } from "./check-ins.routes";

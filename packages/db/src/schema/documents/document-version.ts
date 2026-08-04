@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `document_version` (M22 §3.3 / §2.2.2). Append-only version ledger: one row per
 // rendered/uploaded byte payload of a document. "Superseding" never edits a version — it inserts a
 // new row and flips `document.active_version_id` (service-layer, F19/§2.2.2). No user soft-delete.
@@ -7,7 +8,6 @@
 // `byte_payload_cipher` (DEK-encrypted in-row PHI). `document_id` carries a SQL FK to the M22-owned
 // `document`; `replaces_version_id` / `render_form_fill_id` are plain uuid app-validated.
 import { check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import { documents } from "./document";
 

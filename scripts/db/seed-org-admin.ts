@@ -44,7 +44,8 @@ async function signUp(email: string, password: string, name: string): Promise<st
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, name }),
   });
-  if (!res.ok) throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { user?: { id?: string } };
   if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
   return body.user.id;
@@ -61,12 +62,15 @@ async function main(): Promise<void> {
   const orgRes = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
     ORG_SLUG,
   ]);
-  if (!orgRes.rowCount) throw new Error(`demo org '${ORG_SLUG}' not found — run 'bun run db:seed' first`);
+  if (!orgRes.rowCount)
+    throw new Error(`demo org '${ORG_SLUG}' not found — run 'bun run db:seed' first`);
   const orgId = orgRes.rows[0].id;
 
   // Idempotent cleanup of any prior orgadmin user (Better Auth child rows first).
   await db.query("BEGIN");
-  const prior = await db.query<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [USER.email]);
+  const prior = await db.query<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [
+    USER.email,
+  ]);
   if (prior.rowCount) {
     const ids = prior.rows.map((r) => r.id);
     const mem = await db.query<{ id: string }>(
@@ -137,7 +141,9 @@ async function main(): Promise<void> {
   console.log(`  email:    ${USER.email}`);
   console.log(`  password: ${password}`);
   console.log(`  role:     ${USER.roleKey} (${keys.length} perms, full catalog)`);
-  console.log(`  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`);
+  console.log(
+    `  admin@wardenx.local bound to org_admin: ${bound.rowCount ? "yes" : "already bound"}`,
+  );
   console.log(`\nAdd this account to CREDENTIALS.local.md.`);
 }
 

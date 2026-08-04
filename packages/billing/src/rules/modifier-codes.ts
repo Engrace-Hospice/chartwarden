@@ -1,10 +1,10 @@
+import { paramString } from "./_util";
 // @wardenx/billing — §4.5 rule `modifier_codes_valid` (modifiers, error, regulatory). Required modifiers
 // must be present where applicable and every modifier code must be valid per the current CMS list via
 // M38 `vs.cms-hospice-modifiers` (resolved as-of the claim's service-from). Reads the resolved
 // `terminology` value-set membership; SKIPs when M38 is unbound. PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, isMemberOf, pass, skip } from "./types";
-import { paramString } from "./_util";
 
 const KEY = "modifier_codes_valid";
 
@@ -24,7 +24,12 @@ export const modifierCodesValid: Rule = {
   defaultParameters: { valueSetId: MODIFIER_VALUE_SET },
   check: (ctx, params) => {
     if (!ctx.seams.terminologyBound) {
-      return skip(KEY, "error", "seam_not_bound", "Terminology (M38) not bound — modifier validation deferred.");
+      return skip(
+        KEY,
+        "error",
+        "seam_not_bound",
+        "Terminology (M38) not bound — modifier validation deferred.",
+      );
     }
     const valueSetId = paramString(params, "valueSetId", MODIFIER_VALUE_SET);
     const invalid: string[] = [];
@@ -43,7 +48,8 @@ export const modifierCodesValid: Rule = {
       "error",
       `${invalid.length} invalid modifier code(s) on the claim.`,
       {
-        summary: "Remove or correct the invalid modifier(s) against the current CMS hospice modifier list.",
+        summary:
+          "Remove or correct the invalid modifier(s) against the current CMS hospice modifier list.",
         blameTarget: "claim_line",
         fixAction: "edit_claim",
       },

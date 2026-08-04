@@ -10,10 +10,10 @@
 import type { FastifyInstance } from "fastify";
 import { registerAppealRoutes } from "./appeals.routes";
 import { registerDenialRoutes } from "./denials.routes";
+import type { M25RouteServices } from "./index";
 import { registerInternalRoutes } from "./internal.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerTaxonomyRoutes } from "./taxonomy.routes";
-import type { M25RouteServices } from "./index";
 
 export { registerRemittanceRoutes, type RemittanceRouteDeps } from "./remittance.routes";
 export { registerDenialRoutes, type DenialRouteDeps } from "./denials.routes";

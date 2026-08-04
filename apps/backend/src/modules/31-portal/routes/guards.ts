@@ -48,7 +48,9 @@ export const ABAC_GRANT = (action: string): PreHandler =>
 /** §4.7 `portal_account_active` — the account is a live one. Account id from the SESSION. */
 export const ABAC_ACCOUNT = (action: string): PreHandler =>
   requireAbac(action, "portal_account_active", {
-    getTarget: ((r: FastifyRequest) => ({ portalAccountId: sessionAttr(r, "portalAccountId") })) as never,
+    getTarget: ((r: FastifyRequest) => ({
+      portalAccountId: sessionAttr(r, "portalAccountId"),
+    })) as never,
     notFoundOnDeny: false,
   }) as PreHandler;
 

@@ -31,7 +31,10 @@ export type M37RegisteredAbacPredicate = (typeof M37_REGISTERED_ABAC_PREDICATES)
 const targetBool = (target: AbacTarget, field: string): boolean => target[field] === true;
 
 /** Build the five pure M37 predicates. */
-export function buildM37AbacPredicates(): Record<M37RegisteredAbacPredicate, (c: AbacContext, t: AbacTarget) => boolean> {
+export function buildM37AbacPredicates(): Record<
+  M37RegisteredAbacPredicate,
+  (c: AbacContext, t: AbacTarget) => boolean
+> {
   return {
     // §2.3 — the unit's RN coverage is active for the target hour, or a non-expired break-glass override is
     // in force. The route resolves ipu_rn_coverage_window + any override onto `target.rnCoverageActive`; the

@@ -28,7 +28,9 @@ export class MedicaidRuleRegistry {
 
   registerRule(rule: MedicaidRule): void {
     if (this.frozen) {
-      throw new Error(`MedicaidRuleRegistry is frozen; cannot register rule '${rule.key}' after boot.`);
+      throw new Error(
+        `MedicaidRuleRegistry is frozen; cannot register rule '${rule.key}' after boot.`,
+      );
     }
     if (this.rules.has(rule.key)) {
       throw new Error(`Duplicate Medicaid validation rule key '${rule.key}'.`);
@@ -84,7 +86,12 @@ export function runMedicaidRules(
   for (const rule of rules) {
     let result: RuleResult;
     if (!ruleAppliesToState(rule, ctx.serviceState)) {
-      result = skip(rule.key, rule.severity, "not_applicable", `Not applicable in ${ctx.serviceState}.`);
+      result = skip(
+        rule.key,
+        rule.severity,
+        "not_applicable",
+        `Not applicable in ${ctx.serviceState}.`,
+      );
     } else {
       const params = { ...(rule.defaultParameters ?? {}), ...(overlays[rule.key] ?? {}) };
       result = rule.check(ctx, params);
@@ -112,5 +119,13 @@ export function runMedicaidRules(
     }
   }
 
-  return { results, passedCount, failedCount, warningCount, skippedCount, overriddenCount, blockingFailures };
+  return {
+    results,
+    passedCount,
+    failedCount,
+    warningCount,
+    skippedCount,
+    overriddenCount,
+    blockingFailures,
+  };
 }

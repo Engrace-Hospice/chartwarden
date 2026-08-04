@@ -1,5 +1,6 @@
 // @wardenx/inpatient — M37-T03 unit tests for the §2.12 D13 bed-cleaning machine + turnover/reservation clocks.
 import { describe, expect, it } from "vitest";
+import { IpuStateError } from "../src/errors";
 import {
   BED_CLEANING_GRAPH,
   INITIAL_BED_CLEANING_STATUS,
@@ -11,7 +12,6 @@ import {
   normalizeTurnoverSlaMinutes,
   transitionBedCleaning,
 } from "../src/machines/ipu-bed";
-import { IpuStateError } from "../src/errors";
 
 const HOUR = 3_600_000;
 const MIN = 60_000;
@@ -91,7 +91,9 @@ describe("turnover SLA (§2.12 tighten-only, 2h floor)", () => {
 describe("reservation hold (§2.12, 4h)", () => {
   it("expires a reserved bed past the hold window", () => {
     const t0 = 5 * HOUR;
-    expect(isReservationExpired("reserved", t0, t0 + (RESERVATION_HOLD_HOURS + 1) * HOUR)).toBe(true);
+    expect(isReservationExpired("reserved", t0, t0 + (RESERVATION_HOLD_HOURS + 1) * HOUR)).toBe(
+      true,
+    );
     expect(isReservationExpired("reserved", t0, t0 + 1 * HOUR)).toBe(false);
     // Only meaningful for a reserved bed.
     expect(isReservationExpired("occupied", t0, t0 + 99 * HOUR)).toBe(false);

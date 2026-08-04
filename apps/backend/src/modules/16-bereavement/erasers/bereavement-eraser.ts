@@ -254,22 +254,13 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
 
         // FK order: contact_log → risk_score / opt_out → outreach → anniversary_reminder → contact.
         const contactLogs = await del(() =>
-          tx
-            .delete(LOG)
-            .where(inArray(LOG.planId, planIds))
-            .returning({ id: LOG.id }),
+          tx.delete(LOG).where(inArray(LOG.planId, planIds)).returning({ id: LOG.id }),
         );
         const riskScores = await del(() =>
-          tx
-            .delete(SCORE)
-            .where(inArray(SCORE.planId, planIds))
-            .returning({ id: SCORE.id }),
+          tx.delete(SCORE).where(inArray(SCORE.planId, planIds)).returning({ id: SCORE.id }),
         );
         const optOuts = await del(() =>
-          tx
-            .delete(OPT_OUT)
-            .where(inArray(OPT_OUT.planId, planIds))
-            .returning({ id: OPT_OUT.id }),
+          tx.delete(OPT_OUT).where(inArray(OPT_OUT.planId, planIds)).returning({ id: OPT_OUT.id }),
         );
         const outreach = await del(() =>
           tx
@@ -284,10 +275,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
             .returning({ id: REMINDER.id }),
         );
         const contacts = await del(() =>
-          tx
-            .delete(CONTACT)
-            .where(inArray(CONTACT.planId, planIds))
-            .returning({ id: CONTACT.id }),
+          tx.delete(CONTACT).where(inArray(CONTACT.planId, planIds)).returning({ id: CONTACT.id }),
         );
 
         // The closure row SURVIVES with its narrative already shredded — the §7.15 survey record.

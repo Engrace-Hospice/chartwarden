@@ -81,7 +81,11 @@ const MS_PER_HOUR = 3_600_000;
 function instant(value: string, field: string): number {
   const t = Date.parse(value);
   if (Number.isNaN(t)) {
-    throw new WardenXError("VALIDATION_FAILED", `'${field}' is not a valid ISO-8601 value: '${value}'`, 422);
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      `'${field}' is not a valid ISO-8601 value: '${value}'`,
+      422,
+    );
   }
   return t;
 }
@@ -104,7 +108,8 @@ function cycleMonthOf(periodStart: string): string {
 function classify(candidate: CahpsSampleCandidate): CahpsExclusionReason | null {
   // <48h hospice stay — the most objective rule, evaluated first.
   const stayHours =
-    (instant(candidate.deathAt, "deathAt") - instant(candidate.admissionStartAt, "admissionStartAt")) /
+    (instant(candidate.deathAt, "deathAt") -
+      instant(candidate.admissionStartAt, "admissionStartAt")) /
     MS_PER_HOUR;
   if (stayHours < 0) {
     throw new WardenXError("VALIDATION_FAILED", "deathAt precedes admissionStartAt", 422);
@@ -137,7 +142,11 @@ export function sampleDecedents(
   const periodStart = instant(samplePeriod.start, "samplePeriod.start");
   const periodEnd = instant(samplePeriod.end, "samplePeriod.end");
   if (periodEnd < periodStart) {
-    throw new WardenXError("VALIDATION_FAILED", "samplePeriod.end precedes samplePeriod.start", 422);
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      "samplePeriod.end precedes samplePeriod.start",
+      422,
+    );
   }
   const samplingCycleMonth = cycleMonthOf(samplePeriod.start);
 

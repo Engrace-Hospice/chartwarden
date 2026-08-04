@@ -185,7 +185,10 @@ export function exportRenderJobId(exportId: string): string {
 }
 
 /** `report.tile_warm_cache` jobId — per `(organizationId, tileCacheKey)` (the sha256 tile key dedups warms). */
-export function tileWarmCacheJobId(input: { organizationId: string; tileCacheKey: string }): string {
+export function tileWarmCacheJobId(input: {
+  organizationId: string;
+  tileCacheKey: string;
+}): string {
   return `tile_warm_cache:${input.organizationId}:${input.tileCacheKey}`;
 }
 
@@ -289,7 +292,9 @@ export interface LagProbeJob {
 }
 
 /** `report.lag_probe` processor — runs one §2.4 probe tick (sample → hysteresis → advisory + emit). */
-export function lagProbeProcessor(ports: LagProbePorts): M33JobProcessor<LagProbeJob, LagProbeReport> {
+export function lagProbeProcessor(
+  ports: LagProbePorts,
+): M33JobProcessor<LagProbeJob, LagProbeReport> {
   return () => runLagProbe(ports);
 }
 

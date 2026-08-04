@@ -248,7 +248,10 @@ export const DownloadUrlViewSchema = Type.Object({
 
 // Compile-time pins: each response DTO structurally conforms to its `service.ts` view (drift = a type error).
 type Conforms<T extends V, V> = T;
-type _Grant = Conforms<Static<typeof SupportConsentGrantViewSchema>, ServiceSupportConsentGrantView>;
+type _Grant = Conforms<
+  Static<typeof SupportConsentGrantViewSchema>,
+  ServiceSupportConsentGrantView
+>;
 type _Dsar = Conforms<Static<typeof DsarExportJobViewSchema>, ServiceDsarExportJobView>;
 type _TenantExport = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
 type _Onboarding = Conforms<Static<typeof OnboardingTaskViewSchema>, ServiceOnboardingTaskView>;

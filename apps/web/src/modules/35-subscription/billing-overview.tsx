@@ -17,8 +17,8 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { DunningBanner } from "./dunning-banner";
 import { cap, formatDate, subscriptionTone } from "./billing-status";
+import { DunningBanner } from "./dunning-banner";
 
 interface Subscription {
   planName: string;
@@ -107,7 +107,9 @@ export function BillingOverview(): JSX.Element {
         <KpiCard label="Renews" value={formatDate(sub.currentPeriodEnd)} />
       </KpiStrip>
 
-      <section style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <section
+        style={{ marginTop: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+      >
         <Row label="Status">
           <StatusPill label={cap(sub.status)} tone={subscriptionTone(sub.status)} />
         </Row>

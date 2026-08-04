@@ -16,7 +16,7 @@
 // a promo's redemption count) the guard layer cannot supply; they are REGISTERED (./abac-predicates) and
 // named in the §4.7 permission catalog, and the write service enforces the same invariants server-side.
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { type PreHandler } from "./actor";
+import type { PreHandler } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 
 /** RBAC gate — `requirePermission(key)` from M3 (the §4.7 key catalog M35 contributes). */
@@ -48,7 +48,8 @@ export const REFUND_APPROVAL = (key: string): PreHandler =>
  * `requireStepUp` precedent). Composed on the financial / platform mutations; the operation key is the
  * permission key so M3 resolves the per-op freshness policy.
  */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;
 
 /** §4.17 Idempotency-Key presence guard (the 24h replay caching is the M1 global middleware). */
 export const IDEMPOTENT: PreHandler = requireIdempotencyKey();

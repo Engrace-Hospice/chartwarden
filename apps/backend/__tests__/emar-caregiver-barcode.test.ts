@@ -38,32 +38,57 @@ const ORDER = "00000000-0000-4000-8000-0000000000a1";
 const DISCONTINUED_ORDER = "00000000-0000-4000-8000-0000000000a2";
 const NOW = "2026-06-22T12:00:00.000Z";
 
-const READ = ["administration.read", "administration.read_missed", "reconciliation.read", "comfort_kit.read"];
+const READ = [
+  "administration.read",
+  "administration.read_missed",
+  "reconciliation.read",
+  "comfort_kit.read",
+];
 const WRITE = ["administration.record", "administration.caregiver_record"];
 const PERMISSION_SEED = [{ userId: "md_1", permissions: [...READ, ...WRITE] }];
 
 function makeServer() {
   const backend = createInMemoryEmarBackend({
     now: () => NOW,
-    memberships: [{ userId: "md_1", membershipId: "mem_md", organizationId: ORG, discipline: "md" }],
+    memberships: [
+      { userId: "md_1", membershipId: "mem_md", organizationId: ORG, discipline: "md" },
+    ],
     caseManagers: { [PATIENT]: "md_1" },
     orders: [
       // The active order authorizes morphine 5 mg PO; the BCMA RxCUI/NDC + the patient wristband identify it.
-      { medicationOrderId: ORDER, patientId: PATIENT, route: "PO", doseAmount: 5, doseUnit: "mg", rxnormRxcui: "313782", ndc: "00093-0058-01" },
-      { medicationOrderId: DISCONTINUED_ORDER, patientId: PATIENT, route: "PO", doseAmount: 5, doseUnit: "mg", administerable: false, blockedReasons: ["discontinued"] },
+      {
+        medicationOrderId: ORDER,
+        patientId: PATIENT,
+        route: "PO",
+        doseAmount: 5,
+        doseUnit: "mg",
+        rxnormRxcui: "313782",
+        ndc: "00093-0058-01",
+      },
+      {
+        medicationOrderId: DISCONTINUED_ORDER,
+        patientId: PATIENT,
+        route: "PO",
+        doseAmount: 5,
+        doseUnit: "mg",
+        administerable: false,
+        blockedReasons: ["discontinued"],
+      },
     ],
     patients: [{ patientId: PATIENT, wristbandPayloadDigest: "sha256:patient-a" }],
   });
 
   const grantStore = createInMemoryEffectivePermissionStore(
     PERMISSION_SEED.map((s) => ({
-      orgId: ORG, userId: s.userId,
+      orgId: ORG,
+      userId: s.userId,
       grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
     })),
   );
   registerEffectivePermissionResolver(grantStore.store);
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildEmarAbacPredicates({ resolver: backend }))) reg.register(name, predicate);
+  for (const [name, predicate] of Object.entries(buildEmarAbacPredicates({ resolver: backend })))
+    reg.register(name, predicate);
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
@@ -74,14 +99,23 @@ function makeServer() {
 const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "md" };
 
 const caregiverBody = (over: Record<string, unknown> = {}) => ({
-  patientId: PATIENT, medicationOrderId: ORDER, administeredAt: NOW,
-  administeredAmount: 5, administeredUnit: "mg", route: "PO",
+  patientId: PATIENT,
+  medicationOrderId: ORDER,
+  administeredAt: NOW,
+  administeredAmount: 5,
+  administeredUnit: "mg",
+  route: "PO",
   caregiverAttestationText: "Gave evening morphine for breakthrough pain",
   ...over,
 });
 
 const recordBody = (over: Record<string, unknown> = {}) => ({
-  medicationOrderId: ORDER, medClass: "standard", mode: "single_dose", administeredAt: NOW, data: {}, ...over,
+  medicationOrderId: ORDER,
+  medClass: "standard",
+  mode: "single_dose",
+  administeredAt: NOW,
+  data: {},
+  ...over,
 });
 
 beforeEach(() => {
@@ -98,17 +132,29 @@ afterEach(() => {
 describe("M13-T09 — §2.9 D10 caregiver-attested write path", () => {
   it("a caregiver-attested dose matching the order commits as pending_caregiver_review (201) and fires the cosign event", async () => {
     const { app, backend } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/administrations/caregiver-attested", headers: MD, payload: caregiverBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/caregiver-attested",
+      headers: MD,
+      payload: caregiverBody(),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("pending_caregiver_review");
     expect(res.json().requiresRnReview).toBe(true);
-    expect(backend.drainEvents().map((e) => e.eventName)).toContain("m13.administration.recorded_caregiver_attested");
+    expect(backend.drainEvents().map((e) => e.eventName)).toContain(
+      "m13.administration.recorded_caregiver_attested",
+    );
     await app.close();
   });
 
   it("a caregiver-reported dose with the wrong route fails the §5.11 five-rights check (422 FIVE_RIGHTS_VIOLATION)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/administrations/caregiver-attested", headers: MD, payload: caregiverBody({ route: "IM" }) });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/caregiver-attested",
+      headers: MD,
+      payload: caregiverBody({ route: "IM" }),
+    });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("FIVE_RIGHTS_VIOLATION");
     await app.close();
@@ -116,7 +162,12 @@ describe("M13-T09 — §2.9 D10 caregiver-attested write path", () => {
 
   it("a caregiver-reported dose larger than the order authorizes fails the dose right (422)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/administrations/caregiver-attested", headers: MD, payload: caregiverBody({ administeredAmount: 50 }) });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/caregiver-attested",
+      headers: MD,
+      payload: caregiverBody({ administeredAmount: 50 }),
+    });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("FIVE_RIGHTS_VIOLATION");
     await app.close();
@@ -124,7 +175,12 @@ describe("M13-T09 — §2.9 D10 caregiver-attested write path", () => {
 
   it("the mandatory M12 D6 consistency check blocks a caregiver dose against a discontinued order (422 ADMINISTRATION_BLOCKED)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/administrations/caregiver-attested", headers: MD, payload: caregiverBody({ medicationOrderId: DISCONTINUED_ORDER }) });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/administrations/caregiver-attested",
+      headers: MD,
+      payload: caregiverBody({ medicationOrderId: DISCONTINUED_ORDER }),
+    });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("ADMINISTRATION_BLOCKED");
     await app.close();
@@ -135,8 +191,15 @@ describe("M13-T09 — §2.9 BCMA barcode verification", () => {
   it("a clinician dose with a matching barcode commits (201) and carries matchResult=match", async () => {
     const { app } = makeServer();
     const res = await app.inject({
-      method: "POST", url: "/api/v1/administrations", headers: MD,
-      payload: recordBody({ barcodeScan: { scannedRxnormRxcui: "313782", patientWristbandPayloadDigest: "sha256:patient-a" } }),
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({
+        barcodeScan: {
+          scannedRxnormRxcui: "313782",
+          patientWristbandPayloadDigest: "sha256:patient-a",
+        },
+      }),
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().barcodeMatchResult).toBe("match");
@@ -146,8 +209,15 @@ describe("M13-T09 — §2.9 BCMA barcode verification", () => {
   it("a wrong-patient wristband scan is refused (422 BARCODE_VERIFICATION_FAILED)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
-      method: "POST", url: "/api/v1/administrations", headers: MD,
-      payload: recordBody({ barcodeScan: { scannedRxnormRxcui: "313782", patientWristbandPayloadDigest: "sha256:someone-else" } }),
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
+      payload: recordBody({
+        barcodeScan: {
+          scannedRxnormRxcui: "313782",
+          patientWristbandPayloadDigest: "sha256:someone-else",
+        },
+      }),
     });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("BARCODE_VERIFICATION_FAILED");
@@ -157,7 +227,9 @@ describe("M13-T09 — §2.9 BCMA barcode verification", () => {
   it("a wrong-drug barcode scan is refused (422 BARCODE_VERIFICATION_FAILED)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
-      method: "POST", url: "/api/v1/administrations", headers: MD,
+      method: "POST",
+      url: "/api/v1/administrations",
+      headers: MD,
       payload: recordBody({ barcodeScan: { scannedRxnormRxcui: "000000" } }),
     });
     expect(res.statusCode).toBe(422);

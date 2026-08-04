@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `validation_result` (M23 Billing-Medicare §3.3 / §3.4, D5; append-only; retention
 // class `operational`). One row per (validation_run, rule): the per-rule outcome + structured
 // remediation hint produced by the `@wardenx/billing` rule engine. ORG-SCOPED: organization_id NOT
@@ -14,10 +15,9 @@
 // is a LOGICAL FK — plain uuid (validation_override references validation_result, so a real FK would be
 // circular; resolved via validation_override.result_id). No PHI / MBI is ever stored here (D13, §8.7).
 import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
-import { validationRun } from "./validation-run";
 import { m23ValidationResultOutcome, m23ValidationSeverity } from "./types";
+import { validationRun } from "./validation-run";
 
 export const validationResult = pgTable(
   "validation_result",

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `document` (M22 §3.3). The document aggregate root: one row per materialized
 // artifact (rendered form, uploaded file, intake source, consent capture). The current bytes live
 // in `document_version` (append-only); `active_version_id` is the single source of "current".
@@ -11,16 +12,15 @@
 // self-reference to `document_version` (populated immediately after v1 insert) — plain uuid, no FK,
 // to avoid the circular FK with document_version.document_id.
 import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import {
   documentAggregateType,
   documentRetentionClass,
   documentSourceKind,
   documentStatus,
 } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const documents = pgTable(
   "document",

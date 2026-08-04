@@ -499,10 +499,7 @@ export const PatchOncallPolicyBody = Type.Object(
 );
 
 /** The `?providerEntityId=` selector both policy routes take (the row is per (org, PE)). */
-export const PolicyQuery = Type.Object(
-  { providerEntityId: Uuid },
-  { additionalProperties: false },
-);
+export const PolicyQuery = Type.Object({ providerEntityId: Uuid }, { additionalProperties: false });
 
 // ── §4.1 rows 29-32 — the protocol catalog ──────────────────────────────────────────────────────────
 
@@ -616,10 +613,7 @@ export const CreateVendorBindingBody = Type.Object(
     /** §7.10 — the D13 minimization profile every outbound handoff is filtered through. */
     defaultMinimizationPolicy: Type.Object(
       {
-        profile: Type.Union([
-          Type.Literal("hybrid_phi_min"),
-          Type.Literal("centralized_phi_min"),
-        ]),
+        profile: Type.Union([Type.Literal("hybrid_phi_min"), Type.Literal("centralized_phi_min")]),
       },
       { additionalProperties: true },
     ),
@@ -1146,11 +1140,17 @@ export const PaperReentryWorklistResponse = Type.Array(PaperReentryWorklistViewR
 type Conforms<T extends V, V> = T;
 type _AnswerView = Conforms<Static<typeof TriageAnswerViewResponse>, TriageAnswerView>;
 type _EscalationView = Conforms<Static<typeof TriageEscalationViewResponse>, TriageEscalationView>;
-type _StateHistory = Conforms<Static<typeof TriageStateHistoryViewResponse>, TriageStateHistoryView>;
+type _StateHistory = Conforms<
+  Static<typeof TriageStateHistoryViewResponse>,
+  TriageStateHistoryView
+>;
 type _ListItem = Conforms<Static<typeof TriageCallListItemResponse>, TriageCallListItem>;
 type _Detail = Conforms<Static<typeof TriageCallDetailResponse>, TriageCallDetail>;
 type _Vendor = Conforms<Static<typeof VendorTriageCallViewResponse>, VendorTriageCallView>;
-type _CallUnion = Conforms<Static<typeof TriageCallResponse>, TriageCallDetail | VendorTriageCallView>;
+type _CallUnion = Conforms<
+  Static<typeof TriageCallResponse>,
+  TriageCallDetail | VendorTriageCallView
+>;
 type _Transcript = Conforms<Static<typeof TriageTranscriptResponse>, TriageTranscriptView>;
 type _Inbox = Conforms<Static<typeof EscalationInboxItemResponse>, EscalationInboxItem>;
 type _Shift = Conforms<Static<typeof OnCallShiftViewResponse>, OnCallShiftView>;
@@ -1162,15 +1162,30 @@ type _Question = Conforms<
 >;
 type _Protocol = Conforms<Static<typeof TriageProtocolViewResponse>, TriageProtocolView>;
 type _VendorBinding = Conforms<Static<typeof VendorBindingViewResponse>, VendorBindingView>;
-type _Worklist = Conforms<Static<typeof PaperReentryWorklistViewResponse>, PaperReentryWorklistView>;
+type _Worklist = Conforms<
+  Static<typeof PaperReentryWorklistViewResponse>,
+  PaperReentryWorklistView
+>;
 type _Portal = Conforms<Static<typeof PortalTriageSummaryResponse>, PortalTriageSummary>;
 type _OpenResult = Conforms<Static<typeof OpenTriageCallResultResponse>, OpenTriageCallResult>;
 type _AnswerResult = Conforms<Static<typeof AnswerWriteResultResponse>, AnswerWriteResult>;
-type _CallPage = Conforms<Static<typeof TriageCallListPageResponse>, CursorPage<TriageCallListItem>>;
-type _EscPage = Conforms<Static<typeof EscalationInboxPageResponse>, CursorPage<EscalationInboxItem>>;
+type _CallPage = Conforms<
+  Static<typeof TriageCallListPageResponse>,
+  CursorPage<TriageCallListItem>
+>;
+type _EscPage = Conforms<
+  Static<typeof EscalationInboxPageResponse>,
+  CursorPage<EscalationInboxItem>
+>;
 type _ShiftPage = Conforms<Static<typeof OnCallShiftPageResponse>, CursorPage<OnCallShiftView>>;
-type _ProtoPage = Conforms<Static<typeof TriageProtocolPageResponse>, CursorPage<TriageProtocolView>>;
-type _PortalPage = Conforms<Static<typeof PortalRecentPageResponse>, CursorPage<PortalTriageSummary>>;
+type _ProtoPage = Conforms<
+  Static<typeof TriageProtocolPageResponse>,
+  CursorPage<TriageProtocolView>
+>;
+type _PortalPage = Conforms<
+  Static<typeof PortalRecentPageResponse>,
+  CursorPage<PortalTriageSummary>
+>;
 type _VendorList = Conforms<Static<typeof VendorBindingListResponse>, readonly VendorBindingView[]>;
 type _WorklistList = Conforms<
   Static<typeof PaperReentryWorklistResponse>,

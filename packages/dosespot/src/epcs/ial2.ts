@@ -12,7 +12,7 @@
 //   • `planIal2ExpiryAlert` — the §2.4/§4.9 side-effect plan (outbox + typed M36 alert) for a stage.
 // Every fact (status, expiry instant, `now`) is injected as data — no `Date.now()`, no DB.
 import type { Ial2Status } from "@wardenx/types";
-import { type EpcsSideEffect } from "./effects";
+import type { EpcsSideEffect } from "./effects";
 import { requireEpcs } from "./errors";
 
 /** §2.4 §1311.115 — emit the routine IAL2-expiry warning this many days before `ial2_expires_at`. */

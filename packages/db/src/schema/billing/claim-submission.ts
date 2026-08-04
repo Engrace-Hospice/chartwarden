@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `claim_submission` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). Append-only: one row per dispatch attempt of an 837I claim, an NOE, or an NOTR to the
 // MAC (via the x12-837-client sidecar / portal). ORG-SCOPED: organization_id NOT NULL (canonical
@@ -8,16 +9,7 @@
 // `provider_entity_id` (M40), and `noe_id`/`notr_id` (intra-M23 pointers populated by subject kind) are
 // LOGICAL FKs — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). No PHI / MBI
 // is ever stored here (D13, §8.7).
-import {
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
 import { m23ClaimSubmissionKind, m23ClaimSubmissionOutcome } from "./types";

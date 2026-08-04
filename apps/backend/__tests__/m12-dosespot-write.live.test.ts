@@ -19,11 +19,11 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import {
   type DoseSpotWriteOutboxPort,
   createDbDoseSpotBackend,
 } from "../src/modules/12-dosespot/dosespot-route-service-db";
+import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -59,7 +59,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -99,7 +101,14 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
         `INSERT INTO refill_request (organization_id, provider_entity_id, location_id,
            source_medication_order_id, patient_id, dosespot_event_id, received_at)
          VALUES ($1,$2,$3,$4,$5,$6, now()) RETURNING id`,
-        [org, providerOf[org], locationOf[org], sourceOrderId, PATIENT, `rx-evt-${org.slice(0, 4)}-${n}`],
+        [
+          org,
+          providerOf[org],
+          locationOf[org],
+          sourceOrderId,
+          PATIENT,
+          `rx-evt-${org.slice(0, 4)}-${n}`,
+        ],
       )
     ).rows[0].id as string;
   }
@@ -130,19 +139,33 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m12w@x.test'),($2,'m12w2@x.test')`, [USER, USER2]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'m12w@x.test'),($2,'m12w2@x.test')`,
+      [USER, USER2],
+    );
     for (const org of [ORG_A, ORG_B]) {
       memberOf[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER, org],
+        )
       ).rows[0].id as string;
       member2Of[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER2, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER2, org],
+        )
       ).rows[0].id as string;
       providerOf[org] = (
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M12W-${org.slice(0, 4)}`, `M12W ${org.slice(0, 4)}`, `NPI-M12W-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M12W-${org.slice(0, 4)}`,
+            `M12W ${org.slice(0, 4)}`,
+            `NPI-M12W-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       locationOf[org] = (
@@ -154,7 +177,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
       ).rows[0].id as string;
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M12_OUTBOX_EVENTS]));
     const outbox: DoseSpotWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m12" }),
@@ -172,7 +197,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(draft.status).toBe("draft");
     expect(draft.version).toBe(1);
     expect(await eventsFor(draft.id)).toContain("m12.medication_order.draft_created");
-    const edited = await svc.editDraft(ORG_A, draft.id, { strength: "10 mg", refillsAuthorized: 2 });
+    const edited = await svc.editDraft(ORG_A, draft.id, {
+      strength: "10 mg",
+      refillsAuthorized: 2,
+    });
     expect(edited.version).toBe(2);
     expect(edited.strength).toBe("10 mg");
     expect(edited.refillsRemaining).toBe(2);
@@ -204,7 +232,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
     await expect(
-      svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() }),
+      svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      }),
     ).rejects.toMatchObject({ code: "SIGNER_NOT_ELIGIBLE" });
   });
 
@@ -228,7 +259,11 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   });
 
   it("EPCS is OFF (D18): a controlled order fails at requestSignature and signControlledInitiate", async () => {
-    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs({ medClass: "controlled_substance", deaSchedule: "II" }));
+    const draft = await svc.createDraft(
+      ORG_A,
+      memberOf[ORG_A],
+      draftArgs({ medClass: "controlled_substance", deaSchedule: "II" }),
+    );
     expect(draft.isControlledSubstance).toBe(true);
     expect(draft.deaSchedule).toBe("II");
     await expect(svc.requestSignature(ORG_A, draft.id, "hospice_physician")).rejects.toMatchObject({
@@ -236,7 +271,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     });
     // The EPCS gate already blocked pending_signature, so the order is still a draft: signControlledInitiate
     // is an ILLEGAL transition from draft (the controlled order can never reach the EPCS challenge, D18).
-    await expect(svc.signControlledInitiate(ORG_A, memberOf[ORG_A], draft.id, "II")).rejects.toMatchObject({
+    await expect(
+      svc.signControlledInitiate(ORG_A, memberOf[ORG_A], draft.id, "II"),
+    ).rejects.toMatchObject({
       code: "ILLEGAL_MEDICATION_ORDER_TRANSITION",
     });
   });
@@ -257,7 +294,12 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
 
   it("correctOrder mints a replacement draft (replaces set) and emits draft_created", async () => {
     const active = await seedActiveOrder(ORG_A);
-    const { newOrderId } = await svc.correctOrder(ORG_A, memberOf[ORG_A], active, draftArgs({ strength: "15 mg" }));
+    const { newOrderId } = await svc.correctOrder(
+      ORG_A,
+      memberOf[ORG_A],
+      active,
+      draftArgs({ strength: "15 mg" }),
+    );
     expect(await statusOf(newOrderId)).toBe("draft");
     const corrected = await svc.getOrder(ORG_A, newOrderId);
     expect(corrected.replacesMedicationOrderId).toBe(active);
@@ -267,7 +309,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   it("approveRefill mints a new order (D9); denyRefill records a denial", async () => {
     const source = await seedActiveOrder(ORG_A);
     const refillA = await seedRefill(ORG_A, source, 1);
-    const { resultingOrderId } = await svc.approveRefill(ORG_A, memberOf[ORG_A], refillA, { refillsAuthorized: 2 });
+    const { resultingOrderId } = await svc.approveRefill(ORG_A, memberOf[ORG_A], refillA, {
+      refillsAuthorized: 2,
+    });
     expect(await statusOf(resultingOrderId)).toBe("draft");
     const back = await svc.getRefill(ORG_A, refillA);
     expect(back.status).toBe("approved");
@@ -275,7 +319,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(await eventsFor(refillA)).toContain("m12.refill_request_approved");
 
     const refillB = await seedRefill(ORG_A, source, 2);
-    const denied = await svc.denyRefill(ORG_A, memberOf[ORG_A], refillB, { denialReason: "not clinically appropriate at this time" });
+    const denied = await svc.denyRefill(ORG_A, memberOf[ORG_A], refillB, {
+      denialReason: "not clinically appropriate at this time",
+    });
     expect(denied.status).toBe("denied");
     expect((await svc.getRefill(ORG_A, refillB)).status).toBe("denied");
     expect(await eventsFor(refillB)).toContain("m12.refill_request_denied");
@@ -293,7 +339,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
   });
 
   it("policy guards are tighten-only (controlled ≤ 5 refills; refill SLA ≤ floor)", async () => {
-    await expect(svc.putControlledSubstancePolicy(ORG_A, { scheduleIiiToVMaxRefills: 6 })).rejects.toBeTruthy();
+    await expect(
+      svc.putControlledSubstancePolicy(ORG_A, { scheduleIiiToVMaxRefills: 6 }),
+    ).rejects.toBeTruthy();
     const csOk = await svc.putControlledSubstancePolicy(ORG_A, { scheduleIiiToVMaxRefills: 3 });
     expect(csOk.scheduleIiiToVMaxRefills).toBe(3);
     await expect(svc.putRefillInboxPolicy(ORG_A, { slaWarnHours: 72 })).rejects.toBeTruthy();
@@ -306,7 +354,10 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });
     await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
     await expect(
-      svc.signOrder(ORG_B, memberOf[ORG_B], draft.id, { signerDiscipline: "hospice_physician", signedAtClient: new Date().toISOString() }),
+      svc.signOrder(ORG_B, memberOf[ORG_B], draft.id, {
+        signerDiscipline: "hospice_physician",
+        signedAtClient: new Date().toISOString(),
+      }),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

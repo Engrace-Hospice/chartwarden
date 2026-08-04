@@ -133,7 +133,11 @@ export const AddMeterBodySchema = Type.Object({
   label: Type.String({ minLength: 1 }),
   inclusiveQuantity: Type.Integer({ minimum: 0 }),
   overageUnitPriceCents: Type.Integer({ minimum: 0 }),
-  billingAggregation: Type.Union([Type.Literal("sum"), Type.Literal("last"), Type.Literal("count")]),
+  billingAggregation: Type.Union([
+    Type.Literal("sum"),
+    Type.Literal("last"),
+    Type.Literal("count"),
+  ]),
   warningThresholdPercent: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
 });
 export const UpdateMeterBodySchema = Type.Object({
@@ -285,7 +289,11 @@ export const UsageMeterDto = Type.Object({
   overageQuantity: Type.Integer(),
   overageUnitPriceCents: Type.Integer(),
   projectedOverageCostCents: Type.Integer(),
-  thresholdState: Type.Union([Type.Literal("ok"), Type.Literal("warning"), Type.Literal("breached")]),
+  thresholdState: Type.Union([
+    Type.Literal("ok"),
+    Type.Literal("warning"),
+    Type.Literal("breached"),
+  ]),
 });
 export const UsageCurrentResponseDto = Type.Object({
   periodStart: Type.String({ format: "date-time" }),

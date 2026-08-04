@@ -15,11 +15,7 @@
 // body never carries an organization_id or an owner membership id.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
-import {
-  FilterTypeBox,
-  ReportDefinitionSpec,
-  ScheduledReportCreate,
-} from "@wardenx/reporting";
+import { FilterTypeBox, ReportDefinitionSpec, ScheduledReportCreate } from "@wardenx/reporting";
 
 // Defence-in-depth format registration (idempotent) — `./reporting-typebox` registers these on load
 // too, but a route file may import this module first.
@@ -371,4 +367,7 @@ type _ExportAccepted = Conforms<
   Static<typeof ExportAcceptedResponseSchema>,
   ServiceExportAcceptedResult
 >;
-type _DrilldownEmit = Conforms<Static<typeof DrilldownEmitResponseSchema>, ServiceDrilldownEmitResult>;
+type _DrilldownEmit = Conforms<
+  Static<typeof DrilldownEmitResponseSchema>,
+  ServiceDrilldownEmitResult
+>;

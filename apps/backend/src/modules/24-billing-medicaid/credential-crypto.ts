@@ -57,7 +57,9 @@ export function loadCredentialKek(
 
 /** Derive a tenant's 32-byte credential DEK from the master KEK + org id (HKDF-SHA256, org-bound). */
 export function deriveOrgCredentialDek(kek: Buffer, orgId: string): Buffer {
-  return Buffer.from(hkdfSync("sha256", kek, Buffer.alloc(0), `${DEK_INFO_PREFIX}${orgId}`, KEY_LEN));
+  return Buffer.from(
+    hkdfSync("sha256", kek, Buffer.alloc(0), `${DEK_INFO_PREFIX}${orgId}`, KEY_LEN),
+  );
 }
 
 /** Seal a secret → base64 envelope (fresh random nonce per call) under the tenant DEK. */

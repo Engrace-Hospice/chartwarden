@@ -53,7 +53,11 @@ export const HCI_THRESHOLDS_v2025: HciThresholdTable = {
     // 6. Burdensome Transitions Type 2 — lower is better.
     indicator_06: { value: 0.02, direction: "lte", label: "burdensome transition type-2 rate" },
     // 7. Per-beneficiary Medicare spending — lower is better (rate is spend ÷ benchmark, ≤ 1.0 is good).
-    indicator_07: { value: 1.0, direction: "lte", label: "per-beneficiary spend vs benchmark ratio" },
+    indicator_07: {
+      value: 1.0,
+      direction: "lte",
+      label: "per-beneficiary spend vs benchmark ratio",
+    },
     // 8. Skilled Nursing Care Minutes per Routine Home Care day — higher is better (rate is RHC-days with
     //    SN minutes at/above the per-day floor).
     indicator_08: { value: 0.5, direction: "gte", label: "RHC days meeting SN-minutes floor" },

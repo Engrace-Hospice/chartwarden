@@ -10,11 +10,11 @@
 // PURE: {@link plannedMvKeysForEvent} is the pure topic→MV projection; {@link handleUpstreamInvalidation} is
 // the thin port-injected orchestrator that fans each MV out through the shared dispatcher. The cross-module
 // reach is the foundation outbox event STRING alone — no M5–M28 import (no new manifest `dependsOn` edge).
-import { mvKeysForTopic, OUTBOX_INVALIDATING_TOPICS } from "../catalog/outbox-subscription-map";
+import { OUTBOX_INVALIDATING_TOPICS, mvKeysForTopic } from "../catalog/outbox-subscription-map";
 import {
-  dispatchMvRefresh,
   type MvRefreshDispatcherPorts,
   type RefreshDispatchResult,
+  dispatchMvRefresh,
 } from "./dispatcher";
 
 /** The structural minimum the subscriber reads off a delivered upstream outbox event (the owning module owns

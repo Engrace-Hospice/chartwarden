@@ -111,7 +111,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.sfv_completed",
     moduleOwner: "m10",
-    description: "An RFA-04 SFV completion matched an open SFV row; `completing_assessment_id` is set. M30 reads completion timeliness.",
+    description:
+      "An RFA-04 SFV completion matched an open SFV row; `completing_assessment_id` is set. M30 reads completion timeliness.",
     payloadSchema: Type.Object({
       sfvId: Type.String({ minLength: 1 }),
       completingAssessmentId: Type.String({ minLength: 1 }),
@@ -123,7 +124,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.sfv_overdue",
     moduleOwner: "m10",
-    description: "`sfv-watchdog` cron flipped an open SFV past `due_at` to overdue; M36 escalates the alert.",
+    description:
+      "`sfv-watchdog` cron flipped an open SFV past `due_at` to overdue; M36 escalates the alert.",
     payloadSchema: Type.Object({
       sfvId: Type.String({ minLength: 1 }),
       hoursPastDue: Type.Number(),
@@ -134,7 +136,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.sfv_missed",
     moduleOwner: "m10",
-    description: "`sfv-watchdog` flipped an overdue SFV past 7 days to missed (terminal); M30's Timely Follow-Up measure counts the miss.",
+    description:
+      "`sfv-watchdog` flipped an overdue SFV past 7 days to missed (terminal); M30's Timely Follow-Up measure counts the miss.",
     payloadSchema: Type.Object({
       sfvId: Type.String({ minLength: 1 }),
     }),
@@ -158,7 +161,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.submission_queued",
     moduleOwner: "m10",
-    description: "`assemble-hope-submission` batched signed+unsubmitted assessments per ProviderEntity into a submission row.",
+    description:
+      "`assemble-hope-submission` batched signed+unsubmitted assessments per ProviderEntity into a submission row.",
     payloadSchema: Type.Object({
       submissionId: Type.String({ minLength: 1 }),
       providerEntityId: Type.String({ minLength: 1 }),
@@ -170,7 +174,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.submission_transmitted",
     moduleOwner: "m10",
-    description: "`iqies-submit-worker` POSTed a submission batch to iQIES; the signed envelope SHA-256 is recorded.",
+    description:
+      "`iqies-submit-worker` POSTed a submission batch to iQIES; the signed envelope SHA-256 is recorded.",
     payloadSchema: Type.Object({
       submissionId: Type.String({ minLength: 1 }),
       transmittedAt: isoInstant,
@@ -182,7 +187,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.submission_accepted",
     moduleOwner: "m10",
-    description: "`iqies-reconcile-worker` recorded iQIES acceptance for a submission; M30 reads the acceptance rate for APU posture.",
+    description:
+      "`iqies-reconcile-worker` recorded iQIES acceptance for a submission; M30 reads the acceptance rate for APU posture.",
     payloadSchema: Type.Object({
       submissionId: Type.String({ minLength: 1 }),
       acceptedCount: Type.Integer({ minimum: 0 }),
@@ -194,7 +200,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.submission_rejected",
     moduleOwner: "m10",
-    description: "`iqies-reconcile-worker` recorded iQIES rejection findings for a submission; M36 alerts compliance, M33 reports.",
+    description:
+      "`iqies-reconcile-worker` recorded iQIES rejection findings for a submission; M36 alerts compliance, M33 reports.",
     payloadSchema: Type.Object({
       submissionId: Type.String({ minLength: 1 }),
       rejectedCount: Type.Integer({ minimum: 0 }),
@@ -209,7 +216,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m10.hope.summary_requested",
     moduleOwner: "m10",
-    description: "API `POST /hope/assessments/:id/summary-pdf` asked for the printable HOPE summary; M22 renders.",
+    description:
+      "API `POST /hope/assessments/:id/summary-pdf` asked for the printable HOPE summary; M22 renders.",
     payloadSchema: Type.Object({
       assessmentId: Type.String({ minLength: 1 }),
       requestedBy: Type.String({ minLength: 1 }),

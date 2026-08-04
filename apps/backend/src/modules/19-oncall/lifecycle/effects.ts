@@ -71,7 +71,11 @@ export type TriageSideEffect =
    *  cannot do. */
   | { readonly kind: "alert"; readonly alert: OncallAlertPayload["eventType"] }
   /** Stamp one of the aggregate's timestamp columns. */
-  | { readonly kind: "set_timestamp"; readonly field: TriageTimestampField; readonly at: IsoInstant }
+  | {
+      readonly kind: "set_timestamp";
+      readonly field: TriageTimestampField;
+      readonly at: IsoInstant;
+    }
   /** D4 — freeze the protocol + its version onto the call. Written ONCE, at `applyProtocol`; every later
    *  transition reads it and none rewrites it, so a mid-call catalog revision cannot re-key the answers
    *  already recorded. */

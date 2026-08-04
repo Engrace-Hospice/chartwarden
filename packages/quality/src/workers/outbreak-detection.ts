@@ -12,7 +12,11 @@
 // fetch, the case store, and the outbox emit are injected ports. The outbox emit is the genuinely-missing
 // transactional-outbox infra → LAZY fail-closed at the composition root.
 import type { schema } from "@wardenx/db";
-import { OUTBREAK_WINDOW_DAYS, detectOutbreakClusters, toNewOutbreakCase } from "../infection/outbreak_detector";
+import {
+  OUTBREAK_WINDOW_DAYS,
+  detectOutbreakClusters,
+  toNewOutbreakCase,
+} from "../infection/outbreak_detector";
 import { normalizeSurveillanceRow } from "../infection/surveillance";
 import { ALREADY_PROCESSED, type AlreadyProcessedResult, type ProcessingLogPort } from "./ports";
 

@@ -56,7 +56,7 @@ interface CatalogEntry {
  *  for trailing `# comment` text. */
 function parseCatalogEntries(yaml: string): Map<string, CatalogEntry> {
   const entries = new Map<string, CatalogEntry>();
-  const blocks = yaml.split(/\n(?=  - id: )/);
+  const blocks = yaml.split(/\n(?= {2}- id: )/);
   for (const block of blocks) {
     const idMatch = block.match(/^\s*-\s*id:\s*(\S+)/);
     if (!idMatch) continue;

@@ -1,12 +1,12 @@
 import {
-  cardSurface,
   EmptyState,
-  ghostBorder,
   Glyph,
   type GlyphName,
   LoadingSpinner,
   StatusPill,
   type StatusTone,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -81,8 +81,9 @@ export function NotificationsInbox(): JSX.Element {
   }, [client]);
 
   const total = alerts?.length ?? 0;
-  const urgent = (alerts ?? []).filter((a) => a.severity === "critical" || a.severity === "high")
-    .length;
+  const urgent = (alerts ?? []).filter(
+    (a) => a.severity === "critical" || a.severity === "high",
+  ).length;
   const failed = (alerts ?? []).filter((a) => a.deliveryStatus === "failed").length;
 
   return (
@@ -147,7 +148,10 @@ export function NotificationsInbox(): JSX.Element {
         ) : (
           <div style={{ ...cardSurface, padding: "0 1.25rem" }}>
             {alerts.map((a, i) => (
-              <div key={a.alertId} style={{ ...rowStyle, borderTop: i === 0 ? "none" : ghostBorder }}>
+              <div
+                key={a.alertId}
+                style={{ ...rowStyle, borderTop: i === 0 ? "none" : ghostBorder }}
+              >
                 <span
                   style={{
                     color: a.severity === "info" ? t.muted : t.error,
@@ -160,7 +164,14 @@ export function NotificationsInbox(): JSX.Element {
                 <span style={{ flex: 1, minWidth: 0, color: t.onSurface }}>{a.summary}</span>
                 <span style={sourceChip}>{cap(a.category.replace(/_/g, " "))}</span>
                 <StatusPill label={cap(a.severity)} tone={SEVERITY_TONE[a.severity] ?? "neutral"} />
-                <span style={{ color: t.muted, fontSize: "0.78rem", width: "2.5rem", textAlign: "right" }}>
+                <span
+                  style={{
+                    color: t.muted,
+                    fontSize: "0.78rem",
+                    width: "2.5rem",
+                    textAlign: "right",
+                  }}
+                >
                   {relTime(a.createdAt)}
                 </span>
               </div>

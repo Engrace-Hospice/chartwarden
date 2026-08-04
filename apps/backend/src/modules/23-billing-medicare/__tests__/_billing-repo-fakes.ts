@@ -98,7 +98,13 @@ export function buildFakeRepositories(): {
       const c = store.claims.get(id);
       if (!c) return { ok: false, currentVersion: null };
       if (c.version !== expectedVersion) return { ok: false, currentVersion: c.version };
-      const row = { ...c, ...(patch ?? {}), state: nextState, version: c.version + 1, updatedAt: new Date() };
+      const row = {
+        ...c,
+        ...(patch ?? {}),
+        state: nextState,
+        version: c.version + 1,
+        updatedAt: new Date(),
+      };
       store.claims.set(id, row);
       return { ok: true, row, currentVersion: row.version };
     }
@@ -147,7 +153,8 @@ export function buildFakeRepositories(): {
     async append(v: any): Promise<any> {
       // Idempotent on (claimId, trigger, runInputHash) — mirrors the real onConflictDoNothing append.
       const existing = [...store.runs.values()].find(
-        (r) => r.claimId === v.claimId && r.trigger === v.trigger && r.runInputHash === v.runInputHash,
+        (r) =>
+          r.claimId === v.claimId && r.trigger === v.trigger && r.runInputHash === v.runInputHash,
       );
       if (existing) return existing;
       const row = { id: v.id ?? newId("run"), ...v };

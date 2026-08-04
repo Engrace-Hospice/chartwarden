@@ -40,7 +40,7 @@ import type {
   AiKillSwitchReason,
 } from "@wardenx/types";
 
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "../governance/errors";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 
 /** One edge of D9's triage machine. */
 export interface AiHallucinationTriageEdge {
@@ -150,7 +150,11 @@ export function aiHallucinationFollowUpPlanFor(
   disposition: AiHallucinationTriageDisposition | null,
 ): AiHallucinationFollowUpPlan {
   if (severity === "critical") {
-    return { action: "raise_sev1", killSwitchReason: "sev1_hallucination", demotesCapability: true };
+    return {
+      action: "raise_sev1",
+      killSwitchReason: "sev1_hallucination",
+      demotesCapability: true,
+    };
   }
   if (disposition === null) return NO_FOLLOW_UP;
   const action = aiHallucinationFollowUpFor(disposition);

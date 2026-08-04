@@ -131,7 +131,9 @@ export function SurveyorReadView(): JSX.Element {
     setError(null);
     const res = await client.GET("/api/v1/billing/claims", claimsInit(null) as never);
     if (res.error) {
-      setError("Surveyor view unavailable — the billing read seam is not bound, or you lack scope.");
+      setError(
+        "Surveyor view unavailable — the billing read seam is not bound, or you lack scope.",
+      );
       setLoading(false);
       return;
     }
@@ -168,7 +170,8 @@ export function SurveyorReadView(): JSX.Element {
         setDetailLoading(false);
         return;
       }
-      const runs = ((runRes.data as unknown as { runs?: ValidationRunView[] })?.runs ?? []) as ValidationRunView[];
+      const runs = ((runRes.data as unknown as { runs?: ValidationRunView[] })?.runs ??
+        []) as ValidationRunView[];
       // Expand only `overridden` runs to surface the applied overrides (the surveyor-relevant exceptions).
       const overrideRuns = runs.filter((r) => r.outcome === "overridden");
       const overrideLists = await Promise.all(
@@ -177,7 +180,8 @@ export function SurveyorReadView(): JSX.Element {
             params: { path: { id: claim.claimId, runId: run.validationRunId } },
           });
           if (dRes.error) return [] as OverrideEntry[];
-          const results = ((dRes.data as unknown as { results?: ResultView[] })?.results ?? []) as ResultView[];
+          const results = ((dRes.data as unknown as { results?: ResultView[] })?.results ??
+            []) as ResultView[];
           return results
             .filter((res): res is ResultView & { override: OverrideView } => Boolean(res.override))
             .map<OverrideEntry>((res) => ({
@@ -193,11 +197,14 @@ export function SurveyorReadView(): JSX.Element {
       setProjection({
         history: histRes.error
           ? []
-          : (((histRes.data as unknown as { items?: StateHistoryRow[] })?.items ?? []) as StateHistoryRow[]),
+          : (((histRes.data as unknown as { items?: StateHistoryRow[] })?.items ??
+              []) as StateHistoryRow[]),
         runs,
         overrides: overrideLists.flat(),
         submissions: subRes.error ? [] : ((subRes.data as unknown as SubmissionRow[]) ?? []),
-        acknowledgments: ackRes.error ? [] : ((ackRes.data as unknown as AcknowledgmentRow[]) ?? []),
+        acknowledgments: ackRes.error
+          ? []
+          : ((ackRes.data as unknown as AcknowledgmentRow[]) ?? []),
       });
       setDetailLoading(false);
     },
@@ -272,7 +279,13 @@ function ClaimProjection({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "0.95rem", color: "var(--color-on-surface)" }}>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: "0.95rem",
+            color: "var(--color-on-surface)",
+          }}
+        >
           {claim.claimControlNumber}
         </span>
         <StatusPill label={statusLabel(claim.state)} tone={claimStateTone(claim.state)} />
@@ -317,7 +330,9 @@ function ClaimProjection({
                     ) : null}
                   </td>
                   <td style={{ ...tdStyle, maxWidth: "20rem" }}>{h.reason ?? "—"}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {new Date(h.at).toLocaleString()}
                   </td>
                 </tr>
@@ -355,18 +370,29 @@ function ClaimProjection({
               {projection.runs.map((r, i) => (
                 <tr key={r.validationRunId} style={rowStyle(i)}>
                   <td style={tdStyle}>
-                    <StatusPill label={statusLabel(r.outcome)} tone={validationRunTone(r.outcome)} />
+                    <StatusPill
+                      label={statusLabel(r.outcome)}
+                      tone={validationRunTone(r.outcome)}
+                    />
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {r.rulesExecuted}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {r.rulesPassed}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {r.rulesFailed}
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {new Date(r.startedAt).toLocaleString()}
                   </td>
                 </tr>
@@ -405,14 +431,19 @@ function ClaimProjection({
                 <tr key={`${o.ruleKey}-${o.appliedAt}`} style={rowStyle(i)}>
                   <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{o.ruleKey}</td>
                   <td style={tdStyle}>
-                    <StatusPill label={statusLabel(o.severity)} tone={validationSeverityTone(o.severity)} />
+                    <StatusPill
+                      label={statusLabel(o.severity)}
+                      tone={validationSeverityTone(o.severity)}
+                    />
                   </td>
                   <td style={tdStyle}>
                     <div style={{ fontSize: "0.8rem" }}>{statusLabel(o.overrideRoleApplied)}</div>
                     <MaskedIdentifier value={o.overrideMembershipId} label="Override membership" />
                   </td>
                   <td style={{ ...tdStyle, maxWidth: "18rem" }}>{o.reason}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {new Date(o.appliedAt).toLocaleString()}
                   </td>
                 </tr>
@@ -450,13 +481,20 @@ function ClaimProjection({
               {projection.submissions.map((s, i) => (
                 <tr key={s.submissionId} style={rowStyle(i)}>
                   <td style={tdStyle}>{statusLabel(s.kind)}</td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {s.attemptIndex}
                   </td>
                   <td style={tdStyle}>
-                    <StatusPill label={statusLabel(s.outcome)} tone={submissionStatusTone(s.outcome)} />
+                    <StatusPill
+                      label={statusLabel(s.outcome)}
+                      tone={submissionStatusTone(s.outcome)}
+                    />
                     {s.outcomeReason ? (
-                      <div style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+                      <div
+                        style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}
+                      >
                         {s.outcomeReason}
                       </div>
                     ) : null}
@@ -464,7 +502,9 @@ function ClaimProjection({
                   <td style={tdStyle}>
                     <MaskedIdentifier value={s.submissionId} label="Submission id" />
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {s.submittedAt ? new Date(s.submittedAt).toLocaleString() : "—"}
                   </td>
                 </tr>
@@ -506,12 +546,17 @@ function ClaimProjection({
                 <tr key={a.acknowledgmentId} style={rowStyle(i)}>
                   <td style={tdStyle}>{a.kind}</td>
                   <td style={tdStyle}>
-                    <StatusPill label={statusLabel(a.outcomeStatus)} tone={ackOutcomeTone(a.outcomeStatus)} />
+                    <StatusPill
+                      label={statusLabel(a.outcomeStatus)}
+                      tone={ackOutcomeTone(a.outcomeStatus)}
+                    />
                   </td>
                   <td style={tdStyle}>
                     <MaskedIdentifier value={a.acknowledgmentId} label="Acknowledgment id" />
                   </td>
-                  <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  <td
+                    style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                  >
                     {new Date(a.ackReceivedAt).toLocaleString()}
                   </td>
                 </tr>
@@ -545,7 +590,9 @@ function Section({ title, children }: { title: string; children: ReactNode }): J
 
 function Muted({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>{children}</p>
+    <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
+      {children}
+    </p>
   );
 }
 
@@ -558,7 +605,11 @@ const thStyle = {
   textTransform: "uppercase" as const,
   letterSpacing: "0.04em",
 };
-const tdStyle = { padding: "0.4rem 0.6rem", color: "var(--color-on-surface)", verticalAlign: "top" as const };
+const tdStyle = {
+  padding: "0.4rem 0.6rem",
+  color: "var(--color-on-surface)",
+  verticalAlign: "top" as const,
+};
 const rowStyle = (i: number): { background: string } => ({
   background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent",
 });

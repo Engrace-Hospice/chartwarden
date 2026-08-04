@@ -143,7 +143,10 @@ function isPlatformOperator(context: AbacContext): boolean {
 /** Build M29's six §4.8 predicate resolvers over an injected read surface (unit-testable without seams). */
 export function buildM29AbacPredicates(
   deps: M29AbacDeps,
-): Record<M29RegisteredAbacPredicate, (context: AbacContext, target: AbacTarget) => Promise<boolean>> {
+): Record<
+  M29RegisteredAbacPredicate,
+  (context: AbacContext, target: AbacTarget) => Promise<boolean>
+> {
   const { resolver } = deps;
 
   return {

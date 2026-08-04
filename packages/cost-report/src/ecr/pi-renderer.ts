@@ -56,7 +56,8 @@ function renderWorksheetSection(code: WorksheetCode, data: unknown): string[] {
   } else {
     for (const leaf of leaves) {
       const label = leafLabel(leaf);
-      const padded = label.length >= LABEL_WIDTH ? label : label + " ".repeat(LABEL_WIDTH - label.length);
+      const padded =
+        label.length >= LABEL_WIDTH ? label : label + " ".repeat(LABEL_WIDTH - label.length);
       lines.push(`  ${padded}${leafDisplay(leaf)}`);
     }
   }
@@ -65,10 +66,7 @@ function renderWorksheetSection(code: WorksheetCode, data: unknown): string[] {
 }
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**

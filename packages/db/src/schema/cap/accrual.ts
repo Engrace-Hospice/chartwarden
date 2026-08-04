@@ -43,8 +43,12 @@ export const capBeneficiaryAccrual = pgTable(
     patientId: uuid("patient_id").notNull(), // M5 logical FK
     mbiNormalized: text("mbi_normalized").notNull(), // canonical via M40 (join key, not audit-captured)
     paidCents: bigint("paid_cents", { mode: "number" }).notNull().default(0),
-    outstandingBilledCents: bigint("outstanding_billed_cents", { mode: "number" }).notNull().default(0),
-    methodologyWeight: numeric("methodology_weight", { precision: 7, scale: 6 }).notNull().default("1.000000"),
+    outstandingBilledCents: bigint("outstanding_billed_cents", { mode: "number" })
+      .notNull()
+      .default(0),
+    methodologyWeight: numeric("methodology_weight", { precision: 7, scale: 6 })
+      .notNull()
+      .default("1.000000"),
     firstElectionInPeriod: date("first_election_in_period").notNull(),
     lastPaidThrough: date("last_paid_through"),
     deceasedAt: date("deceased_at"),

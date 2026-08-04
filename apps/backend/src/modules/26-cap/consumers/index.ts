@@ -13,7 +13,11 @@ import {
   handleRemittancePosted,
   handleTransfer,
 } from "./handlers";
-import { M26_SUBSCRIPTION_MAP, M26_UPSTREAM_SUBSCRIPTIONS, type M26SubscribedTopic } from "./subscription-map";
+import {
+  type M26SubscribedTopic,
+  M26_SUBSCRIPTION_MAP,
+  M26_UPSTREAM_SUBSCRIPTIONS,
+} from "./subscription-map";
 
 export { M26_SUBSCRIPTION_MAP, M26_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 export type { CapConsumerStore, AccrualLineToRecord, InpatientDayToRecord } from "./handlers";
@@ -25,10 +29,18 @@ export interface M26ConsumeReport {
 /** The deferred-bind no-op store: records nothing (the live Drizzle store binds with the M5/M6 readers). */
 export function createInMemoryCapConsumerStore(): CapConsumerStore {
   return {
-    async recordAccrualLine() { return { recorded: false }; },
-    async recordInpatientDay() { return { recorded: false }; },
-    async freezePatient() { return { frozen: false }; },
-    async setProportionalWeight() { return { updated: false }; },
+    async recordAccrualLine() {
+      return { recorded: false };
+    },
+    async recordInpatientDay() {
+      return { recorded: false };
+    },
+    async freezePatient() {
+      return { frozen: false };
+    },
+    async setProportionalWeight() {
+      return { updated: false };
+    },
   };
 }
 
@@ -65,7 +77,10 @@ export async function dispatchM26UpstreamEvent(
  */
 export function registerM26Consumers(options?: {
   readonly store?: CapConsumerStore;
-  readonly bind?: (topic: string, handler: (payload: Record<string, unknown>) => Promise<M26ConsumeReport>) => void;
+  readonly bind?: (
+    topic: string,
+    handler: (payload: Record<string, unknown>) => Promise<M26ConsumeReport>,
+  ) => void;
 }): readonly M26SubscribedTopic[] {
   const { store, bind } = options ?? {};
   if (bind && store) {

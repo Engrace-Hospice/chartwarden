@@ -1,11 +1,4 @@
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  StatusPill,
-  t,
-  useApiClient,
-} from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/15-discipline-care-plans — the DISCIPLINE ASSESSMENT EDITOR (§5.1 #7, Track B).
 //
 // Capture, sign and amend one discipline assessment (routes 12 / 13 / 14). The lifecycle it renders is
@@ -31,6 +24,14 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import {
+  ASSESSMENT_STATUS_TONE,
+  assessmentKindLabel,
+  dateTime,
+  humanize,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   Notice,
@@ -45,14 +46,6 @@ import {
   pageTitleStyle,
   primaryButtonStyle,
 } from "./discipline-ui";
-import {
-  ASSESSMENT_STATUS_TONE,
-  assessmentKindLabel,
-  dateTime,
-  humanize,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 
 /** `discipline_assessment_kind` (enums.ts §3.2). */
 const KIND_OPTIONS = [
@@ -252,11 +245,7 @@ export function AssessmentEditor(): JSX.Element {
             <Field label="Captured by" value={shortId(assessment.capturedByMembershipId)} mono />
             <Field label="Signed" value={dateTime(assessment.signedAt)} />
             <Field label="Initial" value={assessment.isInitial ? "Yes" : "No"} />
-            <Field
-              label="Source encounter"
-              value={shortId(assessment.sourceEncounterId)}
-              mono
-            />
+            <Field label="Source encounter" value={shortId(assessment.sourceEncounterId)} mono />
             {assessment.amendsAssessmentId ? (
               <Field label="Amends" value={shortId(assessment.amendsAssessmentId)} mono />
             ) : null}
@@ -282,7 +271,9 @@ export function AssessmentEditor(): JSX.Element {
       <Card title={creating ? "New assessment" : signed ? "Content (signed record)" : "Content"}>
         {creating ? (
           <>
-            <div style={{ display: "flex", gap: t.space3, flexWrap: "wrap", alignItems: "flex-end" }}>
+            <div
+              style={{ display: "flex", gap: t.space3, flexWrap: "wrap", alignItems: "flex-end" }}
+            >
               <SelectField label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} />
               <TextField
                 label="Captured at"
@@ -291,7 +282,9 @@ export function AssessmentEditor(): JSX.Element {
                 onChange={setCapturedAt}
               />
             </div>
-            <label style={{ display: "flex", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}>
+            <label
+              style={{ display: "flex", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}
+            >
               <input
                 type="checkbox"
                 checked={isInitial}
@@ -299,7 +292,9 @@ export function AssessmentEditor(): JSX.Element {
               />
               This is the initial assessment (a signed initial closes the five-day clock)
             </label>
-            <label style={{ display: "flex", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}>
+            <label
+              style={{ display: "flex", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}
+            >
               <input
                 type="checkbox"
                 checked={sudFlag}
@@ -307,7 +302,9 @@ export function AssessmentEditor(): JSX.Element {
               />
               Contains substance-use-disorder content (42 CFR Part 2)
             </label>
-            <label style={{ display: "flex", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}>
+            <label
+              style={{ display: "flex", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}
+            >
               <input
                 type="checkbox"
                 checked={familyViolenceFlag}

@@ -63,7 +63,9 @@ export function buildDlqPromotionSink(opts?: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(event),
     }).catch((err) => {
-      log(`⚠️  DLQ alert webhook delivery failed: ${err instanceof Error ? err.message : String(err)}`);
+      log(
+        `⚠️  DLQ alert webhook delivery failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     });
   };
 }

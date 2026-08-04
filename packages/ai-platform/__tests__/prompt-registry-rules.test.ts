@@ -72,9 +72,7 @@ describe("content-hash pin (§3.2.5 / §4.4 step 5)", () => {
 
 // ── R30 activation ─────────────────────────────────────────────────────────────────────────────────
 
-function request(
-  overrides: Partial<AiPromptActivationRequest> = {},
-): AiPromptActivationRequest {
+function request(overrides: Partial<AiPromptActivationRequest> = {}): AiPromptActivationRequest {
   return {
     capabilityKey: "hearthnote_layer2",
     templateKey: "hearthnote_enhancement_v2",
@@ -94,9 +92,7 @@ function request(
   };
 }
 
-function template(
-  overrides: Partial<AiPromptTemplateSnapshot> = {},
-): AiPromptTemplateSnapshot {
+function template(overrides: Partial<AiPromptTemplateSnapshot> = {}): AiPromptTemplateSnapshot {
   return {
     id: "apt-1",
     templateKey: "hearthnote_enhancement_v1",

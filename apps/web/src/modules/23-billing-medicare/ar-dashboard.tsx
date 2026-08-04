@@ -63,7 +63,8 @@ function summarizeWindows(records: NoticeWindowRecord[]): WindowPosture {
   let breached = 0;
   for (const r of records) {
     // Terminal notices (accepted / cancelled) have left the window — they don't count against posture.
-    if (r.state === "ack_accepted" || r.state === "cancelled" || r.state === "ack_rejected") continue;
+    if (r.state === "ack_accepted" || r.state === "cancelled" || r.state === "ack_rejected")
+      continue;
     const d = daysRemaining(r);
     if (d < 0) breached += 1;
     else if (d <= 2) atRisk += 1;
@@ -100,19 +101,21 @@ export function ArDashboard(): JSX.Element {
     setAging(agingRes.data as unknown as ArAging);
     // Best-effort tiles: each absent read leaves its tile out and raises the degraded marker (never throws).
     if (metricsRes.error) setDegraded(true);
-    else setBuckets(((metricsRes.data as unknown as { buckets?: MetricsBucket[] })?.buckets) ?? []);
+    else setBuckets((metricsRes.data as unknown as { buckets?: MetricsBucket[] })?.buckets ?? []);
     if (noeRes.error) setDegraded(true);
     else
       setNoe(
         summarizeWindows(
-          ((noeRes.data as unknown as ListPage<NoticeWindowRecord>)?.items ?? []) as NoticeWindowRecord[],
+          ((noeRes.data as unknown as ListPage<NoticeWindowRecord>)?.items ??
+            []) as NoticeWindowRecord[],
         ),
       );
     if (notrRes.error) setDegraded(true);
     else
       setNotr(
         summarizeWindows(
-          ((notrRes.data as unknown as ListPage<NoticeWindowRecord>)?.items ?? []) as NoticeWindowRecord[],
+          ((notrRes.data as unknown as ListPage<NoticeWindowRecord>)?.items ??
+            []) as NoticeWindowRecord[],
         ),
       );
     setLoading(false);
@@ -152,10 +155,7 @@ export function ArDashboard(): JSX.Element {
           {/* claim-state-derived tiles (best-effort over GET /metrics). */}
           {buckets ? (
             <>
-              <KpiCard
-                label="Denial rate"
-                value={denialRate === null ? "—" : `${denialRate}%`}
-              />
+              <KpiCard label="Denial rate" value={denialRate === null ? "—" : `${denialRate}%`} />
               <KpiCard label="Open claims" value={totalClaims} />
               <KpiCard label="Pending validation" value={validatingCount} />
             </>

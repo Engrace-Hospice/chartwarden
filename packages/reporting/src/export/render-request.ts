@@ -69,7 +69,9 @@ export class PdfRowLimitExceeded extends Error {
     public readonly rowLimit: number,
     public readonly cap: number = PDF_MAX_ROW_LIMIT,
   ) {
-    super(`PDF_ROW_LIMIT_EXCEEDED: resolved row limit ${rowLimit} exceeds the PDF cap of ${cap} rows`);
+    super(
+      `PDF_ROW_LIMIT_EXCEEDED: resolved row limit ${rowLimit} exceeds the PDF cap of ${cap} rows`,
+    );
     this.name = "PdfRowLimitExceeded";
   }
 }

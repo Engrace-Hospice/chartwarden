@@ -266,8 +266,8 @@ describe.skipIf(!DB_URL)("M17 Scheduling — RLS cross-tenant denial — LIVE Po
       join(MIGRATIONS_DIR, "0045_scheduling_m17_rls_audit_triggers.sql"),
       "utf8",
     );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // One canonical `_org` policy per owned table — the two partitioned parents carry theirs on the parent.
     expect(policyBlocks.length).toBe(COVERED.length);

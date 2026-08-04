@@ -132,13 +132,19 @@ export interface EvvSeamSeed {
   /** Explicit billing-compliance verdicts keyed by visit (override the bracket-derived default when present). */
   readonly complianceStates?: ReadonlyArray<{ visitId: VisitId; state: EvvComplianceState }>;
   /** Aggregator submissions keyed by visit (the by-visit reads filter per call). */
-  readonly submissions?: ReadonlyArray<{ visitId: VisitId; submission: EvvAggregatorSubmissionDto }>;
+  readonly submissions?: ReadonlyArray<{
+    visitId: VisitId;
+    submission: EvvAggregatorSubmissionDto;
+  }>;
   /** Last-known coordinate per clinician (the by-membership + org-shift reads filter per call). */
   readonly locations?: ReadonlyArray<EvvLocationDto>;
   /** Portal arrival projections keyed by visit (timestamp + lay identity only). */
   readonly arrivals?: ReadonlyArray<{ visitId: VisitId; arrival: EvvArrival }>;
   /** Portal post-visit summaries keyed by visit. */
-  readonly verificationSummaries?: ReadonlyArray<{ visitId: VisitId; summary: EvvVerificationSummary }>;
+  readonly verificationSummaries?: ReadonlyArray<{
+    visitId: VisitId;
+    summary: EvvVerificationSummary;
+  }>;
   /** Windowed compliance breakdowns (for EvvComplianceReader.complianceRateForWindow + getComplianceRate). */
   readonly complianceWindows?: ReadonlyArray<EvvWindowSeedRow<EvvComplianceDto>>;
   /** Windowed metric tallies (for the late-checkout / geofence-deviation / spoofing rates). */
@@ -228,7 +234,9 @@ export function createInMemoryEvvSeamStore(seed: EvvSeamSeed = {}): { store: Evv
         return bracket ? complianceFromBracket(bracket) : "not_required";
       },
       async complianceCountsForWindow(window) {
-        return complianceWindows.find((r) => sameWindow(r.window, window))?.counts ?? ZERO_COMPLIANCE;
+        return (
+          complianceWindows.find((r) => sameWindow(r.window, window))?.counts ?? ZERO_COMPLIANCE
+        );
       },
       async submissionForVisit(visitId) {
         return submissions.get(visitId) ?? null;

@@ -11,10 +11,7 @@ import { DocumentStateError, require_ } from "./errors";
 
 /** §2.3 — `document_version.version_number` strictly increases within a document (the DB CHECK mirror). A
  * version-number that is not strictly greater than the current max is refused at plan time. */
-export function assertMonotonicVersion(
-  currentMaxVersion: number,
-  proposedVersion: number,
-): void {
+export function assertMonotonicVersion(currentMaxVersion: number, proposedVersion: number): void {
   require_(
     proposedVersion > currentMaxVersion,
     "VERSION_NUMBER_NOT_MONOTONIC",
@@ -24,10 +21,7 @@ export function assertMonotonicVersion(
 
 /** §2.3 — `document.active_version_id` MUST point at a version whose `document_id = self.id` (the DB CHECK
  * mirror). A flip to a version belonging to another document is refused. */
-export function assertActiveVersionBelongs(
-  documentId: string,
-  versionDocumentId: string,
-): void {
+export function assertActiveVersionBelongs(documentId: string, versionDocumentId: string): void {
   require_(
     documentId === versionDocumentId,
     "ACTIVE_VERSION_FOREIGN",
@@ -37,10 +31,7 @@ export function assertActiveVersionBelongs(
 
 /** §2.3 — `document_version.sha256_hex` is never updated post-insert (the M4 denylist / service refusal
  * mirror). Any attempt to write a different hash to an existing version row is refused. */
-export function assertSha256Immutable(
-  existingSha256: string | null,
-  incomingSha256: string,
-): void {
+export function assertSha256Immutable(existingSha256: string | null, incomingSha256: string): void {
   if (existingSha256 !== null && existingSha256 !== incomingSha256) {
     throw new DocumentStateError(
       "SHA256_IMMUTABLE",

@@ -1,3 +1,12 @@
+import type {
+  AiEvaluationRunPatch,
+  AiEvaluationRunSnapshot,
+  AiHallucinationFilingPatch,
+  AiHallucinationTriagePatch,
+  AiKillSwitchActivationPatch,
+  AiKillSwitchDeactivationPatch,
+  AiKillSwitchRowSnapshot,
+} from "@wardenx/ai-platform";
 // apps/backend/src/modules/32-ai-platform/safety/store.ts — the data PORTS M32-T05's safety services
 // compose over, plus in-memory implementations for the slice tests.
 //
@@ -28,15 +37,6 @@ import type {
   AiKillSwitchActorKind,
   AiKillSwitchReason,
 } from "@wardenx/types";
-import type {
-  AiEvaluationRunPatch,
-  AiEvaluationRunSnapshot,
-  AiHallucinationFilingPatch,
-  AiHallucinationTriagePatch,
-  AiKillSwitchActivationPatch,
-  AiKillSwitchDeactivationPatch,
-  AiKillSwitchRowSnapshot,
-} from "@wardenx/ai-platform";
 
 // ── projections ────────────────────────────────────────────────────────────────────────────────────
 
@@ -180,7 +180,10 @@ export interface AiEvaluationRunStore {
     readonly capabilityId?: string;
     readonly statuses?: readonly AiEvaluationRunStatus[];
   }): Promise<readonly AiEvaluationRunRowProjection[]>;
-  applyTransition(runId: string, patch: AiEvaluationRunPatch): Promise<AiEvaluationRunRowProjection>;
+  applyTransition(
+    runId: string,
+    patch: AiEvaluationRunPatch,
+  ): Promise<AiEvaluationRunRowProjection>;
 }
 
 // ── in-memory implementation (slice tests) ─────────────────────────────────────────────────────────
@@ -326,7 +329,9 @@ export function createInMemoryAiSafetyStores(seed: InMemoryAiSafetySeed = {}): {
         (r) => r.id === reportId && r.organizationId === organizationId,
       );
       if (i === -1) {
-        throw new Error(`in-memory ai_hallucination_report ${reportId} not found for org ${organizationId}`);
+        throw new Error(
+          `in-memory ai_hallucination_report ${reportId} not found for org ${organizationId}`,
+        );
       }
       const next = { ...reportRows[i]!, ...patch };
       reportRows[i] = next;

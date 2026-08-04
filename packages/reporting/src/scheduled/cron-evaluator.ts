@@ -135,7 +135,9 @@ export interface CronEvaluatorReport {
  * A `CRON_TOO_FREQUENT` schedule is audited + advanced but not enqueued. Thin — the cadence/fire logic lives
  * in the pure deciders; the cron/enqueue/advance effects are injected ports.
  */
-export async function evaluateDueSchedules(ports: CronEvaluatorPorts): Promise<CronEvaluatorReport> {
+export async function evaluateDueSchedules(
+  ports: CronEvaluatorPorts,
+): Promise<CronEvaluatorReport> {
   const now = ports.now();
   const due = await ports.schedules.listDue(now);
   const dispositions: ScheduleTickDisposition[] = [];

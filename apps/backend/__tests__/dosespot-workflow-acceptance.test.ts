@@ -39,11 +39,20 @@ describe("M12-T10 §5 workflow acceptance", () => {
   it("W-MR-01 — standard prescription: draft → request-signature → sign → transmit → active", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, PHYS, {
-      patientId: PATIENT, admissionId: ADMISSION, medClass: "standard",
-      rxnormRxcui: "1191", ndc: null, drugName: "Aspirin", strength: "81 mg", doseForm: "tablet",
-      route: "oral", data: { sigFreeText: "1 tablet by mouth daily" },
-      prescriberDiscipline: "hospice_physician", prescribingPhysicianMdmId: PHYS,
-      dispensingPharmacyMdmId: PHARMACY, refillsAuthorized: 3,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      medClass: "standard",
+      rxnormRxcui: "1191",
+      ndc: null,
+      drugName: "Aspirin",
+      strength: "81 mg",
+      doseForm: "tablet",
+      route: "oral",
+      data: { sigFreeText: "1 tablet by mouth daily" },
+      prescriberDiscipline: "hospice_physician",
+      prescribingPhysicianMdmId: PHYS,
+      dispensingPharmacyMdmId: PHARMACY,
+      refillsAuthorized: 3,
     });
     expect(draft.status).toBe("draft");
     expect(draft.isControlledSubstance).toBe(false);
@@ -58,7 +67,8 @@ describe("M12-T10 §5 workflow acceptance", () => {
     // runs in the same tx. The in-mem slice lands the row on `signed`; the transmission chain below is the
     // §4.10 worker + the §2.2 webhook driving the pure machine to `active`.
     const signed = await svc.signOrder(ORG, PHYS, draft.id, {
-      signerDiscipline: "hospice_physician", signedAtClient: NOW,
+      signerDiscipline: "hospice_physician",
+      signedAtClient: NOW,
     });
     expect(signed.status).toBe("signed");
     expect(signed.signedAt).toBe(NOW);
@@ -66,15 +76,25 @@ describe("M12-T10 §5 workflow acceptance", () => {
     expect(eventNames(svc.drainEvents())).toContain("m12.medication_order.signed");
 
     // The §4.10 worker enqueues + transmits; the §2.2 ScriptStatusUpdate webhook acks then activates.
-    const queued = transitionMedicationOrder("signed", { type: "enqueueTransmission", isSystemActor: true });
+    const queued = transitionMedicationOrder("signed", {
+      type: "enqueueTransmission",
+      isSystemActor: true,
+    });
     expect(queued.to).toBe("queued_for_transmission");
     const transmitted = transitionMedicationOrder("queued_for_transmission", {
-      type: "transmissionSucceeded", isSystemActor: true,
+      type: "transmissionSucceeded",
+      isSystemActor: true,
     });
     expect(transmitted.to).toBe("transmitted");
-    const acked = transitionMedicationOrder("transmitted", { type: "pharmacyAck", isSystemActor: true });
+    const acked = transitionMedicationOrder("transmitted", {
+      type: "pharmacyAck",
+      isSystemActor: true,
+    });
     expect(acked.to).toBe("ack_received");
-    const active = transitionMedicationOrder("ack_received", { type: "activate", isSystemActor: true });
+    const active = transitionMedicationOrder("ack_received", {
+      type: "activate",
+      isSystemActor: true,
+    });
     expect(active.to).toBe("active");
     // Each system-actor transition carries exactly one §4.4 outbox effect (the relay publishes it in-tx).
     expect(active.effects).toContainEqual({ kind: "outbox", event: "m12.medication_order.active" });
@@ -84,14 +104,31 @@ describe("M12-T10 §5 workflow acceptance", () => {
     // Given: a previously-active source order (Tramadol-like, non-controlled here) and two pending refills.
     const svcSeeded = createInMemoryDoseSpotBackend({
       now: () => NOW,
-      orders: [{
-        id: SRC_ORDER, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, medClass: "standard",
-        status: "active", drugName: "Tramadol", strength: "50 mg", doseForm: "tablet", route: "oral",
-        prescriberMembershipId: PHYS, prescriberDiscipline: "hospice_physician", refillsRemaining: 2,
-      }],
+      orders: [
+        {
+          id: SRC_ORDER,
+          organizationId: ORG,
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          medClass: "standard",
+          status: "active",
+          drugName: "Tramadol",
+          strength: "50 mg",
+          doseForm: "tablet",
+          route: "oral",
+          prescriberMembershipId: PHYS,
+          prescriberDiscipline: "hospice_physician",
+          refillsRemaining: 2,
+        },
+      ],
       refills: [
         { id: REFILL, organizationId: ORG, patientId: PATIENT, sourceMedicationOrderId: SRC_ORDER },
-        { id: REFILL_DENY, organizationId: ORG, patientId: PATIENT, sourceMedicationOrderId: SRC_ORDER },
+        {
+          id: REFILL_DENY,
+          organizationId: ORG,
+          patientId: PATIENT,
+          sourceMedicationOrderId: SRC_ORDER,
+        },
       ],
     });
 
@@ -99,7 +136,9 @@ describe("M12-T10 §5 workflow acceptance", () => {
     expect(beforePending.status).toBe("pending");
 
     // Approve → a NEW medication_order is minted (a refill is a new prescription, not a status flip, D9).
-    const { resultingOrderId } = await svcSeeded.approveRefill(ORG, PHYS, REFILL, { refillsAuthorized: 1 });
+    const { resultingOrderId } = await svcSeeded.approveRefill(ORG, PHYS, REFILL, {
+      refillsAuthorized: 1,
+    });
     expect(resultingOrderId).toBeTruthy();
     const minted = await svcSeeded.getOrder(ORG, resultingOrderId);
     expect(minted.derivedFromRefillId).toBe(REFILL);
@@ -141,35 +180,64 @@ describe("M12-T10 §9.3 security & authorization (anti-escalation, EPCS gate D18
   it("anti-escalation — an RN cannot sign a standard medication order (prescriber-only, §4.6)", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, PHYS, {
-      patientId: PATIENT, admissionId: ADMISSION, medClass: "standard", rxnormRxcui: "1191", ndc: null,
-      drugName: "Aspirin", strength: "81 mg", doseForm: "tablet", route: "oral", data: {},
-      prescriberDiscipline: "hospice_physician", prescribingPhysicianMdmId: PHYS, refillsAuthorized: 0,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      medClass: "standard",
+      rxnormRxcui: "1191",
+      ndc: null,
+      drugName: "Aspirin",
+      strength: "81 mg",
+      doseForm: "tablet",
+      route: "oral",
+      data: {},
+      prescriberDiscipline: "hospice_physician",
+      prescribingPhysicianMdmId: PHYS,
+      refillsAuthorized: 0,
     });
     await svc.requestSignature(ORG, draft.id, "hospice_physician");
     await expect(
-      svc.signOrder(ORG, "rn_1", draft.id, { signerDiscipline: "rn_case_manager", signedAtClient: NOW }),
-    ).rejects.toThrowError(expect.objectContaining({ code: "SIGNER_NOT_ELIGIBLE", statusCode: 403 }));
+      svc.signOrder(ORG, "rn_1", draft.id, {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: NOW,
+      }),
+    ).rejects.toThrowError(
+      expect.objectContaining({ code: "SIGNER_NOT_ELIGIBLE", statusCode: 403 }),
+    );
   });
 
   it("EPCS certification gate (D18) — a controlled-substance sign is blocked while the tenant is not certified", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, PHYS, {
-      patientId: PATIENT, admissionId: ADMISSION, medClass: "controlled_substance", rxnormRxcui: "1819",
-      ndc: null, drugName: "Oxycodone", strength: "5 mg", doseForm: "tablet", route: "oral", data: {},
-      prescriberDiscipline: "hospice_physician", prescribingPhysicianMdmId: PHYS,
-      deaSchedule: "II", containsControlled: true, refillsAuthorized: 0,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      medClass: "controlled_substance",
+      rxnormRxcui: "1819",
+      ndc: null,
+      drugName: "Oxycodone",
+      strength: "5 mg",
+      doseForm: "tablet",
+      route: "oral",
+      data: {},
+      prescriberDiscipline: "hospice_physician",
+      prescribingPhysicianMdmId: PHYS,
+      deaSchedule: "II",
+      containsControlled: true,
+      refillsAuthorized: 0,
     });
     expect(draft.isControlledSubstance).toBe(true);
     // EPCS is OFF in Phase 1 (epcs_certification_status='not_certified'); the D18 gate fires the moment the
     // controlled order is pushed toward signature — it never even reaches `pending_signature`.
-    await expect(
-      svc.requestSignature(ORG, draft.id, "hospice_physician"),
-    ).rejects.toThrowError(expect.objectContaining({ code: "EPCS_NOT_CERTIFIED", statusCode: 403 }));
+    await expect(svc.requestSignature(ORG, draft.id, "hospice_physician")).rejects.toThrowError(
+      expect.objectContaining({ code: "EPCS_NOT_CERTIFIED", statusCode: 403 }),
+    );
     // And a controlled order may NEVER ride the standard `sign` path (it routes to EPCS).
     expect(() =>
       transitionMedicationOrder("pending_signature", {
-        type: "sign", medClass: "controlled_substance", containsControlled: true,
-        signerEligible: true, signerIsOrderingPhysician: true,
+        type: "sign",
+        medClass: "controlled_substance",
+        containsControlled: true,
+        signerEligible: true,
+        signerIsOrderingPhysician: true,
       }),
     ).toThrowError(expect.objectContaining({ code: "SIGN_REQUIRES_EPCS", statusCode: 422 }));
   });
@@ -179,7 +247,9 @@ describe("M12-T10 §9.3 security & authorization (anti-escalation, EPCS gate D18
     // admits no `transmissionExhausted` from `active` → the worker's redelivery is a guarded no-op.
     expect(() =>
       transitionMedicationOrder("active", { type: "transmissionExhausted", isSystemActor: true }),
-    ).toThrowError(expect.objectContaining({ code: "ILLEGAL_MEDICATION_ORDER_TRANSITION", statusCode: 409 }));
+    ).toThrowError(
+      expect.objectContaining({ code: "ILLEGAL_MEDICATION_ORDER_TRANSITION", statusCode: 409 }),
+    );
   });
 });
 
@@ -187,9 +257,19 @@ describe("M12-T10 cross-tenant isolation (service-layer non-leaking 404; live-PG
   it("an order created in org_a is invisible to org_b (non-leaking NotFound)", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, PHYS, {
-      patientId: PATIENT, admissionId: ADMISSION, medClass: "standard", rxnormRxcui: "1191", ndc: null,
-      drugName: "Aspirin", strength: "81 mg", doseForm: "tablet", route: "oral", data: {},
-      prescriberDiscipline: "hospice_physician", prescribingPhysicianMdmId: PHYS, refillsAuthorized: 0,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      medClass: "standard",
+      rxnormRxcui: "1191",
+      ndc: null,
+      drugName: "Aspirin",
+      strength: "81 mg",
+      doseForm: "tablet",
+      route: "oral",
+      data: {},
+      prescriberDiscipline: "hospice_physician",
+      prescribingPhysicianMdmId: PHYS,
+      refillsAuthorized: 0,
     });
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toThrow();
     expect((await svc.listOrders(ORG_B, {})).orders).toEqual([]);
@@ -198,7 +278,9 @@ describe("M12-T10 cross-tenant isolation (service-layer non-leaking 404; live-PG
   it("a refill request in org_a is invisible to org_b (non-leaking NotFound)", async () => {
     const svc = createInMemoryDoseSpotBackend({
       now: () => NOW,
-      refills: [{ id: REFILL, organizationId: ORG, patientId: PATIENT, sourceMedicationOrderId: SRC_ORDER }],
+      refills: [
+        { id: REFILL, organizationId: ORG, patientId: PATIENT, sourceMedicationOrderId: SRC_ORDER },
+      ],
     });
     await expect(svc.getRefill(ORG_B, REFILL)).rejects.toThrow();
   });

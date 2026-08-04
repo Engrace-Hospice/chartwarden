@@ -1,9 +1,9 @@
 // @wardenx/emar — §2.6 D7 controlled-substance witness eligibility — M13-T04.
 import { describe, expect, it } from "vitest";
 import {
+  type WitnessEligibilityInput,
   assertWitnessEligible,
   controlledSubstanceWitnessEligible,
-  type WitnessEligibilityInput,
 } from "../src/witness";
 
 const eligible: WitnessEligibilityInput = {
@@ -18,11 +18,16 @@ const eligible: WitnessEligibilityInput = {
 
 describe("§2.6 D7 controlledSubstanceWitnessEligible", () => {
   it("an active same-tenant RN witness who is not the administering clinician is eligible", () => {
-    expect(controlledSubstanceWitnessEligible(eligible)).toEqual({ eligible: true, isBreakGlass: false });
+    expect(controlledSubstanceWitnessEligible(eligible)).toEqual({
+      eligible: true,
+      isBreakGlass: false,
+    });
   });
   it("each of {rn, lpn, md, np, pa} is an eligible discipline (case-insensitive)", () => {
     for (const d of ["rn", "lpn", "md", "np", "pa", "NP"]) {
-      expect(controlledSubstanceWitnessEligible({ ...eligible, witnessDiscipline: d }).eligible).toBe(true);
+      expect(
+        controlledSubstanceWitnessEligible({ ...eligible, witnessDiscipline: d }).eligible,
+      ).toBe(true);
     }
   });
   it("a clinician cannot witness themselves", () => {
@@ -64,7 +69,9 @@ describe("§2.6 D7 controlledSubstanceWitnessEligible", () => {
 describe("§2.6 D7 assertWitnessEligible", () => {
   it("returns { isBreakGlass } on success", () => {
     expect(assertWitnessEligible(eligible)).toEqual({ isBreakGlass: false });
-    expect(assertWitnessEligible({ ...eligible, witnessIsBreakGlass: true })).toEqual({ isBreakGlass: true });
+    expect(assertWitnessEligible({ ...eligible, witnessIsBreakGlass: true })).toEqual({
+      isBreakGlass: true,
+    });
   });
   it("throws CONTROLLED_WITNESS_NOT_ELIGIBLE (403) with the reason in the message", () => {
     expect(() => assertWitnessEligible({ ...eligible, witnessIsCaregiver: true })).toThrow(

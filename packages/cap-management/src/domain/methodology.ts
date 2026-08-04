@@ -9,7 +9,7 @@
 //                  provider during the cap year (weight ∈ (0,1]). Allocated cap = per-beneficiary cap ×
 //                  weight. Cross-hospice election days come from M6/M40; when unavailable the weight falls
 //                  back to 1.0 (lifetime treatment within the tenant — §4.4 degraded path).
-import { fromDecimal, RegulatoryDecimal } from "@wardenx/shared/money";
+import { RegulatoryDecimal, fromDecimal } from "@wardenx/shared/money";
 import { clamp, roundCents } from "../money";
 import type { Methodology } from "./types";
 

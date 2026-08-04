@@ -45,17 +45,31 @@ export function buildIpuSeams(db: DbClient): {
           const [adm] = await tx
             .select({ id: schema.ipuAdmission.id, unitId: schema.ipuAdmission.unitId })
             .from(schema.ipuAdmission)
-            .where(and(eq(schema.ipuAdmission.patientId, patientId), ne(schema.ipuAdmission.state, "closed")))
+            .where(
+              and(
+                eq(schema.ipuAdmission.patientId, patientId),
+                ne(schema.ipuAdmission.state, "closed"),
+              ),
+            )
             .limit(1);
           if (!adm) return null;
           const [ba] = await tx
             .select({ bedId: schema.ipuBedAssignment.bedId })
             .from(schema.ipuBedAssignment)
-            .where(and(eq(schema.ipuBedAssignment.ipuAdmissionId, adm.id), isNull(schema.ipuBedAssignment.endedAt)))
+            .where(
+              and(
+                eq(schema.ipuBedAssignment.ipuAdmissionId, adm.id),
+                isNull(schema.ipuBedAssignment.endedAt),
+              ),
+            )
             .limit(1);
           if (!ba) return null;
           const [unit] = adm.unitId
-            ? await tx.select({ facilityId: schema.inpatientUnit.facilityId }).from(schema.inpatientUnit).where(eq(schema.inpatientUnit.id, adm.unitId)).limit(1)
+            ? await tx
+                .select({ facilityId: schema.inpatientUnit.facilityId })
+                .from(schema.inpatientUnit)
+                .where(eq(schema.inpatientUnit.id, adm.unitId))
+                .limit(1)
             : [];
           return { bedId: ba.bedId, unitFacilityId: unit?.facilityId ?? "" };
         });
@@ -66,9 +80,16 @@ export function buildIpuSeams(db: DbClient): {
       async inpatientDaysForFiscalDate(organizationId, providerEntityId, asOfDate) {
         return withOrg(organizationId, async (tx) => {
           const [row] = await tx
-            .select({ n: sql<number>`coalesce(sum(${schema.ipuCensusSnapshot.bedDaysGip} + ${schema.ipuCensusSnapshot.bedDaysIrc} + ${schema.ipuCensusSnapshot.bedDaysArrangedGip} + ${schema.ipuCensusSnapshot.bedDaysArrangedIrc}), 0)::int` })
+            .select({
+              n: sql<number>`coalesce(sum(${schema.ipuCensusSnapshot.bedDaysGip} + ${schema.ipuCensusSnapshot.bedDaysIrc} + ${schema.ipuCensusSnapshot.bedDaysArrangedGip} + ${schema.ipuCensusSnapshot.bedDaysArrangedIrc}), 0)::int`,
+            })
             .from(schema.ipuCensusSnapshot)
-            .where(and(eq(schema.ipuCensusSnapshot.providerEntityId, providerEntityId), lte(schema.ipuCensusSnapshot.serviceDate, asOfDate)));
+            .where(
+              and(
+                eq(schema.ipuCensusSnapshot.providerEntityId, providerEntityId),
+                lte(schema.ipuCensusSnapshot.serviceDate, asOfDate),
+              ),
+            );
           return row?.n ?? 0;
         });
       },
@@ -78,9 +99,19 @@ export function buildIpuSeams(db: DbClient): {
         const from = `${fiscalYear}-01-01`;
         const to = `${fiscalYear}-12-31`;
         const rows = await (db as DbClient)
-          .select({ n: sql<number>`coalesce(sum(${schema.ipuCensusSnapshot.bedDaysGip} + ${schema.ipuCensusSnapshot.bedDaysIrc} + ${schema.ipuCensusSnapshot.bedDaysArrangedGip} + ${schema.ipuCensusSnapshot.bedDaysArrangedIrc}), 0)::int` })
+          .select({
+            n: sql<number>`coalesce(sum(${schema.ipuCensusSnapshot.bedDaysGip} + ${schema.ipuCensusSnapshot.bedDaysIrc} + ${schema.ipuCensusSnapshot.bedDaysArrangedGip} + ${schema.ipuCensusSnapshot.bedDaysArrangedIrc}), 0)::int`,
+          })
           .from(schema.ipuCensusSnapshot)
-          .where(and(eq(schema.ipuCensusSnapshot.providerEntityId, providerEntityId), and(sql`${schema.ipuCensusSnapshot.serviceDate} >= ${from}`, sql`${schema.ipuCensusSnapshot.serviceDate} <= ${to}`)));
+          .where(
+            and(
+              eq(schema.ipuCensusSnapshot.providerEntityId, providerEntityId),
+              and(
+                sql`${schema.ipuCensusSnapshot.serviceDate} >= ${from}`,
+                sql`${schema.ipuCensusSnapshot.serviceDate} <= ${to}`,
+              ),
+            ),
+          );
         return rows[0]?.n ?? 0;
       },
     },
@@ -91,7 +122,12 @@ export function buildIpuSeams(db: DbClient): {
           const [ba] = await tx
             .select({ id: schema.ipuBedAssignment.id })
             .from(schema.ipuBedAssignment)
-            .where(and(eq(schema.ipuBedAssignment.ipuAdmissionId, ipuAdmissionId), isNull(schema.ipuBedAssignment.endedAt)))
+            .where(
+              and(
+                eq(schema.ipuBedAssignment.ipuAdmissionId, ipuAdmissionId),
+                isNull(schema.ipuBedAssignment.endedAt),
+              ),
+            )
             .limit(1);
           return ba !== undefined;
         });
@@ -105,7 +141,12 @@ export function buildIpuSeams(db: DbClient): {
           const [w] = await tx
             .select({ isCovered: schema.ipuRnCoverageWindow.isCovered })
             .from(schema.ipuRnCoverageWindow)
-            .where(and(eq(schema.ipuRnCoverageWindow.unitId, unitId), eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart)))
+            .where(
+              and(
+                eq(schema.ipuRnCoverageWindow.unitId, unitId),
+                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
+              ),
+            )
             .limit(1);
           return w?.isCovered === true;
         });
@@ -115,11 +156,22 @@ export function buildIpuSeams(db: DbClient): {
     IpuIvSafetyOverlayProvider: {
       async getOverlayForOrder(organizationId, orderId) {
         return withOrg(organizationId, async (tx) => {
-          const [o] = await tx.select().from(schema.ipuIvSafetyOverlay).where(and(eq(schema.ipuIvSafetyOverlay.orderId, orderId), eq(schema.ipuIvSafetyOverlay.overlayActive, true))).limit(1);
+          const [o] = await tx
+            .select()
+            .from(schema.ipuIvSafetyOverlay)
+            .where(
+              and(
+                eq(schema.ipuIvSafetyOverlay.orderId, orderId),
+                eq(schema.ipuIvSafetyOverlay.overlayActive, true),
+              ),
+            )
+            .limit(1);
           if (!o) return null;
           return {
             titrationMinRate: o.titrationMinRate ? Number(o.titrationMinRate) : 0,
-            titrationMaxRate: o.titrationMaxRate ? Number(o.titrationMaxRate) : Number.POSITIVE_INFINITY,
+            titrationMaxRate: o.titrationMaxRate
+              ? Number(o.titrationMaxRate)
+              : Number.POSITIVE_INFINITY,
             rateUnit: o.rateUnit,
             dualWitnessRequired: o.dualWitnessRequired,
             maxContinuousDurationHours: o.maxContinuousDurationHours,
@@ -136,11 +188,23 @@ export function buildIpuSeams(db: DbClient): {
           const restrictions = await tx
             .select({ kind: schema.ipuVisitorRestriction.restrictionKind })
             .from(schema.ipuVisitorRestriction)
-            .where(and(eq(schema.ipuVisitorRestriction.patientId, patientId), isNull(schema.ipuVisitorRestriction.liftedAt)));
+            .where(
+              and(
+                eq(schema.ipuVisitorRestriction.patientId, patientId),
+                isNull(schema.ipuVisitorRestriction.liftedAt),
+              ),
+            );
           try {
             // Probe with a non-family relationship — the strictest evaluation for a general "allowed?" read.
-            const decision = evaluateVisitorCheckIn("friend" as IpuVisitorRelationship, restrictions.map((r) => ({ kind: r.kind })));
-            return { allowed: true, maskRequired: decision.maskRequired, reason: decision.appliedRestriction };
+            const decision = evaluateVisitorCheckIn(
+              "friend" as IpuVisitorRelationship,
+              restrictions.map((r) => ({ kind: r.kind })),
+            );
+            return {
+              allowed: true,
+              maskRequired: decision.maskRequired,
+              reason: decision.appliedRestriction,
+            };
           } catch {
             return { allowed: false, maskRequired: false, reason: "restricted" };
           }
@@ -167,7 +231,12 @@ export function buildIpuSeams(db: DbClient): {
           const [row] = await tx
             .select({ n: sql<number>`count(*)::int` })
             .from(schema.ipuAdmission)
-            .where(and(eq(schema.ipuAdmission.state, "deceased"), sql`${schema.ipuAdmission.updatedAt}::date = ${serviceDate}`));
+            .where(
+              and(
+                eq(schema.ipuAdmission.state, "deceased"),
+                sql`${schema.ipuAdmission.updatedAt}::date = ${serviceDate}`,
+              ),
+            );
           return row?.n ?? 0;
         });
       },
@@ -176,7 +245,9 @@ export function buildIpuSeams(db: DbClient): {
     IpuTenantPostureReader: {
       async unitsForOrg(organizationId) {
         return withOrg(organizationId, async (tx) => {
-          const rows = await tx.select({ unitId: schema.inpatientUnit.id, isActive: schema.inpatientUnit.isActive }).from(schema.inpatientUnit);
+          const rows = await tx
+            .select({ unitId: schema.inpatientUnit.id, isActive: schema.inpatientUnit.isActive })
+            .from(schema.inpatientUnit);
           return rows.map((r) => ({ unitId: r.unitId, isActive: r.isActive }));
         });
       },

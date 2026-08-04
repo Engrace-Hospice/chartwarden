@@ -84,7 +84,10 @@ export function createDrizzleReportingEraseStore(
     }
     return c;
   };
-  const takeCarry = (org: string, key: "scheduleRuns" | "shares" | "definitionVersions"): number => {
+  const takeCarry = (
+    org: string,
+    key: "scheduleRuns" | "shares" | "definitionVersions",
+  ): number => {
     const c = carried.get(org);
     if (!c) return 0;
     const n = c[key];

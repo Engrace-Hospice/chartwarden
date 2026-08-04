@@ -29,7 +29,12 @@
 // rows are re-pointed. An `overdue` or `escalated` row names a clinician who did not answer a safety
 // prompt; moving that name to whoever picked the visit up afterwards would file one person's silence
 // against another — and the supervisor reading the board would call the wrong phone.
-import type { IsoInstant, MembershipId, SafetyPolicyEffectiveDto, SafetyPolicyVersionId } from "@wardenx/types";
+import type {
+  IsoInstant,
+  MembershipId,
+  SafetyPolicyEffectiveDto,
+  SafetyPolicyVersionId,
+} from "@wardenx/types";
 import { withAudit } from "../lifecycle/effects";
 import {
   type SafetyConsumerDecision,
@@ -46,7 +51,10 @@ import {
 /** The instants the mid-visit prompts fall on for one visit, or `[]` when the visit is too short. */
 export function midVisitCadencePoints(
   visit: Pick<SafetyVisitAnchors, "scheduledStartedAt" | "scheduledEndedAt">,
-  policy: Pick<SafetyPolicyEffectiveDto, "midVisitCadenceMinutes" | "midVisitMinVisitDurationMinutes">,
+  policy: Pick<
+    SafetyPolicyEffectiveDto,
+    "midVisitCadenceMinutes" | "midVisitMinVisitDurationMinutes"
+  >,
 ): readonly IsoInstant[] {
   const durationMinutes = minutesBetween(visit.scheduledStartedAt, visit.scheduledEndedAt);
   if (durationMinutes < policy.midVisitMinVisitDurationMinutes) return [];
@@ -106,7 +114,10 @@ export function planVisitCadence(input: {
       skipped.push({ kind, reason: "already_materialized" });
       return;
     }
-    mutations.push({ kind: "insert", row: planRow(visit, policy, policyVersionId, kind, expectedAt) });
+    mutations.push({
+      kind: "insert",
+      row: planRow(visit, policy, policyVersionId, kind, expectedAt),
+    });
   };
 
   propose("pre_visit", shiftMinutes(visit.scheduledStartedAt, -policy.preVisitWindowMinutes));

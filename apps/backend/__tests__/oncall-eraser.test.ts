@@ -1,15 +1,15 @@
+import { describe, expect, it } from "vitest";
+import { getEraser } from "../src/bootstrap/index";
 // M19-T02 — the §3.7 `triage_record` eraser's orchestration contract. The Drizzle store is exercised by
 // the live RLS suite; what is asserted here is the ORDER and the ARITHMETIC, both of which are the parts a
 // destruction certificate depends on and neither of which a type checker can see.
 import {
+  type TriageEraseStore,
   createInMemoryTriageEraseStore,
   createTriageEraser,
   eraseTriageRecord,
   registerTriageErasers,
-  type TriageEraseStore,
 } from "../src/modules/19-oncall/index";
-import { getEraser } from "../src/bootstrap/index";
-import { describe, expect, it } from "vitest";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const PATIENT = "77777777-0000-0000-0000-000000000001";

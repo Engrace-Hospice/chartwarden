@@ -6,7 +6,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4319 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** One related-organization line: the related party, the service furnished, the cost to the related org, and
  *  the amount included in the hospice's allowable cost (the adjustment basis). */

@@ -1,15 +1,15 @@
 // @wardenx/emar — §2.7 D5 comfort-kit deployment + drawdown + return reconciliation — M13-T05.
 import { describe, expect, it } from "vitest";
 import {
+  CONTROLLED_DISCREPANCY_FRACTION,
+  type ComfortKitDeployedEnvelope,
+  DEFAULT_REPLENISHMENT_THRESHOLD_FRACTION,
+  type KitDrawdownState,
   applyKitDrawdown,
   applyKitReturn,
   buildComfortKitDeployment,
-  CONTROLLED_DISCREPANCY_FRACTION,
-  DEFAULT_REPLENISHMENT_THRESHOLD_FRACTION,
   evaluateReplenishmentUrgency,
   reconcileKitReturnLine,
-  type ComfortKitDeployedEnvelope,
-  type KitDrawdownState,
 } from "../src/comfort-kit";
 import { AdministrationStateError } from "../src/lifecycle/errors";
 
@@ -68,11 +68,16 @@ describe("§2.7 buildComfortKitDeployment", () => {
     });
   });
   it("rejects an empty kit", () => {
-    expect(() => buildComfortKitDeployment({ ...ENVELOPE, contents: [] })).toThrow(AdministrationStateError);
+    expect(() => buildComfortKitDeployment({ ...ENVELOPE, contents: [] })).toThrow(
+      AdministrationStateError,
+    );
   });
   it("rejects a non-positive content quantity", () => {
     expect(() =>
-      buildComfortKitDeployment({ ...ENVELOPE, contents: [{ ...ENVELOPE.contents[0]!, expectedQuantity: 0 }] }),
+      buildComfortKitDeployment({
+        ...ENVELOPE,
+        contents: [{ ...ENVELOPE.contents[0]!, expectedQuantity: 0 }],
+      }),
     ).toThrow(/positive expected quantity/);
   });
 });
@@ -96,7 +101,9 @@ describe("§2.7 D5 applyKitDrawdown", () => {
     expect(r.replenishmentSignal).toBeNull();
   });
   it("rejects a decrement that would go negative with KIT_INSUFFICIENT_QUANTITY", () => {
-    expect(() => applyKitDrawdown(STATE, { administeredAmount: 25 })).toThrow(AdministrationStateError);
+    expect(() => applyKitDrawdown(STATE, { administeredAmount: 25 })).toThrow(
+      AdministrationStateError,
+    );
     try {
       applyKitDrawdown(STATE, { administeredAmount: 25 });
     } catch (e) {
@@ -120,7 +127,10 @@ describe("§2.7 D5 applyKitDrawdown", () => {
     expect(r.replenishmentSignal?.urgencyKind).toBe("urgent");
   });
   it("escalates to urgent on burn rate (≥3 PRN administrations in 24h) even above the 10% floor", () => {
-    const r = applyKitDrawdown({ ...STATE, remainingQuantity: 6 }, { administeredAmount: 1, recentPrnCount24h: 3 });
+    const r = applyKitDrawdown(
+      { ...STATE, remainingQuantity: 6 },
+      { administeredAmount: 1, recentPrnCount24h: 3 },
+    );
     expect(r.replenishmentSignal?.urgencyKind).toBe("urgent");
   });
 });

@@ -41,10 +41,7 @@ import type {
   SafetySosOutcome,
   VisitId,
 } from "@wardenx/types";
-import {
-  SAFETY_SOS_ANOMALY_VOLUME_PER_HOUR,
-  SAFETY_SOS_TERMINAL_STATES,
-} from "@wardenx/types";
+import { SAFETY_SOS_ANOMALY_VOLUME_PER_HOUR, SAFETY_SOS_TERMINAL_STATES } from "@wardenx/types";
 import {
   type SafetySideEffect,
   type SafetyTransitionResult,
@@ -131,9 +128,7 @@ export function resolveSosEdge(
 }
 
 /** The commands legal from a state — what the §5 SOS detail panel renders as available actions. */
-export function availableSosCommands(
-  from: SafetySosLifecycleState,
-): readonly SafetySosCommand[] {
+export function availableSosCommands(from: SafetySosLifecycleState): readonly SafetySosCommand[] {
   if (TERMINAL.includes(from)) return [];
   return SAFETY_SOS_EDGES.filter((e) => e.from === from).map((e) => e.command);
 }

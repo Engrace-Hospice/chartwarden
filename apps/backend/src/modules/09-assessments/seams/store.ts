@@ -52,7 +52,9 @@ export interface AssessmentReaderSeed {
   /** The latest active row per (patient, scale) the latest reads resolve. */
   readonly latest?: readonly LatestAssessment[];
   /** Every scored capture the series reads window over (any order; the slice sorts ascending). */
-  readonly points?: ReadonlyArray<ScaleSeriesPoint & { readonly patientId: PatientId; readonly scaleType: ScaleType }>;
+  readonly points?: ReadonlyArray<
+    ScaleSeriesPoint & { readonly patientId: PatientId; readonly scaleType: ScaleType }
+  >;
 }
 
 /** A scored capture in the in-memory slice, tagged with its (patient, scale) so the slice can window it. */
@@ -70,9 +72,7 @@ export function createInMemoryAssessmentReaderStore(seed: AssessmentReaderSeed =
   return {
     store: {
       async latestActive(patientId, scaleType) {
-        return (
-          latest.find((l) => l.patientId === patientId && l.scaleType === scaleType) ?? null
-        );
+        return latest.find((l) => l.patientId === patientId && l.scaleType === scaleType) ?? null;
       },
       async latestActiveBatch(patientId, scaleTypes) {
         const wanted = new Set(scaleTypes);

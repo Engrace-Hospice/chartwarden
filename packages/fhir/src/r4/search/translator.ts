@@ -52,7 +52,11 @@ export function createFhirSearchTranslator(deps: FhirSearchTranslatorDeps): Fhir
 
     if (!isSearchableResource(req.resourceType)) {
       issues.push(
-        issue("error", "not-supported", `Resource type '${req.resourceType}' is not supported for search.`),
+        issue(
+          "error",
+          "not-supported",
+          `Resource type '${req.resourceType}' is not supported for search.`,
+        ),
       );
       return { valid: false, issues };
     }
@@ -87,7 +91,11 @@ export function createFhirSearchTranslator(deps: FhirSearchTranslatorDeps): Fhir
       !findParam(req, "_id")
     ) {
       issues.push(
-        issue("error", "required", `The 'patient' search parameter is required for ${req.resourceType}.`),
+        issue(
+          "error",
+          "required",
+          `The 'patient' search parameter is required for ${req.resourceType}.`,
+        ),
       );
     }
 
@@ -109,7 +117,10 @@ export function createFhirSearchTranslator(deps: FhirSearchTranslatorDeps): Fhir
     };
   }
 
-  function resolveDiagnosticReportSearch(req: FhirSearchRequest, ctx: SearchContext): ResolvedSearch {
+  function resolveDiagnosticReportSearch(
+    req: FhirSearchRequest,
+    ctx: SearchContext,
+  ): ResolvedSearch {
     const patientValue = findParam(req, "patient");
     const count = normalizeCount(req.count);
     const cursor = decodeCursor(req.cursor);

@@ -22,13 +22,17 @@
 // passed, IAL2 verified, deadline reached, actor authority) is resolved upstream and passed in. The EPCS
 // requirement is read from the `@wardenx/dosespot` §2.1 `MED_CLASS_CATALOG`, not re-derived inline.
 import type {
-  MedClass,
-  MedicationOrderStatus,
-  MedicationOrderDiscontinuationReason,
   EpcsSecondFactorType,
+  MedClass,
+  MedicationOrderDiscontinuationReason,
+  MedicationOrderStatus,
 } from "@wardenx/types";
 import { MED_CLASS_CATALOG } from "../classes/catalog";
-import { type MedicationOrderSideEffect, type MedicationOrderTransitionResult, result } from "./effects";
+import {
+  type MedicationOrderSideEffect,
+  type MedicationOrderTransitionResult,
+  result,
+} from "./effects";
 import { MedicationOrderStateError, require_ } from "./errors";
 
 export type MedicationOrderState = MedicationOrderStatus;
@@ -203,7 +207,9 @@ export const MEDICATION_ORDER_GRAPH: Readonly<
  * `m12.medication_order.draft_created` outbox event). When the draft is minted from an M11/M32 extraction
  * the service swaps the event for `m12.medication_order.draft_created_from_extraction`.
  */
-export function planDraftCreation(fromExtraction = false): ReadonlyArray<MedicationOrderSideEffect> {
+export function planDraftCreation(
+  fromExtraction = false,
+): ReadonlyArray<MedicationOrderSideEffect> {
   return [
     { kind: "audit" },
     {
@@ -221,7 +227,11 @@ function signEffects(
   extra: ReadonlyArray<MedicationOrderSideEffect>,
 ): ReadonlyArray<MedicationOrderSideEffect> {
   return [
-    { kind: "sign_via_m11", signatureKind: "signature", ...(secondFactorType ? { secondFactorType } : {}) },
+    {
+      kind: "sign_via_m11",
+      signatureKind: "signature",
+      ...(secondFactorType ? { secondFactorType } : {}),
+    },
     { kind: "set_timestamp", field: "signed_at" },
     { kind: "bump_version" },
     { kind: "audit" },
@@ -267,9 +277,21 @@ export function transitionMedicationOrder(
         "MEDICATION_ORDER_REQUIRED_DATA_INCOMPLETE",
         "the medication order's per-class required data is not complete",
       );
-      require_(event.prescriberEligible, "PRESCRIBER_NOT_ELIGIBLE", "the prescribing discipline may not author this medication class");
-      require_(event.allergyCheckPassed, "ALLERGY_CHECK_NOT_PASSED", "the allergy / interaction check has not passed");
-      require_(event.sudConsentSatisfied, "SUD_CONSENT_REQUIRED", "the SUD-treatment-medication consent gate is not satisfied");
+      require_(
+        event.prescriberEligible,
+        "PRESCRIBER_NOT_ELIGIBLE",
+        "the prescribing discipline may not author this medication class",
+      );
+      require_(
+        event.allergyCheckPassed,
+        "ALLERGY_CHECK_NOT_PASSED",
+        "the allergy / interaction check has not passed",
+      );
+      require_(
+        event.sudConsentSatisfied,
+        "SUD_CONSENT_REQUIRED",
+        "the SUD-treatment-medication consent gate is not satisfied",
+      );
       if (isEpcsRequired(event.medClass, event.containsControlled)) {
         require_(
           event.tenantEpcsCertified,
@@ -284,7 +306,11 @@ export function transitionMedicationOrder(
     }
 
     case "discardDraft": {
-      require_(event.actorMayDiscard, "DISCARD_NOT_PERMITTED", "only the drafter or a supervisor may discard a draft");
+      require_(
+        event.actorMayDiscard,
+        "DISCARD_NOT_PERMITTED",
+        "only the drafter or a supervisor may discard a draft",
+      );
       require_(
         !event.hasExternalReferences,
         "MEDICATION_ORDER_HAS_EXTERNAL_REFERENCES",
@@ -301,7 +327,11 @@ export function transitionMedicationOrder(
         "SIGN_REQUIRES_EPCS",
         "a controlled-substance order must be signed through the EPCS path (signControlled)",
       );
-      require_(event.signerEligible, "SIGNER_NOT_ELIGIBLE", "the signing discipline is not eligible to sign this medication order");
+      require_(
+        event.signerEligible,
+        "SIGNER_NOT_ELIGIBLE",
+        "the signing discipline is not eligible to sign this medication order",
+      );
       if (from === "verbal_pending") {
         // §2.3 — the verbal follow-up signer must be the named prescriber; no on-behalf shortcuts (CMS).
         require_(
@@ -309,9 +339,14 @@ export function transitionMedicationOrder(
           "VERBAL_SIGNER_NOT_NAMED_PRESCRIBER",
           "the verbal follow-up signature must be applied by the named ordering prescriber",
         );
-        return result(from, event.type, "signed", signEffects(undefined, [
-          { kind: "outbox", event: "m12.medication_order.verbal_received" },
-        ]));
+        return result(
+          from,
+          event.type,
+          "signed",
+          signEffects(undefined, [
+            { kind: "outbox", event: "m12.medication_order.verbal_received" },
+          ]),
+        );
       }
       // from pending_signature — standard (non-EPCS) sign.
       require_(
@@ -333,7 +368,11 @@ export function transitionMedicationOrder(
         "EPCS_NOT_CERTIFIED",
         "controlled-substance prescribing requires the tenant to be DEA EPCS-certified (D18)",
       );
-      require_(event.deaScheduleAuthorized, "DEA_SCHEDULE_NOT_AUTHORIZED", "the prescriber is not authorized for this DEA schedule");
+      require_(
+        event.deaScheduleAuthorized,
+        "DEA_SCHEDULE_NOT_AUTHORIZED",
+        "the prescriber is not authorized for this DEA schedule",
+      );
       require_(
         event.prescriberIal2Verified,
         "EPCS_PRESCRIBER_NOT_VERIFIED",
@@ -354,7 +393,11 @@ export function transitionMedicationOrder(
     }
 
     case "secondFactorFailed": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the EPCS 2FA-failure transition is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the EPCS 2FA-failure transition is a system-actor operation",
+      );
       return result(from, event.type, "pending_signature", [
         { kind: "audit" },
         { kind: "outbox", event: "m12.medication_order.epcs_2fa_failed" },
@@ -368,9 +411,21 @@ export function transitionMedicationOrder(
         "EPCS_VERBAL_NOT_PERMITTED",
         "controlled-substance verbal medication orders are not permitted in Phase 1 (D18)",
       );
-      require_(event.recorderEligible, "VERBAL_RECORDER_NOT_ELIGIBLE", "the recording actor is not authorized to record verbal orders");
-      require_(event.namedPrescriberPresent, "VERBAL_PRESCRIBER_REQUIRED", "a named prescriber is required on the medication order");
-      require_(event.attestationRecorded, "VERBAL_ATTESTATION_REQUIRED", "a verbal-communication attestation is required");
+      require_(
+        event.recorderEligible,
+        "VERBAL_RECORDER_NOT_ELIGIBLE",
+        "the recording actor is not authorized to record verbal orders",
+      );
+      require_(
+        event.namedPrescriberPresent,
+        "VERBAL_PRESCRIBER_REQUIRED",
+        "a named prescriber is required on the medication order",
+      );
+      require_(
+        event.attestationRecorded,
+        "VERBAL_ATTESTATION_REQUIRED",
+        "a verbal-communication attestation is required",
+      );
       return result(from, event.type, "verbal_pending", [
         { kind: "record_verbal_via_m11" },
         { kind: "audit" },
@@ -379,13 +434,25 @@ export function transitionMedicationOrder(
     }
 
     case "withdraw": {
-      require_(event.actorMayWithdraw, "WITHDRAW_NOT_PERMITTED", "only the drafter, supervisor, or signer may withdraw");
+      require_(
+        event.actorMayWithdraw,
+        "WITHDRAW_NOT_PERMITTED",
+        "only the drafter, supervisor, or signer may withdraw",
+      );
       return result(from, event.type, "discontinued", discontinueEffects("clinical_judgement"));
     }
 
     case "expire": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "only M11's verbal-timer worker may expire a verbal order");
-      require_(event.deadlineReached, "VERBAL_DEADLINE_NOT_REACHED", "the verbal-order signature deadline has not been reached");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "only M11's verbal-timer worker may expire a verbal order",
+      );
+      require_(
+        event.deadlineReached,
+        "VERBAL_DEADLINE_NOT_REACHED",
+        "the verbal-order signature deadline has not been reached",
+      );
       // §2.3 step 6 — M12 has no parallel event name; the M36 high-severity alert is dispatched directly.
       return result(from, event.type, "expired_unsigned", [
         { kind: "set_timestamp", field: "expired_at" },
@@ -395,7 +462,11 @@ export function transitionMedicationOrder(
     }
 
     case "enqueueTransmission": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the post-sign enqueue is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the post-sign enqueue is a system-actor operation",
+      );
       return result(from, event.type, "queued_for_transmission", [
         { kind: "write_transmission" },
         { kind: "set_send_state", state: "queued" },
@@ -406,7 +477,11 @@ export function transitionMedicationOrder(
     }
 
     case "transmissionSucceeded": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the transmission-succeeded transition is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the transmission-succeeded transition is a system-actor operation",
+      );
       return result(from, event.type, "transmitted", [
         { kind: "update_transmission", outcome: "succeeded" },
         { kind: "set_send_state", state: "transmitted" },
@@ -417,7 +492,11 @@ export function transitionMedicationOrder(
     }
 
     case "transmissionExhausted": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the transmission-exhausted transition is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the transmission-exhausted transition is a system-actor operation",
+      );
       return result(from, event.type, "transmission_failed", [
         { kind: "update_transmission", outcome: "failed" },
         { kind: "set_send_state", state: "failed" },
@@ -428,7 +507,11 @@ export function transitionMedicationOrder(
     }
 
     case "pharmacyAck": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the pharmacy-ack transition is a webhook (system-actor) operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the pharmacy-ack transition is a webhook (system-actor) operation",
+      );
       return result(from, event.type, "ack_received", [
         { kind: "set_send_state", state: "acked" },
         { kind: "audit" },
@@ -437,7 +520,11 @@ export function transitionMedicationOrder(
     }
 
     case "pharmacyNack": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the pharmacy-nack transition is a webhook (system-actor) operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the pharmacy-nack transition is a webhook (system-actor) operation",
+      );
       return result(from, event.type, "nack_received", [
         { kind: "set_send_state", state: "nacked" },
         { kind: "audit" },
@@ -447,7 +534,11 @@ export function transitionMedicationOrder(
     }
 
     case "activate": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the activate transition is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the activate transition is a system-actor operation",
+      );
       // §2.2 — the downstream-relevant event: M13 eMAR may now record administrations against this order.
       return result(from, event.type, "active", [
         { kind: "set_timestamp", field: "activated_at" },
@@ -457,7 +548,11 @@ export function transitionMedicationOrder(
     }
 
     case "complete": {
-      require_(event.criterionMet, "COMPLETION_CRITERION_NOT_MET", "the one-shot / no-refill completion criterion is not met");
+      require_(
+        event.criterionMet,
+        "COMPLETION_CRITERION_NOT_MET",
+        "the one-shot / no-refill completion criterion is not met",
+      );
       return result(from, event.type, "completed", [
         { kind: "set_timestamp", field: "completed_at" },
         { kind: "audit" },
@@ -471,7 +566,11 @@ export function transitionMedicationOrder(
     }
 
     case "cascadeDiscontinue": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the discharge-cascade is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the discharge-cascade is a system-actor operation",
+      );
       return result(from, event.type, "discontinued", discontinueEffects("admission_discharged"));
     }
   }

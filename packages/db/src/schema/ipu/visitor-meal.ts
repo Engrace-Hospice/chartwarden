@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 visitor tracking + meal service (§2.7/§2.8, §3.3): ipu_visitor (MONTHLY-PARTITIONED
 // by checked_in_at, composite PK `(id, checked_in_at)` in SQL 0149), ipu_visitor_restriction (unit- or
 // patient-scoped), ipu_meal_service (MONTHLY-PARTITIONED by service_date). TENANT-SCOPED, RLS on
@@ -5,11 +6,25 @@
 // refusal_reason are PHI-denylisted (D11, §3.6). The scope-XOR CHECK on ipu_visitor_restriction and the
 // intake_fraction BETWEEN 0..1 CHECK live in the migration. Partitioned-table audit triggers are
 // GENERATED functions that hard-code the parent name (the M32 ai_token_ledger lesson).
-import { boolean, date, index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  boolean,
+  date,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+import {
+  ipuMealSlot,
+  ipuVisitorRelationship,
+  ipuVisitorRestrictionKind,
+  ipuVisitorRestrictionScope,
+} from "../../enums";
 import { bigintVersion } from "./shared";
 import { inpatientUnit } from "./units";
-import { ipuMealSlot, ipuVisitorRelationship, ipuVisitorRestrictionKind, ipuVisitorRestrictionScope } from "../../enums";
 
 // MONTHLY-PARTITIONED by checked_in_at; composite PK (id, checked_in_at) declared in migration 0149.
 export const ipuVisitor = pgTable(
@@ -32,7 +47,10 @@ export const ipuVisitor = pgTable(
     version: bigintVersion(),
   },
   (t) => ({
-    admissionCheckedInIx: index("ipu_visitor_admission_checked_in_idx").on(t.ipuAdmissionId, t.checkedInAt),
+    admissionCheckedInIx: index("ipu_visitor_admission_checked_in_idx").on(
+      t.ipuAdmissionId,
+      t.checkedInAt,
+    ),
   }),
 );
 
@@ -93,7 +111,10 @@ export const ipuMealService = pgTable(
     version: bigintVersion(),
   },
   (t) => ({
-    admissionDateIx: index("ipu_meal_service_admission_date_idx").on(t.ipuAdmissionId, t.serviceDate),
+    admissionDateIx: index("ipu_meal_service_admission_date_idx").on(
+      t.ipuAdmissionId,
+      t.serviceDate,
+    ),
   }),
 );
 

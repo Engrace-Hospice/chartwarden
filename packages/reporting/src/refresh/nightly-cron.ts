@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/reporting · refresh — the NIGHTLY tier orchestrator (M33 §2.5 / §4.8 / D2).
 //
 // The cron-fired orchestrator for slow-changing aggregates: at 02:00 tenant-local (the boot scheduler owns
@@ -10,12 +11,8 @@
 //
 // PURE: {@link selectNightlyTargets} is the pure work-set filter; {@link runNightlyRefresh} is the thin
 // port-injected orchestrator. No clock-derived scheduling here — the cron cadence is the boot scheduler's job.
-import {
-  decideRefreshDispatch,
-  type RefreshDispatchResult,
-} from "./dispatcher";
+import { type RefreshDispatchResult, decideRefreshDispatch } from "./dispatcher";
 import type { MvMetadataReadPort, MvRefreshQueuePort } from "./ports";
-import type { schema } from "@wardenx/db";
 
 /** §4.8: the nightly orchestrator fires at 02:00 tenant-local (the boot scheduler registers this cron). */
 export const NIGHTLY_REFRESH_CRON = "0 2 * * *" as const;

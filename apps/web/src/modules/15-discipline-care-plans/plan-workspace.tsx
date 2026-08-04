@@ -34,6 +34,21 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import {
+  ASSESSMENT_STATUS_TONE,
+  GOAL_STATUS_TONE,
+  INTERVENTION_STATUS_TONE,
+  PLAN_STATUS_TONE,
+  VERSION_STATUS_TONE,
+  assessmentKindLabel,
+  dateTime,
+  humanize,
+  kindLabel,
+  kindRegulation,
+  redactionLabel,
+  shortDate,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   Notice,
@@ -49,21 +64,6 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  ASSESSMENT_STATUS_TONE,
-  GOAL_STATUS_TONE,
-  INTERVENTION_STATUS_TONE,
-  PLAN_STATUS_TONE,
-  VERSION_STATUS_TONE,
-  assessmentKindLabel,
-  dateTime,
-  humanize,
-  kindLabel,
-  kindRegulation,
-  redactionLabel,
-  shortDate,
-  toneOf,
-} from "./discipline-status";
 import { SignVersionModal } from "./sign-version-modal";
 
 interface PatientSummary {
@@ -184,7 +184,9 @@ export function DisciplinePlanWorkspace({
             meta={`DOB ${patient.dob}`}
             chips={
               <>
-                <span style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.onSurfaceVariant }}>
+                <span
+                  style={{ fontFamily: t.fontMono, fontSize: "0.75rem", color: t.onSurfaceVariant }}
+                >
                   {patient.mrn}
                 </span>
                 <StatusPill
@@ -233,7 +235,10 @@ export function DisciplinePlanWorkspace({
               <span style={mutedStyle}>{kindRegulation(kind)}</span>
             </div>
             <div style={{ display: "flex", gap: t.space3 }}>
-              <Link to={`/patients/${patientId}/discipline-plans/${kind}/versions`} style={linkStyle}>
+              <Link
+                to={`/patients/${patientId}/discipline-plans/${kind}/versions`}
+                style={linkStyle}
+              >
                 Version history
               </Link>
               <Link to={`/patients/${patientId}/discipline-plans/summary`} style={linkStyle}>

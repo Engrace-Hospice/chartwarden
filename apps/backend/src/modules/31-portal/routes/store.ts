@@ -11,6 +11,7 @@
 // PHI CIPHERS ARE NEVER PROJECTED. The digests expose ids, enum tokens, counts and instants — never
 // `display_name_cipher`, `vendor_room_url_cipher` or a scope jsonb blob a consumer could not read.
 import { type DbClient, schema } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type {
   IsoInstant,
   PortalAccessGrantDigest,
@@ -25,7 +26,6 @@ import type {
   TelehealthVendor,
   TelehealthVisitDigest,
 } from "@wardenx/types";
-import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import type { M31SeamStores } from "../seams/stores";
 

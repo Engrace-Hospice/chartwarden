@@ -6,9 +6,9 @@
 // migration; the at-most-one-active-license-per-(org,scale) rule is a partial unique index.
 import { sql } from "drizzle-orm";
 import { date, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { scaleType, scaleLicenseStatus } from "../../enums";
-import { organizations } from "../organizations";
+import { scaleLicenseStatus, scaleType } from "../../enums";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
 
 export const scaleLicenses = pgTable(
   "scale_license",

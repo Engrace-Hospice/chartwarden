@@ -14,9 +14,9 @@
 //
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
 import type { IsoDate, LevelOfCare } from "../contracts";
+import { dayOfStay, fromEpochDay, toEpochDay } from "../domain/dates";
 import type { Cents } from "../domain/money";
 import { applyWageIndexFactor, perDiemAmountCents, sumCents } from "../domain/money";
-import { dayOfStay, fromEpochDay, toEpochDay } from "../domain/dates";
 
 /** The RHC payment-period bucket (D7); `n/a` for non-RHC levels of care, which have a single rate. */
 export type RhcDayBucket = "days_1_7" | "days_8_plus" | "n/a";
@@ -114,7 +114,9 @@ export interface HippsCalculationResult {
 function baseRateFor(rateTable: HippsRateTable, loc: LevelOfCare, bucket: RhcDayBucket): Cents {
   switch (loc) {
     case "routine_home_care":
-      return bucket === "days_1_7" ? rateTable.rhcDays1to7PerDiemCents : rateTable.rhcDays8PlusPerDiemCents;
+      return bucket === "days_1_7"
+        ? rateTable.rhcDays1to7PerDiemCents
+        : rateTable.rhcDays8PlusPerDiemCents;
     case "continuous_home_care":
       return rateTable.chcPerDiemCents;
     case "inpatient_respite_care":
@@ -140,7 +142,8 @@ export function deriveHippsCode(segments: readonly HippsSegmentResult[]): string
     inpatient_respite_care: "I",
     general_inpatient_care: "G",
   };
-  const bucketDigit = first.rhcDayBucket === "days_1_7" ? "1" : first.rhcDayBucket === "days_8_plus" ? "8" : "0";
+  const bucketDigit =
+    first.rhcDayBucket === "days_1_7" ? "1" : first.rhcDayBucket === "days_8_plus" ? "8" : "0";
   // [LOC char][RHC bucket digit][3 filler] — fixed 5 chars; filler positions await the CMS fixture.
   return `${locChar[first.levelOfCare]}${bucketDigit}000`;
 }
@@ -188,7 +191,10 @@ export function calculateHipps(input: HippsCalculationInput): HippsCalculationRe
           : "days_8_plus"
         : "n/a";
     const baseRatePerDiemCents = baseRateFor(input.rateTable, loc, bucket);
-    const ratePerDiemCents = applyWageIndexFactor(baseRatePerDiemCents, input.wageIndexFactorDecimal);
+    const ratePerDiemCents = applyWageIndexFactor(
+      baseRatePerDiemCents,
+      input.wageIndexFactorDecimal,
+    );
     days.push({ iso, levelOfCare: loc, bucket, baseRatePerDiemCents, ratePerDiemCents });
   }
 

@@ -26,6 +26,19 @@ import {
   logDirectContact,
 } from "./bereavement-api";
 import {
+  CLOSURE_REASON_TONE,
+  DEFAULT_LOG_OUTCOME,
+  LOG_OUTCOMES,
+  NON_ENCOUNTER_OUTREACH_KINDS,
+  dateTime,
+  daysUntil,
+  humanize,
+  outreachKindLabel,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   CheckboxField,
   Field,
@@ -42,19 +55,6 @@ import {
   pageTitleStyle,
   primaryButtonStyle,
 } from "./bereavement-ui";
-import {
-  CLOSURE_REASON_TONE,
-  DEFAULT_LOG_OUTCOME,
-  LOG_OUTCOMES,
-  NON_ENCOUNTER_OUTREACH_KINDS,
-  dateTime,
-  daysUntil,
-  humanize,
-  outreachKindLabel,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 export function BereavementCloseoutView(): JSX.Element {
   const client = useApiClient();
@@ -69,7 +69,10 @@ export function BereavementCloseoutView(): JSX.Element {
     if (!planId) return;
     setLoading(true);
     setError(null);
-    const [detail, closureRes] = await Promise.all([getPlan(client, planId), getClosure(client, planId)]);
+    const [detail, closureRes] = await Promise.all([
+      getPlan(client, planId),
+      getClosure(client, planId),
+    ]);
     if (detail.error) {
       setError(errorMessage(detail.error, "This bereavement plan could not be loaded."));
       setLoading(false);
@@ -88,7 +91,12 @@ export function BereavementCloseoutView(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!plan || !planId)
-    return <EmptyState title="Not found" description="This bereavement plan does not exist, or is not on your caseload." />;
+    return (
+      <EmptyState
+        title="Not found"
+        description="This bereavement plan does not exist, or is not on your caseload."
+      />
+    );
 
   const daysLeft = daysUntil(plan.windowEndsAt);
   const activeContacts = plan.contacts.filter((c) => c.status === "active");
@@ -117,8 +125,8 @@ export function BereavementCloseoutView(): JSX.Element {
         </Notice>
       ) : (
         <Notice tone="warning">
-          The 13-month window has passed ({shortDate(plan.windowEndsAt)}). The closeout job closes the plan
-          and renders the summary letter.
+          The 13-month window has passed ({shortDate(plan.windowEndsAt)}). The closeout job closes
+          the plan and renders the summary letter.
         </Notice>
       )}
 
@@ -164,17 +172,17 @@ export function BereavementCloseoutView(): JSX.Element {
           </SummaryGrid>
           {closure.reason === "thirteen_month_completion" ? (
             <span style={mutedStyle}>
-              The 13-month obligation was met in full. Every other closure reason ended the program early
-              or by cascade, which is why the reason — not merely the closed status — is what a surveyor
-              reads.
+              The 13-month obligation was met in full. Every other closure reason ended the program
+              early or by cascade, which is why the reason — not merely the closed status — is what
+              a surveyor reads.
             </span>
           ) : null}
         </Card>
       ) : (
         <Card title="Closure record">
           <span style={mutedStyle}>
-            No closure record exists yet. It is written when the plan closes — by the month-13 job for a
-            completed program, or by the cosigned early-close path.
+            No closure record exists yet. It is written when the plan closes — by the month-13 job
+            for a completed program, or by the cosigned early-close path.
           </span>
         </Card>
       )}
@@ -269,7 +277,10 @@ function FinalContactModal({
       <SelectField
         label="Modality"
         value={kind}
-        options={NON_ENCOUNTER_OUTREACH_KINDS.map((k) => ({ value: k, label: outreachKindLabel(k) }))}
+        options={NON_ENCOUNTER_OUTREACH_KINDS.map((k) => ({
+          value: k,
+          label: outreachKindLabel(k),
+        }))}
         onChange={setKind}
       />
       <SelectField
@@ -278,8 +289,17 @@ function FinalContactModal({
         options={LOG_OUTCOMES.map((o) => ({ value: o, label: humanize(o) }))}
         onChange={setOutcome}
       />
-      <TextField label="Contacted at" type="datetime-local" value={contactAt} onChange={setContactAt} />
-      <CheckboxField label="The survivor responded directly" checked={responded} onChange={setResponded} />
+      <TextField
+        label="Contacted at"
+        type="datetime-local"
+        value={contactAt}
+        onChange={setContactAt}
+      />
+      <CheckboxField
+        label="The survivor responded directly"
+        checked={responded}
+        onChange={setResponded}
+      />
       <TextField
         label="M22 rendered document id (optional)"
         value={artifactDocumentId}

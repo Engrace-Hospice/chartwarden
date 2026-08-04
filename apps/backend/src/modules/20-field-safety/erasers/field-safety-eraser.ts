@@ -259,9 +259,7 @@ export function createDrizzleSafetyEraseStore(db: DbClient): SafetyEraseStore {
         const sosAlerts = await tx
           .update(SOS)
           .set({ lastKnownPatientId: null, lastKnownVisitId: null })
-          .where(
-            and(eq(SOS.lastKnownPatientId, patientId), isNotNull(SOS.lastKnownPatientId)),
-          )
+          .where(and(eq(SOS.lastKnownPatientId, patientId), isNotNull(SOS.lastKnownPatientId)))
           .returning({ id: SOS.id });
 
         return { incidents: incidents.length, sosAlerts: sosAlerts.length };

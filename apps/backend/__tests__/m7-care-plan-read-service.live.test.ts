@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M7L-T01 — the Drizzle `createDbCarePlanRouteService` READ paths, proven against real Postgres.
  *
@@ -17,7 +18,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

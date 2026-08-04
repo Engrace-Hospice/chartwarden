@@ -16,13 +16,13 @@
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
 // functions, constants only.
 import type {
+  BadDebtKind,
   RuleCategory,
   RuleSeverity,
   RuleStatus,
   ValidationOutcome,
-  WorksheetCode,
   WageSource,
-  BadDebtKind,
+  WorksheetCode,
 } from "../contracts";
 import type { Cents } from "../domain/money";
 

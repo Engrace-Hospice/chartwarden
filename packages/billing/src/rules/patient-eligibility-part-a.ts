@@ -21,7 +21,12 @@ export const patientEligibilityPartAActive: Rule = {
   overrideRoleRequired: "billing_manager",
   check: (ctx) => {
     if (!ctx.seams.eligibilityBound || ctx.eligibility === null) {
-      return skip(KEY, "error", "seam_not_bound", "Eligibility (HETS) check not available — deferred.");
+      return skip(
+        KEY,
+        "error",
+        "seam_not_bound",
+        "Eligibility (HETS) check not available — deferred.",
+      );
     }
     const { outcome } = ctx.eligibility;
     if (outcome === "active_part_a") {
@@ -33,7 +38,8 @@ export const patientEligibilityPartAActive: Rule = {
         "error",
         "Patient does not have active Medicare Part A on the service-from date.",
         {
-          summary: "Resolve Part A entitlement before billing; the patient is not currently Part-A active.",
+          summary:
+            "Resolve Part A entitlement before billing; the patient is not currently Part-A active.",
           blameTarget: "patient",
           blameTargetId: ctx.claim.patientId,
           fixAction: "refresh_eligibility",

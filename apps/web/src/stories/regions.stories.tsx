@@ -1,3 +1,4 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Tier-1 layout regions (@wardenx/ui). Visual reference for the shared zones
 // every screen composes: header, KPI strip, patient banner, filter bar, detail panel, footer.
 import {
@@ -9,7 +10,6 @@ import {
   RightDetailPanel,
   StickyFooterActions,
 } from "@wardenx/ui";
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 const meta: Meta = {
@@ -19,7 +19,9 @@ const meta: Meta = {
 export default meta;
 
 function Pad({ children }: { children: JSX.Element }): JSX.Element {
-  return <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>{children}</div>;
+  return (
+    <div style={{ background: "var(--color-background)", minHeight: "100vh" }}>{children}</div>
+  );
 }
 
 export const PageHeaders: StoryObj = {
@@ -74,9 +76,7 @@ export const Filters: StoryObj = {
   name: "Filter Bar",
   render: () => (
     <Pad>
-      <FilterBar
-        actions={<button type="button">Save view</button>}
-      >
+      <FilterBar actions={<button type="button">Save view</button>}>
         <input placeholder="Search patients…" />
         <select>
           <option>All teams</option>

@@ -5,7 +5,12 @@
 // PHI-free key/presign MATH is the pure T03 ./lifecycle/storage logic (`planSignedUrl`); this impl is the
 // thin IO orchestration over the injected port (no MinIO SDK, no network in the slice/tests). The presigned
 // URL itself is never logged (§4.12) — the caller receives it and hands it straight to the client.
-import type { DocumentStorageProvider, IsoInstant, OrgId, SignedUrlDescriptor } from "@wardenx/types";
+import type {
+  DocumentStorageProvider,
+  IsoInstant,
+  OrgId,
+  SignedUrlDescriptor,
+} from "@wardenx/types";
 import type { ObjectStorePort } from "./store";
 
 export interface DocumentStorageProviderDeps {

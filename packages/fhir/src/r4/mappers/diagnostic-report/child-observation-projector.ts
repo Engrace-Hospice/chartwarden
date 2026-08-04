@@ -8,8 +8,8 @@
 // `meta.security` marker so the whole-report redaction applier (§4.11.3) can detect it and collapse the
 // report. The marker is INTERNAL: the applier strips the SUD children before the report reaches the wire.
 
-import type { LabObservationRow, LabObservationValueRow } from "../deps";
 import type { FhirCoding, Observation } from "../../types";
+import type { LabObservationRow, LabObservationValueRow } from "../deps";
 import { SUD_SECURITY_MARKER_CODE } from "./sud-redaction-applier";
 
 /** `not_applicable` is the ONLY non-SUD status; anything else is 42 CFR Part 2 SUD-class. */
@@ -46,7 +46,8 @@ export function projectChildObservation(
       value.numericValue !== null && value.unit !== null
         ? { value: value.numericValue, unit: value.unit, system: "http://unitsofmeasure.org" }
         : undefined,
-    valueString: value.numericValue === null && value.stringValue !== null ? value.stringValue : undefined,
+    valueString:
+      value.numericValue === null && value.stringValue !== null ? value.stringValue : undefined,
     interpretation: interpretationCode
       ? [
           {

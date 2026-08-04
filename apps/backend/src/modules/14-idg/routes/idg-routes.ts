@@ -16,6 +16,7 @@ import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
+  ActionItemListQuerySchema,
   AddAgendaItemRequest,
   AdjournMeetingRequest,
   CancelMeetingRequest,
@@ -28,7 +29,6 @@ import {
   RecurringPolicyRequest,
   RescheduleMeetingRequest,
   ScheduleQuerySchema,
-  ActionItemListQuerySchema,
   SubmitAmendmentRequest,
   SupersedeDecisionRequest,
   UpdateActionItemRequest,
@@ -63,17 +63,25 @@ const SCHEDULE = P("idg.schedule");
 const AMEND = P("idg.amend_minutes");
 
 // §4.7 ABAC guards. `idg_meeting_scope` defaults its target to the route params (`:id` / `:meetingId`).
-const SCOPE = (action: string): PreHandler => requireAbac(action, "idg_meeting_scope") as PreHandler;
+const SCOPE = (action: string): PreHandler =>
+  requireAbac(action, "idg_meeting_scope") as PreHandler;
 const ABAC_QUORATE = requireAbac("idg.decide", "quorate_decision") as PreHandler;
 
 // The cancel/reschedule target lifts the body's `proposedTransition` + `newScheduledStart` so
 // `per_patient_review_floor_clear` resolves at authz time; the meeting `:id` comes from the params.
-const reviewFloorTarget = (request: { readonly params?: unknown; readonly body?: unknown }): AbacTarget => {
+const reviewFloorTarget = (request: {
+  readonly params?: unknown;
+  readonly body?: unknown;
+}): AbacTarget => {
   const params = (request.params ?? {}) as { id?: unknown };
-  const body = (request.body ?? {}) as { proposedTransition?: unknown; newScheduledStart?: unknown };
+  const body = (request.body ?? {}) as {
+    proposedTransition?: unknown;
+    newScheduledStart?: unknown;
+  };
   const target: Record<string, unknown> = {};
   if (typeof params.id === "string") target.id = params.id;
-  if (typeof body.proposedTransition === "string") target.proposedTransition = body.proposedTransition;
+  if (typeof body.proposedTransition === "string")
+    target.proposedTransition = body.proposedTransition;
   if (typeof body.newScheduledStart === "string") target.newScheduledStart = body.newScheduledStart;
   return target;
 };
@@ -84,7 +92,8 @@ const ABAC_REVIEW_FLOOR = requireAbac("idg.schedule", "per_patient_review_floor_
 /** The fresh step-up assertion the ADJOURN route requires (§2.2 D13). The header is set by the M2 step-up flow;
  * the in-mem slice treats its presence as the fresh-step-up signal (the pure machine raises STEP_UP_REQUIRED
  * when absent). */
-const stepUpFreshOf = (request: FastifyRequest): boolean => request.headers["x-step-up"] === "fresh";
+const stepUpFreshOf = (request: FastifyRequest): boolean =>
+  request.headers["x-step-up"] === "fresh";
 
 export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): void {
   const { service } = deps;
@@ -329,13 +338,17 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   });
 
   // 20 — supersede a prior decision (a new row in a later meeting; §2.8).
-  app.post("/api/v1/idg/decisions/:id/supersede", { preHandler: [DECIDE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    parse(SupersedeDecisionRequest, request.body);
-    const res = await service.supersedeDecision(organizationId, userId, id);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/idg/decisions/:id/supersede",
+    { preHandler: [DECIDE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      parse(SupersedeDecisionRequest, request.body);
+      const res = await service.supersedeDecision(organizationId, userId, id);
+      return reply.code(201).send(res);
+    },
+  );
 
   // 21 — create an action item.
   app.post(
@@ -403,11 +416,15 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   );
 
   // 26 — submit a minutes amendment (final minutes only; tenant-admin / compliance scope).
-  app.post("/api/v1/idg/minutes/:id/amendments", { preHandler: [AMEND] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    const b = parse(SubmitAmendmentRequest, request.body);
-    const res = await service.submitAmendment(organizationId, userId, id, b.amendmentReason);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/idg/minutes/:id/amendments",
+    { preHandler: [AMEND] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const b = parse(SubmitAmendmentRequest, request.body);
+      const res = await service.submitAmendment(organizationId, userId, id, b.amendmentReason);
+      return reply.code(201).send(res);
+    },
+  );
 }

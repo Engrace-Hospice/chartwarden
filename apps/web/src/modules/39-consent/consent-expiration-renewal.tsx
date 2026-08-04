@@ -1,5 +1,4 @@
 import {
-  cardSurface,
   EmptyState,
   KpiCard,
   KpiStrip,
@@ -7,6 +6,7 @@ import {
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  cardSurface,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -41,7 +41,11 @@ interface PatientSummary {
   status: string;
 }
 
-const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
+const cell: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left",
+  verticalAlign: "middle",
+};
 const head: CSSProperties = {
   ...cell,
   fontSize: "0.72rem",
@@ -86,7 +90,8 @@ export function ConsentExpirationRenewal(): JSX.Element {
 
   const byBand = useMemo(() => {
     const counts: Record<string, number> = { "≤7 days": 0, "8–30 days": 0, "31–90 days": 0 };
-    for (const r of rows) counts[expiryBand(r.daysUntilExpiry)] = (counts[expiryBand(r.daysUntilExpiry)] ?? 0) + 1;
+    for (const r of rows)
+      counts[expiryBand(r.daysUntilExpiry)] = (counts[expiryBand(r.daysUntilExpiry)] ?? 0) + 1;
     return counts;
   }, [rows]);
 
@@ -110,8 +115,8 @@ export function ConsentExpirationRenewal(): JSX.Element {
       <section style={cardSurface}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Expiring within 90 days</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Soonest first. Renewal opens a NEW consent record on the D13 renewal chain — it never edits the
-          expiring one — and requires step-up re-authentication.
+          Soonest first. Renewal opens a NEW consent record on the D13 renewal chain — it never
+          edits the expiring one — and requires step-up re-authentication.
         </p>
 
         {loading ? (

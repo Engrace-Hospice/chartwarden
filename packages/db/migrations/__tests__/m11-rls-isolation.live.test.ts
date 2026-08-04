@@ -250,8 +250,8 @@ describe.skipIf(!DB_URL)("M11 Orders — RLS cross-tenant denial — LIVE Postgr
       join(MIGRATIONS_DIR, "0037_orders_m11_rls_audit_triggers.sql"),
       "utf8",
     );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {

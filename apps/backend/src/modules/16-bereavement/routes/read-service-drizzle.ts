@@ -17,7 +17,12 @@
 //   • COUNTS, NEVER RATES. Both dashboards report the CoP 418.64(d) numerator and denominator separately,
 //     matching the §4.6 seam contract, so a 0/0 scope stays visibly 0/0 rather than becoming a fabricated
 //     0% that CMS small-N suppression downstream can no longer catch.
-import { bereavementWindowEnd, evaluateExternalSourceGate, isClosedPlanStatus, isWithinOptOutRescindWindow } from "@wardenx/bereavement";
+import {
+  bereavementWindowEnd,
+  evaluateExternalSourceGate,
+  isClosedPlanStatus,
+  isWithinOptOutRescindWindow,
+} from "@wardenx/bereavement";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type {
@@ -68,7 +73,8 @@ import type {
   SupervisorDashboardView,
 } from "./read-service";
 
-const iso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
+const iso = (d: Date | string): string =>
+  d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 const isoN = (d: Date | string | null): string | null => (d === null ? null : iso(d));
 /** `date` columns come back as `YYYY-MM-DD` strings from the pg driver; keep them as-is. */
 const localDate = (d: string | Date): string =>
@@ -160,7 +166,9 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
     );
   };
 
-  const externalSourceOf = (row: typeof PLAN.$inferSelect): BereavementExternalSourceMetadata | null =>
+  const externalSourceOf = (
+    row: typeof PLAN.$inferSelect,
+  ): BereavementExternalSourceMetadata | null =>
     (row.externalSourceMetadata as BereavementExternalSourceMetadata | null) ?? null;
 
   const allowedKindsOf = (raw: unknown): BereavementOutreachKind[] => {
@@ -425,11 +433,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
       const plan = await loadReachablePlan(actor, planId);
       if (plan === null) return null;
       return withOrgContext(db, scope(actor), async (tx) => {
-        const [row] = await tx
-          .select()
-          .from(CLOSURE)
-          .where(eq(CLOSURE.planId, planId))
-          .limit(1);
+        const [row] = await tx.select().from(CLOSURE).where(eq(CLOSURE.planId, planId)).limit(1);
         if (!row) return null;
         const view: BereavementClosureView = {
           closureId: row.id,

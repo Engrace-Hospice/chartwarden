@@ -103,7 +103,9 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     }
   }
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort())
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
 
@@ -222,7 +224,12 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
   it("DLQ: maxAttempts exhausted → 'failed' terminal with lastError; a later tick never touches it", async () => {
     let calls = 0;
     // TASK-040D (OPS-012) — the DLQ-promotion alert hook fires exactly once, on the SAME transition.
-    const deadLetters: Array<{ eventId: string; eventType: string; organizationId: string; attemptCount: number }> = [];
+    const deadLetters: Array<{
+      eventId: string;
+      eventType: string;
+      organizationId: string;
+      attemptCount: number;
+    }> = [];
     await seed({ id: EV_DLQ, eventType: "outbox.test.dlq" });
     const dispatcher = makeDispatcher(
       [
@@ -246,7 +253,13 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     expect(row.attempt_count).toBe(1);
     expect(String(row.last_error)).toContain("permanent boom");
     expect(deadLetters).toEqual([
-      { eventId: EV_DLQ, eventType: "outbox.test.dlq", organizationId: ORG_A, attemptCount: 1, error: expect.stringContaining("permanent boom") },
+      {
+        eventId: EV_DLQ,
+        eventType: "outbox.test.dlq",
+        organizationId: ORG_A,
+        attemptCount: 1,
+        error: expect.stringContaining("permanent boom"),
+      },
     ]);
 
     // Dead letters are terminal: never reclaimed, never redelivered, never purged.

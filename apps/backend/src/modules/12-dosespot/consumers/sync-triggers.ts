@@ -76,5 +76,10 @@ export function decideMedHxFetch(
   reason: "admission_activated" | "recertification",
   payload: AdmissionMedHxPayload,
 ): MedHxFetchAction {
-  return { enqueueFetch: true, patientId: payload.patientId, admissionId: payload.admissionId, reason };
+  return {
+    enqueueFetch: true,
+    patientId: payload.patientId,
+    admissionId: payload.admissionId,
+    reason,
+  };
 }

@@ -278,7 +278,12 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       if (!bindings || bindings.length === 0) {
         // No live subscriber and not deferred: the row is the durable record — delivery to zero
         // subscribers is complete.
-        await finalize({ status: "dispatched", dispatchedAt: now, lastError: null, nextAttemptAt: null });
+        await finalize({
+          status: "dispatched",
+          dispatchedAt: now,
+          lastError: null,
+          nextAttemptAt: null,
+        });
         summary.recordOnly += 1;
         continue;
       }
@@ -296,7 +301,11 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
         const message = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         if (row.attemptCount >= maxAttempts) {
           // dispatched_at nulled: the row never succeeded, and the column means SUCCESS instant.
-          await finalize({ status: "failed", dispatchedAt: null, lastError: message.slice(0, 2000) });
+          await finalize({
+            status: "failed",
+            dispatchedAt: null,
+            lastError: message.slice(0, 2000),
+          });
           summary.deadLettered += 1;
           log(
             `☠️  outbox-dispatcher: '${row.eventType}' (${row.id}) dead-lettered after ${row.attemptCount} attempts — ${message}`,

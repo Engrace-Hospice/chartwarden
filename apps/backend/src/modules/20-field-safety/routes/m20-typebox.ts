@@ -491,10 +491,16 @@ export const SubscriptionListQuery = Type.Object({
  * schema asserts the SHAPE and the write service runs the validity check the CHECK cannot.
  */
 export const PolygonRings = Type.Array(
-  Type.Array(Type.Tuple([Type.Number({ minimum: -180, maximum: 180 }), Type.Number({ minimum: -90, maximum: 90 })]), {
-    minItems: 4,
-    maxItems: 2000,
-  }),
+  Type.Array(
+    Type.Tuple([
+      Type.Number({ minimum: -180, maximum: 180 }),
+      Type.Number({ minimum: -90, maximum: 90 }),
+    ]),
+    {
+      minItems: 4,
+      maxItems: 2000,
+    },
+  ),
   { minItems: 1, maxItems: 20 },
 );
 
@@ -1021,7 +1027,4 @@ type _AreaPage = Conforms<
 >;
 type _Dashboard = Conforms<Static<typeof SafetyDashboardResponse>, _SafetyDashboardSnapshot>;
 type _Consent = Conforms<Static<typeof SafetyConsentResponse>, _SafetyConsentView>;
-type _ConsentSurface = Conforms<
-  Static<typeof SafetyConsentSurfaceResponse>,
-  _SafetyConsentSurface
->;
+type _ConsentSurface = Conforms<Static<typeof SafetyConsentSurfaceResponse>, _SafetyConsentSurface>;

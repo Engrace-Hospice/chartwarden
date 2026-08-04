@@ -27,6 +27,12 @@ import {
   NotFoundError,
 } from "@wardenx/types";
 import {
+  DEFAULT_EVV_WINDOW_AFTER_MS,
+  DEFAULT_EVV_WINDOW_BEFORE_MS,
+  type EvvAbacResolver,
+  type EvvCaptureWindow,
+} from "../abac-predicates";
+import {
   type EvvAggregatorSubmissionEvent,
   transitionAggregatorSubmission,
 } from "../domain/aggregator-submission";
@@ -34,12 +40,6 @@ import {
   type EvvMissingResolutionEvent,
   transitionMissingResolution,
 } from "../domain/missing-resolution";
-import {
-  DEFAULT_EVV_WINDOW_AFTER_MS,
-  DEFAULT_EVV_WINDOW_BEFORE_MS,
-  type EvvAbacResolver,
-  type EvvCaptureWindow,
-} from "../abac-predicates";
 
 // ── view shapes returned to the route layer (coordinate-free except the team-location read, D10) ──────────
 export interface CheckResultView {
@@ -180,7 +180,12 @@ export class EvvRouteService implements EvvAbacResolver {
   private readonly submissions = new Map<string, SubmissionRow>();
   private readonly resolutions = new Map<string, ResolutionRow>();
   private readonly tenantPolicy = new Map<string, { radiusM: number; maxAccuracyM: number }>();
-  private readonly perAddress: Array<{ organizationId: string; patientAddressId: string; radiusM: number; maxAccuracyM: number }> = [];
+  private readonly perAddress: Array<{
+    organizationId: string;
+    patientAddressId: string;
+    radiusM: number;
+    maxAccuracyM: number;
+  }> = [];
   private readonly captureWindows = new Map<string, EvvCaptureWindow>();
   private readonly nextEventId = idMinter("evvevt");
   private readonly nextDeviceId = idMinter("evvdev");
@@ -339,11 +344,8 @@ export class EvvRouteService implements EvvAbacResolver {
     const open = [...this.resolutions.values()].find(
       (r) => r.organizationId === orgId && r.visitId === visitId && r.status === "open",
     );
-    const bracketState: EvvBracketDto["bracketState"] = checkIn && checkOut
-      ? "present"
-      : open
-        ? "missing_open"
-        : "no_evv_path";
+    const bracketState: EvvBracketDto["bracketState"] =
+      checkIn && checkOut ? "present" : open ? "missing_open" : "no_evv_path";
     return {
       visitId,
       checkInEvent: checkIn ? this.toEventDto(checkIn) : null,
@@ -408,9 +410,14 @@ export class EvvRouteService implements EvvAbacResolver {
   }
   /** §2.2.2 tighten-only: the tenant may NARROW (smaller radius / tighter accuracy) below the platform floor,
    * never loosen above it. */
-  editTenantPolicy(orgId: string, body: { radiusM: number; maxAccuracyM: number }): GeofencePolicyView {
+  editTenantPolicy(
+    orgId: string,
+    body: { radiusM: number; maxAccuracyM: number },
+  ): GeofencePolicyView {
     if (body.radiusM > PLATFORM_FLOOR.radiusM || body.maxAccuracyM > PLATFORM_FLOOR.maxAccuracyM) {
-      throw new ConflictError("Tenant geofence policy may not loosen beyond the platform floor (tighten-only).");
+      throw new ConflictError(
+        "Tenant geofence policy may not loosen beyond the platform floor (tighten-only).",
+      );
     }
     this.tenantPolicy.set(orgId, { radiusM: body.radiusM, maxAccuracyM: body.maxAccuracyM });
     return this.getGeofencePolicy(orgId);
@@ -435,7 +442,10 @@ export class EvvRouteService implements EvvAbacResolver {
   }
 
   // ── missing-EVV resolution (§4.1 routes 16–18; §2.2.4 D6 machine) ─────────────────────────────────────
-  listMissingResolutions(orgId: string, f: { status?: string; visit?: string }): MissingResolutionView[] {
+  listMissingResolutions(
+    orgId: string,
+    f: { status?: string; visit?: string },
+  ): MissingResolutionView[] {
     return [...this.resolutions.values()]
       .filter((r) => r.organizationId === orgId)
       .filter((r) => (f.status ? r.status === f.status : true))
@@ -453,7 +463,12 @@ export class EvvRouteService implements EvvAbacResolver {
   private daysSince(iso: string | null): number {
     return iso ? (Date.now() - Date.parse(iso)) / 86_400_000 : 0;
   }
-  clinicianAttestResolution(orgId: string, userId: string, id: string, reason: string): MissingResolutionView {
+  clinicianAttestResolution(
+    orgId: string,
+    userId: string,
+    id: string,
+    reason: string,
+  ): MissingResolutionView {
     const r = this.requireResolution(orgId, id);
     const assigned = this.visits.get(r.visitId)?.assignedMembershipId ?? null;
     const event: EvvMissingResolutionEvent = {
@@ -497,7 +512,10 @@ export class EvvRouteService implements EvvAbacResolver {
   }
 
   // ── per-state aggregator submissions (§4.1 routes 19–21; §2.2.5 D7 machine; §7.8/§7.9) ────────────────
-  listAggregatorSubmissions(orgId: string, f: { stateCode?: string; status?: string }): EvvAggregatorSubmissionDto[] {
+  listAggregatorSubmissions(
+    orgId: string,
+    f: { stateCode?: string; status?: string },
+  ): EvvAggregatorSubmissionDto[] {
     return [...this.submissions.values()]
       .filter((s) => s.organizationId === orgId)
       .filter((s) => (f.stateCode ? s.stateCode === f.stateCode : true))
@@ -519,7 +537,10 @@ export class EvvRouteService implements EvvAbacResolver {
     const s = this.requireSubmission(orgId, id);
     return this.applySubmissionEvent(s, { type: "cancel" });
   }
-  private applySubmissionEvent(s: SubmissionRow, event: EvvAggregatorSubmissionEvent): EvvAggregatorSubmissionDto {
+  private applySubmissionEvent(
+    s: SubmissionRow,
+    event: EvvAggregatorSubmissionEvent,
+  ): EvvAggregatorSubmissionDto {
     const t = transitionAggregatorSubmission(s.status, event);
     s.status = t.status;
     if (t.incrementsAttempt) s.attemptCount += 1;
@@ -581,6 +602,7 @@ export class EvvRouteService implements EvvAbacResolver {
 
   /** Guard helper the correction route uses (Clinical Supervisor + step-up; §2.3). */
   assertStepUp(stepUpFresh: boolean): void {
-    if (!stepUpFresh) throw new ForbiddenError("A correction-of-record requires fresh M2 step-up auth.");
+    if (!stepUpFresh)
+      throw new ForbiddenError("A correction-of-record requires fresh M2 step-up auth.");
   }
 }

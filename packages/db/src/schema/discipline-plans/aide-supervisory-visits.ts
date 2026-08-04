@@ -11,16 +11,7 @@
 // Tenancy (M15-F05): patient-bearing (via the plan) → organization_id + provider_entity_id + location_id
 // NOT NULL, so `SupervisoryCadenceReader` / `DisciplineComplianceProvider` can aggregate per PE/location.
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  boolean,
-  check,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, boolean, check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { aideSupervisoryAttestationMode } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";

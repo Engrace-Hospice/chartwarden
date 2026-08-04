@@ -7,11 +7,11 @@
 // on its §4.4 `requirePermission` key; the sign/amend routes add the §4.1 step-up gate; every mutation
 // declares `Idempotency-Key` (§F08) and every PATCH/state transition requires `If-Match` (§2.5).
 import type { FastifyInstance } from "fastify";
-import { registerAideSupervisoryRoutes } from "./supervisory.routes";
+import type { M15RouteServices } from "./index";
 import { registerDisciplinePlanInternalRoutes } from "./internal.routes";
 import { registerDisciplinePlanRoutes } from "./plans.routes";
+import { registerAideSupervisoryRoutes } from "./supervisory.routes";
 import { registerVolunteerRoutes } from "./volunteer.routes";
-import type { M15RouteServices } from "./index";
 
 export { registerDisciplinePlanRoutes, type PlanRouteDeps } from "./plans.routes";
 export { registerAideSupervisoryRoutes, type SupervisoryRouteDeps } from "./supervisory.routes";

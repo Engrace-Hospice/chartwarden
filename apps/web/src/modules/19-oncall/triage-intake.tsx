@@ -129,9 +129,10 @@ export function TriageIntakeScreen(): JSX.Element {
       />
 
       <Notice tone="info">
-        Opening the call starts the record. The covering shift, the call source and the red-flag evaluation
-        are all the server's — none of them is a field on this form, because each is a fact about coverage
-        or clinical judgement that a caller must not be able to assert about themselves.
+        Opening the call starts the record. The covering shift, the call source and the red-flag
+        evaluation are all the server's — none of them is a field on this form, because each is a
+        fact about coverage or clinical judgement that a caller must not be able to assert about
+        themselves.
       </Notice>
 
       <Card title="Where the call landed">
@@ -168,9 +169,9 @@ export function TriageIntakeScreen(): JSX.Element {
         <span style={mutedStyle}>
           The three machine-only channels ({humanize("inbound_visit_failure")},{" "}
           {humanize("inbound_evv_anomaly")}, {humanize("inbound_alert_failure")}) and the{" "}
-          {humanize("system_inbound")} caller kind are not offered: those rows are written by the D10
-          consumers when M17 detects a no-show, M18 detects a late check-out or an M36 delivery fails.
-          Selecting one here would record a machine detection that never happened.
+          {humanize("system_inbound")} caller kind are not offered: those rows are written by the
+          D10 consumers when M17 detects a no-show, M18 detects a late check-out or an M36 delivery
+          fails. Selecting one here would record a machine detection that never happened.
         </span>
       </Card>
 
@@ -182,7 +183,11 @@ export function TriageIntakeScreen(): JSX.Element {
             gap: t.space3,
           }}
         >
-          <TextField label="Caller name" value={callerDisplayName} onChange={setCallerDisplayName} />
+          <TextField
+            label="Caller name"
+            value={callerDisplayName}
+            onChange={setCallerDisplayName}
+          />
           <TextField
             label="Callback number (E.164)"
             value={callerPhone}
@@ -201,8 +206,8 @@ export function TriageIntakeScreen(): JSX.Element {
         </div>
         {!phoneValid ? (
           <p style={alertStyle}>
-            A callback number must be E.164 (a leading + and 2–15 digits). An unreachable number on a
-            record whose whole purpose is reachability is worse than none.
+            A callback number must be E.164 (a leading + and 2–15 digits). An unreachable number on
+            a record whose whole purpose is reachability is worse than none.
           </p>
         ) : null}
       </Card>
@@ -220,14 +225,14 @@ export function TriageIntakeScreen(): JSX.Element {
         </div>
         {!anchorValid ? (
           <p style={alertStyle}>
-            Patient and admission travel together or not at all — M8's encounter creator requires both, so
-            a call carrying one of the two can never be documented.
+            Patient and admission travel together or not at all — M8's encounter creator requires
+            both, so a call carrying one of the two can never be documented.
           </p>
         ) : null}
         <span style={mutedStyle}>
-          Leave both blank if you have not found the chart yet. The clock starts when the phone rings, and
-          §3.3 leaves both columns nullable until the caller is resolved to a served person. You can
-          identify the patient from the call panel at any point before documenting.
+          Leave both blank if you have not found the chart yet. The clock starts when the phone
+          rings, and §3.3 leaves both columns nullable until the caller is resolved to a served
+          person. You can identify the patient from the call panel at any point before documenting.
         </span>
       </Card>
 

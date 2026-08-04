@@ -1,3 +1,4 @@
+import { paramNumber } from "./_util";
 // @wardenx/billing — §4.5 rule `aggregate_cap_projection` (cap, regulatory). The patient's projected
 // payments must be below the hospice aggregate cap (42 CFR §418.308), and the claim must warn if it
 // brings the agency-wide projection within 5% of the cap (D8). The M26 `CapProjectionProvider` is a
@@ -6,7 +7,6 @@
 // so a bound over-cap projection blocks). PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, pass, skip } from "./types";
-import { paramNumber } from "./_util";
 
 const KEY = "aggregate_cap_projection";
 
@@ -65,6 +65,10 @@ export const aggregateCapProjection: Rule = {
         { orgPctOfCap: cap.orgPctOfCap, warnPctOfCap: warnPct },
       );
     }
-    return pass(KEY, "error", `Aggregate-cap projection within limit (${cap.orgPctOfCap}% agency-wide).`);
+    return pass(
+      KEY,
+      "error",
+      `Aggregate-cap projection within limit (${cap.orgPctOfCap}% agency-wide).`,
+    );
   },
 };

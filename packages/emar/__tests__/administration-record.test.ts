@@ -1,13 +1,13 @@
 // @wardenx/emar — §2.2 D6 administration-record lifecycle state machine — M13-T03.
 import { describe, expect, it } from "vitest";
 import {
+  ADMINISTRATION_GRAPH,
+  type AdministrationSideEffect,
+  type RecordAdministrationInput,
+  VOID_REASON_MIN_LENGTH,
   planRecordAdministration,
   planRecordCaregiverAttested,
   transitionAdministration,
-  ADMINISTRATION_GRAPH,
-  VOID_REASON_MIN_LENGTH,
-  type AdministrationSideEffect,
-  type RecordAdministrationInput,
 } from "../src/lifecycle";
 
 /** Collect the `m13.*` outbox events a transition declares (order-preserving). */
@@ -120,7 +120,11 @@ describe("§2.2 commit", () => {
     ]);
   });
   it("a PRN administration emits the reassessment trigger (D3)", () => {
-    const t = transitionAdministration("committing", { type: "commit", ...goodCommit, isPrn: true });
+    const t = transitionAdministration("committing", {
+      type: "commit",
+      ...goodCommit,
+      isPrn: true,
+    });
     expect(kinds(t.effects)).toContain("emit_prn_reassessment_trigger");
     expect(outboxEvents(t.effects)).toContain("m13.prn_administration_recorded");
   });
@@ -231,13 +235,18 @@ describe("§5.12 supersede + §2.2 void", () => {
     expect(alerts(t.effects)).toEqual(["m13.administration_voided"]);
   });
   it("void without permission / step-up / a long-enough reason is refused", () => {
-    const base = { type: "void" as const, hasVoidPermission: true, stepUpCompleted: true, reason: "x".repeat(40) };
-    expect(() => transitionAdministration("committed", { ...base, hasVoidPermission: false })).toThrow(
-      expect.objectContaining({ code: "VOID_NOT_PERMITTED" }),
-    );
-    expect(() => transitionAdministration("committed", { ...base, stepUpCompleted: false })).toThrow(
-      expect.objectContaining({ code: "VOID_STEP_UP_REQUIRED" }),
-    );
+    const base = {
+      type: "void" as const,
+      hasVoidPermission: true,
+      stepUpCompleted: true,
+      reason: "x".repeat(40),
+    };
+    expect(() =>
+      transitionAdministration("committed", { ...base, hasVoidPermission: false }),
+    ).toThrow(expect.objectContaining({ code: "VOID_NOT_PERMITTED" }));
+    expect(() =>
+      transitionAdministration("committed", { ...base, stepUpCompleted: false }),
+    ).toThrow(expect.objectContaining({ code: "VOID_STEP_UP_REQUIRED" }));
     expect(() => transitionAdministration("committed", { ...base, reason: "too short" })).toThrow(
       expect.objectContaining({ code: "VOID_REASON_TOO_SHORT" }),
     );

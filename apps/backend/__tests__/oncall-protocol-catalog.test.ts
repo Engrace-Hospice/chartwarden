@@ -193,9 +193,7 @@ describe("§3.2 Phase E — migration 0109 still matches the catalog it was gene
   it("seeds every mandatory tier as the enum, not as loose text", () => {
     for (const key of MANDATORY_ESCALATION_PROTOCOL_KEYS) {
       const protocol = floorProtocolByKey(key);
-      expect(SEED_SQL).toContain(
-        `'${protocol?.mandatoryEscalationTier}'::triage_escalation_tier`,
-      );
+      expect(SEED_SQL).toContain(`'${protocol?.mandatoryEscalationTier}'::triage_escalation_tier`);
     }
   });
 

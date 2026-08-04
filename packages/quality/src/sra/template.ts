@@ -61,7 +61,8 @@ export const NIST_800_66_R2_TEMPLATE: SraTemplate = {
       sections: [
         {
           id: "admin.security_management_process",
-          title: "Security Management Process (risk analysis, risk management, sanction policy, info-system activity review)",
+          title:
+            "Security Management Process (risk analysis, risk management, sanction policy, info-system activity review)",
           citation: "45 CFR §164.308(a)(1)",
           required: true,
         },
@@ -79,13 +80,15 @@ export const NIST_800_66_R2_TEMPLATE: SraTemplate = {
         },
         {
           id: "admin.information_access_management",
-          title: "Information Access Management (access authorization, establishment & modification)",
+          title:
+            "Information Access Management (access authorization, establishment & modification)",
           citation: "45 CFR §164.308(a)(4)",
           required: false,
         },
         {
           id: "admin.security_awareness_training",
-          title: "Security Awareness and Training (reminders, malicious-software protection, log-in monitoring, password management)",
+          title:
+            "Security Awareness and Training (reminders, malicious-software protection, log-in monitoring, password management)",
           citation: "45 CFR §164.308(a)(5)",
           required: false,
         },
@@ -97,7 +100,8 @@ export const NIST_800_66_R2_TEMPLATE: SraTemplate = {
         },
         {
           id: "admin.contingency_plan",
-          title: "Contingency Plan (data backup, disaster recovery, emergency-mode operation, testing, criticality analysis)",
+          title:
+            "Contingency Plan (data backup, disaster recovery, emergency-mode operation, testing, criticality analysis)",
           citation: "45 CFR §164.308(a)(7)",
           required: true,
         },
@@ -117,7 +121,8 @@ export const NIST_800_66_R2_TEMPLATE: SraTemplate = {
       sections: [
         {
           id: "physical.facility_access_controls",
-          title: "Facility Access Controls (contingency operations, facility security plan, access control & validation, maintenance records)",
+          title:
+            "Facility Access Controls (contingency operations, facility security plan, access control & validation, maintenance records)",
           citation: "45 CFR §164.310(a)(1)",
           required: false,
         },
@@ -135,7 +140,8 @@ export const NIST_800_66_R2_TEMPLATE: SraTemplate = {
         },
         {
           id: "physical.device_media_controls",
-          title: "Device and Media Controls (disposal, media re-use, accountability, data backup & storage)",
+          title:
+            "Device and Media Controls (disposal, media re-use, accountability, data backup & storage)",
           citation: "45 CFR §164.310(d)(1)",
           required: false,
         },
@@ -149,7 +155,8 @@ export const NIST_800_66_R2_TEMPLATE: SraTemplate = {
       sections: [
         {
           id: "technical.access_control",
-          title: "Access Control (unique user identification, emergency access, automatic logoff, encryption & decryption)",
+          title:
+            "Access Control (unique user identification, emergency access, automatic logoff, encryption & decryption)",
           citation: "45 CFR §164.312(a)(1)",
           required: false,
         },

@@ -5,9 +5,9 @@
 // constraint. All deterministic and IO-free.
 import { describe, expect, it } from "vitest";
 import {
+  EvvStateError,
   type GeofencePolicyLayer,
   type M18ErrorCode,
-  EvvStateError,
   PLATFORM_FLOOR_MAX_ACCURACY_M,
   PLATFORM_FLOOR_RADIUS_M,
   PLATFORM_FLOOR_SETTINGS,
@@ -100,7 +100,12 @@ describe("resolveEffectivePolicy — §2.2.2 narrowest layer", () => {
     radiusM: PLATFORM_FLOOR_RADIUS_M,
     maxAccuracyM: PLATFORM_FLOOR_MAX_ACCURACY_M,
   };
-  const tenant: GeofencePolicyLayer = { scope: "tenant", patientAddressId: null, radiusM: 100, maxAccuracyM: 40 };
+  const tenant: GeofencePolicyLayer = {
+    scope: "tenant",
+    patientAddressId: null,
+    radiusM: 100,
+    maxAccuracyM: 40,
+  };
   const addr: GeofencePolicyLayer = {
     scope: "patient_address",
     patientAddressId: "addr-1",
@@ -138,16 +143,27 @@ describe("policy bounds + tighten-only — §2.3 / §2.2.2", () => {
   });
 
   it("rejects radius outside [50,1000]", () => {
-    expectCode(() => assertPolicyBounds({ radiusM: 40, maxAccuracyM: 40 }), "GEOFENCE_RADIUS_OUT_OF_RANGE");
-    expectCode(() => assertPolicyBounds({ radiusM: 1200, maxAccuracyM: 40 }), "GEOFENCE_RADIUS_OUT_OF_RANGE");
+    expectCode(
+      () => assertPolicyBounds({ radiusM: 40, maxAccuracyM: 40 }),
+      "GEOFENCE_RADIUS_OUT_OF_RANGE",
+    );
+    expectCode(
+      () => assertPolicyBounds({ radiusM: 1200, maxAccuracyM: 40 }),
+      "GEOFENCE_RADIUS_OUT_OF_RANGE",
+    );
   });
 
   it("rejects max_accuracy outside [5,100]", () => {
-    expectCode(() => assertPolicyBounds({ radiusM: 100, maxAccuracyM: 2 }), "GEOFENCE_MAX_ACCURACY_OUT_OF_RANGE");
+    expectCode(
+      () => assertPolicyBounds({ radiusM: 100, maxAccuracyM: 2 }),
+      "GEOFENCE_MAX_ACCURACY_OUT_OF_RANGE",
+    );
   });
 
   it("a narrower layer may tighten but not loosen", () => {
-    expect(() => assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 50, maxAccuracyM: 30 })).not.toThrow();
+    expect(() =>
+      assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 50, maxAccuracyM: 30 }),
+    ).not.toThrow();
     expectCode(
       () => assertTightenOnly(PLATFORM_FLOOR_SETTINGS, { radiusM: 400, maxAccuracyM: 30 }),
       "GEOFENCE_POLICY_NOT_TIGHTENING",
@@ -171,7 +187,8 @@ describe("policy bounds + tighten-only — §2.3 / §2.2.2", () => {
         scope: "patient_address",
         proposed: { radiusM: 60, maxAccuracyM: 30 },
         parent: { radiusM: 100, maxAccuracyM: 40 },
-        overrideReason: "Patient lives in a multi-building assisted-living campus; tighten to the unit.",
+        overrideReason:
+          "Patient lives in a multi-building assisted-living campus; tighten to the unit.",
       }),
     ).not.toThrow();
   });

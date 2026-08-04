@@ -531,7 +531,16 @@ export function Timeline({
   entries: readonly { label: string; at: string; by?: string | null; detail?: ReactNode }[];
 }): JSX.Element {
   return (
-    <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: t.space3 }}>
+    <ol
+      style={{
+        listStyle: "none",
+        margin: 0,
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: t.space3,
+      }}
+    >
       {entries.map((e) => (
         <li key={`${e.label}-${e.at}`} style={{ display: "flex", gap: t.space3 }}>
           <span

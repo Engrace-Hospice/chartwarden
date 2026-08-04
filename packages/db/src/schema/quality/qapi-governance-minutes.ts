@@ -4,14 +4,7 @@
 // qapi_program. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). `minutes_text` may
 // name staff/patients → audit-denylisted (§3.6). document_id is an M22 back-ref (logical).
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { qapiProgram } from "./qapi-program";
 import type { AttendeeRoster, MinutesAmendmentLog } from "./types";

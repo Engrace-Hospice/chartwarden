@@ -20,7 +20,12 @@ export const medicaidStateSpecificModifiersValid: MedicaidRule = {
   check: (ctx) => {
     const KEY = "medicaid_state_specific_modifiers_valid";
     if (ctx.modifiersSatisfied === null) {
-      return skip(KEY, "error", "not_applicable", "No state-specific modifier requirement for this claim.");
+      return skip(
+        KEY,
+        "error",
+        "not_applicable",
+        "No state-specific modifier requirement for this claim.",
+      );
     }
     return ctx.modifiersSatisfied
       ? pass(KEY, "error", "State-specific modifiers satisfied.")
@@ -48,7 +53,12 @@ export const medicaidStateSpecificDocumentation: MedicaidRule = {
   check: (ctx) => {
     const KEY = "medicaid_state_specific_documentation";
     if (ctx.documentationSatisfied === null) {
-      return skip(KEY, "error", "not_applicable", "No state-specific documentation requirement for this claim.");
+      return skip(
+        KEY,
+        "error",
+        "not_applicable",
+        "No state-specific documentation requirement for this claim.",
+      );
     }
     return ctx.documentationSatisfied
       ? pass(KEY, "error", "State-specific documentation satisfied.")

@@ -39,7 +39,8 @@ function headerAuth(request: FastifyRequest): void {
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   const lic = request.headers["x-test-licensure"];
-  if (typeof lic === "string" && lic.length > 0) request.context.attributes.licensure = { type: lic };
+  if (typeof lic === "string" && lic.length > 0)
+    request.context.attributes.licensure = { type: lic };
 }
 
 const ORG = "org_a";
@@ -102,7 +103,9 @@ function makeServer(service: DocumentRouteService = sharedBackend.service) {
       [ORG, ORG_B].map((org) => ({
         orgId: org,
         userId: s.userId,
-        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions },
+        ],
       })),
     ),
   );
@@ -128,9 +131,18 @@ function makeServer(service: DocumentRouteService = sharedBackend.service) {
   return { app };
 }
 
-const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn", "x-test-licensure": "RN" };
+const RN = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "rn",
+  "x-test-licensure": "RN",
+};
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
-const PLATFORM = { "x-test-user": "platform_1", "x-test-org": ORG, "x-test-roles": "platform_admin" };
+const PLATFORM = {
+  "x-test-user": "platform_1",
+  "x-test-org": ORG,
+  "x-test-roles": "platform_admin",
+};
 const ORG_ADMIN = { "x-test-user": "orgadmin_1", "x-test-org": ORG, "x-test-roles": "org_admin" };
 
 beforeEach(() => {
@@ -150,7 +162,12 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
       method: "POST",
       url: "/api/v1/documents",
       headers: RN,
-      payload: { retentionClass: "clinical_record", aggregateType: "encounter", title: "Visit note", patientId: PATIENT },
+      payload: {
+        retentionClass: "clinical_record",
+        aggregateType: "encounter",
+        title: "Visit note",
+        patientId: PATIENT,
+      },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("active");
@@ -192,7 +209,18 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     const { app } = makeServer();
     // off_user holds the permission but is NOT on PATIENT's caseload.
     const grantStore = createInMemoryEffectivePermissionStore([
-      { orgId: ORG, userId: "off_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["documents.read_phi_content"] }] },
+      {
+        orgId: ORG,
+        userId: "off_user",
+        grants: [
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: ["documents.read_phi_content"],
+          },
+        ],
+      },
     ]);
     registerEffectivePermissionResolver(grantStore.store);
     registerAbacRegistry();
@@ -243,7 +271,12 @@ describe("M22-T07 — §4.7 extraction_reviewer_eligible (per-candidate decision
     const res = await app.inject({
       method: "POST",
       url: `/api/v1/intake/reviews/${reviewId}/decisions?riskLevel=high`,
-      headers: { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "aide", "idempotency-key": "dc-1" },
+      headers: {
+        "x-test-user": "rn_1",
+        "x-test-org": ORG,
+        "x-test-roles": "aide",
+        "idempotency-key": "dc-1",
+      },
       payload: { candidateId: PATIENT, decision: "approve", sourceViewConfirmed: true },
     });
     expect(res.statusCode).toBe(403);
@@ -304,10 +337,19 @@ describe("M22-T07 — cursor pagination (§4.1 / SD-052)", () => {
         method: "POST",
         url: "/api/v1/documents",
         headers: { ...RN, "idempotency-key": `pg-${i}` },
-        payload: { retentionClass: "clinical_record", aggregateType: "encounter", title: `doc ${i}`, patientId: PATIENT },
+        payload: {
+          retentionClass: "clinical_record",
+          aggregateType: "encounter",
+          title: `doc ${i}`,
+          patientId: PATIENT,
+        },
       });
     }
-    const page1 = await app.inject({ method: "GET", url: "/api/v1/documents?limit=2", headers: RN });
+    const page1 = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents?limit=2",
+      headers: RN,
+    });
     expect(page1.statusCode).toBe(200);
     expect(page1.json().items.length).toBe(2);
     expect(page1.json().hasMore).toBe(true);
@@ -326,7 +368,11 @@ describe("M22-T07 — cursor pagination (§4.1 / SD-052)", () => {
 
   it("a malformed cursor is rejected with 400 (never silently pages from start)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/documents?cursor=not-a-cursor!!!", headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents?cursor=not-a-cursor!!!",
+      headers: RN,
+    });
     expect(res.statusCode).toBe(400);
   });
 });
@@ -339,7 +385,9 @@ describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
       method: "PUT",
       url: "/api/v1/tenant-overlays/election_statement",
       headers: { ...ORG_ADMIN, "if-match": "0", "idempotency-key": "ov-1" },
-      payload: { branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } } },
+      payload: {
+        branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+      },
     });
     expect(first.statusCode).toBe(200);
     expect(first.json().version).toBe(1);
@@ -349,7 +397,9 @@ describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
       method: "PUT",
       url: "/api/v1/tenant-overlays/election_statement",
       headers: { ...ORG_ADMIN, "if-match": "0", "idempotency-key": "ov-2" },
-      payload: { branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } } },
+      payload: {
+        branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+      },
     });
     expect(stale.statusCode).toBe(412);
     expect(stale.json().error.code).toBe("VERSION_MISMATCH");
@@ -361,7 +411,9 @@ describe("M22-T07 — §2.5 overlay If-Match optimistic concurrency", () => {
       method: "PUT",
       url: "/api/v1/tenant-overlays/election_statement",
       headers: { ...ORG_ADMIN, "idempotency-key": "ov-3" },
-      payload: { branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } } },
+      payload: {
+        branding: { letterhead: { orgName: "Acme Hospice", addressLines: ["1 Main St"] } },
+      },
     });
     expect(res.statusCode).toBe(428);
   });

@@ -46,7 +46,7 @@ import type {
   AiTenantOptInStatus,
 } from "@wardenx/types";
 
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "./errors";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 
 /** The routing preferences under which a local backend is the only thing that may run (§10.8). */
 export const AI_LOCAL_ONLY_PREFERENCES: readonly AiRoutingPreference[] = ["local_only"];

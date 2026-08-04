@@ -38,7 +38,10 @@ export function csvField(value: string | null): string {
 }
 
 /** Render a header + ordered rows into a CRLF CSV (RFC-4180), as UTF-8 bytes. */
-export function renderCsv(header: readonly string[], rows: readonly (readonly (string | null)[])[]): Buffer {
+export function renderCsv(
+  header: readonly string[],
+  rows: readonly (readonly (string | null)[])[],
+): Buffer {
   const lines = [header.join(","), ...rows.map((cells) => cells.map(csvField).join(","))];
   return Buffer.from(`${lines.join("\r\n")}\r\n`, "utf8");
 }

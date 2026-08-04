@@ -56,23 +56,47 @@ export type M35AuditPosture =
 
 /** §3.6 M35's per-table advisory registrations with M4's `AuditDenylistRegistry` (boot-time). */
 export const M35_AUDIT_POSTURES: { readonly [K in M35TableName]: M35AuditPosture } = {
-  subscription: { kind: "audit_writes", fieldExclusionHints: ["stripe_customer_id", "stripe_subscription_id"] },
-  subscription_state_history: { kind: "full_exclusion", reason: "it IS the transition audit trail (recursive)" },
+  subscription: {
+    kind: "audit_writes",
+    fieldExclusionHints: ["stripe_customer_id", "stripe_subscription_id"],
+  },
+  subscription_state_history: {
+    kind: "full_exclusion",
+    reason: "it IS the transition audit trail (recursive)",
+  },
   payment_method: { kind: "audit_writes", fieldExclusionHints: ["card_*", "ach_*", "sepa_*"] },
   invoice: { kind: "audit_writes", fieldExclusionHints: ["hosted_invoice_url", "invoice_pdf_url"] },
   invoice_line: { kind: "audit_writes" },
-  usage_event: { kind: "full_exclusion", reason: "high-volume append-only; stripe_api_call_audit is the trail" },
-  usage_period_aggregate: { kind: "partial_exclusion", auditWhen: "stripe_usage_record_id IS NOT NULL" },
-  patient_active_period: { kind: "full_exclusion", reason: "append-only pseudonym rows; M35 eraser destroys" },
-  user_active_period: { kind: "full_exclusion", reason: "append-only pseudonym rows; M35 eraser destroys" },
+  usage_event: {
+    kind: "full_exclusion",
+    reason: "high-volume append-only; stripe_api_call_audit is the trail",
+  },
+  usage_period_aggregate: {
+    kind: "partial_exclusion",
+    auditWhen: "stripe_usage_record_id IS NOT NULL",
+  },
+  patient_active_period: {
+    kind: "full_exclusion",
+    reason: "append-only pseudonym rows; M35 eraser destroys",
+  },
+  user_active_period: {
+    kind: "full_exclusion",
+    reason: "append-only pseudonym rows; M35 eraser destroys",
+  },
   dunning_state: { kind: "audit_writes" },
   promo_code_application: { kind: "audit_writes" },
   refund: { kind: "audit_writes", fieldExclusionHints: ["approver_step_up_audit_event_id"] },
   plan: { kind: "audit_writes" },
   plan_meter: { kind: "audit_writes" },
   promo_code: { kind: "audit_writes" },
-  revenue_recognition_snapshot: { kind: "full_exclusion", reason: "append-only platform-shared aggregate" },
-  patient_pseudonym_key: { kind: "full_exclusion", reason: "key-rotation timeline must not enter the audit log" },
+  revenue_recognition_snapshot: {
+    kind: "full_exclusion",
+    reason: "append-only platform-shared aggregate",
+  },
+  patient_pseudonym_key: {
+    kind: "full_exclusion",
+    reason: "key-rotation timeline must not enter the audit log",
+  },
   stripe_webhook_event: { kind: "full_exclusion", reason: "it IS the source-of-truth webhook log" },
   stripe_api_call_audit: { kind: "full_exclusion", reason: "it IS the outbound-call audit ledger" },
   platform_retained_invoice: { kind: "audit_writes" },

@@ -10,9 +10,9 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import { readOnCallRoster } from "../src/modules/19-oncall/consumers/trigger-context";
 import {
   type ExistingOnCallShift,
+  ON_CALL_SHIFT_EDGES,
   type OnCallRosterSyncFacts,
   type OnCallShiftFacts,
-  ON_CALL_SHIFT_EDGES,
   ROSTER_SYNC_CANCELLATION_REASON,
   activateShift,
   availableShiftCommands,
@@ -146,7 +146,10 @@ describe("M19 §2.2.2 — the on-call shift machine", () => {
 
   it("ALLOWS an early completeShift — the asymmetry that makes an early-ended night visible as a gap", () => {
     const early = "2026-08-02T03:00:00.000Z";
-    const t = completeShift({ shift: shift({ status: "active", openedAt: NIGHT_START }), at: early });
+    const t = completeShift({
+      shift: shift({ status: "active", openedAt: NIGHT_START }),
+      at: early,
+    });
     expect(t.to).toBe("completed");
     expect(t.effects).toEqual([
       { kind: "audit" },
@@ -374,7 +377,9 @@ describe("M19 §4.5 path 1 — reconciling M17's roster into on_call_shift rows"
       syncFacts({
         rosterRead: {
           kind: "roster",
-          entries: [entry({ fromIso: "2026-08-02T23:00:00.000Z", toIso: "2026-08-03T07:00:00.000Z" })],
+          entries: [
+            entry({ fromIso: "2026-08-02T23:00:00.000Z", toIso: "2026-08-03T07:00:00.000Z" }),
+          ],
         },
         existingShifts: [existing()],
       }),

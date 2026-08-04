@@ -19,7 +19,6 @@ import {
 } from "./m29-typebox";
 import type { M29Store } from "./store";
 
-
 export interface ProposalRouteDeps {
   readonly store: M29Store;
 }
@@ -63,7 +62,8 @@ export function registerProposalRoutes(app: FastifyInstance, deps: ProposalRoute
       const actor = actorOf(request);
       const { proposalId } = request.params as { proposalId: string };
       const proposal = await store.getProposal(actor.organizationId, proposalId);
-      if (!proposal) return reply.code(404).send({ code: "NOT_FOUND", message: "proposal not found" });
+      if (!proposal)
+        return reply.code(404).send({ code: "NOT_FOUND", message: "proposal not found" });
       return { proposal };
     },
   );

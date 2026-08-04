@@ -38,7 +38,11 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 
 import type { PreHandler } from "./actor";
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";
@@ -52,7 +56,8 @@ const bodyStr = (request: TargetRequest, key: string): string =>
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
 /** §4.1 — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate (rule 4). */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;
 
 /**
  * Rule 1 — the §4.1 `∨` cell as ONE preHandler.
@@ -176,7 +181,10 @@ export const ABAC_TENANT_CONSENT = (action: string): PreHandler => ABAC_IN_ORG(a
  * now" binds the registered predicate by name instead of re-deriving it, and so the name stays visible to
  * `arch:abac-predicates` as something a route can reach.
  */
-export const ABAC_TENANT_OPTED_IN = (action: string, capabilityParam = "capabilityId"): PreHandler =>
+export const ABAC_TENANT_OPTED_IN = (
+  action: string,
+  capabilityParam = "capabilityId",
+): PreHandler =>
   requireAbac(action, "ai_capability_tenant_opted_in", {
     getTarget: (r) => ({ capabilityId: param(r as TargetRequest, capabilityParam) }),
     notFoundOnDeny: false,

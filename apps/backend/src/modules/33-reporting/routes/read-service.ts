@@ -352,8 +352,7 @@ export function createInMemoryM33ReadBackend(seed: M33ReadRouteSeed = {}): {
     },
   };
 
-  const freshnessAsOf = () =>
-    new Date(Date.parse(now()) - lag.lagSeconds * 1000).toISOString();
+  const freshnessAsOf = () => new Date(Date.parse(now()) - lag.lagSeconds * 1000).toISOString();
 
   const service: M33ReadRouteService = {
     async listDashboards(_actor, cursor, limit) {

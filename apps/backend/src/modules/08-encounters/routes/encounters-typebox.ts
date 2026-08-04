@@ -10,9 +10,9 @@ import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
-  EncounterRouteService as ServiceRouteApi,
   EncounterView as ServiceEncounterView,
   MileageResult as ServiceMileageResult,
+  EncounterRouteService as ServiceRouteApi,
   VitalsResult as ServiceVitalsResult,
 } from "./service";
 
@@ -363,9 +363,7 @@ export const AddendumSignResponseSchema = Type.Object({
 
 /** Route 29 — BillableEncounterReader seam projection (M23/M24). */
 export const BillableResponseSchema = Type.Object({
-  billability: Type.Array(
-    Type.Object({ encounterId: Type.String(), billable: Type.Boolean() }),
-  ),
+  billability: Type.Array(Type.Object({ encounterId: Type.String(), billable: Type.Boolean() })),
 });
 
 /** Route 31 — M22 PDF-render payload. */

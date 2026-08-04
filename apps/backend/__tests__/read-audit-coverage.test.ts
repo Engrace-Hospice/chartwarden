@@ -99,11 +99,15 @@ describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
   // never silently narrow again — a §164.528 accounting gap is invisible until someone asks for one.
   it("governs the M30 quality PHI surface", () => {
     expect(DEFAULT_READ_AUDIT_PREFIXES).toContain("/api/v1/quality");
-    expect(isGovernedReadRoute("GET", "/api/v1/quality/incidents", DEFAULT_READ_AUDIT_PREFIXES)).toBe(
-      true,
-    );
     expect(
-      isGovernedReadRoute("GET", "/api/v1/quality/mortality/:reviewId", DEFAULT_READ_AUDIT_PREFIXES),
+      isGovernedReadRoute("GET", "/api/v1/quality/incidents", DEFAULT_READ_AUDIT_PREFIXES),
+    ).toBe(true);
+    expect(
+      isGovernedReadRoute(
+        "GET",
+        "/api/v1/quality/mortality/:reviewId",
+        DEFAULT_READ_AUDIT_PREFIXES,
+      ),
     ).toBe(true);
   });
 
@@ -171,7 +175,11 @@ describe("DEFAULT_READ_AUDIT_PREFIXES — the governed PHI surface", () => {
   });
 
   it("governs the M28 FHIR admin surface, but NOT the /fhir/r4 patient-data mount (a different, non-/api/v1 prefix audited via FhirDisclosureAuditPort)", () => {
-    expect(isGovernedReadRoute("GET", "/api/v1/fhir/clients", DEFAULT_READ_AUDIT_PREFIXES)).toBe(true);
-    expect(isGovernedReadRoute("GET", "/fhir/r4/Patient/:id", DEFAULT_READ_AUDIT_PREFIXES)).toBe(false);
+    expect(isGovernedReadRoute("GET", "/api/v1/fhir/clients", DEFAULT_READ_AUDIT_PREFIXES)).toBe(
+      true,
+    );
+    expect(isGovernedReadRoute("GET", "/fhir/r4/Patient/:id", DEFAULT_READ_AUDIT_PREFIXES)).toBe(
+      false,
+    );
   });
 });

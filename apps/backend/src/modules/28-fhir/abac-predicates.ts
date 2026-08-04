@@ -93,7 +93,11 @@ export interface FhirGatewayAbacResolver {
   /** The owner module a staged proposal resolves to, or null when absent/unreadable. */
   inboundOwnerModule(orgId: string, proposalId: string): Promise<FhirInboundOwnerModule | null>;
   /** Whether the membership holds an M3 permission key in this org. `null` ⇒ unreadable (denies). */
-  holdsPermission(orgId: string, membershipId: string, permissionKey: string): Promise<boolean | null>;
+  holdsPermission(
+    orgId: string,
+    membershipId: string,
+    permissionKey: string,
+  ): Promise<boolean | null>;
   /** The client's granted resource types (`allowed_scopes` → `Patient`/`Encounter`/…). `null` ⇒ deny. */
   clientAllowedResourceTypes(clientId: string): Promise<readonly string[] | null>;
   /** The job's org + initiator + client, or null when absent/cross-tenant/unreadable. */
@@ -161,7 +165,9 @@ function membershipIdOf(context: AbacContext): string | null {
 // ── the predicates ───────────────────────────────────────────────────────────────────────────────────
 
 /** Build M28's six §4.7 predicate resolvers over an injected read surface (unit-testable without seams). */
-export function buildFhirGatewayAbacPredicates(deps: FhirGatewayAbacDeps): Record<
+export function buildFhirGatewayAbacPredicates(
+  deps: FhirGatewayAbacDeps,
+): Record<
   M28RegisteredAbacPredicate,
   (context: AbacContext, target: AbacTarget) => Promise<boolean>
 > {

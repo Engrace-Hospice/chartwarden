@@ -10,7 +10,7 @@
 // `fire-and-forget` distinction (§7.10): `alert` / `notify_compliance` are M36 dispatches the service
 // runs OUTSIDE the rollback boundary — M36 unavailability must NOT block a clinician from adjourning a
 // meeting. `outbox` events are the durable cross-module contract and run INSIDE the transaction.
-import type { M14EventName, M14AlertPayload } from "@wardenx/types";
+import type { M14AlertPayload, M14EventName } from "@wardenx/types";
 
 /** The §4.10 typed-alert discriminator the `alert` effect names (the payload is assembled in M14-T06). */
 export type M14AlertKind = M14AlertPayload["kind"];

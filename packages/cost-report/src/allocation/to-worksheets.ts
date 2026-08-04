@@ -1,13 +1,13 @@
+import type { WorksheetBData } from "../worksheets/b";
+import type { WorksheetCData } from "../worksheets/c";
 // @wardenx/cost-report — the PURE allocation-RESULT → derived-worksheet mapper (Form CMS-1984-14, D8). The
 // inverse of `assemble-inputs`: it turns the chain RESULTS (`StepDownAllocateResult` → Worksheet B,
 // `PerDiemResult` → Worksheet C) into the TypeBox-typed `data` jsonb the `cost_report_worksheet` rows persist,
 // so a `cost-allocation-recompute` materializes the derived worksheets. Total, deterministic functions over
 // already-computed results — no DB, no clock, no recomputation. Money is INTEGER CENTS; no PHI (D18).
 import type { AllocationColumnConfig, LocDays } from "./assemble-inputs";
-import { type LevelOfCare, type PerDiemInput, type PerDiemResult } from "./per-diem";
+import type { LevelOfCare, PerDiemInput, PerDiemResult } from "./per-diem";
 import type { StepDownAllocateResult } from "./step-down";
-import type { WorksheetBData } from "../worksheets/b";
-import type { WorksheetCData } from "../worksheets/c";
 
 /** The derived-worksheet `data` payloads a recompute materializes, keyed by worksheet code. */
 export interface DerivedWorksheetPayloads {
@@ -16,7 +16,12 @@ export interface DerivedWorksheetPayloads {
 }
 
 /** The uppercase step-down cost-center code for each level of care (mirrors `assemble-inputs`). */
-const LOC_CENTER_CODE: Record<LevelOfCare, string> = { chc: "CHC", rhc: "RHC", irc: "IRC", gip: "GIP" };
+const LOC_CENTER_CODE: Record<LevelOfCare, string> = {
+  chc: "CHC",
+  rhc: "RHC",
+  irc: "IRC",
+  gip: "GIP",
+};
 
 /** `StepDownAllocateResult` → Worksheet B. The persisted `costCenters` are the four DIRECT level-of-care
  *  centers (each overhead center steps to zero and folds into them). `allocationColumns` records each overhead
@@ -25,7 +30,9 @@ export function stepDownToWorksheetB(
   result: StepDownAllocateResult,
   columns: readonly AllocationColumnConfig[],
 ): WorksheetBData {
-  const poolByAllocator = new Map(result.steps.map((s) => [s.allocatingCenterCode, s.amountAllocatedCents]));
+  const poolByAllocator = new Map(
+    result.steps.map((s) => [s.allocatingCenterCode, s.amountAllocatedCents]),
+  );
   return {
     allocationColumns: columns.map((col) => ({
       generalServiceCostCenterCode: col.generalServiceCostCenterCode,
@@ -63,7 +70,10 @@ export function buildPerDiemInput(result: StepDownAllocateResult, locDays: LocDa
 }
 
 /** `PerDiemResult` → Worksheet C. Maps each level's per-diem block; ties to B when Σ LOC cost equals B total. */
-export function perDiemToWorksheetC(result: PerDiemResult, bTotalFullyAllocatedCostCents: number): WorksheetCData {
+export function perDiemToWorksheetC(
+  result: PerDiemResult,
+  bTotalFullyAllocatedCostCents: number,
+): WorksheetCData {
   const lvl = (loc: LevelOfCare) => {
     const r = result.levels.find((l) => l.levelOfCare === loc);
     return {

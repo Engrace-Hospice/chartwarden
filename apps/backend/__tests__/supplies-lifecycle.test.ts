@@ -11,14 +11,14 @@ import type {
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
+  COMFORT_KIT_DISPATCH_GRAPH,
+  COMFORT_KIT_RETURN_GRAPH,
   type ComfortKitReturnEvent,
   type DispatchLineInput,
   type DispatchValidationContext,
+  PLATFORM_FLOOR_KEYS,
   type ParStockFacts,
   type SupplyRequestEvent,
-  COMFORT_KIT_DISPATCH_GRAPH,
-  COMFORT_KIT_RETURN_GRAPH,
-  PLATFORM_FLOOR_KEYS,
   applyParStockMovement,
   assertDispatchValid,
   assertMedicationLineDeletable,
@@ -101,7 +101,12 @@ describe("§2.2 supply-request lifecycle — the happy path", () => {
   it("walks requested → completed for a one-shot DME purchase", () => {
     let status: SupplyRequestStatus = "requested";
     const steps: ReadonlyArray<SupplyRequestEvent> = [
-      { type: "assignVendor", resolved: routing(), vendorActive: true, at: "2026-06-09T12:00:00.000Z" },
+      {
+        type: "assignVendor",
+        resolved: routing(),
+        vendorActive: true,
+        at: "2026-06-09T12:00:00.000Z",
+      },
       {
         type: "placeOrderWithVendor",
         vendorOrderReference: "PO-4471",
@@ -119,7 +124,11 @@ describe("§2.2 supply-request lifecycle — the happy path", () => {
         actor: "caregiver",
         at: "2026-06-12T16:00:00.000Z",
       },
-      { type: "completeRequest", at: "2026-06-12T16:00:00.000Z", rentalCadence: "one_time_purchase" },
+      {
+        type: "completeRequest",
+        at: "2026-06-12T16:00:00.000Z",
+        rentalCadence: "one_time_purchase",
+      },
     ];
     const visited: SupplyRequestStatus[] = [];
     for (const event of steps) {
@@ -331,9 +340,9 @@ describe("§2.2 delivery + receipt confirmation", () => {
       deliveredAt: "2026-06-12T15:00:00.000Z",
     });
     expect(t.to).toBe("received_confirmed");
-    expect(
-      t.effects.find((e) => e.kind === "record_received_confirmation"),
-    ).toMatchObject({ actor: "system_auto_confirm" });
+    expect(t.effects.find((e) => e.kind === "record_received_confirmation")).toMatchObject({
+      actor: "system_auto_confirm",
+    });
   });
 
   it("never gates a HUMAN confirmation on the clock", () => {
@@ -469,9 +478,9 @@ describe("§2.2 cancellation — immediate before `ordered`, two-phase after", (
       at: "2026-06-10T18:00:00.000Z",
     });
     expect(t.to).toBe("cancelled");
-    expect(
-      t.effects.find((e) => e.kind === "record_cancellation"),
-    ).toMatchObject({ requiredVendorConfirmation: true });
+    expect(t.effects.find((e) => e.kind === "record_cancellation")).toMatchObject({
+      requiredVendorConfirmation: true,
+    });
   });
 });
 
@@ -825,7 +834,10 @@ describe("§2.5 dispatch validation — five fail-closed refusals", () => {
   it("refuses a controlled line expiring inside the 30-day window", () => {
     expectCode(
       () =>
-        assertDispatchValid([line({ expirationDate: "2026-06-20" }), ...floorPair().slice(1)], ctx()),
+        assertDispatchValid(
+          [line({ expirationDate: "2026-06-20" }), ...floorPair().slice(1)],
+          ctx(),
+        ),
       "M21_CONTROLLED_EXPIRATION_WINDOW",
     );
   });
@@ -875,10 +887,7 @@ describe("§2.5 dispatch validation — five fail-closed refusals", () => {
   });
 
   it("catches a hand-assembled kit that omitted a floor medication", () => {
-    expectCode(
-      () => assertDispatchValid([line()], ctx()),
-      "M21_TEMPLATE_VIOLATES_PLATFORM_FLOOR",
-    );
+    expectCode(() => assertDispatchValid([line()], ctx()), "M21_TEMPLATE_VIOLATES_PLATFORM_FLOOR");
   });
 
   it("EXEMPTS a replenishment from floor coverage — it ships only what crossed threshold", () => {
@@ -1252,11 +1261,7 @@ describe("§2.6 / D8 reconciliation", () => {
 
   it("refuses a reconciler who is the dispatcher (§7.3 separation of duties)", () => {
     expectCode(
-      () =>
-        reconcileReturn(
-          "retrieved",
-          reconcileEvent({ reconciledByMembershipId: DISPATCHER }),
-        ),
+      () => reconcileReturn("retrieved", reconcileEvent({ reconciledByMembershipId: DISPATCHER })),
       "M21_RECONCILIATION_SEPARATION_OF_DUTIES_VIOLATION",
     );
   });

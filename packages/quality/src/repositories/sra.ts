@@ -97,10 +97,7 @@ export class SraRepository {
     sraCycleId: string,
     status?: schema.SraFinding["status"],
   ): Promise<readonly schema.SraFinding[]> {
-    const where = and(
-      eq(FN.sraCycleId, sraCycleId),
-      status ? eq(FN.status, status) : undefined,
-    );
+    const where = and(eq(FN.sraCycleId, sraCycleId), status ? eq(FN.status, status) : undefined);
     return this.db.select().from(FN).where(where).orderBy(FN.findingNumber);
   }
 

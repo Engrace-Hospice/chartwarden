@@ -65,8 +65,7 @@ const ISO = (d: string) => `${d}T00:00:00.000Z`;
 
 /** Expiry fixtures are RELATIVE to the wall clock — the window filter is a "days from now"
  *  question, so absolute dates would make these tests pass or fail depending on the calendar. */
-const daysFromNow = (n: number) =>
-  new Date(Date.now() + n * 24 * 3600 * 1000).toISOString();
+const daysFromNow = (n: number) => new Date(Date.now() + n * 24 * 3600 * 1000).toISOString();
 
 function record(over: Partial<ConsentRecordView> & { id: string }): ConsentRecordView {
   return {
@@ -742,9 +741,9 @@ describe("M39 §4.1 — the surface behind the previously route-less tables", ()
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data).toHaveLength(2);
-    expect(
-      (res.json().data as EvalAuditRow[]).every((r) => r.consentRecordId === "c-active"),
-    ).toBe(true);
+    expect((res.json().data as EvalAuditRow[]).every((r) => r.consentRecordId === "c-active")).toBe(
+      true,
+    );
     expect(typeof res.json().nextCursor).toBe("string");
     await app.close();
   });

@@ -87,7 +87,12 @@ export const M30_CONTRIBUTED_PERMISSIONS = {
   // R-21/R-22/R-24/R-25 adopt program, governance composition, create/update indicators.
   "qapi.admin": { resource: "qapi", action: "admin", category: "quality_admin", abac: "inOrg" },
   // R-31 close PIP (two-person co-sign).
-  "qapi.close": { resource: "qapi", action: "close", category: "quality", abac: "qapiCloseAuthority" },
+  "qapi.close": {
+    resource: "qapi",
+    action: "close",
+    category: "quality",
+    abac: "qapiCloseAuthority",
+  },
   // --- SRA (§6.4) — `sra.close` requires two-person co-sign (Security Officer + Compliance Officer);
   // the `sraCloseAuthority` predicate enforces the role split ---
   // R-40/R-42/R-48 list cycles, cycle detail, NIST export.

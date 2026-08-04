@@ -69,7 +69,9 @@ export function MedicaidArDashboard(): JSX.Element {
       client.GET("/api/v1/medicaid-ar-dashboard/metrics", {}),
     ]);
     if (arRes.error) {
-      setError("Medicaid AR is unavailable — you may lack billing visibility for this organization.");
+      setError(
+        "Medicaid AR is unavailable — you may lack billing visibility for this organization.",
+      );
       setLoading(false);
       return;
     }
@@ -119,7 +121,10 @@ export function MedicaidArDashboard(): JSX.Element {
           <div>
             <h2 style={sectionTitleStyle}>Aging</h2>
             {ar.buckets.length === 0 ? (
-              <EmptyState title="No open AR" description="Every Medicaid claim has reached a terminal state." />
+              <EmptyState
+                title="No open AR"
+                description="Every Medicaid claim has reached a terminal state."
+              />
             ) : (
               <table style={tableStyle}>
                 <thead>
@@ -149,7 +154,10 @@ export function MedicaidArDashboard(): JSX.Element {
           <div>
             <h2 style={sectionTitleStyle}>By service state</h2>
             {ar.byState.length === 0 ? (
-              <EmptyState title="No state breakdown" description="No open claims to attribute to a state." />
+              <EmptyState
+                title="No state breakdown"
+                description="No open claims to attribute to a state."
+              />
             ) : (
               <table style={tableStyle}>
                 <thead>

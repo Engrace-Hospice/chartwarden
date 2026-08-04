@@ -1,3 +1,5 @@
+import type { Clock } from "./adapters/sandata-adapter";
+import { eventPairHash } from "./event-pair-hash";
 // @wardenx/evv-aggregators — the open-model (no-aggregator) adapter (M18-T06, §4.5 D1, §8.5).
 //
 // For non-mandate states and open-model states that allow any alt-EVV vendor conforming to the state's data
@@ -6,15 +8,13 @@
 // short-circuit) so the downstream billing gate is never blocked waiting on a vendor that does not exist. The
 // sentinel state code `'__ALL_OPEN_MODEL__'` marks this adapter in the registry; it is never matched directly
 // by a real two-letter state code.
-import {
-  type AggregatorCredentials,
-  type AggregatorPollResult,
-  type AggregatorSubmitResult,
-  type BuildSubmissionPayloadArgs,
-  type EvvAggregatorAdapter,
+import type {
+  AggregatorCredentials,
+  AggregatorPollResult,
+  AggregatorSubmitResult,
+  BuildSubmissionPayloadArgs,
+  EvvAggregatorAdapter,
 } from "./interface";
-import { eventPairHash } from "./event-pair-hash";
-import type { Clock } from "./adapters/sandata-adapter";
 
 /** The open-model "submission" body — a local verification record (no external vendor payload). */
 export interface OpenModelSubmissionBody {
@@ -54,7 +54,11 @@ export class OpenModelAdapter implements EvvAggregatorAdapter {
     credentials: AggregatorCredentials;
   }): Promise<AggregatorSubmitResult> {
     const at = this.clock().toISOString();
-    return { result: "accepted", transactionId: `open-model-${args.idempotencyKey.slice(0, 24)}`, acceptedAt: at };
+    return {
+      result: "accepted",
+      transactionId: `open-model-${args.idempotencyKey.slice(0, 24)}`,
+      acceptedAt: at,
+    };
   }
 
   async poll(_args: {

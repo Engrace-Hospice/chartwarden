@@ -62,7 +62,12 @@ export type IpuShiftRole =
   | "social_worker_in_unit"
   | "chaplain_in_unit"
   | "medical_director_in_unit";
-export type IpuShiftAssignmentState = "tentative" | "confirmed" | "cancelled" | "completed" | "no_show";
+export type IpuShiftAssignmentState =
+  | "tentative"
+  | "confirmed"
+  | "cancelled"
+  | "completed"
+  | "no_show";
 export type GipCriterionKind =
   | "acute_symptom_management"
   | "imminent_death_terminal_care"
@@ -107,7 +112,13 @@ export type IpuEquipmentType =
   | "vitals_monitor"
   | "comfort_mattress"
   | "low_air_loss_mattress";
-export type IpuEquipmentLocationKind = "unit" | "room" | "bed" | "storage" | "sent_for_repair" | "retired";
+export type IpuEquipmentLocationKind =
+  | "unit"
+  | "room"
+  | "bed"
+  | "storage"
+  | "sent_for_repair"
+  | "retired";
 export type IpuEquipmentStatus = "active" | "maintenance" | "retired" | "lost" | "sent_for_repair";
 export type IpuEquipmentInspectionKind =
   | "annual_biomed"
@@ -277,7 +288,11 @@ export interface IpuAdmissionReader {
 /** M23/M26/M27/M33 — the daily census + fiscal roll-ups. */
 export interface IpuCensusProvider {
   /** M26 — inpatient days for the CCN's cap projection as of a fiscal date. */
-  inpatientDaysForFiscalDate(organizationId: OrgId, providerEntityId: string, asOfDate: string): Promise<number>;
+  inpatientDaysForFiscalDate(
+    organizationId: OrgId,
+    providerEntityId: string,
+    asOfDate: string,
+  ): Promise<number>;
   /** M27 — Worksheet S-3 IPU service days for a fiscal year. */
   serviceDaysForFiscalYear(providerEntityId: string, fiscalYear: number): Promise<number>;
 }
@@ -289,7 +304,11 @@ export interface IpuBedAssignmentProvider {
 
 /** M17 cross-check / M19 after-hours — is the unit's RN coverage active at an instant? */
 export interface IpuShiftCoverageReader {
-  coverageActiveForUnit(organizationId: OrgId, unitId: InpatientUnitId, atIso: string): Promise<boolean>;
+  coverageActiveForUnit(
+    organizationId: OrgId,
+    unitId: InpatientUnitId,
+    atIso: string,
+  ): Promise<boolean>;
 }
 
 /** M13 pre-administration gate — the IV-safety overlay for a signed IV-continuous order. */
@@ -303,7 +322,10 @@ export interface IpuIvSafetyOverlayView {
   readonly isSedationClass: boolean;
 }
 export interface IpuIvSafetyOverlayProvider {
-  getOverlayForOrder(organizationId: OrgId, orderId: string): Promise<IpuIvSafetyOverlayView | null>;
+  getOverlayForOrder(
+    organizationId: OrgId,
+    orderId: string,
+  ): Promise<IpuIvSafetyOverlayView | null>;
 }
 
 /** M31 portal — the visit-policy for a patient (active restrictions folded in). */
@@ -311,19 +333,33 @@ export interface IpuVisitorReader {
   visitsAllowedForPatient(
     organizationId: OrgId,
     patientId: PatientId,
-  ): Promise<{ readonly allowed: boolean; readonly maskRequired: boolean; readonly reason: string | null }>;
+  ): Promise<{
+    readonly allowed: boolean;
+    readonly maskRequired: boolean;
+    readonly reason: string | null;
+  }>;
 }
 
 /** M30 measure-detail — the IPU quality reader family (deterministic scoring today; M32 augments acuity later). */
 export interface IpuQualityReader {
   acuityForAdmission(organizationId: OrgId, ipuAdmissionId: IpuAdmissionId): Promise<number | null>;
-  restraintIncidentsForDate(organizationId: OrgId, unitId: InpatientUnitId, serviceDate: string): Promise<number>;
-  mortalityCountForDate(organizationId: OrgId, unitId: InpatientUnitId, serviceDate: string): Promise<number>;
+  restraintIncidentsForDate(
+    organizationId: OrgId,
+    unitId: InpatientUnitId,
+    serviceDate: string,
+  ): Promise<number>;
+  mortalityCountForDate(
+    organizationId: OrgId,
+    unitId: InpatientUnitId,
+    serviceDate: string,
+  ): Promise<number>;
 }
 
 /** M34 platform-ops — tenant IPU configuration posture + the offboarding gate. */
 export interface IpuTenantPostureReader {
-  unitsForOrg(organizationId: OrgId): Promise<ReadonlyArray<{ readonly unitId: InpatientUnitId; readonly isActive: boolean }>>;
+  unitsForOrg(
+    organizationId: OrgId,
+  ): Promise<ReadonlyArray<{ readonly unitId: InpatientUnitId; readonly isActive: boolean }>>;
   /** M34 offboarding gate — a tenant cannot offboard while any IPU admission is `active`. */
   openIpuAdmissionsForOrg(organizationId: OrgId): Promise<number>;
 }

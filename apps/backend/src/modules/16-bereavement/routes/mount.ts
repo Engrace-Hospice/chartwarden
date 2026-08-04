@@ -8,9 +8,9 @@
 import type { FastifyInstance } from "fastify";
 import { registerBereavedContactRoutes } from "./contacts.routes";
 import { registerBereavementDashboardRoutes } from "./dashboard.routes";
+import type { M16RouteServices } from "./index";
 import { registerBereavementOutreachRoutes } from "./outreach.routes";
 import { registerBereavementPlanRoutes } from "./plans.routes";
-import type { M16RouteServices } from "./index";
 
 export { registerBereavementPlanRoutes, type PlanRouteDeps } from "./plans.routes";
 export { registerBereavedContactRoutes, type ContactRouteDeps } from "./contacts.routes";

@@ -36,14 +36,19 @@ export const evvBracketCoherence: Rule = {
     }
 
     if (unresolved.size === 0) {
-      return pass(KEY, "error", "No EVV bracket is unresolved-missing; all backing encounters are EVV-coherent.");
+      return pass(
+        KEY,
+        "error",
+        "No EVV bracket is unresolved-missing; all backing encounters are EVV-coherent.",
+      );
     }
     return fail(
       KEY,
       "error",
       `${unresolved.size} backing encounter(s) have an unresolved-missing EVV bracket.`,
       {
-        summary: "Resolve the missing EVV visit verification (M18) for the flagged encounter(s) before billing.",
+        summary:
+          "Resolve the missing EVV visit verification (M18) for the flagged encounter(s) before billing.",
         blameTarget: "encounter",
         fixAction: "resolve_in_m18",
       },

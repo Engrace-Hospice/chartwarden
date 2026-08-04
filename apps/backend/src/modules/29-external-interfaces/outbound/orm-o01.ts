@@ -101,13 +101,28 @@ export function buildOrmO01(input: BuildOrmInput): string {
   // PID — PID-3 CX (mrn^^^authority), PID-5 XPN (family^given), PID-7 DOB, PID-8 sex, PID-11 XAD address.
   const cx = `${escapeHl7(demo.mrn)}^^^${escapeHl7(demo.internalMrnAuthority)}`;
   const name = `${escapeHl7(demo.familyName)}^${escapeHl7(demo.givenName)}`;
-  const hasAddress = Boolean(demo.addressLine1 || demo.addressCity || demo.addressState || demo.addressPostal);
+  const hasAddress = Boolean(
+    demo.addressLine1 || demo.addressCity || demo.addressState || demo.addressPostal,
+  );
   const address = hasAddress
     ? `${escapeHl7(demo.addressLine1 ?? "")}^^${escapeHl7(demo.addressCity ?? "")}^${escapeHl7(
         demo.addressState ?? "",
       )}^${escapeHl7(demo.addressPostal ?? "")}`
     : "";
-  const pid = segment(["PID", "1", "", cx, "", name, "", isoDateToHl7(demo.dateOfBirth), demo.administrativeSex, "", "", address]);
+  const pid = segment([
+    "PID",
+    "1",
+    "",
+    cx,
+    "",
+    name,
+    "",
+    isoDateToHl7(demo.dateOfBirth),
+    demo.administrativeSex,
+    "",
+    "",
+    address,
+  ]);
 
   // ORC — ORC-1 NW, ORC-2 placer, ORC-7 quantity/timing (priority in the 6th component), ORC-9 datetime,
   //       ORC-12 ordering provider XCN (npi^family^given).
@@ -115,7 +130,20 @@ export function buildOrmO01(input: BuildOrmInput): string {
     lab.orderingProviderName.given,
   )}`;
   const quantityTiming = `1^^^^^${escapeHl7(request.priority)}`;
-  const orc = segment(["ORC", "NW", placer, "", "", "", quantityTiming, "", requestedTs, "", "", provider]);
+  const orc = segment([
+    "ORC",
+    "NW",
+    placer,
+    "",
+    "",
+    "",
+    quantityTiming,
+    "",
+    requestedTs,
+    "",
+    "",
+    provider,
+  ]);
 
   // OBR — OBR-2 placer (D8), OBR-4 CWE universal service id (LOINC), OBR-5 priority (deprecated, still read
   //       by many labs), OBR-16 ordering provider, OBR-27 quantity/timing.

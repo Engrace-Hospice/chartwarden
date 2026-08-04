@@ -43,7 +43,9 @@ export function IpuEquipment(): JSX.Element {
       {rows.length === 0 ? (
         <EmptyState title="No equipment" description="No IPU equipment is registered yet." />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
+        >
           <thead>
             <tr style={{ textAlign: "left", color: "var(--color-text-muted)" }}>
               <th style={{ padding: "var(--space-2)" }}>Serial</th>
@@ -59,7 +61,10 @@ export function IpuEquipment(): JSX.Element {
                 <td style={{ padding: "var(--space-2)" }}>{e.equipmentType.replace(/_/g, " ")}</td>
                 <td style={{ padding: "var(--space-2)" }}>{e.currentStatus}</td>
                 <td style={{ padding: "var(--space-2)" }}>
-                  <StatusPill tone={overdue(e.nextInspectionDueDate) ? "critical" : "success"} label={e.nextInspectionDueDate ?? "—"} />
+                  <StatusPill
+                    tone={overdue(e.nextInspectionDueDate) ? "critical" : "success"}
+                    label={e.nextInspectionDueDate ?? "—"}
+                  />
                 </td>
               </tr>
             ))}

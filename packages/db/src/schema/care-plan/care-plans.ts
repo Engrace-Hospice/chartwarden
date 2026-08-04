@@ -7,7 +7,15 @@
 // (no FK — supersession is via the version status enum). RLS + the M4 write-audit trigger land in
 // migration 0029 (M7-T02, §3.4–3.6).
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { carePlanStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";

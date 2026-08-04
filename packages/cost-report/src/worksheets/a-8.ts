@@ -6,7 +6,7 @@
 // CENTS (signed; a negative adjustment reduces allowable cost).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** One related-party transaction disclosure + its cost adjustment. */
 const RelatedPartyTransaction = Type.Object({

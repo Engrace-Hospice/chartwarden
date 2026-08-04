@@ -14,8 +14,8 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so
 // the package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ─
-import type { PatientId, AdmissionId, ProviderEntityId } from "./admission";
-import type { LocationId, IsoInstant } from "./care-plan";
+import type { AdmissionId, PatientId, ProviderEntityId } from "./admission";
+import type { IsoInstant, LocationId } from "./care-plan";
 
 // ── HOPE-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
 export type HopeTimepointScheduleId = string;
@@ -69,10 +69,19 @@ export type HopeValidationSeverity = "error" | "warning";
 export type J2051Severity = "none" | "mild" | "moderate" | "severe";
 
 /** Definition order of {@link J2051Severity} — the rank the §2.3 trigger evaluator compares against. */
-export const J2051_SEVERITY_ORDER = ["none", "mild", "moderate", "severe"] as const satisfies readonly J2051Severity[];
+export const J2051_SEVERITY_ORDER = [
+  "none",
+  "mild",
+  "moderate",
+  "severe",
+] as const satisfies readonly J2051Severity[];
 
 /** Provenance of a timepoint schedule row (mirrors `hope_schedule_generated_by`, §2). */
-export type HopeScheduleGeneratedBy = "auto_admission" | "auto_discharge" | "sfv_trigger" | "manual_admin";
+export type HopeScheduleGeneratedBy =
+  | "auto_admission"
+  | "auto_discharge"
+  | "sfv_trigger"
+  | "manual_admin";
 
 // ── §3.1 / §8.1 per-entity audit denylists (the free-text/PHI columns the M4 trigger must NOT mirror) ─
 // Captured here as data so M10-T02's `generateAuditTrigger(...)` denylist arguments derive from a single
@@ -167,7 +176,10 @@ export interface HopeSfvAlert {
   readonly state: HopeSfvAlertState;
   readonly hoursUntilDue: number;
   /** PHI — in-app render only (M10-F13); stripped from out-of-band push/SMS. */
-  readonly triggeringSymptoms: ReadonlyArray<{ readonly symptomCode: string; readonly severity: string }>;
+  readonly triggeringSymptoms: ReadonlyArray<{
+    readonly symptomCode: string;
+    readonly severity: string;
+  }>;
   readonly ctaUrl: string;
 }
 
@@ -282,7 +294,9 @@ export interface HopeJ2051Provider {
  * resolves one batch by id. Resolved within the caller's tenant context.
  */
 export interface HopeSubmissionProvider {
-  latestForProviderEntity(providerEntityId: ProviderEntityId): Promise<HopeSubmissionStatusView | null>;
+  latestForProviderEntity(
+    providerEntityId: ProviderEntityId,
+  ): Promise<HopeSubmissionStatusView | null>;
   submission(submissionId: HopeSubmissionId): Promise<HopeSubmissionStatusView | null>;
 }
 
@@ -358,4 +372,4 @@ export interface HopeOrgRollupProvider {
  * direct cross-module writes at the boundary; all downstream communication is the `m10.*` outbox.
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface HopeEventPublisher {}
+export type HopeEventPublisher = {};

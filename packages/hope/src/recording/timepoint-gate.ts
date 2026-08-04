@@ -6,7 +6,7 @@
 // are NOT here — they land in the validation engine (M10-T04).
 import type { HopeDischargeReason, HopeRfaKind, IsoInstant } from "@wardenx/types";
 import { require_ } from "../errors";
-import { classifyCapture, type TimepointWindow } from "../scheduling/window-calculator";
+import { type TimepointWindow, classifyCapture } from "../scheduling/window-calculator";
 
 /** §2.3 — the admission must be `active` at the visit's `target_date` (for a Discharge RFA, it was active
  * immediately before discharge — the discharge listener resolves that fact). Raises 409. */

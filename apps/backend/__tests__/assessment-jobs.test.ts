@@ -9,13 +9,13 @@ import {
   M9_JOB_SCHEDULES,
   M9_QUEUES,
   REASSESSMENT_CADENCE_DAYS,
+  type ReassessmentSnapshot,
+  type ScaleLicenseSnapshot,
+  type SignificantChangeSnapshot,
   jobIdempotencyKey,
   planChangeEscalation,
   planLicenseStatusScan,
   planReassessmentDueScan,
-  type ScaleLicenseSnapshot,
-  type SignificantChangeSnapshot,
-  type ReassessmentSnapshot,
 } from "../src/modules/09-assessments/index";
 
 describe("§4.8 queue catalog", () => {
@@ -51,9 +51,16 @@ describe("planLicenseStatusScan — §2.2.3 daily", () => {
 
   it("emits license_pending_renewal on the active → pending_renewal edge (within 30d of expiry)", () => {
     const plan = planLicenseStatusScan([lic({ expiresAt: "2026-07-01" })], "2026-06-21");
-    expect(plan.transitions[0]).toMatchObject({ fromStatus: "active", toStatus: "pending_renewal", changed: true });
+    expect(plan.transitions[0]).toMatchObject({
+      fromStatus: "active",
+      toStatus: "pending_renewal",
+      changed: true,
+    });
     expect(plan.events).toEqual([
-      { eventName: "m9.scale.license_pending_renewal", payload: { scaleType: "pps", expiresAt: "2026-07-01" } },
+      {
+        eventName: "m9.scale.license_pending_renewal",
+        payload: { scaleType: "pps", expiresAt: "2026-07-01" },
+      },
     ]);
   });
 
@@ -63,7 +70,10 @@ describe("planLicenseStatusScan — §2.2.3 daily", () => {
       "2026-06-21",
     );
     expect(plan.events).toEqual([
-      { eventName: "m9.scale.license_lapsed", payload: { scaleType: "pps", expiredAt: "2026-06-01" } },
+      {
+        eventName: "m9.scale.license_lapsed",
+        payload: { scaleType: "pps", expiredAt: "2026-06-01" },
+      },
     ]);
   });
 
@@ -138,7 +148,9 @@ describe("planReassessmentDueScan — §418.54(d) daily", () => {
 
   it("is not overdue inside the cadence window", () => {
     const now = new Date("2026-06-10T00:00:00.000Z");
-    expect(planReassessmentDueScan([snap("2026-06-01T00:00:00.000Z")], now)[0]?.overdue).toBe(false);
+    expect(planReassessmentDueScan([snap("2026-06-01T00:00:00.000Z")], now)[0]?.overdue).toBe(
+      false,
+    );
     expect(REASSESSMENT_CADENCE_DAYS).toBe(15);
   });
 });

@@ -38,7 +38,7 @@ import type {
 } from "@wardenx/types";
 import { AI_KILL_SWITCH_AUTOMATED_ACTOR_KINDS } from "@wardenx/types";
 
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "../governance/errors";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 import { aiSev1DemotionTarget } from "../lifecycle/state-machine";
 
 /** True for the four `automated_*` kinds — the ones §3.2.12 allows with a NULL membership id. */
@@ -232,10 +232,7 @@ export function aiKillSwitchDemotionPlanFor(
   return {
     required: toState !== null,
     toState,
-    rationaleText:
-      toState === null
-        ? ""
-        : `auto-deprecate following SEV-1 kill switch (${reason})`,
+    rationaleText: toState === null ? "" : `auto-deprecate following SEV-1 kill switch (${reason})`,
   };
 }
 
@@ -270,7 +267,11 @@ export function evaluateAiKillSwitchActivation(
     );
   }
 
-  const attribution = attributionRefusal(request.actorKind, request.actorMembershipId, "activation");
+  const attribution = attributionRefusal(
+    request.actorKind,
+    request.actorMembershipId,
+    "activation",
+  );
   if (attribution !== null) return attribution;
 
   const message = request.activationMessage?.trim() ?? "";

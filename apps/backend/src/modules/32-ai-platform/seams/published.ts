@@ -30,6 +30,7 @@
 //                    row SURVIVES that refusal — the disclosure happened whether or not we could read
 //                    the reply, and §8.8 counts disclosures, not successes.
 import {
+  AI_COPILOT_SCOPE_CAPABILITY,
   AI_DOCLENS_CAPABILITY,
   AI_SEAM_CAPABILITY,
   type AiSeamRefusal,
@@ -50,7 +51,6 @@ import {
   type NarrativeEnhancementResult,
   type SemanticSearchInput,
   type SemanticSearchProvider,
-  AI_COPILOT_SCOPE_CAPABILITY,
   aiCapabilityKeyForNarrativeSurface,
   aiSeamRefusal,
 } from "@wardenx/ai-platform";
@@ -86,10 +86,7 @@ export interface AiSeamActorContext {
  * dispatch. Returning `null` REFUSES the call.
  */
 export interface AiSeamActorResolver {
-  resolve(
-    organizationId: string,
-    actorUserId: string | null,
-  ): Promise<AiSeamActorContext | null>;
+  resolve(organizationId: string, actorUserId: string | null): Promise<AiSeamActorContext | null>;
 }
 
 /**
@@ -531,7 +528,11 @@ export function createSemanticSearchProvider(deps: AiPublishedSeamDeps): Semanti
         chartContext: { namespace: input.namespace, limit: input.limit ?? null },
       });
       if (!outcome.ok) return asRefusal(outcome);
-      const projected = projectOr<{ hits: never[] }>(deps, "SemanticSearchProvider", outcome.output);
+      const projected = projectOr<{ hits: never[] }>(
+        deps,
+        "SemanticSearchProvider",
+        outcome.output,
+      );
       if ("available" in projected) return projected;
       return {
         available: true,

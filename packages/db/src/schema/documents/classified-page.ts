@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `classified_page` (M22 §3.3 / §2.2.6). The per-page classifier output: a page range
 // of an intake source labeled with a document type + confidence. Org-scoped (joins to PHI via the
 // batch). Two CHECK shape guards (page-range ordering; human-confirm pairing). `intake_upload_batch_id`
@@ -13,7 +14,6 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { classifiedPageDocType } from "../../enums";
 import { intakeUploadBatches } from "./intake-upload-batch";
 
@@ -40,10 +40,7 @@ export const classifiedPages = pgTable(
   },
   (t) => ({
     byBatch: index("classified_page_batch_idx").on(t.intakeUploadBatchId, t.pageRangeStart),
-    pageRangeShape: check(
-      "classified_page_range_shape",
-      sql`page_range_end >= page_range_start`,
-    ),
+    pageRangeShape: check("classified_page_range_shape", sql`page_range_end >= page_range_start`),
     humanConfirmShape: check(
       "classified_page_human_confirm_shape",
       sql`(human_confirmed = true) = (human_confirmed_by_membership_id IS NOT NULL)`,

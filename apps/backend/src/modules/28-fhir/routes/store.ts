@@ -9,6 +9,13 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  FHIR_CLIENT_CASCADE_ON_ENTRY,
+  fhirClientTransition,
+  fhirDualApprovalSatisfied,
+  fhirInboundOwnerModuleFor,
+  inboundPayloadSha256,
+} from "@wardenx/fhir";
+import {
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
   FHIR_SESSION_TTL_MINUTES,
   type FhirBulkExportRequestKind,
@@ -20,18 +27,11 @@ import {
   type FhirInboundStatus,
   WardenXError,
 } from "@wardenx/types";
-import {
-  FHIR_CLIENT_CASCADE_ON_ENTRY,
-  fhirClientTransition,
-  fhirDualApprovalSatisfied,
-  fhirInboundOwnerModuleFor,
-  inboundPayloadSha256,
-} from "@wardenx/fhir";
 
 import {
-  cascadeClientRevocation,
   type FhirRevocationCascadePort,
   type FhirRevocationCascadeResult,
+  cascadeClientRevocation,
 } from "./revocation-cascade";
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -123,7 +123,10 @@ export interface StageInboundArgs {
 /** The single data surface the §4.1 routes compose over. */
 export interface FhirGatewayStore {
   // clients (R23-R28)
-  listClients(orgId: string, filters: { status?: FhirClientStatus }): Promise<readonly FhirClientSummary[]>;
+  listClients(
+    orgId: string,
+    filters: { status?: FhirClientStatus },
+  ): Promise<readonly FhirClientSummary[]>;
   createClient(orgId: string, args: CreateClientArgs): Promise<FhirClientCreateResult>;
   getClient(orgId: string, clientId: string): Promise<FhirClientDetail | null>;
   approveClient(
@@ -170,7 +173,11 @@ export interface FhirGatewayStore {
     },
   ): Promise<FhirBulkExportJobView>;
   getJob(orgId: string, jobId: string): Promise<FhirBulkExportJobView | null>;
-  cancelJob(orgId: string, jobId: string, membershipId: string | null): Promise<FhirBulkExportJobView>;
+  cancelJob(
+    orgId: string,
+    jobId: string,
+    membershipId: string | null,
+  ): Promise<FhirBulkExportJobView>;
   // inbound (R34-R36 + R16)
   listProposals(
     orgId: string,
@@ -296,7 +303,10 @@ interface MemConfig {
 
 export interface InMemoryFhirGatewaySeed {
   readonly clients?: readonly Partial<MemClient>[];
-  readonly sessions?: readonly (Partial<MemSession> & { clientId: string; organizationId: string })[];
+  readonly sessions?: readonly (Partial<MemSession> & {
+    clientId: string;
+    organizationId: string;
+  })[];
   readonly jobs?: readonly (Partial<MemJob> & { clientId: string; organizationId: string })[];
   readonly now?: () => string;
 }
@@ -359,7 +369,9 @@ function toProposalView(p: MemProposal): FhirInboundProposalView {
 }
 
 /** An in-memory `FhirGatewayStore` for the §7 tests + db-less boot. Not for production traffic. */
-export function createInMemoryFhirGatewayStore(seed: InMemoryFhirGatewaySeed = {}): FhirGatewayStore {
+export function createInMemoryFhirGatewayStore(
+  seed: InMemoryFhirGatewaySeed = {},
+): FhirGatewayStore {
   const now = seed.now ?? (() => new Date().toISOString());
   const clients = new Map<string, MemClient>();
   const sessions = new Map<string, MemSession>();
@@ -443,7 +455,9 @@ export function createInMemoryFhirGatewayStore(seed: InMemoryFhirGatewaySeed = {
     },
     async inflightJobIdsForClient(_orgId, clientId) {
       return [...jobs.values()]
-        .filter((j) => j.clientId === clientId && (j.status === "accepted" || j.status === "in_progress"))
+        .filter(
+          (j) => j.clientId === clientId && (j.status === "accepted" || j.status === "in_progress"),
+        )
         .map((j) => j.id);
     },
     async cancelJob(_orgId, jobId) {
@@ -474,7 +488,9 @@ export function createInMemoryFhirGatewayStore(seed: InMemoryFhirGatewaySeed = {
   return {
     async listClients(orgId, filters) {
       return [...clients.values()]
-        .filter((c) => c.organizationId === orgId && (!filters.status || c.status === filters.status))
+        .filter(
+          (c) => c.organizationId === orgId && (!filters.status || c.status === filters.status),
+        )
         .map(toSummary);
     },
 
@@ -610,7 +626,11 @@ export function createInMemoryFhirGatewayStore(seed: InMemoryFhirGatewaySeed = {
     async cancelJob(orgId, jobId, _membershipId) {
       const j = jobs.get(jobId);
       if (!j || j.organizationId !== orgId) {
-        throw new FhirStoreError(404, "FHIR_EXPORT_JOB_NOT_FOUND", "fhir_bulk_export_job not found");
+        throw new FhirStoreError(
+          404,
+          "FHIR_EXPORT_JOB_NOT_FOUND",
+          "fhir_bulk_export_job not found",
+        );
       }
       if (j.status === "accepted" || j.status === "in_progress") j.status = "cancelled";
       return toJobView(j);

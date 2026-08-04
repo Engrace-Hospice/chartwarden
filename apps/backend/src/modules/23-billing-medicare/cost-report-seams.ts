@@ -42,11 +42,7 @@ export function buildM23PatientDaysProvider(db: DbClient): PatientDaysProvider {
  *  consumer view. Aggregate day counts + the per-diem LINE population over a window — no patient row (D18). */
 export interface ClaimLineReader {
   /** Per-LOC billed-and-accepted per-diem day rollup + line count over `[fromIso, toIso]` (inclusive). */
-  claimLineRollupForPeriod(
-    orgId: string,
-    fromIso: string,
-    toIso: string,
-  ): Promise<ClaimLineRollup>;
+  claimLineRollupForPeriod(orgId: string, fromIso: string, toIso: string): Promise<ClaimLineRollup>;
 }
 
 /**

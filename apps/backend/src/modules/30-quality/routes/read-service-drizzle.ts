@@ -38,8 +38,8 @@ import {
   MeasureRecomputeQueueRepository,
   MortalityReviewRepository,
   QapiRepository,
-  QualityMeasureValueRepository,
   type QualityDb,
+  QualityMeasureValueRepository,
   RiskRegisterRepository,
   SraRepository,
   buildRiskRegister,
@@ -199,11 +199,7 @@ function mapSraFinding(row: schema.SraFinding): SraFindingView {
 
 function mapSraRemediation(row: schema.SraRemediation): SraRemediationView {
   const status: SraRemediationView["status"] =
-    row.status === "proposed"
-      ? "planned"
-      : row.status === "abandoned"
-        ? "deferred"
-        : row.status; // in_progress | completed
+    row.status === "proposed" ? "planned" : row.status === "abandoned" ? "deferred" : row.status; // in_progress | completed
   return {
     remediationId: row.id,
     findingId: row.sraFindingId,
@@ -271,7 +267,9 @@ function mapInfectionEvent(row: schema.InfectionSurveillanceEvent): InfectionEve
 }
 
 /** Map the schema outbreak status (open/idg_reviewed/contained/closed) onto the §R-92 view union. */
-function outbreakStatus(s: schema.InfectionOutbreakCase["status"]): InfectionOutbreakView["status"] {
+function outbreakStatus(
+  s: schema.InfectionOutbreakCase["status"],
+): InfectionOutbreakView["status"] {
   switch (s) {
     case "idg_reviewed":
       return "notified";
@@ -911,7 +909,9 @@ export function buildDrizzleM30ReadService(
         return {
           ...mapMortalitySummary(row),
           dimensions: {
-            clinical: (row.clinicalDimensionData ?? null) as Readonly<Record<string, unknown>> | null,
+            clinical: (row.clinicalDimensionData ?? null) as Readonly<
+              Record<string, unknown>
+            > | null,
             satisfaction: (row.satisfactionDimensionData ?? null) as Readonly<
               Record<string, unknown>
             > | null,
@@ -1009,7 +1009,9 @@ export function buildDrizzleM30ReadService(
     // ── Risk register (R-95) ───────────────────────────────────────────────────────────────────────────
     async listRiskRegister(actor, filter, cursor, limit) {
       return read(actor, async (tx) => {
-        const sources = await new RiskRegisterRepository(tx).loadOpenRiskSources(actor.organizationId);
+        const sources = await new RiskRegisterRepository(tx).loadOpenRiskSources(
+          actor.organizationId,
+        );
         const rows = buildRiskRegister(sources);
         const sourceMap: Record<string, RiskRegisterEntryView["source"]> = {
           sra_finding: "sra",

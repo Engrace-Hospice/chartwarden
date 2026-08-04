@@ -19,9 +19,9 @@
 //      the same bound against the denormalized `death_anchor_at`; generating past it would fail the INSERT
 //      at the very end of a long transaction instead of here.
 import {
+  BEREAVEMENT_WINDOW_DAYS,
   type BereavementCadenceItem,
   type BereavementCadenceMark,
-  BEREAVEMENT_WINDOW_DAYS,
   OUTREACH_LATE_ATTEMPT_GRACE_DAYS,
   OUTREACH_MODALITY_RANK,
   effectiveCadence,
@@ -111,9 +111,7 @@ function materialize(
     kind: resolved.kind,
     anniversaryMark: item.anniversaryMark,
     dueAt: new Date(dueAtMs).toISOString(),
-    lateGraceUntil: new Date(
-      dueAtMs + OUTREACH_LATE_ATTEMPT_GRACE_DAYS * MS_PER_DAY,
-    ).toISOString(),
+    lateGraceUntil: new Date(dueAtMs + OUTREACH_LATE_ATTEMPT_GRACE_DAYS * MS_PER_DAY).toISOString(),
     deathAnchorAt: new Date(anchorMs).toISOString(),
     preferenceSubstituted: resolved.substituted,
   };
@@ -153,14 +151,17 @@ export function generateOutreachSchedule(
   }
 
   const items = effectiveCadence(contact.riskTier, options.tenantItems);
-  const fromMs = options.fromIso === undefined ? Number.NEGATIVE_INFINITY : Date.parse(options.fromIso);
+  const fromMs =
+    options.fromIso === undefined ? Number.NEGATIVE_INFINITY : Date.parse(options.fromIso);
 
-  return items
-    .map((item) => materialize(item, deathDate, contact))
-    // Rule 3 — never generate past the §2.5 ceiling the DB CHECK enforces.
-    .filter((row) => isOutreachDueAtWithinCeiling(deathDate, row.dueAt))
-    // Rule 2 — a regeneration is forward-only.
-    .filter((row) => Date.parse(row.dueAt) >= fromMs);
+  return (
+    items
+      .map((item) => materialize(item, deathDate, contact))
+      // Rule 3 — never generate past the §2.5 ceiling the DB CHECK enforces.
+      .filter((row) => isOutreachDueAtWithinCeiling(deathDate, row.dueAt))
+      // Rule 2 — a regeneration is forward-only.
+      .filter((row) => Date.parse(row.dueAt) >= fromMs)
+  );
 }
 
 /**

@@ -67,7 +67,10 @@ export interface SyncRunFailedPayload {
 /** The M29 NPPES-sync outbox events (§4.10). The worker publishes each `{ name, payload }` verbatim. */
 export type NppesOutboxEvent =
   | { readonly name: "m29.nppes.provider_synced"; readonly payload: ProviderSyncedPayload }
-  | { readonly name: "m29.nppes.provider_deactivated"; readonly payload: ProviderDeactivatedPayload }
+  | {
+      readonly name: "m29.nppes.provider_deactivated";
+      readonly payload: ProviderDeactivatedPayload;
+    }
   | { readonly name: "m29.nppes.sync_run.started"; readonly payload: SyncRunStartedPayload }
   | { readonly name: "m29.nppes.sync_run.completed"; readonly payload: SyncRunCompletedPayload }
   | { readonly name: "m29.nppes.sync_run.failed"; readonly payload: SyncRunFailedPayload };

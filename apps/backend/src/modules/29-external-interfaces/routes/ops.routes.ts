@@ -10,7 +10,6 @@ import { actorOf } from "./actor";
 import { ABAC_IN_ORG, P } from "./guards";
 import type { M29Store } from "./store";
 
-
 export interface OpsRouteDeps {
   readonly store: M29Store;
 }
@@ -21,7 +20,12 @@ export function registerOpsRoutes(app: FastifyInstance, deps: OpsRouteDeps): voi
   // GET /health/aggregate — tenant health overview.
   app.get(
     "/api/admin/external-interfaces/health/aggregate",
-    { preHandler: [P("external_interfaces.feed.read"), ABAC_IN_ORG("external_interfaces.feed.read")] },
+    {
+      preHandler: [
+        P("external_interfaces.feed.read"),
+        ABAC_IN_ORG("external_interfaces.feed.read"),
+      ],
+    },
     async (request) => {
       const actor = actorOf(request);
       return { health: await store.feedHealthAggregate(actor.organizationId) };
@@ -31,7 +35,12 @@ export function registerOpsRoutes(app: FastifyInstance, deps: OpsRouteDeps): voi
   // GET /metrics/listener-status — per-feed listener socket status.
   app.get(
     "/api/admin/external-interfaces/metrics/listener-status",
-    { preHandler: [P("external_interfaces.feed.read"), ABAC_IN_ORG("external_interfaces.feed.read")] },
+    {
+      preHandler: [
+        P("external_interfaces.feed.read"),
+        ABAC_IN_ORG("external_interfaces.feed.read"),
+      ],
+    },
     async (request) => {
       const actor = actorOf(request);
       return { listeners: await store.listenerStatus(actor.organizationId) };

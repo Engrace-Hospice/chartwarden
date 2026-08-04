@@ -18,9 +18,12 @@ describe("createApiClient — Idempotency-Key middleware (TASK-020)", () => {
   it("attaches a generated Idempotency-Key to a POST (e.g. a claim submit)", async () => {
     const { fetch, requests } = fetchCapturingRequest();
     const client = createApiClient({ fetch, baseUrl: "http://localhost" });
-    await client.POST("/api/v1/billing/claims/{id}/submit" as never, {
-      params: { path: { id: "claim-1" } },
-    } as never);
+    await client.POST(
+      "/api/v1/billing/claims/{id}/submit" as never,
+      {
+        params: { path: { id: "claim-1" } },
+      } as never,
+    );
     expect(requests).toHaveLength(1);
     const key = requests[0]?.headers.get("Idempotency-Key");
     expect(key).toBeTruthy();
@@ -37,9 +40,12 @@ describe("createApiClient — Idempotency-Key middleware (TASK-020)", () => {
   it("never overwrites a caller-supplied Idempotency-Key", async () => {
     const { fetch, requests } = fetchCapturingRequest();
     const client = createApiClient({ fetch, baseUrl: "http://localhost" });
-    await client.POST("/api/v1/billing/claims/assemble" as never, {
-      headers: { "Idempotency-Key": "caller-chosen-key" },
-    } as never);
+    await client.POST(
+      "/api/v1/billing/claims/assemble" as never,
+      {
+        headers: { "Idempotency-Key": "caller-chosen-key" },
+      } as never,
+    );
     expect(requests[0]?.headers.get("Idempotency-Key")).toBe("caller-chosen-key");
   });
 });
@@ -48,7 +54,10 @@ describe("createApiClient — onResponseStatus hook (TASK-033)", () => {
   it("reports the HTTP status of every response, success or error", async () => {
     const statuses: number[] = [];
     const fetchImpl = (async () =>
-      new Response("{}", { status: 503, headers: { "content-type": "application/json" } })) as typeof fetch;
+      new Response("{}", {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
     const client = createApiClient({
       fetch: fetchImpl,
       baseUrl: "http://localhost",

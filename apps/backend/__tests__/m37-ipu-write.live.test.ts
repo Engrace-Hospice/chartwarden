@@ -22,7 +22,13 @@ const MEMBER = "44444444-4444-4444-4444-444444444444";
 const PATIENT = "55555555-5555-5555-5555-555555555555";
 const PE = "66666666-6666-6666-6666-666666666666";
 
-const actor = { organizationId: ORG_A, userId: USER, roles: [] as string[], membershipId: MEMBER, stepUpRecent: true };
+const actor = {
+  organizationId: ORG_A,
+  userId: USER,
+  roles: [] as string[],
+  membershipId: MEMBER,
+  stepUpRecent: true,
+};
 const readActor = { organizationId: ORG_A, userId: USER, roles: [] as string[] };
 
 describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", () => {
@@ -41,7 +47,9 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     }
   }
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort())
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
 
@@ -50,10 +58,15 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')", [ORG_A]);
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
+      [ORG_A],
+    );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m37@x.test')`, [USER]);
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     svc = buildDrizzleIpuRouteService(handle.db); // NOOP outbox — this suite asserts state + effects
   }, 120_000);
 
@@ -71,7 +84,8 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
 
   it("walks the admission lifecycle open → request-bed → assign-bed → discharge with bed cross-effects", async () => {
     const [unit] = await svc.listUnits(readActor);
-    if (!unit) throw new Error("expected the unit from the 'creates a unit and lists it' test to exist");
+    if (!unit)
+      throw new Error("expected the unit from the 'creates a unit and lists it' test to exist");
     // Seed a room + a ready bed + an RN-coverage window for the current hour (as admin).
     const roomId = (
       await admin.query(
@@ -107,7 +121,9 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     const assigned = await svc.assignBed(actor, adm.id, { bedId });
     expect(assigned.state).toBe("bed_assigned");
     // The bed is now reserved.
-    const bedAfterAssign = (await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id=$1", [bedId])).rows[0];
+    const bedAfterAssign = (
+      await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id=$1", [bedId])
+    ).rows[0];
     expect(bedAfterAssign.cleaning_status).toBe("reserved");
 
     // confirm() (bed_assigned → active) is the system-internal M6-ack route (§4.1 #15, not yet built); force
@@ -115,12 +131,21 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     await admin.query("UPDATE ipu_admission SET state='active' WHERE id=$1", [adm.id]);
     await admin.query("UPDATE ipu_bed SET cleaning_status='occupied' WHERE id=$1", [bedId]);
 
-    const discharged = await svc.discharge(actor, adm.id, { reason: "to_home", dischargeEventExists: true });
+    const discharged = await svc.discharge(actor, adm.id, {
+      reason: "to_home",
+      dischargeEventExists: true,
+    });
     expect(discharged.state).toBe("discharged");
     // The bed went discharged_dirty and the assignment ended.
-    const bedAfterDc = (await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id=$1", [bedId])).rows[0];
+    const bedAfterDc = (
+      await admin.query("SELECT cleaning_status FROM ipu_bed WHERE id=$1", [bedId])
+    ).rows[0];
     expect(bedAfterDc.cleaning_status).toBe("discharged_dirty");
-    const ba = (await admin.query("SELECT ended_at FROM ipu_bed_assignment WHERE ipu_admission_id=$1", [adm.id])).rows[0];
+    const ba = (
+      await admin.query("SELECT ended_at FROM ipu_bed_assignment WHERE ipu_admission_id=$1", [
+        adm.id,
+      ])
+    ).rows[0];
     expect(ba.ended_at).not.toBeNull();
   });
 
@@ -173,7 +198,11 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
   // proves the new check works BOTH ways on a real GIP admission, not just that `arranged` bypasses it
   // (the case above already covered that).
   it("applies a restraint on a GIP admission when the unit's RN coverage is active", async () => {
-    const unit = await svc.createUnit(actor, { facilityId: "77777777-7777-4777-8777-777777777771", displayName: "IPU Restraint Coverage", bedCount: 1 });
+    const unit = await svc.createUnit(actor, {
+      facilityId: "77777777-7777-4777-8777-777777777771",
+      displayName: "IPU Restraint Coverage",
+      bedCount: 1,
+    });
     await admin.query(
       "INSERT INTO ipu_rn_coverage_window (organization_id,unit_id,hour_start_at,is_covered,rn_assignment_ids) VALUES ($1,$2,date_trunc('hour', now()),true,'{}')",
       [ORG_A, unit.id],
@@ -198,7 +227,11 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
   });
 
   it("rejects a restraint on a GIP admission when the unit's RN coverage is inactive (412)", async () => {
-    const unit = await svc.createUnit(actor, { facilityId: "77777777-7777-4777-8777-777777777772", displayName: "IPU Restraint No Coverage", bedCount: 1 });
+    const unit = await svc.createUnit(actor, {
+      facilityId: "77777777-7777-4777-8777-777777777772",
+      displayName: "IPU Restraint No Coverage",
+      bedCount: 1,
+    });
     // No ipu_rn_coverage_window row inserted for this unit — an unbuilt coverage grid reads uncovered.
     // Open as `arranged` (bypasses openAdmission's own coverage gate — already proven separately by
     // the "blocks a GIP open when the unit is RN-uncovered" case above), then flip it to a GIP admission
@@ -211,10 +244,10 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
       remoteFacilityId: "77777777-8888-4888-8888-888888888888",
       kind: "arranged",
     });
-    await admin.query("UPDATE ipu_admission SET kind='gip', unit_id=$2, remote_facility_id=NULL WHERE id=$1", [
-      adm.id,
-      unit.id,
-    ]);
+    await admin.query(
+      "UPDATE ipu_admission SET kind='gip', unit_id=$2, remote_facility_id=NULL WHERE id=$1",
+      [adm.id, unit.id],
+    );
     await expect(
       svc.applyRestraint(actor, adm.id, {
         restraintKind: "side_rail_4",
@@ -228,11 +261,15 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
   });
 
   it("erases the patient's IPU record under a destruction cert", async () => {
-    const before = (await admin.query("SELECT count(*)::int n FROM ipu_admission WHERE patient_id=$1", [PATIENT])).rows[0].n;
+    const before = (
+      await admin.query("SELECT count(*)::int n FROM ipu_admission WHERE patient_id=$1", [PATIENT])
+    ).rows[0].n;
     expect(before).toBeGreaterThan(0);
     const erased = await eraseIpuRecord(handle.db, ORG_A, PATIENT);
     expect(erased).toBeGreaterThan(0);
-    const after = (await admin.query("SELECT count(*)::int n FROM ipu_admission WHERE patient_id=$1", [PATIENT])).rows[0].n;
+    const after = (
+      await admin.query("SELECT count(*)::int n FROM ipu_admission WHERE patient_id=$1", [PATIENT])
+    ).rows[0].n;
     expect(after).toBe(0);
     // The restraint event (a satellite) is gone too.
     const re = (await admin.query("SELECT count(*)::int n FROM ipu_restraint_event", [])).rows[0].n;

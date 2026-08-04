@@ -195,7 +195,9 @@ export function PatientElectionCert(): JSX.Element {
             />
           ) : (
             <>
-              <section style={{ ...cardSurface, padding: "1.125rem 1.25rem", marginBottom: "1rem" }}>
+              <section
+                style={{ ...cardSurface, padding: "1.125rem 1.25rem", marginBottom: "1rem" }}
+              >
                 <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
                   <h2 style={{ ...cardHeading, margin: 0 }}>Admission</h2>
                   <StatusPill
@@ -322,14 +324,25 @@ export function PatientElectionCert(): JSX.Element {
                 }}
               >
                 {windows.map((w) => (
-                  <li key={w.id} style={{ borderTop: `1px solid ${t.outlineVariant}`, paddingTop: "0.6rem" }}>
+                  <li
+                    key={w.id}
+                    style={{ borderTop: `1px solid ${t.outlineVariant}`, paddingTop: "0.6rem" }}
+                  >
                     <div
-                      style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.2rem" }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        marginBottom: "0.2rem",
+                      }}
                     >
                       <span style={{ fontWeight: 600, fontSize: "0.82rem", color: t.onSurface }}>
                         {stateLabel(w.windowKind)}
                       </span>
-                      <StatusPill label={stateLabel(w.status)} tone={WINDOW_TONE[w.status] ?? "neutral"} />
+                      <StatusPill
+                        label={stateLabel(w.status)}
+                        tone={WINDOW_TONE[w.status] ?? "neutral"}
+                      />
                     </div>
                     <div style={{ color: t.muted, fontSize: "0.76rem" }}>
                       due {fmtDate(w.mustCompleteBy)}
@@ -428,4 +441,8 @@ const detailGrid: CSSProperties = {
 };
 const dtStyle: CSSProperties = { color: t.onSurfaceVariant };
 const ddStyle: CSSProperties = { margin: 0, color: t.onSurface };
-const meta: CSSProperties = { fontSize: "0.8rem", color: t.onSurfaceVariant, margin: "0.25rem 0 0" };
+const meta: CSSProperties = {
+  fontSize: "0.8rem",
+  color: t.onSurfaceVariant,
+  margin: "0.25rem 0 0",
+};

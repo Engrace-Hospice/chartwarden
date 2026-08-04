@@ -1,13 +1,13 @@
 // @wardenx/idg — §2.4 D1 packet builder + W-PKT-02 freeze + W-SUD-01 SUD redaction — M14-T04.
 import { describe, expect, it } from "vitest";
 import {
-  assertPacketWritable,
-  resolveSinceCursor,
-  buildPacketSnapshot,
-  applySudRedaction,
+  type BuiltPacket,
   PACKET_SCHEMA_VERSION,
   type PacketBuildInput,
-  type BuiltPacket,
+  applySudRedaction,
+  assertPacketWritable,
+  buildPacketSnapshot,
+  resolveSinceCursor,
 } from "../src/packet";
 
 const CURSOR = "2026-06-01T00:00:00.000Z";
@@ -66,11 +66,17 @@ function input(overrides: Partial<PacketBuildInput> = {}): PacketBuildInput {
 
 describe("§1.1 since-cursor resolution", () => {
   it("uses the prior IDG adjournment when one exists (prior_idg)", () => {
-    expect(resolveSinceCursor(CURSOR, ACTIVATED)).toEqual({ sinceCursorIso: CURSOR, sinceContext: "prior_idg" });
+    expect(resolveSinceCursor(CURSOR, ACTIVATED)).toEqual({
+      sinceCursorIso: CURSOR,
+      sinceContext: "prior_idg",
+    });
   });
 
   it("falls back to admission activated_at for the first IDG (first_idg)", () => {
-    expect(resolveSinceCursor(null, ACTIVATED)).toEqual({ sinceCursorIso: ACTIVATED, sinceContext: "first_idg" });
+    expect(resolveSinceCursor(null, ACTIVATED)).toEqual({
+      sinceCursorIso: ACTIVATED,
+      sinceContext: "first_idg",
+    });
   });
 });
 
@@ -102,8 +108,18 @@ describe("§2.4 D1 packet build", () => {
       input({
         sinceLastIdg: {
           encounters: [
-            { encounterId: "enc-old", encounterType: "rn_visit", signedAt: "2026-05-20T00:00:00.000Z", authorDiscipline: "rn" },
-            { encounterId: "enc-new", encounterType: "rn_visit", signedAt: "2026-06-10T00:00:00.000Z", authorDiscipline: "rn" },
+            {
+              encounterId: "enc-old",
+              encounterType: "rn_visit",
+              signedAt: "2026-05-20T00:00:00.000Z",
+              authorDiscipline: "rn",
+            },
+            {
+              encounterId: "enc-new",
+              encounterType: "rn_visit",
+              signedAt: "2026-06-10T00:00:00.000Z",
+              authorDiscipline: "rn",
+            },
           ],
           significantAssessmentChanges: [],
           j2051Triggers: [],
@@ -120,34 +136,72 @@ describe("§2.4 D1 packet build", () => {
     const { disciplineViews } = buildPacketSnapshot(
       input({
         sinceLastIdg: {
-          encounters: [{ encounterId: "enc-1", encounterType: "rn_visit", signedAt: "2026-06-10T00:00:00.000Z", authorDiscipline: "rn" }],
+          encounters: [
+            {
+              encounterId: "enc-1",
+              encounterType: "rn_visit",
+              signedAt: "2026-06-10T00:00:00.000Z",
+              authorDiscipline: "rn",
+            },
+          ],
           significantAssessmentChanges: [],
           j2051Triggers: [],
           ordersChanged: [],
-          medicationsChanged: [{ medicationOrderId: "mo-1", drugLabel: "morphine", changeKind: "add", changedAt: "2026-06-11T00:00:00.000Z" }],
+          medicationsChanged: [
+            {
+              medicationOrderId: "mo-1",
+              drugLabel: "morphine",
+              changeKind: "add",
+              changedAt: "2026-06-11T00:00:00.000Z",
+            },
+          ],
           flaggedEvents: [],
         },
       }),
     );
     // RN view emphasises medication; aide view does not.
-    expect(disciplineViews.rn.highlightedEntries.some((e) => e.sourceKind === "medication")).toBe(true);
-    expect(disciplineViews.aide.highlightedEntries.some((e) => e.sourceKind === "medication")).toBe(false);
+    expect(disciplineViews.rn.highlightedEntries.some((e) => e.sourceKind === "medication")).toBe(
+      true,
+    );
+    expect(disciplineViews.aide.highlightedEntries.some((e) => e.sourceKind === "medication")).toBe(
+      false,
+    );
     // Encounters appear in every view (all emphases include "encounter").
-    expect(disciplineViews.aide.highlightedEntries.some((e) => e.sourceKind === "encounter")).toBe(true);
+    expect(disciplineViews.aide.highlightedEntries.some((e) => e.sourceKind === "encounter")).toBe(
+      true,
+    );
     expect(disciplineViews.rn.layer2Polished).toBeNull(); // BASIC build
   });
 
   it("derives the deterministic Layer-1 discussion flags", () => {
     const { snapshot } = buildPacketSnapshot(
       input({
-        cover: { ...input().cover, activeSudFlag: true, nextRecertDueAt: "2026-06-30T00:00:00.000Z" },
+        cover: {
+          ...input().cover,
+          activeSudFlag: true,
+          nextRecertDueAt: "2026-06-30T00:00:00.000Z",
+        },
         sinceLastIdg: {
           encounters: [],
-          significantAssessmentChanges: [{ assessmentId: "a-1", scaleKind: "PPS", changeKind: "decline", occurredAt: "2026-06-10T00:00:00.000Z" }],
+          significantAssessmentChanges: [
+            {
+              assessmentId: "a-1",
+              scaleKind: "PPS",
+              changeKind: "decline",
+              occurredAt: "2026-06-10T00:00:00.000Z",
+            },
+          ],
           j2051Triggers: [],
           ordersChanged: [],
           medicationsChanged: [],
-          flaggedEvents: [{ kind: "hospitalisation", sourceId: "f-1", occurredAt: "2026-06-09T00:00:00.000Z", severity: "urgent" }],
+          flaggedEvents: [
+            {
+              kind: "hospitalisation",
+              sourceId: "f-1",
+              occurredAt: "2026-06-09T00:00:00.000Z",
+              severity: "urgent",
+            },
+          ],
         },
       }),
     );
@@ -161,12 +215,21 @@ describe("§2.4 D1 packet build", () => {
   it("carries the M26 cap projection as null and surfaces carry-forward items", () => {
     const { snapshot, disciplineViews } = buildPacketSnapshot(
       input({
-        carryForwardActionItems: [{ actionItemId: "ai-1", assignedToMembershipId: "mem-1", dueDate: "2026-06-05T00:00:00.000Z", carryForwardCount: 3 }],
+        carryForwardActionItems: [
+          {
+            actionItemId: "ai-1",
+            assignedToMembershipId: "mem-1",
+            dueDate: "2026-06-05T00:00:00.000Z",
+            carryForwardCount: 3,
+          },
+        ],
       }),
     );
     expect(snapshot.carryForwardActionItems).toHaveLength(1);
     // MSW view emphasises action items; a 3× carry-forward is urgent.
-    const mswItem = disciplineViews.msw.highlightedEntries.find((e) => e.sourceKind === "action_item");
+    const mswItem = disciplineViews.msw.highlightedEntries.find(
+      (e) => e.sourceKind === "action_item",
+    );
     expect(mswItem?.severity).toBe("urgent");
   });
 });
@@ -178,8 +241,18 @@ describe("W-SUD-01 SUD redaction at read", () => {
         cover: { ...input().cover, activeSudFlag: true },
         sinceLastIdg: {
           encounters: [
-            { encounterId: "enc-sud", encounterType: "sud_counsel", signedAt: "2026-06-10T00:00:00.000Z", authorDiscipline: "msw" },
-            { encounterId: "enc-ok", encounterType: "rn_visit", signedAt: "2026-06-11T00:00:00.000Z", authorDiscipline: "rn" },
+            {
+              encounterId: "enc-sud",
+              encounterType: "sud_counsel",
+              signedAt: "2026-06-10T00:00:00.000Z",
+              authorDiscipline: "msw",
+            },
+            {
+              encounterId: "enc-ok",
+              encounterType: "rn_visit",
+              signedAt: "2026-06-11T00:00:00.000Z",
+              authorDiscipline: "rn",
+            },
           ],
           significantAssessmentChanges: [],
           j2051Triggers: [],
@@ -193,16 +266,24 @@ describe("W-SUD-01 SUD redaction at read", () => {
 
   it("returns the full packet unchanged for a caller WITH a Part 2 release", () => {
     const built = builtWithSud();
-    const out = applySudRedaction(built, { hasPart2Release: true, sudFlaggedSourceIds: new Set(["enc-sud"]) });
+    const out = applySudRedaction(built, {
+      hasPart2Release: true,
+      sudFlaggedSourceIds: new Set(["enc-sud"]),
+    });
     expect(out).toBe(built); // identity — no redaction
     expect(out.snapshot.meta.appliedSudRedaction).toBe(false);
   });
 
   it("elides SUD-flagged encounters + highlights for a caller WITHOUT a release and sets the banner flag", () => {
-    const out = applySudRedaction(builtWithSud(), { hasPart2Release: false, sudFlaggedSourceIds: new Set(["enc-sud"]) });
+    const out = applySudRedaction(builtWithSud(), {
+      hasPart2Release: false,
+      sudFlaggedSourceIds: new Set(["enc-sud"]),
+    });
     expect(out.snapshot.meta.appliedSudRedaction).toBe(true);
     expect(out.snapshot.sinceLastIdg.encounters.map((e) => e.encounterId)).toEqual(["enc-ok"]);
-    expect(out.disciplineViews.rn.highlightedEntries.some((e) => e.sourceId === "enc-sud")).toBe(false);
+    expect(out.disciplineViews.rn.highlightedEntries.some((e) => e.sourceId === "enc-sud")).toBe(
+      false,
+    );
     // The cover banner signal (activeSudFlag) is preserved — it is non-PHI.
     expect(out.snapshot.patientCover.activeSudFlag).toBe(true);
   });

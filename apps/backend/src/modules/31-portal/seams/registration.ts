@@ -60,7 +60,9 @@ export function createM31PublishedSeamImpls(stores: M31SeamStores): M31Published
       grants: stores.grants,
       sessions: stores.sessions,
     }),
-    portalDisclosureAccountingProvider: createPortalDisclosureAccountingProvider(stores.disclosures),
+    portalDisclosureAccountingProvider: createPortalDisclosureAccountingProvider(
+      stores.disclosures,
+    ),
   };
 }
 
@@ -88,7 +90,10 @@ export function registerM31PublishedSeams(
   registrar.registerSeam("TelehealthMetricsProvider", impls.telehealthMetricsProvider);
   registrar.registerSeam("TelehealthVisitReader", impls.telehealthVisitReader);
   registrar.registerSeam("PortalSessionMinter", impls.portalSessionMinter);
-  registrar.registerSeam("PortalDisclosureAccountingProvider", impls.portalDisclosureAccountingProvider);
+  registrar.registerSeam(
+    "PortalDisclosureAccountingProvider",
+    impls.portalDisclosureAccountingProvider,
+  );
 }
 
 /**

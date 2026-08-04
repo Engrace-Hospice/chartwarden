@@ -37,7 +37,10 @@ export type M28OutboxEvent =
         approvedAt: string;
       };
     }
-  | { type: "m28.fhir.client.revoked"; payload: { clientId: FhirClientId; revokedAt: string; rationale: string } }
+  | {
+      type: "m28.fhir.client.revoked";
+      payload: { clientId: FhirClientId; revokedAt: string; rationale: string };
+    }
   | { type: "m28.fhir.client.suspended"; payload: { clientId: FhirClientId; reason: string } }
   | {
       type: "m28.fhir.bulk_export.accepted";
@@ -60,7 +63,12 @@ export type M28OutboxEvent =
     }
   | {
       type: "m28.fhir.bulk_export.failed";
-      payload: { jobId: FhirBulkExportJobId; clientId: FhirClientId; failedAt: string; failureReason: string };
+      payload: {
+        jobId: FhirBulkExportJobId;
+        clientId: FhirClientId;
+        failedAt: string;
+        failureReason: string;
+      };
     }
   | {
       type: "m28.fhir.bulk_export.cancelled";
@@ -104,7 +112,11 @@ export type M28OutboxEvent =
     }
   | {
       type: "m28.fhir.inbound.expired";
-      payload: { proposalId: FhirInboundResourceId; ownerModule: FhirInboundOwnerModule; expiredAt: string };
+      payload: {
+        proposalId: FhirInboundResourceId;
+        ownerModule: FhirInboundOwnerModule;
+        expiredAt: string;
+      };
     }
   | {
       type: "m28.fhir.capability.regenerated";

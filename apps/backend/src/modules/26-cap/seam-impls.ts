@@ -5,8 +5,6 @@
 // into the M1 SeamRegistry once M26's keys are M1 SeamContracts members (deferred — until then M26 is
 // reachable cross-module via its §4.10 outbox events, the M27 posture).
 import {
-  asPercent,
-  computeCostReportCapAggregate,
   type AgencyProjectionView,
   type CapAccrualReader,
   type CapAlertSubscriberProvider,
@@ -19,9 +17,11 @@ import {
   type InpatientProjectionView,
   type PatientProjectionView,
   type ProjectionAtDateView,
+  asPercent,
+  capYearForDate,
+  computeCostReportCapAggregate,
   toAggregateBandLabel,
   toInpatientBandLabel,
-  capYearForDate,
 } from "@wardenx/cap-management";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -29,7 +29,11 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { M26ReadActor } from "./routes/actor";
 import type { M26ReadService } from "./routes/read-service";
 
-const systemActor = (orgId: string): M26ReadActor => ({ organizationId: orgId, userId: "system", roles: [] });
+const systemActor = (orgId: string): M26ReadActor => ({
+  organizationId: orgId,
+  userId: "system",
+  roles: [],
+});
 const cents = (n: number | null): string => String(n ?? 0);
 
 export interface M26SeamImpls {
@@ -79,7 +83,10 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
           ? await projection.getPatientProjection(orgId, period.id, patientId)
           : await projection.getAgencyProjection(orgId, period.id);
       if (!base) return null;
-      return { ...base, isFrozenSnapshot: period.status === "settled" } satisfies ProjectionAtDateView;
+      return {
+        ...base,
+        isFrozenSnapshot: period.status === "settled",
+      } satisfies ProjectionAtDateView;
     },
     async getInpatientProjectionForServiceDate(orgId, serviceDate) {
       const actor = systemActor(orgId);
@@ -170,7 +177,13 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
       };
     },
     async listAccrualLines(orgId, capPeriodId, patientId, cursor) {
-      const page = await read.listAccrualLines(systemActor(orgId), capPeriodId, patientId, cursor, 50);
+      const page = await read.listAccrualLines(
+        systemActor(orgId),
+        capPeriodId,
+        patientId,
+        cursor,
+        50,
+      );
       return {
         items: page.items.map((l) => ({
           id: l.id,
@@ -250,7 +263,14 @@ export function buildM26SeamImpls(db: DbClient, read: M26ReadService): M26SeamIm
 
 function toAgencyView(
   capYear: string,
-  snap: { paidYtdCents: number; outstandingBilledCents: number; capAmountCents: number | null; pctOfCap: number; alertBand: string; computedAt: string } | null,
+  snap: {
+    paidYtdCents: number;
+    outstandingBilledCents: number;
+    capAmountCents: number | null;
+    pctOfCap: number;
+    alertBand: string;
+    computedAt: string;
+  } | null,
   period: { id: string; aggregateCapAmountCents: number },
 ): AgencyProjectionView {
   return {

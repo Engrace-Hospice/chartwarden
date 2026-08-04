@@ -1,13 +1,13 @@
 import {
-  ageYears,
-  cardSurface,
   EmptyState,
-  ghostBorder,
   Glyph,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  ageYears,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -110,7 +110,10 @@ export function AssessmentTimeline(): JSX.Element {
       chips={
         <>
           <MonoChip>{patient.mrn}</MonoChip>
-          <StatusPill label={stateLabel(patient.status)} tone={ASSESSMENT_TONE[patient.status] ?? "neutral"} />
+          <StatusPill
+            label={stateLabel(patient.status)}
+            tone={ASSESSMENT_TONE[patient.status] ?? "neutral"}
+          />
         </>
       }
     />
@@ -121,14 +124,19 @@ export function AssessmentTimeline(): JSX.Element {
   if (items.length === 0) {
     return (
       <PatientWorkspaceLayout banner={banner}>
-        <EmptyState title="No assessments" description="No clinical scales have been recorded for this patient." />
+        <EmptyState
+          title="No assessments"
+          description="No clinical scales have been recorded for this patient."
+        />
       </PatientWorkspaceLayout>
     );
   }
 
   const selected = scales.find((s) => s.scaleType === scale) ?? scales[0]!;
   // Chronological (oldest→newest) numeric scores → the right-rail trend bars.
-  const series = [...selected.rows].reverse().filter((r) => r.score != null) as (AssessmentRow & { score: number })[];
+  const series = [...selected.rows].reverse().filter((r) => r.score != null) as (AssessmentRow & {
+    score: number;
+  })[];
 
   return (
     <PatientWorkspaceLayout banner={banner}>
@@ -140,10 +148,19 @@ export function AssessmentTimeline(): JSX.Element {
             const active = s.scaleType === selected.scaleType;
             const needsCosign = s.latest.cosignRequired && !s.latest.cosignedAt;
             return (
-              <button key={s.scaleType} type="button" onClick={() => setScale(s.scaleType)} style={{ ...scaleItem, ...(active ? scaleItemActive : null) }}>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 600 }}>
+              <button
+                key={s.scaleType}
+                type="button"
+                onClick={() => setScale(s.scaleType)}
+                style={{ ...scaleItem, ...(active ? scaleItemActive : null) }}
+              >
+                <span
+                  style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 600 }}
+                >
                   {s.scaleType}
-                  {s.latest.sudContext ? <Glyph name="lock" size={12} label="Substance-use context" /> : null}
+                  {s.latest.sudContext ? (
+                    <Glyph name="lock" size={12} label="Substance-use context" />
+                  ) : null}
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
                   <span style={listMeta}>{s.count}</span>
@@ -156,26 +173,48 @@ export function AssessmentTimeline(): JSX.Element {
 
         {/* Selected scale — latest score + capture history */}
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" }}>
-            <h1 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1.375rem", color: t.onSurface }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              gap: "1rem",
+            }}
+          >
+            <h1
+              style={{
+                margin: 0,
+                fontFamily: t.fontDisplay,
+                fontWeight: 500,
+                fontSize: "1.375rem",
+                color: t.onSurface,
+              }}
+            >
               {selected.scaleType}
             </h1>
             {selected.latest.redacted ? (
-              <span style={restricted}><Glyph name="lock" size={12} /> redacted</span>
+              <span style={restricted}>
+                <Glyph name="lock" size={12} /> redacted
+              </span>
             ) : (
               <div style={{ textAlign: "right" }}>
-                <div className="tabular-nums" style={{ fontSize: "2rem", fontWeight: 700, lineHeight: 1, color: t.onSurface }}>
+                <div
+                  className="tabular-nums"
+                  style={{ fontSize: "2rem", fontWeight: 700, lineHeight: 1, color: t.onSurface }}
+                >
                   {selected.latest.score ?? "—"}
                 </div>
                 {selected.latest.scoreInterpretation ? (
-                  <div style={{ fontSize: "0.78rem", color: t.onSurfaceVariant }}>{selected.latest.scoreInterpretation}</div>
+                  <div style={{ fontSize: "0.78rem", color: t.onSurfaceVariant }}>
+                    {selected.latest.scoreInterpretation}
+                  </div>
                 ) : null}
               </div>
             )}
           </div>
           <p style={{ ...meta, marginTop: "0.25rem" }}>
-            Each capture's total score is shown; the per-item breakdown renders here once the assessment
-            read exposes individual scale items.
+            Each capture's total score is shown; the per-item breakdown renders here once the
+            assessment read exposes individual scale items.
           </p>
 
           <section style={{ ...cardSurface, padding: "0.5rem 1.25rem", marginTop: "1rem" }}>
@@ -185,24 +224,34 @@ export function AssessmentTimeline(): JSX.Element {
                 <button
                   key={a.id}
                   type="button"
-                  onClick={() => patientId && navigate(`/patients/${patientId}/scales/${a.scaleType}`)}
+                  onClick={() =>
+                    patientId && navigate(`/patients/${patientId}/scales/${a.scaleType}`)
+                  }
                   style={{ ...captureRow, borderTop: i === 0 ? "none" : ghostBorder }}
                 >
                   <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                     <span className="tabular-nums" style={{ color: t.onSurface }}>
                       {a.capturedAt.slice(0, 16).replace("T", " ")}
                     </span>
-                    <span style={{ ...meta, margin: 0 }}> · {stateLabel(a.capturedByDiscipline)}</span>
+                    <span style={{ ...meta, margin: 0 }}>
+                      {" "}
+                      · {stateLabel(a.capturedByDiscipline)}
+                    </span>
                   </span>
                   {a.redacted ? (
                     <span style={meta}>Redacted</span>
                   ) : (
                     <span className="tabular-nums" style={{ fontWeight: 600, color: t.onSurface }}>
                       {a.score ?? "—"}
-                      {a.scoreInterpretation ? <span style={tag}> {a.scoreInterpretation}</span> : null}
+                      {a.scoreInterpretation ? (
+                        <span style={tag}> {a.scoreInterpretation}</span>
+                      ) : null}
                     </span>
                   )}
-                  <StatusPill label={stateLabel(a.status)} tone={ASSESSMENT_TONE[a.status] ?? "neutral"} />
+                  <StatusPill
+                    label={stateLabel(a.status)}
+                    tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
+                  />
                   {needsCosign ? <StatusPill label="Cosign needed" tone="warning" /> : null}
                   <Glyph name="arrow-right" size={16} />
                 </button>
@@ -215,10 +264,14 @@ export function AssessmentTimeline(): JSX.Element {
         <aside style={rightRail}>
           <div style={{ ...cardSurface, padding: "1.125rem" }}>
             <h2 style={railTitle}>{selected.scaleType} trend</h2>
-            {series.length === 0 ? <p style={meta}>No numeric scores to trend.</p> : <Trend series={series} />}
+            {series.length === 0 ? (
+              <p style={meta}>No numeric scores to trend.</p>
+            ) : (
+              <Trend series={series} />
+            )}
             <p style={{ ...meta, marginTop: "0.5rem" }}>
-              {series.length} scored capture{series.length === 1 ? "" : "s"} · significant changes are
-              triaged in the changes inbox.
+              {series.length} scored capture{series.length === 1 ? "" : "s"} · significant changes
+              are triaged in the changes inbox.
             </p>
           </div>
         </aside>
@@ -233,9 +286,29 @@ function Trend({ series }: { series: (AssessmentRow & { score: number })[] }): J
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: "0.35rem", height: "5rem" }}>
       {series.map((s) => (
-        <div key={s.id} style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: "0.2rem" }} title={`${s.capturedAt.slice(0, 10)} · ${s.score}`}>
-          <span className="tabular-nums" style={{ fontSize: "0.6rem", color: t.onSurfaceVariant }}>{s.score}</span>
-          <div style={{ width: "100%", height: `${Math.max(8, (s.score / max) * 100)}%`, background: t.primary, borderRadius: "0.25rem 0.25rem 0 0" }} />
+        <div
+          key={s.id}
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: "0.2rem",
+          }}
+          title={`${s.capturedAt.slice(0, 10)} · ${s.score}`}
+        >
+          <span className="tabular-nums" style={{ fontSize: "0.6rem", color: t.onSurfaceVariant }}>
+            {s.score}
+          </span>
+          <div
+            style={{
+              width: "100%",
+              height: `${Math.max(8, (s.score / max) * 100)}%`,
+              background: t.primary,
+              borderRadius: "0.25rem 0.25rem 0 0",
+            }}
+          />
         </div>
       ))}
     </div>
@@ -243,7 +316,20 @@ function Trend({ series }: { series: (AssessmentRow & { score: number })[] }): J
 }
 
 function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return <span style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, background: t.surfaceContainer, borderRadius: "9999px", padding: "0.15rem 0.55rem" }}>{children}</span>;
+  return (
+    <span
+      style={{
+        fontFamily: t.fontMono,
+        fontSize: "0.78rem",
+        color: t.onSurfaceVariant,
+        background: t.surfaceContainer,
+        borderRadius: "9999px",
+        padding: "0.15rem 0.55rem",
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
 const scaleListStyle: CSSProperties = {
@@ -256,7 +342,14 @@ const scaleListStyle: CSSProperties = {
   flexDirection: "column",
   gap: "0.125rem",
 };
-const listHead: CSSProperties = { fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: t.muted, padding: "0 0.5rem 0.5rem" };
+const listHead: CSSProperties = {
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: t.muted,
+  padding: "0 0.5rem 0.5rem",
+};
 const scaleItem: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -273,9 +366,26 @@ const scaleItem: CSSProperties = {
 };
 const scaleItemActive: CSSProperties = { background: t.primaryTint, color: t.primary };
 const listMeta: CSSProperties = { fontSize: "0.72rem", color: t.muted };
-const cosignDot: CSSProperties = { width: "0.45rem", height: "0.45rem", borderRadius: "9999px", background: t.warning };
-const rightRail: CSSProperties = { width: "18rem", flexShrink: 0, overflow: "auto", padding: "1.5rem", background: t.surfaceLow };
-const railTitle: CSSProperties = { margin: "0 0 0.75rem", fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1rem", color: t.onSurface };
+const cosignDot: CSSProperties = {
+  width: "0.45rem",
+  height: "0.45rem",
+  borderRadius: "9999px",
+  background: t.warning,
+};
+const rightRail: CSSProperties = {
+  width: "18rem",
+  flexShrink: 0,
+  overflow: "auto",
+  padding: "1.5rem",
+  background: t.surfaceLow,
+};
+const railTitle: CSSProperties = {
+  margin: "0 0 0.75rem",
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  fontSize: "1rem",
+  color: t.onSurface,
+};
 const captureRow: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -287,6 +397,17 @@ const captureRow: CSSProperties = {
   cursor: "pointer",
   color: t.muted,
 };
-const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.25rem 0 0" };
+const meta: CSSProperties = {
+  fontSize: "0.78rem",
+  color: t.onSurfaceVariant,
+  margin: "0.25rem 0 0",
+};
 const tag: CSSProperties = { color: t.muted, fontSize: "0.75rem", fontWeight: 400 };
-const restricted: CSSProperties = { display: "inline-flex", alignItems: "center", gap: "0.25rem", color: t.warning, fontSize: "0.72rem", fontWeight: 600 };
+const restricted: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.25rem",
+  color: t.warning,
+  fontSize: "0.72rem",
+  fontWeight: 600,
+};

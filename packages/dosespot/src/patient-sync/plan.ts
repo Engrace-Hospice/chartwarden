@@ -117,6 +117,11 @@ export function planPatientSyncFailure(input: PatientSyncFailureInput): PlannedP
     escalate: true,
     retryCount,
     event: "m12.dosespot_patient_sync_failed",
-    alert: { eventType: "patient_sync.failed", patientId: input.patientId, retryCount, severity: "warn" },
+    alert: {
+      eventType: "patient_sync.failed",
+      patientId: input.patientId,
+      retryCount,
+      severity: "warn",
+    },
   };
 }

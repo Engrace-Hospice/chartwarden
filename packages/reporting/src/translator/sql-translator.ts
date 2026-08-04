@@ -17,7 +17,7 @@
 //     No row-level column is ever projected un-aggregated, so no row-level PHI can leave.
 //   • A base whose MV status is `registered` (the upstream producer has not landed) yields a
 //     forward-seam DENY-STUB result instead of SQL — the tile renders "Not yet available — M<n> required".
-import { schema } from "@wardenx/db";
+import type { schema } from "@wardenx/db";
 import { type CompiledWhere, REL_ALIAS, compileFilters } from "./filter-compiler";
 import { type ReportableScopeEnvelope, injectScope } from "./scope-injector";
 import {
@@ -100,7 +100,12 @@ export function translateSpec(
 
   // 2. Forward-seam deny-stub: a `registered` MV means the upstream producer has not landed.
   if (base.mvStatus === "registered") {
-    return { kind: "deny_stub", isForwardSeamDenyStub: true, mvKey: base.mvKey, baseKey: base.baseKey };
+    return {
+      kind: "deny_stub",
+      isForwardSeamDenyStub: true,
+      mvKey: base.mvKey,
+      baseKey: base.baseKey,
+    };
   }
 
   const dimByKey = new Map(base.dimensions.map((d) => [d.dimensionKey, d]));

@@ -13,17 +13,17 @@ import { TRIAGE_CALL_TERMINAL_STATES } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
   type CallCloseEscalationVerdict,
+  DISPOSITION_SCOPE_MATRIX,
+  OUTAGE_GAP_FLOOR_MINUTES,
   type OutageWindow,
+  SELECTABLE_DISPOSITIONS,
+  TRIAGE_CALL_EDGES,
   type TriageActorDiscipline,
   type TriageAnswerFacts,
   type TriageCallFacts,
   type TriageEscalationFacts,
   type TriageProtocolFacts,
   type TriageProtocolQuestionFacts,
-  DISPOSITION_SCOPE_MATRIX,
-  OUTAGE_GAP_FLOOR_MINUTES,
-  SELECTABLE_DISPOSITIONS,
-  TRIAGE_CALL_EDGES,
   acknowledgeEscalation,
   applyProtocol,
   assertAnswerInOrder,
@@ -178,7 +178,10 @@ describe("§2.2.1 — the triage-call transition table is a WHITELIST, not a ran
 
   it("refuses a command that has no edge from this state", () => {
     expectCode(() => resolveEdge("open", "selectDisposition"), "INVALID_STATE_TRANSITION");
-    expectCode(() => resolveEdge("disposition_pending", "applyProtocol"), "INVALID_STATE_TRANSITION");
+    expectCode(
+      () => resolveEdge("disposition_pending", "applyProtocol"),
+      "INVALID_STATE_TRANSITION",
+    );
   });
 
   it("refuses every command from a terminal state", () => {
@@ -202,7 +205,16 @@ describe("§2.2.1 — the triage-call transition table is a WHITELIST, not a ran
     // outcome — the clinical decision is already on the record and the §2.7 D-B park must not be
     // abandonable while the encounter-creator worker is still retrying.
     const sql = readFileSync(
-      join(import.meta.dirname, "..", "..", "..", "packages", "db", "migrations", "0108_oncall_m19_rls_audit_triggers.sql"),
+      join(
+        import.meta.dirname,
+        "..",
+        "..",
+        "..",
+        "packages",
+        "db",
+        "migrations",
+        "0108_oncall_m19_rls_audit_triggers.sql",
+      ),
       "utf8",
     );
     const allowed = new Map<string, readonly string[]>();
@@ -374,7 +386,12 @@ describe("D5 / §7.1 — the walk is server-authoritative", () => {
   it("tracks its own cursor", () => {
     expect(nextUnansweredQuestion(questions, [])?.questionOrder).toBe(1);
     expect(nextUnansweredQuestion(questions, [answer("q-1")])?.questionOrder).toBe(2);
-    expect(nextUnansweredQuestion(questions, questions.map((q) => answer(q.questionId)))).toBeNull();
+    expect(
+      nextUnansweredQuestion(
+        questions,
+        questions.map((q) => answer(q.questionId)),
+      ),
+    ).toBeNull();
   });
 
   it("refuses a POST for a question the walk has not reached", () => {
@@ -437,7 +454,10 @@ describe("D5 / §7.1 — the walk is server-authoritative", () => {
   });
 
   it("§2.2.3 — a correction chains to the ORIGINAL, never to another correction", () => {
-    const answers = [answer("q-1"), answer("q-1", { answerId: "a-fix", correctionOfAnswerId: "a-q-1" })];
+    const answers = [
+      answer("q-1"),
+      answer("q-1", { answerId: "a-fix", correctionOfAnswerId: "a-q-1" }),
+    ];
     expectCode(
       () =>
         recordAnswer({
@@ -517,14 +537,22 @@ describe("D5 / §7.1 — the walk is server-authoritative", () => {
   });
 
   it("evaluates every red-flag arm against the column it names", () => {
-    const q = (match: TriageProtocolQuestionFacts["redFlagMatch"], type: TriageProtocolAnswerType) =>
-      question(1, { isRedFlagQuestion: true, redFlagMatch: match, answerType: type });
+    const q = (
+      match: TriageProtocolQuestionFacts["redFlagMatch"],
+      type: TriageProtocolAnswerType,
+    ) => question(1, { isRedFlagQuestion: true, redFlagMatch: match, answerType: type });
 
     expect(
-      evaluateRedFlag(q({ kind: "bool_is", value: true }, "boolean"), { kind: "bool", value: true }),
+      evaluateRedFlag(q({ kind: "bool_is", value: true }, "boolean"), {
+        kind: "bool",
+        value: true,
+      }),
     ).toBe(true);
     expect(
-      evaluateRedFlag(q({ kind: "bool_is", value: true }, "boolean"), { kind: "bool", value: false }),
+      evaluateRedFlag(q({ kind: "bool_is", value: true }, "boolean"), {
+        kind: "bool",
+        value: false,
+      }),
     ).toBe(false);
     expect(
       evaluateRedFlag(q({ kind: "int_at_least", threshold: 7 }, "scale_0_10"), {
@@ -544,9 +572,9 @@ describe("D5 / §7.1 — the walk is server-authoritative", () => {
         value: "refill",
       }),
     ).toBe(true);
-    expect(evaluateRedFlag(q({ kind: "text_any" }, "free_text"), { kind: "text", value: "x" })).toBe(
-      true,
-    );
+    expect(
+      evaluateRedFlag(q({ kind: "text_any" }, "free_text"), { kind: "text", value: "x" }),
+    ).toBe(true);
     // A question that is not a red-flag question never fires, whatever its predicate says.
     expect(
       evaluateRedFlag(question(1, { redFlagMatch: { kind: "bool_is", value: true } }), {
@@ -599,9 +627,9 @@ describe("§2.3 — completeProtocol", () => {
   });
 
   it("refuses while a required question is unanswered, and names the first gap", () => {
-    expect(unansweredRequiredQuestions(questions, [answer("q-1")]).map((q) => q.questionOrder)).toEqual(
-      [3],
-    );
+    expect(
+      unansweredRequiredQuestions(questions, [answer("q-1")]).map((q) => q.questionOrder),
+    ).toEqual([3]);
     expectCode(
       () =>
         completeProtocol({
@@ -751,7 +779,10 @@ describe("§2.2.4 / D7 — the escalation ladder", () => {
       resolved: false,
       blockedReason: "mandatory",
     });
-    expectCode(() => assertCallCloseable([mandatory]), "MANDATORY_ESCALATION_AUTO_RESOLVE_FORBIDDEN");
+    expectCode(
+      () => assertCallCloseable([mandatory]),
+      "MANDATORY_ESCALATION_AUTO_RESOLVE_FORBIDDEN",
+    );
   });
 
   it("auto-resolves an ACKNOWLEDGED non-mandatory row with no fabricated actor", () => {
@@ -787,7 +818,9 @@ describe("D6 / §6 / §7.3 — the role × disposition scope matrix", () => {
       () => assertDispositionInScope("clinical_lpn", "visit_dispatched_now"),
       "DISPOSITION_OUT_OF_SCOPE",
     );
-    expect(() => assertDispositionInScope("clinical_lpn", "caregiver_education_only")).not.toThrow();
+    expect(() =>
+      assertDispositionInScope("clinical_lpn", "caregiver_education_only"),
+    ).not.toThrow();
   });
 
   it("an RN-or-above may select all eight", () => {
@@ -823,7 +856,10 @@ describe("D6 / §6 / §7.3 — the role × disposition scope matrix", () => {
         () => assertDispositionInScope(discipline, "escalated_unresolved"),
         "DISPOSITION_NOT_SELECTABLE",
       );
-      expectCode(() => assertDispositionInScope(discipline, "abandoned"), "DISPOSITION_NOT_SELECTABLE");
+      expectCode(
+        () => assertDispositionInScope(discipline, "abandoned"),
+        "DISPOSITION_NOT_SELECTABLE",
+      );
     }
   });
 
@@ -1037,7 +1073,9 @@ describe("§2.2.1 — callback and abandon", () => {
       reason: "caller did not answer the callback number",
     });
     expect(t.to).toBe("awaiting_callback");
-    expect(resumeAfterCallback(call({ state: "awaiting_callback" })).to).toBe("protocol_in_progress");
+    expect(resumeAfterCallback(call({ state: "awaiting_callback" })).to).toBe(
+      "protocol_in_progress",
+    );
   });
 
   it("requires a reason on both", () => {
@@ -1082,8 +1120,7 @@ describe("§2.2.1 — callback and abandon", () => {
 // ── §2.7 / M19-F08 the BCP paper-re-entry path ───────────────────────────────────────────────────────
 
 describe("§2.7 / M19-F08 — BCP paper re-entry", () => {
-  const t = (h: number, m = 0) =>
-    new Date(Date.UTC(2026, 6, 30, h, m, 0)).toISOString();
+  const t = (h: number, m = 0) => new Date(Date.UTC(2026, 6, 30, h, m, 0)).toISOString();
 
   it("finds the outage by the gap where nothing was written", () => {
     // 13:00 → 23:30 is 10.5 h with nothing written: the platform was down through the covered evening.
@@ -1112,11 +1149,21 @@ describe("§2.7 / M19-F08 — BCP paper re-entry", () => {
       durationMinutes: 270,
     };
     const { rows, effects } = buildPaperReentryWorklist(window, [
-      { shiftId: "s-overlap", shiftStartsAt: t(18), shiftEndsAt: t(23, 59), assignedToMembershipId: RN },
+      {
+        shiftId: "s-overlap",
+        shiftStartsAt: t(18),
+        shiftEndsAt: t(23, 59),
+        assignedToMembershipId: RN,
+      },
       // Ends exactly when the outage starts — never affected by it.
       { shiftId: "s-before", shiftStartsAt: t(12), shiftEndsAt: t(19), assignedToMembershipId: RN },
       // Starts exactly when the outage ends.
-      { shiftId: "s-after", shiftStartsAt: t(23, 30), shiftEndsAt: t(23, 59), assignedToMembershipId: RN },
+      {
+        shiftId: "s-after",
+        shiftStartsAt: t(23, 30),
+        shiftEndsAt: t(23, 59),
+        assignedToMembershipId: RN,
+      },
     ]);
     expect(rows.map((r) => r.shiftId)).toEqual(["s-overlap"]);
     // outage end + 72 h.

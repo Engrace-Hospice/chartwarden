@@ -12,7 +12,7 @@
 // registered resolver derives the report's ProviderEntity + lifecycle state. `notFoundOnDeny:true`
 // realizes the §2.2 existence-non-leak rule (a denied object-level check returns 404, not 403).
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { type PreHandler } from "./actor";
+import type { PreHandler } from "./actor";
 
 /** A structural request shape carrying the ABAC target sources (params/body); GuardRequest is assignable. */
 type TargetRequest = { readonly params?: unknown; readonly body?: unknown };
@@ -65,4 +65,5 @@ export const PERIOD_ACTIVE = (key: string): PreHandler =>
  * SRA `requireStepUp("sra.close")` precedent). Composed on override / approve / submit / submit-past-
  * deadline / reopen; the operation key is the permission key so M3-T07 resolves the per-op freshness policy.
  */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;

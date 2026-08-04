@@ -6,7 +6,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
-import { decodeCursor, type CursorPage, toPage } from "./concurrency";
+import { type CursorPage, decodeCursor, toPage } from "./concurrency";
 import type {
   AccrualLineView,
   DashboardView,
@@ -26,7 +26,8 @@ import type {
 const iso = (d: Date | string | null): string =>
   d === null ? "" : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 const isoN = (d: Date | string | null): string | null => (d === null ? null : iso(d));
-const num = (v: string | number | null): number => (v === null ? 0 : typeof v === "number" ? v : Number(v));
+const num = (v: string | number | null): number =>
+  v === null ? 0 : typeof v === "number" ? v : Number(v);
 const numN = (v: string | number | null): number | null => (v === null ? null : num(v));
 
 export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
@@ -95,7 +96,10 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
     scope: string,
     patientId?: string,
   ): Promise<ProjectionView | null> {
-    const conds = [eq(PS.capPeriodId, periodId), eq(PS.scope, scope as typeof PS.scope.enumValues[number])];
+    const conds = [
+      eq(PS.capPeriodId, periodId),
+      eq(PS.scope, scope as (typeof PS.scope.enumValues)[number]),
+    ];
     if (patientId) conds.push(eq(PS.patientId, patientId));
     const rows = await tx
       .select()
@@ -120,7 +124,11 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
       return withOrgContext(db, actor, async (tx) => {
         const rows = await tx.select().from(P).where(eq(P.id, periodId)).limit(1);
         if (!rows[0]) return null;
-        const lock = await tx.select({ at: ML.lockedAt }).from(ML).where(eq(ML.capPeriodId, periodId)).limit(1);
+        const lock = await tx
+          .select({ at: ML.lockedAt })
+          .from(ML)
+          .where(eq(ML.capPeriodId, periodId))
+          .limit(1);
         return toPeriod(rows[0], lock[0]?.at ?? null);
       });
     },
@@ -140,7 +148,9 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
       return withOrgContext(db, actor, (tx) => latestSnapshot(tx, periodId, "agency_aggregate"));
     },
     async getPatientProjection(actor, periodId, patientId) {
-      return withOrgContext(db, actor, (tx) => latestSnapshot(tx, periodId, "patient_aggregate", patientId));
+      return withOrgContext(db, actor, (tx) =>
+        latestSnapshot(tx, periodId, "patient_aggregate", patientId),
+      );
     },
     async getInpatientProjection(actor, periodId) {
       return withOrgContext(db, actor, (tx) => latestSnapshot(tx, periodId, "inpatient"));
@@ -183,7 +193,7 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
           .where(and(...conds))
           .orderBy(desc(BAL.postedAt), desc(BAL.id))
           .limit(limit + 1);
-        return toPage<typeof rows[number], AccrualLineView>(
+        return toPage<(typeof rows)[number], AccrualLineView>(
           rows,
           limit,
           (r) => ({ ts: iso(r.postedAt), id: r.id }),
@@ -219,8 +229,12 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           filters.capPeriodId ? eq(TE.capPeriodId, filters.capPeriodId) : undefined,
-          filters.scope ? eq(TE.scope, filters.scope as typeof TE.scope.enumValues[number]) : undefined,
-          filters.band ? eq(TE.currentBand, filters.band as typeof TE.currentBand.enumValues[number]) : undefined,
+          filters.scope
+            ? eq(TE.scope, filters.scope as (typeof TE.scope.enumValues)[number])
+            : undefined,
+          filters.band
+            ? eq(TE.currentBand, filters.band as (typeof TE.currentBand.enumValues)[number])
+            : undefined,
           filters.unacknowledgedOnly ? isNull(TE.acknowledgedAt) : undefined,
         ].filter(Boolean);
         const rows = await tx
@@ -308,7 +322,14 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
           .limit(1);
         const period = active[0];
         if (!period) {
-          return { period: null, agency: null, inpatient: null, topPatients: [], recentEvents: [], openVarianceCount: 0 };
+          return {
+            period: null,
+            agency: null,
+            inpatient: null,
+            topPatients: [],
+            recentEvents: [],
+            openVarianceCount: 0,
+          };
         }
         const agency = await latestSnapshot(tx, period.id, "agency_aggregate");
         const inpatient = await latestSnapshot(tx, period.id, "inpatient");
@@ -327,8 +348,17 @@ export function buildDrizzleM26ReadService(db: DbClient): M26ReadService {
         const variance = await tx
           .select({ n: sql<number>`count(*)::int` })
           .from(PR)
-          .where(and(eq(PR.capPeriodId, period.id), or(eq(PR.status, "open"), eq(PR.status, "investigating"))));
-        const lock = await tx.select({ at: ML.lockedAt }).from(ML).where(eq(ML.capPeriodId, period.id)).limit(1);
+          .where(
+            and(
+              eq(PR.capPeriodId, period.id),
+              or(eq(PR.status, "open"), eq(PR.status, "investigating")),
+            ),
+          );
+        const lock = await tx
+          .select({ at: ML.lockedAt })
+          .from(ML)
+          .where(eq(ML.capPeriodId, period.id))
+          .limit(1);
         return {
           period: toPeriod(period, lock[0]?.at ?? null),
           agency,

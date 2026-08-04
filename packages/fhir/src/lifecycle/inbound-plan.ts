@@ -24,14 +24,14 @@ import { createHash } from "node:crypto";
 
 import {
   FHIR_KNOWN_INBOUND_OWNER,
+  type FhirClientId,
   type FhirInboundOwnerModule,
   type FhirInboundResourceId,
   type FhirInboundStatus,
-  type FhirClientId,
 } from "@wardenx/types";
 
-import { fhirInboundRejectRationaleValid, fhirInboundTransition } from "./inbound";
 import type { M28OutboxEvent } from "../outbox-events";
+import { fhirInboundRejectRationaleValid, fhirInboundTransition } from "./inbound";
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 
@@ -69,8 +69,22 @@ export function inboundIdempotencyKey(
 
 /** The subset of §4.9 M36 alert intents the inbound lifecycle constructs. */
 export type InboundAlert =
-  | { kind: "fhir.inbound.proposal_pending"; proposalId: FhirInboundResourceId; resourceType: string; ownerModule: FhirInboundOwnerModule; sourceClientName: string; slaDueAt: string }
-  | { kind: "fhir.inbound.proposal_overdue"; proposalId: FhirInboundResourceId; resourceType: string; ownerModule: FhirInboundOwnerModule; sourceClientName: string; hoursOverdue: number };
+  | {
+      kind: "fhir.inbound.proposal_pending";
+      proposalId: FhirInboundResourceId;
+      resourceType: string;
+      ownerModule: FhirInboundOwnerModule;
+      sourceClientName: string;
+      slaDueAt: string;
+    }
+  | {
+      kind: "fhir.inbound.proposal_overdue";
+      proposalId: FhirInboundResourceId;
+      resourceType: string;
+      ownerModule: FhirInboundOwnerModule;
+      sourceClientName: string;
+      hoursOverdue: number;
+    };
 
 /** The outcome of staging an inbound POST: either the type is UNKNOWN to inbound (`501`, §2.3) or it is
  *  staged with the owner module, digest, dedup key, outbox event and pending alert the route emits. */
@@ -111,7 +125,11 @@ export function planInboundStaging(args: {
     status: "staged",
     ownerModule,
     payloadSha256,
-    idempotencyKey: inboundIdempotencyKey(args.sourceClientId, args.resourceType, `${payloadSha256}`),
+    idempotencyKey: inboundIdempotencyKey(
+      args.sourceClientId,
+      args.resourceType,
+      `${payloadSha256}`,
+    ),
     event: {
       type: "m28.fhir.inbound.proposed",
       payload: {
@@ -199,8 +217,10 @@ export function planInboundAccept(
     decidedAtMs: number;
   },
 ): InboundReviewPlan<Extract<M28OutboxEvent, { type: "m28.fhir.inbound.accepted" }>> {
-  if (!fhirInboundTransition(row.proposalStatus as FhirInboundStatus, "accepted")) return { ok: false, reason: "not_pending" };
-  if (args.reviewerOwnerModule !== row.ownerModule) return { ok: false, reason: "owner_module_mismatch" };
+  if (!fhirInboundTransition(row.proposalStatus as FhirInboundStatus, "accepted"))
+    return { ok: false, reason: "not_pending" };
+  if (args.reviewerOwnerModule !== row.ownerModule)
+    return { ok: false, reason: "owner_module_mismatch" };
   return {
     ok: true,
     erasePayload: false,
@@ -231,9 +251,12 @@ export function planInboundReject(
     rationale: string;
   },
 ): InboundReviewPlan<Extract<M28OutboxEvent, { type: "m28.fhir.inbound.rejected" }>> {
-  if (!fhirInboundTransition(row.proposalStatus as FhirInboundStatus, "rejected")) return { ok: false, reason: "not_pending" };
-  if (args.reviewerOwnerModule !== row.ownerModule) return { ok: false, reason: "owner_module_mismatch" };
-  if (!fhirInboundRejectRationaleValid(args.rationale)) return { ok: false, reason: "rationale_too_short" };
+  if (!fhirInboundTransition(row.proposalStatus as FhirInboundStatus, "rejected"))
+    return { ok: false, reason: "not_pending" };
+  if (args.reviewerOwnerModule !== row.ownerModule)
+    return { ok: false, reason: "owner_module_mismatch" };
+  if (!fhirInboundRejectRationaleValid(args.rationale))
+    return { ok: false, reason: "rationale_too_short" };
   return {
     ok: true,
     erasePayload: true,
@@ -259,7 +282,8 @@ export function planInboundExpiry(
   row: InboundProposalState,
   args: { sourceClientName: string; slaHours: number; expiredAtMs: number },
 ): InboundReviewPlan<Extract<M28OutboxEvent, { type: "m28.fhir.inbound.expired" }>> {
-  if (!fhirInboundTransition(row.proposalStatus as FhirInboundStatus, "expired")) return { ok: false, reason: "not_pending" };
+  if (!fhirInboundTransition(row.proposalStatus as FhirInboundStatus, "expired"))
+    return { ok: false, reason: "not_pending" };
   return {
     ok: true,
     erasePayload: true,

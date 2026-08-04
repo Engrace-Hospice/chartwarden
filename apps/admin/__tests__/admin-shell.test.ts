@@ -9,7 +9,11 @@ import { createAdminRegistry } from "../src/shell/registry";
 
 const Noop: AdminScreen = () => null;
 
-function moduleOf(slug: string, moduleId: number, ids: string[]): ScreenRegistryModule<AdminScreen> {
+function moduleOf(
+  slug: string,
+  moduleId: number,
+  ids: string[],
+): ScreenRegistryModule<AdminScreen> {
   return {
     moduleId,
     slug,

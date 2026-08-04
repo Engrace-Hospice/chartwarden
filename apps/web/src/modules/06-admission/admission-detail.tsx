@@ -124,7 +124,8 @@ export function AdmissionDetail(): JSX.Element {
         return true;
       }
       setBusy(false);
-      if (status === 412) setActionError("This admission changed since you opened it — reload to retry.");
+      if (status === 412)
+        setActionError("This admission changed since you opened it — reload to retry.");
       else if (status === 403) setActionError("You do not have permission for this action.");
       else if (status === 422) setActionError("Validation failed — check the values you entered.");
       else setActionError(fallback);
@@ -306,8 +307,8 @@ export function AdmissionDetail(): JSX.Element {
         attestation={
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <span style={{ fontSize: "0.8125rem", color: "var(--color-on-surface-variant)" }}>
-              All four R-AC-01 preconditions are satisfied — activating opens active-period billing and
-              compliance tracking for this admission.
+              All four R-AC-01 preconditions are satisfied — activating opens active-period billing
+              and compliance tracking for this admission.
             </span>
             {actionError ? (
               <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -346,7 +347,11 @@ const ghostBtn: CSSProperties = {
   border: "none",
   cursor: "pointer",
 };
-const fieldLabel: CSSProperties = { fontSize: "0.75rem", fontWeight: 600, color: "var(--color-on-surface-variant)" };
+const fieldLabel: CSSProperties = {
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface-variant)",
+};
 const inputStyle: CSSProperties = {
   padding: "0.5rem 0.625rem",
   borderRadius: "var(--radius-md)",

@@ -24,7 +24,10 @@ export const DEFAULT_EVV_WINDOW_BEFORE_MS = 2 * 60 * 60 * 1000;
 export const DEFAULT_EVV_WINDOW_AFTER_MS = 4 * 60 * 60 * 1000;
 
 /** The §4.7 predicate names M18 owns (registered into M3). Single-owner across the platform registry. */
-export const M18_ABAC_PREDICATES = ["assigned_clinician_for_visit", "evv_within_visit_window"] as const;
+export const M18_ABAC_PREDICATES = [
+  "assigned_clinician_for_visit",
+  "evv_within_visit_window",
+] as const;
 
 const targetStr = (target: AbacTarget, field: string): string | null => {
   const value = target[field];

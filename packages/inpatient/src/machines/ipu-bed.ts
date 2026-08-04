@@ -37,7 +37,9 @@ export type BedCleaningEvent =
   | "expireReservation";
 
 /** The legal §2.12 transition graph (from → events accepted). `retired` is terminal. */
-export const BED_CLEANING_GRAPH: Readonly<Record<IpuBedCleaningStatus, readonly BedCleaningEvent[]>> = {
+export const BED_CLEANING_GRAPH: Readonly<
+  Record<IpuBedCleaningStatus, readonly BedCleaningEvent[]>
+> = {
   ready: ["reserve", "retire"],
   reserved: ["occupy", "expireReservation"],
   occupied: ["dischargeDirty"],

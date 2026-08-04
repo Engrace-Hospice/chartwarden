@@ -1,8 +1,8 @@
+import { WardenXError } from "@wardenx/types";
 // TASK-065 (API-009) — the M1 Fastify error handler. Proves the ONE-envelope contract holds across
 // three error shapes: a thrown WardenXError, a Fastify framework error (malformed JSON — previously
 // collapsed into a blanket 500), and a genuinely unexpected Error (still a 500, no internal leakage).
 import Fastify from "fastify";
-import { WardenXError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { applyErrorHandler } from "../plugins/error-handler";
 

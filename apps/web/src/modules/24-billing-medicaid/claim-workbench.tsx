@@ -14,7 +14,14 @@ import {
 // (§6.7) + §6.6 StatusPill via medicaid-status.ts; mono control numbers; CSS-var tokens only.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { CLAIM_STATE_TONE, humanize, kindLabel, shortDate, shortId, toneOf } from "./medicaid-status";
+import {
+  CLAIM_STATE_TONE,
+  humanize,
+  kindLabel,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./medicaid-status";
 import {
   FilterRow,
   SelectFilter,
@@ -149,7 +156,9 @@ export function MedicaidClaimWorkbench(): JSX.Element {
           mode === "abandon"
             ? "/api/v1/medicaid-claims/{id}/abandon"
             : "/api/v1/medicaid-claims/{id}/validate";
-        const { error: err } = (await client.POST(path as never, init as never)) as { error?: unknown };
+        const { error: err } = (await client.POST(path as never, init as never)) as {
+          error?: unknown;
+        };
         if (err) failed += 1;
       }
       setBusy(false);
@@ -185,7 +194,12 @@ export function MedicaidClaimWorkbench(): JSX.Element {
       filters={
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           <FilterRow>
-            <SelectFilter label="Claim state" value={state} options={STATE_OPTIONS} onChange={setState} />
+            <SelectFilter
+              label="Claim state"
+              value={state}
+              options={STATE_OPTIONS}
+              onChange={setState}
+            />
             <SelectFilter label="Kind" value={kind} options={KIND_OPTIONS} onChange={setKind} />
             <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
               <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
@@ -283,16 +297,16 @@ export function MedicaidClaimWorkbench(): JSX.Element {
                       tone={toneOf(CLAIM_STATE_TONE, r.state)}
                     />
                   </td>
-                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{shortDate(r.updatedAt)}</td>
+                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
+                    {shortDate(r.updatedAt)}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )
       }
-      detail={
-        <span style={mutedStyle}>Select a control number to open the claim editor.</span>
-      }
+      detail={<span style={mutedStyle}>Select a control number to open the claim editor.</span>}
     />
   );
 }

@@ -2,11 +2,7 @@
 
 import { type Static, Type } from "@sinclair/typebox";
 
-import {
-  DeliveryWindowSchema,
-  HCPCS_PATTERN,
-  PatientAddressSnapshotSchema,
-} from "../shared";
+import { DeliveryWindowSchema, HCPCS_PATTERN, PatientAddressSnapshotSchema } from "../shared";
 
 export const SupplyRequestDataSchema = Type.Composite(
   [

@@ -2,11 +2,7 @@
 
 import { type Static, Type } from "@sinclair/typebox";
 
-import {
-  DeliveryWindowSchema,
-  HCPCS_PATTERN,
-  PatientAddressSnapshotSchema,
-} from "../shared";
+import { DeliveryWindowSchema, HCPCS_PATTERN, PatientAddressSnapshotSchema } from "../shared";
 
 /** §2.1 — rental vs purchase. The value decides whether `received_confirmed` auto-completes: a purchase
  *  does, a monthly rental stays open for the rental life and completes only on M11's discontinuation. */

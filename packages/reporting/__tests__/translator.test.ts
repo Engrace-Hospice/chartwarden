@@ -11,14 +11,14 @@
 //     report_mv.select_<mvKey>(p_org_id) — NOT a direct MV select,
 //   • a `registered`-MV base yields a forward-seam deny-stub (not SQL),
 //   • injection attempts in an alias (quoteIdent regex) or a filter value (bound param) are neutralized.
-import { schema } from "@wardenx/db";
+import type { schema } from "@wardenx/db";
 import { describe, expect, it } from "vitest";
 import {
+  type ReportableScopeEnvelope,
+  type TranslatorBaseCatalog,
   compileFilters,
   injectScope,
   quoteIdent,
-  type ReportableScopeEnvelope,
-  type TranslatorBaseCatalog,
   translateSpec,
   validateSpecAgainstBase,
 } from "../src/translator/index";
@@ -67,7 +67,9 @@ function makeBase(overrides: Partial<TranslatorBaseCatalog> = {}): TranslatorBas
   };
 }
 
-function makeSpec(overrides: Partial<schema.ReportDefinitionSpec> = {}): schema.ReportDefinitionSpec {
+function makeSpec(
+  overrides: Partial<schema.ReportDefinitionSpec> = {},
+): schema.ReportDefinitionSpec {
   return {
     dimensions: [{ dimensionKey: "team_name" }],
     measures: [{ measureKey: "census_count" }],
@@ -152,7 +154,13 @@ describe("validateSpecAgainstBase — §2.3 semantic validation", () => {
 
   it("accepts a legal typed filter (between on a date dimension)", () => {
     const spec = makeSpec({
-      filters: [{ dimensionKey: "service_date", comparator: "between", value: ["2026-01-01", "2026-02-01"] }],
+      filters: [
+        {
+          dimensionKey: "service_date",
+          comparator: "between",
+          value: ["2026-01-01", "2026-02-01"],
+        },
+      ],
     });
     expect(() => validateSpecAgainstBase(spec, makeBase())).not.toThrow();
   });
@@ -222,7 +230,13 @@ describe("compileFilters — every value binds as $n, never interpolated", () =>
 
   it("binds both bounds of a BETWEEN", () => {
     const out = compileFilters(
-      [{ dimensionKey: "service_date", comparator: "between", value: ["2026-01-01", "2026-02-01"] }],
+      [
+        {
+          dimensionKey: "service_date",
+          comparator: "between",
+          value: ["2026-01-01", "2026-02-01"],
+        },
+      ],
       DIM_TYPES,
       1,
     );
@@ -237,7 +251,11 @@ describe("compileFilters — every value binds as $n, never interpolated", () =>
     expect(a.params).toEqual([]);
     expect(a.nextIndex).toBe(1);
 
-    const b = compileFilters([{ dimensionKey: "los_days", comparator: "is_not_null" }], DIM_TYPES, 1);
+    const b = compileFilters(
+      [{ dimensionKey: "los_days", comparator: "is_not_null" }],
+      DIM_TYPES,
+      1,
+    );
     expect(b.sql).toBe('t."los_days" IS NOT NULL');
     expect(b.params).toEqual([]);
   });
@@ -299,10 +317,7 @@ describe("injectScope — reportable_scope envelope binds ids, never interpolate
   });
 
   it("team scope binds the supervised membership set on membership_id", () => {
-    const out = injectScope(
-      { ...baseEnv, scopeKind: "team", membershipIds: ["mem-9"] },
-      2,
-    );
+    const out = injectScope({ ...baseEnv, scopeKind: "team", membershipIds: ["mem-9"] }, 2);
     expect(out.sql).toBe('t."membership_id" IN ($2)');
     expect(out.params).toEqual(["mem-9"]);
   });
@@ -357,7 +372,10 @@ describe("translateSpec — composed parameterized SELECT via the MV wrapper FUN
 
   it("aggregates measures and GROUP BYs the dimensions (aggregate-by-default, D6)", () => {
     const t = translateSpec(
-      makeSpec({ dimensions: [{ dimensionKey: "team_name" }], measures: [{ measureKey: "census_count" }] }),
+      makeSpec({
+        dimensions: [{ dimensionKey: "team_name" }],
+        measures: [{ measureKey: "census_count" }],
+      }),
       makeBase(),
       orgScope,
     );

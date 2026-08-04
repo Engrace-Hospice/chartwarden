@@ -16,8 +16,8 @@ import type {
   EvvAggregatorAdapter,
 } from "@wardenx/evv-aggregators";
 import type { EvvAggregatorSubmissionStatus } from "@wardenx/types";
-import type { EvvSideEffect } from "./domain/effects";
 import { transitionAggregatorSubmission } from "./domain/aggregator-submission";
+import type { EvvSideEffect } from "./domain/effects";
 
 /** The terminal-or-awaiting outcome of one submission pass, with the collected effects to dispatch + persist. */
 export interface SubmissionPassResult {
@@ -43,7 +43,9 @@ export async function dispatchSubmission(args: {
 }): Promise<SubmissionPassResult> {
   const effects: EvvSideEffect[] = [];
   // queued → submitting (the in-flight attempt).
-  const dispatched = transitionAggregatorSubmission(args.fromStatus ?? "queued", { type: "dispatch" });
+  const dispatched = transitionAggregatorSubmission(args.fromStatus ?? "queued", {
+    type: "dispatch",
+  });
   effects.push(...dispatched.effects);
 
   const { body, idempotencyKey } = await args.adapter.buildSubmissionPayload(args.payloadArgs);
@@ -77,7 +79,10 @@ export async function pollSubmissionOnce(args: {
   readonly credentials: AggregatorCredentials;
   readonly transactionId: string;
 }): Promise<SubmissionPassResult> {
-  const result = await args.adapter.poll({ transactionId: args.transactionId, credentials: args.credentials });
+  const result = await args.adapter.poll({
+    transactionId: args.transactionId,
+    credentials: args.credentials,
+  });
   const t = transitionAggregatorSubmission("submitted", { type: "poll_result", result });
   const rejectionCode = result.result === "rejected" ? result.rejectionCode : null;
   return {

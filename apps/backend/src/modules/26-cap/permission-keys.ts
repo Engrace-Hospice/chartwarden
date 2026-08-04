@@ -5,7 +5,7 @@
 // allPermissionMirrorRows); this module-local surface re-exports it + the ordered key list so the §4.1
 // routes gate on `requirePermission(key)` without re-declaring the map (the M25 posture — references the
 // auth package directly, no drift).
-import { M26_CONTRIBUTED_PERMISSIONS, type M26ContributedPermissionKey } from "@wardenx/auth";
+import { type M26ContributedPermissionKey, M26_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
 
 export { M26_CONTRIBUTED_PERMISSIONS, type M26ContributedPermissionKey } from "@wardenx/auth";
 

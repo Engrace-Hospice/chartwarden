@@ -87,7 +87,9 @@ type SubscriptionListPage = Ok<operations["getApiV1SafetySupervisorsubscriptions
 export type SafetySubscriptionView = SubscriptionListPage["data"][number];
 
 /** §4.1 row 22's answer — a deactivation that SUCCEEDS and tells the DON what it uncovered (§2.2.5). */
-export type DeleteSubscriptionResult = Ok<operations["deleteApiV1SafetySupervisorsubscriptionsBySubscriptionId"]>;
+export type DeleteSubscriptionResult = Ok<
+  operations["deleteApiV1SafetySupervisorsubscriptionsBySubscriptionId"]
+>;
 
 type HighRiskAreaListPage = Ok<operations["getApiV1SafetyHighriskareas"]>;
 /** §4.1 row 23 — one advisory polygon (D12). Rings are `[longitude, latitude]`, SRID 4326 (M20-F07: no
@@ -112,7 +114,9 @@ export type SafetyConsentView = Ok<operations["getApiV1SafetyConsent"]>["consent
 export type SafetyConsentSurface = Ok<operations["getApiV1SafetyConsent"]>;
 
 /** The closed purpose vocabulary `GET /safety/consent` filters on. */
-export type SafetyConsentPurpose = NonNullable<ReqQuery<operations["getApiV1SafetyConsent"]>>["purpose"];
+export type SafetyConsentPurpose = NonNullable<
+  ReqQuery<operations["getApiV1SafetyConsent"]>
+>["purpose"];
 
 type RecordCheckInResponse = Ok<operations["postApiV1SafetyCheckins"]>;
 /** A non-blocking fact the server surfaced beside a successful write (§4.2's `warningsSurfaced`) — a
@@ -141,21 +145,30 @@ export type SafetyCheckInKind = ReqBody<operations["postApiV1SafetyCheckins"]>["
 export type SafetyCheckInStatus = ReqBody<operations["postApiV1SafetyCheckins"]>["status"];
 export type SafetyIncidentCategory = ReqBody<operations["postApiV1SafetyIncidents"]>["category"];
 export type SafetyIncidentSeverity = ReqBody<operations["postApiV1SafetyIncidents"]>["severity"];
-export type SafetyIncidentLifecycleState =
-  NonNullable<ReqQuery<operations["getApiV1SafetyIncidents"]>>["lifecycleState"];
-export type SafetyIncidentStateTransition =
-  ReqBody<operations["postApiV1SafetyIncidentsByIncidentIdState"]>["toState"];
-export type SafetyHighRiskCategory = ReqBody<operations["postApiV1SafetyHighriskareas"]>["riskCategory"];
-export type SafetyHighRiskPolicy =
-  ReqBody<operations["postApiV1SafetyHighriskareas"]>["policyForVisitsToArea"];
-export type SafetySubscriptionScopeKind =
-  ReqBody<operations["postApiV1SafetySupervisorsubscriptions"]>["scopeKind"];
-export type SafetySubscriptionAlertKind =
-  ReqBody<operations["postApiV1SafetySupervisorsubscriptions"]>["alertKinds"][number];
+export type SafetyIncidentLifecycleState = NonNullable<
+  ReqQuery<operations["getApiV1SafetyIncidents"]>
+>["lifecycleState"];
+export type SafetyIncidentStateTransition = ReqBody<
+  operations["postApiV1SafetyIncidentsByIncidentIdState"]
+>["toState"];
+export type SafetyHighRiskCategory = ReqBody<
+  operations["postApiV1SafetyHighriskareas"]
+>["riskCategory"];
+export type SafetyHighRiskPolicy = ReqBody<
+  operations["postApiV1SafetyHighriskareas"]
+>["policyForVisitsToArea"];
+export type SafetySubscriptionScopeKind = ReqBody<
+  operations["postApiV1SafetySupervisorsubscriptions"]
+>["scopeKind"];
+export type SafetySubscriptionAlertKind = ReqBody<
+  operations["postApiV1SafetySupervisorsubscriptions"]
+>["alertKinds"][number];
 export type SafetySosAcknowledgeOutcome = NonNullable<
   ReqBody<operations["postApiV1SafetySosBySosAlertIdAcknowledge"]>["outcome"]
 >;
-export type SafetySosResolveOutcome = ReqBody<operations["postApiV1SafetySosBySosAlertIdResolve"]>["outcome"];
+export type SafetySosResolveOutcome = ReqBody<
+  operations["postApiV1SafetySosBySosAlertIdResolve"]
+>["outcome"];
 
 /** §4.2's `CancelSosResponse`. A REJECTED cancel is a 200, not a 4xx — returning an error would tell a
  *  hostile actor holding the device that their tap did something. */
@@ -219,7 +232,8 @@ const CODE_COPY: Record<string, string> = {
     "Not found — either it does not exist, or it is outside your reach. The server does not distinguish the two.",
   DEGRADED: "A dependency this write needs is not available right now. Nothing was recorded.",
   RATE_LIMITED: "Too many requests in a short window. Wait a moment, then retry.",
-  INTERNAL_ERROR: "The server failed to answer. Nothing was recorded — retry, and report it if it repeats.",
+  INTERNAL_ERROR:
+    "The server failed to answer. Nothing was recorded — retry, and report it if it repeats.",
 };
 export function errorMessage(error: unknown, fallback: string): string {
   const envelope = (error as { error?: { code?: string; message?: string } } | null)?.error;

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M8L-T02 — the Drizzle encounter WRITE lifecycle, proven against real Postgres.
  *
@@ -15,7 +16,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
@@ -245,7 +245,12 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     await expect(
-      svc.sign(ORG_A, id, { membershipId: membershipOf[ORG_A], sessionId: STALE_SESSION }, { at: SERVICE_DATE as never }),
+      svc.sign(
+        ORG_A,
+        id,
+        { membershipId: membershipOf[ORG_A], sessionId: STALE_SESSION },
+        { at: SERVICE_DATE as never },
+      ),
     ).rejects.toMatchObject({ statusCode: 412 });
   });
 
@@ -263,7 +268,10 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     expect(queue.encounters.some((e) => e.id === id)).toBe(true);
     const ack = await svc.cosignAcknowledge(ORG_A, id, SERVICE_DATE as never);
     expect(ack.status).toBe("acknowledged");
-    const done = await svc.cosignSign(ORG_A, id, ACTOR_A, { isQualifiedRn: true, at: SERVICE_DATE as never });
+    const done = await svc.cosignSign(ORG_A, id, ACTOR_A, {
+      isQualifiedRn: true,
+      at: SERVICE_DATE as never,
+    });
     expect(done.status).toBe("cosigned");
     expect(done.cosignedAt).toBeTruthy();
     expect(await eventsFor(id)).toContain("m8.encounter.cosigned");
@@ -287,7 +295,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   it("void from draft is a terminal admin action; emits m8.encounter.voided", async () => {
     const id = await draft("routine_visit", "rn");
     const reason = "documented void reason meeting the 40-character minimum length rule";
-    const v = await svc.voidEncounter(ORG_A, id, { isAdmin: true, reason, at: SERVICE_DATE as never });
+    const v = await svc.voidEncounter(ORG_A, id, {
+      isAdmin: true,
+      reason,
+      at: SERVICE_DATE as never,
+    });
     expect(v.status).toBe("voided");
     expect(await eventsFor(id)).toContain("m8.encounter.voided");
     // A non-admin void is refused (403) before any write.

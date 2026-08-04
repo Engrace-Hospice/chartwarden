@@ -22,7 +22,9 @@ describe("§2.5 D8 resolveLateEntryTier", () => {
     expect(resolveLateEntryTier(admin, plus(24 * 7 + 1))).toBe("administrative_override");
   });
   it("an offline 0300 capture synced 18h later is 'late' (computed off both instants, §2.10)", () => {
-    expect(resolveLateEntryTier("2026-06-22T03:00:00.000Z", "2026-06-22T21:00:00.000Z")).toBe("late");
+    expect(resolveLateEntryTier("2026-06-22T03:00:00.000Z", "2026-06-22T21:00:00.000Z")).toBe(
+      "late",
+    );
   });
   it("a non-positive gap (recorded ≤ administered) is normal", () => {
     expect(resolveLateEntryTier(plus(1), admin)).toBe("normal");

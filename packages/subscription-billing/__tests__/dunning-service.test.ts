@@ -6,10 +6,7 @@ import {
   dunningRetryDelayDays,
   nextDunningStage,
 } from "../src/domain/dunning-lifecycle";
-import {
-  DunningActionError,
-  DunningStateMachineService,
-} from "../src/service/dunning-service";
+import { DunningActionError, DunningStateMachineService } from "../src/service/dunning-service";
 import type { DunningStateRecord, DunningStore } from "../src/service/ports";
 
 const ORG = "org-1";
@@ -27,7 +24,8 @@ class FakeDunningStore implements DunningStore {
     return this.open && this.open.subscriptionId === subscriptionId ? this.open : null;
   }
   async enterStage(input: Parameters<DunningStore["enterStage"]>[0]) {
-    if (input.fromRowId) this.closed.push({ rowId: input.fromRowId, exitReason: input.exitReason ?? "" });
+    if (input.fromRowId)
+      this.closed.push({ rowId: input.fromRowId, exitReason: input.exitReason ?? "" });
     const record: DunningStateRecord = {
       id: `dun-${++this.seq}`,
       organizationId: input.organizationId,
@@ -76,21 +74,48 @@ describe("DunningStateMachineService", () => {
   });
 
   it("a repeated payment_failed while in dunning is an idempotent no-op (no duplicate outbox)", async () => {
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: "inv-1", failureCode: "x", now: T0 });
-    const again = await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: "inv-1", failureCode: "x", now: at(0.5) });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: "inv-1",
+      failureCode: "x",
+      now: T0,
+    });
+    const again = await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: "inv-1",
+      failureCode: "x",
+      now: at(0.5),
+    });
     expect(again.to).toBe("day_1");
     expect(again.outbox).toHaveLength(0);
   });
 
   it("tick does not advance before the stage's unresolved interval elapses", async () => {
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: null, failureCode: "x", now: T0 });
-    const early = await svc.tick({ subscriptionId: SUB, now: at(DUNNING_ADVANCE_AFTER_DAYS.day_1 - 1) });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: null,
+      failureCode: "x",
+      now: T0,
+    });
+    const early = await svc.tick({
+      subscriptionId: SUB,
+      now: at(DUNNING_ADVANCE_AFTER_DAYS.day_1 - 1),
+    });
     expect(early.to).toBe("day_1");
     expect(early.outbox).toHaveLength(0);
   });
 
   it("tick advances day_1 → day_7 once +6 days have elapsed", async () => {
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: null, failureCode: "x", now: T0 });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: null,
+      failureCode: "x",
+      now: T0,
+    });
     const adv = await svc.tick({ subscriptionId: SUB, now: at(DUNNING_ADVANCE_AFTER_DAYS.day_1) });
     expect(adv.from).toBe("day_1");
     expect(adv.to).toBe("day_7");
@@ -102,7 +127,13 @@ describe("DunningStateMachineService", () => {
   it("advancing to day_28_suspend signals a suspend side effect", async () => {
     // Walk the whole ladder by ticking at each stage's due instant.
     let now = T0;
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: null, failureCode: "x", now });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: null,
+      failureCode: "x",
+      now,
+    });
     let stage = store.open!.stage;
     let sideEffect = "none";
     // Advance until suspend.
@@ -128,7 +159,10 @@ describe("DunningStateMachineService", () => {
       enteredAt: T0,
       triggerInvoiceId: null,
     };
-    const r = await svc.tick({ subscriptionId: SUB, now: at(DUNNING_ADVANCE_AFTER_DAYS.day_28_suspend) });
+    const r = await svc.tick({
+      subscriptionId: SUB,
+      now: at(DUNNING_ADVANCE_AFTER_DAYS.day_28_suspend),
+    });
     expect(r.to).toBe("day_60_cancel");
     expect(r.sideEffect).toBe("cancel");
   });
@@ -150,7 +184,13 @@ describe("DunningStateMachineService", () => {
   });
 
   it("resolve closes an active dunning row and emits m35.dunning.resolved", async () => {
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: null, failureCode: "x", now: T0 });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: null,
+      failureCode: "x",
+      now: T0,
+    });
     const r = await svc.resolve({ subscriptionId: SUB, now: at(2) });
     expect(r.from).toBe("day_1");
     expect(r.record).toBeNull();
@@ -166,8 +206,18 @@ describe("DunningStateMachineService", () => {
   });
 
   it("skipStage force-advances one stage and stamps the actor on the closed row", async () => {
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: null, failureCode: "x", now: T0 });
-    const r = await svc.skipStage({ subscriptionId: SUB, actorMembershipId: "mem-9", now: at(0.1) });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: null,
+      failureCode: "x",
+      now: T0,
+    });
+    const r = await svc.skipStage({
+      subscriptionId: SUB,
+      actorMembershipId: "mem-9",
+      now: at(0.1),
+    });
     expect(r.to).toBe("day_7");
     expect(store.closed[0]!.exitReason).toBe("skipped_by:mem-9");
   });
@@ -179,7 +229,13 @@ describe("DunningStateMachineService", () => {
   });
 
   it("reset clears dunning back to current and emits resolved", async () => {
-    await svc.onPaymentFailed({ subscriptionId: SUB, organizationId: ORG, triggerInvoiceId: null, failureCode: "x", now: T0 });
+    await svc.onPaymentFailed({
+      subscriptionId: SUB,
+      organizationId: ORG,
+      triggerInvoiceId: null,
+      failureCode: "x",
+      now: T0,
+    });
     const r = await svc.reset({ subscriptionId: SUB, actorMembershipId: "mem-3", now: at(1) });
     expect(store.open).toBeNull();
     expect(r.outbox[0]!.eventName).toBe("m35.dunning.resolved");

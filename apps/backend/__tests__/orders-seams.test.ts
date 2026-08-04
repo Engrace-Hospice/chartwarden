@@ -1,3 +1,4 @@
+import type { OrderDiscontinuationDto, OrderRecordDto } from "@wardenx/types";
 // apps/backend/__tests__/orders-seams.test.ts — M11-T05 (§2.8 D14 OrderSignatureProvider + §4.3
 // OrderProvider). Both seams are pure orchestration over an injected OrderSeamStore; these cover the
 // polymorphic signature-write primitive (a fixture M12 caller signing a `target_kind='medication_order'`
@@ -7,7 +8,6 @@
 // patient / since / verbal-timeliness / discontinuation / triggering-assessment / care-plan back-ref), plus
 // the boot wiring (registerOrderSeams replaces the deny-stubs; validateSeams passes; the deny-stubs deny).
 import { afterEach, describe, expect, it } from "vitest";
-import type { OrderDiscontinuationDto, OrderRecordDto } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type OrderSeamSeed,
@@ -55,18 +55,67 @@ function discontinuation(over: Partial<OrderDiscontinuationDto>): OrderDiscontin
 function seed(): OrderSeamSeed {
   return {
     orders: [
-      order({ orderId: "ord-lab", kind: "lab", status: "active", createdAt: "2026-03-01T10:00:00.000Z" }),
-      order({ orderId: "ord-dme", kind: "dme", status: "active", createdAt: "2026-03-03T10:00:00.000Z" }),
-      order({ orderId: "ord-old", kind: "lab", status: "completed", createdAt: "2026-02-01T10:00:00.000Z" }),
-      order({ orderId: "ord-pend", kind: "comfort_kit", status: "pending_signature", signedAt: null, createdAt: "2026-03-04T10:00:00.000Z" }),
-      order({ orderId: "ord-trig", kind: "ancillary_service", status: "active", triggeringAssessmentId: "asmt-9", createdAt: "2026-03-02T10:00:00.000Z" }),
+      order({
+        orderId: "ord-lab",
+        kind: "lab",
+        status: "active",
+        createdAt: "2026-03-01T10:00:00.000Z",
+      }),
+      order({
+        orderId: "ord-dme",
+        kind: "dme",
+        status: "active",
+        createdAt: "2026-03-03T10:00:00.000Z",
+      }),
+      order({
+        orderId: "ord-old",
+        kind: "lab",
+        status: "completed",
+        createdAt: "2026-02-01T10:00:00.000Z",
+      }),
+      order({
+        orderId: "ord-pend",
+        kind: "comfort_kit",
+        status: "pending_signature",
+        signedAt: null,
+        createdAt: "2026-03-04T10:00:00.000Z",
+      }),
+      order({
+        orderId: "ord-trig",
+        kind: "ancillary_service",
+        status: "active",
+        triggeringAssessmentId: "asmt-9",
+        createdAt: "2026-03-02T10:00:00.000Z",
+      }),
       // a different patient, to prove filtering:
-      order({ orderId: "ord-other", patientId: "pat-2", admissionId: "adm-2", status: "active", createdAt: "2026-03-02T10:00:00.000Z" }),
+      order({
+        orderId: "ord-other",
+        patientId: "pat-2",
+        admissionId: "adm-2",
+        status: "active",
+        createdAt: "2026-03-02T10:00:00.000Z",
+      }),
     ],
-    discontinuations: [discontinuation({ discontinuationId: "dc-lab", orderId: "ord-lab", reason: "patient_request" })],
+    discontinuations: [
+      discontinuation({
+        discontinuationId: "dc-lab",
+        orderId: "ord-lab",
+        reason: "patient_request",
+      }),
+    ],
     verbalOrders: [
-      { orderId: "ord-vo-ontime", deadlineAt: "2026-03-10T00:00:00.000Z", signedAt: "2026-03-09T00:00:00.000Z", status: "signed_in_time" },
-      { orderId: "ord-vo-pending", deadlineAt: "2026-03-20T00:00:00.000Z", signedAt: null, status: "pending" },
+      {
+        orderId: "ord-vo-ontime",
+        deadlineAt: "2026-03-10T00:00:00.000Z",
+        signedAt: "2026-03-09T00:00:00.000Z",
+        status: "signed_in_time",
+      },
+      {
+        orderId: "ord-vo-pending",
+        deadlineAt: "2026-03-20T00:00:00.000Z",
+        signedAt: null,
+        status: "pending",
+      },
     ],
     carePlanInterventionLinks: { "intv-7": "ord-dme" },
   };
@@ -116,7 +165,9 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
       signerMembershipId: "mem-md",
       signerDiscipline: "medical_director",
     });
-    expect((inserted[0] as { signerDiscipline: string }).signerDiscipline).not.toBe("unattested_via_seam");
+    expect((inserted[0] as { signerDiscipline: string }).signerDiscipline).not.toBe(
+      "unattested_via_seam",
+    );
   });
 
   it("signOrderTarget transitions a local pending order to active", async () => {
@@ -149,7 +200,9 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
     });
     expect(out.deadlineAt).toBe("2026-03-06T10:00:00.000Z"); // +48h wall-clock
     expect((await store.getOrder("ord-pend"))?.status).toBe("verbal_pending");
-    const timeliness = await createOrderProvider(store).getVerbalOrderTimeliness({ orderId: "ord-pend" });
+    const timeliness = await createOrderProvider(store).getVerbalOrderTimeliness({
+      orderId: "ord-pend",
+    });
     expect(timeliness?.status).toBe("pending");
   });
 
@@ -193,7 +246,9 @@ describe("OrderSignatureProvider (§2.8 D14)", () => {
     });
     expect(out.discontinuationId).toMatch(/^[0-9a-f-]{36}$/);
     expect((await store.getOrder("ord-lab"))?.status).toBe("discontinued");
-    const reason = await createOrderProvider(store).getDiscontinuationReason({ orderId: "ord-lab" });
+    const reason = await createOrderProvider(store).getDiscontinuationReason({
+      orderId: "ord-lab",
+    });
     expect(reason?.reason).toBe("adverse_event");
   });
 });
@@ -211,8 +266,12 @@ describe("OrderProvider (§4.3)", () => {
   });
 
   it("findActiveOrder returns the active order of the kind for the patient", async () => {
-    expect((await provider().findActiveOrder({ patientId: PAT, kind: "lab" }))?.orderId).toBe("ord-lab");
-    expect(await provider().findActiveOrder({ patientId: PAT, kind: "recertification" })).toBeNull();
+    expect((await provider().findActiveOrder({ patientId: PAT, kind: "lab" }))?.orderId).toBe(
+      "ord-lab",
+    );
+    expect(
+      await provider().findActiveOrder({ patientId: PAT, kind: "recertification" }),
+    ).toBeNull();
   });
 
   it("listByPatient narrows by status/kinds and applies the limit", async () => {
@@ -230,18 +289,27 @@ describe("OrderProvider (§4.3)", () => {
   });
 
   it("getOrdersSince returns orders created on/after the cutoff ascending", async () => {
-    const out = await provider().getOrdersSince({ patientId: PAT, since: "2026-03-02T00:00:00.000Z" });
+    const out = await provider().getOrdersSince({
+      patientId: PAT,
+      since: "2026-03-02T00:00:00.000Z",
+    });
     expect(out.map((o) => o.orderId)).toEqual(["ord-trig", "ord-dme", "ord-pend"]);
   });
 
   it("getVerbalOrderTimeliness derives onTime; null when no verbal row", async () => {
-    expect((await provider().getVerbalOrderTimeliness({ orderId: "ord-vo-ontime" }))?.onTime).toBe(true);
-    expect((await provider().getVerbalOrderTimeliness({ orderId: "ord-vo-pending" }))?.onTime).toBe(false);
+    expect((await provider().getVerbalOrderTimeliness({ orderId: "ord-vo-ontime" }))?.onTime).toBe(
+      true,
+    );
+    expect((await provider().getVerbalOrderTimeliness({ orderId: "ord-vo-pending" }))?.onTime).toBe(
+      false,
+    );
     expect(await provider().getVerbalOrderTimeliness({ orderId: "ord-lab" })).toBeNull();
   });
 
   it("findByTriggeringAssessment + findByCarePlanIntervention resolve the back-refs", async () => {
-    expect((await provider().findByTriggeringAssessment("asmt-9")).map((o) => o.orderId)).toEqual(["ord-trig"]);
+    expect((await provider().findByTriggeringAssessment("asmt-9")).map((o) => o.orderId)).toEqual([
+      "ord-trig",
+    ]);
     expect((await provider().findByCarePlanIntervention("intv-7"))?.orderId).toBe("ord-dme");
     expect(await provider().findByCarePlanIntervention("missing")).toBeNull();
   });
@@ -253,7 +321,9 @@ describe("boot wiring (registerOrderSeams)", () => {
   it("registers both seams so validateSeams passes and they resolve as real impls", async () => {
     registerOrderSeams({ store: createInMemoryOrderSeamStore(seed()).store });
     expect(() => validateSeams()).not.toThrow();
-    expect((await getSeam("OrderProvider").findActiveOrder({ patientId: PAT, kind: "lab" }))?.orderId).toBe("ord-lab");
+    expect(
+      (await getSeam("OrderProvider").findActiveOrder({ patientId: PAT, kind: "lab" }))?.orderId,
+    ).toBe("ord-lab");
     const signed = await getSeam("OrderSignatureProvider").signOrderTarget({
       organizationId: "org-1",
       targetKind: "medication_order",
@@ -268,7 +338,9 @@ describe("boot wiring (registerOrderSeams)", () => {
 
   it("falls back to fail-closed deny-stubs when M11 does not register", () => {
     validateSeams();
-    expect(() => getSeam("OrderProvider").listByPatient({ patientId: PAT })).toThrow(/not implemented/);
+    expect(() => getSeam("OrderProvider").listByPatient({ patientId: PAT })).toThrow(
+      /not implemented/,
+    );
     expect(() =>
       getSeam("OrderSignatureProvider").cosignOrder({
         organizationId: "org-1",

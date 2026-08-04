@@ -83,8 +83,18 @@ export const RequestSignatureRequest = Type.Object({
   /** §2.5 axis 3 — the level-of-care transition (for `level_of_care_change` escalation-jump cosign). */
   levelChange: Type.Optional(
     Type.Object({
-      fromLevel: Type.Union([Type.Literal("rhc"), Type.Literal("irc"), Type.Literal("chc"), Type.Literal("gip")]),
-      toLevel: Type.Union([Type.Literal("rhc"), Type.Literal("irc"), Type.Literal("chc"), Type.Literal("gip")]),
+      fromLevel: Type.Union([
+        Type.Literal("rhc"),
+        Type.Literal("irc"),
+        Type.Literal("chc"),
+        Type.Literal("gip"),
+      ]),
+      toLevel: Type.Union([
+        Type.Literal("rhc"),
+        Type.Literal("irc"),
+        Type.Literal("chc"),
+        Type.Literal("gip"),
+      ]),
     }),
   ),
 });
@@ -92,7 +102,9 @@ export const RequestSignatureRequest = Type.Object({
 export const SignOrderRequest = Type.Object({
   signerDiscipline: Type.String({ minLength: 1, maxLength: 64 }),
   signedAtClient: Type.String({ format: "date-time" }),
-  signatureContext: Type.Optional(Type.Object({ reason: Type.Optional(Type.String({ maxLength: 2000 })) })),
+  signatureContext: Type.Optional(
+    Type.Object({ reason: Type.Optional(Type.String({ maxLength: 2000 })) }),
+  ),
 });
 
 export const SignOnBehalfRequest = Type.Object({
@@ -275,8 +287,14 @@ export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _OrderView = Conforms<Static<typeof OrderViewResponseSchema>, ServiceOrderView>;
-type _StandingOrderView = Conforms<Static<typeof StandingOrderViewResponseSchema>, ServiceStandingOrderView>;
-type _VerbalPolicyView = Conforms<Static<typeof VerbalPolicyViewResponseSchema>, ServiceVerbalPolicyView>;
+type _StandingOrderView = Conforms<
+  Static<typeof StandingOrderViewResponseSchema>,
+  ServiceStandingOrderView
+>;
+type _VerbalPolicyView = Conforms<
+  Static<typeof VerbalPolicyViewResponseSchema>,
+  ServiceVerbalPolicyView
+>;
 type _OrderList = Conforms<
   Static<typeof OrderListResponseSchema>,
   { readonly orders: readonly ServiceOrderView[] }
@@ -287,7 +305,10 @@ type _StandingOrderList = Conforms<
 >;
 type _Suggestions = Conforms<
   Static<typeof SuggestionsResponseSchema>,
-  { readonly patientId: string; readonly suggestions: ReadonlyArray<{ kind: OrderKind; reason: string }> }
+  {
+    readonly patientId: string;
+    readonly suggestions: ReadonlyArray<{ kind: OrderKind; reason: string }>;
+  }
 >;
 type _Spawn = Conforms<Static<typeof SpawnResponseSchema>, { readonly orderId: string }>;
 

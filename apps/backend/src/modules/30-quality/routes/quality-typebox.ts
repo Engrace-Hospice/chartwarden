@@ -62,7 +62,13 @@ const INCIDENT_STATE = [
   "closed_followup_complete",
   "reopened",
 ] as const;
-const QAPI_PROJECT_PHASE = ["proposed", "active", "corrective_action", "completed", "abandoned"] as const;
+const QAPI_PROJECT_PHASE = [
+  "proposed",
+  "active",
+  "corrective_action",
+  "completed",
+  "abandoned",
+] as const;
 const SRA_FINDING_DISPOSITION = [
   "open",
   "accepted",
@@ -168,7 +174,9 @@ export const CahpsResultListQuerySchema = Type.Object({
 export const QapiProgramListQuerySchema = Type.Object(PageQuery);
 export const QapiIndicatorListQuerySchema = Type.Object(PageQuery);
 export const QapiProjectListQuerySchema = Type.Object({
-  phase: Type.Optional(Type.Array(lit(QAPI_PROJECT_PHASE), { maxItems: QAPI_PROJECT_PHASE.length })),
+  phase: Type.Optional(
+    Type.Array(lit(QAPI_PROJECT_PHASE), { maxItems: QAPI_PROJECT_PHASE.length }),
+  ),
   programId: Type.Optional(uuid()),
   ...PageQuery,
 });
@@ -180,7 +188,9 @@ export const SraCycleListQuerySchema = Type.Object(PageQuery);
 export const IncidentListQuerySchema = Type.Object({
   kind: Type.Optional(Type.Array(lit(INCIDENT_KIND), { maxItems: INCIDENT_KIND.length })),
   state: Type.Optional(Type.Array(lit(INCIDENT_STATE), { maxItems: INCIDENT_STATE.length })),
-  severity: Type.Optional(Type.Array(lit(INCIDENT_SEVERITY), { maxItems: INCIDENT_SEVERITY.length })),
+  severity: Type.Optional(
+    Type.Array(lit(INCIDENT_SEVERITY), { maxItems: INCIDENT_SEVERITY.length }),
+  ),
   occurredAfter: Type.Optional(isoInstant()),
   occurredBefore: Type.Optional(isoInstant()),
   patientId: Type.Optional(uuid()),
@@ -219,7 +229,10 @@ export const RiskRegisterListQuerySchema = Type.Object({
 // Quality measures (R-04)
 const RecomputeScopeSchema = Type.Union([
   Type.Object({ kind: Type.Literal("all") }),
-  Type.Object({ kind: Type.Literal("measure"), measureId: Type.String({ minLength: 1, maxLength: 128 }) }),
+  Type.Object({
+    kind: Type.Literal("measure"),
+    measureId: Type.String({ minLength: 1, maxLength: 128 }),
+  }),
   Type.Object({ kind: Type.Literal("domain"), domain: lit(RECOMPUTE_DOMAIN) }),
 ]);
 export const EnqueueRecomputeBodySchema = Type.Object({

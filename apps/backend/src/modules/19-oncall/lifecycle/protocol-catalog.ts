@@ -35,7 +35,11 @@
 // chief_complaint_snomed`, the §4.3 `TriageCallFeatureDto` and M28's FHIR projection. M19-T07's catalog
 // route validates each code through M38 before a tenant may reference it; filling these in is a value-set
 // task, not a code change.
-import type { TriageEscalationTier, TriageProtocolAnswerType, TriageRedFlagMatch } from "@wardenx/types";
+import type {
+  TriageEscalationTier,
+  TriageProtocolAnswerType,
+  TriageRedFlagMatch,
+} from "@wardenx/types";
 import type { TriageActorDiscipline } from "./protocol";
 
 /** SNOMED CT "Other" — the honest placeholder for a floor protocol with no loaded finding concept. */
@@ -68,8 +72,7 @@ export interface CatalogProtocol {
 
 /** Deterministic protocol uuid — `00000000-0019-0000-0000-0000000000NN` (the M21 seed's shape, with the
  *  module number in the second group so an id read in a log says which module owns it). */
-const protocolId = (n: number): string =>
-  `00000000-0019-0000-0000-${String(n).padStart(12, "0")}`;
+const protocolId = (n: number): string => `00000000-0019-0000-0000-${String(n).padStart(12, "0")}`;
 
 /** Deterministic question uuid — `00000000-0019-0001-PPQQ-000000000000`. */
 const questionId = (p: number, q: number): string =>

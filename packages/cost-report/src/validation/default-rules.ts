@@ -21,7 +21,7 @@
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. Types, pure
 // functions, constants only.
 import type { RuleDef } from "./types";
-import { passResult, failResult, warnResult, skipResult } from "./types";
+import { failResult, passResult, skipResult, warnResult } from "./types";
 
 /** The platform-default rule-set version this file publishes (stamped into `cost_report_validation.rule_set_version`, D9). */
 export const DEFAULT_RULE_SET_VERSION = 1;
@@ -31,7 +31,8 @@ export const DEFAULT_RULE_SET_VERSION = 1;
 const demographicsCcnPresent: RuleDef = {
   ruleCode: "demographics.ccn_present",
   category: "demographics_ownership",
-  description: "The provider CCN is present — a cost report cannot be filed for a CCN-less provider.",
+  description:
+    "The provider CCN is present — a cost report cannot be filed for a CCN-less provider.",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -47,7 +48,8 @@ const demographicsCcnPresent: RuleDef = {
 const demographicsFiscalYearConfigured: RuleDef = {
   ruleCode: "demographics.fiscal_year_configured",
   category: "demographics_ownership",
-  description: "The fiscal-year-end date is configured (defaults to provider_entity.fiscal_year_end_month_day).",
+  description:
+    "The fiscal-year-end date is configured (defaults to provider_entity.fiscal_year_end_month_day).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -63,7 +65,8 @@ const demographicsFiscalYearConfigured: RuleDef = {
 const ownershipRelatedPartyDisclosed: RuleDef = {
   ruleCode: "ownership.related_party_disclosed",
   category: "demographics_ownership",
-  description: "Related-party / ownership disclosures (Worksheet A-8 reclass, S-2) are present when applicable.",
+  description:
+    "Related-party / ownership disclosures (Worksheet A-8 reclass, S-2) are present when applicable.",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -99,7 +102,8 @@ const statsCensusNonNegative: RuleDef = {
 const statsPatientDaysReconcile: RuleDef = {
   ruleCode: "stats.patient_days_reconcile",
   category: "statistical_data",
-  description: "Service census (M6) reconciles to billed-and-accepted census (M23) within the expected delta.",
+  description:
+    "Service census (M6) reconciles to billed-and-accepted census (M23) within the expected delta.",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -123,7 +127,11 @@ const statsPatientDaysReconcile: RuleDef = {
       : warnResult(
           "Service and billed census patient-days differ; the delta must be explained on the worklist.",
           "Document the cause (NOE lag, retro LOC correction, denial, void/replacement).",
-          { serviceCensusPatientDays: service, billedCensusPatientDays: billed, deltaDays: service - billed },
+          {
+            serviceCensusPatientDays: service,
+            billedCensusPatientDays: billed,
+            deltaDays: service - billed,
+          },
         );
   },
 };
@@ -134,7 +142,8 @@ const tbNoOrphanAccounts: RuleDef = {
   ruleCode: "tb.no_orphan_accounts",
   category: "trial_balance",
   // 42 CFR §413.24 adequate cost data — every GL account must map to a CMS cost center.
-  description: "Every trial-balance GL account is mapped to a CMS-1984-14 cost center (no orphan accounts).",
+  description:
+    "Every trial-balance GL account is mapped to a CMS-1984-14 cost center (no orphan accounts).",
   severity: "block",
   regulatoryRequired: true,
   macJurisdictionScope: "all",
@@ -153,7 +162,8 @@ const tbNoOrphanAccounts: RuleDef = {
 const tbDebitsEqualCredits: RuleDef = {
   ruleCode: "tb.debits_equal_credits",
   category: "trial_balance",
-  description: "The imported trial balance is in balance (total debits equal total credits, to the cent).",
+  description:
+    "The imported trial balance is in balance (total debits equal total credits, to the cent).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -181,7 +191,8 @@ const tbDebitsEqualCredits: RuleDef = {
 const reclassNetZero: RuleDef = {
   ruleCode: "reclass.net_zero",
   category: "reclassifications",
-  description: "Worksheet A-6 reclassifications net to exactly zero cents (a reclass moves cost, never creates it).",
+  description:
+    "Worksheet A-6 reclassifications net to exactly zero cents (a reclass moves cost, never creates it).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -219,7 +230,8 @@ const adjustmentsA8Supported: RuleDef = {
 const allocStatisticalBasisPresent: RuleDef = {
   ruleCode: "alloc.statistical_basis_present",
   category: "cost_allocation",
-  description: "The cost-allocation statistical basis (sq-ft, FTE, accumulated cost, etc.) is present for the step-down.",
+  description:
+    "The cost-allocation statistical basis (sq-ft, FTE, accumulated cost, etc.) is present for the step-down.",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -238,7 +250,8 @@ const allocStatisticalBasisPresent: RuleDef = {
 const allocBTiesToA: RuleDef = {
   ruleCode: "alloc.b_ties_to_a",
   category: "cost_allocation",
-  description: "Worksheet B total allocated cost ties back to Worksheet A total cost (step-down conserves cost).",
+  description:
+    "Worksheet B total allocated cost ties back to Worksheet A total cost (step-down conserves cost).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -264,7 +277,8 @@ const allocBTiesToA: RuleDef = {
 const perDiemCTiesToB: RuleDef = {
   ruleCode: "perdiem.c_ties_to_b",
   category: "apportionment_programs",
-  description: "Worksheet C per-diem cost ties to Worksheet B (Σ level-of-care cost equals the B total).",
+  description:
+    "Worksheet C per-diem cost ties to Worksheet B (Σ level-of-care cost equals the B total).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -282,7 +296,8 @@ const perDiemCTiesToB: RuleDef = {
 const balanceSheetFPresent: RuleDef = {
   ruleCode: "balance_sheet.f_balances",
   category: "balance_sheet",
-  description: "Worksheet F balance sheet is present and balances (assets = liabilities + fund balance).",
+  description:
+    "Worksheet F balance sheet is present and balances (assets = liabilities + fund balance).",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -333,7 +348,10 @@ const capAggregatePaymentsWithinCap: RuleDef = {
   macJurisdictionScope: "all",
   evaluate: (ctx) => {
     if (!ctx.seams.capProviderBound || ctx.cap === null) {
-      return skipResult("M26 cap provider not bound — aggregate-cap test deferred.", "seam_not_bound");
+      return skipResult(
+        "M26 cap provider not bound — aggregate-cap test deferred.",
+        "seam_not_bound",
+      );
     }
     // Exact integer-cents comparison — overage is an aggregate-cap settlement liability owed back to CMS.
     return ctx.cap.aggregatePaymentsCents <= ctx.cap.aggregateCapCents
@@ -357,16 +375,23 @@ const capInpatient20Pct: RuleDef = {
   ruleCode: "cap.inpatient_20_pct",
   category: "cap",
   // 42 CFR §418.309 — inpatient (GIP + IRC) days cannot exceed 20% of total Medicare days.
-  description: "Inpatient (GIP + IRC) days do not exceed 20% of total Medicare days in the cap year.",
+  description:
+    "Inpatient (GIP + IRC) days do not exceed 20% of total Medicare days in the cap year.",
   severity: "block",
   regulatoryRequired: true,
   macJurisdictionScope: "all",
   evaluate: (ctx) => {
     if (!ctx.seams.capProviderBound || ctx.cap === null) {
-      return skipResult("M26 cap provider not bound — inpatient-cap test deferred.", "seam_not_bound");
+      return skipResult(
+        "M26 cap provider not bound — inpatient-cap test deferred.",
+        "seam_not_bound",
+      );
     }
     if (ctx.cap.totalMedicareDays <= 0) {
-      return skipResult("No total Medicare days yet — inpatient-cap ratio not applicable.", "not_applicable");
+      return skipResult(
+        "No total Medicare days yet — inpatient-cap ratio not applicable.",
+        "not_applicable",
+      );
     }
     // 20% = 1/5; assert inpatientDays ≤ totalMedicareDays/5 by EXACT integer cross-multiplication
     // (5 × inpatient ≤ total) — no division, no float, fully deterministic.
@@ -393,7 +418,8 @@ const badDebtCollectionEffortsDocumented: RuleDef = {
   ruleCode: "bad_debt.entry_collection_efforts_documented",
   category: "bad_debt",
   // PRM I Chapters 3 & 4 — bad debt allowable only with documented reasonable collection efforts.
-  description: "When bad debt is claimed, every entry has documented reasonable collection efforts.",
+  description:
+    "When bad debt is claimed, every entry has documented reasonable collection efforts.",
   severity: "block",
   regulatoryRequired: true,
   macJurisdictionScope: "all",
@@ -441,7 +467,8 @@ const badDebtKindClassified: RuleDef = {
 const crossAGrandTotalTiesB: RuleDef = {
   ruleCode: "cross.a_grandtotal_ties_b",
   category: "cross_worksheet",
-  description: "Worksheet A grand-total cost equals the Worksheet B total allocated cost (to the cent).",
+  description:
+    "Worksheet A grand-total cost equals the Worksheet B total allocated cost (to the cent).",
   severity: "block",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -458,7 +485,8 @@ const crossAGrandTotalTiesB: RuleDef = {
           {
             aGrandTotalCostsCents: ctx.worksheets.aGrandTotalCostsCents,
             bTotalAllocatedCents: ctx.worksheets.bTotalAllocatedCents,
-            differenceCents: ctx.worksheets.aGrandTotalCostsCents - ctx.worksheets.bTotalAllocatedCents,
+            differenceCents:
+              ctx.worksheets.aGrandTotalCostsCents - ctx.worksheets.bTotalAllocatedCents,
           },
         ),
 };
@@ -500,7 +528,11 @@ const drugCostBilledReconciles: RuleDef = {
       : warnResult(
           "Billed drug-cost basis differs materially from the Worksheet-A pharmacy cost center.",
           "Reconcile the M12 drug-cost basis against the GL pharmacy ledger (wastage, comfort-kit returns, accruals).",
-          { billedDrugCostCents: billed, worksheetAPharmacyCents: ledger, deltaCents: billed - ledger },
+          {
+            billedDrugCostCents: billed,
+            worksheetAPharmacyCents: ledger,
+            deltaCents: billed - ledger,
+          },
         );
   },
 };
@@ -544,7 +576,8 @@ const docsS2AttachmentsPresent: RuleDef = {
 const docsBadDebtDocsAttached: RuleDef = {
   ruleCode: "docs.bad_debt_docs_attached",
   category: "supporting_docs",
-  description: "When bad debt is claimed, every entry has at least one supporting document reference.",
+  description:
+    "When bad debt is claimed, every entry has at least one supporting document reference.",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
@@ -596,18 +629,17 @@ const deadlineNotPastWithoutOverride: RuleDef = {
 const deadlineWindowOpen: RuleDef = {
   ruleCode: "deadline.window_open",
   category: "filing_deadline",
-  description: "The filing window is open (advisory — surfaces the closing-window cadence on the worklist).",
+  description:
+    "The filing window is open (advisory — surfaces the closing-window cadence on the worklist).",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: "all",
   evaluate: (ctx) =>
     ctx.deadline.windowOpen
       ? passResult("Filing window is open.", { daysToDeadline: ctx.deadline.daysToDeadline })
-      : warnResult(
-          "The filing window has closed.",
-          "File immediately; the deadline has elapsed.",
-          { daysToDeadline: ctx.deadline.daysToDeadline },
-        ),
+      : warnResult("The filing window has closed.", "File immediately; the deadline has elapsed.", {
+          daysToDeadline: ctx.deadline.daysToDeadline,
+        }),
 };
 
 /**

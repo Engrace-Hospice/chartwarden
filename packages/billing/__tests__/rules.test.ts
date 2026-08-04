@@ -1,13 +1,3 @@
-// @wardenx/billing — M23 §4.5 / §11.A the 19 platform-default validation rules pure-domain unit tests.
-// For EACH rule: a passing `ValidationContext` (predicate holds) and a failing one (predicate fails), with
-// the rule object's published METADATA asserted (severity + regulatoryRequired + overrideRoleRequired) so
-// the §2.3 blocking-failure roll-up and the §4.5 worklist grouping stay grounded. Plus the cross-cutting
-// scenarios the task calls out: the D5 regulatory-floor rules, the D9 EVV three-resolution gate, the D8
-// cap-rule deny-stub degrade, and the D15 medicare-primary scope.
-//
-// PURE DOMAIN only — each rule.check(ctx, params) is a synchronous pure predicate; tests inject plain data.
-// No DB, no Fastify, no clock; no PHI (D13). Money is integer cents.
-import { describe, expect, it } from "vitest";
 import type { Rule, RuleResult, ValidationContext } from "@wardenx/billing";
 import {
   aggregateCapProjection,
@@ -30,6 +20,16 @@ import {
   siaCalculationCorrect,
   tobAndDatesConsistency,
 } from "@wardenx/billing";
+// @wardenx/billing — M23 §4.5 / §11.A the 19 platform-default validation rules pure-domain unit tests.
+// For EACH rule: a passing `ValidationContext` (predicate holds) and a failing one (predicate fails), with
+// the rule object's published METADATA asserted (severity + regulatoryRequired + overrideRoleRequired) so
+// the §2.3 blocking-failure roll-up and the §4.5 worklist grouping stay grounded. Plus the cross-cutting
+// scenarios the task calls out: the D5 regulatory-floor rules, the D9 EVV three-resolution gate, the D8
+// cap-rule deny-stub degrade, and the D15 medicare-primary scope.
+//
+// PURE DOMAIN only — each rule.check(ctx, params) is a synchronous pure predicate; tests inject plain data.
+// No DB, no Fastify, no clock; no PHI (D13). Money is integer cents.
+import { describe, expect, it } from "vitest";
 import { passingContext } from "./_fixtures";
 
 /** Evaluate a rule against `ctx` using its declared default parameters (the engine merge with no overlay). */
@@ -50,25 +50,177 @@ interface ExpectedMeta {
 }
 
 const RULE_META: ReadonlyArray<readonly [Rule, ExpectedMeta]> = [
-  [patientEligibilityPartAActive, { key: "patient_eligibility_part_a_active", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [eligibilityCheckFreshness30d, { key: "eligibility_check_freshness_30d", severity: "warn", regulatoryRequired: false, overrideRoleRequired: "billing_manager" }],
-  [electionPeriodActive, { key: "election_period_active", severity: "error", regulatoryRequired: true, overrideRoleRequired: "medical_director" }],
-  [ctiSignedPerPeriod, { key: "cti_signed_per_period", severity: "error", regulatoryRequired: true, overrideRoleRequired: "medical_director" }],
-  [f2fAttestedForRecert, { key: "f2f_attested_for_recert", severity: "error", regulatoryRequired: true, overrideRoleRequired: "medical_director" }],
-  [levelOfCareCoherence, { key: "level_of_care_coherence", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [hippsCodingCorrect, { key: "hipps_coding_correct", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [siaCalculationCorrect, { key: "sia_calculation_correct", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [icd10Sequencing, { key: "icd10_sequencing", severity: "error", regulatoryRequired: true, overrideRoleRequired: "medical_director" }],
-  [physicianCredentialsActive, { key: "physician_credentials_active", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [noeTimeliness5d, { key: "noe_timeliness_5d", severity: "error", regulatoryRequired: true, overrideRoleRequired: "compliance_officer" }],
-  [tobAndDatesConsistency, { key: "tob_and_dates_consistency", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [duplicateBillingCheck, { key: "duplicate_billing_check", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [placeOfServiceConsistency, { key: "place_of_service_consistency", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [aggregateCapProjection, { key: "aggregate_cap_projection", severity: "error", regulatoryRequired: true, overrideRoleRequired: "compliance_officer" }],
-  [ipuCapProjection, { key: "ipu_cap_projection", severity: "error", regulatoryRequired: true, overrideRoleRequired: "compliance_officer" }],
-  [bereavementDischargeLegitimacy, { key: "bereavement_discharge_legitimacy", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [modifierCodesValid, { key: "modifier_codes_valid", severity: "error", regulatoryRequired: true, overrideRoleRequired: "billing_manager" }],
-  [evvBracketCoherence, { key: "evv_bracket_coherence", severity: "error", regulatoryRequired: true, overrideRoleRequired: "compliance_officer" }],
+  [
+    patientEligibilityPartAActive,
+    {
+      key: "patient_eligibility_part_a_active",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    eligibilityCheckFreshness30d,
+    {
+      key: "eligibility_check_freshness_30d",
+      severity: "warn",
+      regulatoryRequired: false,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    electionPeriodActive,
+    {
+      key: "election_period_active",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "medical_director",
+    },
+  ],
+  [
+    ctiSignedPerPeriod,
+    {
+      key: "cti_signed_per_period",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "medical_director",
+    },
+  ],
+  [
+    f2fAttestedForRecert,
+    {
+      key: "f2f_attested_for_recert",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "medical_director",
+    },
+  ],
+  [
+    levelOfCareCoherence,
+    {
+      key: "level_of_care_coherence",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    hippsCodingCorrect,
+    {
+      key: "hipps_coding_correct",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    siaCalculationCorrect,
+    {
+      key: "sia_calculation_correct",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    icd10Sequencing,
+    {
+      key: "icd10_sequencing",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "medical_director",
+    },
+  ],
+  [
+    physicianCredentialsActive,
+    {
+      key: "physician_credentials_active",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    noeTimeliness5d,
+    {
+      key: "noe_timeliness_5d",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "compliance_officer",
+    },
+  ],
+  [
+    tobAndDatesConsistency,
+    {
+      key: "tob_and_dates_consistency",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    duplicateBillingCheck,
+    {
+      key: "duplicate_billing_check",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    placeOfServiceConsistency,
+    {
+      key: "place_of_service_consistency",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    aggregateCapProjection,
+    {
+      key: "aggregate_cap_projection",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "compliance_officer",
+    },
+  ],
+  [
+    ipuCapProjection,
+    {
+      key: "ipu_cap_projection",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "compliance_officer",
+    },
+  ],
+  [
+    bereavementDischargeLegitimacy,
+    {
+      key: "bereavement_discharge_legitimacy",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    modifierCodesValid,
+    {
+      key: "modifier_codes_valid",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "billing_manager",
+    },
+  ],
+  [
+    evvBracketCoherence,
+    {
+      key: "evv_bracket_coherence",
+      severity: "error",
+      regulatoryRequired: true,
+      overrideRoleRequired: "compliance_officer",
+    },
+  ],
 ];
 
 describe("rule metadata (§4.5)", () => {
@@ -158,7 +310,13 @@ describe("election_period_active (D5 regulatory)", () => {
     const r = run(electionPeriodActive, {
       ...ctx,
       electionPeriods: [
-        { sequence: 1, effectiveFrom: "2026-02-01", effectiveTo: null, revoked: true, revocationDate: "2026-03-10" },
+        {
+          sequence: 1,
+          effectiveFrom: "2026-02-01",
+          effectiveTo: null,
+          revoked: true,
+          revocationDate: "2026-03-10",
+        },
       ],
     });
     expect(r.passed).toBe(false); // the 2026-03-15 line + 2026-03-31 service_to are past revocation
@@ -182,7 +340,9 @@ describe("cti_signed_per_period (D5 regulatory)", () => {
     const ctx = passingContext();
     const r = run(ctiSignedPerPeriod, {
       ...ctx,
-      certifications: [{ ...ctx.certifications[0]!, attendingCosignRequired: true, attendingCosigned: false }],
+      certifications: [
+        { ...ctx.certifications[0]!, attendingCosignRequired: true, attendingCosigned: false },
+      ],
     });
     expect(r.passed).toBe(false);
   });
@@ -197,7 +357,13 @@ describe("f2f_attested_for_recert (D5 regulatory)", () => {
     const r = run(f2fAttestedForRecert, {
       ...ctx,
       electionPeriods: [
-        { sequence: 3, effectiveFrom: "2026-02-01", effectiveTo: null, revoked: false, revocationDate: null },
+        {
+          sequence: 3,
+          effectiveFrom: "2026-02-01",
+          effectiveTo: null,
+          revoked: false,
+          revocationDate: null,
+        },
       ],
       faceToFace: [],
     });
@@ -209,7 +375,13 @@ describe("f2f_attested_for_recert (D5 regulatory)", () => {
     const r = run(f2fAttestedForRecert, {
       ...ctx,
       electionPeriods: [
-        { sequence: 3, effectiveFrom: "2026-02-01", effectiveTo: null, revoked: false, revocationDate: null },
+        {
+          sequence: 3,
+          effectiveFrom: "2026-02-01",
+          effectiveTo: null,
+          revoked: false,
+          revocationDate: null,
+        },
       ],
       faceToFace: [{ electionPeriodSequence: 3, attested: true, encounterDate: "2026-01-20" }],
     });
@@ -236,7 +408,13 @@ describe("level_of_care_coherence", () => {
       ...ctx,
       lines: [{ ...ctx.lines[0]!, levelOfCare: "continuous_home_care", revenueCode: "0652" }],
       levelOfCarePeriods: [
-        { levelOfCare: "continuous_home_care", from: "2026-02-01", to: "2026-12-31", chcDocumentedHours: 4, gipAdmissionCriteriaDocumented: null },
+        {
+          levelOfCare: "continuous_home_care",
+          from: "2026-02-01",
+          to: "2026-12-31",
+          chcDocumentedHours: 4,
+          gipAdmissionCriteriaDocumented: null,
+        },
       ],
     });
     expect(r.passed).toBe(false);
@@ -279,8 +457,24 @@ describe("sia_calculation_correct", () => {
       ...ctx,
       sia: { present: true, qualifyingVisitCount: 2, amountCents: 5_000, doubleCounted: false },
       signedEncounters: [
-        { encounterId: "e1", serviceDate: "2026-03-29", discipline: "RN", signed: true, cosignRequired: false, cosigned: false, durationMinutes: 60 },
-        { encounterId: "e2", serviceDate: "2026-03-30", discipline: "MSW", signed: true, cosignRequired: false, cosigned: false, durationMinutes: 45 },
+        {
+          encounterId: "e1",
+          serviceDate: "2026-03-29",
+          discipline: "RN",
+          signed: true,
+          cosignRequired: false,
+          cosigned: false,
+          durationMinutes: 60,
+        },
+        {
+          encounterId: "e2",
+          serviceDate: "2026-03-30",
+          discipline: "MSW",
+          signed: true,
+          cosignRequired: false,
+          cosigned: false,
+          durationMinutes: 45,
+        },
       ],
     });
     expect(r.passed).toBe(true);
@@ -301,7 +495,15 @@ describe("sia_calculation_correct", () => {
       ...ctx,
       sia: { present: true, qualifyingVisitCount: 1, amountCents: 5_000, doubleCounted: true },
       signedEncounters: [
-        { encounterId: "e1", serviceDate: "2026-03-29", discipline: "RN", signed: true, cosignRequired: false, cosigned: false, durationMinutes: 60 },
+        {
+          encounterId: "e1",
+          serviceDate: "2026-03-29",
+          discipline: "RN",
+          signed: true,
+          cosignRequired: false,
+          cosigned: false,
+          durationMinutes: 60,
+        },
       ],
     });
     expect(r.passed).toBe(false);
@@ -322,7 +524,10 @@ describe("icd10_sequencing", () => {
     const ctx = passingContext();
     const r = run(icd10Sequencing, {
       ...ctx,
-      claim: { ...ctx.claim, icd10Sequence: [{ position: 1, code: "G30.9", relationship: "related" }] },
+      claim: {
+        ...ctx.claim,
+        icd10Sequence: [{ position: 1, code: "G30.9", relationship: "related" }],
+      },
     });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
@@ -343,14 +548,24 @@ describe("physician_credentials_active", () => {
   });
   it("SKIPs when the M40 resolver is unbound", () => {
     const ctx = passingContext();
-    const r = run(physicianCredentialsActive, { ...ctx, seams: { ...ctx.seams, mdmResolverBound: false } });
+    const r = run(physicianCredentialsActive, {
+      ...ctx,
+      seams: { ...ctx.seams, mdmResolverBound: false },
+    });
     expect(isSkip(r)).toBe(true);
   });
   it("fails when the hospice physician NPI is inactive in NPPES", () => {
     const ctx = passingContext();
     const r = run(physicianCredentialsActive, {
       ...ctx,
-      mdm: { ...ctx.mdm, hospicePhysician: { npi: "1234567893", status: "inactive", licenseUnexpiredOnServiceDates: true } },
+      mdm: {
+        ...ctx.mdm,
+        hospicePhysician: {
+          npi: "1234567893",
+          status: "inactive",
+          licenseUnexpiredOnServiceDates: true,
+        },
+      },
     });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
@@ -392,18 +607,27 @@ describe("tob_and_dates_consistency (D4 / D14)", () => {
   });
   it("fails an 811 with no discharge date", () => {
     const ctx = passingContext();
-    const r = run(tobAndDatesConsistency, { ...ctx, claim: { ...ctx.claim, tob: "811", dischargeDate: null } });
+    const r = run(tobAndDatesConsistency, {
+      ...ctx,
+      claim: { ...ctx.claim, tob: "811", dischargeDate: null },
+    });
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
   });
   it("fails an 813 continuing interim without a prior 812/813", () => {
     const ctx = passingContext();
-    const r = run(tobAndDatesConsistency, { ...ctx, claim: { ...ctx.claim, tob: "813", priorClaimTob: null } });
+    const r = run(tobAndDatesConsistency, {
+      ...ctx,
+      claim: { ...ctx.claim, tob: "813", priorClaimTob: null },
+    });
     expect(r.passed).toBe(false);
   });
   it("fails an 817 replacement with no predecessor reference", () => {
     const ctx = passingContext();
-    const r = run(tobAndDatesConsistency, { ...ctx, claim: { ...ctx.claim, tob: "817", replacesClaimId: null } });
+    const r = run(tobAndDatesConsistency, {
+      ...ctx,
+      claim: { ...ctx.claim, tob: "817", replacesClaimId: null },
+    });
     expect(r.passed).toBe(false);
   });
 });
@@ -425,7 +649,12 @@ describe("duplicate_billing_check", () => {
     const ctx = passingContext();
     const r = run(duplicateBillingCheck, {
       ...ctx,
-      claim: { ...ctx.claim, tob: "818", replacesClaimId: "claim-0", priorClaimServiceTo: "2026-03-15" },
+      claim: {
+        ...ctx.claim,
+        tob: "818",
+        replacesClaimId: "claim-0",
+        priorClaimServiceTo: "2026-03-15",
+      },
     });
     expect(r.passed).toBe(true);
   });
@@ -437,7 +666,10 @@ describe("place_of_service_consistency", () => {
   });
   it("SKIPs when the M40 resolver is unbound", () => {
     const ctx = passingContext();
-    const r = run(placeOfServiceConsistency, { ...ctx, seams: { ...ctx.seams, mdmResolverBound: false } });
+    const r = run(placeOfServiceConsistency, {
+      ...ctx,
+      seams: { ...ctx.seams, mdmResolverBound: false },
+    });
     expect(isSkip(r)).toBe(true);
   });
   it("fails when a line Q-code disagrees with the documented place", () => {

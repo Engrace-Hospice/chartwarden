@@ -31,7 +31,13 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION_A = "55555555-5555-5555-5555-555555555555";
 const ADMISSION_B = "66666666-6666-6666-6666-666666666666";
 
-type SeedIds = { membership: string; providerEntity: string; location: string; schedule: string; assessment: string };
+type SeedIds = {
+  membership: string;
+  providerEntity: string;
+  location: string;
+  schedule: string;
+  assessment: string;
+};
 
 describe.skipIf(!DB_URL)("M10 Drizzle read service — LIVE Postgres (M10L)", () => {
   let admin: Client;

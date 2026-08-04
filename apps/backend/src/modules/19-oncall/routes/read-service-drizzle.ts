@@ -76,7 +76,9 @@ const OPEN_STATES = [
 ] as const;
 
 const iso = (d: Date | string | null): IsoInstant | null =>
-  d === null ? null : ((d instanceof Date ? d.toISOString() : new Date(d).toISOString()) as IsoInstant);
+  d === null
+    ? null
+    : ((d instanceof Date ? d.toISOString() : new Date(d).toISOString()) as IsoInstant);
 
 const isoReq = (d: Date | string): IsoInstant => iso(d) as IsoInstant;
 
@@ -590,9 +592,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
               eq(ESCALATION.organizationId, actor.organizationId),
               ...(filters.tier ? [eq(ESCALATION.tier, filters.tier)] : []),
               ...(openOnly ? [isNull(ESCALATION.resolvedAt)] : []),
-              ...(filters.triageCallId
-                ? [eq(ESCALATION.triageCallId, filters.triageCallId)]
-                : []),
+              ...(filters.triageCallId ? [eq(ESCALATION.triageCallId, filters.triageCallId)] : []),
               // §4.1.1 keyset: `(escalated_at DESC, id)`.
               ...(cursor
                 ? [
@@ -652,10 +652,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
                 ? [
                     or(
                       lt(SHIFT.shiftStartsAt, new Date(cursor.a)),
-                      and(
-                        eq(SHIFT.shiftStartsAt, new Date(cursor.a)),
-                        lt(SHIFT.id, cursor.id),
-                      ),
+                      and(eq(SHIFT.shiftStartsAt, new Date(cursor.a)), lt(SHIFT.id, cursor.id)),
                     ),
                   ]
                 : []),
@@ -1017,7 +1014,8 @@ function toProtocolView(
     disciplineRequired: row.disciplineRequired,
     isSystemLocked: row.isSystemLocked,
     requiresMandatoryEscalation: row.requiresMandatoryEscalation,
-    mandatoryEscalationTier: row.mandatoryEscalationTier as TriageProtocolView["mandatoryEscalationTier"],
+    mandatoryEscalationTier:
+      row.mandatoryEscalationTier as TriageProtocolView["mandatoryEscalationTier"],
     version: row.version,
     effectiveFrom: row.effectiveFrom.toISOString() as IsoInstant,
     effectiveTo: row.effectiveTo === null ? null : (row.effectiveTo.toISOString() as IsoInstant),

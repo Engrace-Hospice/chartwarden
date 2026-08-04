@@ -53,7 +53,9 @@ export function resolveAttemptThreshold(tenant?: number): number {
  * (the strongest signal — the vendor is out, not just this participant's network). Otherwise, once the failed
  * attempts reach the effective threshold, offer audio-only. Below the threshold, keep trying video. PURE.
  */
-export function evaluateAudioOnlyFallback(input: AudioOnlyFallbackInput): AudioOnlyFallbackDecision {
+export function evaluateAudioOnlyFallback(
+  input: AudioOnlyFallbackInput,
+): AudioOnlyFallbackDecision {
   const threshold = resolveAttemptThreshold(input.tenantAttemptThreshold);
   if (
     input.breakerOpenedAtMs !== null &&

@@ -24,10 +24,10 @@ import {
   nextDunningStage,
 } from "../domain/dunning-lifecycle";
 import {
-  outboxIntent,
   type DunningStateRecord,
   type DunningStore,
   type OutboxIntent,
+  outboxIntent,
 } from "./ports";
 
 const MS_PER_DAY = 24 * 3600 * 1000;
@@ -108,9 +108,8 @@ export class DunningStateMachineService {
     if (!open) {
       return { from: null, to: null, record: null, sideEffect: "none", outbox: [] };
     }
-    const advanceDays = DUNNING_ADVANCE_AFTER_DAYS[
-      open.stage as keyof typeof DUNNING_ADVANCE_AFTER_DAYS
-    ];
+    const advanceDays =
+      DUNNING_ADVANCE_AFTER_DAYS[open.stage as keyof typeof DUNNING_ADVANCE_AFTER_DAYS];
     const next = nextDunningStage(open.stage);
     // Terminal stage (`day_60_cancel`) or a stage with no advance rule (`resolved`) — nothing to advance to.
     if (next === null || advanceDays === undefined) {
@@ -169,7 +168,10 @@ export class DunningStateMachineService {
   }): Promise<DunningActionResult> {
     const open = await this.store.openForSubscription(input.subscriptionId);
     if (!open) {
-      throw new DunningActionError("no_open_dunning", `subscription ${input.subscriptionId} is not in dunning`);
+      throw new DunningActionError(
+        "no_open_dunning",
+        `subscription ${input.subscriptionId} is not in dunning`,
+      );
     }
     const next = nextDunningStage(open.stage);
     if (next === null) {
@@ -204,7 +206,10 @@ export class DunningStateMachineService {
   }): Promise<DunningActionResult> {
     const open = await this.store.openForSubscription(input.subscriptionId);
     if (!open) {
-      throw new DunningActionError("no_open_dunning", `subscription ${input.subscriptionId} is not in dunning`);
+      throw new DunningActionError(
+        "no_open_dunning",
+        `subscription ${input.subscriptionId} is not in dunning`,
+      );
     }
     await this.store.closeOpen({
       rowId: open.id,

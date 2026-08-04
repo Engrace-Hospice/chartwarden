@@ -97,7 +97,10 @@ export const OUTBOX_SUBSCRIPTION_MAP: Readonly<Record<string, readonly string[]>
 
   // ── M19 on-call triage ──────────────────────────────────────────────────────────────────────────
   "m19.triage_call.opened": ["mv_oncall_activity_org_day"],
-  "m19.triage_call.closed": ["mv_oncall_activity_org_day", "mv_oncall_protocol_adherence_org_month"],
+  "m19.triage_call.closed": [
+    "mv_oncall_activity_org_day",
+    "mv_oncall_protocol_adherence_org_month",
+  ],
 
   // ── M20 field safety ────────────────────────────────────────────────────────────────────────────
   "m20.safety.incident_submitted": ["mv_field_safety_incidents_org_month"],

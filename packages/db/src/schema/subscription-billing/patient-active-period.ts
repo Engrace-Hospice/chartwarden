@@ -1,10 +1,19 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `patient_active_period` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Pseudonymized
 // — NEVER holds a raw patient_id, only a 32-hex HMAC-SHA256 `patient_pseudonym` (privacy, W-SB-08). It is
 // therefore NOT PHI-bearing by the tenancy gate's heuristic (no patient_id/mrn/clinical column). §3.6
 // requests full audit exclusion (append-only pseudonym rows; the M35 eraser destroys them). `organization_id`
 // is a logical uuid (M35-F04).
-import { boolean, check, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { inactivityReason } from "../../enums";
 
 export const patientActivePeriod = pgTable(

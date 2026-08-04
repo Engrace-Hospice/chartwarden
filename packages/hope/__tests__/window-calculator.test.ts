@@ -1,12 +1,12 @@
 // @wardenx/hope — timepoint window calculator (§2.2.1, §2.3, D2) — M10-T03.
 import { describe, expect, it } from "vitest";
 import {
+  ADMISSION_ANCHORED_WINDOWS,
+  DEFAULT_LATE_GRACE_DAYS,
+  DISCHARGE_WINDOW_DAYS,
   classifyCapture,
   dischargeWindow,
   windowFor,
-  DEFAULT_LATE_GRACE_DAYS,
-  DISCHARGE_WINDOW_DAYS,
-  ADMISSION_ANCHORED_WINDOWS,
 } from "../src/scheduling/window-calculator";
 
 const UTC = "UTC";
@@ -41,7 +41,10 @@ describe("windowFor — admission-anchored CMS HOPE windows (SOC day 1)", () => 
   });
 
   it("exposes the day-offset spec for the three admission-anchored RFAs", () => {
-    expect(ADMISSION_ANCHORED_WINDOWS["01_admission"]).toEqual({ openDayOffset: 0, closeDayOffset: 4 });
+    expect(ADMISSION_ANCHORED_WINDOWS["01_admission"]).toEqual({
+      openDayOffset: 0,
+      closeDayOffset: 4,
+    });
     expect(DEFAULT_LATE_GRACE_DAYS).toBe(7);
   });
 });

@@ -102,7 +102,10 @@ export function buildDocumentAbacPredicates(
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   /** Caseload-or-scope over a document's patient (org-level doc readable by a scope-bypass role). §4.7. */
-  const ownerOrCaseload = async (context: AbacContext, facts: DocumentAbacFacts): Promise<boolean> => {
+  const ownerOrCaseload = async (
+    context: AbacContext,
+    facts: DocumentAbacFacts,
+  ): Promise<boolean> => {
     if (isScopeBypass(context)) return true;
     if (facts.patientId === null) return false; // org-level doc — only scope-bypass roles (above)
     if (!context.userId) return false;

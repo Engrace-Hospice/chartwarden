@@ -43,7 +43,10 @@ import type {
   SafetySosLifecycleState,
 } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
-import type { SafetyCoverageSubjectFacts, SafetySubscriptionFacts } from "../lifecycle/coverage-gap";
+import type {
+  SafetyCoverageSubjectFacts,
+  SafetySubscriptionFacts,
+} from "../lifecycle/coverage-gap";
 import type { SafetyPolicyVersionFacts } from "../lifecycle/policy";
 import type {
   SafetyClinicianBoardFacts,
@@ -282,8 +285,7 @@ export function buildDrizzleSafetySeamStore(db: DbClient): SafetySeamStore {
             membershipId,
             displayName: nameOf.get(membershipId) ?? "",
             lastCheckInAt: check === undefined ? null : iso(check.postedAt),
-            lastCheckInStatus:
-              check === undefined ? null : (check.status as SafetyCheckInStatus),
+            lastCheckInStatus: check === undefined ? null : (check.status as SafetyCheckInStatus),
             nextExpectedCheckInAt: next === undefined ? null : iso(next.expectedAt),
             nextExpectedWindowMinutes: next?.windowMinutes ?? null,
             activeSosAlert:
@@ -350,10 +352,7 @@ export function buildDrizzleSafetySeamStore(db: DbClient): SafetySeamStore {
             cipher: t.safetySosAlert.postedCoordinatesCipher,
           })
           .from(t.safetyIncident)
-          .leftJoin(
-            t.safetySosAlert,
-            eq(t.safetySosAlert.id, t.safetyIncident.linkedSosAlertId),
-          )
+          .leftJoin(t.safetySosAlert, eq(t.safetySosAlert.id, t.safetyIncident.linkedSosAlertId))
           .where(gte(t.safetyIncident.occurredAt, new Date(sinceIso)))
           .orderBy(desc(t.safetyIncident.occurredAt));
         return rows.map(
@@ -379,10 +378,7 @@ export function buildDrizzleSafetySeamStore(db: DbClient): SafetySeamStore {
             cipher: t.safetySosAlert.postedCoordinatesCipher,
           })
           .from(t.safetyIncident)
-          .leftJoin(
-            t.safetySosAlert,
-            eq(t.safetySosAlert.id, t.safetyIncident.linkedSosAlertId),
-          )
+          .leftJoin(t.safetySosAlert, eq(t.safetySosAlert.id, t.safetyIncident.linkedSosAlertId))
           .where(
             and(
               eq(t.safetyIncident.affectedClinicianMembershipId, clinicianMembershipId),
@@ -583,7 +579,9 @@ export function buildDrizzleSafetySeamStore(db: DbClient): SafetySeamStore {
     async membershipsWithInactiveSubscriptions() {
       return withOrgContextFromRequest(db, async (tx) => {
         const rows = await tx
-          .selectDistinct({ clinicianMembershipId: t.safetySupervisorSubscription.clinicianMembershipId })
+          .selectDistinct({
+            clinicianMembershipId: t.safetySupervisorSubscription.clinicianMembershipId,
+          })
           .from(t.safetySupervisorSubscription)
           .where(
             and(
@@ -599,9 +597,7 @@ export function buildDrizzleSafetySeamStore(db: DbClient): SafetySeamStore {
         // location- or role-scoped row that has since been deactivated reads as `no_subscription` — which
         // is the same fix (add a row) and the safer of the two labels to be wrong in.
         return new Set(
-          rows
-            .map((r) => r.clinicianMembershipId)
-            .filter((id): id is MembershipId => id !== null),
+          rows.map((r) => r.clinicianMembershipId).filter((id): id is MembershipId => id !== null),
         );
       });
     },

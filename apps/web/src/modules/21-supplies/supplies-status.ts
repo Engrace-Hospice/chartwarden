@@ -260,7 +260,10 @@ export function parSeverityLabel(severity: string | null | undefined): string {
 }
 
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(map: Record<string, StatusTone>, key: string | null | undefined): StatusTone {
+export function toneOf(
+  map: Record<string, StatusTone>,
+  key: string | null | undefined,
+): StatusTone {
   return key ? (map[key] ?? "neutral") : "neutral";
 }
 

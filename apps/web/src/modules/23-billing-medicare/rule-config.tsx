@@ -68,12 +68,13 @@ export function RuleConfigEditor(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET(
-      "/api/v1/billing/rule-configs",
-      { params: { query: { limit: 200 } } } as never,
-    );
+    const { data, error: err } = await client.GET("/api/v1/billing/rule-configs", {
+      params: { query: { limit: 200 } },
+    } as never);
     if (err) {
-      setError("Rule-config library unavailable — the billing read seam is not bound, or you lack scope.");
+      setError(
+        "Rule-config library unavailable — the billing read seam is not bound, or you lack scope.",
+      );
       setLoading(false);
       return;
     }
@@ -105,9 +106,7 @@ export function RuleConfigEditor(): JSX.Element {
           }
         />
       }
-      list={
-        <RuleRail rules={rules} selectedId={selectedId} onSelect={setSelectedId} />
-      }
+      list={<RuleRail rules={rules} selectedId={selectedId} onSelect={setSelectedId} />}
     >
       {adding ? (
         <AddCustomRule
@@ -120,7 +119,10 @@ export function RuleConfigEditor(): JSX.Element {
       ) : selected ? (
         <RuleDetail key={selected.ruleConfigId} rule={selected} onChanged={() => void load()} />
       ) : (
-        <EmptyState title="No rule selected" description="Pick a rule from the library to edit its overlay." />
+        <EmptyState
+          title="No rule selected"
+          description="Pick a rule from the library to edit its overlay."
+        />
       )}
     </AdminSplitLayout>
   );
@@ -171,8 +173,13 @@ function RuleRail({
               >
                 {r.ruleKey}
               </span>
-              <span style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", alignItems: "center" }}>
-                <StatusPill label={statusLabel(r.severity)} tone={validationSeverityTone(r.severity)} />
+              <span
+                style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", alignItems: "center" }}
+              >
+                <StatusPill
+                  label={statusLabel(r.severity)}
+                  tone={validationSeverityTone(r.severity)}
+                />
                 <StatusPill
                   label={r.enabled ? "Enabled" : "Disabled"}
                   tone={r.enabled ? "success" : "neutral"}

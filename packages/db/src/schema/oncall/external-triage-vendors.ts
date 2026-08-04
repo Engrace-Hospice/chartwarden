@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `external_triage_vendor` (M19 §3.3). D13 / ADR-0026: the tenant's BINDING to an external
 // after-hours triage vendor for the Hybrid and Centralized models. Org-scoped CONFIGURATION — the canonical
 // vendor ENTITY is M40's (`mdm_vendor_id`, a logical uuid resolved through M40's reader), so a vendor is
@@ -23,7 +24,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 
 export const externalTriageVendor = pgTable(

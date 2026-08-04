@@ -39,8 +39,8 @@ import type {
   ProviderEntityId,
 } from "@wardenx/types";
 import type { M16ReadActor } from "./actor";
-import type { BereavementRedactedCategory } from "./disclosure";
 import type { CursorPage } from "./concurrency";
+import type { BereavementRedactedCategory } from "./disclosure";
 import type {
   CounselorDashboardQuery,
   OutreachListQuery,
@@ -220,7 +220,10 @@ export interface SupervisorDashboardView {
  * does not exist, because "this plan 403s" tells an unauthorized caller that a particular patient died.
  */
 export interface M16ReadService {
-  listPlans(actor: M16ReadActor, query: PlanListQuery): Promise<CursorPage<BereavementPlanListItem>>;
+  listPlans(
+    actor: M16ReadActor,
+    query: PlanListQuery,
+  ): Promise<CursorPage<BereavementPlanListItem>>;
   getPlan(actor: M16ReadActor, planId: string): Promise<BereavementPlanDetail | null>;
   getClosure(actor: M16ReadActor, planId: string): Promise<BereavementClosureView | null>;
   listOutreach(

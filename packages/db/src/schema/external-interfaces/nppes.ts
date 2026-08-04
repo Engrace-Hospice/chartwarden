@@ -10,7 +10,17 @@
 // directory data only (no PHI) — its write-audit trail files `operational` (rebuildable from a re-sync),
 // so it uses a GENERATED audit function stamping `operational` (M1's baseline stamps `compliance`).
 // `nppes_sync_run` files `compliance` (the data-sharing-agreement audit horizon) and uses the baseline.
-import { char, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  char,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import {
   nppesEnumerationType,
   nppesProviderStatus,

@@ -123,7 +123,11 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
  * `denied` are NOT in this set — they have the post-payment / appeal edges above; a claim is terminal at
  * `paid`/`denied` only when no further action is taken (a business state, not a machine dead-end).
  */
-export const CLAIM_TERMINAL_STATES: readonly ClaimState[] = ["ack_rejected", "replaced", "voided"] as const;
+export const CLAIM_TERMINAL_STATES: readonly ClaimState[] = [
+  "ack_rejected",
+  "replaced",
+  "voided",
+] as const;
 
 /** True iff `state` has no outbound transition. */
 export function isTerminal(state: ClaimState): boolean {

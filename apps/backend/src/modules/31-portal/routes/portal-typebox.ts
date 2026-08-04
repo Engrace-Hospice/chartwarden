@@ -76,7 +76,9 @@ export const PortalSessionCurrentResponse = Type.Object({
   relationship: LayStr,
   status: LayStr,
 });
-export const StepUpRequest = Type.Object({ totpCode: Type.String({ minLength: 6, maxLength: 10 }) });
+export const StepUpRequest = Type.Object({
+  totpCode: Type.String({ minLength: 6, maxLength: 10 }),
+});
 export const AckResponse = Type.Object({ ok: Type.Boolean() });
 
 // ── §4.2 care summary + lay-language reads ─────────────────────────────────────────────────────────────
@@ -178,9 +180,7 @@ export const MessageSendResponse = Type.Object({ messageId: Uuid });
 
 // ── §4.2 notification preferences ───────────────────────────────────────────────────────────────────────
 export const NotificationPreferencesResponse = Type.Object({
-  channels: Type.Array(
-    Type.Object({ channel: LayStr, enabled: Type.Boolean() }),
-  ),
+  channels: Type.Array(Type.Object({ channel: LayStr, enabled: Type.Boolean() })),
   quietHours: Type.Optional(Type.Object({ startHour: Type.Integer(), endHour: Type.Integer() })),
 });
 export const NotificationPreferenceUpdateRequest = Type.Object({

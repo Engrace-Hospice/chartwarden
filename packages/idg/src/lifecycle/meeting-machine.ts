@@ -40,8 +40,8 @@ export type MeetingEvent =
       /** §2.2 D13 — a step-up auth completed within the freshness window (`ADJOURN_STEP_UP_FRESHNESS_MINUTES`). */
       readonly stepUpFresh: boolean;
     }
-  | { readonly type: "CANCEL"; readonly reason: string } & ReviewFloorGuardFacts
-  | { readonly type: "RESCHEDULE"; readonly reason: string } & ReviewFloorGuardFacts;
+  | ({ readonly type: "CANCEL"; readonly reason: string } & ReviewFloorGuardFacts)
+  | ({ readonly type: "RESCHEDULE"; readonly reason: string } & ReviewFloorGuardFacts);
 
 /** The M14-F01 / ADR-0018 D2 review-floor guard facts shared by CANCEL + RESCHEDULE. */
 interface ReviewFloorGuardFacts {
@@ -72,7 +72,11 @@ export const MEETING_GRAPH: Readonly<Record<MeetingState, ReadonlyArray<MeetingE
  * transition with `PER_PATIENT_REVIEW_FLOOR_BREACH` unless either the floor is clear or an audited override
  * is authorized; on override it appends the `m14.review_floor.override_recorded` outbox + Compliance alert. */
 function reviewFloorEffects(reason: string, facts: ReviewFloorGuardFacts): IdgSideEffect[] {
-  require_(reason.trim().length > 0, "MEETING_TRANSITION_REASON_REQUIRED", "a cancellation/reschedule reason is required");
+  require_(
+    reason.trim().length > 0,
+    "MEETING_TRANSITION_REASON_REQUIRED",
+    "a cancellation/reschedule reason is required",
+  );
   if (!facts.reviewFloorClear) {
     require_(
       facts.overrideAuthorized,
@@ -104,7 +108,10 @@ export function planMeetingScheduled(): ReadonlyArray<IdgSideEffect> {
  */
 export function transitionMeeting(from: MeetingState, event: MeetingEvent): MeetingTransition {
   if (!MEETING_GRAPH[from].includes(event.type)) {
-    throw new IdgStateError("ILLEGAL_MEETING_TRANSITION", `meeting cannot ${event.type} from '${from}'`);
+    throw new IdgStateError(
+      "ILLEGAL_MEETING_TRANSITION",
+      `meeting cannot ${event.type} from '${from}'`,
+    );
   }
 
   switch (event.type) {
@@ -137,7 +144,11 @@ export function transitionMeeting(from: MeetingState, event: MeetingEvent): Meet
 
     case "ADJOURN": {
       // §2.2 D13 — step-up gate is the precondition; without it the route redirects to the M2 step-up flow.
-      require_(event.stepUpFresh, "STEP_UP_REQUIRED", "a fresh step-up auth is required to adjourn a meeting");
+      require_(
+        event.stepUpFresh,
+        "STEP_UP_REQUIRED",
+        "a fresh step-up auth is required to adjourn a meeting",
+      );
       // §2.7 — the commit point: freeze packets, stamp the per-patient review floor, burst the open-decision
       // outbox events, lock action items, finalize the minutes, and emit the adjournment/minutes/freeze events.
       return result(from, event.type, "adjourned", [

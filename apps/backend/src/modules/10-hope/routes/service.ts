@@ -117,26 +117,70 @@ export interface CorrectTimepointArgs {
 /** The §4.1 route service contract (the routes compose over it; the in-mem slice + the prod Drizzle
  * backend both implement it). All ids/org binding come from server context, never the body. */
 export interface HopeRouteService extends HopeAbacResolver {
-  listSchedules(organizationId: string, filter: { patientId?: string; status?: string; rfaKind?: string }): Promise<{ schedules: HopeScheduleView[] }>;
+  listSchedules(
+    organizationId: string,
+    filter: { patientId?: string; status?: string; rfaKind?: string },
+  ): Promise<{ schedules: HopeScheduleView[] }>;
   getSchedule(organizationId: string, id: string): Promise<HopeScheduleView>;
   skipSchedule(organizationId: string, id: string, reasonCode: string): Promise<HopeScheduleView>;
-  recordTimepoint(organizationId: string, userId: string, admissionId: string, args: RecordTimepointArgs): Promise<HopeAssessmentView>;
-  recordSfv(organizationId: string, userId: string, admissionId: string, args: RecordSfvArgs): Promise<HopeAssessmentView>;
-  updateDraft(organizationId: string, id: string, data: Record<string, unknown>): Promise<HopeAssessmentView>;
+  recordTimepoint(
+    organizationId: string,
+    userId: string,
+    admissionId: string,
+    args: RecordTimepointArgs,
+  ): Promise<HopeAssessmentView>;
+  recordSfv(
+    organizationId: string,
+    userId: string,
+    admissionId: string,
+    args: RecordSfvArgs,
+  ): Promise<HopeAssessmentView>;
+  updateDraft(
+    organizationId: string,
+    id: string,
+    data: Record<string, unknown>,
+  ): Promise<HopeAssessmentView>;
   signTimepoint(organizationId: string, userId: string, id: string): Promise<HopeAssessmentView>;
-  correctTimepoint(organizationId: string, userId: string, id: string, args: CorrectTimepointArgs): Promise<HopeAssessmentView>;
+  correctTimepoint(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: CorrectTimepointArgs,
+  ): Promise<HopeAssessmentView>;
   getAssessment(organizationId: string, id: string): Promise<HopeAssessmentView>;
-  listPatientAssessments(organizationId: string, patientId: string): Promise<{ assessments: HopeAssessmentView[] }>;
-  requestSummaryPdf(organizationId: string, userId: string, id: string): Promise<{ assessmentId: string; requested: true }>;
+  listPatientAssessments(
+    organizationId: string,
+    patientId: string,
+  ): Promise<{ assessments: HopeAssessmentView[] }>;
+  requestSummaryPdf(
+    organizationId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ assessmentId: string; requested: true }>;
   listSfv(organizationId: string, state?: string): Promise<{ sfvs: HopeSfvView[] }>;
   getSfv(organizationId: string, id: string): Promise<HopeSfvView>;
-  getValidation(organizationId: string, id: string): Promise<{ assessmentId: string; findings: ReadonlyArray<{ ruleId: string; severity: string; message: string }> }>;
-  listSubmissions(organizationId: string, providerEntityId?: string): Promise<{ submissions: HopeSubmissionView[] }>;
+  getValidation(
+    organizationId: string,
+    id: string,
+  ): Promise<{
+    assessmentId: string;
+    findings: ReadonlyArray<{ ruleId: string; severity: string; message: string }>;
+  }>;
+  listSubmissions(
+    organizationId: string,
+    providerEntityId?: string,
+  ): Promise<{ submissions: HopeSubmissionView[] }>;
   getSubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   retrySubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   assembleSubmission(organizationId: string, providerEntityId: string): Promise<HopeSubmissionView>;
-  complianceDashboard(organizationId: string, providerEntityId?: string): Promise<HopeComplianceView>;
-  regenerateSchedules(organizationId: string, admissionId: string): Promise<{ admissionId: string; scheduleCount: number }>;
+  complianceDashboard(
+    organizationId: string,
+    providerEntityId?: string,
+  ): Promise<HopeComplianceView>;
+  regenerateSchedules(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{ admissionId: string; scheduleCount: number }>;
   /** Drain (and clear) the §2.4 outbox events recorded since the last call (test/relay seam). */
   drainEvents(): RecordedHopeEvent[];
 }
@@ -161,10 +205,39 @@ interface SubmissionRecord extends Mutable<HopeSubmissionView> {
 }
 
 export interface HopeRouteSeed {
-  readonly assessments?: ReadonlyArray<Partial<AssessmentRecord> & { id: string; organizationId: string; patientId: string; admissionId: string; rfaKind: HopeRfaKind }>;
-  readonly schedules?: ReadonlyArray<Partial<ScheduleRecord> & { id: string; organizationId: string; patientId: string; admissionId: string; rfaKind: HopeRfaKind; windowOpensAt: string; windowClosesAt: string; lateDeadlineAt: string }>;
-  readonly sfvs?: ReadonlyArray<Partial<SfvRecord> & { id: string; organizationId: string; patientId: string; triggeringAssessmentId: string; dueAt: string }>;
-  readonly submissions?: ReadonlyArray<Partial<SubmissionRecord> & { id: string; organizationId: string; providerEntityId: string }>;
+  readonly assessments?: ReadonlyArray<
+    Partial<AssessmentRecord> & {
+      id: string;
+      organizationId: string;
+      patientId: string;
+      admissionId: string;
+      rfaKind: HopeRfaKind;
+    }
+  >;
+  readonly schedules?: ReadonlyArray<
+    Partial<ScheduleRecord> & {
+      id: string;
+      organizationId: string;
+      patientId: string;
+      admissionId: string;
+      rfaKind: HopeRfaKind;
+      windowOpensAt: string;
+      windowClosesAt: string;
+      lateDeadlineAt: string;
+    }
+  >;
+  readonly sfvs?: ReadonlyArray<
+    Partial<SfvRecord> & {
+      id: string;
+      organizationId: string;
+      patientId: string;
+      triggeringAssessmentId: string;
+      dueAt: string;
+    }
+  >;
+  readonly submissions?: ReadonlyArray<
+    Partial<SubmissionRecord> & { id: string; organizationId: string; providerEntityId: string }
+  >;
   /** Org IANA TZ for the org-local SFV due-date math (defaults to UTC). */
   readonly timeZone?: string;
   /** Injected clock (defaults to wall-clock ISO). */
@@ -188,7 +261,12 @@ const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] =>
   if (!Array.isArray(j)) return [];
   return j.flatMap((e) =>
     e && typeof e === "object" && typeof (e as { severity?: unknown }).severity === "string"
-      ? [{ symptomCode: String((e as { symptomCode?: unknown }).symptomCode ?? "other"), severity: (e as { severity: J2051Severity }).severity }]
+      ? [
+          {
+            symptomCode: String((e as { symptomCode?: unknown }).symptomCode ?? "other"),
+            severity: (e as { severity: J2051Severity }).severity,
+          },
+        ]
       : [],
   );
 };
@@ -206,18 +284,55 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
 
   for (const s of seed.assessments ?? [])
     assessments.set(s.id, {
-      status: "draft", targetDate: now(), authorDiscipline: "RN", j2051MaxSeverity: null,
-      j2051TriggerFired: false, wasLate: false, signedAt: null, signedBy: null, correctsAssessmentId: null,
-      supersededByAssessmentId: null, snapshot: null, version: 1, data: {}, ...s,
+      status: "draft",
+      targetDate: now(),
+      authorDiscipline: "RN",
+      j2051MaxSeverity: null,
+      j2051TriggerFired: false,
+      wasLate: false,
+      signedAt: null,
+      signedBy: null,
+      correctsAssessmentId: null,
+      supersededByAssessmentId: null,
+      snapshot: null,
+      version: 1,
+      data: {},
+      ...s,
     } as AssessmentRecord);
   for (const s of seed.schedules ?? [])
-    schedules.set(s.id, { status: "open", generatedBy: "auto_admission", completedByAssessmentId: null, timeZone: tz, ...s } as ScheduleRecord);
+    schedules.set(s.id, {
+      status: "open",
+      generatedBy: "auto_admission",
+      completedByAssessmentId: null,
+      timeZone: tz,
+      ...s,
+    } as ScheduleRecord);
   for (const s of seed.sfvs ?? [])
-    sfvs.set(s.id, { status: "open", triggeredAt: now(), completingAssessmentId: null, timeZone: tz, triggeringSymptoms: [], ...s } as SfvRecord);
+    sfvs.set(s.id, {
+      status: "open",
+      triggeredAt: now(),
+      completingAssessmentId: null,
+      timeZone: tz,
+      triggeringSymptoms: [],
+      ...s,
+    } as SfvRecord);
   for (const s of seed.submissions ?? [])
-    submissions.set(s.id, { submissionPeriod: now().slice(0, 7), status: "queued", itemCount: 0, acceptedCount: 0, rejectedCount: 0, transmittedAt: null, acceptedAt: null, ...s } as SubmissionRecord);
+    submissions.set(s.id, {
+      submissionPeriod: now().slice(0, 7),
+      status: "queued",
+      itemCount: 0,
+      acceptedCount: 0,
+      rejectedCount: 0,
+      transmittedAt: null,
+      acceptedAt: null,
+      ...s,
+    } as SubmissionRecord);
 
-  const emit = (eventName: string, payload: Record<string, unknown>, idempotencyKey: string): void => {
+  const emit = (
+    eventName: string,
+    payload: Record<string, unknown>,
+    idempotencyKey: string,
+  ): void => {
     events.push({ eventName, payload, idempotencyKey });
   };
   const viewA = (r: AssessmentRecord): HopeAssessmentView => {
@@ -238,12 +353,14 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   };
   const findA = (organizationId: string, id: string): AssessmentRecord => {
     const r = assessments.get(id);
-    if (!r || r.organizationId !== organizationId) throw new NotFoundError(`HOPE assessment ${id} not found`);
+    if (!r || r.organizationId !== organizationId)
+      throw new NotFoundError(`HOPE assessment ${id} not found`);
     return r;
   };
   const findSchedule = (organizationId: string, id: string): ScheduleRecord => {
     const r = schedules.get(id);
-    if (!r || r.organizationId !== organizationId) throw new NotFoundError(`HOPE schedule ${id} not found`);
+    if (!r || r.organizationId !== organizationId)
+      throw new NotFoundError(`HOPE schedule ${id} not found`);
     return r;
   };
   const findSfv = (organizationId: string, id: string): SfvRecord => {
@@ -253,14 +370,23 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   };
   const findSub = (organizationId: string, id: string): SubmissionRecord => {
     const r = submissions.get(id);
-    if (!r || r.organizationId !== organizationId) throw new NotFoundError(`HOPE submission ${id} not found`);
+    if (!r || r.organizationId !== organizationId)
+      throw new NotFoundError(`HOPE submission ${id} not found`);
     return r;
   };
 
   async function snapshotFor(patientId: string): Promise<Record<string, number | null> | null> {
     if (!latest) return null; // §7.13 — snapshot skipped when M9 is unavailable (no inline external block).
-    const rows = await latest.latestBatch(patientId, SNAPSHOT_SCALES as unknown as ReadonlyArray<ScaleType>);
-    const byScale = new Map(rows.map((r) => [String((r as { scaleType?: unknown }).scaleType), (r as { score?: number | null }).score ?? null]));
+    const rows = await latest.latestBatch(
+      patientId,
+      SNAPSHOT_SCALES as unknown as ReadonlyArray<ScaleType>,
+    );
+    const byScale = new Map(
+      rows.map((r) => [
+        String((r as { scaleType?: unknown }).scaleType),
+        (r as { score?: number | null }).score ?? null,
+      ]),
+    );
     const snap: Record<string, number | null> = {};
     for (const s of SNAPSHOT_SCALES) snap[s] = byScale.get(s) ?? null;
     return snap;
@@ -269,7 +395,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   return {
     async listSchedules(organizationId, filter) {
       const all = [...schedules.values()].filter(
-        (r) => r.organizationId === organizationId &&
+        (r) =>
+          r.organizationId === organizationId &&
           (!filter.patientId || r.patientId === filter.patientId) &&
           (!filter.status || r.status === filter.status) &&
           (!filter.rfaKind || r.rfaKind === filter.rfaKind),
@@ -287,14 +414,32 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
 
     async recordTimepoint(organizationId, userId, admissionId, args) {
       const sched = [...schedules.values()].find(
-        (s) => s.organizationId === organizationId && s.admissionId === admissionId && s.rfaKind === args.rfaKind && s.status === "open",
+        (s) =>
+          s.organizationId === organizationId &&
+          s.admissionId === admissionId &&
+          s.rfaKind === args.rfaKind &&
+          s.status === "open",
       );
       const id = nextId();
       const rec: AssessmentRecord = {
-        id, organizationId, patientId: sched?.patientId ?? admissionId, admissionId, rfaKind: args.rfaKind,
-        status: "draft", targetDate: args.targetDate, authorDiscipline: args.authorDiscipline,
-        j2051MaxSeverity: null, j2051TriggerFired: false, wasLate: false, signedAt: null, signedBy: null,
-        correctsAssessmentId: null, supersededByAssessmentId: null, snapshot: null, version: 1, data: args.data,
+        id,
+        organizationId,
+        patientId: sched?.patientId ?? admissionId,
+        admissionId,
+        rfaKind: args.rfaKind,
+        status: "draft",
+        targetDate: args.targetDate,
+        authorDiscipline: args.authorDiscipline,
+        j2051MaxSeverity: null,
+        j2051TriggerFired: false,
+        wasLate: false,
+        signedAt: null,
+        signedBy: null,
+        correctsAssessmentId: null,
+        supersededByAssessmentId: null,
+        snapshot: null,
+        version: 1,
+        data: args.data,
       };
       assessments.set(id, rec);
       return viewA(rec);
@@ -302,29 +447,62 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
 
     async recordSfv(organizationId, userId, admissionId, args) {
       const sfv = [...sfvs.values()].find(
-        (s) => s.organizationId === organizationId && s.triggeringAssessmentId === args.triggeringAssessmentId,
+        (s) =>
+          s.organizationId === organizationId &&
+          s.triggeringAssessmentId === args.triggeringAssessmentId,
       );
-      require_(sfv != null, "M10_SFV_NO_TRIGGER", `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`);
+      require_(
+        sfv != null,
+        "M10_SFV_NO_TRIGGER",
+        `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`,
+      );
       const at = now();
       // Insert the signed RFA-04 row, then complete the open SFV (the §4.4 guards live in planSfvCompletion).
       const id = nextId();
       const rec: AssessmentRecord = {
-        id, organizationId, patientId: sfv.patientId, admissionId, rfaKind: "04_sfv", status: "signed",
-        targetDate: args.targetDate, authorDiscipline: args.authorDiscipline, j2051MaxSeverity: null,
-        j2051TriggerFired: false, wasLate: false, signedAt: at, signedBy: userId, correctsAssessmentId: null,
-        supersededByAssessmentId: null, snapshot: null, version: 1, data: args.data,
+        id,
+        organizationId,
+        patientId: sfv.patientId,
+        admissionId,
+        rfaKind: "04_sfv",
+        status: "signed",
+        targetDate: args.targetDate,
+        authorDiscipline: args.authorDiscipline,
+        j2051MaxSeverity: null,
+        j2051TriggerFired: false,
+        wasLate: false,
+        signedAt: at,
+        signedBy: userId,
+        correctsAssessmentId: null,
+        supersededByAssessmentId: null,
+        snapshot: null,
+        version: 1,
+        data: args.data,
       };
       assessments.set(id, rec);
-      const plan = planSfvCompletion({ id: sfv.id, status: sfv.status, dueAt: sfv.dueAt }, id, args.targetDate, { adminOverride: args.adminOverride });
+      const plan = planSfvCompletion(
+        { id: sfv.id, status: sfv.status, dueAt: sfv.dueAt },
+        id,
+        args.targetDate,
+        { adminOverride: args.adminOverride },
+      );
       sfv.status = "completed";
       sfv.completingAssessmentId = plan.completingAssessmentId;
-      emit("m10.hope.sfv_completed", { sfvId: sfv.id, completingAssessmentId: id, completedAt: at }, `${sfv.id}:completed`);
+      emit(
+        "m10.hope.sfv_completed",
+        { sfvId: sfv.id, completingAssessmentId: id, completedAt: at },
+        `${sfv.id}:completed`,
+      );
       return viewA(rec);
     },
 
     async updateDraft(organizationId, id, data) {
       const r = findA(organizationId, id);
-      require_(r.status === "draft", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} is not a draft.`);
+      require_(
+        r.status === "draft",
+        "M10_CORRECTION_TARGET_NOT_SIGNED",
+        `Assessment ${id} is not a draft.`,
+      );
       r.data = { ...r.data, ...data };
       r.version += 1;
       return viewA(r);
@@ -332,7 +510,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
 
     async signTimepoint(organizationId, userId, id) {
       const r = findA(organizationId, id);
-      require_(r.status === "draft", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} is not a draft and cannot be signed.`);
+      require_(
+        r.status === "draft",
+        "M10_CORRECTION_TARGET_NOT_SIGNED",
+        `Assessment ${id} is not a draft and cannot be signed.`,
+      );
       const at = now();
       const verdict = evaluateJ2051Trigger({ entries: j2051EntriesOf(r.data) }); // D4 — server-authoritative
       r.status = "signed";
@@ -344,44 +526,113 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.version += 1;
       // Complete the matching schedule (idempotent — only an open schedule transitions).
       const sched = [...schedules.values()].find(
-        (s) => s.organizationId === organizationId && s.admissionId === r.admissionId && s.rfaKind === r.rfaKind && s.status === "open",
+        (s) =>
+          s.organizationId === organizationId &&
+          s.admissionId === r.admissionId &&
+          s.rfaKind === r.rfaKind &&
+          s.status === "open",
       );
       if (sched) {
         sched.status = "completed";
         sched.completedByAssessmentId = id;
       }
-      emit("m10.hope.timepoint_signed", { assessmentId: id, rfaKind: r.rfaKind, signedAt: at, signedBy: userId, j2051TriggerFired: verdict.triggerFired, wasLate: r.wasLate }, `${id}:signed`);
+      emit(
+        "m10.hope.timepoint_signed",
+        {
+          assessmentId: id,
+          rfaKind: r.rfaKind,
+          signedAt: at,
+          signedBy: userId,
+          j2051TriggerFired: verdict.triggerFired,
+          wasLate: r.wasLate,
+        },
+        `${id}:signed`,
+      );
       if (verdict.triggerFired) {
         // D4 — exactly one SFV per source timepoint; D3 anchored to signed_at.
-        const descriptor = planSfvCreation({ triggeringAssessmentId: id, signedAt: at, timeZone: tz });
+        const descriptor = planSfvCreation({
+          triggeringAssessmentId: id,
+          signedAt: at,
+          timeZone: tz,
+        });
         const sfvId = nextId();
         sfvs.set(sfvId, {
-          id: sfvId, organizationId, patientId: r.patientId, triggeringAssessmentId: id, status: "open",
-          triggeredAt: descriptor.triggeredAt, dueAt: descriptor.dueAt, completingAssessmentId: null,
-          timeZone: tz, triggeringSymptoms: verdict.contributingSymptoms.map((c) => ({ symptomCode: c.symptomCode, severity: c.severity })),
+          id: sfvId,
+          organizationId,
+          patientId: r.patientId,
+          triggeringAssessmentId: id,
+          status: "open",
+          triggeredAt: descriptor.triggeredAt,
+          dueAt: descriptor.dueAt,
+          completingAssessmentId: null,
+          timeZone: tz,
+          triggeringSymptoms: verdict.contributingSymptoms.map((c) => ({
+            symptomCode: c.symptomCode,
+            severity: c.severity,
+          })),
         });
-        emit("m10.hope.j2051_trigger_fired", { assessmentId: id, sfvId, maxSeverity: verdict.maxSeverity, triggeredAt: descriptor.triggeredAt, dueAt: descriptor.dueAt }, `${id}:j2051_triggered`);
-        emit("m10.hope.sfv_created", { sfvId, triggeringAssessmentId: id, dueAt: descriptor.dueAt }, `${sfvId}:created`);
+        emit(
+          "m10.hope.j2051_trigger_fired",
+          {
+            assessmentId: id,
+            sfvId,
+            maxSeverity: verdict.maxSeverity,
+            triggeredAt: descriptor.triggeredAt,
+            dueAt: descriptor.dueAt,
+          },
+          `${id}:j2051_triggered`,
+        );
+        emit(
+          "m10.hope.sfv_created",
+          { sfvId, triggeringAssessmentId: id, dueAt: descriptor.dueAt },
+          `${sfvId}:created`,
+        );
       }
       return viewA(r);
     },
 
     async correctTimepoint(organizationId, userId, id, args) {
       const original = findA(organizationId, id);
-      require_(original.status === "signed", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} must be signed to correct (edit the draft instead).`);
-      require_(original.supersededByAssessmentId == null, "M10_CORRECTION_TARGET_SUPERSEDED", `Assessment ${id} is already superseded; correct the latest instead.`);
+      require_(
+        original.status === "signed",
+        "M10_CORRECTION_TARGET_NOT_SIGNED",
+        `Assessment ${id} must be signed to correct (edit the draft instead).`,
+      );
+      require_(
+        original.supersededByAssessmentId == null,
+        "M10_CORRECTION_TARGET_SUPERSEDED",
+        `Assessment ${id} is already superseded; correct the latest instead.`,
+      );
       const at = now();
       const correctionId = nextId();
       const correction: AssessmentRecord = {
-        id: correctionId, organizationId, patientId: original.patientId, admissionId: original.admissionId,
-        rfaKind: original.rfaKind, status: "signed", targetDate: args.targetDate, authorDiscipline: args.authorDiscipline,
-        j2051MaxSeverity: original.j2051MaxSeverity, j2051TriggerFired: original.j2051TriggerFired, wasLate: original.wasLate,
-        signedAt: at, signedBy: userId, correctsAssessmentId: id, supersededByAssessmentId: null, snapshot: original.snapshot, version: 1, data: args.data,
+        id: correctionId,
+        organizationId,
+        patientId: original.patientId,
+        admissionId: original.admissionId,
+        rfaKind: original.rfaKind,
+        status: "signed",
+        targetDate: args.targetDate,
+        authorDiscipline: args.authorDiscipline,
+        j2051MaxSeverity: original.j2051MaxSeverity,
+        j2051TriggerFired: original.j2051TriggerFired,
+        wasLate: original.wasLate,
+        signedAt: at,
+        signedBy: userId,
+        correctsAssessmentId: id,
+        supersededByAssessmentId: null,
+        snapshot: original.snapshot,
+        version: 1,
+        data: args.data,
       };
       assessments.set(correctionId, correction);
       original.status = "superseded";
       original.supersededByAssessmentId = correctionId;
-      emit("m10.hope.correction_submitted", { correctionAssessmentId: correctionId, originalAssessmentId: id }, `${correctionId}:submitted`);
+      emit(
+        "m10.hope.correction_submitted",
+        { correctionAssessmentId: correctionId, originalAssessmentId: id },
+        `${correctionId}:submitted`,
+      );
       return viewA(correction);
     },
 
@@ -389,17 +640,25 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewA(findA(organizationId, id));
     },
     async listPatientAssessments(organizationId, patientId) {
-      const all = [...assessments.values()].filter((r) => r.organizationId === organizationId && r.patientId === patientId);
+      const all = [...assessments.values()].filter(
+        (r) => r.organizationId === organizationId && r.patientId === patientId,
+      );
       return { assessments: all.map(viewA) };
     },
     async requestSummaryPdf(organizationId, userId, id) {
       findA(organizationId, id);
-      emit("m10.hope.summary_requested", { assessmentId: id, requestedBy: userId }, `${id}:${now()}`);
+      emit(
+        "m10.hope.summary_requested",
+        { assessmentId: id, requestedBy: userId },
+        `${id}:${now()}`,
+      );
       return { assessmentId: id, requested: true };
     },
 
     async listSfv(organizationId, state) {
-      const all = [...sfvs.values()].filter((r) => r.organizationId === organizationId && (!state || r.status === state));
+      const all = [...sfvs.values()].filter(
+        (r) => r.organizationId === organizationId && (!state || r.status === state),
+      );
       return { sfvs: all.map(viewF) };
     },
     async getSfv(organizationId, id) {
@@ -413,7 +672,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
 
     async listSubmissions(organizationId, providerEntityId) {
-      const all = [...submissions.values()].filter((r) => r.organizationId === organizationId && (!providerEntityId || r.providerEntityId === providerEntityId));
+      const all = [...submissions.values()].filter(
+        (r) =>
+          r.organizationId === organizationId &&
+          (!providerEntityId || r.providerEntityId === providerEntityId),
+      );
       return { submissions: all.map(viewSub) };
     },
     async getSubmission(organizationId, id) {
@@ -421,19 +684,39 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
     async retrySubmission(organizationId, id) {
       const r = findSub(organizationId, id);
-      require_(r.status === "rejected", "M10_SUBMISSION_RETRY_NOT_REJECTED", `Submission ${id} is ${r.status}; only a rejected submission can be retried.`);
+      require_(
+        r.status === "rejected",
+        "M10_SUBMISSION_RETRY_NOT_REJECTED",
+        `Submission ${id} is ${r.status}; only a rejected submission can be retried.`,
+      );
       r.status = "queued";
-      emit("m10.hope.submission_queued", { submissionId: id, providerEntityId: r.providerEntityId, itemCount: r.itemCount }, `${id}:queued`);
+      emit(
+        "m10.hope.submission_queued",
+        { submissionId: id, providerEntityId: r.providerEntityId, itemCount: r.itemCount },
+        `${id}:queued`,
+      );
       return viewSub(r);
     },
     async assembleSubmission(organizationId, providerEntityId) {
       const id = nextId();
       const rec: SubmissionRecord = {
-        id, organizationId, providerEntityId, submissionPeriod: now().slice(0, 7), status: "queued",
-        itemCount: 0, acceptedCount: 0, rejectedCount: 0, transmittedAt: null, acceptedAt: null,
+        id,
+        organizationId,
+        providerEntityId,
+        submissionPeriod: now().slice(0, 7),
+        status: "queued",
+        itemCount: 0,
+        acceptedCount: 0,
+        rejectedCount: 0,
+        transmittedAt: null,
+        acceptedAt: null,
       };
       submissions.set(id, rec);
-      emit("m10.hope.submission_queued", { submissionId: id, providerEntityId, itemCount: 0 }, `${id}:queued`);
+      emit(
+        "m10.hope.submission_queued",
+        { submissionId: id, providerEntityId, itemCount: 0 },
+        `${id}:queued`,
+      );
       return viewSub(rec);
     },
     async complianceDashboard(organizationId, providerEntityId) {
@@ -441,11 +724,17 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const completed = scoped.filter((s) => s.status === "completed").length;
       const expired = scoped.filter((s) => s.status === "expired").length;
       const denom = completed + expired;
-      const subs = [...submissions.values()].filter((s) => s.organizationId === organizationId && (!providerEntityId || s.providerEntityId === providerEntityId));
+      const subs = [...submissions.values()].filter(
+        (s) =>
+          s.organizationId === organizationId &&
+          (!providerEntityId || s.providerEntityId === providerEntityId),
+      );
       const accepted = subs.filter((s) => s.status === "accepted").length;
       const sfvAll = [...sfvs.values()].filter((s) => s.organizationId === organizationId);
       const sfvOnTime = sfvAll.filter((s) => s.status === "completed").length;
-      const sfvDenom = sfvAll.filter((s) => s.status === "completed" || s.status === "missed").length;
+      const sfvDenom = sfvAll.filter(
+        (s) => s.status === "completed" || s.status === "missed",
+      ).length;
       return {
         providerEntityId: providerEntityId ?? null,
         hopeOnTimeRate: denom === 0 ? 1 : completed / denom,
@@ -454,7 +743,9 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       };
     },
     async regenerateSchedules(organizationId, admissionId) {
-      const count = [...schedules.values()].filter((s) => s.organizationId === organizationId && s.admissionId === admissionId).length;
+      const count = [...schedules.values()].filter(
+        (s) => s.organizationId === organizationId && s.admissionId === admissionId,
+      ).length;
       return { admissionId, scheduleCount: count };
     },
 

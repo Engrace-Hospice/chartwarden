@@ -7,11 +7,7 @@
 // DECLARATIVELY as data; the service layer (a later M22 task) executes them inside the aggregate's
 // optimistic-locked transaction. Keeping them as data makes the machines deterministic and unit-testable
 // with no DB and no MinIO client (D1 storage stays a port — see @wardenx/types DocumentStorageProvider).
-import type {
-  DocumentAccessKind,
-  IsoInstant,
-  M22EventName,
-} from "@wardenx/types";
+import type { DocumentAccessKind, IsoInstant, M22EventName } from "@wardenx/types";
 
 /**
  * One in-transaction side effect a transition declares (§2.4). The service layer is the only place these

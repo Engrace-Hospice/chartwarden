@@ -65,7 +65,10 @@ import { NotFoundError } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { buildM26AbacPredicates, type ReadingM26AbacResolver } from "../src/modules/26-cap/abac-predicates";
+import {
+  type ReadingM26AbacResolver,
+  buildM26AbacPredicates,
+} from "../src/modules/26-cap/abac-predicates";
 import { M26_PERMISSION_KEY_LIST } from "../src/modules/26-cap/permission-keys";
 import { mountM26Routes } from "../src/modules/26-cap/routes/mount";
 import type { M26ReadService } from "../src/modules/26-cap/routes/read-service";
@@ -92,7 +95,9 @@ import type { M26WriteService } from "../src/modules/26-cap/routes/write-service
 if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set(
     "uuid",
-    (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+    (v) =>
+      typeof v === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
   );
 }
 if (!FormatRegistry.Has("date")) {
@@ -152,12 +157,14 @@ function createCapTestBackend() {
   }
   function requireEvent(orgId: string, eventId: string): ThresholdEventRow {
     const row = thresholdEvents.get(eventId);
-    if (!row || row.organizationId !== orgId) throw new NotFoundError("cap_threshold_event", eventId);
+    if (!row || row.organizationId !== orgId)
+      throw new NotFoundError("cap_threshold_event", eventId);
     return row;
   }
   function requireVariance(orgId: string, lineId: string): PsrVarianceRow {
     const row = psrVariances.get(lineId);
-    if (!row || row.organizationId !== orgId) throw new NotFoundError("cap_psr_reconciliation", lineId);
+    if (!row || row.organizationId !== orgId)
+      throw new NotFoundError("cap_psr_reconciliation", lineId);
     return row;
   }
   function requireSettlement(orgId: string, periodId: string): SettlementRow {
@@ -280,7 +287,8 @@ function createCapTestBackend() {
       return row && row.organizationId === actor.organizationId ? row : null;
     },
     async getDashboard(actor) {
-      const period = [...periods.values()].find((r) => r.organizationId === actor.organizationId) ?? null;
+      const period =
+        [...periods.values()].find((r) => r.organizationId === actor.organizationId) ?? null;
       const agency = period ? (projections.get(`${period.id}:agency`) ?? null) : null;
       const inpatient = period ? (projections.get(`${period.id}:inpatient`) ?? null) : null;
       const recentEvents = [...thresholdEvents.values()].filter(
@@ -327,7 +335,11 @@ function createCapTestBackend() {
     },
     async lockMethodology(actor, periodId, input) {
       const row = requirePeriod(actor.organizationId, periodId);
-      const updated: PeriodRow = { ...row, methodology: input.methodology, methodologyLockedAt: NOW };
+      const updated: PeriodRow = {
+        ...row,
+        methodology: input.methodology,
+        methodologyLockedAt: NOW,
+      };
       periods.set(periodId, updated);
       return updated;
     },
@@ -346,7 +358,16 @@ function createCapTestBackend() {
     },
     async recompute(actor, periodId) {
       const period = requirePeriod(actor.organizationId, periodId);
-      const base: Omit<ProjectionRow, "id" | "scope" | "patientId" | "capAmountCents" | "inpatientDaysYtd" | "inpatientPctYtd" | "beneficiaryCount"> = {
+      const base: Omit<
+        ProjectionRow,
+        | "id"
+        | "scope"
+        | "patientId"
+        | "capAmountCents"
+        | "inpatientDaysYtd"
+        | "inpatientPctYtd"
+        | "beneficiaryCount"
+      > = {
         organizationId: actor.organizationId,
         capPeriodId: periodId,
         methodology: period.methodology ?? "streamlined",
@@ -538,7 +559,9 @@ function makeServer() {
   // M3 predicate the two STEP_UP-gated routes compose on but M26 does not own (the oncall-inject.test.ts
   // precedent for a cross-module predicate this file's job is not to test).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildM26AbacPredicates({ resolver: backend.resolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildM26AbacPredicates({ resolver: backend.resolver }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
@@ -624,7 +647,11 @@ describe("M26-T0x §2.2 cap-period lifecycle (routes 1-6, 22-24)", () => {
     expect(Array.isArray(list.json())).toBe(true);
 
     // 3 — get one
-    const detail = await app.inject({ method: "GET", url: `/api/v1/cap/periods/${periodId}`, headers: SUPER });
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/cap/periods/${periodId}`,
+      headers: SUPER,
+    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().id).toBe(periodId);
 
@@ -633,7 +660,10 @@ describe("M26-T0x §2.2 cap-period lifecycle (routes 1-6, 22-24)", () => {
       method: "POST",
       url: `/api/v1/cap/periods/${periodId}/methodology`,
       headers: { ...SUPER, ...idemp() },
-      payload: { methodology: "streamlined", reason: "Electing the streamlined methodology for FY2026." },
+      payload: {
+        methodology: "streamlined",
+        reason: "Electing the streamlined methodology for FY2026.",
+      },
     });
     expect(locked.statusCode).toBe(200);
     expect(locked.json().methodology).toBe("streamlined");
@@ -672,7 +702,9 @@ describe("M26-T0x §2.2 cap-period lifecycle (routes 1-6, 22-24)", () => {
       method: "PATCH",
       url: `/api/v1/cap/settlements/${periodId}/finalize`,
       headers: { ...SUPER, ...idemp() },
-      payload: { attestation: "I attest this cap settlement is accurate to the best of my knowledge." },
+      payload: {
+        attestation: "I attest this cap settlement is accurate to the best of my knowledge.",
+      },
     });
     expect(finalized.statusCode).toBe(200);
     expect(finalized.json().status).toBe("final");
@@ -756,7 +788,11 @@ describe("M26-T0x §4.1 projections + recompute + dashboard (routes 7-11, 17)", 
     expect(inpatient.json().scope).toBe("inpatient");
 
     // 17 — dashboard
-    const dashboard = await app.inject({ method: "GET", url: "/api/v1/cap/dashboard", headers: SUPER });
+    const dashboard = await app.inject({
+      method: "GET",
+      url: "/api/v1/cap/dashboard",
+      headers: SUPER,
+    });
     expect(dashboard.statusCode).toBe(200);
     expect(dashboard.json().period.id).toBe(periodId);
 
@@ -876,7 +912,11 @@ describe("M26-T0x §4.1 PS&R reconciliation (routes 18-21)", () => {
     expect(imported.json().status).toBe("queued");
 
     // 19
-    const got = await app.inject({ method: "GET", url: `/api/v1/cap/psr-imports/${importId}`, headers: SUPER });
+    const got = await app.inject({
+      method: "GET",
+      url: `/api/v1/cap/psr-imports/${importId}`,
+      headers: SUPER,
+    });
     expect(got.statusCode).toBe(200);
     expect(got.json().id).toBe(importId);
 
@@ -896,7 +936,10 @@ describe("M26-T0x §4.1 PS&R reconciliation (routes 18-21)", () => {
       method: "PATCH",
       url: `/api/v1/cap/psr-imports/${importId}/reconciliation/${lineId}/resolve`,
       headers: { ...SUPER, ...idemp() },
-      payload: { varianceReason: "timing", resolutionNotes: "Confirmed a timing difference against the 835." },
+      payload: {
+        varianceReason: "timing",
+        resolutionNotes: "Confirmed a timing difference against the 835.",
+      },
     });
     expect(resolved.statusCode).toBe(204);
 
@@ -911,7 +954,11 @@ describe("M26-T0x §4.1 platform cap constants (routes 25-27)", () => {
     const { app } = makeServer();
 
     // 25
-    const list = await app.inject({ method: "GET", url: "/api/v1/platform/cap/constants", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/cap/constants",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(Array.isArray(list.json())).toBe(true);
 
@@ -943,7 +990,11 @@ describe("M26-T0x §4.1 platform cap constants (routes 25-27)", () => {
     // first; the ABAC axis is exercised structurally by SUPER's role composition in the test above (SUPER
     // without the `platform_admin` role would 403 identically — the registered predicate reads
     // `context.roles`, which this harness's header-auth shim sets verbatim from `x-test-roles`).
-    const res = await app.inject({ method: "GET", url: "/api/v1/platform/cap/constants", headers: NOBODY });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/cap/constants",
+      headers: NOBODY,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });

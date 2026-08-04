@@ -52,7 +52,9 @@ export function isCriticalFlagSet(rawFlags: readonly string[]): boolean {
  *   all_normal   — at least one explicit N (and nothing abnormal),
  *   no_flags     — every value's flag column is null (no flag reported).
  */
-export function computeAbnormalSummary(valueFlags: readonly (LabAbnormalFlag | null)[]): LabAbnormalSummary {
+export function computeAbnormalSummary(
+  valueFlags: readonly (LabAbnormalFlag | null)[],
+): LabAbnormalSummary {
   let anyCritical = false;
   let anyAbnormal = false;
   let anyNormal = false;

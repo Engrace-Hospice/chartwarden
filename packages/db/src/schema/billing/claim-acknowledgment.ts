@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `claim_acknowledgment` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). Append-only: one row per inbound 999 / 277CA / 835 acknowledgment file processed for a
 // submission. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).
@@ -7,16 +8,7 @@
 // + `claim_id` (claim, back-link) get real `.references(...)`. No PHI / MBI is ever stored here
 // (D13, §8.7); `parsed_payload` carries only X12 status / reason codes (typed loosely at the DB layer —
 // the deep per-kind shape is TypeBox-typed in `@wardenx/billing` P2).
-import {
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
 import { claimSubmission } from "./claim-submission";
@@ -50,9 +42,7 @@ export const claimAcknowledgment = pgTable(
     parsedAt: timestamp("parsed_at", { withTimezone: true }).notNull().defaultNow(),
 
     // Parsed payload (typed by kind at the service layer):
-    parsedPayload: jsonb("parsed_payload")
-      .$type<ClaimAcknowledgmentParsedPayload>()
-      .notNull(), // { status, reasonCodes, lineLevelResults?, ... }
+    parsedPayload: jsonb("parsed_payload").$type<ClaimAcknowledgmentParsedPayload>().notNull(), // { status, reasonCodes, lineLevelResults?, ... }
 
     // High-level outcome cached for index:
     outcomeStatus: text("outcome_status").notNull(), // 'accepted'|'rejected'|'partial'|'paid'|'denied'

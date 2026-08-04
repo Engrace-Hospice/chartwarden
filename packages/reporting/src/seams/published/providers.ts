@@ -14,11 +14,11 @@
 // recipient-revocation cascade is an injected {@link ScheduleCascadeStore} (a WRITE surface) — UNBOUND it is
 // a no-op `{0,0}`. The cascade DECISION is the total pure {@link decideRecipientCascade}.
 import { computeFreshnessSeconds } from "../../refresh/lag-probe";
-import { ReportScheduleRepository } from "../../repositories/schedules";
 import { ReportCatalogRepository } from "../../repositories/catalogs";
-import { ReportDefinitionRepository } from "../../repositories/definitions";
-import { ReportViewRepository } from "../../repositories/views";
 import type { ReportingDb } from "../../repositories/db";
+import { ReportDefinitionRepository } from "../../repositories/definitions";
+import { ReportScheduleRepository } from "../../repositories/schedules";
+import { ReportViewRepository } from "../../repositories/views";
 import {
   type ReadReplicaSessionPort,
   type ReplicaLagGatePort,
@@ -204,9 +204,10 @@ export class DashboardCatalogProviderImpl implements DashboardCatalogProvider {
         for (const view of views) {
           const version = await defRepo.findVersionById(view.definitionVersionId);
           const spec = version?.spec;
-          const tileCount =
-            (spec?.measures?.length ?? 0) + (spec?.dimensions?.length ?? 0) || 1;
-          const definition = version ? await defRepo.findDefinitionById(version.definitionId) : null;
+          const tileCount = (spec?.measures?.length ?? 0) + (spec?.dimensions?.length ?? 0) || 1;
+          const definition = version
+            ? await defRepo.findDefinitionById(version.definitionId)
+            : null;
           out.push({
             dashboardId: view.id,
             displayName: view.displayName,

@@ -6,7 +6,7 @@
 import { ForbiddenError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { actorOf } from "./actor";
-import { type PreHandler } from "./actor";
+import type { PreHandler } from "./actor";
 import { P } from "./guards";
 import type { M25ReadService } from "./read-service";
 
@@ -31,7 +31,10 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
 
   app.get(
     "/api/v1/internal/remittance/reader",
-    { preHandler: [P("remittance.read_internal"), SYSTEM_PRINCIPAL], config: { auditRead: { resourceKind: "remittance_advice", list: true } } },
+    {
+      preHandler: [P("remittance.read_internal"), SYSTEM_PRINCIPAL],
+      config: { auditRead: { resourceKind: "remittance_advice", list: true } },
+    },
     async (request, reply) => {
       const actor = actorOf(request);
       const id = qStr(request.query, "adviceId");
@@ -42,7 +45,12 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
 
   app.get(
     "/api/v1/internal/denials/metrics",
-    { preHandler: [P("denial.read_internal"), SYSTEM_PRINCIPAL], config: { auditRead: { none: "denial-rate metrics by CARC — aggregate, no patient identity" } } },
+    {
+      preHandler: [P("denial.read_internal"), SYSTEM_PRINCIPAL],
+      config: {
+        auditRead: { none: "denial-rate metrics by CARC — aggregate, no patient identity" },
+      },
+    },
     async (request, reply) => {
       const actor = actorOf(request);
       return reply.send(await readService.denialMetrics(actor));
@@ -51,10 +59,15 @@ export function registerInternalRoutes(app: FastifyInstance, deps: InternalRoute
 
   app.get(
     "/api/v1/internal/patient-responsibility",
-    { preHandler: [P("pr.read_internal"), SYSTEM_PRINCIPAL], config: { auditRead: { resourceKind: "remittance_line", list: true } } },
+    {
+      preHandler: [P("pr.read_internal"), SYSTEM_PRINCIPAL],
+      config: { auditRead: { resourceKind: "remittance_line", list: true } },
+    },
     async (request, reply) => {
       const actor = actorOf(request);
-      return reply.send({ items: await readService.prLedger(actor, qStr(request.query, "patientId")) });
+      return reply.send({
+        items: await readService.prLedger(actor, qStr(request.query, "patientId")),
+      });
     },
   );
 }

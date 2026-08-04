@@ -14,8 +14,8 @@ import {
 // Lantern: WorkQueueLayout + KpiStrip + No-Line table + §6.6 StatusPill via cost-report-status.ts.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { STATE_TONE, humanize, shortDate, toneOf } from "./cost-report-status";
 import { cellStyle, headStyle, numStyle, rowStyle, tableStyle } from "./cost-report-shared";
+import { STATE_TONE, humanize, shortDate, toneOf } from "./cost-report-status";
 
 interface ReportRow {
   costReportId: string;
@@ -53,14 +53,25 @@ export function CostReportList(): JSX.Element {
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description="Cost reports could not be loaded — you may lack cost-report visibility." />;
+  if (error)
+    return (
+      <EmptyState
+        title="Unavailable"
+        description="Cost reports could not be loaded — you may lack cost-report visibility."
+      />
+    );
 
   const open = rows.filter((r) => !["accepted", "closed"].includes(r.state)).length;
   const submitted = rows.filter((r) => ["submitted", "accepted"].includes(r.state)).length;
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Cost Reports" breadcrumb="Revenue Cycle — CMS-1984-14 hospice cost reports" />}
+      header={
+        <PageHeader
+          title="Cost Reports"
+          breadcrumb="Revenue Cycle — CMS-1984-14 hospice cost reports"
+        />
+      }
       kpis={
         <KpiStrip>
           <KpiCard label="Total reports" value={String(rows.length)} />
@@ -70,7 +81,10 @@ export function CostReportList(): JSX.Element {
       }
       table={
         rows.length === 0 ? (
-          <EmptyState title="No cost reports" description="Create a cost report for a ProviderEntity + fiscal year to begin." />
+          <EmptyState
+            title="No cost reports"
+            description="Create a cost report for a ProviderEntity + fiscal year to begin."
+          />
         ) : (
           <table style={tableStyle}>
             <thead>
@@ -86,8 +100,12 @@ export function CostReportList(): JSX.Element {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.costReportId} style={rowStyle}>
-                  <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>{shortDate(r.fiscalYearEndDate)}</td>
-                  <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>{r.providerEntityId.slice(0, 8)}</td>
+                  <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>
+                    {shortDate(r.fiscalYearEndDate)}
+                  </td>
+                  <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>
+                    {r.providerEntityId.slice(0, 8)}
+                  </td>
                   <td style={cellStyle}>
                     <StatusPill tone={toneOf(STATE_TONE, r.state)} label={humanize(r.state)} />
                   </td>

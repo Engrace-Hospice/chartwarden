@@ -132,9 +132,27 @@ export function isBulkExportExpired(
 /** The subset of §4.9 M36 alert intents the bulk-export lifecycle constructs. The real M36 envelope +
  *  recipient resolver are wired in T08's boot (M28 owns no delivery code — §4.9). */
 export type BulkExportAlert =
-  | { kind: "fhir.bulk_export.accepted"; jobId: FhirBulkExportJobId; clientId: FhirClientId; resourceTypes: string[]; initiatedBy: string | null }
-  | { kind: "fhir.bulk_export.completed"; jobId: FhirBulkExportJobId; clientId: FhirClientId; totalResources: number; artifactCount: number; pollUrl: string }
-  | { kind: "fhir.bulk_export.failed"; jobId: FhirBulkExportJobId; clientId: FhirClientId; failureReason: string };
+  | {
+      kind: "fhir.bulk_export.accepted";
+      jobId: FhirBulkExportJobId;
+      clientId: FhirClientId;
+      resourceTypes: string[];
+      initiatedBy: string | null;
+    }
+  | {
+      kind: "fhir.bulk_export.completed";
+      jobId: FhirBulkExportJobId;
+      clientId: FhirClientId;
+      totalResources: number;
+      artifactCount: number;
+      pollUrl: string;
+    }
+  | {
+      kind: "fhir.bulk_export.failed";
+      jobId: FhirBulkExportJobId;
+      clientId: FhirClientId;
+      failureReason: string;
+    };
 
 export function bulkExportAcceptedEvent(args: {
   jobId: FhirBulkExportJobId;

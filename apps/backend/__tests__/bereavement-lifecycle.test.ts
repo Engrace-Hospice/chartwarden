@@ -182,9 +182,7 @@ describe("§2.2 bereavement_plan lifecycle", () => {
         at: ELIGIBLE_AT,
       });
       expect(t.to).toBe("closed_completed");
-      expect(outboxEvents(t.effects)).toEqual([
-        "m16.bereavement.plan_skipped_per_patient_opt_out",
-      ]);
+      expect(outboxEvents(t.effects)).toEqual(["m16.bereavement.plan_skipped_per_patient_opt_out"]);
       // The closure reason is what tells a surveyor the family never refused anything.
       expect(t.effects).toEqual(
         expect.arrayContaining([
@@ -277,7 +275,11 @@ describe("§2.2 bereavement_plan lifecycle", () => {
     expect(d9.to).toBe("closed_early");
     expect(d9.effects).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "insert_closure", cosignRequired: false, closeKind: "cascade" }),
+        expect.objectContaining({
+          kind: "insert_closure",
+          cosignRequired: false,
+          closeKind: "cascade",
+        }),
       ]),
     );
   });
@@ -353,9 +355,7 @@ describe("§2.2 bereavement_plan lifecycle", () => {
         metadata: { ...EXTERNAL_PENDING, cosignStatus: "cosigned" },
       });
       expect(t.to).toBe(from);
-      expect(outboxEvents(t.effects)).toEqual([
-        "m16.bereavement.external_source_cosign_received",
-      ]);
+      expect(outboxEvents(t.effects)).toEqual(["m16.bereavement.external_source_cosign_received"]);
     }
   });
 
@@ -551,7 +551,10 @@ describe("§2.4 bereavement_outreach lifecycle", () => {
   });
 
   it("D15 — only in_person_visit is encounter-backed, and every other kind must NOT be", () => {
-    expectCode(() => checkSourceEncounterBinding("in_person_visit", null), "SOURCE_ENCOUNTER_REQUIRED");
+    expectCode(
+      () => checkSourceEncounterBinding("in_person_visit", null),
+      "SOURCE_ENCOUNTER_REQUIRED",
+    );
     expectCode(
       () => checkSourceEncounterBinding("phone_call", ENCOUNTER),
       "SOURCE_ENCOUNTER_FORBIDDEN",
@@ -732,7 +735,16 @@ describe("D4 outreach schedule generation", () => {
         generateOutreachSchedule(
           DEATH_DATE,
           { riskTier: "low" },
-          { tenantItems: [{ mark: "one_month", offsetDays: 30, kind: "phone_call", anniversaryMark: "one_month" }] },
+          {
+            tenantItems: [
+              {
+                mark: "one_month",
+                offsetDays: 30,
+                kind: "phone_call",
+                anniversaryMark: "one_month",
+              },
+            ],
+          },
         ),
       "TENANT_CADENCE_LOOSENS_FLOOR",
     );
@@ -1024,8 +1036,19 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
 
   it("windows the census scan back from eligibleAt and matches on admissionId", async () => {
     const { periods } = registerFakes([
-      { patientId: "other", admissionId: "other-adm", deathAt: DEATH_AT, source: "internal_clinician_recorded" },
-      { patientId: PATIENT, admissionId: ADMISSION, deathAt: DEATH_AT, source: "hl7_external", cosignStatus: "pending" },
+      {
+        patientId: "other",
+        admissionId: "other-adm",
+        deathAt: DEATH_AT,
+        source: "internal_clinician_recorded",
+      },
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        deathAt: DEATH_AT,
+        source: "hl7_external",
+        cosignStatus: "pending",
+      },
     ]);
 
     const fact = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC");
@@ -1040,7 +1063,12 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
 
   it("returns null when the census has no row for this admission (the caller fails closed)", async () => {
     registerFakes([
-      { patientId: "other", admissionId: "other-adm", deathAt: DEATH_AT, source: "internal_clinician_recorded" },
+      {
+        patientId: "other",
+        admissionId: "other-adm",
+        deathAt: DEATH_AT,
+        source: "internal_clinician_recorded",
+      },
     ]);
     expect(await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC")).toBeNull();
     expectCode(
@@ -1067,7 +1095,12 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
     // would misdate this death one day LATE for any US-operating org — a real, regulatory-significant
     // error since D4 anchors the 13-month bereavement clock on this exact date.
     registerFakes([
-      { patientId: PATIENT, admissionId: ADMISSION, deathAt: DEATH_AT, source: "internal_clinician_recorded" },
+      {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        deathAt: DEATH_AT,
+        source: "internal_clinician_recorded",
+      },
     ]);
     const inUtc = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC");
     const inLosAngeles = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "America/Los_Angeles");

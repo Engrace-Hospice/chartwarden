@@ -10,11 +10,11 @@ import type {
   CahpsVendorAdapter,
   CahpsVendorAdapterId,
 } from "@wardenx/quality";
-import { ShpCahpsAdapter } from "./shp/adapter";
-import { ManualCahpsAdapter } from "./manual/adapter";
-import { PressGaneyCahpsAdapter } from "./press_ganey/adapter";
 import { DeytaCahpsAdapter } from "./deyta/adapter";
 import { HealthcarefirstCahpsAdapter } from "./healthcarefirst/adapter";
+import { ManualCahpsAdapter } from "./manual/adapter";
+import { PressGaneyCahpsAdapter } from "./press_ganey/adapter";
+import { ShpCahpsAdapter } from "./shp/adapter";
 
 // Concrete adapter classes (also exported for direct construction / testing).
 export { ShpCahpsAdapter } from "./shp/adapter";
@@ -52,4 +52,6 @@ export const CAHPS_ADAPTER_FACTORIES: CahpsAdapterResolutionMap = {
 };
 
 /** All adapter ids the platform ships a class for (the keys of {@link CAHPS_ADAPTER_FACTORIES}). */
-export const SUPPORTED_CAHPS_VENDOR_IDS = Object.keys(CAHPS_ADAPTER_FACTORIES) as CahpsVendorAdapterId[];
+export const SUPPORTED_CAHPS_VENDOR_IDS = Object.keys(
+  CAHPS_ADAPTER_FACTORIES,
+) as CahpsVendorAdapterId[];

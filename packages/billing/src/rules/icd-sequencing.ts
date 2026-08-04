@@ -21,7 +21,12 @@ export const icd10Sequencing: Rule = {
   overrideRoleRequired: "medical_director",
   check: (ctx) => {
     if (!ctx.seams.terminologyBound) {
-      return skip(KEY, "error", "seam_not_bound", "Terminology (M38) not bound — ICD validation deferred.");
+      return skip(
+        KEY,
+        "error",
+        "seam_not_bound",
+        "Terminology (M38) not bound — ICD validation deferred.",
+      );
     }
     const seq = [...ctx.claim.icd10Sequence].sort((a, b) => a.position - b.position);
     if (seq.length === 0) {
@@ -36,7 +41,11 @@ export const icd10Sequencing: Rule = {
 
     // Position 1 must be the terminal diagnosis.
     const principal = seq[0];
-    if (principal === undefined || principal.position !== 1 || principal.relationship !== "terminal") {
+    if (
+      principal === undefined ||
+      principal.position !== 1 ||
+      principal.relationship !== "terminal"
+    ) {
       defects.push("principal (position 1) is not the terminal diagnosis");
     }
     // No secondary code may itself be terminal (only one terminal, sequenced first).
@@ -62,7 +71,8 @@ export const icd10Sequencing: Rule = {
       "error",
       `ICD-10 sequencing has ${defects.length} defect(s).`,
       {
-        summary: "Re-sequence diagnoses (terminal first) and replace any truncated/non-billable code.",
+        summary:
+          "Re-sequence diagnoses (terminal first) and replace any truncated/non-billable code.",
         blameTarget: "claim",
         blameTargetId: ctx.claim.claimId,
         fixAction: "edit_in_m6",

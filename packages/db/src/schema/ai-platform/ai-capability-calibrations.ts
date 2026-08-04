@@ -22,7 +22,16 @@
 // `baseline_evaluation_run_id` is likewise logical — the run is platform-shared but written by an
 // asynchronous worker.
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { aiCapability } from "./ai-capabilities";
 
 export const aiCapabilityCalibration = pgTable(

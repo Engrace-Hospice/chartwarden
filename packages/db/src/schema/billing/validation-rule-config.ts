@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `validation_rule_config` (M23 Billing-Medicare §3.3, D5; non-partitioned; retention
 // class `operational`). The PER-TENANT overlay on the platform's billing-rule registry. The 18 default
 // rules are CODE-side (the §11.A registry in `@wardenx/billing`); only the tenant overlay (enable/
@@ -21,7 +22,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import { m23OverrideRoleRequired, m23ValidationSeverity } from "./types";
 import type { ValidationRuleParameters, ValidationRulePredicateDsl } from "./types";
@@ -45,7 +45,10 @@ export const validationRuleConfig = pgTable(
       .default("billing_manager"),
 
     // Tenant parameter overlay (typed by rule kind; validated by the rule registry):
-    parameters: jsonb("parameters").$type<ValidationRuleParameters>().notNull().default(sql`'{}'::jsonb`),
+    parameters: jsonb("parameters")
+      .$type<ValidationRuleParameters>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
 
     // Platform-locked indicator — read from the code-side registry at write-time and snapshot here (D5):
     regulatoryRequiredSnapshot: boolean("regulatory_required_snapshot").notNull().default(false),

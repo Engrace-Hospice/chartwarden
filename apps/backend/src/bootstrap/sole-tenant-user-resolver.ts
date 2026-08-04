@@ -36,7 +36,8 @@ export function buildSoleTenantUserResolver(
       deps.platformDb,
       {
         jobId: deps.jobId,
-        reason: "M36 D9 tenant-offboarding: resolve sole-tenant users (cross-tenant membership read)",
+        reason:
+          "M36 D9 tenant-offboarding: resolve sole-tenant users (cross-tenant membership read)",
         crossTenant: true,
       },
       deps.auditBypass,

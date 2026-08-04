@@ -20,8 +20,8 @@ import {
   LineIdParams,
   LockMethodologyRequest,
   OpenCapPeriodRequest,
-  PsrImportRequest,
   PeriodIdParams,
+  PsrImportRequest,
   PublishConstantRequest,
   ResolveVarianceRequest,
   parse,
@@ -48,7 +48,11 @@ describe("M26 open-cap-period", () => {
 
   // The headline case from the audit: a negative grace window on a Medicare cap period.
   it("refuses a negative graceWindowDays", () =>
-    invalid(OpenCapPeriodRequest, { capYear: "FY2026", graceWindowDays: -99999 }, "graceWindowDays"));
+    invalid(
+      OpenCapPeriodRequest,
+      { capYear: "FY2026", graceWindowDays: -99999 },
+      "graceWindowDays",
+    ));
 
   it("refuses a graceWindowDays past the 90-day ceiling", () =>
     invalid(OpenCapPeriodRequest, { capYear: "FY2026", graceWindowDays: 900 }, "graceWindowDays"));
@@ -121,20 +125,29 @@ describe("M26 platform cap constants (cross-tenant reference data)", () => {
     ));
 
   it("refuses a missing cents amount on amend", () =>
-    invalid(AmendConstantRequest, { sourceUrl: "https://example.test" }, "aggregateCapAmountCents"));
+    invalid(
+      AmendConstantRequest,
+      { sourceUrl: "https://example.test" },
+      "aggregateCapAmountCents",
+    ));
 });
 
 describe("M26 path params", () => {
   // Before the params preHandler these reached Drizzle and came back as Postgres 22P02 — a 500 for a
   // malformed request. The guard runs FIRST in the chain, ahead of the ABAC owner-fact load.
-  it("refuses a non-uuid periodId", () => invalid(PeriodIdParams, { periodId: "not-a-uuid" }, "periodId"));
+  it("refuses a non-uuid periodId", () =>
+    invalid(PeriodIdParams, { periodId: "not-a-uuid" }, "periodId"));
 
   it("refuses a non-uuid lineId while accepting a valid importId", () => {
     // Guards the `format: "uuid"` trap: TypeBox resolves `format` through a GLOBAL FormatRegistry that
     // only M21 populates, and an unregistered format FAILS — so a valid uuid was rejected here with
     // "Unknown format 'uuid'" whenever M21 was not loaded. These params use an explicit pattern, so a
     // valid importId passes and only the malformed lineId is named.
-    invalid(LineIdParams, { importId: "11111111-1111-1111-1111-111111111111", lineId: "worse" }, "lineId");
+    invalid(
+      LineIdParams,
+      { importId: "11111111-1111-1111-1111-111111111111", lineId: "worse" },
+      "lineId",
+    );
     expect(
       parse(LineIdParams, {
         importId: "11111111-1111-1111-1111-111111111111",

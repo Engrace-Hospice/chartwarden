@@ -32,7 +32,11 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const MED_ORDER = "66666666-6666-6666-6666-666666666666";
 
-type SeedIds = { administrationRecord: string; scheduledDose: string; comfortKitDeployment: string };
+type SeedIds = {
+  administrationRecord: string;
+  scheduledDose: string;
+  comfortKitDeployment: string;
+};
 
 describe.skipIf(!DB_URL)("M13 Drizzle read service — LIVE Postgres (M13L-T01)", () => {
   let admin: Client;
@@ -174,12 +178,7 @@ describe.skipIf(!DB_URL)("M13 Drizzle read service — LIVE Postgres (M13L-T01)"
 
   it("seam store prnReassessmentObligationsForOrg: window + null-scale filtering, RLS-scoped (prn_effectiveness input)", async () => {
     // `administration_record_id` carries NO FK (§3.3), so a synthetic id is fine; the unique key is per-row.
-    async function seedPrn(
-      org: string,
-      scale: string | null,
-      dueAtIso: string,
-      recordId: string,
-    ) {
+    async function seedPrn(org: string, scale: string | null, dueAtIso: string, recordId: string) {
       const pe = (
         await admin.query("SELECT id FROM provider_entity WHERE organization_id=$1 LIMIT 1", [org])
       ).rows[0].id as string;

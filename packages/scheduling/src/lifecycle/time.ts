@@ -56,7 +56,13 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
   });
   const parts = dtf.formatToParts(new Date(utcMs));
   const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
-  const localMinute = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  const localMinute = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+  );
   return localMinute - Math.floor(utcMs / 60_000) * 60_000;
 }
 

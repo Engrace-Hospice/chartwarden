@@ -12,7 +12,8 @@ import type { RouteObject } from "react-router-dom";
 import { createPortalRegistry, portalScreens } from "./screens/registry";
 
 function newCorrelationId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    return crypto.randomUUID();
   return "cid-portal";
 }
 
@@ -30,10 +31,21 @@ function PortalFrame(): JSX.Element {
           background: t.surfaceLowest,
         }}
       >
-        <Link to="/patient-picker" style={{ textDecoration: "none", color: t.onSurface, fontFamily: t.fontDisplay, fontWeight: 600 }}>
+        <Link
+          to="/patient-picker"
+          style={{
+            textDecoration: "none",
+            color: t.onSurface,
+            fontFamily: t.fontDisplay,
+            fontWeight: 600,
+          }}
+        >
           WardenX Family Portal
         </Link>
-        <Link to="/account" style={{ textDecoration: "none", color: t.primary, fontWeight: 600, fontSize: "0.85rem" }}>
+        <Link
+          to="/account"
+          style={{ textDecoration: "none", color: t.primary, fontWeight: 600, fontSize: "0.85rem" }}
+        >
           Account
         </Link>
       </header>
@@ -47,7 +59,10 @@ export interface PortalAppProps {
   correlationId?: string;
 }
 
-export function PortalApp({ client, correlationId = newCorrelationId() }: PortalAppProps): JSX.Element {
+export function PortalApp({
+  client,
+  correlationId = newCorrelationId(),
+}: PortalAppProps): JSX.Element {
   const router = useMemo(() => {
     const registry = createPortalRegistry();
     registry.register(portalScreens);
@@ -60,7 +75,10 @@ export function PortalApp({ client, correlationId = newCorrelationId() }: Portal
         // Pathless layout route: wraps every chromed screen in the portal frame without claiming "/"
         // itself (the sign-in screen owns "/"). Children carry their own root-relative paths.
         element: <PortalFrame />,
-        children: chromed.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
+        children: chromed.map((s) => ({
+          path: s.path.replace(/^\//, ""),
+          element: createElement(s.screen),
+        })),
       },
     ];
     return createBrowserRouter(routes);

@@ -1,3 +1,8 @@
+import {
+  type ClaimAdjustmentKind,
+  type TobDerivationInput,
+  deriveTypeOfBill,
+} from "@wardenx/billing";
 // @wardenx/billing — M23 Type-of-Bill derivation (spec §1.1, D4 / D14) pure-domain tests.
 //
 // Assembly is server-authoritative: the server derives the UB-04 hospice TOB from three cadence facts —
@@ -9,30 +14,45 @@
 //   813 = continuing interim (prior, not discharged);          814 = last interim (prior, discharged).
 // Pure + total: every combination resolves to exactly one TOB. No DB/Fastify/BullMQ.
 import { describe, expect, it } from "vitest";
-import { deriveTypeOfBill, type ClaimAdjustmentKind, type TobDerivationInput } from "@wardenx/billing";
 
 describe("deriveTypeOfBill — normal interim cadence (adjustment: none)", () => {
   it("811 — admission-through-discharge: no prior claim AND discharged", () => {
     expect(
-      deriveTypeOfBill({ hasPriorClaimForAdmission: false, patientDischarged: true, adjustment: "none" }),
+      deriveTypeOfBill({
+        hasPriorClaimForAdmission: false,
+        patientDischarged: true,
+        adjustment: "none",
+      }),
     ).toBe("811");
   });
 
   it("812 — first interim: no prior claim AND not yet discharged", () => {
     expect(
-      deriveTypeOfBill({ hasPriorClaimForAdmission: false, patientDischarged: false, adjustment: "none" }),
+      deriveTypeOfBill({
+        hasPriorClaimForAdmission: false,
+        patientDischarged: false,
+        adjustment: "none",
+      }),
     ).toBe("812");
   });
 
   it("813 — continuing interim: a prior claim exists AND not yet discharged", () => {
     expect(
-      deriveTypeOfBill({ hasPriorClaimForAdmission: true, patientDischarged: false, adjustment: "none" }),
+      deriveTypeOfBill({
+        hasPriorClaimForAdmission: true,
+        patientDischarged: false,
+        adjustment: "none",
+      }),
     ).toBe("813");
   });
 
   it("814 — last interim before discharge: a prior claim exists AND discharged", () => {
     expect(
-      deriveTypeOfBill({ hasPriorClaimForAdmission: true, patientDischarged: true, adjustment: "none" }),
+      deriveTypeOfBill({
+        hasPriorClaimForAdmission: true,
+        patientDischarged: true,
+        adjustment: "none",
+      }),
     ).toBe("814");
   });
 });
@@ -76,13 +96,21 @@ describe("deriveTypeOfBill — replacement / void override the cadence (D14)", (
 
   it("a replacement on a discharged admission with a prior claim is 817 (NOT 814)", () => {
     expect(
-      deriveTypeOfBill({ hasPriorClaimForAdmission: true, patientDischarged: true, adjustment: "replacement" }),
+      deriveTypeOfBill({
+        hasPriorClaimForAdmission: true,
+        patientDischarged: true,
+        adjustment: "replacement",
+      }),
     ).toBe("817");
   });
 
   it("a void on a fresh admission is 818 (NOT 812)", () => {
     expect(
-      deriveTypeOfBill({ hasPriorClaimForAdmission: false, patientDischarged: false, adjustment: "void" }),
+      deriveTypeOfBill({
+        hasPriorClaimForAdmission: false,
+        patientDischarged: false,
+        adjustment: "void",
+      }),
     ).toBe("818");
   });
 });

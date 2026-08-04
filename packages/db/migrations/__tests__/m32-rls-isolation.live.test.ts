@@ -390,7 +390,12 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
     // Defence in depth is the point: the missing grant is still the first line, RLS is now the second,
     // and a leaf minted in future is secured at CREATE by the `wardenx_secure_new_partition` event
     // trigger rather than by each of the 43 `create_*_partition` helpers remembering to.
-    const leaves = await db.query<{ table_name: string; rls: boolean; forced: boolean; sel: boolean }>(
+    const leaves = await db.query<{
+      table_name: string;
+      rls: boolean;
+      forced: boolean;
+      sel: boolean;
+    }>(
       `SELECT c.relname AS table_name,
               c.relrowsecurity AS rls,
               c.relforcerowsecurity AS forced,
@@ -402,9 +407,10 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
     );
     expect(leaves.rowCount).toBeGreaterThan(0);
     for (const leaf of leaves.rows) {
-      expect(leaf.rls, `${leaf.table_name} has NO row-level security of its own (0118 regression)`).toBe(
-        true,
-      );
+      expect(
+        leaf.rls,
+        `${leaf.table_name} has NO row-level security of its own (0118 regression)`,
+      ).toBe(true);
       expect(
         leaf.forced,
         `${leaf.table_name} has RLS but not FORCE — the table owner still bypasses it`,
@@ -525,7 +531,9 @@ describe.skipIf(!DB_URL)("M32 AI Platform — cross-tenant isolation — LIVE Po
       db.query("UPDATE ai_token_ledger SET input_tokens = 0 WHERE id = $1", [a.ledger]),
     ).rejects.toThrow(/M32_TOKEN_LEDGER_APPEND_ONLY/);
     await expect(
-      db.query("DELETE FROM ai_capability_lifecycle_event WHERE capability_id = $1", [capabilityId]),
+      db.query("DELETE FROM ai_capability_lifecycle_event WHERE capability_id = $1", [
+        capabilityId,
+      ]),
     ).rejects.toThrow(/M32_LIFECYCLE_EVENT_APPEND_ONLY/);
   });
 

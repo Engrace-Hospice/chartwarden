@@ -13,11 +13,21 @@
 // the composition root constructs it unconditionally whenever a DB client exists, so by the time a cron
 // tick runs it is guaranteed bound. Only `activeOrgs` gets the lazy fail-closed thunk (`unbound()`,
 // `M7_WORKER_PORT_UNBOUND: <port> — <hint>`, the M25 convention).
-import { type DbClient } from "@wardenx/db";
+import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { applyReviewGateMarkers, carePlanGateSnapshotsForOrg, markInitialWarningEmitted } from "./cron-store";
-import { M7_JOB_SCHEDULES, M7_QUEUE_PARAMS, M7_QUEUES, planInitialGateScan, planReviewGateScan } from "./index";
+import {
+  applyReviewGateMarkers,
+  carePlanGateSnapshotsForOrg,
+  markInitialWarningEmitted,
+} from "./cron-store";
+import {
+  M7_JOB_SCHEDULES,
+  M7_QUEUES,
+  M7_QUEUE_PARAMS,
+  planInitialGateScan,
+  planReviewGateScan,
+} from "./index";
 
 /**
  * The system actor id the cron stamps on its per-org `withOrgContext` tx (audit attribution). Distinct
@@ -103,23 +113,27 @@ export async function runCarePlanGatesCron(deps: M7WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))().toISOString();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: M7_WORKER_SYSTEM_USER_ID }, async (tx) => {
-      const t = tx as unknown as DbClient;
-      const snapshots = await carePlanGateSnapshotsForOrg(t, organizationId);
-      const initialPlan = planInitialGateScan(snapshots, now);
-      const reviewPlan = planReviewGateScan(snapshots, now);
-      for (const event of [...initialPlan.events, ...reviewPlan.events]) {
-        await deps.outbox.publish(t, {
-          eventName: event.eventName,
-          payload: event.payload,
-          organizationId,
-          aggregateKind: "care_plan",
-          aggregateId: String(event.payload.planId),
-        });
-      }
-      await markInitialWarningEmitted(t, initialPlan.markedPlanIds);
-      await applyReviewGateMarkers(t, reviewPlan.events);
-    });
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M7_WORKER_SYSTEM_USER_ID },
+      async (tx) => {
+        const t = tx as unknown as DbClient;
+        const snapshots = await carePlanGateSnapshotsForOrg(t, organizationId);
+        const initialPlan = planInitialGateScan(snapshots, now);
+        const reviewPlan = planReviewGateScan(snapshots, now);
+        for (const event of [...initialPlan.events, ...reviewPlan.events]) {
+          await deps.outbox.publish(t, {
+            eventName: event.eventName,
+            payload: event.payload,
+            organizationId,
+            aggregateKind: "care_plan",
+            aggregateId: String(event.payload.planId),
+          });
+        }
+        await markInitialWarningEmitted(t, initialPlan.markedPlanIds);
+        await applyReviewGateMarkers(t, reviewPlan.events);
+      },
+    );
   }
 }
 

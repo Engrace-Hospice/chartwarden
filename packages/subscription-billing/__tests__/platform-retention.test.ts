@@ -11,12 +11,30 @@ const NOW = new Date("2026-08-02T00:00:00.000Z");
 
 function invoice(id: string, lineCount: number): RetainableInvoice {
   return {
-    id, stripeInvoiceId: `in_${id}`, invoiceNumber: `NUM-${id}`, status: "paid",
-    subtotalCents: 50000, taxCents: 4000, totalCents: 54000, amountPaidCents: 54000, currencyCode: "usd",
-    periodStart: NOW, periodEnd: NOW, issuedAt: NOW, paidAt: NOW,
+    id,
+    stripeInvoiceId: `in_${id}`,
+    invoiceNumber: `NUM-${id}`,
+    status: "paid",
+    subtotalCents: 50000,
+    taxCents: 4000,
+    totalCents: 54000,
+    amountPaidCents: 54000,
+    currencyCode: "usd",
+    periodStart: NOW,
+    periodEnd: NOW,
+    issuedAt: NOW,
+    paidAt: NOW,
     lines: Array.from({ length: lineCount }, (_, i) => ({
-      id: `${id}-l${i}`, stripeLineId: `il_${id}_${i}`, kind: "subscription" as const, description: "base",
-      quantity: 1, unitAmountCents: 50000, totalCents: 50000, periodStart: NOW, periodEnd: NOW, meterEventType: null,
+      id: `${id}-l${i}`,
+      stripeLineId: `il_${id}_${i}`,
+      kind: "subscription" as const,
+      description: "base",
+      quantity: 1,
+      unitAmountCents: 50000,
+      totalCents: 50000,
+      periodStart: NOW,
+      periodEnd: NOW,
+      meterEventType: null,
     })),
   };
 }
@@ -24,19 +42,27 @@ function invoice(id: string, lineCount: number): RetainableInvoice {
 class FakeRetentionStore implements PlatformRetentionStore {
   invoices: RetainableInvoice[];
   retained: string[] = [];
-  retainedLines: number = 0;
+  retainedLines = 0;
   deleted: string[] = [];
   order: string[] = [];
   seq = 0;
-  constructor(invoices: RetainableInvoice[]) { this.invoices = invoices; }
-  async tenantInvoicesForOrg() { return this.invoices; }
-  async insertRetainedInvoice(input: Parameters<PlatformRetentionStore["insertRetainedInvoice"]>[0]) {
+  constructor(invoices: RetainableInvoice[]) {
+    this.invoices = invoices;
+  }
+  async tenantInvoicesForOrg() {
+    return this.invoices;
+  }
+  async insertRetainedInvoice(
+    input: Parameters<PlatformRetentionStore["insertRetainedInvoice"]>[0],
+  ) {
     this.order.push(`copy-invoice:${input.originalInvoiceId}`);
     const retainedInvoiceId = `ret-${++this.seq}`;
     this.retained.push(retainedInvoiceId);
     return { retainedInvoiceId };
   }
-  async insertRetainedInvoiceLines(input: Parameters<PlatformRetentionStore["insertRetainedInvoiceLines"]>[0]) {
+  async insertRetainedInvoiceLines(
+    input: Parameters<PlatformRetentionStore["insertRetainedInvoiceLines"]>[0],
+  ) {
     this.order.push(`copy-lines:${input.originalInvoiceId}`);
     this.retainedLines += input.lines.length;
   }
@@ -57,22 +83,35 @@ describe("PlatformRetentionService.transferInvoicesToPlatformRetention (M35-F06)
   it("copies each invoice + its lines, THEN deletes the source (copy-then-delete order)", async () => {
     const store = new FakeRetentionStore([invoice("A", 2), invoice("B", 1)]);
     const svc = new PlatformRetentionService(store);
-    const res = await svc.transferInvoicesToPlatformRetention({ organizationId: "org-1", now: NOW });
+    const res = await svc.transferInvoicesToPlatformRetention({
+      organizationId: "org-1",
+      now: NOW,
+    });
 
     expect(res.transferredInvoiceIds).toEqual(["A", "B"]);
     expect(res.retainedInvoiceIds).toHaveLength(2);
     expect(res.transferredLineCount).toBe(3);
-    expect(res.platformRetentionTables).toEqual(["platform_retained_invoice", "platform_retained_invoice_line"]);
+    expect(res.platformRetentionTables).toEqual([
+      "platform_retained_invoice",
+      "platform_retained_invoice_line",
+    ]);
     // per-invoice ordering: copy header → copy lines → delete source
     expect(store.order).toEqual([
-      "copy-invoice:A", "copy-lines:A", "delete:A",
-      "copy-invoice:B", "copy-lines:B", "delete:B",
+      "copy-invoice:A",
+      "copy-lines:A",
+      "delete:A",
+      "copy-invoice:B",
+      "copy-lines:B",
+      "delete:B",
     ]);
   });
 
   it("returns a null retainUntil when the tenant has no invoices", async () => {
     const svc = new PlatformRetentionService(new FakeRetentionStore([]));
-    const res = await svc.transferInvoicesToPlatformRetention({ organizationId: "org-empty", now: NOW });
+    const res = await svc.transferInvoicesToPlatformRetention({
+      organizationId: "org-empty",
+      now: NOW,
+    });
     expect(res.transferredInvoiceIds).toEqual([]);
     expect(res.retainUntil).toBeNull();
   });

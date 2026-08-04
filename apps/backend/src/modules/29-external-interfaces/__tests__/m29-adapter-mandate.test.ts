@@ -12,7 +12,7 @@
 //               deterministic by design; probabilistic matching is a Phase-2 M32 seam).
 //   3. §8.5.4 — no deep import of another module's Drizzle schema: cross-module reads flow through the
 //               published seams (PatientReader, etc.) and the M4 outbox, never a direct cross-schema SELECT.
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 

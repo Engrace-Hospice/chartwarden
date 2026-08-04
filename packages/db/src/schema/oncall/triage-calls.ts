@@ -143,11 +143,7 @@ export const triageCall = pgTable(
   (t) => ({
     byShiftIdx: index("triage_call_shift_idx").on(t.onCallShiftId, t.state),
     // §3.4 — chart context: "every after-hours contact for this person, newest first".
-    byPatientIdx: index("triage_call_patient_idx").on(
-      t.organizationId,
-      t.patientId,
-      t.openedAt,
-    ),
+    byPatientIdx: index("triage_call_patient_idx").on(t.organizationId, t.patientId, t.openedAt),
     // §3.4 — the supervisor "all open cases right now" board. `documented_pending_encounter` is included
     // (M19-F06 / ADR-0022) so a call stranded by the §2.7 D-B degraded path stays visible.
     openByProviderEntityIdx: index("triage_call_open_pe_idx")

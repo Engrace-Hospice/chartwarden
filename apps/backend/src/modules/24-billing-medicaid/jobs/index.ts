@@ -21,7 +21,9 @@ export interface ActiveOrgListPort {
 
 const FAIL_CLOSED_ORGS: ActiveOrgListPort = {
   async listActiveOrgs() {
-    throw new Error("M24 cron: active-org enumerator not bound (fail-closed until the M2 enumerator binds)");
+    throw new Error(
+      "M24 cron: active-org enumerator not bound (fail-closed until the M2 enumerator binds)",
+    );
   },
 };
 
@@ -58,7 +60,15 @@ export function registerM24CronWorkers(deps: M24WorkerDeps): Worker[] {
 export async function scheduleM24Jobs(connection: ConnectionOptions): Promise<Queue[]> {
   const eligibility = new Queue(M24_CRON_QUEUES.eligibilityStaleWatchdog, { connection });
   const rbSweep = new Queue(M24_CRON_QUEUES.rbDayDailySweep, { connection });
-  await eligibility.add("tick", {}, { repeat: { pattern: M24_JOB_SCHEDULES.eligibilityStaleWatchdog, tz: "UTC" } });
-  await rbSweep.add("tick", {}, { repeat: { pattern: M24_JOB_SCHEDULES.rbDayDailySweep, tz: "UTC" } });
+  await eligibility.add(
+    "tick",
+    {},
+    { repeat: { pattern: M24_JOB_SCHEDULES.eligibilityStaleWatchdog, tz: "UTC" } },
+  );
+  await rbSweep.add(
+    "tick",
+    {},
+    { repeat: { pattern: M24_JOB_SCHEDULES.rbDayDailySweep, tz: "UTC" } },
+  );
   return [eligibility, rbSweep];
 }

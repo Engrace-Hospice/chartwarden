@@ -24,8 +24,8 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
-  buildEvvAbacPredicates,
   EvvRouteService,
+  buildEvvAbacPredicates,
   registerEvvRoutes,
 } from "../src/modules/18-evv/index";
 
@@ -65,12 +65,21 @@ const CHECK_IN_RECENT = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 
 const VISIT_DATE_RECENT = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // 1 day ago
 
 const CLINICIAN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_field" };
-const SUPERVISOR = { "x-test-user": "sup_1", "x-test-org": ORG, "x-test-roles": "clinical_supervisor" };
+const SUPERVISOR = {
+  "x-test-user": "sup_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_supervisor",
+};
 const SUPERVISOR_STEPUP = { ...SUPERVISOR, "x-step-up": "fresh" };
 const PORTAL = { "x-test-user": "portal_1", "x-test-org": ORG, "x-test-roles": "family_caregiver" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 
-const CLINICIAN_PERMS = ["evv.check_in", "evv.check_out", "evv.device.register_self", "evv.missing_resolution.attest_self"];
+const CLINICIAN_PERMS = [
+  "evv.check_in",
+  "evv.check_out",
+  "evv.device.register_self",
+  "evv.missing_resolution.attest_self",
+];
 const SUPERVISOR_PERMS = [
   "evv.read",
   "evv.correct_record",
@@ -107,37 +116,88 @@ function withUuidIds(backend: EvvRouteService): EvvRouteService {
   let deviceN = 0;
   const mutable = backend as unknown as { nextEventId: () => string; nextDeviceId: () => string };
   mutable.nextEventId = () => `eeeeeeee-eeee-4eee-8eee-${(++eventN).toString().padStart(12, "0")}`;
-  mutable.nextDeviceId = () => `dddddddd-dddd-4ddd-8ddd-${(++deviceN).toString().padStart(12, "0")}`;
+  mutable.nextDeviceId = () =>
+    `dddddddd-dddd-4ddd-8ddd-${(++deviceN).toString().padStart(12, "0")}`;
   return backend;
 }
 
 function makeServer() {
-  const backend = withUuidIds(new EvvRouteService({
-    visits: [
-      {
-        organizationId: ORG,
-        visitId: VISIT_1,
-        patientId: PATIENT,
-        assignedMembershipId: "rn_1",
-        scheduledStartedAt: VISIT_START,
-        scheduledEndedAt: VISIT_END,
-      },
-    ],
-    submissions: [
-      { organizationId: ORG, id: SUBMISSION_PENDING, visitId: VISIT_1, stateCode: "PA", aggregatorVendor: "sandata", status: "pending" },
-      { organizationId: ORG, id: SUBMISSION_REJECTED, visitId: VISIT_1, stateCode: "PA", aggregatorVendor: "sandata", status: "rejected" },
-    ],
-    resolutions: [
-      { organizationId: ORG, id: RESOLUTION_ATTEST, visitId: VISIT_1, kind: "missing_checkin", status: "open", checkInAt: CHECK_IN_RECENT },
-      { organizationId: ORG, id: RESOLUTION_OVERRIDE, visitId: VISIT_1, kind: "missing_checkout", status: "open", visitDate: VISIT_DATE_RECENT },
-    ],
-  }));
+  const backend = withUuidIds(
+    new EvvRouteService({
+      visits: [
+        {
+          organizationId: ORG,
+          visitId: VISIT_1,
+          patientId: PATIENT,
+          assignedMembershipId: "rn_1",
+          scheduledStartedAt: VISIT_START,
+          scheduledEndedAt: VISIT_END,
+        },
+      ],
+      submissions: [
+        {
+          organizationId: ORG,
+          id: SUBMISSION_PENDING,
+          visitId: VISIT_1,
+          stateCode: "PA",
+          aggregatorVendor: "sandata",
+          status: "pending",
+        },
+        {
+          organizationId: ORG,
+          id: SUBMISSION_REJECTED,
+          visitId: VISIT_1,
+          stateCode: "PA",
+          aggregatorVendor: "sandata",
+          status: "rejected",
+        },
+      ],
+      resolutions: [
+        {
+          organizationId: ORG,
+          id: RESOLUTION_ATTEST,
+          visitId: VISIT_1,
+          kind: "missing_checkin",
+          status: "open",
+          checkInAt: CHECK_IN_RECENT,
+        },
+        {
+          organizationId: ORG,
+          id: RESOLUTION_OVERRIDE,
+          visitId: VISIT_1,
+          kind: "missing_checkout",
+          status: "open",
+          visitDate: VISIT_DATE_RECENT,
+        },
+      ],
+    }),
+  );
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "rn_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: CLINICIAN_PERMS }] },
-    { orgId: ORG, userId: "sup_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: SUPERVISOR_PERMS }] },
-    { orgId: ORG, userId: "portal_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: PORTAL_PERMS }] },
-    { orgId: ORG, userId: "viewer_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "rn_1",
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: CLINICIAN_PERMS },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "sup_1",
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: SUPERVISOR_PERMS },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "portal_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: PORTAL_PERMS }],
+    },
+    {
+      orgId: ORG,
+      userId: "viewer_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -216,7 +276,12 @@ describe("M18 EVV inject smoke — auth/RBAC/validation envelope", () => {
 describe("§4.1 routes 1-7 — capture + event reads", () => {
   it("1: POST /evv/check-in — 201 (§4.7 predicates pass: assigned clinician, within window)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/evv/check-in", headers: CLINICIAN, payload: checkInBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().kind).toBe("check_in");
     await app.close();
@@ -224,7 +289,12 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
 
   it("2: POST /evv/check-out — 201", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/evv/check-out", headers: CLINICIAN, payload: checkOutBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-out",
+      headers: CLINICIAN,
+      payload: checkOutBody(),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().kind).toBe("check_out");
     await app.close();
@@ -245,9 +315,18 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
 
   it("4: GET /evv/events/:eventId — 200", async () => {
     const { app } = makeServer();
-    const ci = await app.inject({ method: "POST", url: "/api/v1/evv/check-in", headers: CLINICIAN, payload: checkInBody() });
+    const ci = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
     const eventId = ci.json().eventId as string;
-    const res = await app.inject({ method: "GET", url: `/api/v1/evv/events/${eventId}`, headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/events/${eventId}`,
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().id).toBe(eventId);
     await app.close();
@@ -255,7 +334,12 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
 
   it("5: GET /evv/events — 200 list", async () => {
     const { app } = makeServer();
-    await app.inject({ method: "POST", url: "/api/v1/evv/check-in", headers: CLINICIAN, payload: checkInBody() });
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
     const res = await app.inject({ method: "GET", url: "/api/v1/evv/events", headers: SUPERVISOR });
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.json())).toBe(true);
@@ -277,7 +361,11 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
 
   it("7: GET /evv/visits/:visitId/bracket — 200", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/evv/visits/${VISIT_1}/bracket`, headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/visits/${VISIT_1}/bracket`,
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().visitId).toBe(VISIT_1);
     await app.close();
@@ -287,7 +375,11 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
 describe("§4.1 routes 8-13 — device lifecycle", () => {
   it("8: GET /evv/devices — 200", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/evv/devices", headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/evv/devices",
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.json())).toBe(true);
     await app.close();
@@ -315,7 +407,11 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       payload: { platform: "ios", modelDescription: "iPhone 14", attestationId: ATTESTATION_UUID },
     });
     const id = reg.json().id as string;
-    const res = await app.inject({ method: "POST", url: `/api/v1/evv/devices/${id}/approve`, headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/devices/${id}/approve`,
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("approved");
     await app.close();
@@ -327,7 +423,11 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
       headers: CLINICIAN,
-      payload: { platform: "android", modelDescription: "Pixel 8", attestationId: ATTESTATION_UUID },
+      payload: {
+        platform: "android",
+        modelDescription: "Pixel 8",
+        attestationId: ATTESTATION_UUID,
+      },
     });
     const id = reg.json().id as string;
     const res = await app.inject({
@@ -367,10 +467,19 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
       headers: CLINICIAN,
-      payload: { platform: "android", modelDescription: "Pixel 7", attestationId: ATTESTATION_UUID },
+      payload: {
+        platform: "android",
+        modelDescription: "Pixel 7",
+        attestationId: ATTESTATION_UUID,
+      },
     });
     const id = reg.json().id as string;
-    const res = await app.inject({ method: "POST", url: `/api/v1/evv/devices/${id}/retire`, headers: SUPERVISOR, payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/devices/${id}/retire`,
+      headers: SUPERVISOR,
+      payload: {},
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("retired");
     await app.close();
@@ -380,7 +489,11 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
 describe("§4.1 routes 14-16 — geofence policy", () => {
   it("14: GET /evv/geofence-policy — 200", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/evv/geofence-policy", headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/evv/geofence-policy",
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().tenant.radiusM).toBe(200);
     await app.close();
@@ -405,7 +518,12 @@ describe("§4.1 routes 14-16 — geofence policy", () => {
       method: "POST",
       url: "/api/v1/evv/geofence-policy/per-address",
       headers: SUPERVISOR,
-      payload: { patientAddressId: PATIENT_ADDRESS, radiusM: 100, maxAccuracyM: 20, overrideReason: "x".repeat(30) },
+      payload: {
+        patientAddressId: PATIENT_ADDRESS,
+        radiusM: 100,
+        maxAccuracyM: 20,
+        overrideReason: "x".repeat(30),
+      },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().perAddress).toHaveLength(1);
@@ -416,7 +534,11 @@ describe("§4.1 routes 14-16 — geofence policy", () => {
 describe("§4.1 routes 17-19 — missing-EVV resolution (§2.2.4 D6)", () => {
   it("17: GET /evv/missing-resolutions — 200 list", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/evv/missing-resolutions", headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/evv/missing-resolutions",
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(2);
     await app.close();
@@ -452,7 +574,11 @@ describe("§4.1 routes 17-19 — missing-EVV resolution (§2.2.4 D6)", () => {
 describe("§4.1 routes 20-22 — aggregator submissions (§2.2.5 D7)", () => {
   it("20: GET /evv/aggregator-submissions — 200 list", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/evv/aggregator-submissions", headers: SUPERVISOR });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/evv/aggregator-submissions",
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toHaveLength(2);
     await app.close();
@@ -500,8 +626,17 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
 
   it("24: GET /evv/clinician-current-location — 200", async () => {
     const { app } = makeServer();
-    await app.inject({ method: "POST", url: "/api/v1/evv/check-in", headers: CLINICIAN, payload: checkInBody() });
-    const res = await app.inject({ method: "GET", url: "/api/v1/evv/clinician-current-location", headers: SUPERVISOR });
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/evv/clinician-current-location",
+      headers: SUPERVISOR,
+    });
     expect(res.statusCode).toBe(200);
     expect(Array.isArray(res.json())).toBe(true);
     await app.close();
@@ -509,8 +644,17 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
 
   it("25: GET /portal/visits/:visitId/arrival — 200 (portal session class)", async () => {
     const { app } = makeServer();
-    await app.inject({ method: "POST", url: "/api/v1/evv/check-in", headers: CLINICIAN, payload: checkInBody() });
-    const res = await app.inject({ method: "GET", url: `/api/v1/portal/visits/${VISIT_1}/arrival`, headers: PORTAL });
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/visits/${VISIT_1}/arrival`,
+      headers: PORTAL,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().visitId).toBe(VISIT_1);
     expect(res.json().arrivedAt).not.toBeNull();

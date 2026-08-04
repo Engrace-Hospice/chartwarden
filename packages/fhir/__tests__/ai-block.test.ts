@@ -10,9 +10,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   FHIR_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
   FhirAIBlockViolation,
-  validateFhirAIBlock,
   type FhirAiPromptRegistryPort,
   type FhirAiPromptTarget,
+  validateFhirAIBlock,
 } from "../src";
 
 /** A fake M32 registry — the D18 slice T06 binds the real `AIPromptRegistry` to. */
@@ -32,7 +32,11 @@ describe("validateFhirAIBlock", () => {
   it("throws FhirAIBlockViolation naming the offending template (W-FHIR-11)", async () => {
     const reg = registry({
       fhir: [
-        { promptTemplateId: "tmpl-42", templateKey: "fhir_patient_generate", outputEntityTargetPrefix: "fhir_patient" },
+        {
+          promptTemplateId: "tmpl-42",
+          templateKey: "fhir_patient_generate",
+          outputEntityTargetPrefix: "fhir_patient",
+        },
       ],
     });
     await expect(validateFhirAIBlock(reg)).rejects.toBeInstanceOf(FhirAIBlockViolation);
@@ -52,7 +56,11 @@ describe("validateFhirAIBlock", () => {
     // M32 prefix-matches, so a template targeting `fhir_encounter` is returned for the queried `fhir`.
     const reg = registry({
       fhir: [
-        { promptTemplateId: "tmpl-9", templateKey: "fhir_encounter_synth", outputEntityTargetPrefix: "fhir_encounter" },
+        {
+          promptTemplateId: "tmpl-9",
+          templateKey: "fhir_encounter_synth",
+          outputEntityTargetPrefix: "fhir_encounter",
+        },
       ],
     });
     await expect(validateFhirAIBlock(reg)).rejects.toBeInstanceOf(FhirAIBlockViolation);

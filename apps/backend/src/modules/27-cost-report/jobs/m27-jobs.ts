@@ -1,3 +1,35 @@
+import { randomUUID } from "node:crypto";
+import {
+  type AllocationInputs,
+  ComplianceWindowRepository,
+  CostReportRepository,
+  CostReportSnapshotRepository,
+  type CostReportState,
+  type CostReportTransitionEvent,
+  CostReportWorksheetRepository,
+  DEFAULT_RULE_SET_VERSION,
+  DEFAULT_VALIDATION_RULES,
+  EcrSubmissionRepository,
+  ImportsRepository,
+  NGS_J6_RULES,
+  type PerDiemResult,
+  type RuleDef,
+  StatisticDataRepository,
+  type StepDownAllocateResult,
+  type ValidationContext,
+  ValidationRepository,
+  ValidationRuleRepository,
+  type WorksheetCode,
+  allocationResultsToWorksheets,
+  applyTransition,
+  buildEcrArtifacts,
+  buildPerDiemInput,
+  calculatePerDiem,
+  canTransition,
+  contentHashSha256,
+  runValidation,
+  stepDownAllocate,
+} from "@wardenx/cost-report";
 // apps/backend/src/modules/27-cost-report/jobs/m27-jobs.ts — M27 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @wardenx/cost-report PURE domain (the lifecycle reducer,
@@ -28,44 +60,12 @@
 // M27 carries NO PHI (D18) — every payload is IDs + aggregate financial/statistical facts only; money is
 // INTEGER CENTS (D8). The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system
 // sentinel the M4 write-audit trigger maps to a NULL actor (a background job has no acting user).
-import { type DbClient, schema } from "@wardenx/db";
-import {
-  type AllocationInputs,
-  ComplianceWindowRepository,
-  type CostReportState,
-  type CostReportTransitionEvent,
-  CostReportRepository,
-  CostReportSnapshotRepository,
-  CostReportWorksheetRepository,
-  DEFAULT_RULE_SET_VERSION,
-  DEFAULT_VALIDATION_RULES,
-  EcrSubmissionRepository,
-  ImportsRepository,
-  NGS_J6_RULES,
-  type PerDiemResult,
-  type RuleDef,
-  StatisticDataRepository,
-  type StepDownAllocateResult,
-  type ValidationContext,
-  ValidationRepository,
-  ValidationRuleRepository,
-  type WorksheetCode,
-  allocationResultsToWorksheets,
-  applyTransition,
-  buildEcrArtifacts,
-  buildPerDiemInput,
-  calculatePerDiem,
-  canTransition,
-  contentHashSha256,
-  runValidation,
-  stepDownAllocate,
-} from "@wardenx/cost-report";
+import type { DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { randomUUID } from "node:crypto";
 import {
-  M27_CRON_QUEUES,
   type M27CronQueueName,
+  M27_CRON_QUEUES,
   M27_JOB_SCHEDULES,
   M27_QUEUES,
   M27_QUEUE_PARAMS,
@@ -166,7 +166,10 @@ export interface WorkerAlertPort {
 
 /** The per-tenant DEK envelope-encrypt for the Xero/Gusto `raw_payload_cipher` (RULE 3b; §3.6). */
 export interface WorkerDekPort {
-  encrypt(organizationId: string, plaintext: unknown): Promise<schema.TrialBalanceImport["rawPayloadCipher"]>;
+  encrypt(
+    organizationId: string,
+    plaintext: unknown,
+  ): Promise<schema.TrialBalanceImport["rawPayloadCipher"]>;
 }
 
 /** The Xero trial-balance pull seam (M27's own `XeroClientFactory`, resolved + adapted at the comp. root). */
@@ -373,9 +376,15 @@ function statisticsSeamsOf(deps: M27WorkerDeps): StatisticsSeams {
           "bind the M8 EncounterStatisticsProvider (the S-3 Part III visits-by-discipline) via getSeam",
         ),
       fteByDiscipline: () =>
-        unboundWorkerPort("statisticsSeams.fteByDiscipline", "bind the M8 EncounterStatisticsProvider FTE projection"),
+        unboundWorkerPort(
+          "statisticsSeams.fteByDiscipline",
+          "bind the M8 EncounterStatisticsProvider FTE projection",
+        ),
       bereavementCensus: () =>
-        unboundWorkerPort("statisticsSeams.bereavementCensus", "bind the M6 bereavement-census projection"),
+        unboundWorkerPort(
+          "statisticsSeams.bereavementCensus",
+          "bind the M6 bereavement-census projection",
+        ),
     }
   );
 }
@@ -437,7 +446,9 @@ const TIER_RANK: Readonly<Record<schema.CostReportComplianceWindow["lastAlertTie
 };
 
 /** Pure tier classifier: days-to-deadline → §4.9 tier (deadline = FYE + 5 months; tiers at ~30/15/7 days out). */
-export function deadlineTierFor(daysToDeadline: number): schema.CostReportComplianceWindow["lastAlertTier"] {
+export function deadlineTierFor(
+  daysToDeadline: number,
+): schema.CostReportComplianceWindow["lastAlertTier"] {
   if (daysToDeadline < 0) return "past_deadline";
   if (daysToDeadline <= 7) return "t4_75_months";
   if (daysToDeadline <= 15) return "t4_5_months";
@@ -460,7 +471,11 @@ function daysToDeadline(deadlineDate: string, now: Date): number {
  * On any failure (seam unbound, Xero 5xx, DEK unbound) the row goes `status='failed'` + `m27.trial_balance
  * .pull_failed` is emitted (the §4.5 reconnect-prompt path).
  */
-async function runTrialBalancePull(tx: DbClient, deps: M27WorkerDeps, job: TrialBalancePullJob): Promise<void> {
+async function runTrialBalancePull(
+  tx: DbClient,
+  deps: M27WorkerDeps,
+  job: TrialBalancePullJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const imports = new ImportsRepository(tx);
   const reports = new CostReportRepository(tx);
@@ -510,14 +525,23 @@ async function runTrialBalancePull(tx: DbClient, deps: M27WorkerDeps, job: Trial
       organizationId: job.organizationId,
       aggregateKind: "cost_report",
       aggregateId: job.costReportId,
-      payload: { costReportId: job.costReportId, source: job.source, failureReason, requiresReconnect: true },
+      payload: {
+        costReportId: job.costReportId,
+        source: job.source,
+        failureReason,
+        requiresReconnect: true,
+      },
     });
     throw err;
   }
 }
 
 /** `wage-data-pull` (§4.5 / §4.8): the Gusto twin of {@link runTrialBalancePull} (Worksheet S-3 Part II). */
-async function runWageDataPull(tx: DbClient, deps: M27WorkerDeps, job: WageDataPullJob): Promise<void> {
+async function runWageDataPull(
+  tx: DbClient,
+  deps: M27WorkerDeps,
+  job: WageDataPullJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const imports = new ImportsRepository(tx);
   const reports = new CostReportRepository(tx);
@@ -577,7 +601,11 @@ async function runWageDataPull(tx: DbClient, deps: M27WorkerDeps, job: WageDataP
  * into the single `statistic_data` row (upsert), counting how many month×LOC cells the service census
  * spans, and emit `m27.statistics.refreshed` with the M23/M26 deny-stub SKIP flags.
  */
-async function runStatisticsRefresh(tx: DbClient, deps: M27WorkerDeps, job: StatisticsRefreshJob): Promise<void> {
+async function runStatisticsRefresh(
+  tx: DbClient,
+  deps: M27WorkerDeps,
+  job: StatisticsRefreshJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const reports = new CostReportRepository(tx);
   const statsRepo = new StatisticDataRepository(tx);
@@ -668,7 +696,11 @@ async function runCostAllocationRecompute(
   const perDiem: PerDiemResult = calculatePerDiem(buildPerDiemInput(stepDown, inputs.locDays));
 
   // Map the chain RESULTS back to the typed derived-worksheet `data` jsonb (the inverse of the input shaper).
-  const payloads = allocationResultsToWorksheets({ stepDown, perDiem, stepDownColumns: inputs.stepDownColumns });
+  const payloads = allocationResultsToWorksheets({
+    stepDown,
+    perDiem,
+    stepDownColumns: inputs.stepDownColumns,
+  });
 
   // The full `allocate` recomputes B + C; a `computeWorksheet` narrows to the one requested (only the DERIVED
   // worksheets are produced — a non-derived `worksheetCode` recomputes nothing).
@@ -679,7 +711,14 @@ async function runCostAllocationRecompute(
 
   const worksheets = new CostReportWorksheetRepository(tx);
   for (const code of worksheetsRecomputed as (typeof DERIVED)[number][]) {
-    await upsertDerivedWorksheet(worksheets, job.organizationId, job.costReportId, code, payloads[code], now);
+    await upsertDerivedWorksheet(
+      worksheets,
+      job.organizationId,
+      job.costReportId,
+      code,
+      payloads[code],
+      now,
+    );
   }
 
   await outbox.publish(tx, {
@@ -715,12 +754,16 @@ async function upsertDerivedWorksheet(
     await worksheets.create({ organizationId, costReportId, worksheetCode, data, computedAt });
     return;
   }
-  const first = await worksheets.updateWithVersion(existing.id, existing.version, { data, computedAt });
+  const first = await worksheets.updateWithVersion(existing.id, existing.version, {
+    data,
+    computedAt,
+  });
   if (first.ok) return;
   const fresh = await worksheets.findByReportAndCode(costReportId, worksheetCode);
   if (!fresh) throw new Error(`derived worksheet ${worksheetCode} vanished mid-recompute`);
   const retry = await worksheets.updateWithVersion(fresh.id, fresh.version, { data, computedAt });
-  if (!retry.ok) throw new Error(`derived worksheet ${worksheetCode} recompute lost a concurrency race`);
+  if (!retry.ok)
+    throw new Error(`derived worksheet ${worksheetCode} recompute lost a concurrency race`);
 }
 
 /**
@@ -731,7 +774,11 @@ async function upsertDerivedWorksheet(
  * `validation_complete_fail` → populating), and emit the completed/ready/failed-to-run events. On a build/
  * run failure the run is marked `failed_to_run` (distinct from a rule failure) + `validation_failed_to_run`.
  */
-async function runValidationRun(tx: DbClient, deps: M27WorkerDeps, job: ValidationRunJob): Promise<void> {
+async function runValidationRun(
+  tx: DbClient,
+  deps: M27WorkerDeps,
+  job: ValidationRunJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const reports = new CostReportRepository(tx);
   const validations = new ValidationRepository(tx);
@@ -823,7 +870,10 @@ async function runValidationRun(tx: DbClient, deps: M27WorkerDeps, job: Validati
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    await validations.updateRun(job.validationId, { status: "failed_to_run", runCompletedAt: now() });
+    await validations.updateRun(job.validationId, {
+      status: "failed_to_run",
+      runCompletedAt: now(),
+    });
     await outbox.publish(tx, {
       eventName: "m27.cost_report.validation_failed_to_run",
       organizationId: job.organizationId,
@@ -840,7 +890,11 @@ async function runValidationRun(tx: DbClient, deps: M27WorkerDeps, job: Validati
  * `cost_report_snapshot` row (insert-only; `prior_snapshot_id` chained from the report's current head) and
  * point `cost_report.latest_snapshot_id` at the new head. Fully real — repos + the pure `contentHashSha256`.
  */
-async function runSnapshotBuilder(tx: DbClient, deps: M27WorkerDeps, job: SnapshotBuilderJob): Promise<string> {
+async function runSnapshotBuilder(
+  tx: DbClient,
+  deps: M27WorkerDeps,
+  job: SnapshotBuilderJob,
+): Promise<string> {
   const reports = new CostReportRepository(tx);
   const worksheetsRepo = new CostReportWorksheetRepository(tx);
   const snapshots = new CostReportSnapshotRepository(tx);
@@ -878,7 +932,11 @@ async function runSnapshotBuilder(tx: DbClient, deps: M27WorkerDeps, job: Snapsh
  * strings via the pure {@link buildEcrArtifacts}, advance the `ecr_submission` to `generated`, and emit
  * `m27.artifact.render_requested` ×2 (ecr, pi) so M22 stores the bytes in MinIO + back-references the doc id.
  */
-async function runEcrGeneration(tx: DbClient, deps: M27WorkerDeps, job: EcrGenerationJob): Promise<void> {
+async function runEcrGeneration(
+  tx: DbClient,
+  deps: M27WorkerDeps,
+  job: EcrGenerationJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const submissions = new EcrSubmissionRepository(tx);
   const snapshots = new CostReportSnapshotRepository(tx);
@@ -929,40 +987,46 @@ async function runFilingDeadlineScan(deps: M27WorkerDeps): Promise<void> {
   const alerts = alertsOf(deps);
 
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: M27_WORKER_SYSTEM_USER_ID }, async (tx) => {
-      const windows = new ComplianceWindowRepository(tx as unknown as DbClient);
-      const due = await windows.listDueForScan(now, { organizationId });
-      for (const window of due) {
-        const days = daysToDeadline(window.currentEffectiveDeadlineDate, now);
-        const tier = deadlineTierFor(days);
-        if (tier === "none" || TIER_RANK[tier] <= TIER_RANK[window.lastAlertTier]) continue;
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M27_WORKER_SYSTEM_USER_ID },
+      async (tx) => {
+        const windows = new ComplianceWindowRepository(tx as unknown as DbClient);
+        const due = await windows.listDueForScan(now, { organizationId });
+        for (const window of due) {
+          const days = daysToDeadline(window.currentEffectiveDeadlineDate, now);
+          const tier = deadlineTierFor(days);
+          if (tier === "none" || TIER_RANK[tier] <= TIER_RANK[window.lastAlertTier]) continue;
 
-        await windows.update(window.id, { lastAlertTier: tier, lastAlertTierEmittedAt: now });
-        await outbox.publish(tx, {
-          eventName: "m27.compliance_window.tier_emitted",
-          organizationId,
-          aggregateKind: "cost_report",
-          aggregateId: window.costReportId,
-          payload: {
-            costReportId: window.costReportId,
-            tier,
-            deadlineDate: window.currentEffectiveDeadlineDate,
-            daysToDeadline: days,
-          },
-        });
-        await alerts.dispatch({
-          alertCode:
-            tier === "past_deadline" ? "m27.filing_deadline.past_deadline" : `m27.filing_deadline.${tier}_due`,
-          severity: tier === "t4_months" ? "info" : tier === "past_deadline" ? "high" : "warn",
-          organizationId,
-          payload: {
-            costReportId: window.costReportId,
-            deadlineDate: window.currentEffectiveDeadlineDate,
-            daysToDeadline: days,
-          },
-        });
-      }
-    });
+          await windows.update(window.id, { lastAlertTier: tier, lastAlertTierEmittedAt: now });
+          await outbox.publish(tx, {
+            eventName: "m27.compliance_window.tier_emitted",
+            organizationId,
+            aggregateKind: "cost_report",
+            aggregateId: window.costReportId,
+            payload: {
+              costReportId: window.costReportId,
+              tier,
+              deadlineDate: window.currentEffectiveDeadlineDate,
+              daysToDeadline: days,
+            },
+          });
+          await alerts.dispatch({
+            alertCode:
+              tier === "past_deadline"
+                ? "m27.filing_deadline.past_deadline"
+                : `m27.filing_deadline.${tier}_due`,
+            severity: tier === "t4_months" ? "info" : tier === "past_deadline" ? "high" : "warn",
+            organizationId,
+            payload: {
+              costReportId: window.costReportId,
+              deadlineDate: window.currentEffectiveDeadlineDate,
+              daysToDeadline: days,
+            },
+          });
+        }
+      },
+    );
   }
 }
 

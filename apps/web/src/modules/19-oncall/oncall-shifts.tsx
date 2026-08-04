@@ -197,12 +197,12 @@ export function OnCallShiftsScreen(): JSX.Element {
       {gapEntities.length > 0 ? (
         <Notice tone="error" live>
           <strong>
-            {gapEntities.length} provider entit{gapEntities.length === 1 ? "y has" : "ies have"} no RN
-            covering right now.
+            {gapEntities.length} provider entit{gapEntities.length === 1 ? "y has" : "ies have"} no
+            RN covering right now.
           </strong>{" "}
-          Coverage is proved per CCN, so this is counted per entity and never unioned — one covered entity
-          must not mask another's dark night. The gap is advisory here: it blocks nothing, and the watchdog
-          raises its own critical alert on a 30-minute cadence.
+          Coverage is proved per CCN, so this is counted per entity and never unioned — one covered
+          entity must not mask another's dark night. The gap is advisory here: it blocks nothing,
+          and the watchdog raises its own critical alert on a 30-minute cadence.
         </Notice>
       ) : current ? (
         <Notice tone="success" live>
@@ -210,8 +210,8 @@ export function OnCallShiftsScreen(): JSX.Element {
         </Notice>
       ) : (
         <Notice tone="warning" live>
-          The live coverage verdict could not be read. This is an OUTAGE, not an answer — do not read it as
-          "nobody is on call".
+          The live coverage verdict could not be read. This is an OUTAGE, not an answer — do not
+          read it as "nobody is on call".
         </Notice>
       )}
 
@@ -242,7 +242,9 @@ export function OnCallShiftsScreen(): JSX.Element {
                     </td>
                     <td style={td}>
                       {actors.length === 0 ? (
-                        <span style={mutedStyle}>nobody — this is an answer, not an empty result</span>
+                        <span style={mutedStyle}>
+                          nobody — this is an answer, not an empty result
+                        </span>
                       ) : (
                         actors
                           .map((a) =>
@@ -290,8 +292,8 @@ export function OnCallShiftsScreen(): JSX.Element {
       <Card title="Shifts">
         {sorted.length === 0 ? (
           <span style={mutedStyle}>
-            No on-call shift is scheduled for this window. Add one — or, in the Direct model, let the M17
-            roster sync fill it.
+            No on-call shift is scheduled for this window. Add one — or, in the Direct model, let
+            the M17 roster sync fill it.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -330,10 +332,17 @@ export function OnCallShiftsScreen(): JSX.Element {
                   </td>
                   <td style={td}>{shortId(s.backupMembershipId)}</td>
                   <td style={td}>
-                    {s.m17VisitAssignmentRef ? "M17 roster sync" : s.externalActorId ? "Vendor" : "Manual"}
+                    {s.m17VisitAssignmentRef
+                      ? "M17 roster sync"
+                      : s.externalActorId
+                        ? "Vendor"
+                        : "Manual"}
                   </td>
                   <td style={td}>
-                    <StatusPill label={humanize(s.status)} tone={toneOf(SHIFT_STATUS_TONE, s.status)} />
+                    <StatusPill
+                      label={humanize(s.status)}
+                      tone={toneOf(SHIFT_STATUS_TONE, s.status)}
+                    />
                   </td>
                 </tr>
               ))}
@@ -365,12 +374,22 @@ export function OnCallShiftsScreen(): JSX.Element {
           }
         >
           <Notice tone="info">
-            The escalation-ladder snapshot is NOT a field here. The tenant policy is pinned onto the shift
-            when it activates, so the record can answer "which ladder was in effect that night" with
-            something nobody typed.
+            The escalation-ladder snapshot is NOT a field here. The tenant policy is pinned onto the
+            shift when it activates, so the record can answer "which ladder was in effect that
+            night" with something nobody typed.
           </Notice>
-          <TextField label="Provider entity id" value={providerEntityId} onChange={setProviderEntityId} mono />
-          <TextField label="Starts at" value={startsAt} onChange={setStartsAt} type="datetime-local" />
+          <TextField
+            label="Provider entity id"
+            value={providerEntityId}
+            onChange={setProviderEntityId}
+            mono
+          />
+          <TextField
+            label="Starts at"
+            value={startsAt}
+            onChange={setStartsAt}
+            type="datetime-local"
+          />
           <TextField label="Ends at" value={endsAt} onChange={setEndsAt} type="datetime-local" />
           <SelectField
             label="Discipline"

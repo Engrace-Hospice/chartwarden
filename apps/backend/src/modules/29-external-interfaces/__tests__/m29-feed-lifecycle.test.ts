@@ -3,6 +3,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type ExternalInterfaceBaaGate,
+  type ExternalInterfaceBaaResult,
+  decideBaaGate,
+  evaluateFeedActivationBaaGate,
+} from "../feed/baa-gate";
+import { canRetireCredential, planCredentialRotation } from "../feed/credential-lifecycle";
+import {
   EXTERNAL_FEED_INITIAL_STATUS,
   canExternalFeedTransition,
   externalFeedCoApprovalSatisfied,
@@ -11,18 +18,13 @@ import {
   externalFeedServePosture,
   externalFeedTransition,
 } from "../feed/lifecycle";
-import {
-  type ExternalInterfaceBaaGate,
-  type ExternalInterfaceBaaResult,
-  decideBaaGate,
-  evaluateFeedActivationBaaGate,
-} from "../feed/baa-gate";
-import { canRetireCredential, planCredentialRotation } from "../feed/credential-lifecycle";
 
 describe("external_feed onboarding FSM (§2.2)", () => {
   it("starts at proposed", () => {
     expect(EXTERNAL_FEED_INITIAL_STATUS).toBe("proposed");
-    expect(externalFeedTransition(null, "proposed")?.auditAction).toBe("m29.external_feed.proposed");
+    expect(externalFeedTransition(null, "proposed")?.auditAction).toBe(
+      "m29.external_feed.proposed",
+    );
   });
 
   it("permits the happy path proposed → pending_approval → active", () => {
@@ -47,7 +49,9 @@ describe("external_feed onboarding FSM (§2.2)", () => {
   it("flags ONLY pending_approval → active as the compliance co-approval edge", () => {
     expect(externalFeedEdgeRequiresComplianceCoApproval("pending_approval", "active")).toBe(true);
     expect(externalFeedEdgeRequiresComplianceCoApproval("suspended", "active")).toBe(false);
-    expect(externalFeedEdgeRequiresComplianceCoApproval("proposed", "pending_approval")).toBe(false);
+    expect(externalFeedEdgeRequiresComplianceCoApproval("proposed", "pending_approval")).toBe(
+      false,
+    );
   });
 
   it("requires two distinct approver memberships (D18)", () => {
@@ -79,20 +83,44 @@ describe("external_feed onboarding FSM (§2.2)", () => {
 });
 
 describe("BAA gate (D16, §2.3)", () => {
-  const active: ExternalInterfaceBaaResult = { isActive: true, status: "executed", expiresOn: null };
+  const active: ExternalInterfaceBaaResult = {
+    isActive: true,
+    status: "executed",
+    expiresOn: null,
+  };
   const expired: ExternalInterfaceBaaResult = {
     isActive: false,
     status: "expired",
     expiresOn: "2020-01-01",
   };
-  const missing: ExternalInterfaceBaaResult = { isActive: false, status: "missing", expiresOn: null };
-  const pending: ExternalInterfaceBaaResult = { isActive: false, status: "pending", expiresOn: null };
+  const missing: ExternalInterfaceBaaResult = {
+    isActive: false,
+    status: "missing",
+    expiresOn: null,
+  };
+  const pending: ExternalInterfaceBaaResult = {
+    isActive: false,
+    status: "pending",
+    expiresOn: null,
+  };
 
   it("maps status to a distinguishable refuse reason", () => {
     expect(decideBaaGate(active)).toEqual({ allowed: true });
-    expect(decideBaaGate(expired)).toEqual({ allowed: false, reason: "expired_baa", status: "expired" });
-    expect(decideBaaGate(missing)).toEqual({ allowed: false, reason: "missing_baa", status: "missing" });
-    expect(decideBaaGate(pending)).toEqual({ allowed: false, reason: "pending_baa", status: "pending" });
+    expect(decideBaaGate(expired)).toEqual({
+      allowed: false,
+      reason: "expired_baa",
+      status: "expired",
+    });
+    expect(decideBaaGate(missing)).toEqual({
+      allowed: false,
+      reason: "missing_baa",
+      status: "missing",
+    });
+    expect(decideBaaGate(pending)).toEqual({
+      allowed: false,
+      reason: "pending_baa",
+      status: "pending",
+    });
   });
 
   it("fails closed on an unrecognized inactive status", () => {

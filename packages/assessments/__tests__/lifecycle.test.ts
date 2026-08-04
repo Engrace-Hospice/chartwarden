@@ -1,13 +1,13 @@
 // @wardenx/assessments — entity lifecycle machines (§2.2, D9) — M9-T03.
 import { describe, expect, it } from "vitest";
 import {
+  type CorrectionTarget,
+  LICENSE_RENEWAL_WINDOW_DAYS,
+  assertLicenseAllowsRecording,
+  canRecordUnderLicense,
+  computeScaleLicenseStatus,
   planCorrection,
   transitionSignificantChange,
-  computeScaleLicenseStatus,
-  canRecordUnderLicense,
-  assertLicenseAllowsRecording,
-  LICENSE_RENEWAL_WINDOW_DAYS,
-  type CorrectionTarget,
 } from "../src/lifecycle";
 
 const target: CorrectionTarget = {
@@ -36,18 +36,30 @@ describe("§2.2.1 correction-of-record (planCorrection)", () => {
         { ...target, status: "superseded" },
         { scaleType: "esas_r", patientId: "p1", admissionId: "a1", expectedTargetVersion: 1 },
       ),
-    ).toThrowError(expect.objectContaining({ code: "CORRECTION_TARGET_NOT_ACTIVE", statusCode: 409 }));
+    ).toThrowError(
+      expect.objectContaining({ code: "CORRECTION_TARGET_NOT_ACTIVE", statusCode: 409 }),
+    );
   });
 
   it("rejects a scale/patient/admission mismatch (422 CORRECTION_MISMATCH)", () => {
     expect(() =>
-      planCorrection(target, { scaleType: "pps", patientId: "p1", admissionId: "a1", expectedTargetVersion: 1 }),
+      planCorrection(target, {
+        scaleType: "pps",
+        patientId: "p1",
+        admissionId: "a1",
+        expectedTargetVersion: 1,
+      }),
     ).toThrowError(expect.objectContaining({ code: "CORRECTION_MISMATCH", statusCode: 422 }));
   });
 
   it("rejects a stale parent version (412 STALE_VERSION)", () => {
     expect(() =>
-      planCorrection(target, { scaleType: "esas_r", patientId: "p1", admissionId: "a1", expectedTargetVersion: 0 }),
+      planCorrection(target, {
+        scaleType: "esas_r",
+        patientId: "p1",
+        admissionId: "a1",
+        expectedTargetVersion: 0,
+      }),
     ).toThrowError(expect.objectContaining({ code: "STALE_VERSION", statusCode: 412 }));
   });
 });
@@ -58,7 +70,9 @@ describe("§2.2.2 significant-change ack/escalate (transitionSignificantChange)"
   });
 
   it("escalates open → escalated for a CRITICAL rule", () => {
-    expect(transitionSignificantChange("open", { type: "escalate", ruleId: "pps_drop_20_in_14d" })).toBe("escalated");
+    expect(
+      transitionSignificantChange("open", { type: "escalate", ruleId: "pps_drop_20_in_14d" }),
+    ).toBe("escalated");
   });
 
   it("acks escalated → acknowledged", () => {

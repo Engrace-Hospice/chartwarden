@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M6L-T05 — the Drizzle compliance-window close / override write lifecycle, proven against real
  * Postgres. This is the last M6 write slice: with it, no admission route is left at 501.
@@ -9,7 +10,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -37,7 +37,9 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
       );
   }
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort())
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
 
@@ -45,11 +47,22 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
   async function admissionWithWindows(): Promise<string> {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "phone", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "P" },
+      {
+        source: "phone",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "P",
+      },
       USER,
     );
     await svc.triageReferral(ORG_A, ref.id, "eligible", 0);
-    const { admissionId } = await svc.acceptReferral(ORG_A, ref.id, { primaryDiagnosisIcd10: "C34.90", patientId: randomUUID() }, 1, USER);
+    const { admissionId } = await svc.acceptReferral(
+      ORG_A,
+      ref.id,
+      { primaryDiagnosisIcd10: "C34.90", patientId: randomUUID() },
+      1,
+      USER,
+    );
     return admissionId;
   }
 
@@ -58,10 +71,18 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
     await admin.connect();
     await resetSchema();
     await applyMigrations();
-    await admin.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')", [ORG_A]);
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6t5@x.test'),($2,'m6t5md@x.test')`, [USER, MD]);
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
+      [ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'m6t5@x.test'),($2,'m6t5md@x.test')`,
+      [USER, MD],
+    );
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     svc = createDbAdmissionRouteService(handle.db);
   }, 120_000);
 
@@ -81,10 +102,14 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
     const admissionId = await admissionWithWindows();
     const windows = await svc.listComplianceWindowsForAdmission(ORG_A, admissionId);
     const w = windows![0];
-    await expect(svc.closeComplianceWindow(ORG_A, w.id, w.version + 99)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.closeComplianceWindow(ORG_A, w.id, w.version + 99)).rejects.toMatchObject({
+      statusCode: 409,
+    });
     const closed = await svc.closeComplianceWindow(ORG_A, w.id, w.version);
     expect(closed.state).toBe("closed");
-    await expect(svc.closeComplianceWindow(ORG_A, w.id, closed.version)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.closeComplianceWindow(ORG_A, w.id, closed.version)).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 
   it("overrideComplianceWindow → closed, capturing the reason + overriding user", async () => {
@@ -94,7 +119,10 @@ describe.skipIf(!DB_URL)("M6 compliance-window write lifecycle — LIVE Postgres
     const reason = "assessment completed on paper during EHR outage; scanned to chart";
     const over = await svc.overrideComplianceWindow(ORG_A, w.id, reason, w.version, MD);
     expect(over.state).toBe("closed");
-    const row = await admin.query("SELECT override_reason, closed_by FROM compliance_window WHERE id=$1", [w.id]);
+    const row = await admin.query(
+      "SELECT override_reason, closed_by FROM compliance_window WHERE id=$1",
+      [w.id],
+    );
     expect(row.rows[0].override_reason).toBe(reason);
     expect(row.rows[0].closed_by).toBe(MD);
   });

@@ -68,7 +68,11 @@ export class ReportCatalogRepository {
 
   /** Fetch a metric by its unique `metric_key`, or `null`. */
   async findMetricByKey(metricKey: string): Promise<schema.ReportMetricCatalog | null> {
-    const [row] = await this.db.select().from(METRIC).where(eq(METRIC.metricKey, metricKey)).limit(1);
+    const [row] = await this.db
+      .select()
+      .from(METRIC)
+      .where(eq(METRIC.metricKey, metricKey))
+      .limit(1);
     return row ?? null;
   }
 

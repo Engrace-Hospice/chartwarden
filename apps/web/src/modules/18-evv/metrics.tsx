@@ -1,3 +1,11 @@
+import {
+  DashboardLayout,
+  EmptyState,
+  KpiCard,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/18-evv — EVV Dashboard + Metrics (M18 §5.1 `/app/evv/dashboard` + `/app/evv/metrics`,
 // Track B / ADR-0030). Spec: docs/design/screens — "Use Dashboard". Org-wide EVV health over a trailing-30-day
 // window: compliant-event rate, late-checkout rate, geofence-deviation rate, GPS-spoof rate, aggregator
@@ -6,7 +14,6 @@
 // GET /api/v1/evv/metrics via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { DashboardLayout, EmptyState, KpiCard, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
 
 interface EvvMetrics {
   complianceRate: number;
@@ -67,9 +74,18 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
                 the labels say so. */}
             <KpiCard label="Compliant rate (not yet measured)" value="—" />
             <KpiCard label="Late-checkout rate (not yet measured)" value="—" />
-            <KpiCard label="Geofence-deviation rate (all time)" value={pct(metrics.geofenceDeviationRate)} />
-            <KpiCard label="GPS-spoof rate (all time)" value={pct(metrics.gpsSpoofingDetectedRate)} />
-            <KpiCard label="Aggregator acceptance (all time)" value={pct(metrics.aggregatorSubmissionSuccessRate)} />
+            <KpiCard
+              label="Geofence-deviation rate (all time)"
+              value={pct(metrics.geofenceDeviationRate)}
+            />
+            <KpiCard
+              label="GPS-spoof rate (all time)"
+              value={pct(metrics.gpsSpoofingDetectedRate)}
+            />
+            <KpiCard
+              label="Aggregator acceptance (all time)"
+              value={pct(metrics.aggregatorSubmissionSuccessRate)}
+            />
           </div>
         )
       }

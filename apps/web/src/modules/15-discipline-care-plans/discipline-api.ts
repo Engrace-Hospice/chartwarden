@@ -248,7 +248,8 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (body?.title) return body.title;
   if (body?.status === 412)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
-  if (body?.status === 428) return "This edit is missing its version. Reload the record and try again.";
+  if (body?.status === 428)
+    return "This edit is missing its version. Reload the record and try again.";
   if (body?.status === 403)
     return "You do not have access to this action for this patient or provider entity.";
   return fallback;

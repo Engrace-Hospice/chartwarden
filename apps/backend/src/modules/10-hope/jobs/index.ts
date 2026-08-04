@@ -73,17 +73,52 @@ export const M10_JOB_SCHEDULES = {
 /** The §4.8.1 per-job BullMQ parameter tuple (priority / attempts / backoff / concurrency), declared as
  * data so the boot worker construction reads one source of truth (M10-F10: full SD-059 tuple per queue). */
 export const M10_JOB_PARAMS = {
-  "schedule-hope-timepoints": { priority: 2, attempts: 5, backoff: "exponential 30s, max 5m", concurrency: 4 },
-  "materialize-discharge-timepoint": { priority: 2, attempts: 5, backoff: "exponential 30s, max 5m", concurrency: 4 },
+  "schedule-hope-timepoints": {
+    priority: 2,
+    attempts: 5,
+    backoff: "exponential 30s, max 5m",
+    concurrency: 4,
+  },
+  "materialize-discharge-timepoint": {
+    priority: 2,
+    attempts: 5,
+    backoff: "exponential 30s, max 5m",
+    concurrency: 4,
+  },
   "hope-window-watchdog": { priority: 1, attempts: 5, backoff: "exponential 30s", concurrency: 2 },
   "sfv-watchdog": { priority: 1, attempts: 5, backoff: "exponential 30s", concurrency: 2 },
   "hope-alert-dispatcher": { priority: 2, attempts: 3, backoff: "fixed 15s", concurrency: 8 },
-  "revalidate-on-terminology-update": { priority: 3, attempts: 3, backoff: "exponential 60s", concurrency: 4 },
-  "assemble-hope-submission": { priority: 3, attempts: 3, backoff: "exponential 60s", concurrency: 2 },
-  "iqies-submit-worker": { priority: 3, attempts: 5, backoff: "exponential 30s, max 10m", concurrency: 2 },
-  "iqies-reconcile-worker": { priority: 3, attempts: 5, backoff: "exponential 60s", concurrency: 2 },
+  "revalidate-on-terminology-update": {
+    priority: 3,
+    attempts: 3,
+    backoff: "exponential 60s",
+    concurrency: 4,
+  },
+  "assemble-hope-submission": {
+    priority: 3,
+    attempts: 3,
+    backoff: "exponential 60s",
+    concurrency: 2,
+  },
+  "iqies-submit-worker": {
+    priority: 3,
+    attempts: 5,
+    backoff: "exponential 30s, max 10m",
+    concurrency: 2,
+  },
+  "iqies-reconcile-worker": {
+    priority: 3,
+    attempts: 5,
+    backoff: "exponential 60s",
+    concurrency: 2,
+  },
   "submit-correction-rfa": { priority: 3, attempts: 5, backoff: "exponential 30s", concurrency: 2 },
-  "hope-partition-rotation": { priority: 5, attempts: 3, backoff: "exponential 120s", concurrency: 1 },
+  "hope-partition-rotation": {
+    priority: 5,
+    attempts: 3,
+    backoff: "exponential 120s",
+    concurrency: 1,
+  },
 } as const;
 
 /**
@@ -91,16 +126,17 @@ export const M10_JOB_PARAMS = {
  * from cron overlap or outbox-redelivery collapse to a single execution. Stable string join (mirrors
  * M9-T06 / M6-T10's `jobIdempotencyKey`; the caller passes a content hash — no hashing of inputs here).
  */
-export function jobIdempotencyKey(input: { scopeId: string; jobName: string; payloadHash: string }): string {
+export function jobIdempotencyKey(input: {
+  scopeId: string;
+  jobName: string;
+  payloadHash: string;
+}): string {
   return `${input.scopeId}:${input.jobName}:${input.payloadHash}`;
 }
 
 /** An outbox event a scan asks the runner to publish (name + payload; the relay adds the envelope). */
 export interface PlannedHopeEvent {
-  readonly eventName:
-    | "m10.hope.timepoint_expired"
-    | "m10.hope.sfv_overdue"
-    | "m10.hope.sfv_missed";
+  readonly eventName: "m10.hope.timepoint_expired" | "m10.hope.sfv_overdue" | "m10.hope.sfv_missed";
   readonly payload: Record<string, unknown>;
 }
 
@@ -202,7 +238,10 @@ export interface SfvWatchdogPlan {
  * authority); `completed` / already-`missed` rows pass through. `overdue` re-emits per 24h bucket (§2.4
  * idempotency key `(sfvId, "overdue", floor(hours/24))`) — the runner dedups on that key.
  */
-export function planSfvWatchdog(sfvs: readonly SfvWatchdogSnapshot[], nowInstant: string): SfvWatchdogPlan {
+export function planSfvWatchdog(
+  sfvs: readonly SfvWatchdogSnapshot[],
+  nowInstant: string,
+): SfvWatchdogPlan {
   const transitions: SfvWatchdogTransition[] = [];
   const events: PlannedHopeEvent[] = [];
   const nowMs = Date.parse(nowInstant);
@@ -253,7 +292,10 @@ export interface SfvAlertCandidate {
   readonly patientDisplayName: string;
   readonly state: HopeSfvAlert["state"];
   readonly hoursUntilDue: number;
-  readonly triggeringSymptoms: ReadonlyArray<{ readonly symptomCode: string; readonly severity: string }>;
+  readonly triggeringSymptoms: ReadonlyArray<{
+    readonly symptomCode: string;
+    readonly severity: string;
+  }>;
   readonly ctaUrl: string;
   /** Whether this (sfv, state) is past its `alert_cadence` threshold and not yet dispatched. */
   readonly cadenceDue: boolean;

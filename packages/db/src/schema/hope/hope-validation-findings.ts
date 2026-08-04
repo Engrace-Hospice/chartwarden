@@ -8,9 +8,9 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { hopeValidationSeverity } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const hopeValidationFindings = pgTable(
   "hope_validation_finding",

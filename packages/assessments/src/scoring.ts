@@ -8,13 +8,13 @@
 // (PPS / FAST / PAINAD / ESAS-r); a request for a not-yet-registered scale raises
 // `SCALE_SCORER_UNAVAILABLE` (500) until its module lands with the routes/tests.
 import type { ScaleType } from "@wardenx/types";
-import type { ScaleData } from "./scale-types";
-import type { AnyScaleScorer, ScaleScoreResult } from "./scales/scorer";
 import { AssessmentStateError } from "./errors";
-import { ppsScorer } from "./scales/pps";
+import type { ScaleData } from "./scale-types";
+import { esasrScorer } from "./scales/esas-r";
 import { fastScorer } from "./scales/fast";
 import { painadScorer } from "./scales/painad";
-import { esasrScorer } from "./scales/esas-r";
+import { ppsScorer } from "./scales/pps";
+import type { AnyScaleScorer, ScaleScoreResult } from "./scales/scorer";
 
 /** The registered per-scale scorers. Concrete `ScaleScorer<PpsData>` etc. are assignable to the erased
  * `AnyScaleScorer` (contravariant params), letting the registry stay heterogeneous without an `any`. The

@@ -8,11 +8,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type {
-  EvvAggregatorSubmissionDto,
-  EvvBracketDto,
-  EvvEventDto,
-} from "@wardenx/types";
+import type { EvvAggregatorSubmissionDto, EvvBracketDto, EvvEventDto } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
   ArrivalView as ServiceArrivalView,
@@ -120,7 +116,9 @@ export const CancelSubmissionRequest = Type.Object({ reason: Type.String({ minLe
 export const EventIdParams = Type.Object({ eventId: Type.String({ format: "uuid" }) });
 export const VisitIdParams = Type.Object({ visitId: Type.String({ format: "uuid" }) });
 export const IdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
-export const MembershipIdQuery = Type.Object({ membership: Type.Optional(Type.String({ format: "uuid" })) });
+export const MembershipIdQuery = Type.Object({
+  membership: Type.Optional(Type.String({ format: "uuid" })),
+});
 export const EventListQuery = Type.Object({
   visit: Type.Optional(Type.String({ format: "uuid" })),
   clinician: Type.Optional(Type.String({ format: "uuid" })),

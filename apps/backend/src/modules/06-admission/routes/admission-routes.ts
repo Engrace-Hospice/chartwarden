@@ -257,7 +257,9 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     "/api/v1/patients/:patientId/election-certification",
     {
       preHandler: [ELECTION_READ],
-      config: { auditRead: { resourceKind: "election_certification", patientIdParam: "patientId" } },
+      config: {
+        auditRead: { resourceKind: "election_certification", patientIdParam: "patientId" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);

@@ -69,7 +69,10 @@ export class ImportsRepository {
   async completeTrialBalance(
     id: string,
     patch: Partial<
-      Pick<schema.NewTrialBalanceImport, "status" | "normalizedAccounts" | "rawPayloadCipher" | "failureReason">
+      Pick<
+        schema.NewTrialBalanceImport,
+        "status" | "normalizedAccounts" | "rawPayloadCipher" | "failureReason"
+      >
     >,
   ): Promise<schema.TrialBalanceImport> {
     const [row] = await this.db.update(TB).set(patch).where(eq(TB.id, id)).returning();
@@ -128,7 +131,10 @@ export class ImportsRepository {
   async completeWageData(
     id: string,
     patch: Partial<
-      Pick<schema.NewWageDataImport, "status" | "normalizedWageRows" | "rawPayloadCipher" | "failureReason">
+      Pick<
+        schema.NewWageDataImport,
+        "status" | "normalizedWageRows" | "rawPayloadCipher" | "failureReason"
+      >
     >,
   ): Promise<schema.WageDataImport> {
     const [row] = await this.db.update(WG).set(patch).where(eq(WG.id, id)).returning();

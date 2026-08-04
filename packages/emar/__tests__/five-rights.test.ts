@@ -1,10 +1,10 @@
 // @wardenx/emar — §5.11 five-rights validator — M13-T03.
 import { describe, expect, it } from "vitest";
 import {
-  checkFiveRights,
-  assertFiveRights,
   type FiveRightsOrderContext,
   type FiveRightsRequest,
+  assertFiveRights,
+  checkFiveRights,
 } from "../src/five-rights";
 
 const NOW = "2026-06-22T17:00:00.000Z";
@@ -43,9 +43,9 @@ describe("§5.11 five-rights", () => {
   });
 
   it("wrong patient fails the patient right", () => {
-    expect(checkFiveRights({ ...goodRequest, patientId: "pat-2" }, order, NOW).failedRights).toContain(
-      "patient",
-    );
+    expect(
+      checkFiveRights({ ...goodRequest, patientId: "pat-2" }, order, NOW).failedRights,
+    ).toContain("patient");
   });
 
   it("wrong order fails the drug right", () => {
@@ -84,14 +84,16 @@ describe("§5.11 five-rights", () => {
 
   it("a far-future administeredAt fails the time right (beyond skew tolerance)", () => {
     const future = "2026-06-22T18:00:00.000Z"; // 1h ahead of NOW
-    expect(checkFiveRights({ ...goodRequest, administeredAt: future }, order, NOW).failedRights).toContain(
-      "time",
-    );
+    expect(
+      checkFiveRights({ ...goodRequest, administeredAt: future }, order, NOW).failedRights,
+    ).toContain("time");
   });
 
   it("a small forward clock skew within tolerance passes the time right", () => {
     const slightlyAhead = "2026-06-22T17:03:00.000Z"; // 3 min ahead (< 5 min default)
-    expect(checkFiveRights({ ...goodRequest, administeredAt: slightlyAhead }, order, NOW).ok).toBe(true);
+    expect(checkFiveRights({ ...goodRequest, administeredAt: slightlyAhead }, order, NOW).ok).toBe(
+      true,
+    );
   });
 
   it("a far-PAST administeredAt is NOT a five-rights failure (it is a late entry)", () => {

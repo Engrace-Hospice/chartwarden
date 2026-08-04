@@ -53,7 +53,9 @@ export function selectArchivableRuns(
 ): readonly ScheduledRunHandle[] {
   return runs
     .filter(
-      (r) => ARCHIVABLE_RUN_STATUSES.has(r.status) && isPastRetentionHorizon(r.scheduledFor, now, horizonDays),
+      (r) =>
+        ARCHIVABLE_RUN_STATUSES.has(r.status) &&
+        isPastRetentionHorizon(r.scheduledFor, now, horizonDays),
     )
     .map((r) => ({ runId: r.id, scheduledFor: r.scheduledFor }));
 }

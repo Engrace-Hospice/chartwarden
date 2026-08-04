@@ -179,7 +179,8 @@ for (const [file, src] of sources) {
     const rest = src.slice(m.index + m[0].length);
     const arrayEnd = rest.indexOf("]");
     if (rest.startsWith("[") && arrayEnd !== -1) {
-      for (const lit of rest.slice(0, arrayEnd).matchAll(/(['"])(.*?)\1/g)) addDeclared(lit[2]!, file);
+      for (const lit of rest.slice(0, arrayEnd).matchAll(/(['"])(.*?)\1/g))
+        addDeclared(lit[2]!, file);
       continue;
     }
     // `Object.keys(SOME_MAP)` — declare the keys of the object literal it names (M39's shape).
@@ -189,7 +190,8 @@ for (const [file, src] of sources) {
       if (decl) {
         const open = src.indexOf("{", decl.index);
         const close = src.indexOf("};", open);
-        for (const k of src.slice(open, close).matchAll(/^\s*(\w+)\s*:/gm)) addDeclared(k[1]!, file);
+        for (const k of src.slice(open, close).matchAll(/^\s*(\w+)\s*:/gm))
+          addDeclared(k[1]!, file);
       }
     }
   }

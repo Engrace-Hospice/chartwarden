@@ -43,7 +43,9 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -99,11 +101,16 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
         [templateId],
       )
     ).rows[0].id as string;
-    await admin.query(`UPDATE form_template SET published_active_version_id=$1 WHERE id=$2`, [versionId, templateId]);
+    await admin.query(`UPDATE form_template SET published_active_version_id=$1 WHERE id=$2`, [
+      versionId,
+      templateId,
+    ]);
     tmpl.election = { templateId, versionId };
 
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     svc = createDbDocumentBackend(handle.db).service;
   }, 180_000);
 
@@ -128,16 +135,25 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     // The append-only ledger now has [1,2] and the active head flipped to v2.
     const versions = await svc.listVersions(ORG_A, doc.id, undefined, 100);
     expect(versions.items.map((v) => v.versionNumber).sort()).toEqual([1, 2]);
-    const { rows } = await admin.query("SELECT active_version_id FROM document WHERE id=$1", [doc.id]);
+    const { rows } = await admin.query("SELECT active_version_id FROM document WHERE id=$1", [
+      doc.id,
+    ]);
     expect(rows[0].active_version_id).toBe(v2.id);
   });
 
   it("patchDocument updates fields; addTag/removeTag round-trip", async () => {
     const docId = await seedDocument(ORG_A);
-    const patched = await svc.patchDocument(ORG_A, docId, { title: "Renamed", patientFacing: true });
+    const patched = await svc.patchDocument(ORG_A, docId, {
+      title: "Renamed",
+      patientFacing: true,
+    });
     expect(patched.title).toBe("Renamed");
     expect(patched.patientFacing).toBe(true);
-    const tag = await svc.addTag(ORG_A, docId, { tagKind: "structured", tagKey: "phase", tagValue: "IIA" });
+    const tag = await svc.addTag(ORG_A, docId, {
+      tagKind: "structured",
+      tagKey: "phase",
+      tagValue: "IIA",
+    });
     expect(tag.tagKey).toBe("phase");
     await svc.removeTag(ORG_A, docId, tag.id);
     // Removing again is a 404 (the row is gone).
@@ -151,7 +167,9 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
        VALUES ($1,$2,gen_random_uuid())`,
       [ORG_A, docId],
     );
-    await expect(svc.patchDocument(ORG_A, docId, { title: "x" })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.patchDocument(ORG_A, docId, { title: "x" })).rejects.toMatchObject({
+      statusCode: 409,
+    });
     await expect(
       svc.addTag(ORG_A, docId, { tagKind: "free", tagKey: "k", tagValue: "v" }),
     ).rejects.toMatchObject({ statusCode: 409 });
@@ -165,9 +183,10 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
     const review = await svc.openReview(ORG_A, batch.id, MEMBER);
     expect(review.status).toBe("in_progress");
-    expect((await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batch.id])).rows[0].status).toBe(
-      "in_review",
-    );
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batch.id])).rows[0]
+        .status,
+    ).toBe("in_review");
 
     const dec = await svc.recordDecision(ORG_A, review.id, {
       candidateId: "99999999-9999-4999-8999-999999999999",
@@ -182,9 +201,10 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
 
     const completed = await svc.completeReview(ORG_A, review.id);
     expect(completed.status).toBe("complete");
-    expect((await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batch.id])).rows[0].status).toBe(
-      "writeback_complete",
-    );
+    expect(
+      (await admin.query("SELECT status FROM intake_upload_batch WHERE id=$1", [batch.id])).rows[0]
+        .status,
+    ).toBe("writeback_complete");
   });
 
   it("resolveDiscrepancy closes an open discrepancy; abandonReview + discardBatch terminate", async () => {
@@ -200,9 +220,10 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).rows[0].id as string;
     const resolved = await svc.resolveDiscrepancy(ORG_A, review.id, disc);
     expect(resolved.status).toBe("resolved");
-    expect((await admin.query("SELECT status FROM extraction_discrepancy WHERE id=$1", [disc])).rows[0].status).toBe(
-      "resolved",
-    );
+    expect(
+      (await admin.query("SELECT status FROM extraction_discrepancy WHERE id=$1", [disc])).rows[0]
+        .status,
+    ).toBe("resolved");
 
     const abandoned = await svc.abandonReview(ORG_A, review.id);
     expect(abandoned.status).toBe("abandoned");
@@ -215,7 +236,9 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     const first = await svc.publishOverlay(ORG_A, "election_statement", 0);
     expect(first.version).toBe(1);
     // A stale If-Match (0 again) now conflicts (412).
-    await expect(svc.publishOverlay(ORG_A, "election_statement", 0)).rejects.toMatchObject({ statusCode: 412 });
+    await expect(svc.publishOverlay(ORG_A, "election_statement", 0)).rejects.toMatchObject({
+      statusCode: 412,
+    });
     // The next publish at the correct version succeeds.
     const second = await svc.publishOverlay(ORG_A, "election_statement", 1);
     expect(second.version).toBe(2);
@@ -231,12 +254,16 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ).rows[0].id as string;
     const retried = await svc.retryRender(ORG_A, fill);
     expect(retried.status).toBe("queued");
-    expect((await admin.query("SELECT status FROM form_fill WHERE id=$1", [fill])).rows[0].status).toBe("queued");
+    expect(
+      (await admin.query("SELECT status FROM form_fill WHERE id=$1", [fill])).rows[0].status,
+    ).toBe("queued");
   });
 
   it("RLS: org B cannot patch or read org A's document (404 under the wardenx_app policy)", async () => {
     const docId = await seedDocument(ORG_A);
     await expect(svc.getDocument(ORG_B, docId)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.patchDocument(ORG_B, docId, { title: "hijack" })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.patchDocument(ORG_B, docId, { title: "hijack" })).rejects.toMatchObject({
+      statusCode: 404,
+    });
   });
 });

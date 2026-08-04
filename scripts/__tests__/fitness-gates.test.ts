@@ -15,7 +15,11 @@ const DEPCRUISE = join(ROOT, "node_modules", ".bin", "depcruise");
 const CFG = join(ROOT, "architecture", ".dependency-cruiser.cjs");
 
 function run(cmd: string, args: string[], cwd: string, env?: Record<string, string | undefined>) {
-  const r = spawnSync(cmd, args, { cwd, encoding: "utf8", env: env ? { ...process.env, ...env } : undefined });
+  const r = spawnSync(cmd, args, {
+    cwd,
+    encoding: "utf8",
+    env: env ? { ...process.env, ...env } : undefined,
+  });
   return { status: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
 const gate = (script: string, cwd: string) => run("bun", ["run", join(SCRIPTS, script)], cwd);
@@ -127,7 +131,11 @@ describe("each gate goes RED on its planted violation", () => {
   });
 
   it("ui-parity — a screens.ts that exists but main.tsx never registers", () => {
-    const r = run("bun", ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"], join(FIX, "ui-parity"));
+    const r = run(
+      "bun",
+      ["run", join(SCRIPTS, "report-ui-parity.ts"), "--check"],
+      join(FIX, "ui-parity"),
+    );
     expect(r.status).not.toBe(0);
     expect(r.out).toMatch(/UNREGISTERED SCREENS/);
     expect(r.out).toMatch(/99-fixture/);

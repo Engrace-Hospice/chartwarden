@@ -1,9 +1,9 @@
 import {
-  cardSurface,
   EmptyState,
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  cardSurface,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -54,7 +54,11 @@ interface AgentRow {
   active: boolean;
 }
 
-const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
+const cell: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left",
+  verticalAlign: "middle",
+};
 const head: CSSProperties = {
   ...cell,
   fontSize: "0.72rem",
@@ -119,8 +123,8 @@ export function ConsentRecipientsDpoa(): JSX.Element {
       <section style={cardSurface}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Named recipients</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Who this consent authorises disclosure to. A withdrawn recipient is retained, not deleted — a
-          target that was once authorised stays part of the record.
+          Who this consent authorises disclosure to. A withdrawn recipient is retained, not deleted
+          — a target that was once authorised stays part of the record.
         </p>
         {recipients.length === 0 ? (
           <EmptyState
@@ -163,8 +167,8 @@ export function ConsentRecipientsDpoa(): JSX.Element {
       <section style={{ ...cardSurface, marginTop: "1rem" }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>DPOA agents</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Who may decide under this consent. Exactly one active primary is required before it can be signed
-          (D5); alternates stand by in order.
+          Who may decide under this consent. Exactly one active primary is required before it can be
+          signed (D5); alternates stand by in order.
         </p>
         {agents.length === 0 ? (
           <EmptyState

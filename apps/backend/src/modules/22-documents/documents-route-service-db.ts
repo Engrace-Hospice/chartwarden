@@ -29,7 +29,12 @@ import { NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { type CursorPage, paginate } from "./routes/concurrency";
-import type { DocumentRouteService, DocumentView, IntakeBatchView, VersionView } from "./routes/service";
+import type {
+  DocumentRouteService,
+  DocumentView,
+  IntakeBatchView,
+  VersionView,
+} from "./routes/service";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./routes/signed-url-service";
 
 const DOC = schema.documents;
@@ -62,15 +67,22 @@ const ZERO_SHA256 = "0".repeat(64);
 
 const iso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : String(v));
 
-const withOrg = <T>(db: DbClient, organizationId: OrgId, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
-  withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
+const withOrg = <T>(
+  db: DbClient,
+  organizationId: OrgId,
+  fn: (tx: DbClient) => Promise<T>,
+): Promise<T> => withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
 
 /**
  * The production, RLS-backed DocumentRouteService. Reads are real; writes fail-closed 501.
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbDocumentRouteService(db: DbClient): DocumentRouteService {
-  async function loadDocRow(tx: DbClient, organizationId: OrgId, documentId: string): Promise<DocumentView> {
+  async function loadDocRow(
+    tx: DbClient,
+    organizationId: OrgId,
+    documentId: string,
+  ): Promise<DocumentView> {
     const [d] = await tx
       .select({
         id: DOC.id,
@@ -136,7 +148,12 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
       .from(LH)
       .where(and(eq(LH.documentId, documentId), isNull(LH.releasedAt)))
       .limit(1);
-    if (h) throw new WardenXError("LEGAL_HOLD_ACTIVE", "the document is under an active legal hold", 409);
+    if (h)
+      throw new WardenXError(
+        "LEGAL_HOLD_ACTIVE",
+        "the document is under an active legal hold",
+        409,
+      );
   }
 
   return {
@@ -149,7 +166,9 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         const conds = [
           filter.patientId ? eq(DOC.patientId, filter.patientId) : undefined,
           filter.aggregateType ? eq(DOC.aggregateType, filter.aggregateType as never) : undefined,
-          filter.retentionClass ? eq(DOC.retentionClass, filter.retentionClass as never) : undefined,
+          filter.retentionClass
+            ? eq(DOC.retentionClass, filter.retentionClass as never)
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select({
@@ -191,7 +210,12 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     },
 
     // ── Version reads ──────────────────────────────────────────────────────────────────────────────
-    async listVersions(organizationId, documentId, cursor, limit): Promise<CursorPage<VersionView>> {
+    async listVersions(
+      organizationId,
+      documentId,
+      cursor,
+      limit,
+    ): Promise<CursorPage<VersionView>> {
       return withOrg(db, organizationId, async (tx) => {
         await loadDocRow(tx, organizationId, documentId); // 404 for a missing/cross-tenant document
         const rows = await tx
@@ -261,7 +285,10 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           .where(eq(BATCH.id, batchId))
           .limit(1);
         if (!b) throw new NotFoundError("intake batch");
-        const pages = await tx.select({ id: CP.id }).from(CP).where(eq(CP.intakeUploadBatchId, batchId));
+        const pages = await tx
+          .select({ id: CP.id })
+          .from(CP)
+          .where(eq(CP.intakeUploadBatchId, batchId));
         return {
           id: b.id,
           organizationId: b.organizationId,
@@ -315,7 +342,11 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           .orderBy(desc(EC.extractedAt), desc(EC.id))
           .limit(READ_WINDOW);
         const candidates = paginate(
-          rows.map((r) => ({ id: r.id, createdAt: iso(r.createdAt), riskLevel: String(r.riskLevel) })),
+          rows.map((r) => ({
+            id: r.id,
+            createdAt: iso(r.createdAt),
+            riskLevel: String(r.riskLevel),
+          })),
           cursor,
           limit,
         );
@@ -392,7 +423,9 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           .where(eq(OVL.isActive, true))
           .orderBy(desc(OVL.publishedAt), desc(OVL.id))
           .limit(READ_WINDOW);
-        return { overlays: rows.map((r) => ({ templateKey: r.templateKey, overlayId: r.overlayId })) };
+        return {
+          overlays: rows.map((r) => ({ templateKey: r.templateKey, overlayId: r.overlayId })),
+        };
       });
     },
     async getFormFill(organizationId, fillId) {
@@ -442,7 +475,10 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             uploadedByKind: "user",
           })
           .returning({ id: DV.id });
-        await tx.update(DOC).set({ activeVersionId: ver?.id, updatedAt: new Date() }).where(eq(DOC.id, doc.id));
+        await tx
+          .update(DOC)
+          .set({ activeVersionId: ver?.id, updatedAt: new Date() })
+          .where(eq(DOC.id, doc.id));
         return loadDocRow(tx, organizationId, doc.id);
       });
     },
@@ -450,7 +486,10 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
       return withOrg(db, organizationId, async (tx) => {
         const doc = await loadDocRow(tx, organizationId, documentId); // 404 for a missing/cross-tenant doc
         await assertNoHold(tx, documentId);
-        const existing = await tx.select({ id: DV.id }).from(DV).where(eq(DV.documentId, documentId));
+        const existing = await tx
+          .select({ id: DV.id })
+          .from(DV)
+          .where(eq(DV.documentId, documentId));
         const n = existing.length + 1;
         const objectKey = `documents/${doc.patientId ?? "unbound"}/${doc.aggregateType}/${documentId}/v${n}.pdf`;
         const [ver] = await tx
@@ -468,7 +507,10 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           })
           .returning({ id: DV.id, createdAt: DV.createdAt });
         if (!ver) throw new Error("document_version insert returned no row");
-        await tx.update(DOC).set({ activeVersionId: ver.id, updatedAt: new Date() }).where(eq(DOC.id, documentId));
+        await tx
+          .update(DOC)
+          .set({ activeVersionId: ver.id, updatedAt: new Date() })
+          .where(eq(DOC.id, documentId));
         return {
           id: ver.id,
           documentId,
@@ -487,7 +529,8 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         const set: Record<string, unknown> = { updatedAt: new Date() };
         if (patch.title !== undefined) set.title = patch.title;
         if (patch.patientFacing !== undefined) set.patientFacing = patch.patientFacing;
-        if (patch.attachToDisclosures !== undefined) set.attachToDisclosures = patch.attachToDisclosures;
+        if (patch.attachToDisclosures !== undefined)
+          set.attachToDisclosures = patch.attachToDisclosures;
         await tx.update(DOC).set(set).where(eq(DOC.id, documentId));
         return loadDocRow(tx, organizationId, documentId);
       });
@@ -621,7 +664,11 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         await requireReview(tx, reviewId);
         const upd = await tx
           .update(DISC)
-          .set({ status: "resolved", resolvedByMembershipId: SENTINEL_MEMBERSHIP, resolvedAt: new Date() })
+          .set({
+            status: "resolved",
+            resolvedByMembershipId: SENTINEL_MEMBERSHIP,
+            resolvedAt: new Date(),
+          })
           .where(eq(DISC.id, discrepancyId))
           .returning({ id: DISC.id });
         if (upd.length === 0) throw new NotFoundError("discrepancy");
@@ -631,7 +678,10 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     async completeReview(organizationId, reviewId) {
       return withOrg(db, organizationId, async (tx) => {
         const r = await requireReview(tx, reviewId);
-        await tx.update(ER).set({ status: "complete", closedAt: new Date() }).where(eq(ER.id, reviewId));
+        await tx
+          .update(ER)
+          .set({ status: "complete", closedAt: new Date() })
+          .where(eq(ER.id, reviewId));
         // The batch reaches a terminal disposition — the `disposition_shape` CHECK ties a
         // writeback_complete/discarded status to a non-null `disposition_at`.
         await tx
@@ -644,14 +694,20 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     async abandonReview(organizationId, reviewId) {
       return withOrg(db, organizationId, async (tx) => {
         await requireReview(tx, reviewId);
-        await tx.update(ER).set({ status: "abandoned", closedAt: new Date() }).where(eq(ER.id, reviewId));
+        await tx
+          .update(ER)
+          .set({ status: "abandoned", closedAt: new Date() })
+          .where(eq(ER.id, reviewId));
         return { reviewId, status: "abandoned" };
       });
     },
     async discardBatch(organizationId, batchId) {
       return withOrg(db, organizationId, async (tx) => {
         await requireBatch(tx, batchId);
-        await tx.update(BATCH).set({ status: "discarded", dispositionAt: new Date() }).where(eq(BATCH.id, batchId));
+        await tx
+          .update(BATCH)
+          .set({ status: "discarded", dispositionAt: new Date() })
+          .where(eq(BATCH.id, batchId));
         return { batchId, status: "discarded" };
       });
     },
@@ -672,14 +728,22 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     },
     async publishOverlay(organizationId, templateKey, ifVersion) {
       return withOrg(db, organizationId, async (tx) => {
-        const [t] = await tx.select({ id: FT.id }).from(FT).where(eq(FT.templateKey, templateKey)).limit(1);
+        const [t] = await tx
+          .select({ id: FT.id })
+          .from(FT)
+          .where(eq(FT.templateKey, templateKey))
+          .limit(1);
         if (!t) throw new NotFoundError("form template");
         // §2.5 optimistic concurrency: the current version is the count of overlay rows for this template;
         // the caller's If-Match `ifVersion` must match it, else 412.
         const existing = await tx.select({ id: OVL.id }).from(OVL).where(eq(OVL.templateId, t.id));
         const current = existing.length;
         if (ifVersion !== current) {
-          throw new WardenXError("VERSION_MISMATCH", "the overlay was modified since you read it", 412);
+          throw new WardenXError(
+            "VERSION_MISMATCH",
+            "the overlay was modified since you read it",
+            412,
+          );
         }
         await tx
           .update(OVL)
@@ -754,7 +818,11 @@ export function createDbDocumentAbacResolver(db: DbClient): DocumentAbacResolver
  */
 export function createDbSignedUrlObjectResolver(db: DbClient): SignedUrlObjectResolver {
   return {
-    async loadObject({ organizationId, documentId, versionId }): Promise<SignedUrlObjectFacts | null> {
+    async loadObject({
+      organizationId,
+      documentId,
+      versionId,
+    }): Promise<SignedUrlObjectFacts | null> {
       return withOrg(db, organizationId, async (tx) => {
         const [v] = await tx
           .select({ objectKey: DV.minioObjectKey })

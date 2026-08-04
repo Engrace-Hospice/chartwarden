@@ -1,3 +1,4 @@
+import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/30-quality/published-seams.ts — M30's §4.3 published-seam registration into
 // the M1 SeamRegistry (the M23 `registerM23PublishedSeams` / M26 `registerM26PublishedSeams` precedent).
 //
@@ -21,12 +22,11 @@ import {
   ComplianceStatusProviderImpl,
   IncidentRegisterProviderImpl,
   QapiProjectProviderImpl,
-  type QualityPublishedSeamDeps,
   QualityMeasureProviderImpl,
+  type QualityPublishedSeamDeps,
   SecurityRiskAssessmentReaderImpl,
   registerQualityPublishedSeams,
 } from "@wardenx/quality";
-import type { DbClient } from "@wardenx/db";
 import { registerSeam } from "../../bootstrap/index";
 
 /** The platform system actor the aggregate (actor-less) seam reads bind to `app.user_id`. */

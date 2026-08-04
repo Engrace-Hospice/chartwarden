@@ -25,7 +25,11 @@ import type {
   UsageEventType,
 } from "@wardenx/types";
 
-export const PLAN_TIERS = ["starter", "professional", "enterprise"] as const satisfies readonly PlanTier[];
+export const PLAN_TIERS = [
+  "starter",
+  "professional",
+  "enterprise",
+] as const satisfies readonly PlanTier[];
 
 export const BILLING_CADENCES = ["monthly", "annual"] as const satisfies readonly BillingCadence[];
 
@@ -76,11 +80,19 @@ export const REFUND_STATUSES = [
   "executed_failed",
 ] as const satisfies readonly RefundStatus[];
 
-export const REFUND_KINDS = ["full", "partial", "credit_only"] as const satisfies readonly RefundKind[];
+export const REFUND_KINDS = [
+  "full",
+  "partial",
+  "credit_only",
+] as const satisfies readonly RefundKind[];
 
 export const PROMO_KINDS = ["percent_off", "amount_off"] as const satisfies readonly PromoKind[];
 
-export const PROMO_DURATIONS = ["once", "repeating", "forever"] as const satisfies readonly PromoDuration[];
+export const PROMO_DURATIONS = [
+  "once",
+  "repeating",
+  "forever",
+] as const satisfies readonly PromoDuration[];
 
 export const PAYMENT_METHOD_KINDS = [
   "card",
@@ -118,4 +130,8 @@ export const BILLING_INACTIVITY_REASONS = [
   "transferred",
 ] as const satisfies readonly BillingInactivityReason[];
 
-export const BILLING_AGGREGATIONS = ["sum", "last", "count"] as const satisfies readonly BillingAggregation[];
+export const BILLING_AGGREGATIONS = [
+  "sum",
+  "last",
+  "count",
+] as const satisfies readonly BillingAggregation[];

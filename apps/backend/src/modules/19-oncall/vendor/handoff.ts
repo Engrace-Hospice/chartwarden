@@ -158,7 +158,8 @@ export async function handOffCallToVendor(
   } as const;
 
   // 1 — resolve the adapter. A miss refuses; there is no default adapter (§8.5).
-  const adapter: ExternalTriageVendorAdapter = registry.find(binding.adapterKey) ?? never(binding.adapterKey);
+  const adapter: ExternalTriageVendorAdapter =
+    registry.find(binding.adapterKey) ?? never(binding.adapterKey);
 
   // 2 — D13 binding gate, re-checked on EVERY handoff.
   assertVendorBindingActive(binding, adapter, request.asOfIsoDate);

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 staffing + the 24/7 RN-coverage invariant (§2.3 D3, §3.3): ipu_shift,
 // ipu_staff_assignment, and the ipu_rn_coverage_window materialized-invariant table (rebuilt every 5 min
 // by the coverage cron). TENANT-SCOPED, RLS on app.org_id. ipu_shift carries a GiST exclusion-style
@@ -6,10 +7,9 @@
 // intra-module links (unit_id, shift_id) are REAL FKs. `rn_assignment_ids` is a uuid[] snapshot of the
 // RN staff-assignment rows covering each hour.
 import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { ipuShiftAssignmentState, ipuShiftRole } from "../../enums";
 import { bigintVersion } from "./shared";
 import { inpatientUnit } from "./units";
-import { ipuShiftAssignmentState, ipuShiftRole } from "../../enums";
 
 export const ipuShift = pgTable(
   "ipu_shift",
@@ -78,9 +78,7 @@ export const ipuRnCoverageWindow = pgTable(
   (t) => ({
     unitHourUq: uniqueIndex("ipu_rn_coverage_unit_hour_uq").on(t.unitId, t.hourStartAt),
     unitHourIx: index("rn_coverage_unit_hour_idx").on(t.unitId, t.hourStartAt),
-    gapIx: index("rn_coverage_gap_idx")
-      .on(t.unitId, t.hourStartAt)
-      .where(sql`is_covered = false`),
+    gapIx: index("rn_coverage_gap_idx").on(t.unitId, t.hourStartAt).where(sql`is_covered = false`),
   }),
 );
 

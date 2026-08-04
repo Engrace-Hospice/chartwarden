@@ -92,7 +92,9 @@ export interface M27ConsumerPorts {
     readonly suggestedRuleCode: string;
   }) => Promise<boolean>;
   /** Persist the anonymized `draft_suggestion` rule for platform-team review; returns its new id. */
-  readonly createDraftSuggestionRule: (write: DraftSuggestionWrite) => Promise<{ readonly draftRuleId: string }>;
+  readonly createDraftSuggestionRule: (
+    write: DraftSuggestionWrite,
+  ) => Promise<{ readonly draftRuleId: string }>;
   /** Every still-open cost report for the offboarded ProviderEntity (the repo applies RLS + state filter). */
   readonly listOpenCostReportsForProvider: (input: {
     readonly organizationId: string;

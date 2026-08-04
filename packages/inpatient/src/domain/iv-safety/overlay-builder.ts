@@ -4,8 +4,8 @@
 // overlay via the `IpuIvSafetyOverlayProvider.getOverlayForOrder(orderId)` seam (bound in M37-T10) before
 // letting an `iv_continuous_start` / `iv_continuous_rate_change` administration reach `committed`. Pure &
 // IO-free — the M11 `order.signed` consumer (M37-T10) injects the order facts.
-import { M37_ERROR_STATUS, type M37ErrorCode } from "../../errors";
-import { type IvRateUnit } from "../gip-criteria/schema";
+import { type M37ErrorCode, M37_ERROR_STATUS } from "../../errors";
+import type { IvRateUnit } from "../gip-criteria/schema";
 import { resolveTitrationWindow } from "./titration-window-catalog";
 
 /** §2.6 platform-floor max continuous infusion duration (hours) when M12 supplies no per-med value. */
@@ -87,7 +87,10 @@ export function evaluateIvPreAdministration(
     statusCode: M37_ERROR_STATUS[code],
   });
 
-  if (event.proposedRate < overlay.titrationMinRate || event.proposedRate > overlay.titrationMaxRate) {
+  if (
+    event.proposedRate < overlay.titrationMinRate ||
+    event.proposedRate > overlay.titrationMaxRate
+  ) {
     return deny("IV_RATE_OUTSIDE_TITRATION_WINDOW");
   }
   if (overlay.dualWitnessRequired && !event.witnessTokenPresent) {

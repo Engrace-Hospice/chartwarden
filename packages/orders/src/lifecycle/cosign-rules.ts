@@ -104,7 +104,11 @@ export function resolveCosignRequirement(input: {
   if (
     input.kind === "level_of_care_change" &&
     input.levelChange &&
-    escalationJumpCosignRequired(input.levelChange.fromLevel, input.levelChange.toLevel, input.signerDiscipline)
+    escalationJumpCosignRequired(
+      input.levelChange.fromLevel,
+      input.levelChange.toLevel,
+      input.signerDiscipline,
+    )
   ) {
     return { axis: "escalation_jump", cosignerRoleNeeded: "medical_director" };
   }

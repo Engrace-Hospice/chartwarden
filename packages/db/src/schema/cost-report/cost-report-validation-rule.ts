@@ -4,7 +4,18 @@
 // ship additively (NGS-J6 Phase 1). `predicate_spec` is consumed by the rule-engine (P2). NOTE: this is
 // the one M27 table with a NULLABLE organization_id (platform-default rows) — declared on the
 // check-tenancy partial allowlist (the M3 permission-catalog precedent). No PHI (D18).
-import { index, jsonb, pgEnum, pgTable, timestamp, integer, unique, uuid, varchar, boolean } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  timestamp,
+  unique,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import type { RulePredicateSpec } from "./types";
 
 export const m27RuleCategory = pgEnum("m27_rule_category", [
@@ -27,7 +38,11 @@ export const m27RuleCategory = pgEnum("m27_rule_category", [
 ]);
 
 export const m27RuleSeverity = pgEnum("m27_rule_severity", ["block", "warn", "info"]);
-export const m27RuleStatus = pgEnum("m27_rule_status", ["active", "deprecated", "draft_suggestion"]);
+export const m27RuleStatus = pgEnum("m27_rule_status", [
+  "active",
+  "deprecated",
+  "draft_suggestion",
+]);
 
 export const costReportValidationRule = pgTable(
   "cost_report_validation_rule",

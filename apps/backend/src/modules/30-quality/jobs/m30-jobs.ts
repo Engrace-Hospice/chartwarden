@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 // apps/backend/src/modules/30-quality/jobs/m30-jobs.ts — M30 Phase-2C LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @wardenx/quality PURE processors (the four §4.8 work-queue
@@ -37,43 +38,42 @@
 //     attempt — fail-closed, never a plaintext leak.
 //   • the risk-register MV REFRESH runs on the PRIMARY pool (CONCURRENTLY keeps R-95 reads live, D3/D13).
 import type { DbClient } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import {
   type ActiveOrgListPort,
+  type CahpsAdapterResolvePort,
   type CahpsExportPorts,
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
   type ComputeHvldlInput,
-  type HvldlDecedentInput,
+  HCI_THRESHOLDS_v2025,
+  HVLDL_MIN_QUALIFYING_VISITS,
+  HVLDL_QUALIFYING_DISCIPLINES_v2025,
+  HVLDL_QUALIFYING_DISCIPLINES_v2028,
   type HopeSfvOnTimeRateInput,
   type HopeSubmissionAcceptanceRateInput,
+  type HvldlDecedentInput,
+  InfectionRepository,
+  M30_JOB_SCHEDULES,
+  M30_QUEUES,
+  M30_QUEUE_PARAMS,
   type MeasureRecomputeJob,
   type MeasureRecomputePorts,
+  MeasureRecomputeQueueRepository,
   type MeasureRegistration,
-  InfectionRepository,
   type NightlyRecomputeCronPorts,
   type OutbreakDetectionJob,
   type OutbreakDetectionPorts,
   type ProcessingLogPort,
   type QualityHopeConsumer,
   QualityMeasureValueRepository,
-  MeasureRecomputeQueueRepository,
   type RiskRegisterRefreshCronPorts,
   type RiskRegisterRefreshPorts,
   RiskRegisterRepository,
   type SraRemindersCronPorts,
-  type CahpsAdapterResolvePort,
   type ThresholdRule,
   type TimelyFollowUpNonPainInput,
   type TimelyFollowUpPainInput,
   buildMeasureRegistry,
-  HCI_THRESHOLDS_v2025,
-  HVLDL_MIN_QUALIFYING_VISITS,
-  HVLDL_QUALIFYING_DISCIPLINES_v2025,
-  HVLDL_QUALIFYING_DISCIPLINES_v2028,
-  M30_JOB_SCHEDULES,
-  M30_QUEUES,
-  M30_QUEUE_PARAMS,
   cahpsExportProcessor,
   cahpsMonthlySampleCronProcessor,
   measureRecomputeProcessor,
@@ -84,6 +84,7 @@ import {
   sraRemindersCronProcessor,
   unboundWorkerPort,
 } from "@wardenx/quality";
+import { withOrgContext } from "@wardenx/tenancy";
 import type {
   DeathDischargeReader,
   HopeRollupPeriod,
@@ -91,7 +92,6 @@ import type {
 } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
-import { createHash, randomUUID } from "node:crypto";
 import { getSeam } from "../../../bootstrap/index";
 
 // ── the dep bag the composition root injects (the bindable infra + the still-missing seams) ────────────
@@ -185,13 +185,21 @@ function hashSnapshot(snapshot: unknown): string {
  *   HOPE measure specs publish, replace these with a versioned `HOPE_THRESHOLDS_v<FY>` table in the package.
  */
 const HOPE_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = {
-  tfp_pi: { value: 0.9, direction: "gte", label: "timely SFV follow-up for pain impact (platform default)" },
+  tfp_pi: {
+    value: 0.9,
+    direction: "gte",
+    label: "timely SFV follow-up for pain impact (platform default)",
+  },
   tfp_npsi: {
     value: 0.9,
     direction: "gte",
     label: "timely SFV follow-up for non-pain symptom impact (platform default)",
   },
-  hope_sfv_on_time_rate: { value: 0.9, direction: "gte", label: "HOPE SFV on-time rate (platform default)" },
+  hope_sfv_on_time_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "HOPE SFV on-time rate (platform default)",
+  },
   hope_submission_acceptance_rate: {
     value: 0.9,
     direction: "gte",
@@ -467,7 +475,12 @@ export async function resolveOperationalMeasureInput(
     }
     case "evv_compliance_rate": {
       const c = await seams.evvMetrics.getComplianceCounts(organizationId, window);
-      return { ...base, evvRequiredVisits: c.denominator, evvVerifiedVisits: c.numerator, threshold };
+      return {
+        ...base,
+        evvRequiredVisits: c.denominator,
+        evvVerifiedVisits: c.numerator,
+        threshold,
+      };
     }
     case "late_encounter_entry_rate": {
       const c = await seams.signedEncounters.lateEntryCountsForOrg(organizationId, window);
@@ -745,7 +758,10 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         "bind to the M1-owned `processing_log` consumer-idempotency table accessor (§4.8 replay guard)",
       ),
     markProcessed: () =>
-      unboundWorkerPort("processingLog.markProcessed", "bind to the M1-owned `processing_log` table accessor"),
+      unboundWorkerPort(
+        "processingLog.markProcessed",
+        "bind to the M1-owned `processing_log` table accessor",
+      ),
   };
 
   // ── HVLDL measure-input seams (M6 death census + M8 signed encounters) — fail-closed thunk until bound ──
@@ -883,7 +899,9 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         });
       },
       async markExportFailed(id, samplingCycleMonth) {
-        await cahpsRepo.updateSampleExportStatus(id, samplingCycleMonth, { status: "export_failed" });
+        await cahpsRepo.updateSampleExportStatus(id, samplingCycleMonth, {
+          status: "export_failed",
+        });
       },
     },
     decrypt: {
@@ -931,7 +949,13 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
     },
     cases: {
       findByWindow: (providerEntityId, pathogen, bodySite, windowStart, windowEnd) =>
-        infectionRepo.findOutbreakByWindow(providerEntityId, pathogen, bodySite, windowStart, windowEnd),
+        infectionRepo.findOutbreakByWindow(
+          providerEntityId,
+          pathogen,
+          bodySite,
+          windowStart,
+          windowEnd,
+        ),
       create: (values) => infectionRepo.createOutbreak(values),
     },
     outbox: {
@@ -1123,7 +1147,8 @@ export function registerM30Workers(deps: M30WorkerDeps): Worker[] {
     queue: string,
     processor: (data: D) => Promise<R>,
     concurrency: number,
-  ): Worker => new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
+  ): Worker =>
+    new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
 
   // #107 item 4a — measure_recompute WRITES quality_measure_value (RLS `WITH CHECK app.org_id`) and its
   // resolveInput reads the M10 HOPE rollups, so the job MUST run inside a per-job `withOrgContext` envelope:
@@ -1202,8 +1227,14 @@ export function registerM30CronWorkers(deps: M30WorkerDeps): Worker[] {
 
   return [
     mk(M30_CRON_QUEUES.nightlyRecompute, nightlyRecomputeCronProcessor(ports.nightlyRecompute)),
-    mk(M30_CRON_QUEUES.cahpsMonthlySample, cahpsMonthlySampleCronProcessor(ports.cahpsMonthlySample)),
-    mk(M30_CRON_QUEUES.riskRegisterRefresh, riskRegisterRefreshCronProcessor(ports.riskRegisterRefresh)),
+    mk(
+      M30_CRON_QUEUES.cahpsMonthlySample,
+      cahpsMonthlySampleCronProcessor(ports.cahpsMonthlySample),
+    ),
+    mk(
+      M30_CRON_QUEUES.riskRegisterRefresh,
+      riskRegisterRefreshCronProcessor(ports.riskRegisterRefresh),
+    ),
     mk(M30_CRON_QUEUES.sraReminders, sraRemindersCronProcessor(ports.sraReminders)),
   ];
 }

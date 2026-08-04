@@ -30,8 +30,8 @@ import {
   ReportCatalogRepository,
   ReportDefinitionRepository,
   ReportDrilldownAuditRepository,
-  type ReportableScopeEnvelope,
   ReportViewRepository,
+  type ReportableScopeEnvelope,
   type ReportingConsentConsumer,
   type ReportingDb,
   type SqlRow,
@@ -111,7 +111,11 @@ export class ExportRenderUnbound extends WardenXError {
 /** The route service the export/drilldown handlers compose over (§4.1 #32–#36). */
 export interface M33ExportDrilldownRouteService {
   /** #32 pre-flight — the row estimate (over the §4.8 cap ⇒ the route 413s before any byte streams). */
-  estimateCsvExport(actor: M33WriteActor, viewId: string, query: ExportQuery): Promise<CsvExportEstimate>;
+  estimateCsvExport(
+    actor: M33WriteActor,
+    viewId: string,
+    query: ExportQuery,
+  ): Promise<CsvExportEstimate>;
   /** #32 — stream the saved view's resolved snapshot as chunked CSV to the route-supplied sink. */
   streamCsvExport(
     actor: M33WriteActor,
@@ -190,7 +194,9 @@ export function createInMemoryM33ExportDrilldownBackend(seed: M33ExportDrilldown
       };
     },
     async bulkExportDrilldown(_actor, _input, sink) {
-      await sink.write("drilldown_trace_id,source_tile_key,target_module,target_surface,accessed_at\r\n");
+      await sink.write(
+        "drilldown_trace_id,source_tile_key,target_module,target_surface,accessed_at\r\n",
+      );
       await sink.write(`${id("d")},census_daily,8,/m8/late-entry,2026-06-21T12:00:00.000Z\r\n`);
       await sink.end();
       return { rowCount: 1 };
@@ -271,7 +277,8 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
   ): Promise<{ translation: Translation; rowLimit: number }> =>
     read(actor.organizationId, async (db) => {
       const view = await new ReportViewRepository(db).findById(viewId);
-      if (!view || view.organizationId !== actor.organizationId) throw new NotFoundError("report view");
+      if (!view || view.organizationId !== actor.organizationId)
+        throw new NotFoundError("report view");
       const defRepo = new ReportDefinitionRepository(db);
       const version = await defRepo.findVersionById(view.definitionVersionId);
       if (!version) throw new NotFoundError("report definition version");
@@ -295,7 +302,11 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
         maxRowLimit: base.maxRowLimit,
         drilldownUrlTemplate: base.drilldownUrlTemplate,
       };
-      const translation = translateSpec({ ...spec, filters }, translatorBase, scopeEnvelope(actor, query));
+      const translation = translateSpec(
+        { ...spec, filters },
+        translatorBase,
+        scopeEnvelope(actor, query),
+      );
       return { translation, rowLimit };
     });
 
@@ -314,7 +325,10 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
       const source = {
         async *fetchChunks(): AsyncIterable<readonly SqlRow[]> {
           if (translation.kind !== "sql" || !tiles) return;
-          const { rows } = await tiles.execute({ sql: translation.sql, params: translation.params });
+          const { rows } = await tiles.execute({
+            sql: translation.sql,
+            params: translation.params,
+          });
           yield rows;
         },
       };
@@ -334,7 +348,13 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
       const { translation, rowLimit } = await translateView(actor, viewId, {});
       const exportId = idempotencyKey || newId();
       const snapshotQuery = translation.kind === "sql" ? translation.sql : "";
-      const input = { exportId, viewId, organizationId: actor.organizationId, snapshotQuery, rowLimit };
+      const input = {
+        exportId,
+        viewId,
+        organizationId: actor.organizationId,
+        snapshotQuery,
+        rowLimit,
+      };
       // §4.8 PDF gate is inside requestPdfRender (throws PdfRowLimitExceeded → the route 413s). XLSX: no gate.
       if (format === "pdf") {
         await requestPdfRender(input, { outbox: deps.exportOutbox });
@@ -382,7 +402,13 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
           patientIds: input.patientIds ?? [],
           url: candidate.url,
         },
-        { consent: deps.consent ?? { async evaluateForReporting() { throw new Error("M39 unbound"); } } },
+        {
+          consent: deps.consent ?? {
+            async evaluateForReporting() {
+              throw new Error("M39 unbound");
+            },
+          },
+        },
       );
 
       // Step 3 — envelope-encrypt + append the insert-only audit row under withOrgContext (fail-closed on DEK).
@@ -438,11 +464,16 @@ export function createDrizzleM33ExportDrilldownBackend(deps: M33ExportDrilldownD
       const rows = await read(actor.organizationId, async (db) => {
         const where =
           input.targetModule !== undefined
-            ? and(eq(A.organizationId, actor.organizationId), eq(A.drilldownTargetModule, input.targetModule))
+            ? and(
+                eq(A.organizationId, actor.organizationId),
+                eq(A.drilldownTargetModule, input.targetModule),
+              )
             : eq(A.organizationId, actor.organizationId);
         return db.select().from(A).where(where).orderBy(desc(A.accessedAt)).limit(50_000);
       });
-      await sink.write("drilldown_trace_id,source_tile_key,target_module,target_surface,accessed_at\r\n");
+      await sink.write(
+        "drilldown_trace_id,source_tile_key,target_module,target_surface,accessed_at\r\n",
+      );
       for (const r of rows) {
         await sink.write(
           `${r.drilldownTraceId},${r.sourceTileKey},${r.drilldownTargetModule},${r.drilldownTargetSurface},${r.accessedAt.toISOString()}\r\n`,

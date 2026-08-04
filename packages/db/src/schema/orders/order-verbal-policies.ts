@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `order_verbal_policy` (M11 §3.3 / §2.3 D3). The per-org (one row, `per_org_uq`) verbal-
 // order policy: the authentication window (default 48h, business-hours toggle), the per-kind LPN/NP
 // cosign-required matrices, and the platform-enforced floor (the service enforces tighten-only — an org
@@ -5,12 +6,20 @@
 // the three-column tenancy rule for ARCH-011 uniformity (org-level config, but PE/location NOT NULL per
 // §3.3). Non-partitioned. Seeded per tenant at onboarding (packages/saas-tenant-platform). Actor refs go to M1
 // `membership`. RLS + grants + M4 write-audit trigger (no free-text denylist) land in the RLS migration.
-import { boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const orderVerbalPolicies = pgTable(
   "order_verbal_policy",

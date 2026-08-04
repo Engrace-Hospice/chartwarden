@@ -35,7 +35,9 @@ export const capProjectionSnapshot = pgTable(
     patientId: uuid("patient_id"), // NOT NULL when scope='patient_aggregate'
     methodology: m26Methodology("methodology").notNull(),
     paidYtdCents: bigint("paid_ytd_cents", { mode: "number" }).notNull(),
-    outstandingBilledCents: bigint("outstanding_billed_cents", { mode: "number" }).notNull().default(0),
+    outstandingBilledCents: bigint("outstanding_billed_cents", { mode: "number" })
+      .notNull()
+      .default(0),
     projectedYearEndCents: bigint("projected_year_end_cents", { mode: "number" }).notNull(),
     capAmountCents: bigint("cap_amount_cents", { mode: "number" }), // null for scope='inpatient'
     inpatientDaysYtd: integer("inpatient_days_ytd"),

@@ -204,7 +204,11 @@ export interface MedicaidValidationContext {
 // ── the rule definition ────────────────────────────────────────────────────────────────────────────────
 
 /** The override role a regulatory-required rule's blocking failure needs (M23-shared vocabulary). */
-export type MedicaidOverrideRole = "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+export type MedicaidOverrideRole =
+  | "billing_manager"
+  | "compliance_officer"
+  | "medical_director"
+  | "org_admin";
 
 /**
  * A single Medicaid validation rule (D10). `check` is a DETERMINISTIC SYNCHRONOUS pure predicate over the

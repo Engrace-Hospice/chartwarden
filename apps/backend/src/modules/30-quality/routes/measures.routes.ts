@@ -16,8 +16,6 @@ import { requirePermission } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import type { M30ReadRouteService } from "./read-service";
-import type { M30WriteRouteService } from "./write-service";
 import {
   EnqueueRecomputeBodySchema,
   MeasureIdParamsSchema,
@@ -26,6 +24,8 @@ import {
   MeasureValuesQuerySchema,
   parse,
 } from "./quality-typebox";
+import type { M30ReadRouteService } from "./read-service";
+import type { M30WriteRouteService } from "./write-service";
 
 export interface MeasureRouteDeps {
   readonly readService: M30ReadRouteService;

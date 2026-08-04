@@ -17,10 +17,18 @@
 // canonical guard (the two-person co-sign split, V-11 / V-12).
 import type { DbClient } from "@wardenx/db";
 import {
-  assertPipClosureCosign,
-  assertSraClosureCosign,
   type PipClosureCosign,
   type SraClosureCosign,
+  assertPipClosureCosign,
+  assertSraClosureCosign,
+} from "@wardenx/quality";
+import type {
+  CopStatus,
+  IncidentKind,
+  IncidentSeverity,
+  MeasurePeriodKind,
+  QapiProjectPhase,
+  SraCycleStatus,
 } from "@wardenx/quality";
 import type { M30WriteActor } from "./actor";
 import type {
@@ -43,14 +51,6 @@ import type {
   SraFindingView,
   SraRemediationView,
 } from "./read-service";
-import type {
-  CopStatus,
-  IncidentKind,
-  IncidentSeverity,
-  MeasurePeriodKind,
-  QapiProjectPhase,
-  SraCycleStatus,
-} from "@wardenx/quality";
 
 // Re-export the write actor + cosign types so route plugins import the write contract from one barrel.
 export type { M30WriteActor, PipClosureCosign, SraClosureCosign };
@@ -180,10 +180,16 @@ export interface IngestCahpsResultsArgs {
 // QAPI (R-21, R-22, R-24, R-25, R-27, R-28, R-30, R-31, R-32)
 export interface AdoptQapiProgramArgs {
   readonly planYear: number;
-  readonly governanceComposition: readonly { readonly role: string; readonly membershipId: string }[];
+  readonly governanceComposition: readonly {
+    readonly role: string;
+    readonly membershipId: string;
+  }[];
 }
 export interface UpdateQapiGovernanceArgs {
-  readonly governanceComposition: readonly { readonly role: string; readonly membershipId: string }[];
+  readonly governanceComposition: readonly {
+    readonly role: string;
+    readonly membershipId: string;
+  }[];
 }
 export interface CreateQapiIndicatorArgs {
   readonly qapiProgramId: string;
@@ -368,7 +374,10 @@ export function assertSraCloseSplitActor(cosign: SraClosureCosign): void {
  */
 export interface M30WriteRouteService {
   // Quality measures (R-04)
-  enqueueRecompute(actor: M30WriteActor, args: EnqueueRecomputeArgs): Promise<RecomputeJobAcceptedView>;
+  enqueueRecompute(
+    actor: M30WriteActor,
+    args: EnqueueRecomputeArgs,
+  ): Promise<RecomputeJobAcceptedView>;
 
   // CAHPS (R-11, R-13, R-14, R-16)
   bindCahpsVendor(actor: M30WriteActor, args: BindCahpsVendorArgs): Promise<CahpsVendorBindingView>;
@@ -378,7 +387,10 @@ export interface M30WriteRouteService {
     args: ExcludeCahpsDecedentArgs,
   ): Promise<CahpsDecedentView>;
   createCahpsExport(actor: M30WriteActor, args: CreateCahpsExportArgs): Promise<CahpsExportJobView>;
-  ingestCahpsResults(actor: M30WriteActor, args: IngestCahpsResultsArgs): Promise<CahpsIngestResultView>;
+  ingestCahpsResults(
+    actor: M30WriteActor,
+    args: IngestCahpsResultsArgs,
+  ): Promise<CahpsIngestResultView>;
 
   // QAPI (R-21, R-22, R-24, R-25, R-27, R-28, R-30, R-31, R-32)
   adoptQapiProgram(actor: M30WriteActor, args: AdoptQapiProgramArgs): Promise<QapiProgramView>;
@@ -387,7 +399,10 @@ export interface M30WriteRouteService {
     programId: string,
     args: UpdateQapiGovernanceArgs,
   ): Promise<QapiProgramView>;
-  createQapiIndicator(actor: M30WriteActor, args: CreateQapiIndicatorArgs): Promise<QapiIndicatorView>;
+  createQapiIndicator(
+    actor: M30WriteActor,
+    args: CreateQapiIndicatorArgs,
+  ): Promise<QapiIndicatorView>;
   updateQapiIndicator(
     actor: M30WriteActor,
     indicatorId: string,
@@ -408,7 +423,11 @@ export interface M30WriteRouteService {
 
   // SRA (R-41, R-43, R-44, R-45, R-46, R-47)
   openSraCycle(actor: M30WriteActor, args: OpenSraCycleArgs): Promise<SraCycleView>;
-  addSraFinding(actor: M30WriteActor, cycleId: string, args: AddSraFindingArgs): Promise<SraFindingView>;
+  addSraFinding(
+    actor: M30WriteActor,
+    cycleId: string,
+    args: AddSraFindingArgs,
+  ): Promise<SraFindingView>;
   updateSraFinding(
     actor: M30WriteActor,
     findingId: string,
@@ -424,7 +443,11 @@ export interface M30WriteRouteService {
     remediationId: string,
     args: UpdateSraRemediationArgs,
   ): Promise<SraRemediationView>;
-  closeSraCycle(actor: M30WriteActor, cycleId: string, args: CloseSraCycleArgs): Promise<SraCycleView>;
+  closeSraCycle(
+    actor: M30WriteActor,
+    cycleId: string,
+    args: CloseSraCycleArgs,
+  ): Promise<SraCycleView>;
 
   // Incidents (R-51, R-53, R-54, R-55, R-56, R-57, R-58, R-59, R-60)
   createIncident(actor: M30WriteActor, args: CreateIncidentArgs): Promise<IncidentDetailView>;
@@ -486,7 +509,10 @@ export interface M30WriteRouteService {
   ): Promise<CopCitationView>;
 
   // Infection (R-91, R-93)
-  recordInfectionEvent(actor: M30WriteActor, args: RecordInfectionEventArgs): Promise<InfectionEventView>;
+  recordInfectionEvent(
+    actor: M30WriteActor,
+    args: RecordInfectionEventArgs,
+  ): Promise<InfectionEventView>;
   updateInfectionOutbreak(
     actor: M30WriteActor,
     caseId: string,
@@ -498,5 +524,10 @@ export interface M30WriteRouteService {
 }
 
 // Re-export the read views the write methods echo back, so route plugins import from one barrel.
-export type { CahpsDecedentView, CahpsExportJobView, CahpsResultSummaryView, CahpsVendorBindingView };
+export type {
+  CahpsDecedentView,
+  CahpsExportJobView,
+  CahpsResultSummaryView,
+  CahpsVendorBindingView,
+};
 export type { MeasurePeriodKind, SraCycleStatus };

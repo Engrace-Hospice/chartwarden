@@ -8,7 +8,16 @@
 // (the reverse FK, credential → client, carries the real constraint; a real FK here too would be a
 // circular pair). `approved_by_*_membership_id` are logical M2 references, validated at the write
 // boundary.
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { fhirClientStatus, fhirClientTier, fhirClientType } from "../../enums";
 
 export const fhirClient = pgTable(

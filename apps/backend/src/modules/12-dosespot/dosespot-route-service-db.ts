@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/12-dosespot — PRODUCTION MedicationOrderRouteService + §4.7 ABAC resolver
 // (M12L reads + writes over Drizzle+RLS). No route is left at 501.
 //
@@ -25,8 +26,11 @@
 // null, both mirroring the in-memory reference; (5) the refill-SLA / controlled-substance policies have no
 // table in Phase 1 — the put* routes apply their tighten-only guards and return the computed view without
 // persisting (the platform default is authoritative).
-import { isEpcsRequired, transitionMedicationOrder, transitionRefillRequest } from "@wardenx/dosespot";
-import { type DbClient, schema } from "@wardenx/db";
+import {
+  isEpcsRequired,
+  transitionMedicationOrder,
+  transitionRefillRequest,
+} from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
@@ -50,8 +54,14 @@ const DP = schema.dosespotPrescribers;
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 
 /** The disciplines eligible to SIGN a medication order (§4.6 — prescriber-only; RN drafts, never signs). */
-const SIGNER_DISCIPLINES: ReadonlySet<string> = new Set(["hospice_physician", "medical_director", "np", "pa"]);
-const signerEligibleForMed = (discipline: string): boolean => SIGNER_DISCIPLINES.has(discipline.toLowerCase());
+const SIGNER_DISCIPLINES: ReadonlySet<string> = new Set([
+  "hospice_physician",
+  "medical_director",
+  "np",
+  "pa",
+]);
+const signerEligibleForMed = (discipline: string): boolean =>
+  SIGNER_DISCIPLINES.has(discipline.toLowerCase());
 
 /** The transactional-outbox port (§4.4): the bound publisher validates every emit against the boot catalog
  * and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests commit
@@ -154,7 +164,13 @@ export function createDbDoseSpotBackend(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: org,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Load a medication_order row (RLS-scoped) or the non-leaking 404. */
@@ -214,12 +230,19 @@ export function createDbDoseSpotBackend(
         .returning({ id: MO.id }),
       "medication_order insert returned no row",
     );
-    await emit(tx, organizationId, "m12.medication_order.draft_created", "medication_order", row.id, {
-      orderId: row.id,
-      patientId: args.patientId,
-      medClass: args.medClass,
-      isControlledSubstance: controlled,
-    });
+    await emit(
+      tx,
+      organizationId,
+      "m12.medication_order.draft_created",
+      "medication_order",
+      row.id,
+      {
+        orderId: row.id,
+        patientId: args.patientId,
+        medClass: args.medClass,
+        isControlledSubstance: controlled,
+      },
+    );
     return row.id;
   }
 
@@ -293,12 +316,15 @@ export function createDbDoseSpotBackend(
 
     // ── Medication-order writes (§2.2 lifecycle; the service does the transitions, no DB triggers) ───
     async createDraft(organizationId, userId, args) {
-      return withOrg(organizationId, async (tx) => readOrder(tx, await insertDraft(tx, organizationId, userId, args)));
+      return withOrg(organizationId, async (tx) =>
+        readOrder(tx, await insertDraft(tx, organizationId, userId, args)),
+      );
     },
     async editDraft(organizationId, id, patch) {
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
-        if (r.status !== "draft") throw new NotFoundError(`medication order ${id} is not a draft and cannot be edited`);
+        if (r.status !== "draft")
+          throw new NotFoundError(`medication order ${id} is not a draft and cannot be edited`);
         await tx
           .update(MO)
           .set({
@@ -327,12 +353,22 @@ export function createDbDoseSpotBackend(
           sudConsentSatisfied: true, // M39 consent unbound in the DB backend → allowed (§7.13)
           tenantEpcsCertified: DEFAULT_CS_POLICY.epcsCertificationStatus === "certified", // false (D18)
         });
-        await tx.update(MO).set({ status: "pending_signature", version: r.version + 1, updatedAt: new Date() }).where(eq(MO.id, id));
-        await emit(tx, organizationId, "m12.medication_order.signature_requested", "medication_order", id, {
-          orderId: id,
-          prescriberMembershipId: r.prescriberMembershipId,
-          prescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
-        });
+        await tx
+          .update(MO)
+          .set({ status: "pending_signature", version: r.version + 1, updatedAt: new Date() })
+          .where(eq(MO.id, id));
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication_order.signature_requested",
+          "medication_order",
+          id,
+          {
+            orderId: id,
+            prescriberMembershipId: r.prescriberMembershipId,
+            prescribingPhysicianMdmId: r.prescribingPhysicianMdmId,
+          },
+        );
         return readOrder(tx, id);
       });
     },
@@ -348,7 +384,10 @@ export function createDbDoseSpotBackend(
           signerIsOrderingPhysician: args.signerIsOrderingPhysician ?? !fromVerbal,
         });
         const at = new Date();
-        await tx.update(MO).set({ status: "signed", signedAt: at, version: r.version + 1, updatedAt: at }).where(eq(MO.id, id));
+        await tx
+          .update(MO)
+          .set({ status: "signed", signedAt: at, version: r.version + 1, updatedAt: at })
+          .where(eq(MO.id, id));
         await emit(tx, organizationId, "m12.medication_order.signed", "medication_order", id, {
           orderId: id,
           signerMembershipId: userId,
@@ -385,7 +424,10 @@ export function createDbDoseSpotBackend(
           secondFactorType: "totp",
         });
         const at = new Date();
-        await tx.update(MO).set({ status: "signed", signedAt: at, version: r.version + 1, updatedAt: at }).where(eq(MO.id, id));
+        await tx
+          .update(MO)
+          .set({ status: "signed", signedAt: at, version: r.version + 1, updatedAt: at })
+          .where(eq(MO.id, id));
         await emit(tx, organizationId, "m12.medication_order.signed", "medication_order", id, {
           orderId: id,
           signerMembershipId: userId,
@@ -409,13 +451,25 @@ export function createDbDoseSpotBackend(
         });
         await tx
           .update(MO)
-          .set({ status: "verbal_pending", prescribingPhysicianMdmId: args.namedPrescriberMdmId, version: r.version + 1, updatedAt: new Date() })
+          .set({
+            status: "verbal_pending",
+            prescribingPhysicianMdmId: args.namedPrescriberMdmId,
+            version: r.version + 1,
+            updatedAt: new Date(),
+          })
           .where(eq(MO.id, id));
-        await emit(tx, organizationId, "m12.medication_order.verbal_received", "medication_order", id, {
-          orderId: id,
-          recordingMembershipId: userId,
-          namedPrescriberMdmId: args.namedPrescriberMdmId,
-        });
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication_order.verbal_received",
+          "medication_order",
+          id,
+          {
+            orderId: id,
+            recordingMembershipId: userId,
+            namedPrescriberMdmId: args.namedPrescriberMdmId,
+          },
+        );
         return readOrder(tx, id);
       });
     },
@@ -423,10 +477,15 @@ export function createDbDoseSpotBackend(
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
         if (r.prescriberMembershipId === userId)
-          throw new NotFoundError("a medication order may not be cosigned by its own drafter (§7.3)");
+          throw new NotFoundError(
+            "a medication order may not be cosigned by its own drafter (§7.3)",
+          );
         // The cosignature primitive is M11's `OrderSignatureProvider`; the DB backend records the attach
         // locally (no M12-owned cosign event, mirroring the in-mem slice).
-        await tx.update(MO).set({ cosignStatus: "attached", updatedAt: new Date() }).where(eq(MO.id, id));
+        await tx
+          .update(MO)
+          .set({ cosignStatus: "attached", updatedAt: new Date() })
+          .where(eq(MO.id, id));
         return readOrder(tx, id);
       });
     },
@@ -435,13 +494,28 @@ export function createDbDoseSpotBackend(
         const r = await loadOrder(tx, id);
         transitionMedicationOrder(r.status, { type: "discontinue", reason: args.reason });
         const at = new Date();
-        await tx.update(MO).set({ status: "discontinued", discontinuedAt: at, version: r.version + 1, updatedAt: at }).where(eq(MO.id, id));
-        await emit(tx, organizationId, "m12.medication_order.discontinued", "medication_order", id, {
-          orderId: id,
-          reason: args.reason,
-          actorMembershipId: userId,
-          effectiveAt: new Date(args.effectiveAt).toISOString(),
-        });
+        await tx
+          .update(MO)
+          .set({
+            status: "discontinued",
+            discontinuedAt: at,
+            version: r.version + 1,
+            updatedAt: at,
+          })
+          .where(eq(MO.id, id));
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication_order.discontinued",
+          "medication_order",
+          id,
+          {
+            orderId: id,
+            reason: args.reason,
+            actorMembershipId: userId,
+            effectiveAt: new Date(args.effectiveAt).toISOString(),
+          },
+        );
         return readOrder(tx, id);
       });
     },
@@ -450,7 +524,10 @@ export function createDbDoseSpotBackend(
         const r = await loadOrder(tx, id);
         transitionMedicationOrder(r.status, { type: "complete", criterionMet: true });
         const at = new Date();
-        await tx.update(MO).set({ status: "completed", completedAt: at, version: r.version + 1, updatedAt: at }).where(eq(MO.id, id));
+        await tx
+          .update(MO)
+          .set({ status: "completed", completedAt: at, version: r.version + 1, updatedAt: at })
+          .where(eq(MO.id, id));
         await emit(tx, organizationId, "m12.medication_order.completed", "medication_order", id, {
           orderId: id,
           completedAt: at.toISOString(),
@@ -462,8 +539,14 @@ export function createDbDoseSpotBackend(
     async correctOrder(organizationId, userId, id, args) {
       return withOrg(organizationId, async (tx) => {
         const original = await loadOrder(tx, id);
-        const newId = await insertDraft(tx, organizationId, userId, { ...args, replacesMedicationOrderId: id });
-        await tx.update(MO).set({ version: original.version + 1, updatedAt: new Date() }).where(eq(MO.id, id));
+        const newId = await insertDraft(tx, organizationId, userId, {
+          ...args,
+          replacesMedicationOrderId: id,
+        });
+        await tx
+          .update(MO)
+          .set({ version: original.version + 1, updatedAt: new Date() })
+          .where(eq(MO.id, id));
         return { newOrderId: newId };
       });
     },
@@ -471,7 +554,9 @@ export function createDbDoseSpotBackend(
       return withOrg(organizationId, async (tx) => {
         const original = await loadOrder(tx, id);
         if (original.status !== "transmission_failed")
-          throw new NotFoundError(`medication order ${id} is ${original.status}; only a transmission_failed order may be retransmitted`);
+          throw new NotFoundError(
+            `medication order ${id} is ${original.status}; only a transmission_failed order may be retransmitted`,
+          );
         const newId = await insertDraft(tx, organizationId, userId, {
           patientId: original.patientId,
           admissionId: original.admissionId,
@@ -523,7 +608,11 @@ export function createDbDoseSpotBackend(
       return withOrg(organizationId, async (tx) => {
         const [refill] = await tx.select().from(RR).where(eq(RR.id, id)).limit(1);
         if (!refill) throw new NotFoundError(`refill request ${id} not found`);
-        const [source] = await tx.select().from(MO).where(eq(MO.id, refill.sourceMedicationOrderId)).limit(1);
+        const [source] = await tx
+          .select()
+          .from(MO)
+          .where(eq(MO.id, refill.sourceMedicationOrderId))
+          .limit(1);
         // Validates ILLEGAL_REFILL_TRANSITION / REFILL_SOURCE_ORDER_NOT_ACTIVE / schedule ceiling.
         transitionRefillRequest(refill.status, id, {
           type: "approve",
@@ -547,7 +636,8 @@ export function createDbDoseSpotBackend(
           route: source?.route ?? "",
           data: source?.data ?? {},
           prescriberDiscipline: "",
-          prescribingPhysicianMdmId: source?.prescribingPhysicianMdmId ?? refill.sourceMedicationOrderId,
+          prescribingPhysicianMdmId:
+            source?.prescribingPhysicianMdmId ?? refill.sourceMedicationOrderId,
           dispensingPharmacyMdmId: source?.dispensingPharmacyMdmId ?? undefined,
           deaSchedule: source?.deaSchedule ?? undefined,
           containsControlled: source?.isControlledSubstance ?? false,
@@ -576,7 +666,11 @@ export function createDbDoseSpotBackend(
     },
     async denyRefill(organizationId, userId, id, args) {
       return withOrg(organizationId, async (tx) => {
-        const [refill] = await tx.select({ status: RR.status }).from(RR).where(eq(RR.id, id)).limit(1);
+        const [refill] = await tx
+          .select({ status: RR.status })
+          .from(RR)
+          .where(eq(RR.id, id))
+          .limit(1);
         if (!refill) throw new NotFoundError(`refill request ${id} not found`);
         transitionRefillRequest(refill.status, id, {
           type: "deny",
@@ -635,27 +729,59 @@ export function createDbDoseSpotBackend(
             })
             .onConflictDoUpdate({
               target: [DP.organizationId, DP.membershipId],
-              set: { deaAuthorizedSchedules: deaAuthorizedSchedules as string[], enrolledAt: at, revokedAt: null, revocationReason: null, updatedAt: at },
+              set: {
+                deaAuthorizedSchedules: deaAuthorizedSchedules as string[],
+                enrolledAt: at,
+                revokedAt: null,
+                revocationReason: null,
+                updatedAt: at,
+              },
             })
             .returning({ id: DP.id }),
           "dosespot_prescriber upsert returned no row",
         );
-        await emit(tx, organizationId, "m12.prescriber_enrolled", "dosespot_prescriber", membershipId, {
+        await emit(
+          tx,
+          organizationId,
+          "m12.prescriber_enrolled",
+          "dosespot_prescriber",
           membershipId,
-          dosespotPrescriberId: row.id,
-        });
+          {
+            membershipId,
+            dosespotPrescriberId: row.id,
+          },
+        );
         return { membershipId, enrolled: true, deaAuthorizedSchedules, ial2Status: "not_started" };
       });
     },
     async revokePrescriber(organizationId, membershipId, reason) {
       return withOrg(organizationId, async (tx) => {
-        const [row] = await tx.select({ id: DP.id }).from(DP).where(eq(DP.membershipId, membershipId)).limit(1);
+        const [row] = await tx
+          .select({ id: DP.id })
+          .from(DP)
+          .where(eq(DP.membershipId, membershipId))
+          .limit(1);
         if (!row) throw new NotFoundError(`prescriber roster entry for ${membershipId} not found`);
-        await tx.update(DP).set({ revokedAt: new Date(), revocationReason: reason, epcsEnabled: false, updatedAt: new Date() }).where(eq(DP.id, row.id));
-        await emit(tx, organizationId, "m12.prescriber_revoked", "dosespot_prescriber", membershipId, {
+        await tx
+          .update(DP)
+          .set({
+            revokedAt: new Date(),
+            revocationReason: reason,
+            epcsEnabled: false,
+            updatedAt: new Date(),
+          })
+          .where(eq(DP.id, row.id));
+        await emit(
+          tx,
+          organizationId,
+          "m12.prescriber_revoked",
+          "dosespot_prescriber",
           membershipId,
-          reason,
-        });
+          {
+            membershipId,
+            reason,
+          },
+        );
         return { status: "revoked" as const };
       });
     },
@@ -667,8 +793,13 @@ export function createDbDoseSpotBackend(
     async putRefillInboxPolicy(_organizationId, patch) {
       const warn = patch.slaWarnHours ?? DEFAULT_REFILL_POLICY.slaWarnHours;
       const critical = patch.slaCriticalHours ?? DEFAULT_REFILL_POLICY.slaCriticalHours;
-      if (warn > DEFAULT_REFILL_POLICY.platformFloorWarnHours || critical > DEFAULT_REFILL_POLICY.platformFloorCriticalHours)
-        throw new NotFoundError("refill SLA policy is tighten-only; cannot exceed the platform floor");
+      if (
+        warn > DEFAULT_REFILL_POLICY.platformFloorWarnHours ||
+        critical > DEFAULT_REFILL_POLICY.platformFloorCriticalHours
+      )
+        throw new NotFoundError(
+          "refill SLA policy is tighten-only; cannot exceed the platform floor",
+        );
       return { ...DEFAULT_REFILL_POLICY, slaWarnHours: warn, slaCriticalHours: critical };
     },
     async getControlledSubstancePolicy(_organizationId) {
@@ -676,13 +807,23 @@ export function createDbDoseSpotBackend(
     },
     async putControlledSubstancePolicy(organizationId, patch) {
       const max = patch.scheduleIiiToVMaxRefills ?? DEFAULT_CS_POLICY.scheduleIiiToVMaxRefills;
-      if (max > 5) throw new NotFoundError("controlled-substance refill policy is tighten-only (21 CFR 1306.22 ≤ 5)");
+      if (max > 5)
+        throw new NotFoundError(
+          "controlled-substance refill policy is tighten-only (21 CFR 1306.22 ≤ 5)",
+        );
       const next = { ...DEFAULT_CS_POLICY, scheduleIiiToVMaxRefills: max };
       await withOrg(organizationId, (tx) =>
-        emit(tx, organizationId, "m12.controlled_substance_policy_changed", "controlled_substance_policy", organizationId, {
-          before: DEFAULT_CS_POLICY.scheduleIiiToVMaxRefills,
-          after: max,
-        }),
+        emit(
+          tx,
+          organizationId,
+          "m12.controlled_substance_policy_changed",
+          "controlled_substance_policy",
+          organizationId,
+          {
+            before: DEFAULT_CS_POLICY.scheduleIiiToVMaxRefills,
+            after: max,
+          },
+        ),
       );
       return next;
     },
@@ -690,14 +831,21 @@ export function createDbDoseSpotBackend(
     // ── §4.7 ABAC resolver reads ───────────────────────────────────────────────────────────────────
     async loadAuthorizedSchedules(organizationId, userId) {
       return withOrg(organizationId, async (tx) => {
-        const [row] = await tx.select({ schedules: DP.deaAuthorizedSchedules }).from(DP).where(eq(DP.membershipId, userId)).limit(1);
+        const [row] = await tx
+          .select({ schedules: DP.deaAuthorizedSchedules })
+          .from(DP)
+          .where(eq(DP.membershipId, userId))
+          .limit(1);
         return row ? ((row.schedules ?? []) as readonly string[]) : null;
       });
     },
     async loadRefillScope(organizationId, refillId, userId) {
       return withOrg(organizationId, async (tx) => {
         const [r] = await tx
-          .select({ sourceMedicationOrderId: RR.sourceMedicationOrderId, approvedByMembershipId: RR.approvedByMembershipId })
+          .select({
+            sourceMedicationOrderId: RR.sourceMedicationOrderId,
+            approvedByMembershipId: RR.approvedByMembershipId,
+          })
           .from(RR)
           .where(eq(RR.id, refillId))
           .limit(1);
@@ -708,7 +856,8 @@ export function createDbDoseSpotBackend(
           .where(eq(MO.id, r.sourceMedicationOrderId))
           .limit(1);
         return {
-          isNamedPrescriber: r.approvedByMembershipId === userId || source?.prescriberMembershipId === userId,
+          isNamedPrescriber:
+            r.approvedByMembershipId === userId || source?.prescriberMembershipId === userId,
           patientInCaseload: false, // caseload axis needs the M5 caseload seam (deferred); fail closed
         };
       });

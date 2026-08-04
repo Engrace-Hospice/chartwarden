@@ -7,7 +7,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { RegulatoryDecimal } from "@wardenx/shared/money";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
-import { agingBucketLabel, type AgingBucketLabel } from "../domain";
+import { type AgingBucketLabel, agingBucketLabel } from "../domain";
 import type { M25ReadActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
 import type {
@@ -31,7 +31,11 @@ export interface TerminologyLookupPort {
   ): Promise<{ category: string; plainLanguage: string } | null>;
 }
 
-const DENY_TERMINOLOGY: TerminologyLookupPort = { async lookup() { return null; } };
+const DENY_TERMINOLOGY: TerminologyLookupPort = {
+  async lookup() {
+    return null;
+  },
+};
 
 const iso = (d: Date | string | null): string =>
   d === null ? "" : d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -57,9 +61,14 @@ export function buildDrizzleM25ReadService(
         const conds = [
           filters.providerEntityId ? eq(RA.providerEntityId, filters.providerEntityId) : undefined,
           filters.parseStatus
-            ? eq(RA.parseStatus, filters.parseStatus as typeof RA.parseStatus.enumValues[number])
+            ? eq(RA.parseStatus, filters.parseStatus as (typeof RA.parseStatus.enumValues)[number])
             : undefined,
-          c ? or(lt(RA.receivedAt, new Date(c.createdAt)), and(eq(RA.receivedAt, new Date(c.createdAt)), lt(RA.id, c.id))) : undefined,
+          c
+            ? or(
+                lt(RA.receivedAt, new Date(c.createdAt)),
+                and(eq(RA.receivedAt, new Date(c.createdAt)), lt(RA.id, c.id)),
+              )
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select()
@@ -67,7 +76,12 @@ export function buildDrizzleM25ReadService(
           .where(conds.length ? and(...(conds as [])) : undefined)
           .orderBy(desc(RA.receivedAt), desc(RA.id))
           .limit(limit + 1);
-        return page(rows, limit, (r) => ({ createdAt: iso(r.receivedAt), id: r.id }), toAdviceSummary);
+        return page(
+          rows,
+          limit,
+          (r) => ({ createdAt: iso(r.receivedAt), id: r.id }),
+          toAdviceSummary,
+        );
       });
     },
 
@@ -82,11 +96,18 @@ export function buildDrizzleM25ReadService(
       const c = decodeCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
-          filters.remittanceAdviceId ? eq(RL.remittanceAdviceId, filters.remittanceAdviceId) : undefined,
-          filters.matchState
-            ? eq(RL.matchState, filters.matchState as typeof RL.matchState.enumValues[number])
+          filters.remittanceAdviceId
+            ? eq(RL.remittanceAdviceId, filters.remittanceAdviceId)
             : undefined,
-          c ? or(lt(RL.receivedAt, new Date(c.createdAt)), and(eq(RL.receivedAt, new Date(c.createdAt)), lt(RL.id, c.id))) : undefined,
+          filters.matchState
+            ? eq(RL.matchState, filters.matchState as (typeof RL.matchState.enumValues)[number])
+            : undefined,
+          c
+            ? or(
+                lt(RL.receivedAt, new Date(c.createdAt)),
+                and(eq(RL.receivedAt, new Date(c.createdAt)), lt(RL.id, c.id)),
+              )
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select()
@@ -94,7 +115,12 @@ export function buildDrizzleM25ReadService(
           .where(conds.length ? and(...(conds as [])) : undefined)
           .orderBy(desc(RL.receivedAt), desc(RL.id))
           .limit(limit + 1);
-        return page(rows, limit, (r) => ({ createdAt: iso(r.receivedAt), id: r.id }), toLineSummary);
+        return page(
+          rows,
+          limit,
+          (r) => ({ createdAt: iso(r.receivedAt), id: r.id }),
+          toLineSummary,
+        );
       });
     },
 
@@ -110,8 +136,15 @@ export function buildDrizzleM25ReadService(
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           eq(RL.matchState, "unmatched"),
-          providerEntityId ? sql`${RL.remittanceAdviceId} IN (SELECT id FROM ${RA} WHERE ${RA.providerEntityId} = ${providerEntityId})` : undefined,
-          c ? or(lt(RL.receivedAt, new Date(c.createdAt)), and(eq(RL.receivedAt, new Date(c.createdAt)), lt(RL.id, c.id))) : undefined,
+          providerEntityId
+            ? sql`${RL.remittanceAdviceId} IN (SELECT id FROM ${RA} WHERE ${RA.providerEntityId} = ${providerEntityId})`
+            : undefined,
+          c
+            ? or(
+                lt(RL.receivedAt, new Date(c.createdAt)),
+                and(eq(RL.receivedAt, new Date(c.createdAt)), lt(RL.id, c.id)),
+              )
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select()
@@ -119,7 +152,12 @@ export function buildDrizzleM25ReadService(
           .where(and(...(conds as [])))
           .orderBy(desc(RL.receivedAt), desc(RL.id))
           .limit(limit + 1);
-        return page(rows, limit, (r) => ({ createdAt: iso(r.receivedAt), id: r.id }), toLineSummary);
+        return page(
+          rows,
+          limit,
+          (r) => ({ createdAt: iso(r.receivedAt), id: r.id }),
+          toLineSummary,
+        );
       });
     },
 
@@ -128,11 +166,22 @@ export function buildDrizzleM25ReadService(
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           filters.providerEntityId ? eq(DC.providerEntityId, filters.providerEntityId) : undefined,
-          filters.assigneeMembershipId ? eq(DC.assigneeMembershipId, filters.assigneeMembershipId) : undefined,
-          filters.state ? eq(DC.state, filters.state as typeof DC.state.enumValues[number]) : undefined,
+          filters.assigneeMembershipId
+            ? eq(DC.assigneeMembershipId, filters.assigneeMembershipId)
+            : undefined,
+          filters.state
+            ? eq(DC.state, filters.state as (typeof DC.state.enumValues)[number])
+            : undefined,
           filters.carcCode ? eq(DC.carcCode, filters.carcCode) : undefined,
-          filters.minDollar !== undefined ? gte(DC.dollarValue, String(filters.minDollar)) : undefined,
-          c ? or(lt(DC.openedAt, new Date(c.createdAt)), and(eq(DC.openedAt, new Date(c.createdAt)), lt(DC.id, c.id))) : undefined,
+          filters.minDollar !== undefined
+            ? gte(DC.dollarValue, String(filters.minDollar))
+            : undefined,
+          c
+            ? or(
+                lt(DC.openedAt, new Date(c.createdAt)),
+                and(eq(DC.openedAt, new Date(c.createdAt)), lt(DC.id, c.id)),
+              )
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select()
@@ -155,9 +204,18 @@ export function buildDrizzleM25ReadService(
       const c = decodeCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
-          filters.state ? eq(AC.state, filters.state as typeof AC.state.enumValues[number]) : undefined,
-          filters.tier ? eq(AC.tier, filters.tier as typeof AC.tier.enumValues[number]) : undefined,
-          c ? or(lt(AC.createdAt, new Date(c.createdAt)), and(eq(AC.createdAt, new Date(c.createdAt)), lt(AC.id, c.id))) : undefined,
+          filters.state
+            ? eq(AC.state, filters.state as (typeof AC.state.enumValues)[number])
+            : undefined,
+          filters.tier
+            ? eq(AC.tier, filters.tier as (typeof AC.tier.enumValues)[number])
+            : undefined,
+          c
+            ? or(
+                lt(AC.createdAt, new Date(c.createdAt)),
+                and(eq(AC.createdAt, new Date(c.createdAt)), lt(AC.id, c.id)),
+              )
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select()
@@ -165,7 +223,12 @@ export function buildDrizzleM25ReadService(
           .where(conds.length ? and(...(conds as [])) : undefined)
           .orderBy(desc(AC.createdAt), desc(AC.id))
           .limit(limit + 1);
-        return page(rows, limit, (r) => ({ createdAt: iso(r.createdAt), id: r.id }), toAppealSummary);
+        return page(
+          rows,
+          limit,
+          (r) => ({ createdAt: iso(r.createdAt), id: r.id }),
+          toAppealSummary,
+        );
       });
     },
 
@@ -184,7 +247,11 @@ export function buildDrizzleM25ReadService(
           appealPacketDocumentId: rows[0].appealPacketDocumentId,
           submittedAt: rows[0].submittedAt ? iso(rows[0].submittedAt) : null,
           decidedAt: rows[0].decidedAt ? iso(rows[0].decidedAt) : null,
-          events: events.map((e) => ({ id: e.id, eventKind: e.eventKind, occurredAt: iso(e.occurredAt) })),
+          events: events.map((e) => ({
+            id: e.id,
+            eventKind: e.eventKind,
+            occurredAt: iso(e.occurredAt),
+          })),
         };
         return detail;
       });
@@ -217,7 +284,10 @@ export function buildDrizzleM25ReadService(
           .from(DC)
           .where(sql`${DC.state} IN ('open','in_progress','escalated')`)
           .limit(100000);
-        const counts = Object.fromEntries(AGING_LABELS.map((l) => [l, 0])) as Record<AgingBucketLabel, number>;
+        const counts = Object.fromEntries(AGING_LABELS.map((l) => [l, 0])) as Record<
+          AgingBucketLabel,
+          number
+        >;
         // Decimal-exact accumulation (PARAM-003) — `dollar` is a `numeric(12,2)` string; summing via plain
         // float `+=` risks penny drift across up to 100k open denials. `totalDollarOpen` is itself declared
         // a decimal string (never a float) on the response contract.
@@ -226,7 +296,11 @@ export function buildDrizzleM25ReadService(
           counts[agingBucketLabel(row.bucket)] += 1;
           totalDollar = totalDollar.plus(row.dollar);
         }
-        return { agingBucketCounts: counts, openCount: open.length, totalDollarOpen: totalDollar.toFixed(2) };
+        return {
+          agingBucketCounts: counts,
+          openCount: open.length,
+          totalDollarOpen: totalDollar.toFixed(2),
+        };
       });
     },
 

@@ -69,7 +69,9 @@ const STATE_OPTIONS = [
 export function MedicaidRbArrangements(): JSX.Element {
   const client = useApiClient();
   const [rows, setRows] = useState<Arrangement[]>([]);
-  const [dayCounts, setDayCounts] = useState<Map<string, { total: number; pending: number }>>(new Map());
+  const [dayCounts, setDayCounts] = useState<Map<string, { total: number; pending: number }>>(
+    new Map(),
+  );
   const [state, setState] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +126,12 @@ export function MedicaidRbArrangements(): JSX.Element {
       }
       filters={
         <FilterRow>
-          <SelectFilter label="Arrangement state" value={state} options={STATE_OPTIONS} onChange={setState} />
+          <SelectFilter
+            label="Arrangement state"
+            value={state}
+            options={STATE_OPTIONS}
+            onChange={setState}
+          />
           {daysDegraded ? (
             <span style={mutedStyle}>Day counts are unavailable in this session.</span>
           ) : null}
@@ -163,7 +170,8 @@ export function MedicaidRbArrangements(): JSX.Element {
                     </td>
                     <td style={tdMono}>{shortId(r.patientId)}</td>
                     <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
-                      {shortDate(r.effectiveFrom)} → {r.effectiveTo ? shortDate(r.effectiveTo) : "open"}
+                      {shortDate(r.effectiveFrom)} →{" "}
+                      {r.effectiveTo ? shortDate(r.effectiveTo) : "open"}
                     </td>
                     <td style={tdNum}>{money(r.nfPerDiemRoutineCents)}</td>
                     <td style={tdNum}>{money(r.nfPerDiemRespCents)}</td>
@@ -200,8 +208,8 @@ export function MedicaidRbArrangements(): JSX.Element {
       }
       detail={
         <span style={mutedStyle}>
-          The pass-through percentage is the share of the facility per-diem the hospice remits; the balance
-          is the agency's retention.
+          The pass-through percentage is the share of the facility per-diem the hospice remits; the
+          balance is the agency's retention.
         </span>
       }
     />

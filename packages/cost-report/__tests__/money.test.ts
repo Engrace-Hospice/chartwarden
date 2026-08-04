@@ -1,3 +1,4 @@
+import { allocateProportional, fromDecimal, sumCents, toDecimal } from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 money/ratio kernel (D8) pure-domain unit tests.
 //
 // The proportional allocator is REGULATORY math: parts must sum EXACTLY to the input total (the CMS
@@ -5,7 +6,6 @@
 // index tie-break, and a zero-sum weight vector must fall back to an equal split rather than throw away
 // the total. fromDecimal rounds HALF-UP (away from zero) at whole cents. sumCents is exact.
 import { describe, expect, it } from "vitest";
-import { allocateProportional, fromDecimal, sumCents, toDecimal } from "@wardenx/cost-report";
 
 describe("allocateProportional — sum-preservation invariant (no penny drift)", () => {
   // A handful of fixed (total, weights) vectors; the universal post-condition is that the parts sum

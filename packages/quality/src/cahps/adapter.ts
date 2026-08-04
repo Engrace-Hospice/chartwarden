@@ -101,9 +101,7 @@ export interface CahpsVendorAdapter {
     orgId: string,
     file: { filename: string; mimeType: string; bytes: Buffer },
     config: Record<string, unknown>,
-  ): Promise<
-    { status: "pushed"; vendorJobId: string } | { status: "no_push"; reason: string }
-  >;
+  ): Promise<{ status: "pushed"; vendorJobId: string } | { status: "no_push"; reason: string }>;
 
   /** Parse a vendor-supplied aggregated result file into our `CahpsResultSummaryInput` shape. */
   parseResultIngest(payload: Buffer): Promise<CahpsResultSummaryInput[]>;

@@ -8,10 +8,10 @@
 // migration.
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { orderDiscontinuationReason } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const orderDiscontinuations = pgTable(
   "order_discontinuation",

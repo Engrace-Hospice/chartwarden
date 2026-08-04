@@ -19,7 +19,7 @@
 // `superseded_reason` nullable — correctly, because the FIRST baseline supersedes nothing. The moment
 // there IS an incumbent, though, "why did the numbers change" is the only question the W6 promotion
 // history exists to answer, so the reason becomes required exactly then.
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "./errors";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 
 /** The `ai_capability` columns the calibration gate reads. */
 export interface AiCalibrationCapabilitySnapshot {

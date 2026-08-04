@@ -8,16 +8,16 @@
 // The cross-module resolvers are injected as PORTS so this unit-tests without the M1 registry; the
 // composition root binds the live ones (`m27CapSeamResolver` / `getSeam("MdmEntityProvider")`).
 import {
-  type RawBillingBinds,
-  type RawValidationInputs,
-  assembleValidationContext,
   BadDebtRepository,
   ComplianceWindowRepository,
   CostCenterMappingRepository,
   CostReportRepository,
   CostReportWorksheetRepository,
   ImportsRepository,
+  type RawBillingBinds,
+  type RawValidationInputs,
   StatisticDataRepository,
+  assembleValidationContext,
 } from "@wardenx/cost-report";
 import type { DbClient } from "@wardenx/db";
 import { NotFoundError } from "@wardenx/types";
@@ -77,7 +77,9 @@ export interface M27ValidationContextDeps {
 
 /** Build the live ValidationContextBuilder. `build({ organizationId, costReportId, tx })` materializes the
  *  full §11.B context from M27's DB state + the live cap/MAC facts; M23-gated fields stay unavailable. */
-export function buildM27ValidationContext(deps: M27ValidationContextDeps): ValidationContextBuilder {
+export function buildM27ValidationContext(
+  deps: M27ValidationContextDeps,
+): ValidationContextBuilder {
   const now = deps.now ?? (() => new Date());
   return {
     async build({ organizationId, costReportId, tx }) {
@@ -89,7 +91,11 @@ export function buildM27ValidationContext(deps: M27ValidationContextDeps): Valid
       const [worksheets, statistic, mappings, trialBalance, badDebt, window] = await Promise.all([
         new CostReportWorksheetRepository(db).listByReport(organizationId, costReportId),
         new StatisticDataRepository(db).findByReport(organizationId, costReportId),
-        new CostCenterMappingRepository(db).listForProviderFy(organizationId, report.providerEntityId, fiscalYearInt),
+        new CostCenterMappingRepository(db).listForProviderFy(
+          organizationId,
+          report.providerEntityId,
+          fiscalYearInt,
+        ),
         new ImportsRepository(db).findLatestCompleteTrialBalance(organizationId, costReportId),
         new BadDebtRepository(db).listForReport(organizationId, costReportId),
         new ComplianceWindowRepository(db).findByReport(organizationId, costReportId),
@@ -107,7 +113,9 @@ export function buildM27ValidationContext(deps: M27ValidationContextDeps): Valid
       // M40 MAC jurisdiction (fail-soft → null → `all`, so only platform-default rules apply).
       let macJurisdictionCode: string | null = null;
       try {
-        const pe = await deps.providerEntity().resolveProviderEntity(organizationId, report.providerEntityId);
+        const pe = await deps
+          .providerEntity()
+          .resolveProviderEntity(organizationId, report.providerEntityId);
         macJurisdictionCode = pe?.macJurisdiction ?? null;
       } catch {
         macJurisdictionCode = null;
@@ -122,7 +130,10 @@ export function buildM27ValidationContext(deps: M27ValidationContextDeps): Valid
         statistic: statistic ? { monthlyBreakdown: statistic.monthlyBreakdown } : null,
         mappings: mappings.map((m) => ({ cmsCostCenterCode: m.cmsCostCenterCode })),
         trialBalanceAccounts: trialBalance
-          ? trialBalance.normalizedAccounts.map((acc) => ({ debitCents: acc.debitCents, creditCents: acc.creditCents }))
+          ? trialBalance.normalizedAccounts.map((acc) => ({
+              debitCents: acc.debitCents,
+              creditCents: acc.creditCents,
+            }))
           : null,
         badDebt: badDebt.map((bd) => ({
           collectionEffortsDocumented: bd.collectionEffortsDocumented,
@@ -131,7 +142,10 @@ export function buildM27ValidationContext(deps: M27ValidationContextDeps): Valid
           supportingDocumentIds: bd.supportingDocumentIds ?? [],
         })),
         complianceWindow: window
-          ? { currentEffectiveDeadlineDate: String(window.currentEffectiveDeadlineDate), closedAt: window.closedAt ? String(window.closedAt) : null }
+          ? {
+              currentEffectiveDeadlineDate: String(window.currentEffectiveDeadlineDate),
+              closedAt: window.closedAt ? String(window.closedAt) : null,
+            }
           : null,
         // The submit-past-deadline override is granted at SUBMIT, not validation time → false here.
         deadlineOverrideGranted: false,

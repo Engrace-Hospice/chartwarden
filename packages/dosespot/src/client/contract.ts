@@ -131,14 +131,20 @@ export interface DoseSpotClient {
     payload: DoseSpotPatientPayload,
     idempotencyKey: string,
   ): Promise<DoseSpotPatientResponse>;
-  enrollPrescriber(orgId: string, payload: DoseSpotPrescriberPayload): Promise<DoseSpotPrescriberResponse>;
+  enrollPrescriber(
+    orgId: string,
+    payload: DoseSpotPrescriberPayload,
+  ): Promise<DoseSpotPrescriberResponse>;
   revokePrescriber(orgId: string, dosespotPrescriberId: string): Promise<void>;
   transmitNewRx(
     orgId: string,
     payload: DoseSpotNewRxPayload,
     idempotencyKey: string,
   ): Promise<DoseSpotNewRxResponse>;
-  lookupRxBenefit(orgId: string, payload: DoseSpotRxBenefitPayload): Promise<DoseSpotRxBenefitResponse>;
+  lookupRxBenefit(
+    orgId: string,
+    payload: DoseSpotRxBenefitPayload,
+  ): Promise<DoseSpotRxBenefitResponse>;
   pullMedicationHistory(
     orgId: string,
     payload: DoseSpotMedHistoryPayload,

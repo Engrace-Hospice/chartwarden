@@ -1,3 +1,4 @@
+import type { AdministrationDto, ReconciliationWorksheetDto } from "@wardenx/types";
 // apps/backend/__tests__/emar-seams.test.ts — M13-T07 (§2.12 D16 MedicationAdministrationProvider +
 // ReconciliationProvider). Both seams are pure READ-only orchestration over an injected EmarSeamStore; these
 // cover the administration read narrowing (by-id / by-patient / by-order / since / window), the M30 measure
@@ -6,7 +7,6 @@
 // mapping, the M37 IV-continuous session projection, and the reconciliation read + 5-day-deadline timeliness —
 // plus the boot wiring (registerEmarSeams replaces the deny-stubs; validateSeams passes; the deny-stubs deny).
 import { afterEach, describe, expect, it } from "vitest";
-import type { AdministrationDto, ReconciliationWorksheetDto } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type EmarSeamSeed,
@@ -83,11 +83,28 @@ function seed(): EmarSeamSeed {
     administrations: [
       admin({ id: "rec-early", administeredAt: "2026-03-01T08:00:00.000Z" }),
       admin({ id: "rec-mid", administeredAt: "2026-03-05T12:00:00.000Z" }),
-      admin({ id: "rec-late", administeredAt: "2026-03-09T20:00:00.000Z", medicationOrderId: "med-2" }),
-      admin({ id: "rec-sud", administeredAt: "2026-03-06T10:00:00.000Z", isSudTreatment: true, drugNameSnapshot: "Buprenorphine" }),
+      admin({
+        id: "rec-late",
+        administeredAt: "2026-03-09T20:00:00.000Z",
+        medicationOrderId: "med-2",
+      }),
+      admin({
+        id: "rec-sud",
+        administeredAt: "2026-03-06T10:00:00.000Z",
+        isSudTreatment: true,
+        drugNameSnapshot: "Buprenorphine",
+      }),
       admin({ id: "rec-void", administeredAt: "2026-03-07T10:00:00.000Z", status: "voided" }),
-      admin({ id: "rec-iv-stop", administeredAt: "2026-03-08T10:00:00.000Z", mode: "iv_continuous_stop" }),
-      admin({ id: "rec-iv-start", administeredAt: "2026-03-08T06:00:00.000Z", mode: "iv_continuous_start" }),
+      admin({
+        id: "rec-iv-stop",
+        administeredAt: "2026-03-08T10:00:00.000Z",
+        mode: "iv_continuous_stop",
+      }),
+      admin({
+        id: "rec-iv-start",
+        administeredAt: "2026-03-08T06:00:00.000Z",
+        mode: "iv_continuous_start",
+      }),
       // a different patient, to prove filtering:
       admin({ id: "rec-other", patientId: "pat-2", administeredAt: "2026-03-05T12:00:00.000Z" }),
     ],
@@ -105,7 +122,11 @@ function seed(): EmarSeamSeed {
       { patientId: PAT, dueAt: "2026-03-02T20:00:00.000Z", status: "cancelled" }, // excluded from denominator
     ],
     comfortKitTimelines: [
-      { admissionId: ADM, deployedAt: "2026-03-02T00:00:00.000Z", firstAdministrationAt: "2026-03-02T02:30:00.000Z" },
+      {
+        admissionId: ADM,
+        deployedAt: "2026-03-02T00:00:00.000Z",
+        firstAdministrationAt: "2026-03-02T02:30:00.000Z",
+      },
     ],
     ivSessions: [
       {
@@ -114,26 +135,49 @@ function seed(): EmarSeamSeed {
         startedAt: "2026-03-08T06:00:00.000Z",
         endedAt: "2026-03-08T10:00:00.000Z",
         segments: [
-          { kind: "iv_continuous_start", recordedAt: "2026-03-08T06:00:00.000Z", rate: 2, rateUnit: "mL/hr" },
+          {
+            kind: "iv_continuous_start",
+            recordedAt: "2026-03-08T06:00:00.000Z",
+            rate: 2,
+            rateUnit: "mL/hr",
+          },
           { kind: "iv_continuous_stop", recordedAt: "2026-03-08T10:00:00.000Z" },
         ],
         pumpVerifiedByMembershipId: null,
       },
     ],
     worksheets: [
-      worksheet({ id: "ws-final", status: "finalized", finalizedAt: "2026-03-03T00:00:00.000Z", finalizedByMembershipId: "mem-cm" }),
+      worksheet({
+        id: "ws-final",
+        status: "finalized",
+        finalizedAt: "2026-03-03T00:00:00.000Z",
+        finalizedByMembershipId: "mem-cm",
+      }),
       worksheet({ id: "ws-other", admissionId: "adm-2", status: "pending" }),
     ],
     reconciliationTimeliness: [
-      { admissionId: ADM, admissionAt: "2026-03-01T00:00:00.000Z", reconciliationFinalizedAt: "2026-03-03T00:00:00.000Z" },
-      { admissionId: "adm-late", admissionAt: "2026-03-01T00:00:00.000Z", reconciliationFinalizedAt: "2026-03-08T00:00:00.000Z" },
-      { admissionId: "adm-open", admissionAt: "2026-03-01T00:00:00.000Z", reconciliationFinalizedAt: null },
+      {
+        admissionId: ADM,
+        admissionAt: "2026-03-01T00:00:00.000Z",
+        reconciliationFinalizedAt: "2026-03-03T00:00:00.000Z",
+      },
+      {
+        admissionId: "adm-late",
+        admissionAt: "2026-03-01T00:00:00.000Z",
+        reconciliationFinalizedAt: "2026-03-08T00:00:00.000Z",
+      },
+      {
+        admissionId: "adm-open",
+        admissionAt: "2026-03-01T00:00:00.000Z",
+        reconciliationFinalizedAt: null,
+      },
     ],
   };
 }
 
 describe("MedicationAdministrationProvider (§2.12 D16)", () => {
-  const provider = () => createMedicationAdministrationProvider(createInMemoryEmarSeamStore(seed()).store);
+  const provider = () =>
+    createMedicationAdministrationProvider(createInMemoryEmarSeamStore(seed()).store);
 
   it("getAdministration resolves by id; null when absent", async () => {
     expect((await provider().getAdministration(ORG, "rec-mid"))?.id).toBe("rec-mid");
@@ -152,7 +196,9 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
   });
 
   it("getAdministrationsForOrder filters by medication order", async () => {
-    expect((await provider().getAdministrationsForOrder(ORG, "med-2")).map((a) => a.id)).toEqual(["rec-late"]);
+    expect((await provider().getAdministrationsForOrder(ORG, "med-2")).map((a) => a.id)).toEqual([
+      "rec-late",
+    ]);
   });
 
   it("getAdministrationsSince returns on/after the cutoff ascending", async () => {
@@ -171,18 +217,35 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
   it("getPrnEffectivenessCountsForOrg joins in-window obligations against the M9 coverage reader (aggregate only)", async () => {
     const store = createInMemoryEmarSeamStore({
       prnObligations: [
-        { patientId: PAT, scaleType: "esas_r", administeredAt: "2026-03-02T08:00:00.000Z", reassessmentDueAt: "2026-03-02T09:00:00.000Z" },
-        { patientId: PAT, scaleType: "painad", administeredAt: "2026-03-03T08:00:00.000Z", reassessmentDueAt: "2026-03-03T09:00:00.000Z" },
-        { patientId: "pat-2", scaleType: "esas_r", administeredAt: "2026-03-04T08:00:00.000Z", reassessmentDueAt: "2026-03-04T09:00:00.000Z" },
+        {
+          patientId: PAT,
+          scaleType: "esas_r",
+          administeredAt: "2026-03-02T08:00:00.000Z",
+          reassessmentDueAt: "2026-03-02T09:00:00.000Z",
+        },
+        {
+          patientId: PAT,
+          scaleType: "painad",
+          administeredAt: "2026-03-03T08:00:00.000Z",
+          reassessmentDueAt: "2026-03-03T09:00:00.000Z",
+        },
+        {
+          patientId: "pat-2",
+          scaleType: "esas_r",
+          administeredAt: "2026-03-04T08:00:00.000Z",
+          reassessmentDueAt: "2026-03-04T09:00:00.000Z",
+        },
         // due in April — outside the window, so it is NOT part of the denominator.
-        { patientId: PAT, scaleType: "esas_r", administeredAt: "2026-04-02T08:00:00.000Z", reassessmentDueAt: "2026-04-02T09:00:00.000Z" },
+        {
+          patientId: PAT,
+          scaleType: "esas_r",
+          administeredAt: "2026-04-02T08:00:00.000Z",
+          reassessmentDueAt: "2026-04-02T09:00:00.000Z",
+        },
       ],
     }).store;
     // The reader marks the two esas_r obligations covered, the painad one not.
-    const covered = new Set([
-      "esas_r|2026-03-02T09:00:00.000Z",
-      "esas_r|2026-03-04T09:00:00.000Z",
-    ]);
+    const covered = new Set(["esas_r|2026-03-02T09:00:00.000Z", "esas_r|2026-03-04T09:00:00.000Z"]);
     const provider = createMedicationAdministrationProvider(store, {
       reassessmentCoverage: {
         async wasReassessed(_patientId, scaleType, _from, to) {
@@ -201,7 +264,12 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
   it("getPrnEffectivenessCountsForOrg SUPPRESSES (throws) when the M9 coverage reader is unbound", async () => {
     const store = createInMemoryEmarSeamStore({
       prnObligations: [
-        { patientId: PAT, scaleType: "esas_r", administeredAt: "2026-03-02T08:00:00.000Z", reassessmentDueAt: "2026-03-02T09:00:00.000Z" },
+        {
+          patientId: PAT,
+          scaleType: "esas_r",
+          administeredAt: "2026-03-02T08:00:00.000Z",
+          reassessmentDueAt: "2026-03-02T09:00:00.000Z",
+        },
       ],
     }).store;
     const provider = createMedicationAdministrationProvider(store); // no coverage reader bound
@@ -218,7 +286,12 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
       from: "2026-03-01T00:00:00.000Z",
       to: "2026-03-31T00:00:00.000Z",
     });
-    expect(out).toEqual({ scheduledCount: 3, administeredCount: 2, missedCount: 1, missedRate: 1 / 3 });
+    expect(out).toEqual({
+      scheduledCount: 3,
+      administeredCount: 2,
+      missedCount: 1,
+      missedRate: 1 / 3,
+    });
   });
 
   it("getComfortKitDeploymentTimeline derives the interval in minutes", async () => {
@@ -231,7 +304,11 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
   });
 
   it("getPortalAdministrationSummary redacts SUD meds and excludes voided rows (§7.8 / D12)", async () => {
-    const { summary } = await provider().getPortalAdministrationSummary(ORG, PAT, "2026-03-31T00:00:00.000Z");
+    const { summary } = await provider().getPortalAdministrationSummary(
+      ORG,
+      PAT,
+      "2026-03-31T00:00:00.000Z",
+    );
     expect(summary.some((s) => s.administrationRecordId === "rec-void")).toBe(false);
     const sud = summary.find((s) => s.administrationRecordId === "rec-sud");
     expect(sud).toEqual({
@@ -250,17 +327,30 @@ describe("MedicationAdministrationProvider (§2.12 D16)", () => {
     const session = await provider().getIvContinuousSession(ORG, "iv-1");
     expect(session?.sessionId).toBe("iv-1");
     expect(session?.segments).toEqual([
-      { kind: "iv_continuous_start", recordedAt: "2026-03-08T06:00:00.000Z", rate: 2, rateUnit: "mL/hr" },
+      {
+        kind: "iv_continuous_start",
+        recordedAt: "2026-03-08T06:00:00.000Z",
+        rate: 2,
+        rateUnit: "mL/hr",
+      },
       { kind: "iv_continuous_stop", recordedAt: "2026-03-08T10:00:00.000Z" },
     ]);
     expect(await provider().getIvContinuousSession(ORG, "missing")).toBeNull();
   });
 
   it("asFhirMedicationAdministration maps lifecycle/mode onto the FHIR value set", async () => {
-    expect((await provider().asFhirMedicationAdministration(ORG, "rec-mid"))?.status).toBe("completed");
-    expect((await provider().asFhirMedicationAdministration(ORG, "rec-void"))?.status).toBe("entered-in-error");
-    expect((await provider().asFhirMedicationAdministration(ORG, "rec-iv-start"))?.status).toBe("in-progress");
-    expect((await provider().asFhirMedicationAdministration(ORG, "rec-iv-stop"))?.status).toBe("completed");
+    expect((await provider().asFhirMedicationAdministration(ORG, "rec-mid"))?.status).toBe(
+      "completed",
+    );
+    expect((await provider().asFhirMedicationAdministration(ORG, "rec-void"))?.status).toBe(
+      "entered-in-error",
+    );
+    expect((await provider().asFhirMedicationAdministration(ORG, "rec-iv-start"))?.status).toBe(
+      "in-progress",
+    );
+    expect((await provider().asFhirMedicationAdministration(ORG, "rec-iv-stop"))?.status).toBe(
+      "completed",
+    );
     const single = await provider().asFhirMedicationAdministration(ORG, "rec-mid");
     expect(single?.effectiveDateTime).toBe("2026-03-05T12:00:00.000Z");
     const iv = await provider().asFhirMedicationAdministration(ORG, "rec-iv-start");
@@ -311,13 +401,21 @@ describe("boot wiring (registerEmarSeams)", () => {
   it("registers both seams so validateSeams passes and they resolve as real impls", async () => {
     registerEmarSeams({ store: createInMemoryEmarSeamStore(seed()).store });
     expect(() => validateSeams()).not.toThrow();
-    expect((await getSeam("MedicationAdministrationProvider").getAdministration(ORG, "rec-mid"))?.id).toBe("rec-mid");
-    expect((await getSeam("ReconciliationProvider").getWorksheet(ORG, "ws-final"))?.status).toBe("finalized");
+    expect(
+      (await getSeam("MedicationAdministrationProvider").getAdministration(ORG, "rec-mid"))?.id,
+    ).toBe("rec-mid");
+    expect((await getSeam("ReconciliationProvider").getWorksheet(ORG, "ws-final"))?.status).toBe(
+      "finalized",
+    );
   });
 
   it("falls back to fail-closed deny-stubs when M13 does not register", () => {
     validateSeams();
-    expect(() => getSeam("MedicationAdministrationProvider").getAdministration(ORG, "rec-1")).toThrow(/not implemented/);
-    expect(() => getSeam("ReconciliationProvider").getWorksheet(ORG, "ws-1")).toThrow(/not implemented/);
+    expect(() =>
+      getSeam("MedicationAdministrationProvider").getAdministration(ORG, "rec-1"),
+    ).toThrow(/not implemented/);
+    expect(() => getSeam("ReconciliationProvider").getWorksheet(ORG, "ws-1")).toThrow(
+      /not implemented/,
+    );
   });
 });

@@ -50,7 +50,11 @@ export const validationRun = pgTable(
   },
   (t) => ({
     claimRecent: index("validation_run_claim_recent_idx").on(t.claimId, t.startedAt),
-    idempotency: uniqueIndex("validation_run_idempotency_uq").on(t.claimId, t.trigger, t.runInputHash),
+    idempotency: uniqueIndex("validation_run_idempotency_uq").on(
+      t.claimId,
+      t.trigger,
+      t.runInputHash,
+    ),
   }),
 );
 

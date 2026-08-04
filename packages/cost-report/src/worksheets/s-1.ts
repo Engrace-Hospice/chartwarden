@@ -5,7 +5,7 @@
 // identification data); no PHI — provider-entity attributes only (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet S-1 — provider identification & general information. */
 export const WorksheetS1 = Type.Object(

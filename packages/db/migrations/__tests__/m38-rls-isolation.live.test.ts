@@ -171,8 +171,8 @@ describe.skipIf(!DB_URL)("M38 Terminology — RLS cross-tenant denial — LIVE P
     );
     // Only the org-scoped table carries a WITH CHECK policy; the 12 platform policies are SELECT-only
     // `USING (true)` (and live inside a DO/format loop), so this matcher isolates the tenant surface.
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {
@@ -220,10 +220,9 @@ describe.skipIf(!DB_URL)("M38 Terminology — RLS cross-tenant denial — LIVE P
       ]),
     );
     expect(res.rowCount).toBe(0);
-    const still = await db.query(
-      "SELECT reason FROM value_set_tenant_extension WHERE id=$1",
-      [a.valueSetTenantExtension],
-    );
+    const still = await db.query("SELECT reason FROM value_set_tenant_extension WHERE id=$1", [
+      a.valueSetTenantExtension,
+    ]);
     expect(still.rows[0].reason).toBe("local hospice addition");
   });
 

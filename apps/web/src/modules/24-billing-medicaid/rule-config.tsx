@@ -72,7 +72,9 @@ export function MedicaidRuleConfig(): JSX.Element {
     setError(null);
     const res = await client.GET("/api/v1/medicaid-rule-config", {});
     if (res.error) {
-      setError("The rule overlay is unavailable — you may lack compliance access for this organization.");
+      setError(
+        "The rule overlay is unavailable — you may lack compliance access for this organization.",
+      );
       setLoading(false);
       return;
     }
@@ -89,13 +91,16 @@ export function MedicaidRuleConfig(): JSX.Element {
       if (rule.regulatoryRequired) return;
       setPendingKey(rule.ruleKey);
       setActionError(null);
-      const { error: err, response } = (await client.PATCH("/api/v1/medicaid-rule-config/{ruleKey}", {
-        params: {
-          path: { ruleKey: rule.ruleKey },
-          header: rule.version == null ? {} : { "If-Match": String(rule.version) },
-        },
-        body: { enabled: !rule.enabled },
-      } as never)) as { error?: unknown; response?: Response };
+      const { error: err, response } = (await client.PATCH(
+        "/api/v1/medicaid-rule-config/{ruleKey}",
+        {
+          params: {
+            path: { ruleKey: rule.ruleKey },
+            header: rule.version == null ? {} : { "If-Match": String(rule.version) },
+          },
+          body: { enabled: !rule.enabled },
+        } as never,
+      )) as { error?: unknown; response?: Response };
       setPendingKey(null);
       if (err) {
         setActionError(configErrorMessage(response?.status));
@@ -139,7 +144,8 @@ export function MedicaidRuleConfig(): JSX.Element {
           <FilterRow>
             <SelectFilter label="Show" value={show} options={SHOW_OPTIONS} onChange={setShow} />
             <span style={mutedStyle}>
-              {rules.length} rule{rules.length === 1 ? "" : "s"} · {regulatoryCount} regulatory-required
+              {rules.length} rule{rules.length === 1 ? "" : "s"} · {regulatoryCount}{" "}
+              regulatory-required
             </span>
           </FilterRow>
           <GuardChip
@@ -187,7 +193,9 @@ export function MedicaidRuleConfig(): JSX.Element {
                         ) : null}
                       </div>
                     </td>
-                    <td style={td}>{r.platformDefault?.title ?? (r.isCustom ? "Tenant custom rule" : "—")}</td>
+                    <td style={td}>
+                      {r.platformDefault?.title ?? (r.isCustom ? "Tenant custom rule" : "—")}
+                    </td>
                     <td style={td}>{humanize(r.platformDefault?.category ?? null)}</td>
                     <td style={td}>{humanize(severity)}</td>
                     <td style={td}>{humanize(r.customOverrideRole)}</td>
@@ -228,8 +236,8 @@ export function MedicaidRuleConfig(): JSX.Element {
       }
       detail={
         <span style={mutedStyle}>
-          Rule parameters and custom predicate authoring are edited through the compliance API — this surface
-          governs which rules run.
+          Rule parameters and custom predicate authoring are edited through the compliance API —
+          this surface governs which rules run.
         </span>
       }
     />

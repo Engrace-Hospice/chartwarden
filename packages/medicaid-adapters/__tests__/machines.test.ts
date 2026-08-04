@@ -6,24 +6,36 @@ import * as rbDay from "../src/machines/rb-day";
 describe("medicaid_claim machine", () => {
   it("happy path DRAFT → READY → SUBMITTED → ACK_ACCEPTED → PAID", () => {
     expect(claim.reduce("DRAFT", "begin_validation").state).toBe("VALIDATING");
-    expect(claim.reduce("VALIDATING", "validation_passed", { unresolvedBlockingFailures: 0 }).state).toBe("READY");
-    expect(claim.reduce("READY", "submit", { unresolvedBlockingFailures: 0 }).state).toBe("SUBMITTED");
+    expect(
+      claim.reduce("VALIDATING", "validation_passed", { unresolvedBlockingFailures: 0 }).state,
+    ).toBe("READY");
+    expect(claim.reduce("READY", "submit", { unresolvedBlockingFailures: 0 }).state).toBe(
+      "SUBMITTED",
+    );
     expect(claim.reduce("SUBMITTED", "accepted_sync").state).toBe("ACK_PENDING");
     expect(claim.reduce("ACK_PENDING", "ack_accepted").state).toBe("ACK_ACCEPTED");
     expect(claim.reduce("ACK_ACCEPTED", "remittance_paid").state).toBe("PAID");
   });
 
   it("blocks validation_passed / submit when there are unresolved blocking failures (fail-closed)", () => {
-    expect(claim.reduce("VALIDATING", "validation_passed", { unresolvedBlockingFailures: 2 }).error).toBe("GUARD_FAILED");
+    expect(
+      claim.reduce("VALIDATING", "validation_passed", { unresolvedBlockingFailures: 2 }).error,
+    ).toBe("GUARD_FAILED");
     // missing ctx ⇒ fail-closed
     expect(claim.reduce("READY", "submit").error).toBe("GUARD_FAILED");
   });
 
   it("AWAITING_MEDICARE_PRIMARY auto-resolves on ack and fails on reject", () => {
     expect(claim.reduce("READY", "await_medicare_primary").state).toBe("AWAITING_MEDICARE_PRIMARY");
-    expect(claim.reduce("AWAITING_MEDICARE_PRIMARY", "medicare_primary_acknowledged").state).toBe("READY");
-    expect(claim.reduce("AWAITING_MEDICARE_PRIMARY", "medicare_primary_rejected").state).toBe("FAILED_MEDICARE_PRIMARY");
-    expect(claim.reduce("FAILED_MEDICARE_PRIMARY", "medicare_primary_acknowledged").state).toBe("READY");
+    expect(claim.reduce("AWAITING_MEDICARE_PRIMARY", "medicare_primary_acknowledged").state).toBe(
+      "READY",
+    );
+    expect(claim.reduce("AWAITING_MEDICARE_PRIMARY", "medicare_primary_rejected").state).toBe(
+      "FAILED_MEDICARE_PRIMARY",
+    );
+    expect(claim.reduce("FAILED_MEDICARE_PRIMARY", "medicare_primary_acknowledged").state).toBe(
+      "READY",
+    );
   });
 
   it("async poll path and rejection→revalidate/abandon", () => {

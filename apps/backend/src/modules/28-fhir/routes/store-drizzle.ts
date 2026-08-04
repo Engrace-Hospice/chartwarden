@@ -14,6 +14,13 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 import { type DbClient, schema } from "@wardenx/db";
+import {
+  FHIR_CLIENT_CASCADE_ON_ENTRY,
+  fhirClientTransition,
+  fhirDualApprovalSatisfied,
+  fhirInboundOwnerModuleFor,
+  inboundPayloadSha256,
+} from "@wardenx/fhir";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
@@ -24,21 +31,10 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
 } from "@wardenx/types";
-import {
-  FHIR_CLIENT_CASCADE_ON_ENTRY,
-  fhirClientTransition,
-  fhirDualApprovalSatisfied,
-  fhirInboundOwnerModuleFor,
-  inboundPayloadSha256,
-} from "@wardenx/fhir";
 import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 
+import { type FhirRevocationCascadePort, cascadeClientRevocation } from "./revocation-cascade";
 import {
-  cascadeClientRevocation,
-  type FhirRevocationCascadePort,
-} from "./revocation-cascade";
-import {
-  FhirStoreError,
   type CreateClientArgs,
   type FhirBearerContext,
   type FhirBulkExportJobView,
@@ -47,6 +43,7 @@ import {
   type FhirGatewayStore,
   type FhirInboundProposalView,
   type FhirSessionSummary,
+  FhirStoreError,
   type FhirTenantConfigView,
   type StageInboundArgs,
 } from "./store";
@@ -67,9 +64,15 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
   const INBOUND = schema.fhirInboundResource;
   const CONFIG = schema.tenantFhirConfig;
 
-  const ctx = (orgId: string, membershipId = "") => ({ organizationId: orgId, userId: membershipId });
+  const ctx = (orgId: string, membershipId = "") => ({
+    organizationId: orgId,
+    userId: membershipId,
+  });
 
-  const clientDetailRow = (row: typeof CLIENT.$inferSelect, activeSessionCount: number): FhirClientDetail => ({
+  const clientDetailRow = (
+    row: typeof CLIENT.$inferSelect,
+    activeSessionCount: number,
+  ): FhirClientDetail => ({
     id: row.id,
     name: row.name,
     type: row.type,
@@ -458,7 +461,11 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
           .where(and(eq(JOB.id, jobId), eq(JOB.organizationId, orgId)))
           .limit(1);
         if (!row) {
-          throw new FhirStoreError(404, "FHIR_EXPORT_JOB_NOT_FOUND", "fhir_bulk_export_job not found");
+          throw new FhirStoreError(
+            404,
+            "FHIR_EXPORT_JOB_NOT_FOUND",
+            "fhir_bulk_export_job not found",
+          );
         }
         if (row.status === "accepted" || row.status === "in_progress") {
           await tx
@@ -507,7 +514,12 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
           .from(INBOUND)
           .where(and(eq(INBOUND.id, proposalId), eq(INBOUND.organizationId, orgId)))
           .limit(1);
-        if (!row) throw new FhirStoreError(404, "FHIR_PROPOSAL_NOT_FOUND", "fhir_inbound_resource not found");
+        if (!row)
+          throw new FhirStoreError(
+            404,
+            "FHIR_PROPOSAL_NOT_FOUND",
+            "fhir_inbound_resource not found",
+          );
         if (row.proposalStatus !== "pending") {
           throw new FhirStoreError(409, "FHIR_PROPOSAL_DECIDED", "proposal already decided");
         }
@@ -544,7 +556,12 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
           .from(INBOUND)
           .where(and(eq(INBOUND.id, proposalId), eq(INBOUND.organizationId, orgId)))
           .limit(1);
-        if (!row) throw new FhirStoreError(404, "FHIR_PROPOSAL_NOT_FOUND", "fhir_inbound_resource not found");
+        if (!row)
+          throw new FhirStoreError(
+            404,
+            "FHIR_PROPOSAL_NOT_FOUND",
+            "fhir_inbound_resource not found",
+          );
         if (row.proposalStatus !== "pending") {
           throw new FhirStoreError(409, "FHIR_PROPOSAL_DECIDED", "proposal already decided");
         }
@@ -614,7 +631,8 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
         const patch = {
           tenantFhirHost: args.tenantFhirHost,
           identifierUriBase: args.identifierUriBase,
-          inboundReviewSlaHours: args.inboundReviewSlaHours ?? existing?.inboundReviewSlaHours ?? 72,
+          inboundReviewSlaHours:
+            args.inboundReviewSlaHours ?? existing?.inboundReviewSlaHours ?? 72,
           exportDedupWindowMinutes:
             args.exportDedupWindowMinutes ?? existing?.exportDedupWindowMinutes ?? 10,
           updatedAt: new Date(),

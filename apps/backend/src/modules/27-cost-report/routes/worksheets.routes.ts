@@ -9,10 +9,10 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
+import { PutWorksheetBodySchema, WorksheetParamsSchema, parse } from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService, WorksheetCode } from "./read-service";
 import type { M27WriteRouteService } from "./write-service";
-import { PutWorksheetBodySchema, WorksheetParamsSchema, parse } from "./cost-report-typebox";
 
 export interface WorksheetRouteDeps {
   readonly readService: M27ReadRouteService;
@@ -29,15 +29,11 @@ export function registerWorksheetRoutes(app: FastifyInstance, deps: WorksheetRou
   const { readService, writeService } = deps;
 
   // GET /cost-reports/:id/worksheets/:code — read (lazy-creates the TypeBox-default if absent). §4.1.
-  app.get(
-    "/api/v1/cost-reports/:id/worksheets/:code",
-    { preHandler: [READ] },
-    async (request) => {
-      const actor = actorOf(request);
-      const { id, code } = parse(WorksheetParamsSchema, request.params);
-      return readService.getWorksheet(actor, id, code as WorksheetCode);
-    },
-  );
+  app.get("/api/v1/cost-reports/:id/worksheets/:code", { preHandler: [READ] }, async (request) => {
+    const actor = actorOf(request);
+    const { id, code } = parse(WorksheetParamsSchema, request.params);
+    return readService.getWorksheet(actor, id, code as WorksheetCode);
+  });
 
   // PUT /cost-reports/:id/worksheets/:code — replace `data` wholesale (TypeBox-per-code; version-checked). §4.1.
   app.put(

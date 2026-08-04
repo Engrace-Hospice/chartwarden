@@ -45,9 +45,7 @@ interface PatientDaysProviderView {
 
 /** M27's `CostReportFilingStatusReader` as this adapter uses it. */
 interface FilingStatusReaderView {
-  filingStatusForOrg(
-    orgId: string,
-  ): Promise<readonly { pastDeadlineUnfiled: boolean }[]>;
+  filingStatusForOrg(orgId: string): Promise<readonly { pastDeadlineUnfiled: boolean }[]>;
 }
 
 /**

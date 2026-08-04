@@ -5,10 +5,10 @@
 // pattern is not bound to a single care location). No free-text fields (empty audit denylist, §3.6). Not
 // partitioned (O(clinicians), D14). RLS + grants + the M4 write-audit trigger land in M17-T02.
 import { date, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const clinicianAvailability = pgTable(
   "clinician_availability",

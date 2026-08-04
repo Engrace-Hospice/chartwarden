@@ -1,3 +1,4 @@
+import { Type } from "@sinclair/typebox";
 // apps/backend/src/modules/23-billing-medicare/routes/claims.routes.ts — M23 (§4.1 routes #1–#13, claims
 // core). The claim lifecycle surface: server-authoritative assembly, the validation re-run trigger, the
 // READY→SUBMITTED submit (+M2 step-up), the TOB-817 replace / TOB-818 void builders, the cursor-paginated
@@ -35,15 +36,16 @@ import {
 } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { Type } from "@sinclair/typebox";
-import { actorOf, rejectAiActor, writeActorOf, type M23WriteActor } from "./actor";
+import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
+import type { ClaimAssemblyService } from "../services/claim-assembly";
+import { type M23WriteActor, actorOf, rejectAiActor, writeActorOf } from "./actor";
 import {
   ClaimIdParamsSchema,
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
   parse,
 } from "./billing-typebox";
-import { requireIdempotencyKey, requireIfMatch, parseIfMatch } from "./concurrency";
+import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   CLAIM_CASELOAD,
   P,
@@ -52,11 +54,9 @@ import {
   targetClaimId,
   targetProviderFromBody,
 } from "./guards";
-import { ORG_WIDE_BILLING_SCOPE_ROLES } from "../abac-predicates";
 import type { M23ReadRouteService } from "./read-service";
 import type { ClaimLineView } from "./read-service";
 import type { AssembledClaimLineInput, M23WriteRouteService } from "./write-service";
-import type { ClaimAssemblyService } from "../services/claim-assembly";
 
 export interface ClaimsRouteDeps {
   readonly readService: M23ReadRouteService;
@@ -92,7 +92,8 @@ function enforceCoderIcdScope(
   const hasBroad = actor.roles.some((r) => BROAD_DRAFT_EDIT_ROLES.has(r));
   if (!isCoder || hasBroad) return;
   if (body.totalChargeCents !== undefined) throw fieldOutOfScope("totalChargeCents");
-  if (body.totalExpectedPaymentCents !== undefined) throw fieldOutOfScope("totalExpectedPaymentCents");
+  if (body.totalExpectedPaymentCents !== undefined)
+    throw fieldOutOfScope("totalExpectedPaymentCents");
 }
 
 /** Map a read-side `ClaimLineView` back to the write-side `AssembledClaimLineInput` (replace copies lines). */
@@ -227,11 +228,18 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   );
 
   // #3 GET /claims/:id — single-claim detail (lines + HIPPS + SIA + latest run + submissions + acks). §4.1.
-  app.get("/api/v1/billing/claims/:id", { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim", resourceIdParam: "id" } } }, async (request) => {
-    const actor = actorOf(request);
-    const { id } = parse(ClaimIdParamsSchema, request.params);
-    return readService.getClaim(actor, id);
-  });
+  app.get(
+    "/api/v1/billing/claims/:id",
+    {
+      preHandler: [READ, READ_CLAIM],
+      config: { auditRead: { resourceKind: "claim", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(ClaimIdParamsSchema, request.params);
+      return readService.getClaim(actor, id);
+    },
+  );
 
   // #4 PATCH /claims/:id — DRAFT re-assembly edit (§2.5 If-Match; coder ICD-only scope). §4.1.
   app.patch(
@@ -329,16 +337,26 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   );
 
   // #10 GET /claims/:id/lines — the claim_line projection. §4.1.
-  app.get("/api/v1/billing/claims/:id/lines", { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim_line", resourceIdParam: "id", list: true } } }, async (request) => {
-    const actor = actorOf(request);
-    const { id } = parse(ClaimIdParamsSchema, request.params);
-    return readService.listClaimLines(actor, id);
-  });
+  app.get(
+    "/api/v1/billing/claims/:id/lines",
+    {
+      preHandler: [READ, READ_CLAIM],
+      config: { auditRead: { resourceKind: "claim_line", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(ClaimIdParamsSchema, request.params);
+      return readService.listClaimLines(actor, id);
+    },
+  );
 
   // #11 GET /claims/:id/state-history — the per-claim transition timeline (cursor-paginated). §4.1.
   app.get(
     "/api/v1/billing/claims/:id/state-history",
-    { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim", resourceIdParam: "id", list: true } } },
+    {
+      preHandler: [READ, READ_CLAIM],
+      config: { auditRead: { resourceKind: "claim", resourceIdParam: "id", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
@@ -350,7 +368,12 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // #12 GET /claims/:id/submissions — all dispatch attempts. §4.1.
   app.get(
     "/api/v1/billing/claims/:id/submissions",
-    { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim_submission", resourceIdParam: "id", list: true } } },
+    {
+      preHandler: [READ, READ_CLAIM],
+      config: {
+        auditRead: { resourceKind: "claim_submission", resourceIdParam: "id", list: true },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);
@@ -361,7 +384,12 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
   // #13 GET /claims/:id/acknowledgments — all 999 / 277CA / 835 acknowledgments. §4.1.
   app.get(
     "/api/v1/billing/claims/:id/acknowledgments",
-    { preHandler: [READ, READ_CLAIM], config: { auditRead: { resourceKind: "claim_acknowledgment", resourceIdParam: "id", list: true } } },
+    {
+      preHandler: [READ, READ_CLAIM],
+      config: {
+        auditRead: { resourceKind: "claim_acknowledgment", resourceIdParam: "id", list: true },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { id } = parse(ClaimIdParamsSchema, request.params);

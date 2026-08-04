@@ -12,10 +12,7 @@
 // sane rate/band. A non-HOPE measure (hvldl) still FAILS CLOSED — the non-HOPE families consume the M5–M18
 // read seams the integrator has not bound here yet.
 import { buildMeasureRegistry } from "@wardenx/quality";
-import type {
-  HopeOrgRollupProvider,
-  HopeRollupPeriod,
-} from "@wardenx/types";
+import type { HopeOrgRollupProvider, HopeRollupPeriod } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import { resolveHopeMeasureInput } from "../src/modules/30-quality/jobs/m30-jobs";
 
@@ -33,13 +30,11 @@ function registrationFor(code: string) {
 }
 
 /** A recording fake M10 org-rollup consumer: returns seeded COUNTS and captures the call args. */
-function fakeHope(
-  rollups: {
-    readonly j2051?: Awaited<ReturnType<HopeOrgRollupProvider["j2051FollowUpRollup"]>>;
-    readonly sfv?: Awaited<ReturnType<HopeOrgRollupProvider["sfvTimelinessRollup"]>>;
-    readonly submission?: Awaited<ReturnType<HopeOrgRollupProvider["submissionPostureRollup"]>>;
-  },
-): { hope: HopeOrgRollupProvider; calls: { org?: string; period?: HopeRollupPeriod } } {
+function fakeHope(rollups: {
+  readonly j2051?: Awaited<ReturnType<HopeOrgRollupProvider["j2051FollowUpRollup"]>>;
+  readonly sfv?: Awaited<ReturnType<HopeOrgRollupProvider["sfvTimelinessRollup"]>>;
+  readonly submission?: Awaited<ReturnType<HopeOrgRollupProvider["submissionPostureRollup"]>>;
+}): { hope: HopeOrgRollupProvider; calls: { org?: string; period?: HopeRollupPeriod } } {
   const calls: { org?: string; period?: HopeRollupPeriod } = {};
   const hope: HopeOrgRollupProvider = {
     async timepointCompletionRollup() {
@@ -168,7 +163,9 @@ describe("resolveHopeMeasureInput — HOPE-family measure-input binding (#107)",
 
   it("hope_submission_acceptance_rate: shapes the posture counts and bands red below the APU floor", async () => {
     const { hope } = fakeHope({ submission: { submissions: 100, acceptedSubmissions: 85 } });
-    const input = (await resolveHopeMeasureInput(request("hope_submission_acceptance_rate"), { hope })) as {
+    const input = (await resolveHopeMeasureInput(request("hope_submission_acceptance_rate"), {
+      hope,
+    })) as {
       submissions: number;
       acceptedSubmissions: number;
       threshold: { value: number };

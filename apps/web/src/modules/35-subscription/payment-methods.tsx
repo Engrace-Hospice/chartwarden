@@ -84,7 +84,14 @@ export function PaymentMethods(): JSX.Element {
             description="Add a card to keep your subscription active."
           />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 1.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.75rem",
+              padding: "0 1.5rem 1.5rem",
+            }}
+          >
             {methods.map((m) => (
               <MethodRow key={m.id} method={m} />
             ))}

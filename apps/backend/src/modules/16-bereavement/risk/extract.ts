@@ -99,7 +99,9 @@ export async function extractRiskInputs(input: RiskExtractionInput): Promise<Der
 }
 
 /** M15's §4.3 read. `null` = the seam denied or failed (deny-stub included) ⇒ MSW slots stay `unknown`. */
-async function readMswFactors(input: RiskExtractionInput): Promise<readonly MswRiskFactor[] | null> {
+async function readMswFactors(
+  input: RiskExtractionInput,
+): Promise<readonly MswRiskFactor[] | null> {
   try {
     return await getMswRiskFactorReader().riskFactorsForAdmission(
       input.organizationId,
@@ -112,12 +114,19 @@ async function readMswFactors(input: RiskExtractionInput): Promise<readonly MswR
 
 /** M9's §4.7 read over the pre-death window. `null` = the seam denied or failed ⇒ `suddenUnexpectedDeath`
  *  falls to rule 1's MSW fallback and then to `unknown`. */
-async function readPpsPoints(input: RiskExtractionInput): Promise<readonly ScaleSeriesPoint[] | null> {
+async function readPpsPoints(
+  input: RiskExtractionInput,
+): Promise<readonly ScaleSeriesPoint[] | null> {
   const deathMs = Date.parse(input.deathAt);
   if (Number.isNaN(deathMs)) return null;
   const from = new Date(deathMs - PPS_TRAJECTORY_WINDOW_DAYS * MS_PER_DAY).toISOString();
   try {
-    const series = await getScaleSeriesProvider().series(input.patientId, "pps", from, input.deathAt);
+    const series = await getScaleSeriesProvider().series(
+      input.patientId,
+      "pps",
+      from,
+      input.deathAt,
+    );
     return series.points;
   } catch {
     return null;

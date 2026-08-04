@@ -1,3 +1,11 @@
+import {
+  SIA_MAX_MINUTES_PER_DAY,
+  SIA_QUALIFYING_DISCIPLINES,
+  type SiaCalculationInput,
+  type SiaEncounterInput,
+  calculateSia,
+  lineChargeCents,
+} from "@wardenx/billing";
 // @wardenx/billing — M23 SIA (Service Intensity Add-on) calculator (D6, spec §1.1 / §3.3
 // `sia_calculation`) pure-domain tests.
 //
@@ -7,14 +15,6 @@
 // is a published CMS fixture and is INJECTED (TODO(CMS-fixture)); the ARITHMETIC + the qualifying/boundary
 // gating are asserted exactly. Pure: no DB/Fastify/BullMQ; everything injected.
 import { describe, expect, it } from "vitest";
-import {
-  calculateSia,
-  SIA_MAX_MINUTES_PER_DAY,
-  SIA_QUALIFYING_DISCIPLINES,
-  lineChargeCents,
-  type SiaCalculationInput,
-  type SiaEncounterInput,
-} from "@wardenx/billing";
 
 const DECEASED = "2026-06-10"; // window = [2026-06-04, 2026-06-10]
 // TODO(CMS-fixture): replace with the published FY CHC hourly amount (wage-index-adjusted at the service layer).
@@ -79,7 +79,9 @@ describe("calculateSia — gating: deceased + qualifying-visit preconditions", (
   });
 
   it("fires for a qualifying MSW visit", () => {
-    const r = calculateSia(input({ signedEncounters: [enc({ discipline: "MSW", durationMinutes: 30 })] }));
+    const r = calculateSia(
+      input({ signedEncounters: [enc({ discipline: "MSW", durationMinutes: 30 })] }),
+    );
     expect(r.present).toBe(true);
     expect(r.paidMinutes).toBe(30);
     expect(r.siaAddOnCents).toBe(lineChargeCents(0.5, CHC_HOURLY)); // half hour
@@ -185,7 +187,9 @@ describe("calculateSia — per-day 4-hour cap", () => {
   });
 
   it("honors a custom maxMinutesPerDay override", () => {
-    const r = calculateSia(input({ signedEncounters: [enc({ durationMinutes: 200 })], maxMinutesPerDay: 120 }));
+    const r = calculateSia(
+      input({ signedEncounters: [enc({ durationMinutes: 200 })], maxMinutesPerDay: 120 }),
+    );
     expect(r.paidMinutes).toBe(120);
   });
 });
@@ -210,7 +214,14 @@ describe("calculateSia — result projection + mixed populations", () => {
   it("captures each qualifying visit's id / date / discipline / minutes", () => {
     const r = calculateSia(
       input({
-        signedEncounters: [enc({ encounterId: "rn-7", serviceDate: "2026-06-07", discipline: "RN", durationMinutes: 45 })],
+        signedEncounters: [
+          enc({
+            encounterId: "rn-7",
+            serviceDate: "2026-06-07",
+            discipline: "RN",
+            durationMinutes: 45,
+          }),
+        ],
       }),
     );
     expect(r.qualifyingVisits).toEqual([
@@ -225,7 +236,12 @@ describe("calculateSia — result projection + mixed populations", () => {
           enc({ encounterId: "ok", discipline: "RN", durationMinutes: 60 }),
           enc({ encounterId: "hha", discipline: "HHA", durationMinutes: 999 }),
           enc({ encounterId: "unsigned", discipline: "MSW", durationMinutes: 999, signed: false }),
-          enc({ encounterId: "old", discipline: "RN", durationMinutes: 999, serviceDate: "2026-06-03" }),
+          enc({
+            encounterId: "old",
+            discipline: "RN",
+            durationMinutes: 999,
+            serviceDate: "2026-06-03",
+          }),
         ],
       }),
     );
@@ -252,7 +268,9 @@ describe("calculateSia — result projection + mixed populations", () => {
 describe("calculateSia — money rounding (CHC hourly, fractional hours)", () => {
   it("rounds a half-cent charge HALF-UP via the line-charge primitive", () => {
     // 90 min = 1.5 hr; rate 6017 ⇒ 9025.5 cents → 9026 (half away from zero).
-    const r = calculateSia(input({ signedEncounters: [enc({ durationMinutes: 90 })], chcHourlyRateCents: 6_017 }));
+    const r = calculateSia(
+      input({ signedEncounters: [enc({ durationMinutes: 90 })], chcHourlyRateCents: 6_017 }),
+    );
     expect(r.siaAddOnCents).toBe(lineChargeCents(1.5, 6_017));
     expect(r.siaAddOnCents).toBe(9_026);
   });
@@ -269,8 +287,18 @@ describe("calculateSia — multi-day windows + RN/MSW mix", () => {
     const r = calculateSia(
       input({
         signedEncounters: [
-          enc({ encounterId: "rn", serviceDate: "2026-06-05", discipline: "RN", durationMinutes: 60 }),
-          enc({ encounterId: "msw", serviceDate: "2026-06-08", discipline: "MSW", durationMinutes: 120 }),
+          enc({
+            encounterId: "rn",
+            serviceDate: "2026-06-05",
+            discipline: "RN",
+            durationMinutes: 60,
+          }),
+          enc({
+            encounterId: "msw",
+            serviceDate: "2026-06-08",
+            discipline: "MSW",
+            durationMinutes: 120,
+          }),
         ],
       }),
     );
@@ -281,10 +309,20 @@ describe("calculateSia — multi-day windows + RN/MSW mix", () => {
   });
 
   it("counts a qualifying visit on every one of the 7 window days", () => {
-    const days = ["2026-06-04", "2026-06-05", "2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09", "2026-06-10"];
+    const days = [
+      "2026-06-04",
+      "2026-06-05",
+      "2026-06-06",
+      "2026-06-07",
+      "2026-06-08",
+      "2026-06-09",
+      "2026-06-10",
+    ];
     const r = calculateSia(
       input({
-        signedEncounters: days.map((d, i) => enc({ encounterId: `v${i}`, serviceDate: d, durationMinutes: 60 })),
+        signedEncounters: days.map((d, i) =>
+          enc({ encounterId: `v${i}`, serviceDate: d, durationMinutes: 60 }),
+        ),
       }),
     );
     expect(r.qualifyingVisits).toHaveLength(7);

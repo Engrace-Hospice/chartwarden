@@ -59,18 +59,22 @@ export function EligibilityCenter(): JSX.Element {
       if (id.length === 0) return;
       setLoading(true);
       setError(null);
-      const { data, error: err } = await client.GET(
-        "/api/v1/billing/eligibility",
-        { params: { query: { patientId: id } } } as never,
-      );
+      const { data, error: err } = await client.GET("/api/v1/billing/eligibility", {
+        params: { query: { patientId: id } },
+      } as never);
       if (err) {
-        setError("Eligibility history unavailable — the billing read seam is not bound, or you lack scope.");
+        setError(
+          "Eligibility history unavailable — the billing read seam is not bound, or you lack scope.",
+        );
         setChecks([]);
         setLoadedPatient(id);
         setLoading(false);
         return;
       }
-      setChecks(((data as unknown as { items?: EligibilityCheckView[] })?.items ?? []) as EligibilityCheckView[]);
+      setChecks(
+        ((data as unknown as { items?: EligibilityCheckView[] })?.items ??
+          []) as EligibilityCheckView[],
+      );
       setLoadedPatient(id);
       setLoading(false);
     },
@@ -79,9 +83,19 @@ export function EligibilityCenter(): JSX.Element {
 
   return (
     <DetailPageLayout
-      header={<PageHeader title="Eligibility Center" breadcrumb="Billing — Medicare · HETS 270/271" />}
+      header={
+        <PageHeader title="Eligibility Center" breadcrumb="Billing — Medicare · HETS 270/271" />
+      }
       aside={
-        <aside style={{ width: "22rem", flexShrink: 0, borderLeft: ghostBorder, padding: "1.5rem", overflow: "auto" }}>
+        <aside
+          style={{
+            width: "22rem",
+            flexShrink: 0,
+            borderLeft: ghostBorder,
+            padding: "1.5rem",
+            overflow: "auto",
+          }}
+        >
           <RefreshPanel
             patientId={loadedPatient}
             onChecked={() => loadedPatient && void load(loadedPatient)}
@@ -161,7 +175,9 @@ function EligibilityTable({ checks }: { checks: EligibilityCheckView[] }): JSX.E
                 tone={eligibilityStalenessTone(c.checkedAt)}
               />
             </td>
-            <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: t.onSurfaceVariant }}>
+            <td
+              style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", color: t.onSurfaceVariant }}
+            >
               {new Date(c.checkedAt).toLocaleString()}
             </td>
           </tr>
@@ -263,7 +279,11 @@ function RefreshPanel({
           {msg ? (
             <p
               role={msg.tone === "err" ? "alert" : "status"}
-              style={{ margin: 0, fontSize: "0.8rem", color: msg.tone === "err" ? t.error : t.success }}
+              style={{
+                margin: 0,
+                fontSize: "0.8rem",
+                color: msg.tone === "err" ? t.error : t.success,
+              }}
             >
               {msg.text}
             </p>

@@ -92,9 +92,7 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
         portalAccountId,
         activePatientId: actor.portalPatientId,
         activeGrantId: grant?.grantId ?? null,
-        scopeSet: grant
-          ? PORTAL_CATEGORIES.filter((c) => scopeSetContains(grant.scopeSet, c))
-          : [],
+        scopeSet: grant ? PORTAL_CATEGORIES.filter((c) => scopeSetContains(grant.scopeSet, c)) : [],
         relationship: account?.relationship ?? "unknown",
         status: account?.status ?? "unknown",
       };

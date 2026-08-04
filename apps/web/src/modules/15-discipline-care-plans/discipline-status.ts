@@ -75,11 +75,7 @@ export const GATE_STATUS_TONE: Record<string, StatusTone> = {
 };
 
 /** The gate statuses that FAIL 418.78 — the volunteer is not schedulable while any of these stands. */
-export const FAILING_GATE_STATUSES: readonly string[] = [
-  "expired",
-  "revoked",
-  "not_yet_satisfied",
-];
+export const FAILING_GATE_STATUSES: readonly string[] = ["expired", "revoked", "not_yet_satisfied"];
 
 /** `VolunteerHourRatio["status"]` (volunteer/hours.ts) — the §7.6 418.78(e) 5% banding. `unavailable`
  *  is the HONEST missing-denominator badge (M27 cost basis unbound), never a 0% breach. */
@@ -98,7 +94,10 @@ export const HOUR_SOURCE_TONE: Record<string, StatusTone> = {
 };
 
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(map: Record<string, StatusTone>, key: string | null | undefined): StatusTone {
+export function toneOf(
+  map: Record<string, StatusTone>,
+  key: string | null | undefined,
+): StatusTone {
   return key ? (map[key] ?? "neutral") : "neutral";
 }
 

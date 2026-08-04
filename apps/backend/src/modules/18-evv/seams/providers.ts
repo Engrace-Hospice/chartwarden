@@ -79,7 +79,9 @@ export function createEvvComplianceReader(store: EvvSeamStore): EvvComplianceRea
  * rejected claim to the submission) read. `aggregatorIdForVisit` returns null until a submission has an accepted
  * transaction id; the full submission row is the M25 read. Pure projection; RLS pins the tenant.
  */
-export function createEvvAggregatorReferenceReader(store: EvvSeamStore): EvvAggregatorReferenceReader {
+export function createEvvAggregatorReferenceReader(
+  store: EvvSeamStore,
+): EvvAggregatorReferenceReader {
   return {
     async aggregatorIdForVisit(_orgId, visitId) {
       const submission = await store.submissionForVisit(visitId);

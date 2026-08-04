@@ -38,16 +38,19 @@ export const M3_IN_ORG_PREDICATE = "inOrg";
  */
 export function registerAuthorizationAbacPredicates(deps: { now?: () => number } = {}): void {
   const now = deps.now ?? (() => Date.now());
-  registerPredicateIdempotent(M3_STEP_UP_PREDICATE, async (context: AbacContext, _target: AbacTarget) => {
-    const sessionId =
-      typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
-    if (!sessionId || !context.organizationId) return false; // fail-closed
-    // The platform floor applies uniformly; per-operation tightening (target.operationKey →
-    // tenant_step_up_policy_override) is M2-T05's resolver and layers on top once it lands.
-    const state = await getSeam("SessionContextResolver").resolveStepUpState(
-      { orgId: context.organizationId },
-      sessionId,
-    );
-    return isStepUpRecent(state, STEP_UP_POLICY, now());
-  });
+  registerPredicateIdempotent(
+    M3_STEP_UP_PREDICATE,
+    async (context: AbacContext, _target: AbacTarget) => {
+      const sessionId =
+        typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
+      if (!sessionId || !context.organizationId) return false; // fail-closed
+      // The platform floor applies uniformly; per-operation tightening (target.operationKey →
+      // tenant_step_up_policy_override) is M2-T05's resolver and layers on top once it lands.
+      const state = await getSeam("SessionContextResolver").resolveStepUpState(
+        { orgId: context.organizationId },
+        sessionId,
+      );
+      return isStepUpRecent(state, STEP_UP_POLICY, now());
+    },
+  );
 }

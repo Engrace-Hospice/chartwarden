@@ -110,7 +110,9 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
    * deterministic (idempotent on replay), opaque to the vendor, and provably NOT the raw visit id. A pre-flight
    * GET returns the existing room on replay; a 404 falls through to POST. PHI-free body.
    */
-  async mintRoom(input: TelehealthMintRoomInput): Promise<{ vendorRoomId: string; vendorRoomUrl: string }> {
+  async mintRoom(
+    input: TelehealthMintRoomInput,
+  ): Promise<{ vendorRoomId: string; vendorRoomUrl: string }> {
     const name = this.roomName(input.telehealthVisitId);
     const existing = await this.tryGetRoom("mintRoom", name);
     if (existing) return { vendorRoomId: existing.name, vendorRoomUrl: existing.url };
@@ -122,11 +124,18 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
       properties: {
         // Vendor sees ONLY the opaque name + a TTL derived from the scheduled start — never PHI (D1).
         nbf: Number.isFinite(nbf) ? nbf : undefined,
-        exp: (Number.isFinite(nbf) ? nbf : Math.floor(Date.parse(this.now()) / 1000)) + TELEHEALTH_TOKEN_TTL_CEILING_SECONDS,
+        exp:
+          (Number.isFinite(nbf) ? nbf : Math.floor(Date.parse(this.now()) / 1000)) +
+          TELEHEALTH_TOKEN_TTL_CEILING_SECONDS,
         enable_recording: input.recordingEnabled ? "cloud" : undefined,
       },
     });
-    const created = await this.call<DailyRoomBody>("mintRoom", `${this.endpoint}/rooms`, "POST", body);
+    const created = await this.call<DailyRoomBody>(
+      "mintRoom",
+      `${this.endpoint}/rooms`,
+      "POST",
+      body,
+    );
     return { vendorRoomId: created.name, vendorRoomUrl: created.url };
   }
 
@@ -158,9 +167,15 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
 
   /** §4.5 — force-end (server-side delete) a room. Idempotent: a 404 on an already-gone room is a success. */
   async endRoom(vendorRoomId: string): Promise<void> {
-    await this.call<unknown>("endRoom", `${this.endpoint}/rooms/${encodeURIComponent(vendorRoomId)}`, "DELETE", undefined, {
-      treat404AsSuccess: true,
-    });
+    await this.call<unknown>(
+      "endRoom",
+      `${this.endpoint}/rooms/${encodeURIComponent(vendorRoomId)}`,
+      "DELETE",
+      undefined,
+      {
+        treat404AsSuccess: true,
+      },
+    );
   }
 
   /** §7.4 — start cloud recording on an active room (the D9 consent gate is enforced by M31 BEFORE this call). */
@@ -205,11 +220,16 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
 
   /** `tlh_<hmac(visitId)>` — opaque, deterministic, PHI-free. Never the raw visit id (§7.2 step 2 / D1). */
   private roomName(telehealthVisitId: string): string {
-    const digest = createHmac("sha256", this.roomNameSecret).update(telehealthVisitId, "utf8").digest("hex");
+    const digest = createHmac("sha256", this.roomNameSecret)
+      .update(telehealthVisitId, "utf8")
+      .digest("hex");
     return `tlh_${digest.slice(0, 32)}`;
   }
 
-  private async tryGetRoom(operation: TelehealthOperation, name: string): Promise<DailyRoomBody | null> {
+  private async tryGetRoom(
+    operation: TelehealthOperation,
+    name: string,
+  ): Promise<DailyRoomBody | null> {
     return this.call<DailyRoomBody>(
       operation,
       `${this.endpoint}/rooms/${encodeURIComponent(name)}`,
@@ -233,7 +253,11 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
   ): Promise<T> {
     const gate = evaluateTelehealthBreaker(this.breaker, this.now(), this.config);
     if (!gate.allowed) {
-      throw this.degraded(operation, true, "Telehealth vendor is temporarily unavailable (circuit open).");
+      throw this.degraded(
+        operation,
+        true,
+        "Telehealth vendor is temporarily unavailable (circuit open).",
+      );
     }
     try {
       const res = await this.fetchImpl(url, {
@@ -260,15 +284,28 @@ export class DailyCoTelehealthProvider implements TelehealthProvider {
     }
   }
 
-  private degraded(operation: TelehealthOperation, retryable: boolean, message: string): TelehealthDegradedError {
-    return new TelehealthDegradedError("daily_co", operation, retryable, message, this.correlationId);
+  private degraded(
+    operation: TelehealthOperation,
+    retryable: boolean,
+    message: string,
+  ): TelehealthDegradedError {
+    return new TelehealthDegradedError(
+      "daily_co",
+      operation,
+      retryable,
+      message,
+      this.correlationId,
+    );
   }
 }
 
 /** Clamp a requested token TTL into the [30 min, 2 h] platform bounds (§4.5). */
 export function clampTtl(ttlSeconds: number): number {
   if (!Number.isFinite(ttlSeconds)) return TELEHEALTH_TOKEN_TTL_FLOOR_SECONDS;
-  return Math.min(Math.max(Math.floor(ttlSeconds), TELEHEALTH_TOKEN_TTL_FLOOR_SECONDS), TELEHEALTH_TOKEN_TTL_CEILING_SECONDS);
+  return Math.min(
+    Math.max(Math.floor(ttlSeconds), TELEHEALTH_TOKEN_TTL_FLOOR_SECONDS),
+    TELEHEALTH_TOKEN_TTL_CEILING_SECONDS,
+  );
 }
 
 /** Case-insensitive header lookup (webhook headers arrive with varying casing). */

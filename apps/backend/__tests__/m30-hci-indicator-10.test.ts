@@ -1,3 +1,4 @@
+import { computeHciIndicator10 } from "@wardenx/quality";
 // apps/backend/__tests__/m30-hci-indicator-10.test.ts — HCI indicator 10 (visits near death).
 //
 // The first HCI indicator to resolve from live seams. It reuses the SAME two the HVLDL path uses (M6's
@@ -8,7 +9,6 @@
 // Sharing HVLDL's filters would silently make HCI-10 stricter than CMS defines and depress the score, so
 // the difference is pinned here rather than left to a reader of the two resolvers.
 import { describe, expect, it } from "vitest";
-import { computeHciIndicator10 } from "@wardenx/quality";
 import { resolveHciIndicator10Input } from "../src/modules/30-quality/jobs/m30-jobs";
 
 const REQUEST = {
@@ -21,15 +21,29 @@ const REQUEST = {
 
 type Death = { patientId: string; deathAt: string; source: string; cosignStatus: string };
 
-function seams(deaths: Death[], digestsByPatient: Record<string, { serviceDate: string; discipline?: string; evvBracketState?: string }[]>) {
+function seams(
+  deaths: Death[],
+  digestsByPatient: Record<
+    string,
+    { serviceDate: string; discipline?: string; evvBracketState?: string }[]
+  >,
+) {
   return {
-    deathDischargeReader: { async listDeathDischargesInPeriod() { return deaths; } },
+    deathDischargeReader: {
+      async listDeathDischargesInPeriod() {
+        return deaths;
+      },
+    },
     encounters: {
       async signedEncountersForPatientSince(_org: string, patientId: string) {
         return digestsByPatient[patientId] ?? [];
       },
-      async renderPayloadFor() { throw new Error("unused"); },
-      async lateEntryCountsForOrg() { throw new Error("unused"); },
+      async renderPayloadFor() {
+        throw new Error("unused");
+      },
+      async lateEntryCountsForOrg() {
+        throw new Error("unused");
+      },
     },
   } as never;
 }

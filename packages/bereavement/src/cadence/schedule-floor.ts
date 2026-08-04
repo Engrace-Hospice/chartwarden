@@ -11,11 +11,8 @@ import type {
   BereavementOutreachKind,
   BereavementRiskTier,
 } from "@wardenx/types";
-import {
-  OUTREACH_DUE_AT_CEILING_DAYS,
-  BEREAVEMENT_WINDOW_DAYS,
-} from "../policy";
 import { isPermittedModalitySubstitution } from "../outreach-kinds";
+import { BEREAVEMENT_WINDOW_DAYS, OUTREACH_DUE_AT_CEILING_DAYS } from "../policy";
 
 /** The stable identity of a floor contact, used to match a tenant row back to the item it tightens. */
 export type BereavementCadenceMark =

@@ -6,7 +6,8 @@
 import type { FastifyInstance } from "fastify";
 
 import { writeActorOf } from "./actor";
-import { ABAC_IN_ORG, ABAC_INBOUND_OWNER_MATCH, P } from "./guards";
+import { actorOf } from "./actor";
+import { ABAC_INBOUND_OWNER_MATCH, ABAC_IN_ORG, P } from "./guards";
 import {
   AcceptProposalBody,
   InboundListQuery,
@@ -15,14 +16,16 @@ import {
   parse,
   parseQuery,
 } from "./m28-typebox";
-import { actorOf } from "./actor";
 import type { FhirGatewayStore } from "./store";
 
 export interface AdminInboundRouteDeps {
   readonly store: FhirGatewayStore;
 }
 
-export function registerAdminInboundRoutes(app: FastifyInstance, deps: AdminInboundRouteDeps): void {
+export function registerAdminInboundRoutes(
+  app: FastifyInstance,
+  deps: AdminInboundRouteDeps,
+): void {
   const { store } = deps;
 
   // R34 — the operator review queue.
@@ -39,7 +42,9 @@ export function registerAdminInboundRoutes(app: FastifyInstance, deps: AdminInbo
     async (request) => {
       const actor = actorOf(request);
       const { ownerModule, status } = parseQuery(InboundListQuery, request.query);
-      return { proposals: await store.listProposals(actor.organizationId, { ownerModule, status }) };
+      return {
+        proposals: await store.listProposals(actor.organizationId, { ownerModule, status }),
+      };
     },
   );
 

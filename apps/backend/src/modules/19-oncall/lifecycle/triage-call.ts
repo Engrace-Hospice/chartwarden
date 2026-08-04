@@ -32,18 +32,18 @@ import type {
 } from "@wardenx/types";
 import { TRIAGE_DOCUMENTED_CLOSE_GRACE_MINUTES } from "@wardenx/types";
 import {
+  type SelectableDisposition,
+  assertDispositionInScope,
+  assertDispositionPayload,
+  dispositionEffects,
+} from "./disposition";
+import {
   type TriageSideEffect,
   type TriageTransitionResult,
   result,
   withAuditAndHistory,
 } from "./effects";
 import { TriageStateError, require_ } from "./errors";
-import {
-  type SelectableDisposition,
-  assertDispositionInScope,
-  assertDispositionPayload,
-  dispositionEffects,
-} from "./disposition";
 import {
   type TriageEscalationFacts,
   assertCallCloseable,
@@ -52,8 +52,8 @@ import {
 } from "./escalation";
 import {
   type TriageActorDiscipline,
-  type TriageProtocolQuestionFacts,
   type TriageAnswerFacts,
+  type TriageProtocolQuestionFacts,
   unansweredRequiredQuestions,
 } from "./protocol";
 
@@ -192,7 +192,12 @@ export function completeProtocol(input: {
     "a red-flag answer raised an escalation that nobody has acknowledged yet",
   );
 
-  return result(edge.from, edge.command, edge.to, withAuditAndHistory(edge.from, edge.to, false, []));
+  return result(
+    edge.from,
+    edge.command,
+    edge.to,
+    withAuditAndHistory(edge.from, edge.to, false, []),
+  );
 }
 
 /** §2.2.1 `protocol_in_progress → awaiting_callback`. The required-questions check is WAIVED (the caller is
@@ -222,7 +227,12 @@ export function markAwaitingCallback(input: {
  *  the question the server's own cursor is on; no answer is discarded and none is re-asked (§7.5). */
 export function resumeAfterCallback(call: TriageCallFacts): TriageCallTransition {
   const edge = resolveEdge(call.state, "resumeAfterCallback");
-  return result(edge.from, edge.command, edge.to, withAuditAndHistory(edge.from, edge.to, false, []));
+  return result(
+    edge.from,
+    edge.command,
+    edge.to,
+    withAuditAndHistory(edge.from, edge.to, false, []),
+  );
 }
 
 /**

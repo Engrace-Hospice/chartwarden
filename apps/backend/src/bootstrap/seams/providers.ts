@@ -10,28 +10,16 @@
 // ConsentEvaluator) overwrites its stub by calling registerSeam() in its own init();
 // wireSeams() is where boot invokes those Phase-1 registrations.
 
+// M32-T06 — the §2.2/W9 refusal envelope M32's ten inference deny-stubs answer with. A LEAF type
+// (`@wardenx/types`), imported directly rather than through `../interfaces` because it is not a seam
+// contract: it is the value those seams return. M1 may not import `@wardenx/ai-platform`, which is
+// exactly why T01 put this shape in the leaf.
+import type { AiCapabilityUnavailable } from "@wardenx/types";
 import type {
   AITokenMeterProvider,
   AdmissionCensusReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
-  BillingStatusProvider,
-  ExternalGriefResourceReader,
-  ExternalInterfaceMetricsProvider,
-  IpuAdmissionReader,
-  IpuBedAssignmentProvider,
-  IpuCensusProvider,
-  IpuIvSafetyOverlayProvider,
-  IpuQualityReader,
-  IpuShiftCoverageReader,
-  IpuTenantPostureReader,
-  IpuVisitorReader,
-  OnboardingStatusProvider,
-  PatientCounterProvider,
-  PlanCatalogReader,
-  RevenueMetricsProvider,
-  SubscriptionStateProvider,
-  UsageMeteringIngest,
   BereavedPortalScopeProvider,
   BereavementAssignmentReader,
   BereavementComplianceProvider,
@@ -40,11 +28,12 @@ import type {
   BereavementRiskFactorsProvider,
   BereavementRiskTierProvider,
   BillableEncounterReader,
+  BillingStatusProvider,
   CarePlanReader,
   CaseloadProvider,
   CertificationReader,
-  DeathDischargeReader,
   ComfortKitDispatchProvider,
+  DeathDischargeReader,
   DisciplineComplianceProvider,
   DisciplinePlanReader,
   DocumentReader,
@@ -58,6 +47,8 @@ import type {
   EvvLocationProvider,
   EvvMetricsProvider,
   EvvVerificationProvider,
+  ExternalGriefResourceReader,
+  ExternalInterfaceMetricsProvider,
   ExtractionProvenanceReader,
   FaceToFaceReader,
   FhirClientReader,
@@ -72,6 +63,14 @@ import type {
   IdgPacketProvider,
   IdgScheduleProvider,
   IntakeMetricsProvider,
+  IpuAdmissionReader,
+  IpuBedAssignmentProvider,
+  IpuCensusProvider,
+  IpuIvSafetyOverlayProvider,
+  IpuQualityReader,
+  IpuShiftCoverageReader,
+  IpuTenantPostureReader,
+  IpuVisitorReader,
   LatestAssessmentProvider,
   LevelOfCareReader,
   MedicationAdministrationProvider,
@@ -79,13 +78,17 @@ import type {
   MileagePayrollReader,
   MswRiskFactorReader,
   OnCallProvider,
+  OnboardingStatusProvider,
   OrderProvider,
   OrderSignatureProvider,
+  OrganizationReader,
   PatientAddressReader,
   PatientCaregiverReader,
+  PatientCounterProvider,
   PatientCoverageReader,
   PatientMutator,
   PatientReader,
+  PlanCatalogReader,
   PortalDocumentReader,
   PortalTriageReader,
   PortalVisitReader,
@@ -93,6 +96,7 @@ import type {
   ReconciliationProvider,
   RefillInboxProvider,
   RenderedDocumentProvider,
+  RevenueMetricsProvider,
   SafetyCheckInProvider,
   SafetyContextReader,
   SafetyDashboardProvider,
@@ -102,28 +106,24 @@ import type {
   SafetySupervisorProvider,
   ScaleSeriesProvider,
   SeamName,
-  OrganizationReader,
   SessionContextResolver,
   SignedEncountersReader,
-  SupplyCostProvider,
-  SupplyFulfillmentProvider,
+  SubscriptionStateProvider,
   SupervisoryCadencePlanReader,
   SupervisoryCadenceReader,
+  SupplyCostProvider,
+  SupplyFulfillmentProvider,
   TenantOrgCreationProvider,
   TriageCallMetricsProvider,
   TriageCallProvider,
   TriageCallReader,
+  UsageMeteringIngest,
   VisitAssignmentReader,
   VisitMetricsProvider,
   VisitReader,
   VolunteerComplianceProvider,
   VolunteerGateExpiryReader,
 } from "../interfaces";
-// M32-T06 — the §2.2/W9 refusal envelope M32's ten inference deny-stubs answer with. A LEAF type
-// (`@wardenx/types`), imported directly rather than through `../interfaces` because it is not a seam
-// contract: it is the value those seams return. M1 may not import `@wardenx/ai-platform`, which is
-// exactly why T01 put this shape in the leaf.
-import type { AiCapabilityUnavailable } from "@wardenx/types";
 
 export class NotImplementedError extends Error {
   constructor(seam: string) {
@@ -372,7 +372,9 @@ export const claimLineReaderDenyStub: unknown = denyingSeamProxy("ClaimLineReade
 
 /** M27 — the cost-report filing posture per FY, the M30 CoP 418.310 failure-to-file indicator's input.
  *  Opaque rich-seam; same degrade-to-suppressed contract as ClaimLineReader above. */
-export const costReportFilingStatusReaderDenyStub: unknown = denyingSeamProxy("CostReportFilingStatusReader");
+export const costReportFilingStatusReaderDenyStub: unknown = denyingSeamProxy(
+  "CostReportFilingStatusReader",
+);
 
 /** M30 §4.3 — the five HQRP/Quality read seams. Opaque rich-seams (interfaces in @wardenx/quality);
  *  M22 / M28 / M33 / M34 resolve via `getSeam` + cast. Deny until M30 registers the live Drizzle-backed
@@ -450,7 +452,9 @@ export const labObservationReaderDenyStub: unknown = denyingSeamProxy("LabObserv
 
 /** M29 §4.4 — the pending ADT-proposal review queue (M5/M6 badges). Opaque rich-seam; denies LOUDLY until
  *  M29 registers the real Drizzle-backed reader (M29-T08). */
-export const hl7InboundProposalReaderDenyStub: unknown = denyingSeamProxy("Hl7InboundProposalReader");
+export const hl7InboundProposalReaderDenyStub: unknown = denyingSeamProxy(
+  "Hl7InboundProposalReader",
+);
 
 /** M29 §4.4 — the per-org feed inventory + health snapshot (M33/M34; no credentials). Opaque rich-seam;
  *  denies until M29 registers the real reader (M29-T08). */
@@ -1486,7 +1490,8 @@ export const denialOutcomePredictionProviderDenyStub: unknown = refusingAiSeamPr
 export const embeddingsProviderDenyStub: unknown = refusingAiSeamProxy("EmbeddingsProvider");
 
 /** M32 — §4.2.6 chart-scoped semantic search. Contract locked, no Phase-1 consumer. */
-export const semanticSearchProviderDenyStub: unknown = refusingAiSeamProxy("SemanticSearchProvider");
+export const semanticSearchProviderDenyStub: unknown =
+  refusingAiSeamProxy("SemanticSearchProvider");
 
 /** M32 — §4.2.6 chart copilot Q&A. Contract locked, no Phase-1 consumer. */
 export const copilotProviderDenyStub: unknown = refusingAiSeamProxy("CopilotProvider");

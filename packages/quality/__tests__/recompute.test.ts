@@ -13,13 +13,13 @@
 import type { schema } from "@wardenx/db";
 import {
   type CahpsExportPorts,
-  type MeasureRecomputeJob,
-  type MeasureRecomputePorts,
-  type OutbreakDetectionPorts,
-  type RiskRegisterRefreshPorts,
   M30WorkerPortUnbound,
   MEASURE_CATALOG,
+  type MeasureRecomputeJob,
+  type MeasureRecomputePorts,
   MeasureRegistrationMissing,
+  type OutbreakDetectionPorts,
+  type RiskRegisterRefreshPorts,
   buildMeasureRegistry,
   computeVisitOnTimeRate,
   handleCahpsExport,
@@ -93,8 +93,10 @@ function makeRecomputeHarness(injectInput: (registration: { code: string }) => u
       supersede: async (id, supersededBy, supersededAt) => {
         const row = rows.find((r) => r.id === id);
         if (row !== undefined) {
-          (row as unknown as { supersededBy: string | null; supersededAt: Date }).supersededBy = supersededBy;
-          (row as unknown as { supersededBy: string | null; supersededAt: Date }).supersededAt = supersededAt;
+          (row as unknown as { supersededBy: string | null; supersededAt: Date }).supersededBy =
+            supersededBy;
+          (row as unknown as { supersededBy: string | null; supersededAt: Date }).supersededAt =
+            supersededAt;
         }
       },
     },
@@ -157,7 +159,11 @@ describe("handleMeasureRecompute — END-TO-END over buildMeasureRegistry()", ()
       threshold: gteTarget,
     });
     expect(expected.bandColor).toBe("green");
-    expect(result).toMatchObject({ outcome: "recomputed", bandColor: "green", thresholdBreached: false });
+    expect(result).toMatchObject({
+      outcome: "recomputed",
+      bandColor: "green",
+      thresholdBreached: false,
+    });
 
     expect(rows).toHaveLength(1);
     const persisted = rows[0]!;
@@ -172,7 +178,11 @@ describe("handleMeasureRecompute — END-TO-END over buildMeasureRegistry()", ()
 
     // A fresh value with no prior current row emits value_emitted exactly once and never a threshold breach.
     expect(emits.value).toHaveLength(1);
-    expect(emits.value[0]).toMatchObject({ measureId: "visit_on_time_rate", bandColor: "green", rate: 0.9 });
+    expect(emits.value[0]).toMatchObject({
+      measureId: "visit_on_time_rate",
+      bandColor: "green",
+      rate: 0.9,
+    });
     expect(emits.breach).toHaveLength(0);
   });
 
@@ -188,9 +198,17 @@ describe("handleMeasureRecompute — END-TO-END over buildMeasureRegistry()", ()
     }));
 
     const result = await handleMeasureRecompute(makeJob(), ports);
-    expect(result).toMatchObject({ outcome: "recomputed", bandColor: "red", thresholdBreached: true });
+    expect(result).toMatchObject({
+      outcome: "recomputed",
+      bandColor: "red",
+      thresholdBreached: true,
+    });
     expect(emits.breach).toHaveLength(1);
-    expect(emits.breach[0]).toMatchObject({ measureId: "visit_on_time_rate", severityBand: "red", rate: 0.5 });
+    expect(emits.breach[0]).toMatchObject({
+      measureId: "visit_on_time_rate",
+      severityBand: "red",
+      rate: 0.5,
+    });
   });
 
   it("is V-8 idempotent end-to-end: a replay over identical input content-hashes to the same row, inserts nothing", async () => {
@@ -331,7 +349,8 @@ describe("handleCahpsExport — smoke + fail-closed decrypt", () => {
       },
       // The genuinely-missing M1 DEK helper is bound to a lazy fail-closed thunk (the §8 PHI guard).
       decrypt: {
-        toVendorRow: async () => unboundWorkerPort("cahps.decrypt", "M1 envelope-DEK helper unbound"),
+        toVendorRow: async () =>
+          unboundWorkerPort("cahps.decrypt", "M1 envelope-DEK helper unbound"),
       },
       bindingConfig: { load: async () => ({}) },
       outbox: {
@@ -384,7 +403,11 @@ describe("handleOutbreakDetection — smoke + fail-closed outbox", () => {
       { jobId: "j1", organizationId: "org-1", surveillanceEventId: "e3" },
       ports,
     );
-    expect(result).toMatchObject({ outcome: "detected", casesOpened: 1, openedCaseIds: ["case-1"] });
+    expect(result).toMatchObject({
+      outcome: "detected",
+      casesOpened: 1,
+      openedCaseIds: ["case-1"],
+    });
     expect(opened).toEqual(["case-1"]);
   });
 
@@ -404,11 +427,15 @@ describe("handleOutbreakDetection — smoke + fail-closed outbox", () => {
       },
       // The genuinely-missing transactional-outbox emit is a lazy fail-closed thunk.
       outbox: {
-        emitOutbreakOpened: async () => unboundWorkerPort("outbreak.outbox", "transactional outbox unbound"),
+        emitOutbreakOpened: async () =>
+          unboundWorkerPort("outbreak.outbox", "transactional outbox unbound"),
       },
     };
     await expect(
-      handleOutbreakDetection({ jobId: "j2", organizationId: "org-1", surveillanceEventId: "e3" }, ports),
+      handleOutbreakDetection(
+        { jobId: "j2", organizationId: "org-1", surveillanceEventId: "e3" },
+        ports,
+      ),
     ).rejects.toBeInstanceOf(M30WorkerPortUnbound);
     expect(marked).toBe(false); // never stamps processing_log on the throw path → safe to replay
   });

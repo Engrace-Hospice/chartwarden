@@ -1,7 +1,14 @@
 // apps/web/src/modules/37-ipu — M37 IPU daily census (§5/§2.13). Reads today's census snapshot rows and
 // surfaces the GIP/IRC head-counts + bed-days + incident counts. GET /api/v1/ipu-census/:date. Lantern:
 // KpiStrip + CSS-var tokens only.
-import { EmptyState, KpiCard, KpiStrip, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 
@@ -45,7 +52,10 @@ export function IpuCensus(): JSX.Element {
     <div>
       <PageHeader title="IPU census" breadcrumb={`Daily snapshot — ${date}`} />
       {rows.length === 0 ? (
-        <EmptyState title="No snapshot" description="No census snapshot has been materialized for today yet." />
+        <EmptyState
+          title="No snapshot"
+          description="No census snapshot has been materialized for today yet."
+        />
       ) : (
         <KpiStrip>
           <KpiCard label="GIP census" value={String(sum((r) => r.censusCountGip))} />
@@ -53,7 +63,10 @@ export function IpuCensus(): JSX.Element {
           <KpiCard label="GIP bed-days" value={String(sum((r) => r.bedDaysGip))} />
           <KpiCard label="IRC bed-days" value={String(sum((r) => r.bedDaysIrc))} />
           <KpiCard label="Turnovers" value={String(sum((r) => r.roomTurnoverCount))} />
-          <KpiCard label="Restraint incidents" value={String(sum((r) => r.restraintIncidentCount))} />
+          <KpiCard
+            label="Restraint incidents"
+            value={String(sum((r) => r.restraintIncidentCount))}
+          />
         </KpiStrip>
       )}
     </div>

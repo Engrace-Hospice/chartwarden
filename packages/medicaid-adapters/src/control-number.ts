@@ -40,7 +40,8 @@ const STATE_RE = /^[A-Z]{2}$/;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const HEX_PREFIX_RE = /^[0-9a-f]+$/;
 
-export const MEDICAID_CONTROL_NUMBER_RE = /^([A-Za-z0-9]{6})-([A-Z]{2})-(\d{6})-([0-9a-z]{5})-(\d{2})$/;
+export const MEDICAID_CONTROL_NUMBER_RE =
+  /^([A-Za-z0-9]{6})-([A-Z]{2})-(\d{6})-([0-9a-z]{5})-(\d{2})$/;
 
 /**
  * Derive the deterministic medicaid_claim_control_number. Pure + total over valid inputs; throws a
@@ -75,14 +76,17 @@ export function deriveMedicaidControlNumber(input: MedicaidControlNumberInput): 
   }
   const attempt2 = String(input.attemptIndex).padStart(2, "0");
 
-  const hexPrefix = input.claimId.replace(/-/g, "").slice(0, CLAIM_ID_PREFIX_HEX_CHARS).toLowerCase();
+  const hexPrefix = input.claimId
+    .replace(/-/g, "")
+    .slice(0, CLAIM_ID_PREFIX_HEX_CHARS)
+    .toLowerCase();
   if (hexPrefix.length < CLAIM_ID_PREFIX_HEX_CHARS || !HEX_PREFIX_RE.test(hexPrefix)) {
     throw new RangeError(
       `deriveMedicaidControlNumber: claimId must yield ${CLAIM_ID_PREFIX_HEX_CHARS} leading hex chars ` +
         `(got prefix '${hexPrefix}' from '${input.claimId}')`,
     );
   }
-  const base36 = parseInt(hexPrefix, 16).toString(36).padStart(BASE36_SEGMENT_WIDTH, "0");
+  const base36 = Number.parseInt(hexPrefix, 16).toString(36).padStart(BASE36_SEGMENT_WIDTH, "0");
   if (base36.length !== BASE36_SEGMENT_WIDTH) {
     throw new RangeError(
       `deriveMedicaidControlNumber: base36 segment width invariant broken ('${base36}')`,
@@ -99,7 +103,9 @@ export function deriveMedicaidControlNumber(input: MedicaidControlNumberInput): 
 }
 
 /** Parse a control number into its segments, or `null` if it does not conform. Pure + total — never throws. */
-export function parseMedicaidControlNumber(controlNumber: string): ParsedMedicaidControlNumber | null {
+export function parseMedicaidControlNumber(
+  controlNumber: string,
+): ParsedMedicaidControlNumber | null {
   const match = MEDICAID_CONTROL_NUMBER_RE.exec(controlNumber);
   if (!match) return null;
   const [, ccn, serviceState, yymmdd, claimIdPrefixBase36, attempt] = match;

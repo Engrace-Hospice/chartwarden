@@ -26,6 +26,7 @@ import {
   getPlan,
   referExternal,
 } from "./bereavement-api";
+import { CONTACT_STATUS_TONE, humanize, shortId, toneOf } from "./bereavement-status";
 import {
   Card,
   Field,
@@ -47,7 +48,6 @@ import {
   td,
   th,
 } from "./bereavement-ui";
-import { CONTACT_STATUS_TONE, humanize, shortId, toneOf } from "./bereavement-status";
 
 /**
  * The PG-13 item set, adapted for bereavement screening. Thirteen items, each 0–4 (never … always), so the
@@ -138,7 +138,10 @@ export function BereavementGriefScreen(): JSX.Element {
       <Card
         title="Survivor"
         actions={
-          <StatusPill label={humanize(contact.status)} tone={toneOf(CONTACT_STATUS_TONE, contact.status)} />
+          <StatusPill
+            label={humanize(contact.status)}
+            tone={toneOf(CONTACT_STATUS_TONE, contact.status)}
+          />
         }
       >
         <SummaryGrid>
@@ -183,8 +186,8 @@ export function BereavementGriefScreen(): JSX.Element {
           </tbody>
         </table>
         <span style={mutedStyle}>
-          Scored on this screen and sent as a total: the route records `pg13Score`, and Module 16 keeps no
-          per-item store, so nothing here pretends the individual responses are retained.
+          Scored on this screen and sent as a total: the route records `pg13Score`, and Module 16
+          keeps no per-item store, so nothing here pretends the individual responses are retained.
         </span>
       </Card>
 
@@ -203,10 +206,10 @@ export function BereavementGriefScreen(): JSX.Element {
 
       {met ? (
         <Notice tone="error" live>
-          The screening threshold ({PG13_THRESHOLD}) is met. Escalate to complicated grief and hand this
-          survivor to a named external resource, or — if the program should continue — log a referral
-          without ending it. This banner is advisory: the tier promotion is applied by the server when the
-          escalation is recorded.
+          The screening threshold ({PG13_THRESHOLD}) is met. Escalate to complicated grief and hand
+          this survivor to a named external resource, or — if the program should continue — log a
+          referral without ending it. This banner is advisory: the tier promotion is applied by the
+          server when the escalation is recorded.
         </Notice>
       ) : null}
 
@@ -220,9 +223,9 @@ export function BereavementGriefScreen(): JSX.Element {
           </button>
         </div>
         <span style={mutedStyle}>
-          Escalating ends the bereavement program for this survivor and routes them to the named external
-          resource; a referral leaves the program running. They are separate records because they are
-          separate clinical facts.
+          Escalating ends the bereavement program for this survivor and routes them to the named
+          external resource; a referral leaves the program running. They are separate records
+          because they are separate clinical facts.
         </span>
       </Card>
 
@@ -298,15 +301,20 @@ function ReferralModal({
     >
       <Notice tone="info">
         The resource is chosen from the platform's external grief-resource catalog (Module 40). Its
-        identifier is entered here because Module 16 publishes no catalog-browse route of its own — the
-        server validates it against the catalog and refuses an unknown id.
+        identifier is entered here because Module 16 publishes no catalog-browse route of its own —
+        the server validates it against the catalog and refuses an unknown id.
       </Notice>
       <TextField
         label="External grief-resource id (M40)"
         value={externalResourceId}
         onChange={setExternalResourceId}
       />
-      <TextField label="Referred at (optional)" type="datetime-local" value={contactAt} onChange={setContactAt} />
+      <TextField
+        label="Referred at (optional)"
+        type="datetime-local"
+        value={contactAt}
+        onChange={setContactAt}
+      />
       <TextAreaField label="Note" value={notes} onChange={setNotes} />
       {error ? <p style={alertStyle}>{error}</p> : null}
     </Modal>
@@ -367,8 +375,8 @@ function EscalateModal({
     >
       <Notice tone="warning">
         This ends the bereavement program for {contact.displayName} and promotes their risk tier to
-        complicated. A named external resource is required — "referred to external services" with nowhere
-        named is a dead end for someone in crisis.
+        complicated. A named external resource is required — "referred to external services" with
+        nowhere named is a dead end for someone in crisis.
       </Notice>
       <TextField
         label="External grief-resource id (M40)"

@@ -53,7 +53,9 @@ export interface TransmissionEnqueueInput {
  * no-op), move the aggregate to `queued_for_transmission` / `dosespot_send_state='queued'`, and name the
  * `m12.medication_order.queued_for_transmission` outbox event. The BullMQ enqueue itself runs after commit.
  */
-export function planTransmissionEnqueue(input: TransmissionEnqueueInput): PlannedTransmissionEnqueue {
+export function planTransmissionEnqueue(
+  input: TransmissionEnqueueInput,
+): PlannedTransmissionEnqueue {
   return {
     insert: {
       medicationOrderId: input.medicationOrderId,
@@ -93,7 +95,9 @@ export interface TransmissionSuccessInput {
  * 'transmitted'`, emitting `m12.medication_order.transmitted` (§5.1; the webhook `ScriptStatusUpdate` later
  * flips it to `active`).
  */
-export function planTransmissionSuccess(input: TransmissionSuccessInput): PlannedTransmissionSuccess {
+export function planTransmissionSuccess(
+  input: TransmissionSuccessInput,
+): PlannedTransmissionSuccess {
   return {
     transmissionUpdate: {
       transmissionSucceededAt: input.nowInstant,
@@ -148,7 +152,9 @@ export interface TransmissionFailureInput {
  * `transmission_failed` / `dosespot_send_state='failed'`, emits `m12.medication_order.transmission_failed`, and
  * dispatches the §4.9 high-severity M36 alert. Deterministic — same (count, class, instant) → same plan.
  */
-export function planTransmissionFailure(input: TransmissionFailureInput): PlannedTransmissionFailure {
+export function planTransmissionFailure(
+  input: TransmissionFailureInput,
+): PlannedTransmissionFailure {
   const retryCount = input.currentRetryCount + 1;
   const transmissionUpdate = {
     transmissionFailedAt: input.nowInstant,

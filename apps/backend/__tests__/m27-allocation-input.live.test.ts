@@ -13,13 +13,13 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CostReportWorksheetRepository,
   allocationResultsToWorksheets,
   buildPerDiemInput,
   calculatePerDiem,
-  CostReportWorksheetRepository,
   stepDownAllocate,
 } from "@wardenx/cost-report";
-import { createDbClient, type DbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,9 +38,12 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§4320/�
 
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+      if (stripVector)
+        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
       await admin.query(sql);
     }
   }
@@ -57,7 +60,10 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§4320/�
       );
     }
     await applyMigrations();
-    await admin.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')", [ORG]);
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
+      [ORG],
+    );
     reportId = (
       await admin.query(
         `INSERT INTO cost_report (organization_id, provider_entity_id, fiscal_year_start_date,
@@ -69,7 +75,11 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§4320/�
     // Worksheet A — one general-service (overhead) center.
     await admin.query(
       `INSERT INTO cost_report_worksheet (organization_id, cost_report_id, worksheet_code, data) VALUES ($1,$2,'A',$3)`,
-      [ORG, reportId, JSON.stringify({ costCenters: [{ code: "AG", name: "A&G", totalCostsCents: 100_000 }] })],
+      [
+        ORG,
+        reportId,
+        JSON.stringify({ costCenters: [{ code: "AG", name: "A&G", totalCostsCents: 100_000 }] }),
+      ],
     );
     // Worksheet A-2 — the RHC direct-care net cost.
     await admin.query(
@@ -83,7 +93,13 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§4320/�
         ORG,
         reportId,
         JSON.stringify({
-          columns: [{ generalServiceCostCenterCode: "AG", allocationBasis: "square_feet", statisticalPortions: [{ receivingCenterCode: "RHC", statisticValue: 1 }] }],
+          columns: [
+            {
+              generalServiceCostCenterCode: "AG",
+              allocationBasis: "square_feet",
+              statisticalPortions: [{ receivingCenterCode: "RHC", statisticValue: 1 }],
+            },
+          ],
         }),
       ],
     );
@@ -95,7 +111,9 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§4320/�
       [
         ORG,
         reportId,
-        JSON.stringify({ "2026-01": { rhc: { medicare: { patientDays: 60 }, medicaid: { patientDays: 40 } } } }),
+        JSON.stringify({
+          "2026-01": { rhc: { medicare: { patientDays: 60 }, medicaid: { patientDays: 40 } } },
+        }),
         JSON.stringify({ contactsCount: 0, visitsCount: 0 }),
       ],
     );
@@ -113,13 +131,28 @@ describe.skipIf(!DB_URL)("M27 AllocationInputBuilder — LIVE Postgres (§4320/�
       const inputs = await builder.build({ organizationId: ORG, costReportId: reportId, tx });
       const step = stepDownAllocate(inputs.stepDown);
       const perDiem = calculatePerDiem(buildPerDiemInput(step, inputs.locDays));
-      const payloads = allocationResultsToWorksheets({ stepDown: step, perDiem, stepDownColumns: inputs.stepDownColumns });
+      const payloads = allocationResultsToWorksheets({
+        stepDown: step,
+        perDiem,
+        stepDownColumns: inputs.stepDownColumns,
+      });
       const repo = new CostReportWorksheetRepository(tx);
       const computedAt = new Date("2026-12-01T00:00:00Z");
       for (const code of ["B", "C"] as const) {
         const existing = await repo.findByReportAndCode(reportId, code);
-        if (existing) await repo.updateWithVersion(existing.id, existing.version, { data: payloads[code], computedAt });
-        else await repo.create({ organizationId: ORG, costReportId: reportId, worksheetCode: code, data: payloads[code], computedAt });
+        if (existing)
+          await repo.updateWithVersion(existing.id, existing.version, {
+            data: payloads[code],
+            computedAt,
+          });
+        else
+          await repo.create({
+            organizationId: ORG,
+            costReportId: reportId,
+            worksheetCode: code,
+            data: payloads[code],
+            computedAt,
+          });
       }
     });
 

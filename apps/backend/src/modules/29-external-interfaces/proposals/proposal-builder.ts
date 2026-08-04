@@ -1,3 +1,4 @@
+import type { NewHl7InboundProposalRow } from "@wardenx/db/schema";
 // apps/backend/src/modules/29-external-interfaces/proposals — cascade-outcome → proposal-creation planning (M29-T04 /
 // T-29.06 §2.1/§4). PURE. Translates a {@link MatchOutcome} + the ADT message context + the parsed
 // candidate into either:
@@ -9,8 +10,12 @@
 //
 // Determinism: the caller supplies `proposalId`, `proposedAt`, and `expiresAt` so the result is a pure
 // function of its inputs (the T08 worker mints the id/clock and does the atomic insert + publish).
-import type { Hl7InboundProposalKind, Hl7InboundMatchLevel, Hl7InboundMatchOutcome, Hl7ProposalOwnerModule } from "@wardenx/types";
-import type { NewHl7InboundProposalRow } from "@wardenx/db/schema";
+import type {
+  Hl7InboundMatchLevel,
+  Hl7InboundMatchOutcome,
+  Hl7InboundProposalKind,
+  Hl7ProposalOwnerModule,
+} from "@wardenx/types";
 import type { MatchOutcome } from "../inbound/match-cascade";
 import type { CascadeMessageContext } from "../inbound/outcome-router";
 import { MESSAGE_TYPE_ROUTING, isSupportedAdt } from "./message-type-routing";
@@ -37,9 +42,18 @@ export type ProposalPlan =
   | {
       readonly kind: "create";
       readonly proposal: NewHl7InboundProposalRow;
-      readonly event: { readonly name: "m29.hl7_inbound_proposal.created"; readonly payload: ProposalCreatedPayload };
+      readonly event: {
+        readonly name: "m29.hl7_inbound_proposal.created";
+        readonly payload: ProposalCreatedPayload;
+      };
     }
-  | { readonly kind: "drop"; readonly event: { readonly name: "m29.hl7_message.routing_dropped"; readonly payload: RoutingDroppedPayload } }
+  | {
+      readonly kind: "drop";
+      readonly event: {
+        readonly name: "m29.hl7_message.routing_dropped";
+        readonly payload: RoutingDroppedPayload;
+      };
+    }
   | { readonly kind: "skip"; readonly reason: "unsupported_message_type" };
 
 export interface BuildProposalInput {
@@ -63,7 +77,13 @@ interface OutcomeFields {
 function projectOutcomeFields(outcome: MatchOutcome): OutcomeFields {
   switch (outcome.kind) {
     case "confident_match":
-      return { matchOutcome: "matched_single", matchedPatientId: outcome.patientId, matchConfidence: null, matchCandidateIds: [outcome.patientId], matchLevel: outcome.level };
+      return {
+        matchOutcome: "matched_single",
+        matchedPatientId: outcome.patientId,
+        matchConfidence: null,
+        matchCandidateIds: [outcome.patientId],
+        matchLevel: outcome.level,
+      };
     case "candidate_match":
       return {
         matchOutcome: "matched_single",
@@ -73,9 +93,21 @@ function projectOutcomeFields(outcome: MatchOutcome): OutcomeFields {
         matchLevel: outcome.level,
       };
     case "ambiguous":
-      return { matchOutcome: "matched_ambiguous", matchedPatientId: null, matchConfidence: null, matchCandidateIds: outcome.candidateIds, matchLevel: outcome.level };
+      return {
+        matchOutcome: "matched_ambiguous",
+        matchedPatientId: null,
+        matchConfidence: null,
+        matchCandidateIds: outcome.candidateIds,
+        matchLevel: outcome.level,
+      };
     case "no_match":
-      return { matchOutcome: "no_match", matchedPatientId: null, matchConfidence: null, matchCandidateIds: [], matchLevel: "NO_MATCH" };
+      return {
+        matchOutcome: "no_match",
+        matchedPatientId: null,
+        matchConfidence: null,
+        matchCandidateIds: [],
+        matchLevel: "NO_MATCH",
+      };
   }
 }
 
@@ -91,7 +123,10 @@ export function planProposal(input: BuildProposalInput): ProposalPlan {
   if (input.outcome.kind === "no_match" && routing.noMatchBehavior === "drop_with_audit") {
     return {
       kind: "drop",
-      event: { name: "m29.hl7_message.routing_dropped", payload: { ...context, reason: "cannot_act_on_unknown_patient" } },
+      event: {
+        name: "m29.hl7_message.routing_dropped",
+        payload: { ...context, reason: "cannot_act_on_unknown_patient" },
+      },
     };
   }
 

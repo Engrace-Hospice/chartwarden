@@ -7,7 +7,10 @@ import {
   buildIvSafetyOverlay,
   evaluateIvPreAdministration,
 } from "../src/domain/iv-safety/overlay-builder";
-import { isSedationClassMedication, resolveTitrationWindow } from "../src/domain/iv-safety/titration-window-catalog";
+import {
+  isSedationClassMedication,
+  resolveTitrationWindow,
+} from "../src/domain/iv-safety/titration-window-catalog";
 
 describe("titration catalog + sedation classifier (§2.6)", () => {
   it("classifies known sedation drips and non-sedation analgesics", () => {
@@ -45,7 +48,12 @@ describe("overlay builder (§2.6 D7)", () => {
 describe("M13 pre-administration gate (§2.6 — the 4 checks)", () => {
   const overlay = buildIvSafetyOverlay({ medicationDisplayName: "midazolam" }); // sedation: window 0.5–10 mg/hr
 
-  const ok = { proposedRate: 5, witnessTokenPresent: true, hoursSinceContinuousStart: 10, minutesSinceLastBedsideCheck: 30 };
+  const ok = {
+    proposedRate: 5,
+    witnessTokenPresent: true,
+    hoursSinceContinuousStart: 10,
+    minutesSinceLastBedsideCheck: 30,
+  };
 
   it("allows an in-window, dual-witnessed, on-time administration", () => {
     expect(evaluateIvPreAdministration(overlay, ok)).toEqual({ allowed: true });
@@ -60,21 +68,27 @@ describe("M13 pre-administration gate (§2.6 — the 4 checks)", () => {
   });
 
   it("denies a sedation drip without a dual-witness token", () => {
-    expect(evaluateIvPreAdministration(overlay, { ...ok, witnessTokenPresent: false })).toMatchObject({
+    expect(
+      evaluateIvPreAdministration(overlay, { ...ok, witnessTokenPresent: false }),
+    ).toMatchObject({
       allowed: false,
       code: "IV_DUAL_WITNESS_REQUIRED",
     });
   });
 
   it("denies once the max continuous duration is exceeded", () => {
-    expect(evaluateIvPreAdministration(overlay, { ...ok, hoursSinceContinuousStart: 200 })).toMatchObject({
+    expect(
+      evaluateIvPreAdministration(overlay, { ...ok, hoursSinceContinuousStart: 200 }),
+    ).toMatchObject({
       allowed: false,
       code: "IV_MAX_CONTINUOUS_DURATION_REACHED",
     });
   });
 
   it("denies a bedside check overdue past the interval", () => {
-    expect(evaluateIvPreAdministration(overlay, { ...ok, minutesSinceLastBedsideCheck: 90 })).toMatchObject({
+    expect(
+      evaluateIvPreAdministration(overlay, { ...ok, minutesSinceLastBedsideCheck: 90 }),
+    ).toMatchObject({
       allowed: false,
       code: "IV_BEDSIDE_CHECK_OVERDUE",
     });
@@ -82,8 +96,9 @@ describe("M13 pre-administration gate (§2.6 — the 4 checks)", () => {
 
   it("checks rate before witness (deterministic ordering)", () => {
     // Both a bad rate and a missing witness: the rate check wins.
-    expect(evaluateIvPreAdministration(overlay, { ...ok, proposedRate: 99, witnessTokenPresent: false }).code).toBe(
-      "IV_RATE_OUTSIDE_TITRATION_WINDOW",
-    );
+    expect(
+      evaluateIvPreAdministration(overlay, { ...ok, proposedRate: 99, witnessTokenPresent: false })
+        .code,
+    ).toBe("IV_RATE_OUTSIDE_TITRATION_WINDOW");
   });
 });

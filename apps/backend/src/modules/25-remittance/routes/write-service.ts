@@ -73,23 +73,81 @@ export interface TaxonomyOverlayInput {
 export interface M25WriteService {
   replayAdvice(actor: M25WriteActor, adviceId: string): Promise<void>;
   manualMatch(actor: M25WriteActor, lineId: string, input: ManualMatchInput): Promise<void>;
-  overrideAdjustment(actor: M25WriteActor, adjustmentId: string, input: AdjustmentOverrideInput): Promise<void>;
+  overrideAdjustment(
+    actor: M25WriteActor,
+    adjustmentId: string,
+    input: AdjustmentOverrideInput,
+  ): Promise<void>;
 
-  assignDenial(actor: M25WriteActor, id: string, input: DenialAssignInput, ifMatch: number): Promise<VersionedResult>;
+  assignDenial(
+    actor: M25WriteActor,
+    id: string,
+    input: DenialAssignInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
   startDenial(actor: M25WriteActor, id: string, ifMatch: number): Promise<VersionedResult>;
-  escalateDenial(actor: M25WriteActor, id: string, input: ReasonInput, ifMatch: number): Promise<VersionedResult>;
-  resolveDenial(actor: M25WriteActor, id: string, input: ReasonInput, ifMatch: number): Promise<VersionedResult>;
+  escalateDenial(
+    actor: M25WriteActor,
+    id: string,
+    input: ReasonInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
+  resolveDenial(
+    actor: M25WriteActor,
+    id: string,
+    input: ReasonInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
   closeDenial(actor: M25WriteActor, id: string, ifMatch: number): Promise<VersionedResult>;
-  closeWriteOffDenial(actor: M25WriteActor, id: string, input: ReasonInput, ifMatch: number): Promise<VersionedResult>;
-  reopenDenial(actor: M25WriteActor, id: string, input: ReasonInput, ifMatch: number): Promise<VersionedResult>;
+  closeWriteOffDenial(
+    actor: M25WriteActor,
+    id: string,
+    input: ReasonInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
+  reopenDenial(
+    actor: M25WriteActor,
+    id: string,
+    input: ReasonInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
 
-  createAppeal(actor: M25WriteActor, denialCaseId: string, input: AppealCreateInput): Promise<VersionedResult>;
-  attachAppealDocument(actor: M25WriteActor, id: string, documentId: string, ifMatch: number): Promise<VersionedResult>;
-  submitAppeal(actor: M25WriteActor, id: string, input: AppealSubmitInput, ifMatch: number): Promise<VersionedResult>;
+  createAppeal(
+    actor: M25WriteActor,
+    denialCaseId: string,
+    input: AppealCreateInput,
+  ): Promise<VersionedResult>;
+  attachAppealDocument(
+    actor: M25WriteActor,
+    id: string,
+    documentId: string,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
+  submitAppeal(
+    actor: M25WriteActor,
+    id: string,
+    input: AppealSubmitInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
   ackAppeal(actor: M25WriteActor, id: string, ifMatch: number): Promise<VersionedResult>;
-  decideAppeal(actor: M25WriteActor, id: string, input: AppealDecideInput, ifMatch: number): Promise<VersionedResult>;
-  withdrawAppeal(actor: M25WriteActor, id: string, input: ReasonInput, ifMatch: number): Promise<VersionedResult>;
+  decideAppeal(
+    actor: M25WriteActor,
+    id: string,
+    input: AppealDecideInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
+  withdrawAppeal(
+    actor: M25WriteActor,
+    id: string,
+    input: ReasonInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
   closeAppeal(actor: M25WriteActor, id: string, ifMatch: number): Promise<VersionedResult>;
 
-  editTaxonomyOverlay(actor: M25WriteActor, carcCode: string, input: TaxonomyOverlayInput, ifMatch: number): Promise<VersionedResult>;
+  editTaxonomyOverlay(
+    actor: M25WriteActor,
+    carcCode: string,
+    input: TaxonomyOverlayInput,
+    ifMatch: number,
+  ): Promise<VersionedResult>;
 }

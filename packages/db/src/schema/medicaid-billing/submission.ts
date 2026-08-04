@@ -4,7 +4,16 @@
 // CROSS-MODULE FK POLICY: organization_id / provider_entity_id (M1 core) get real FKs; medicaid_submission_id
 // → medicaid_submission (intra-M24, non-partitioned) is a real FK on the ack. medicaid_claim_id is LOGICAL
 // (medicaid_claim is partitioned). vendor_payload_cipher / raw_payload_cipher are KMS-wrapped (audit-denylisted §3.6).
-import { index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { m24AcknowledgmentKind, m24AcknowledgmentOutcome, m24SubmissionResult } from "./enums";

@@ -26,6 +26,7 @@ import {
   errorMessage,
   listPlans,
 } from "./bereavement-api";
+import { PLAN_STATUS_TONE, humanize, shortDate, shortId, toneOf } from "./bereavement-status";
 import {
   Card,
   FilterRow,
@@ -46,13 +47,6 @@ import {
   td,
   th,
 } from "./bereavement-ui";
-import {
-  PLAN_STATUS_TONE,
-  humanize,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 const STATUSES = [
   { value: "eligible", label: "Eligible — awaiting counselor" },
@@ -112,9 +106,11 @@ export function BereavementIntakeQueue(): JSX.Element {
       {pendingCosign.length > 0 ? (
         <Notice tone="warning">
           PENDING MEDICAL DIRECTOR COSIGN —{" "}
-          {pendingCosign.length === 1 ? "one plan in this queue" : `${pendingCosign.length} plans in this queue`}{" "}
-          came from an external (HL7 ADT) death notice. You may assign a counselor and a volunteer now;
-          counselor first contact stays refused by the server until the cosign is received.
+          {pendingCosign.length === 1
+            ? "one plan in this queue"
+            : `${pendingCosign.length} plans in this queue`}{" "}
+          came from an external (HL7 ADT) death notice. You may assign a counselor and a volunteer
+          now; counselor first contact stays refused by the server until the cosign is received.
         </Notice>
       ) : null}
 
@@ -151,7 +147,10 @@ export function BereavementIntakeQueue(): JSX.Element {
                     ) : null}
                   </td>
                   <td style={td}>
-                    <StatusPill label={humanize(p.status)} tone={toneOf(PLAN_STATUS_TONE, p.status)} />
+                    <StatusPill
+                      label={humanize(p.status)}
+                      tone={toneOf(PLAN_STATUS_TONE, p.status)}
+                    />
                   </td>
                   <td style={td}>{shortDate(p.deathDate)}</td>
                   <td style={td}>{shortDate(p.windowEndsAt)}</td>
@@ -227,8 +226,14 @@ function AssignModal({
     const at = effectiveAt ? new Date(effectiveAt).toISOString() : undefined;
     const { error: err } =
       kind === "counselor"
-        ? await assignCounselor(client, planId, version, { counselorUserId: userId, effectiveAt: at })
-        : await assignVolunteer(client, planId, version, { volunteerUserId: userId, effectiveAt: at });
+        ? await assignCounselor(client, planId, version, {
+            counselorUserId: userId,
+            effectiveAt: at,
+          })
+        : await assignVolunteer(client, planId, version, {
+            volunteerUserId: userId,
+            effectiveAt: at,
+          });
     setBusy(false);
     if (err) {
       setError(
@@ -249,14 +254,19 @@ function AssignModal({
       title={kind === "counselor" ? "Assign bereavement counselor" : "Assign bereavement volunteer"}
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy || !userId} onClick={submit}>
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={busy || !userId}
+          onClick={submit}
+        >
           {busy ? "Assigning…" : "Assign"}
         </button>
       }
     >
       <span style={mutedStyle}>
-        Plan {shortId(planId)} · read at version {version}. The assignment is applied with `If-Match`; if
-        the plan moved under you the server answers 412 and nothing is written.
+        Plan {shortId(planId)} · read at version {version}. The assignment is applied with
+        `If-Match`; if the plan moved under you the server answers 412 and nothing is written.
       </span>
       <TextField
         label={kind === "counselor" ? "Counselor membership id" : "Volunteer membership id"}
@@ -273,7 +283,8 @@ function AssignModal({
       {kind === "volunteer" ? (
         <Notice tone="info">
           The volunteer's 42 CFR §418.78(b)/(d) gates are checked by the server through Module 15's
-          compliance seam. This screen does not pre-judge them — a refusal below is the real gate answer.
+          compliance seam. This screen does not pre-judge them — a refusal below is the real gate
+          answer.
         </Notice>
       ) : null}
       {error ? <p style={alertStyle}>{error}</p> : null}

@@ -68,7 +68,12 @@ export type PsapJurisdictionId = string;
 
 /** `safety_check_in_kind` — §1.1 / D2. The three visit-bracketing kinds REQUIRE a `visitId`; the other
  *  two stand alone. */
-export type SafetyCheckInKind = "pre_visit" | "mid_visit" | "post_visit" | "between_visits" | "ad_hoc";
+export type SafetyCheckInKind =
+  | "pre_visit"
+  | "mid_visit"
+  | "post_visit"
+  | "between_visits"
+  | "ad_hoc";
 
 /** `safety_check_in_status` — the clinician's own attestation. `concerned_continue` is honoured (the
  *  clinician proceeds) AND surfaced; `concerned_stop` additionally opens a 15-minute callback timer. */
@@ -1322,7 +1327,11 @@ export interface SafetyMetricsProvider {
     orgId: OrgId,
     providerEntityId: ProviderEntityId,
     window: SafetyMetricsWindow,
-  ): Promise<{ readonly count: number; readonly perHundredVisits: number; readonly visitCount: number }>;
+  ): Promise<{
+    readonly count: number;
+    readonly perHundredVisits: number;
+    readonly visitCount: number;
+  }>;
   getOverdueRate(
     orgId: OrgId,
     providerEntityId: ProviderEntityId,
@@ -1332,12 +1341,20 @@ export interface SafetyMetricsProvider {
     orgId: OrgId,
     providerEntityId: ProviderEntityId,
     window: SafetyMetricsWindow,
-  ): Promise<{ readonly rate: number; readonly perHundredVisits: number; readonly visitCount: number }>;
+  ): Promise<{
+    readonly rate: number;
+    readonly perHundredVisits: number;
+    readonly visitCount: number;
+  }>;
   getResponseTimeMedian(
     orgId: OrgId,
     providerEntityId: ProviderEntityId,
     window: SafetyMetricsWindow,
-  ): Promise<{ readonly medianSeconds: number; readonly p95Seconds: number; readonly sampleSize: number }>;
+  ): Promise<{
+    readonly medianSeconds: number;
+    readonly p95Seconds: number;
+    readonly sampleSize: number;
+  }>;
   getCheckInComplianceRate(
     orgId: OrgId,
     providerEntityId: ProviderEntityId,

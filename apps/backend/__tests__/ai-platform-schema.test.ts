@@ -15,6 +15,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  type M32TableName,
   M32_AUDIT_DENYLIST,
   M32_AUDIT_RETENTION_CLASS,
   M32_CIPHER_COLUMNS,
@@ -23,7 +24,6 @@ import {
   M32_PARTITIONED_TABLES,
   M32_TABLE_NAMES,
   M32_TABLE_TENANCY,
-  type M32TableName,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
@@ -148,7 +148,10 @@ describe("M32-T02 migrations 0113–0115 — the thirteen owned tables", () => {
   });
 
   it("partitions exactly the two §3.8 tables, each on its own key, each in its own file", () => {
-    expect(Object.keys(M32_PARTITIONED_TABLES).sort()).toEqual(["ai_invocation", "ai_token_ledger"]);
+    expect(Object.keys(M32_PARTITIONED_TABLES).sort()).toEqual([
+      "ai_invocation",
+      "ai_token_ledger",
+    ]);
     expect(invocation).toContain('PARTITION BY RANGE ("invoked_at")');
     expect(invocation).toContain('CONSTRAINT "ai_invocation_pkey" PRIMARY KEY ("id","invoked_at")');
     expect(ledger).toContain('PARTITION BY RANGE ("accrued_at")');
@@ -215,7 +218,9 @@ describe("M32-T02 migration 0116 — RLS, grants and the M4 write-audit denylist
   it("gives the platform-shared six read-only access and writes via wardenx_admin alone", () => {
     for (const t of M32_TABLE_NAMES) {
       if (M32_TABLE_TENANCY[t] !== "platform_shared") continue;
-      expect(rls, t).toMatch(new RegExp(`ON "${t}"\\n  FOR SELECT TO wardenx_app USING \\(true\\)`));
+      expect(rls, t).toMatch(
+        new RegExp(`ON "${t}"\\n  FOR SELECT TO wardenx_app USING \\(true\\)`),
+      );
       expect(rls, t).toContain(`GRANT SELECT ON "${t}" TO wardenx_app;`);
       expect(rls, t).toContain(`GRANT ALL ON "${t}" TO wardenx_admin;`);
     }
@@ -225,8 +230,12 @@ describe("M32-T02 migration 0116 — RLS, grants and the M4 write-audit denylist
     expect(rls).toContain(
       `USING (organization_id IS NULL OR organization_id = current_setting('app.org_id', true)::uuid)`,
     );
-    expect(rls).toContain(`CREATE POLICY "ai_kill_switch_insert" ON "ai_kill_switch_state"\n  FOR INSERT`);
-    expect(rls).toContain(`CREATE POLICY "ai_kill_switch_update" ON "ai_kill_switch_state"\n  FOR UPDATE`);
+    expect(rls).toContain(
+      `CREATE POLICY "ai_kill_switch_insert" ON "ai_kill_switch_state"\n  FOR INSERT`,
+    );
+    expect(rls).toContain(
+      `CREATE POLICY "ai_kill_switch_update" ON "ai_kill_switch_state"\n  FOR UPDATE`,
+    );
     // A single FOR ALL policy here would let any tenant admin mint a NULL-org platform-wide kill.
     expect(rls).not.toMatch(/ON "ai_kill_switch_state"\n\s*FOR ALL/);
   });
@@ -332,7 +341,9 @@ describe("M32-T02 migration 0116 — the §3.5 immutability triggers", () => {
       ["ai_token_ledger", "m32_ai_token_ledger_append_only"],
     ] as const) {
       expect(M32_IMMUTABILITY_RULE[t]).toBe("append_only");
-      expect(rls, t).toContain(`BEFORE UPDATE OR DELETE ON ${t}\n  FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+      expect(rls, t).toContain(
+        `BEFORE UPDATE OR DELETE ON ${t}\n  FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+      );
     }
   });
 
@@ -354,7 +365,9 @@ describe("M32-T02 migration 0116 — the §3.5 immutability triggers", () => {
   });
 
   it("admits exactly ONE cipher write: the §3.7 shred sentinel, never a replacement", () => {
-    const body = rls.slice(rls.indexOf("CREATE OR REPLACE FUNCTION m32_ai_invocation_immutable_columns()"));
+    const body = rls.slice(
+      rls.indexOf("CREATE OR REPLACE FUNCTION m32_ai_invocation_immutable_columns()"),
+    );
     const upToEnd = body.slice(0, body.indexOf("END $$;"));
     // The NOT NULL prompt cipher may only become the empty bytea…
     expect(upToEnd).toContain("AND NEW.prompt_payload_cipher IS DISTINCT FROM ''::bytea");

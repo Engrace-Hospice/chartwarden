@@ -23,12 +23,18 @@ function sanitizeSegment(segment: string): string {
  * union; the businessKey is sanitized to the key-legal alphabet; the attempt index makes each retry a
  * distinct, individually-auditable key (§4.16).
  */
-export function deriveIdempotencyKey(event: Pick<StripeDispatchEvent, "operation" | "businessKey" | "attemptIndex">): string {
+export function deriveIdempotencyKey(
+  event: Pick<StripeDispatchEvent, "operation" | "businessKey" | "attemptIndex">,
+): string {
   if (event.businessKey.length === 0) {
-    throw new Error("deriveIdempotencyKey: empty businessKey (a dispatch event must carry a stable identity)");
+    throw new Error(
+      "deriveIdempotencyKey: empty businessKey (a dispatch event must carry a stable identity)",
+    );
   }
   if (!Number.isInteger(event.attemptIndex) || event.attemptIndex < 0) {
-    throw new Error(`deriveIdempotencyKey: attemptIndex must be a non-negative integer, got ${event.attemptIndex}`);
+    throw new Error(
+      `deriveIdempotencyKey: attemptIndex must be a non-negative integer, got ${event.attemptIndex}`,
+    );
   }
   return [
     STRIPE_IDEMPOTENCY_PREFIX,

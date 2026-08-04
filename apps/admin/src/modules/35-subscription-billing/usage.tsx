@@ -7,8 +7,16 @@ import type { operations } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { actionButtonStyle, bodyRow, cell, cellRight, inputStyle, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, formatDate, usageThresholdTone } from "./status";
+import {
+  actionButtonStyle,
+  bodyRow,
+  cell,
+  cellRight,
+  inputStyle,
+  tableStyle,
+  theadRow,
+} from "./ui";
 
 type UsageCurrent =
   operations["getApiAdminUsageByOrganizationIdCurrent"]["responses"][200]["content"]["application/json"];
@@ -29,7 +37,9 @@ export function Usage(): JSX.Element {
     }
     setLoading(true);
     setError(null);
-    const res = await client.GET("/api/admin/usage/{organizationId}/current", { params: { path: { organizationId } } });
+    const res = await client.GET("/api/admin/usage/{organizationId}/current", {
+      params: { path: { organizationId } },
+    });
     if (res.error) {
       setError("Usage unavailable for this organization.");
       setLoading(false);
@@ -44,30 +54,54 @@ export function Usage(): JSX.Element {
   }, [load]);
 
   return (
-    <div style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+    >
       <PageHeader
         title="Tenant usage"
         breadcrumb="Platform Ops"
         actions={
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <input value={orgInput} onChange={(e) => setOrgInput(e.target.value)} placeholder="Organization id" style={{ ...inputStyle, width: "20rem" }} aria-label="Organization id" />
-            <button type="button" onClick={() => orgInput.trim() && navigate(`/admin/usage/${orgInput.trim()}`)} disabled={!orgInput.trim()} style={actionButtonStyle(true, !orgInput.trim())}>View</button>
+            <input
+              value={orgInput}
+              onChange={(e) => setOrgInput(e.target.value)}
+              placeholder="Organization id"
+              style={{ ...inputStyle, width: "20rem" }}
+              aria-label="Organization id"
+            />
+            <button
+              type="button"
+              onClick={() => orgInput.trim() && navigate(`/admin/usage/${orgInput.trim()}`)}
+              disabled={!orgInput.trim()}
+              style={actionButtonStyle(true, !orgInput.trim())}
+            >
+              View
+            </button>
           </div>
         }
       />
       {!organizationId ? (
-        <EmptyState title="Choose an organization" description="Enter an organization id above to see its current-period usage." />
+        <EmptyState
+          title="Choose an organization"
+          description="Enter an organization id above to see its current-period usage."
+        />
       ) : loading ? (
         <LoadingSpinner />
       ) : error || !usage ? (
         <EmptyState title="Unavailable" description={error ?? "No usage."} />
       ) : (
         <>
-          <p style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }} className="tabular-nums">
+          <p
+            style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}
+            className="tabular-nums"
+          >
             Current period: {formatDate(usage.periodStart)} — {formatDate(usage.periodEnd)}
           </p>
           {usage.meters.length === 0 ? (
-            <EmptyState title="No metered usage" description="This tenant has no metered usage this period." />
+            <EmptyState
+              title="No metered usage"
+              description="This tenant has no metered usage this period."
+            />
           ) : (
             <table style={tableStyle}>
               <thead>
@@ -85,12 +119,27 @@ export function Usage(): JSX.Element {
                 {usage.meters.map((m) => (
                   <tr key={m.eventType} style={bodyRow}>
                     <td style={cell}>{m.label}</td>
-                    <td style={cellRight} className="tabular-nums">{m.totalQuantity.toLocaleString()}</td>
-                    <td style={cellRight} className="tabular-nums">{m.inclusiveQuantity.toLocaleString()}</td>
-                    <td style={cellRight} className="tabular-nums">{m.overageQuantity.toLocaleString()}</td>
-                    <td style={cellRight} className="tabular-nums">{formatCents(m.overageUnitPriceCents)}</td>
-                    <td style={cellRight} className="tabular-nums">{formatCents(m.projectedOverageCostCents)}</td>
-                    <td style={cell}><StatusPill label={cap(m.thresholdState)} tone={usageThresholdTone(m.thresholdState)} /></td>
+                    <td style={cellRight} className="tabular-nums">
+                      {m.totalQuantity.toLocaleString()}
+                    </td>
+                    <td style={cellRight} className="tabular-nums">
+                      {m.inclusiveQuantity.toLocaleString()}
+                    </td>
+                    <td style={cellRight} className="tabular-nums">
+                      {m.overageQuantity.toLocaleString()}
+                    </td>
+                    <td style={cellRight} className="tabular-nums">
+                      {formatCents(m.overageUnitPriceCents)}
+                    </td>
+                    <td style={cellRight} className="tabular-nums">
+                      {formatCents(m.projectedOverageCostCents)}
+                    </td>
+                    <td style={cell}>
+                      <StatusPill
+                        label={cap(m.thresholdState)}
+                        tone={usageThresholdTone(m.thresholdState)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>

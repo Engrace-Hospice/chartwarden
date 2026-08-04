@@ -58,15 +58,27 @@ export interface AmendConstantInput {
 
 export interface M26WriteService {
   openPeriod(actor: M26WriteActor, input: OpenPeriodInput): Promise<PeriodView>;
-  lockMethodology(actor: M26WriteActor, periodId: string, input: LockMethodologyInput): Promise<PeriodView>;
+  lockMethodology(
+    actor: M26WriteActor,
+    periodId: string,
+    input: LockMethodologyInput,
+  ): Promise<PeriodView>;
   closePeriod(actor: M26WriteActor, periodId: string): Promise<PeriodView>;
   reopenPeriod(actor: M26WriteActor, periodId: string, input: ReopenInput): Promise<PeriodView>;
   recompute(actor: M26WriteActor, periodId: string): Promise<ProjectionView[]>;
   acknowledgeEvent(actor: M26WriteActor, eventId: string, input: AcknowledgeInput): Promise<void>;
-  importPsr(actor: M26WriteActor, periodId: string, input: ImportPsrInput): Promise<{ importId: string }>;
+  importPsr(
+    actor: M26WriteActor,
+    periodId: string,
+    input: ImportPsrInput,
+  ): Promise<{ importId: string }>;
   resolveVariance(actor: M26WriteActor, lineId: string, input: ResolveVarianceInput): Promise<void>;
   proposeSettlement(actor: M26WriteActor, periodId: string): Promise<SettlementView>;
-  finalizeSettlement(actor: M26WriteActor, periodId: string, input: FinalizeInput): Promise<SettlementView>;
+  finalizeSettlement(
+    actor: M26WriteActor,
+    periodId: string,
+    input: FinalizeInput,
+  ): Promise<SettlementView>;
   publishConstant(actor: M26WriteActor, input: PublishConstantInput): Promise<void>;
   amendConstant(actor: M26WriteActor, capYear: string, input: AmendConstantInput): Promise<void>;
 }

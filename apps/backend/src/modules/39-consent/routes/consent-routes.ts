@@ -192,11 +192,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
     const body = parse(UpdateDraftBodySchema, request.body);
     try {
       return {
-        data: await service.updateDraft(
-          organizationId,
-          consentId,
-          body as UpdateConsentDraftInput,
-        ),
+        data: await service.updateDraft(organizationId, consentId, body as UpdateConsentDraftInput),
       };
     } catch (e) {
       mapError(e);
@@ -212,12 +208,7 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
       const { consentId } = parse(ConsentIdParamsSchema, request.params);
       try {
         return {
-          data: await service.signConsent(
-            organizationId,
-            consentId,
-            userId,
-            nowIso(),
-          ),
+          data: await service.signConsent(organizationId, consentId, userId, nowIso()),
         };
       } catch (e) {
         mapError(e);
@@ -445,19 +436,15 @@ export function registerConsentRoutes(app: FastifyInstance, deps: ConsentRouteDe
   );
 
   // 19. GET /api/v1/consents/:consentId/renewal-cycle — open + closed cycles (D8).
-  app.get(
-    "/api/v1/consents/:consentId/renewal-cycle",
-    { preHandler: [READ] },
-    async (request) => {
-      const { organizationId } = actorOf(request);
-      const { consentId } = parse(ConsentIdParamsSchema, request.params);
-      try {
-        return { data: await service.listRenewalCycles(organizationId, consentId) };
-      } catch (e) {
-        mapError(e);
-      }
-    },
-  );
+  app.get("/api/v1/consents/:consentId/renewal-cycle", { preHandler: [READ] }, async (request) => {
+    const { organizationId } = actorOf(request);
+    const { consentId } = parse(ConsentIdParamsSchema, request.params);
+    try {
+      return { data: await service.listRenewalCycles(organizationId, consentId) };
+    } catch (e) {
+      mapError(e);
+    }
+  });
 
   // 20. POST /api/v1/consents/:consentId/renew — the D13 renewal chain (distinct from supersession:
   // the prior row is expired/revoked, not active). Closes the open renewal cycle as `renewed`.

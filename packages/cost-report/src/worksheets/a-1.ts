@@ -6,7 +6,7 @@
 // (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** A single reclassification entry: move `amountCents` from one cost center to another. */
 const ReclassificationEntry = Type.Object({

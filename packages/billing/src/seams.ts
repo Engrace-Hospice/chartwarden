@@ -70,7 +70,11 @@ export interface ClaimReader {
 // -----------------------------------------------------------------------------
 export interface ClaimDayProjectionProvider {
   /** M26 cap projection — per-patient day rollup by LOC within a cap year (Nov 1 – Oct 31). */
-  daysForPatientInCapYear(orgId: OrgId, patientId: PatientId, capYear: CapYear): Promise<DaysByLevelOfCareDto>;
+  daysForPatientInCapYear(
+    orgId: OrgId,
+    patientId: PatientId,
+    capYear: CapYear,
+  ): Promise<DaysByLevelOfCareDto>;
 
   /** M26 cap projection — org-wide aggregate. */
   aggregateForOrgInCapYear(
@@ -125,8 +129,14 @@ export interface ClaimMetricsProvider {
     dim: MetricsDimension,
   ): Promise<MetricsBucket[]>;
   arAgingBuckets(orgId: OrgId, providerEntityId: ProviderEntityId | "all"): Promise<ArAgingDto>;
-  denialRateForWindow(orgId: OrgId, windowIso: { from: IsoDateTime; to: IsoDateTime }): Promise<number>;
-  noeWindowBreachRate(orgId: OrgId, windowIso: { from: IsoDateTime; to: IsoDateTime }): Promise<number>;
+  denialRateForWindow(
+    orgId: OrgId,
+    windowIso: { from: IsoDateTime; to: IsoDateTime },
+  ): Promise<number>;
+  noeWindowBreachRate(
+    orgId: OrgId,
+    windowIso: { from: IsoDateTime; to: IsoDateTime },
+  ): Promise<number>;
   macPortalAvailabilityRolling(
     orgId: OrgId,
     providerEntityId: ProviderEntityId,
@@ -192,7 +202,11 @@ export interface CapOrgProjectionResult {
 }
 
 export interface CapProjectionProvider {
-  projectionForPatient(orgId: OrgId, patientId: PatientId, capYear: CapYear): Promise<CapPatientProjectionResult>;
+  projectionForPatient(
+    orgId: OrgId,
+    patientId: PatientId,
+    capYear: CapYear,
+  ): Promise<CapPatientProjectionResult>;
   projectionForOrg(
     orgId: OrgId,
     providerEntityId: ProviderEntityId,

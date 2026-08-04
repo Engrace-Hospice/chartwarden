@@ -164,7 +164,9 @@ export function TriageProtocolDetailScreen(): JSX.Element {
 
   if (loading) return <LoadingSpinner />;
   if (error || !protocol) {
-    return <EmptyState title="Unavailable" description={error ?? "This protocol could not be loaded."} />;
+    return (
+      <EmptyState title="Unavailable" description={error ?? "This protocol could not be loaded."} />
+    );
   }
 
   const isPlatform = protocol.organizationId === null;
@@ -200,7 +202,11 @@ export function TriageProtocolDetailScreen(): JSX.Element {
               <StatusPill label="✓ Platform floor — read-only" tone="critical" />
             ) : (
               <>
-                <button type="button" style={ghostButtonStyle} onClick={() => setEditingHeader(true)}>
+                <button
+                  type="button"
+                  style={ghostButtonStyle}
+                  onClick={() => setEditingHeader(true)}
+                >
                   Edit
                 </button>
                 <button type="button" style={ghostButtonStyle} onClick={() => setAdding(true)}>
@@ -217,18 +223,21 @@ export function TriageProtocolDetailScreen(): JSX.Element {
 
       {isPlatform ? (
         <Notice tone="warning">
-          This is a platform-floor protocol. It cannot be edited, its questions cannot be removed, and a
-          question cannot be added to it — the row is org-less, so a tenant write is refused by the database
-          as well as by the service. Author your own protocol if you need a stricter walk.
+          This is a platform-floor protocol. It cannot be edited, its questions cannot be removed,
+          and a question cannot be added to it — the row is org-less, so a tenant write is refused
+          by the database as well as by the service. Author your own protocol if you need a stricter
+          walk.
         </Notice>
       ) : null}
 
       {protocol.requiresMandatoryEscalation ? (
         <Notice tone="error">
           Applying this protocol raises a mandatory escalation
-          {protocol.mandatoryEscalationTier ? ` at ${tierLabel(protocol.mandatoryEscalationTier)}` : ""},
-          written in the same transaction as the protocol is pinned. A tenant policy may raise that tier and
-          may never lower it.
+          {protocol.mandatoryEscalationTier
+            ? ` at ${tierLabel(protocol.mandatoryEscalationTier)}`
+            : ""}
+          , written in the same transaction as the protocol is pinned. A tenant policy may raise
+          that tier and may never lower it.
         </Notice>
       ) : null}
 
@@ -240,7 +249,10 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           <Field label="Layer" value={isPlatform ? "Platform floor" : "Tenant-authored"} />
           <Field label="Version" value={protocol.version} mono />
           <Field label="Effective from" value={shortDate(protocol.effectiveFrom)} />
-          <Field label="Effective to" value={protocol.effectiveTo ? shortDate(protocol.effectiveTo) : "in force"} />
+          <Field
+            label="Effective to"
+            value={protocol.effectiveTo ? shortDate(protocol.effectiveTo) : "in force"}
+          />
           <Field label="Sort order" value={String(protocol.sortOrder)} />
         </SummaryGrid>
       </Card>
@@ -248,8 +260,8 @@ export function TriageProtocolDetailScreen(): JSX.Element {
       <Card title="Questions">
         {questions.length === 0 ? (
           <span style={mutedStyle}>
-            This protocol has no questions. A protocol with no questions can be pinned to a call but has no
-            walk — add at least one before it is used at 2 a.m.
+            This protocol has no questions. A protocol with no questions can be pinned to a call but
+            has no walk — add at least one before it is used at 2 a.m.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -275,7 +287,9 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                   <td style={td}>
                     {q.isRedFlagQuestion ? <StatusPill label="Red flag" tone="error" /> : "—"}
                   </td>
-                  <td style={td}>{q.isRedFlagQuestion ? redFlagMatchLabel(q.redFlagMatch) : "—"}</td>
+                  <td style={td}>
+                    {q.isRedFlagQuestion ? redFlagMatchLabel(q.redFlagMatch) : "—"}
+                  </td>
                   <td style={td}>
                     {q.isSystemLocked ? <StatusPill label="System locked" tone="critical" /> : "—"}
                   </td>
@@ -289,8 +303,7 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                         disabled={busy}
                         onClick={() =>
                           void run(
-                            () =>
-                              patchProtocolQuestion(client, q.id, { required: !q.required }),
+                            () => patchProtocolQuestion(client, q.id, { required: !q.required }),
                             "That question could not be updated.",
                           )
                         }
@@ -305,10 +318,10 @@ export function TriageProtocolDetailScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          A question's order, prompt, answer type and predicate are set when it is added. The one in-place
-          toggle offered here is required/optional, because it is the only edit that cannot change what a
-          red-flag predicate is evaluated against — changing the answer type of an answered question would
-          leave existing answers in a column the new predicate never reads.
+          A question's order, prompt, answer type and predicate are set when it is added. The one
+          in-place toggle offered here is required/optional, because it is the only edit that cannot
+          change what a red-flag predicate is evaluated against — changing the answer type of an
+          answered question would leave existing answers in a column the new predicate never reads.
         </span>
       </Card>
 
@@ -461,9 +474,9 @@ export function TriageProtocolDetailScreen(): JSX.Element {
                 />
               ) : null}
               <span style={mutedStyle}>
-                Only the predicate arms this answer type can carry are offered — a predicate evaluated
-                against a column the question does not write would never fire, which is the one way a
-                red-flag question can fail silently.
+                Only the predicate arms this answer type can carry are offered — a predicate
+                evaluated against a column the question does not write would never fire, which is
+                the one way a red-flag question can fail silently.
               </span>
             </>
           ) : null}

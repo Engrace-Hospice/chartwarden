@@ -97,7 +97,9 @@ export function OnCallShiftDetailScreen(): JSX.Element {
 
   if (loading) return <LoadingSpinner />;
   if (error || !shift) {
-    return <EmptyState title="Not in range" description={error ?? "This shift could not be read."} />;
+    return (
+      <EmptyState title="Not in range" description={error ?? "This shift could not be read."} />
+    );
   }
 
   const inWindow = isWithinWindow(shift.shiftStartsAt, shift.shiftEndsAt);
@@ -132,7 +134,10 @@ export function OnCallShiftDetailScreen(): JSX.Element {
         breadcrumb="On-call triage · coverage"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <StatusPill label={humanize(shift.status)} tone={toneOf(SHIFT_STATUS_TONE, shift.status)} />
+            <StatusPill
+              label={humanize(shift.status)}
+              tone={toneOf(SHIFT_STATUS_TONE, shift.status)}
+            />
             <Link to="/triage/shifts" style={ghostButtonStyle}>
               Roster
             </Link>
@@ -142,16 +147,17 @@ export function OnCallShiftDetailScreen(): JSX.Element {
 
       {shift.status === "scheduled" && !inWindow ? (
         <Notice tone="info">
-          The window has not started. Going on shift early is refused by the same machine the cron runs
-          through — a shift cannot claim coverage from before its window began.
+          The window has not started. Going on shift early is refused by the same machine the cron
+          runs through — a shift cannot claim coverage from before its window began.
         </Notice>
       ) : null}
 
       {shift.status === "cancelled" ? (
         <Notice tone="error">
-          This shift was cancelled{shift.cancellationReason ? `: ${shift.cancellationReason}` : "."} Nothing
-          was emitted to the messaging channel, because a shift that never activated was never in it. The
-          hole it leaves is the coverage-gap watchdog's finding, on its own cadence.
+          This shift was cancelled{shift.cancellationReason ? `: ${shift.cancellationReason}` : "."}{" "}
+          Nothing was emitted to the messaging channel, because a shift that never activated was
+          never in it. The hole it leaves is the coverage-gap watchdog's finding, on its own
+          cadence.
         </Notice>
       ) : null}
 
@@ -209,7 +215,10 @@ export function OnCallShiftDetailScreen(): JSX.Element {
             style={canOpen ? primaryButtonStyle : disabledButtonStyle}
             title={canOpen ? undefined : "Only a scheduled shift can be opened."}
             onClick={() =>
-              void run(() => openShift(client, shift.id, shift.version), "The shift could not be opened.")
+              void run(
+                () => openShift(client, shift.id, shift.version),
+                "The shift could not be opened.",
+              )
             }
           >
             Go on shift
@@ -220,7 +229,10 @@ export function OnCallShiftDetailScreen(): JSX.Element {
             style={canClose ? ghostButtonStyle : disabledButtonStyle}
             title={canClose ? undefined : "Only an active shift can be closed."}
             onClick={() =>
-              void run(() => closeShift(client, shift.id, shift.version), "The shift could not be closed.")
+              void run(
+                () => closeShift(client, shift.id, shift.version),
+                "The shift could not be closed.",
+              )
             }
           >
             Come off shift
@@ -236,9 +248,9 @@ export function OnCallShiftDetailScreen(): JSX.Element {
           </button>
         </div>
         <span style={mutedStyle}>
-          Going on shift adds this clinician to the on-call messaging channel and makes them the recipient
-          the after-hours safety path resolves. Coming off removes them — messages sent during their tenure
-          stay attributed to them.
+          Going on shift adds this clinician to the on-call messaging channel and makes them the
+          recipient the after-hours safety path resolves. Coming off removes them — messages sent
+          during their tenure stay attributed to them.
         </span>
       </Card>
 

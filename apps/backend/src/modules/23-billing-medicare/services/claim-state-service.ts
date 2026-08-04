@@ -393,7 +393,10 @@ export interface ClaimStateServicePorts {
 
 export interface ClaimStateService {
   /** Apply a claim transition in its OWN `withOrgContext` transaction (the route/worker entry point). */
-  transition(actor: BillingWriteActor, input: ApplyClaimTransitionInput): Promise<ClaimTransitionResult>;
+  transition(
+    actor: BillingWriteActor,
+    input: ApplyClaimTransitionInput,
+  ): Promise<ClaimTransitionResult>;
   /**
    * Apply a claim transition on a CALLER-PROVIDED tx (the same-unit-of-work entry point the validation /
    * override services compose so the reducer step + history append + outbox emit share their transaction).
@@ -410,7 +413,11 @@ export function buildClaimStateService(
   db: BillingDb,
   ports: ClaimStateServicePorts = {},
 ): ClaimStateService {
-  const emit = async (tx: BillingTx, organizationId: string, e: Omit<OutboxEmitInput, "organizationId">) => {
+  const emit = async (
+    tx: BillingTx,
+    organizationId: string,
+    e: Omit<OutboxEmitInput, "organizationId">,
+  ) => {
     if (ports.outbox) await ports.outbox.publish(tx, { ...e, organizationId });
   };
 

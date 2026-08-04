@@ -17,7 +17,8 @@ import type { FastifyInstance } from "fastify";
 
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
-import { registerInternalSeamRoutes, type M23InternalSeamProvider } from "./internal.routes";
+import type { M23RouteServices } from "./index";
+import { type M23InternalSeamProvider, registerInternalSeamRoutes } from "./internal.routes";
 import { registerMacCredentialRoutes } from "./mac-credentials.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
 import { registerNoeRoutes } from "./noe.routes";
@@ -25,7 +26,6 @@ import { registerNotrRoutes } from "./notr.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerSequestrationPolicyRoutes } from "./sequestration-policy.routes";
 import { registerValidationRoutes } from "./validation.routes";
-import type { M23RouteServices } from "./index";
 
 export { registerClaimsRoutes, type ClaimsRouteDeps } from "./claims.routes";
 export { registerValidationRoutes, type ValidationRouteDeps } from "./validation.routes";

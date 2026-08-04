@@ -18,7 +18,11 @@ export type WithIfMatch = FastifyRequest & { ifMatchVersion?: number };
 /** 428 PRECONDITION_REQUIRED — the request did not carry the required `If-Match` header (§7.7). */
 export class IfMatchRequiredError extends WardenXError {
   constructor() {
-    super("PRECONDITION_REQUIRED", "an If-Match header (the row version you read) is required on this route", 428);
+    super(
+      "PRECONDITION_REQUIRED",
+      "an If-Match header (the row version you read) is required on this route",
+      428,
+    );
     this.name = "IfMatchRequiredError";
   }
 }
@@ -36,7 +40,11 @@ export function requireIfMatch(): PreHandler {
     if (typeof value !== "string" || value.trim().length === 0) throw new IfMatchRequiredError();
     const m = IF_MATCH_RE.exec(value.trim());
     if (!m) {
-      throw new WardenXError("VALIDATION_FAILED", "If-Match must be the integer row version you read", 400);
+      throw new WardenXError(
+        "VALIDATION_FAILED",
+        "If-Match must be the integer row version you read",
+        400,
+      );
     }
     (request as WithIfMatch).ifMatchVersion = Number.parseInt(m[1] ?? "", 10);
   };

@@ -307,8 +307,8 @@ describe.skipIf(!DB_URL)("M27 Cost Report — RLS cross-tenant denial — LIVE P
 
   it("every M27 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
     const rls = readFileSync(join(MIGRATIONS_DIR, "0070_cost_report_m27_rls.sql"), "utf8");
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {

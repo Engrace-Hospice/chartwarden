@@ -20,6 +20,7 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
 import {
   computeBmi,
   createInMemoryEncounterBackend,
@@ -31,7 +32,6 @@ import {
   registerEncounterRoutes,
   resolveMiles,
 } from "../src/modules/08-encounters/index";
-import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
 
 /** Assert `fn` throws an EncounterStateError carrying the given §2.7 machine code. */
 function expectCode(fn: () => unknown, code: string): void {

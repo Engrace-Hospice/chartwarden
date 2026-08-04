@@ -87,7 +87,11 @@ export type TriageStateHistoryView = TriageCallDetail["stateHistory"][number];
  *  (the server publishes it as `TriageMedicationContext | null` behind an opaque schema slot); the panel
  *  narrows it with {@link isMedicationContext} before rendering. */
 export type TriageMedicationContext =
-  | { activeMedications: MedicationSlice<TriageMedicationSummary>; pendingRefills: MedicationSlice<TriageRefillSummary>; sudRedactedCount: number }
+  | {
+      activeMedications: MedicationSlice<TriageMedicationSummary>;
+      pendingRefills: MedicationSlice<TriageRefillSummary>;
+      sudRedactedCount: number;
+    }
   | null
   | undefined;
 
@@ -129,13 +133,20 @@ export function isStaffProjection(call: TriageCallProjection): call is TriageCal
 
 /** D15 — narrows the wire-`unknown` `medicationContext` slot before the panel renders it. */
 export function isMedicationContext(value: unknown): value is NonNullable<TriageMedicationContext> {
-  return typeof value === "object" && value !== null && "activeMedications" in value && "pendingRefills" in value;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "activeMedications" in value &&
+    "pendingRefills" in value
+  );
 }
 
 /** §4.1 row 14 — the step-up, per-access-audited transcript read. Its own DTO, because folding the
  *  plaintext into the detail behind a nullable field would mean every detail read had to be TRUSTED not to
  *  have populated it. */
-export type TriageTranscriptView = Ok<operations["getApiV1TriagecallsByTriageCallIdTranscriptdecrypt"]>;
+export type TriageTranscriptView = Ok<
+  operations["getApiV1TriagecallsByTriageCallIdTranscriptdecrypt"]
+>;
 
 type EscalationInboxPage = Ok<operations["getApiV1Escalations"]>;
 /** §4.1 row 16 — one row of the escalation inbox. */

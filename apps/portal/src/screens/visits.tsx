@@ -6,8 +6,15 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { Link, useParams } from "react-router-dom";
-import { humanize, readError, statusTone, stamp } from "./portal-format";
-import { PortalCard, PortalLoadState, PortalPage, tableCell, tableHead, tableRow } from "./portal-page";
+import { humanize, readError, stamp, statusTone } from "./portal-format";
+import {
+  PortalCard,
+  PortalLoadState,
+  PortalPage,
+  tableCell,
+  tableHead,
+  tableRow,
+} from "./portal-page";
 
 interface Visit {
   visitId: string;
@@ -47,7 +54,13 @@ function VisitTable({ rows, base }: { rows: Visit[]; base: string }): JSX.Elemen
             <td style={tableCell}>{stamp(v.scheduledStart)}</td>
             <td style={tableCell}>{v.discipline ? humanize(v.discipline) : "—"}</td>
             <td style={tableCell}>{v.modality ? humanize(v.modality) : "In person"}</td>
-            <td style={tableCell}>{v.status ? <StatusPill tone={statusTone(v.status)} label={humanize(v.status)} /> : "—"}</td>
+            <td style={tableCell}>
+              {v.status ? (
+                <StatusPill tone={statusTone(v.status)} label={humanize(v.status)} />
+              ) : (
+                "—"
+              )}
+            </td>
             <td style={{ ...tableCell, textAlign: "right" }}>
               {v.joinable && v.modality === "telehealth" ? (
                 <Link to={`${base}/visits/${v.visitId}/telehealth`} style={joinBtn}>
@@ -101,7 +114,9 @@ export function PortalVisitList(): JSX.Element {
       >
         <PortalCard heading="Upcoming">
           {upcoming.length === 0 ? (
-            <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.88rem" }}>Nothing scheduled.</p>
+            <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.88rem" }}>
+              Nothing scheduled.
+            </p>
           ) : (
             <VisitTable rows={upcoming} base={base} />
           )}

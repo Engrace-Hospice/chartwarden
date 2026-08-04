@@ -1,3 +1,4 @@
+import { dateLte } from "./_util";
 // @wardenx/billing — §4.5 rule `tob_and_dates_consistency` (tob_dates, error, regulatory). The UB-04
 // Type of Bill must match the claim's semantics and the service dates must be contiguous with the prior
 // claim (D4 / D14): 811 admit-through-discharge requires a discharge in range; 812 first-interim requires
@@ -5,7 +6,6 @@
 // PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
-import { dateLte } from "./_util";
 
 const KEY = "tob_and_dates_consistency";
 
@@ -74,7 +74,8 @@ export const tobAndDatesConsistency: Rule = {
       "error",
       `Type-of-Bill / date consistency has ${defects.length} defect(s).`,
       {
-        summary: "Correct the Type of Bill or the service dates to match the claim's billing sequence.",
+        summary:
+          "Correct the Type of Bill or the service dates to match the claim's billing sequence.",
         blameTarget: "claim",
         blameTargetId: c.claimId,
         fixAction: "edit_claim",

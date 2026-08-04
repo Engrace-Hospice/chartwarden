@@ -9,7 +9,7 @@
 // The full Section-J TypeBox (`packages/hope/src/sections/J/schema.ts`) lands with the per-section
 // modules (M10-T04); T03 evaluates over a minimal structural input shape so the trigger logic is testable
 // now and the route TypeBox adapts to it later (the field is `J2051.entries`, mirroring §4.3).
-import { J2051_SEVERITY_ORDER, type J2051Severity } from "@wardenx/types";
+import { type J2051Severity, J2051_SEVERITY_ORDER } from "@wardenx/types";
 
 /** One per-symptom severity reading from the §4.3 `J2051.entries` array (the CMS symptom-impact items).
  * `symptomCode` is the closed CMS list at the route boundary; the evaluator treats it as an opaque label

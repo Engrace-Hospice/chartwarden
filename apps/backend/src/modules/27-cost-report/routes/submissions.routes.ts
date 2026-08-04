@@ -9,15 +9,15 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { P } from "./guards";
-import type { M27ReadRouteService } from "./read-service";
-import type { M27WriteRouteService } from "./write-service";
 import {
   CostReportIdParamsSchema,
   RecordAcknowledgmentBodySchema,
   SubmissionParamsSchema,
   parse,
 } from "./cost-report-typebox";
+import { P } from "./guards";
+import type { M27ReadRouteService } from "./read-service";
+import type { M27WriteRouteService } from "./write-service";
 
 export interface SubmissionRouteDeps {
   readonly readService: M27ReadRouteService;
@@ -33,15 +33,11 @@ export function registerSubmissionRoutes(app: FastifyInstance, deps: SubmissionR
   const { readService, writeService } = deps;
 
   // GET /cost-reports/:id/ecr-submissions — list submission attempts. §4.1.
-  app.get(
-    "/api/v1/cost-reports/:id/ecr-submissions",
-    { preHandler: [READ] },
-    async (request) => {
-      const actor = actorOf(request);
-      const { id } = parse(CostReportIdParamsSchema, request.params);
-      return readService.listEcrSubmissions(actor, id);
-    },
-  );
+  app.get("/api/v1/cost-reports/:id/ecr-submissions", { preHandler: [READ] }, async (request) => {
+    const actor = actorOf(request);
+    const { id } = parse(CostReportIdParamsSchema, request.params);
+    return readService.listEcrSubmissions(actor, id);
+  });
 
   // GET /cost-reports/:id/ecr-submissions/:sid — submission detail (M22 artifact deep links). §4.1.
   app.get(

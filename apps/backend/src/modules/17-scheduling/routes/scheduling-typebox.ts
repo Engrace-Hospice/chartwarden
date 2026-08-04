@@ -13,8 +13,8 @@ import type {
   AvailabilityView as ServiceAvailabilityView,
   ProposalView as ServiceProposalView,
   RecurringView as ServiceRecurringView,
-  SchedulingRouteService as ServiceType,
   TimeOffView as ServiceTimeOffView,
+  SchedulingRouteService as ServiceType,
   VisitView as ServiceVisitView,
 } from "./service";
 
@@ -100,7 +100,9 @@ const TIME_OFF_STATE = Type.Union([
 export const VisitIdParamsSchema = Type.Object({ visitId: Type.String({ format: "uuid" }) });
 export const ProposalIdParamsSchema = Type.Object({ proposalId: Type.String({ format: "uuid" }) });
 export const IdParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
-export const MembershipIdParamsSchema = Type.Object({ membershipId: Type.String({ format: "uuid" }) });
+export const MembershipIdParamsSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+});
 
 export const VisitListQuerySchema = Type.Object({
   clinician: Type.Optional(Type.String({ format: "uuid" })),
@@ -395,26 +397,47 @@ type Conforms<T extends V, V> = T;
 type _Visit = Conforms<Static<typeof VisitViewSchema>, ServiceVisitView>;
 type _VisitList = Conforms<Static<typeof VisitListResponseSchema>, readonly ServiceVisitView[]>;
 type _Proposal = Conforms<Static<typeof ProposalViewSchema>, ServiceProposalView>;
-type _ProposalList = Conforms<Static<typeof ProposalListResponseSchema>, readonly ServiceProposalView[]>;
+type _ProposalList = Conforms<
+  Static<typeof ProposalListResponseSchema>,
+  readonly ServiceProposalView[]
+>;
 type _Recurring = Conforms<Static<typeof RecurringViewSchema>, ServiceRecurringView>;
-type _RecurringList = Conforms<Static<typeof RecurringListResponseSchema>, readonly ServiceRecurringView[]>;
+type _RecurringList = Conforms<
+  Static<typeof RecurringListResponseSchema>,
+  readonly ServiceRecurringView[]
+>;
 type _Availability = Conforms<Static<typeof AvailabilityViewSchema>, ServiceAvailabilityView>;
 type _TimeOff = Conforms<Static<typeof TimeOffViewSchema>, ServiceTimeOffView>;
-type _TimeOffList = Conforms<Static<typeof TimeOffListResponseSchema>, readonly ServiceTimeOffView[]>;
+type _TimeOffList = Conforms<
+  Static<typeof TimeOffListResponseSchema>,
+  readonly ServiceTimeOffView[]
+>;
 type _DayView = Conforms<Static<typeof DayViewResponseSchema>, ReturnType<ServiceType["dayView"]>>;
-type _WeekView = Conforms<Static<typeof WeekViewResponseSchema>, ReturnType<ServiceType["weekView"]>>;
+type _WeekView = Conforms<
+  Static<typeof WeekViewResponseSchema>,
+  ReturnType<ServiceType["weekView"]>
+>;
 type _MapView = Conforms<Static<typeof MapViewResponseSchema>, ReturnType<ServiceType["mapView"]>>;
-type _VisitMetrics = Conforms<Static<typeof VisitMetricsResponseSchema>, ReturnType<ServiceType["visitMetrics"]>>;
+type _VisitMetrics = Conforms<
+  Static<typeof VisitMetricsResponseSchema>,
+  ReturnType<ServiceType["visitMetrics"]>
+>;
 type _RouteEff = Conforms<
   Static<typeof RouteEfficiencyResponseSchema>,
   ReturnType<ServiceType["routeEfficiencyMetrics"]>
 >;
-type _Reschedule = Conforms<Static<typeof RescheduleResponseSchema>, ReturnType<ServiceType["rescheduleVisit"]>>;
+type _Reschedule = Conforms<
+  Static<typeof RescheduleResponseSchema>,
+  ReturnType<ServiceType["rescheduleVisit"]>
+>;
 type _Optimize = Conforms<
   Static<typeof OptimizeDayResponseSchema>,
   Awaited<ReturnType<ServiceType["optimizeDay"]>>
 >;
-type _Portal = Conforms<Static<typeof PortalUpcomingResponseSchema>, ReturnType<ServiceType["portalUpcoming"]>>;
+type _Portal = Conforms<
+  Static<typeof PortalUpcomingResponseSchema>,
+  ReturnType<ServiceType["portalUpcoming"]>
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

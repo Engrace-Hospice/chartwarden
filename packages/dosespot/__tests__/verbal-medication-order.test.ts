@@ -1,10 +1,10 @@
 // @wardenx/dosespot — §2.3 verbal-medication-order M11-seam consumption surface — M12-T03.
 import { describe, expect, it } from "vitest";
 import {
-  assertVerbalAllowedForClass,
-  buildVerbalRecordInput,
-  buildSignTargetInput,
   type VerbalMedicationOrderFacts,
+  assertVerbalAllowedForClass,
+  buildSignTargetInput,
+  buildVerbalRecordInput,
 } from "../src/lifecycle";
 
 const facts: VerbalMedicationOrderFacts = {

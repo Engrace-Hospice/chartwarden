@@ -1,10 +1,10 @@
+import { periodCoversDate } from "./_util";
 // @wardenx/billing — §4.5 rule `election_period_active` (period, error, regulatory). A valid hospice
 // election period (M6) must cover every service date on the claim; a revoked patient's coverage ends on
 // the revocation date (D5). Reads the resolved `electionPeriods` snapshot + the claim's line service
 // dates. PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
-import { periodCoversDate } from "./_util";
 
 const KEY = "election_period_active";
 
@@ -37,7 +37,11 @@ export const electionPeriodActive: Rule = {
       if (!ctx.electionPeriods.some((p) => periodCoversDate(p, date))) uncovered.push(date);
     }
     if (uncovered.length === 0) {
-      return pass(KEY, "error", "An active election period covers every service date on the claim.");
+      return pass(
+        KEY,
+        "error",
+        "An active election period covers every service date on the claim.",
+      );
     }
     return fail(
       KEY,

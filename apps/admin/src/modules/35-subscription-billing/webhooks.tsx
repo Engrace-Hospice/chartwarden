@@ -6,8 +6,17 @@ import type { operations } from "@wardenx/ui";
 // that re-enqueues processing through the existing outbox path (vendor SDK OFF). Cursor-paged.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { actionButtonStyle, bodyRow, cell, cellRight, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
 import { formatDate, idempotencyKey } from "./status";
+import {
+  LoadMore,
+  actionButtonStyle,
+  bodyRow,
+  cell,
+  cellRight,
+  inputStyle,
+  tableStyle,
+  theadRow,
+} from "./ui";
 
 type WebhookReceiptsPage =
   operations["getApiAdminWebhooksStripeRecent"]["responses"][200]["content"]["application/json"];
@@ -52,17 +61,28 @@ export function Webhooks(): JSX.Element {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) => r.stripeEventId.toLowerCase().includes(q) || r.eventType.toLowerCase().includes(q));
+    return rows.filter(
+      (r) => r.stripeEventId.toLowerCase().includes(q) || r.eventType.toLowerCase().includes(q),
+    );
   }, [rows, search]);
 
   const replay = useCallback(
     async (eventId: string) => {
       setBusyId(eventId);
       setOutcome(null);
-      const res = await client.POST("/api/admin/webhooks/stripe/replay/{eventId}", { params: { path: { eventId } }, headers: { "Idempotency-Key": idempotencyKey() } });
+      const res = await client.POST("/api/admin/webhooks/stripe/replay/{eventId}", {
+        params: { path: { eventId } },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      });
       if (res.error) {
         const c = (res.error as { code?: string })?.code;
-        setOutcome({ ok: false, message: c === "STEP_UP_REQUIRED" ? "Step-up required — re-verify and retry." : "Could not replay this event." });
+        setOutcome({
+          ok: false,
+          message:
+            c === "STEP_UP_REQUIRED"
+              ? "Step-up required — re-verify and retry."
+              : "Could not replay this event.",
+        });
       } else {
         setOutcome({ ok: true, message: `Event ${eventId} re-enqueued.` });
         await load(null, false);
@@ -73,11 +93,21 @@ export function Webhooks(): JSX.Element {
   );
 
   return (
-    <div style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+    >
       <PageHeader
         title="Stripe webhooks"
         breadcrumb="Platform Ops"
-        actions={<input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search event id / type" style={{ ...inputStyle, width: "18rem" }} aria-label="Search webhooks" />}
+        actions={
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search event id / type"
+            style={{ ...inputStyle, width: "18rem" }}
+            aria-label="Search webhooks"
+          />
+        }
       />
       {outcome ? (
         <div role="status" aria-live="polite">
@@ -89,7 +119,10 @@ export function Webhooks(): JSX.Element {
       ) : error ? (
         <EmptyState title={error} description="Retry shortly." />
       ) : filtered.length === 0 ? (
-        <EmptyState title="No webhook receipts" description={search ? "No receipts match this search." : "No recent webhooks."} />
+        <EmptyState
+          title="No webhook receipts"
+          description={search ? "No receipts match this search." : "No recent webhooks."}
+        />
       ) : (
         <>
           <table style={tableStyle}>
@@ -106,15 +139,32 @@ export function Webhooks(): JSX.Element {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.stripeEventId} style={bodyRow}>
-                  <td style={cell}><span style={{ fontSize: "0.78rem" }}>{r.stripeEventId}</span></td>
-                  <td style={cell}>{r.eventType}</td>
-                  <td style={cell} className="tabular-nums">{formatDate(r.receivedAt)}</td>
                   <td style={cell}>
-                    {r.processedAt ? <StatusPill label="Processed" tone="success" /> : <StatusPill label="Pending" tone="progress" />}
+                    <span style={{ fontSize: "0.78rem" }}>{r.stripeEventId}</span>
                   </td>
-                  <td style={cellRight} className="tabular-nums">{r.processingAttemptCount}</td>
+                  <td style={cell}>{r.eventType}</td>
+                  <td style={cell} className="tabular-nums">
+                    {formatDate(r.receivedAt)}
+                  </td>
                   <td style={cell}>
-                    <button type="button" onClick={() => void replay(r.stripeEventId)} disabled={busyId === r.stripeEventId} style={actionButtonStyle(false, busyId === r.stripeEventId)}>Replay</button>
+                    {r.processedAt ? (
+                      <StatusPill label="Processed" tone="success" />
+                    ) : (
+                      <StatusPill label="Pending" tone="progress" />
+                    )}
+                  </td>
+                  <td style={cellRight} className="tabular-nums">
+                    {r.processingAttemptCount}
+                  </td>
+                  <td style={cell}>
+                    <button
+                      type="button"
+                      onClick={() => void replay(r.stripeEventId)}
+                      disabled={busyId === r.stripeEventId}
+                      style={actionButtonStyle(false, busyId === r.stripeEventId)}
+                    >
+                      Replay
+                    </button>
                   </td>
                 </tr>
               ))}

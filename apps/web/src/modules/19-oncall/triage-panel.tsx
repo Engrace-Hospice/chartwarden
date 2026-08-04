@@ -30,7 +30,15 @@
 // order id M11 already returned. And the patient header strip carries only what M19's own DTO holds:
 // allergies and code status live in M5/M7 and M19 publishes no reader for either, so inventing a strip
 // from a second module's data would be a second, unaudited PHI path.
-import { AiSuggestionCard, EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
+import {
+  AiSuggestionCard,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -62,8 +70,8 @@ import {
 import {
   AI_OVERRIDE_REASON_MIN_CHARS,
   DEFAULT_ESCALATION_TIER,
-  ESCALATION_TIERS,
   ESCALATION_STATE_TONE,
+  ESCALATION_TIERS,
   RISK_BAND_TONE,
   dateTime,
   dispositionLabel,
@@ -296,7 +304,9 @@ export function TriageCallPanel(): JSX.Element {
 
   if (loading) return <LoadingSpinner />;
   if (error || !call) {
-    return <EmptyState title="Unavailable" description={error ?? "This call could not be loaded."} />;
+    return (
+      <EmptyState title="Unavailable" description={error ?? "This call could not be loaded."} />
+    );
   }
 
   const staff = isStaffProjection(call) ? (call as TriageCallDetail) : null;
@@ -314,10 +324,7 @@ export function TriageCallPanel(): JSX.Element {
   const openMandatory = call.escalations.filter((e) => e.mandatory && e.state !== "resolved");
   const blocked = staff?.dispositionBlockedByMandatoryEscalation ?? openMandatory.length > 0;
 
-  async function run(
-    fn: () => Promise<{ error: unknown }>,
-    fallback: string,
-  ): Promise<void> {
+  async function run(fn: () => Promise<{ error: unknown }>, fallback: string): Promise<void> {
     setBusy(true);
     setActionError(null);
     const res = await fn();
@@ -333,7 +340,8 @@ export function TriageCallPanel(): JSX.Element {
   async function submitAnswer(): Promise<void> {
     if (!nextQuestion) return;
     let value: TriageAnswerValue;
-    if (nextQuestion.answerType === "boolean") value = { kind: "bool", value: answerBool === "true" };
+    if (nextQuestion.answerType === "boolean")
+      value = { kind: "bool", value: answerBool === "true" };
     else if (nextQuestion.answerType === "integer" || nextQuestion.answerType === "scale_0_10")
       value = { kind: "int", value: Number(answerInt) };
     else value = { kind: "text", value: answerText };
@@ -397,23 +405,24 @@ export function TriageCallPanel(): JSX.Element {
       {/* ── §5.4's two assertive regions: a red-flag answer and a mandatory escalation ───────────────── */}
       {lastAnswer?.mandatoryEscalationTriggered ? (
         <Notice tone="error" assertive>
-          <strong>Mandatory escalation raised.</strong> That answer matched a platform-floor red-flag
-          predicate ({lastAnswer.tier ? tierLabel(lastAnswer.tier) : "tier resolved by policy"}). The page
-          is out. This call takes no disposition other than the hand-off until a named human acknowledges
-          it — a tenant policy cannot lower that floor, only raise it.
+          <strong>Mandatory escalation raised.</strong> That answer matched a platform-floor
+          red-flag predicate (
+          {lastAnswer.tier ? tierLabel(lastAnswer.tier) : "tier resolved by policy"}). The page is
+          out. This call takes no disposition other than the hand-off until a named human
+          acknowledges it — a tenant policy cannot lower that floor, only raise it.
         </Notice>
       ) : lastAnswer?.redFlagHit ? (
         <Notice tone="error" assertive>
-          <strong>Red flag.</strong> The server evaluated that answer as a red flag and recorded it in the
-          same transaction. It cannot be suppressed from here — the evaluation is outside the audit
-          denylist precisely so a suppression attempt is visible.
+          <strong>Red flag.</strong> The server evaluated that answer as a red flag and recorded it
+          in the same transaction. It cannot be suppressed from here — the evaluation is outside the
+          audit denylist precisely so a suppression attempt is visible.
         </Notice>
       ) : null}
 
       {blocked ? (
         <Notice tone="error" live>
-          A mandatory escalation on this call is unacknowledged. §7.2 permits no disposition until it is
-          acknowledged; the hand-off ("escalate and pass the call") is the move.
+          A mandatory escalation on this call is unacknowledged. §7.2 permits no disposition until
+          it is acknowledged; the hand-off ("escalate and pass the call") is the move.
         </Notice>
       ) : null}
 
@@ -421,10 +430,11 @@ export function TriageCallPanel(): JSX.Element {
 
       {!staff ? (
         <Notice tone="info">
-          You are reading the <strong>external-vendor projection</strong> of this call. It is a different
-          record shape, not a filtered one: the caller's phone, the caller's own words, the transcript and
-          the free-text complaint have no field here, and no later change to this screen can widen it into
-          one. Three dispositions are also out of scope for a vendor session and will not appear below.
+          You are reading the <strong>external-vendor projection</strong> of this call. It is a
+          different record shape, not a filtered one: the caller's phone, the caller's own words,
+          the transcript and the free-text complaint have no field here, and no later change to this
+          screen can widen it into one. Three dispositions are also out of scope for a vendor
+          session and will not appear below.
         </Notice>
       ) : null}
 
@@ -466,8 +476,8 @@ export function TriageCallPanel(): JSX.Element {
         {staff?.paperOriginFlag ? (
           <Notice tone="warning">
             This call was re-entered from paper after a §2.7 outage. Its original time was{" "}
-            {dateTime(staff.paperOriginalOpenedAt)} — that back-dated instant is the one a coverage review
-            reads, and it was bounded server-side by the outage window it was filed against.
+            {dateTime(staff.paperOriginalOpenedAt)} — that back-dated instant is the one a coverage
+            review reads, and it was bounded server-side by the outage window it was filed against.
           </Notice>
         ) : null}
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
@@ -480,7 +490,12 @@ export function TriageCallPanel(): JSX.Element {
             <button
               type="button"
               style={ghostButtonStyle}
-              onClick={() => void run(() => resumeAfterCallback(client, triageCallId, version), "The call could not be resumed.")}
+              onClick={() =>
+                void run(
+                  () => resumeAfterCallback(client, triageCallId, version),
+                  "The call could not be resumed.",
+                )
+              }
             >
               Resume the walk
             </button>
@@ -510,9 +525,9 @@ export function TriageCallPanel(): JSX.Element {
               <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
                 {staff.suggestedProtocolId ? (
                   <span style={{ fontSize: "0.85rem", color: t.onSurface }}>
-                    Suggested protocol: <strong>{shortId(staff.suggestedProtocolId)}</strong>. It is not
-                    applied. Applying a protocol is an explicit click below, at any confidence — and above
-                    the governance floor, overriding it needs a written reason of at least{" "}
+                    Suggested protocol: <strong>{shortId(staff.suggestedProtocolId)}</strong>. It is
+                    not applied. Applying a protocol is an explicit click below, at any confidence —
+                    and above the governance floor, overriding it needs a written reason of at least{" "}
                     {AI_OVERRIDE_REASON_MIN_CHARS} characters.
                   </span>
                 ) : null}
@@ -523,17 +538,17 @@ export function TriageCallPanel(): JSX.Element {
                       label={humanize(staff.hospitalizationRiskBand)}
                       tone={toneOf(RISK_BAND_TONE, staff.hospitalizationRiskBand)}
                     />{" "}
-                    — advisory only. It alters no disposition option, and it is excluded from the family
-                    portal projection by construction.
+                    — advisory only. It alters no disposition option, and it is excluded from the
+                    family portal projection by construction.
                   </span>
                 ) : null}
               </div>
             </AiSuggestionCard>
           ) : (
             <span style={mutedStyle}>
-              No AI advisory is available for this call — either the tenant opted out on the on-call policy,
-              or the M32 capability is deny-stubbed pending Part-A `ai.full`. The panel is fully functional
-              without it; an absent advisory is not a missing answer.
+              No AI advisory is available for this call — either the tenant opted out on the on-call
+              policy, or the M32 capability is deny-stubbed pending Part-A `ai.full`. The panel is
+              fully functional without it; an absent advisory is not a missing answer.
             </span>
           )}
         </Card>
@@ -556,15 +571,26 @@ export function TriageCallPanel(): JSX.Element {
               No protocol is pinned. Pinning one FREEZES its version onto this call: a catalog edit
               published mid-call does not switch the questions under you.
             </span>
-            <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("apply-protocol")}>
+            <button
+              type="button"
+              style={primaryButtonStyle}
+              onClick={() => setCeremony("apply-protocol")}
+            >
               Apply a protocol
             </button>
           </>
         ) : (
           <>
             <SummaryGrid>
-              <Field label="Protocol" value={protocol?.chiefComplaintLabel ?? shortId(call.selectedProtocolId)} />
-              <Field label="Version (frozen at open)" value={call.selectedProtocolVersion ?? "—"} mono />
+              <Field
+                label="Protocol"
+                value={protocol?.chiefComplaintLabel ?? shortId(call.selectedProtocolId)}
+              />
+              <Field
+                label="Version (frozen at open)"
+                value={call.selectedProtocolVersion ?? "—"}
+                mono
+              />
               <Field
                 label="Answered"
                 value={`${call.answers.length} of ${protocol?.questions.length ?? "?"}`}
@@ -584,7 +610,11 @@ export function TriageCallPanel(): JSX.Element {
                 </thead>
                 <tbody>
                   {[...call.answers]
-                    .sort((a, b) => a.questionOrder - b.questionOrder || a.answeredAt.localeCompare(b.answeredAt))
+                    .sort(
+                      (a, b) =>
+                        a.questionOrder - b.questionOrder ||
+                        a.answeredAt.localeCompare(b.answeredAt),
+                    )
                     .map((a) => (
                       <tr key={a.id} style={rowLine}>
                         <td style={td}>{a.questionOrder}</td>
@@ -594,8 +624,9 @@ export function TriageCallPanel(): JSX.Element {
                             <>
                               <br />
                               <span style={mutedStyle}>
-                                correction of {shortId(a.correctionOfAnswerId)} — the original row is kept,
-                                because a "no" later corrected to "yes" means the call HAD a red flag
+                                correction of {shortId(a.correctionOfAnswerId)} — the original row
+                                is kept, because a "no" later corrected to "yes" means the call HAD
+                                a red flag
                               </span>
                             </>
                           ) : null}
@@ -642,7 +673,8 @@ export function TriageCallPanel(): JSX.Element {
                     ]}
                     onChange={setAnswerBool}
                   />
-                ) : nextQuestion.answerType === "integer" || nextQuestion.answerType === "scale_0_10" ? (
+                ) : nextQuestion.answerType === "integer" ||
+                  nextQuestion.answerType === "scale_0_10" ? (
                   <TextField
                     label={nextQuestion.answerType === "scale_0_10" ? "Answer (0–10)" : "Answer"}
                     value={answerInt}
@@ -657,7 +689,12 @@ export function TriageCallPanel(): JSX.Element {
                     onChange={setAnswerText}
                   />
                 ) : (
-                  <TextAreaField label="Answer" value={answerText} onChange={setAnswerText} rows={3} />
+                  <TextAreaField
+                    label="Answer"
+                    value={answerText}
+                    onChange={setAnswerText}
+                    rows={3}
+                  />
                 )}
                 <div>
                   <button
@@ -670,8 +707,9 @@ export function TriageCallPanel(): JSX.Element {
                   </button>
                 </div>
                 <span style={mutedStyle}>
-                  The server decides which question comes next and evaluates the red-flag predicate in the
-                  same transaction as the answer. There is no way to skip ahead from here, by design.
+                  The server decides which question comes next and evaluates the red-flag predicate
+                  in the same transaction as the answer. There is no way to skip ahead from here, by
+                  design.
                 </span>
               </div>
             ) : (
@@ -709,17 +747,16 @@ export function TriageCallPanel(): JSX.Element {
         <Card title="Medications & refills (read-only)">
           {!activeMedications || !pendingRefills ? (
             <span style={mutedStyle}>
-              No medication context was loaded for this call — it is fetched once the caller is resolved to
-              a served person.
+              No medication context was loaded for this call — it is fetched once the caller is
+              resolved to a served person.
             </span>
           ) : (
             <>
               {activeMedications.kind === "unavailable" ? (
                 <Notice tone="warning" live>
-                  <strong>Medication list unavailable</strong> —{" "}
-                  {activeMedications.reason}. This is NOT "no active medications":
-                  an outage rendered as an empty list is how a clinician authorizes against a chart they
-                  believe is empty.
+                  <strong>Medication list unavailable</strong> — {activeMedications.reason}. This is
+                  NOT "no active medications": an outage rendered as an empty list is how a
+                  clinician authorizes against a chart they believe is empty.
                 </Notice>
               ) : activeMedications.items.length === 0 ? (
                 <span style={mutedStyle}>No active medications are on file for this patient.</span>
@@ -754,23 +791,22 @@ export function TriageCallPanel(): JSX.Element {
               {sudRedactedCount > 0 ? (
                 <Notice tone="warning" live>
                   {sudRedactedCount} medication
-                  {sudRedactedCount === 1 ? " is" : "s are"} withheld under 42 CFR
-                  Part 2. The list above is incomplete as shown — the count travels so the omission is
-                  visible without the content being.
+                  {sudRedactedCount === 1 ? " is" : "s are"} withheld under 42 CFR Part 2. The list
+                  above is incomplete as shown — the count travels so the omission is visible
+                  without the content being.
                 </Notice>
               ) : null}
               {pendingRefills.kind === "unavailable" ? (
                 <Notice tone="warning" live>
-                  <strong>Refill inbox unavailable</strong> —{" "}
-                  {pendingRefills.reason}. M12 can be half-up; the two slices are
-                  reported separately for exactly that reason.
+                  <strong>Refill inbox unavailable</strong> — {pendingRefills.reason}. M12 can be
+                  half-up; the two slices are reported separately for exactly that reason.
                 </Notice>
               ) : (
                 <span style={mutedStyle}>
                   {pendingRefills.items.length} pending refill
-                  {pendingRefills.items.length === 1 ? "" : "s"} on file. M19 reads
-                  M12 and never writes it: an authorization taken on this call becomes the PRN disposition,
-                  and M12's own consumer acts on the event that disposition emits.
+                  {pendingRefills.items.length === 1 ? "" : "s"} on file. M19 reads M12 and never
+                  writes it: an authorization taken on this call becomes the PRN disposition, and
+                  M12's own consumer acts on the event that disposition emits.
                 </span>
               )}
             </>
@@ -826,9 +862,9 @@ export function TriageCallPanel(): JSX.Element {
         )}
         {openMandatory.length > 0 ? (
           <span style={mutedStyle}>
-            A mandatory row may only reach `resolved` through an explicit write by the escalated party, on
-            the escalation inbox. Closing the call does not clear it — the whole point is that the agency
-            can prove a named human answered.
+            A mandatory row may only reach `resolved` through an explicit write by the escalated
+            party, on the escalation inbox. Closing the call does not clear it — the whole point is
+            that the agency can prove a named human answered.
           </span>
         ) : null}
       </Card>
@@ -842,22 +878,28 @@ export function TriageCallPanel(): JSX.Element {
             {staff ? (
               <Field
                 label="Linked encounter"
-                value={staff.linkedEncounterId ? shortId(staff.linkedEncounterId) : "not yet created"}
+                value={
+                  staff.linkedEncounterId ? shortId(staff.linkedEncounterId) : "not yet created"
+                }
                 mono={Boolean(staff?.linkedEncounterId)}
               />
             ) : null}
           </SummaryGrid>
         ) : (
           <span style={mutedStyle}>
-            No disposition selected. Your selector below carries exactly the set the server evaluated for
-            you — {call.permittedDispositions.length} of the eight. A disposition outside it is refused
-            server-side, not merely hidden here.
+            No disposition selected. Your selector below carries exactly the set the server
+            evaluated for you — {call.permittedDispositions.length} of the eight. A disposition
+            outside it is refused server-side, not merely hidden here.
           </span>
         )}
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           <button
             type="button"
-            style={blocked || call.permittedDispositions.length === 0 ? disabledButtonStyle : primaryButtonStyle}
+            style={
+              blocked || call.permittedDispositions.length === 0
+                ? disabledButtonStyle
+                : primaryButtonStyle
+            }
             disabled={blocked || call.permittedDispositions.length === 0}
             title={
               blocked
@@ -880,11 +922,12 @@ export function TriageCallPanel(): JSX.Element {
           ) : null}
         </div>
         <span style={mutedStyle}>
-          Creating the encounter does NOT close the call: the record advances when the encounter is SIGNED,
-          which is the `m8.encounter.signed` consumer's transition, not this button's. §5.1's verbal-order
-          button is absent for a related reason — a verbal order is M11's write behind a step-up asserted at
-          the seam invocation, and M19 publishes no route that mints one. Record the order in M11, then
-          select the verbal-order disposition here with the id M11 returned.
+          Creating the encounter does NOT close the call: the record advances when the encounter is
+          SIGNED, which is the `m8.encounter.signed` consumer's transition, not this button's.
+          §5.1's verbal-order button is absent for a related reason — a verbal order is M11's write
+          behind a step-up asserted at the seam invocation, and M19 publishes no route that mints
+          one. Record the order in M11, then select the verbal-order disposition here with the id
+          M11 returned.
         </span>
       </Card>
 
@@ -937,8 +980,8 @@ export function TriageCallPanel(): JSX.Element {
           }
         >
           <p style={mutedStyle}>
-            Both ids are required: M8's encounter creator needs patient AND admission NOT NULL, so a call
-            carrying only one of the two can never be documented.
+            Both ids are required: M8's encounter creator needs patient AND admission NOT NULL, so a
+            call carrying only one of the two can never be documented.
           </p>
           <TextField label="Patient id" value={patientId} onChange={setPatientId} mono />
           <TextField label="Admission id" value={admissionId} onChange={setAdmissionId} mono />
@@ -984,7 +1027,11 @@ export function TriageCallPanel(): JSX.Element {
             value={protocolChoice}
             options={[{ value: "", label: "select…" }].concat(
               [...catalog]
-                .sort((a, b) => a.sortOrder - b.sortOrder || a.chiefComplaintLabel.localeCompare(b.chiefComplaintLabel))
+                .sort(
+                  (a, b) =>
+                    a.sortOrder - b.sortOrder ||
+                    a.chiefComplaintLabel.localeCompare(b.chiefComplaintLabel),
+                )
                 .map((p) => ({
                   value: p.id,
                   label: `${p.chiefComplaintLabel}${p.isSystemLocked ? " ✓ platform" : ""}${
@@ -1004,14 +1051,15 @@ export function TriageCallPanel(): JSX.Element {
             />
           ) : (
             <span style={mutedStyle}>
-              No override reason is required here. Below the governance floor a reason is not demanded —
-              that is deliberate: demanding a justification for ignoring a low-confidence guess is how a
-              governance field becomes a field everyone types "n/a" into.
+              No override reason is required here. Below the governance floor a reason is not
+              demanded — that is deliberate: demanding a justification for ignoring a low-confidence
+              guess is how a governance field becomes a field everyone types "n/a" into.
             </span>
           )}
           <span style={mutedStyle}>
-            Applying a protocol whose catalog row demands it writes the mandatory escalation in the SAME
-            transaction. A platform-floor protocol carries ✓ and cannot be edited by the tenant.
+            Applying a protocol whose catalog row demands it writes the mandatory escalation in the
+            SAME transaction. A platform-floor protocol carries ✓ and cannot be edited by the
+            tenant.
           </span>
         </Modal>
       ) : null}
@@ -1024,13 +1072,17 @@ export function TriageCallPanel(): JSX.Element {
             <button
               type="button"
               disabled={busy || callbackReason.trim().length < 20}
-              style={busy || callbackReason.trim().length < 20 ? disabledButtonStyle : primaryButtonStyle}
+              style={
+                busy || callbackReason.trim().length < 20 ? disabledButtonStyle : primaryButtonStyle
+              }
               onClick={() =>
                 void run(
                   () =>
                     markAwaitingCallback(client, triageCallId, version, {
                       reason: callbackReason,
-                      ...(callbackTargetAt ? { callbackTargetAt: toInstant(callbackTargetAt) } : {}),
+                      ...(callbackTargetAt
+                        ? { callbackTargetAt: toInstant(callbackTargetAt) }
+                        : {}),
                     }),
                   "The call could not be parked.",
                 )
@@ -1064,7 +1116,11 @@ export function TriageCallPanel(): JSX.Element {
             <button
               type="button"
               disabled={busy || escalationReason.trim().length < 30}
-              style={busy || escalationReason.trim().length < 30 ? disabledButtonStyle : primaryButtonStyle}
+              style={
+                busy || escalationReason.trim().length < 30
+                  ? disabledButtonStyle
+                  : primaryButtonStyle
+              }
               onClick={() =>
                 void run(
                   () =>
@@ -1138,10 +1194,15 @@ export function TriageCallPanel(): JSX.Element {
           }
         >
           <p style={mutedStyle}>
-            This invokes M8's encounter creator — the only path from M19 to a clinical record. The call
-            does not reach `documented` here; it advances when the encounter is SIGNED.
+            This invokes M8's encounter creator — the only path from M19 to a clinical record. The
+            call does not reach `documented` here; it advances when the encounter is SIGNED.
           </p>
-          <TextAreaField label="Narrative summary (optional)" value={narrative} onChange={setNarrative} rows={5} />
+          <TextAreaField
+            label="Narrative summary (optional)"
+            value={narrative}
+            onChange={setNarrative}
+            rows={5}
+          />
         </Modal>
       ) : null}
 
@@ -1153,7 +1214,9 @@ export function TriageCallPanel(): JSX.Element {
             <button
               type="button"
               disabled={busy || abandonReason.trim().length < 1}
-              style={busy || abandonReason.trim().length < 1 ? disabledButtonStyle : primaryButtonStyle}
+              style={
+                busy || abandonReason.trim().length < 1 ? disabledButtonStyle : primaryButtonStyle
+              }
               onClick={() =>
                 void run(
                   () =>
@@ -1170,10 +1233,15 @@ export function TriageCallPanel(): JSX.Element {
           }
         >
           <Notice tone="warning">
-            A mandatory escalation still blocks this: "the caller hung up" is not an answer to "did a human
-            respond to the suicidal-ideation page?".
+            A mandatory escalation still blocks this: "the caller hung up" is not an answer to "did
+            a human respond to the suicidal-ideation page?".
           </Notice>
-          <TextAreaField label="What happened" value={abandonReason} onChange={setAbandonReason} rows={3} />
+          <TextAreaField
+            label="What happened"
+            value={abandonReason}
+            onChange={setAbandonReason}
+            rows={3}
+          />
           <TextField
             label="Callback attempts made"
             value={callbackAttempts}
@@ -1192,7 +1260,9 @@ export function TriageCallPanel(): JSX.Element {
               type="button"
               disabled={busy || !dispositionData}
               style={busy || !dispositionData ? disabledButtonStyle : primaryButtonStyle}
-              title={dispositionData ? undefined : "This disposition's required fields are not complete."}
+              title={
+                dispositionData ? undefined : "This disposition's required fields are not complete."
+              }
               onClick={() =>
                 dispositionData
                   ? void run(
@@ -1208,13 +1278,26 @@ export function TriageCallPanel(): JSX.Element {
         >
           {/* §5.4 — a radio-group, keyboard-navigable, `aria-required`. The set is the SERVER's. */}
           <fieldset
-            style={{ border: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.35rem" }}
+            style={{
+              border: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.35rem",
+            }}
           >
             <legend style={{ fontSize: "0.7rem", color: t.onSurfaceVariant }}>Disposition</legend>
             {call.permittedDispositions.map((d) => (
               <label
                 key={d}
-                style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.85rem", color: t.onSurface }}
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  alignItems: "center",
+                  fontSize: "0.85rem",
+                  color: t.onSurface,
+                }}
               >
                 <input
                   type="radio"
@@ -1254,7 +1337,12 @@ export function TriageCallPanel(): JSX.Element {
                 onChange={setDInstructions}
                 rows={3}
               />
-              <TextField label="Order id (optional)" value={dOrderRecordId} onChange={setDOrderRecordId} mono />
+              <TextField
+                label="Order id (optional)"
+                value={dOrderRecordId}
+                onChange={setDOrderRecordId}
+                mono
+              />
               <TextField
                 label="Medication order id (optional)"
                 value={dMedicationOrderId}
@@ -1268,10 +1356,15 @@ export function TriageCallPanel(): JSX.Element {
           {disposition === "verbal_order_recorded" ? (
             <>
               <Notice tone="info">
-                Record the verbal order in M11 first, under its own step-up. This arm attests to an order
-                that already exists — M19 mints none.
+                Record the verbal order in M11 first, under its own step-up. This arm attests to an
+                order that already exists — M19 mints none.
               </Notice>
-              <TextField label="Order id (required)" value={dOrderRecordId} onChange={setDOrderRecordId} mono />
+              <TextField
+                label="Order id (required)"
+                value={dOrderRecordId}
+                onChange={setDOrderRecordId}
+                mono
+              />
               <TextField
                 label="Attending physician id (optional)"
                 value={dAttendingPhysicianId}
@@ -1281,9 +1374,14 @@ export function TriageCallPanel(): JSX.Element {
             </>
           ) : null}
 
-          {disposition === "visit_dispatched_now" || disposition === "visit_scheduled_first_light" ? (
+          {disposition === "visit_dispatched_now" ||
+          disposition === "visit_scheduled_first_light" ? (
             <>
-              <TextField label="Discipline requested" value={dDiscipline} onChange={setDDiscipline} />
+              <TextField
+                label="Discipline requested"
+                value={dDiscipline}
+                onChange={setDDiscipline}
+              />
               {disposition === "visit_dispatched_now" ? (
                 <TextField
                   label="Arrival by"
@@ -1299,7 +1397,12 @@ export function TriageCallPanel(): JSX.Element {
                   type="date"
                 />
               )}
-              <TextAreaField label="Clinical reason (≥ 30 chars)" value={dReason} onChange={setDReason} rows={3} />
+              <TextAreaField
+                label="Clinical reason (≥ 30 chars)"
+                value={dReason}
+                onChange={setDReason}
+                rows={3}
+              />
             </>
           ) : null}
 
@@ -1340,7 +1443,11 @@ export function TriageCallPanel(): JSX.Element {
 
           {disposition === "pronouncement_scheduled" ? (
             <>
-              <TextField label="Pronouncing discipline" value={dDiscipline} onChange={setDDiscipline} />
+              <TextField
+                label="Pronouncing discipline"
+                value={dDiscipline}
+                onChange={setDDiscipline}
+              />
               <TextField
                 label="Expected arrival by (optional)"
                 value={dArrivalBy}

@@ -61,10 +61,7 @@ type SeamTx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  * (effective_to IS NULL) ssn identifier's plaintext display tail — the envelope-encrypted value
  * itself never crosses the seam.
  */
-async function identitiesFor(
-  tx: SeamTx,
-  rows: readonly PatientRow[],
-): Promise<PatientIdentity[]> {
+async function identitiesFor(tx: SeamTx, rows: readonly PatientRow[]): Promise<PatientIdentity[]> {
   if (rows.length === 0) return [];
   const idRows = await tx
     .select({
@@ -114,7 +111,10 @@ export function createDrizzlePatientReaderStore(db: DbClient): PatientReaderStor
   const read = <T>(organizationId: string, fn: (tx: SeamTx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, fn);
 
-  const one = async (tx: SeamTx, where: ReturnType<typeof and>): Promise<PatientIdentity | null> => {
+  const one = async (
+    tx: SeamTx,
+    where: ReturnType<typeof and>,
+  ): Promise<PatientIdentity | null> => {
     const rows = await tx.select(PATIENT_COLUMNS).from(P).where(where).limit(1);
     const [identity] = await identitiesFor(tx, rows);
     return identity ?? null;
@@ -200,9 +200,7 @@ export function createDrizzlePatientReaderStore(db: DbClient): PatientReaderStor
             eq(P.dob, dateOfBirth),
             ...(firstNameInitial === undefined
               ? []
-              : [
-                  sql`upper(${P.legalFirstName}) like ${`${firstNameInitial.toUpperCase()}%`}`,
-                ]),
+              : [sql`upper(${P.legalFirstName}) like ${`${firstNameInitial.toUpperCase()}%`}`]),
           ),
         ),
       );
@@ -268,14 +266,12 @@ export function createDrizzlePatientMutatorStore(
               patientPatch.maritalStatusCode = value;
               break;
             case "preferredName":
-              await tx
-                .insert(ALIAS)
-                .values({
-                  organizationId,
-                  patientId,
-                  kind: "preferred",
-                  fullName: String(value),
-                });
+              await tx.insert(ALIAS).values({
+                organizationId,
+                patientId,
+                kind: "preferred",
+                fullName: String(value),
+              });
               break;
             case "preferredLanguage":
               await tx

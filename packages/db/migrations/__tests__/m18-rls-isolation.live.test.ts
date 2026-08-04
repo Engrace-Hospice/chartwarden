@@ -231,12 +231,9 @@ describe.skipIf(!DB_URL)("M18 EVV — RLS cross-tenant denial — LIVE Postgres 
   });
 
   it("every M18 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0047_evv_m18_rls_audit_triggers.sql"),
-      "utf8",
-    );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const rls = readFileSync(join(MIGRATIONS_DIR, "0047_evv_m18_rls_audit_triggers.sql"), "utf8");
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // All six get a standard org block — including the PARTITIONED evv_event (policy on the parent).
     expect(policyBlocks.length).toBe(COVERED.length);
@@ -275,7 +272,16 @@ describe.skipIf(!DB_URL)("M18 EVV — RLS cross-tenant denial — LIVE Postgres 
              captured_at, event_at, coords_cipher, coords_dek_version, accuracy_m, gps_quality,
              device_attestation_id_at_record)
            VALUES ($1,$2,$3,$4,$5,'check_in','T1021',$6,'rn',$7, now(), now(),'enc',1,4.5,'high',$8)`,
-          [ORG_A, a.providerEntity, a.location, VISIT, PATIENT, a.membership, a.evvDevice, DEVICE_ATTEST],
+          [
+            ORG_A,
+            a.providerEntity,
+            a.location,
+            VISIT,
+            PATIENT,
+            a.membership,
+            a.evvDevice,
+            DEVICE_ATTEST,
+          ],
         ),
       ),
     ).rejects.toThrow();

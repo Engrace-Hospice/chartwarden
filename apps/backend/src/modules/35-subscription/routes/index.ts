@@ -11,8 +11,8 @@ export {
   type WriteTx,
 } from "./service-drizzle";
 export type { M35RouteService } from "./service";
-export {
-  type M35WebhookIngest,
-  type M35WebhookResultKind,
-  type WebhookRouteDeps,
+export type {
+  M35WebhookIngest,
+  M35WebhookResultKind,
+  WebhookRouteDeps,
 } from "./webhooks.routes";

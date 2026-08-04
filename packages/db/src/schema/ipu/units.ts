@@ -6,9 +6,19 @@
 // write-audit trigger is a GENERATED function that hard-codes the parent name (the M32 ai_token_ledger
 // lesson). Column CHECKs and partial-index predicates are authoritative in the migration; the Drizzle
 // view carries columns + the constraints Drizzle can express so `$inferSelect` types stay honest.
-import { boolean, index, numeric, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { bigintVersion } from "./shared";
+import {
+  boolean,
+  index,
+  numeric,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { ipuBedCleaningStatus, ipuRoomKind } from "../../enums";
+import { bigintVersion } from "./shared";
 
 export const inpatientUnit = pgTable(
   "inpatient_unit",

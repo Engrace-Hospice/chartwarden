@@ -62,7 +62,9 @@ export const bereavementRiskScore = pgTable(
     ruleScore: integer("rule_score").notNull(), // the deterministic weighted sum (D3) — the source of truth
     ruleTier: bereavementRiskTier("rule_tier").notNull(),
 
-    dataCompleteness: bereavementDataCompleteness("data_completeness").notNull().default("complete"),
+    dataCompleteness: bereavementDataCompleteness("data_completeness")
+      .notNull()
+      .default("complete"),
     confidenceBand: bereavementConfidenceBand("confidence_band").notNull().default("HIGH"),
 
     // Layer 2 (D3) — present only when score_kind = 'llm_augmented', and gated on Part-A `ai.full` (M32).

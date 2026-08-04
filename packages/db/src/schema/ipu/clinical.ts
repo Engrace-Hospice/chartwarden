@@ -1,14 +1,28 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 clinical-safety overlays (§2.5/§2.10, §3.3): ipu_iv_safety_overlay (the IV-pump
 // safety overlay that CLOSES the M13 Wave-E deferral), ipu_restraint_event + its reassessment cadence
 // ledger. TENANT-SCOPED, RLS on app.org_id. Restraint application is a step-up action — the
 // applied_step_up_assertion_id is NOT NULL. Free-text justification/notes/reason is PHI-denylisted
 // (D11, §3.6); the char_length CHECKs (justification >= 100) live in the migration. order_id /
 // ordering_order_id are logical M11 order uuids; ipu_admission_id / restraint_event_id are REAL FKs.
-import { boolean, index, numeric, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { bigintVersion } from "./shared";
+import {
+  boolean,
+  index,
+  numeric,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import {
+  ipuRestraintEventState,
+  ipuRestraintKind,
+  ipuRestraintReassessmentOutcome,
+} from "../../enums";
 import { ipuAdmission } from "./admission";
-import { ipuRestraintEventState, ipuRestraintKind, ipuRestraintReassessmentOutcome } from "../../enums";
+import { bigintVersion } from "./shared";
 
 export const ipuIvSafetyOverlay = pgTable(
   "ipu_iv_safety_overlay",
@@ -34,9 +48,7 @@ export const ipuIvSafetyOverlay = pgTable(
   },
   (t) => ({
     onePerOrderUq: uniqueIndex("iv_overlay_one_per_order").on(t.orderId),
-    admissionIx: index("iv_overlay_admission_idx")
-      .on(t.ipuAdmissionId)
-      .where(sql`overlay_active`),
+    admissionIx: index("iv_overlay_admission_idx").on(t.ipuAdmissionId).where(sql`overlay_active`),
   }),
 );
 
@@ -68,9 +80,7 @@ export const ipuRestraintEvent = pgTable(
     admissionStateIx: index("restraint_event_admission_state_idx")
       .on(t.ipuAdmissionId, t.state)
       .where(sql`state = 'active'`),
-    activeIx: index("restraint_event_active_idx")
-      .on(t.appliedAt)
-      .where(sql`state = 'active'`),
+    activeIx: index("restraint_event_active_idx").on(t.appliedAt).where(sql`state = 'active'`),
   }),
 );
 

@@ -47,7 +47,9 @@ export function applySudRedaction(built: BuiltPacket, ctx: SudRedactionContext):
       meta: { ...built.snapshot.meta, appliedSudRedaction: true },
       sinceLastIdg: {
         ...built.snapshot.sinceLastIdg,
-        encounters: built.snapshot.sinceLastIdg.encounters.filter((e) => !flagged.has(e.encounterId)),
+        encounters: built.snapshot.sinceLastIdg.encounters.filter(
+          (e) => !flagged.has(e.encounterId),
+        ),
       },
     },
     disciplineViews,

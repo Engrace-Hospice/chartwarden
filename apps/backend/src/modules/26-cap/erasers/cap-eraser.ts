@@ -37,12 +37,24 @@ export function createCapEraser(store: CapPatientRedactStore): DataEraser {
 /** In-memory slice store — counts nothing (the deferred-bind default; the M25 in-memory eraser precedent). */
 export function createInMemoryCapRedactStore(): CapPatientRedactStore {
   return {
-    async redactBeneficiaryAccrual() { return 0; },
-    async redactAccrualLines() { return 0; },
-    async redactInpatientDayLines() { return 0; },
-    async redactProjectionSnapshots() { return 0; },
-    async redactThresholdEvents() { return 0; },
-    async redactPsrReconciliation() { return 0; },
+    async redactBeneficiaryAccrual() {
+      return 0;
+    },
+    async redactAccrualLines() {
+      return 0;
+    },
+    async redactInpatientDayLines() {
+      return 0;
+    },
+    async redactProjectionSnapshots() {
+      return 0;
+    },
+    async redactThresholdEvents() {
+      return 0;
+    },
+    async redactPsrReconciliation() {
+      return 0;
+    },
   };
 }
 
@@ -54,8 +66,12 @@ export function createDrizzleCapRedactStore(db: DbClient): CapPatientRedactStore
   const PS = schema.capProjectionSnapshot;
   const TE = schema.capThresholdEvent;
   const PR = schema.capPsrReconciliation;
-  const wOrg = (t: { organizationId: unknown }, p: { patientId: unknown }, orgId: string, patientId: string) =>
-    and(eq(t.organizationId as never, orgId), eq(p.patientId as never, patientId));
+  const wOrg = (
+    t: { organizationId: unknown },
+    p: { patientId: unknown },
+    orgId: string,
+    patientId: string,
+  ) => and(eq(t.organizationId as never, orgId), eq(p.patientId as never, patientId));
   return {
     async redactBeneficiaryAccrual(orgId, patientId) {
       const r = await db
@@ -66,23 +82,43 @@ export function createDrizzleCapRedactStore(db: DbClient): CapPatientRedactStore
       return r.length;
     },
     async redactAccrualLines(orgId, patientId) {
-      const r = await db.update(BAL).set({ patientId: ERASED_PATIENT_SENTINEL }).where(wOrg(BAL, BAL, orgId, patientId)).returning({ id: BAL.id });
+      const r = await db
+        .update(BAL)
+        .set({ patientId: ERASED_PATIENT_SENTINEL })
+        .where(wOrg(BAL, BAL, orgId, patientId))
+        .returning({ id: BAL.id });
       return r.length;
     },
     async redactInpatientDayLines(orgId, patientId) {
-      const r = await db.update(IDL).set({ patientId: ERASED_PATIENT_SENTINEL }).where(wOrg(IDL, IDL, orgId, patientId)).returning({ id: IDL.id });
+      const r = await db
+        .update(IDL)
+        .set({ patientId: ERASED_PATIENT_SENTINEL })
+        .where(wOrg(IDL, IDL, orgId, patientId))
+        .returning({ id: IDL.id });
       return r.length;
     },
     async redactProjectionSnapshots(orgId, patientId) {
-      const r = await db.update(PS).set({ patientId: ERASED_PATIENT_SENTINEL }).where(wOrg(PS, PS, orgId, patientId)).returning({ id: PS.id });
+      const r = await db
+        .update(PS)
+        .set({ patientId: ERASED_PATIENT_SENTINEL })
+        .where(wOrg(PS, PS, orgId, patientId))
+        .returning({ id: PS.id });
       return r.length;
     },
     async redactThresholdEvents(orgId, patientId) {
-      const r = await db.update(TE).set({ patientId: ERASED_PATIENT_SENTINEL }).where(wOrg(TE, TE, orgId, patientId)).returning({ id: TE.id });
+      const r = await db
+        .update(TE)
+        .set({ patientId: ERASED_PATIENT_SENTINEL })
+        .where(wOrg(TE, TE, orgId, patientId))
+        .returning({ id: TE.id });
       return r.length;
     },
     async redactPsrReconciliation(orgId, patientId) {
-      const r = await db.update(PR).set({ patientId: ERASED_PATIENT_SENTINEL }).where(wOrg(PR, PR, orgId, patientId)).returning({ id: PR.id });
+      const r = await db
+        .update(PR)
+        .set({ patientId: ERASED_PATIENT_SENTINEL })
+        .where(wOrg(PR, PR, orgId, patientId))
+        .returning({ id: PR.id });
       return r.length;
     },
   };
@@ -90,8 +126,14 @@ export function createDrizzleCapRedactStore(db: DbClient): CapPatientRedactStore
 
 /** The real Drizzle tenant-destruction store (org offboarding; FK-ordered deletes under wardenx_admin). */
 export function createDrizzleCapTenantStore(db: DbClient): CapTenantEraseStore {
-  const del = async (t: { organizationId: unknown; id?: unknown }, orgId: string): Promise<number> => {
-    const r = await db.delete(t as never).where(eq((t as { organizationId: never }).organizationId, orgId)).returning();
+  const del = async (
+    t: { organizationId: unknown; id?: unknown },
+    orgId: string,
+  ): Promise<number> => {
+    const r = await db
+      .delete(t as never)
+      .where(eq((t as { organizationId: never }).organizationId, orgId))
+      .returning();
     return (r as unknown[]).length;
   };
   return {
@@ -110,7 +152,10 @@ export function createDrizzleCapTenantStore(db: DbClient): CapTenantEraseStore {
 }
 
 /** Tenant-offboarding destruction entry (exported for the offboarding flow; not the per-patient cert path). */
-export async function eraseCapForTenant(db: DbClient, orgId: string): Promise<Record<string, number>> {
+export async function eraseCapForTenant(
+  db: DbClient,
+  orgId: string,
+): Promise<Record<string, number>> {
   return eraseCapTenant(createDrizzleCapTenantStore(db), orgId);
 }
 

@@ -51,7 +51,10 @@ export interface DocLensVisionVerifier {
     readonly organizationId: string;
     readonly actorUserId: string;
     readonly documentId: string;
-    readonly pageImages: readonly { readonly pageNumber: number; readonly objectStorageKey: string }[];
+    readonly pageImages: readonly {
+      readonly pageNumber: number;
+      readonly objectStorageKey: string;
+    }[];
     readonly verificationKey: "signature_presence" | "redaction_quality" | "page_integrity";
   }): Promise<DocLensVerifyResult>;
 }

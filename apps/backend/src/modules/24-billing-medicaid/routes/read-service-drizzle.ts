@@ -1,13 +1,13 @@
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/24-billing-medicaid/routes/read-service-drizzle.ts — the Drizzle-backed M24 READ
 // service. Every method opens `withOrgContext(db, {organizationId, userId}, tx => …)` so Postgres RLS scopes
 // each statement to the acting org. Claim list paging is keyset over (created_at DESC, id DESC). The
 // rule-config read overlays the per-tenant config rows onto the §4.6 platform-default registry. Secrets and
 // the Recipient ID are NEVER returned (presence flags + masked last-4 only; D12 / §3.6).
 import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
-import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { isUsableCipher } from "../credential-crypto";
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { isUsableCipher } from "../credential-crypto";
 import { type CursorPage, decodeCursor, toPage } from "./concurrency";
 import type {
   AcknowledgmentView,
@@ -136,8 +136,10 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
       const c = decodeCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
-          filters.state ? eq(C.state, filters.state as typeof C.state.enumValues[number]) : undefined,
-          filters.kind ? eq(C.kind, filters.kind as typeof C.kind.enumValues[number]) : undefined,
+          filters.state
+            ? eq(C.state, filters.state as (typeof C.state.enumValues)[number])
+            : undefined,
+          filters.kind ? eq(C.kind, filters.kind as (typeof C.kind.enumValues)[number]) : undefined,
           filters.mcoId ? eq(C.mcoId, filters.mcoId) : undefined,
           filters.serviceState ? eq(C.serviceState, filters.serviceState) : undefined,
           filters.patientId ? eq(C.patientId, filters.patientId) : undefined,
@@ -150,7 +152,7 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
           .where(conds.length ? and(...(conds as [])) : undefined)
           .orderBy(desc(C.createdAt), desc(C.id))
           .limit(limit + 1);
-        return toPage<typeof rows[number], ClaimView>(
+        return toPage<(typeof rows)[number], ClaimView>(
           rows,
           limit,
           (r) => ({ ts: iso(r.createdAt), id: r.id }),
@@ -411,7 +413,9 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
 
     async listEligibilityChecks(actor, filters) {
       return withOrgContext(db, actor, async (tx) => {
-        const conds = [filters.patientId ? eq(EC.patientId, filters.patientId) : undefined].filter(Boolean);
+        const conds = [filters.patientId ? eq(EC.patientId, filters.patientId) : undefined].filter(
+          Boolean,
+        );
         const rows = await tx
           .select()
           .from(EC)
@@ -441,7 +445,9 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
         const conds = [
           filters.patientId ? eq(A.patientId, filters.patientId) : undefined,
           filters.nfFacilityMdmId ? eq(A.nfFacilityMdmId, filters.nfFacilityMdmId) : undefined,
-          filters.state ? eq(A.state, filters.state as typeof A.state.enumValues[number]) : undefined,
+          filters.state
+            ? eq(A.state, filters.state as (typeof A.state.enumValues)[number])
+            : undefined,
         ].filter(Boolean);
         const rows = await tx
           .select()
@@ -472,7 +478,9 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
         const conds = [
           filters.patientId ? eq(RD.patientId, filters.patientId) : undefined,
           filters.rbArrangementId ? eq(RD.rbArrangementId, filters.rbArrangementId) : undefined,
-          filters.status ? eq(RD.status, filters.status as typeof RD.status.enumValues[number]) : undefined,
+          filters.status
+            ? eq(RD.status, filters.status as (typeof RD.status.enumValues)[number])
+            : undefined,
           filters.from ? gte(RD.serviceDate, new Date(filters.from)) : undefined,
           filters.to ? lte(RD.serviceDate, new Date(filters.to)) : undefined,
         ].filter(Boolean);
@@ -488,7 +496,9 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
 
     async listTradingPartnerCredentials(actor, providerEntityId) {
       return withOrgContext(db, actor, async (tx) => {
-        const conds = [providerEntityId ? eq(TP.providerEntityId, providerEntityId) : undefined].filter(Boolean);
+        const conds = [
+          providerEntityId ? eq(TP.providerEntityId, providerEntityId) : undefined,
+        ].filter(Boolean);
         const rows = await tx
           .select()
           .from(TP)
@@ -521,7 +531,9 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
 
     async arDashboard(actor, providerEntityId) {
       return withOrgContext(db, actor, async (tx): Promise<ArDashboardView> => {
-        const conds = [providerEntityId ? eq(C.providerEntityId, providerEntityId) : undefined].filter(Boolean);
+        const conds = [
+          providerEntityId ? eq(C.providerEntityId, providerEntityId) : undefined,
+        ].filter(Boolean);
         const byState = await tx
           .select({
             state: C.serviceState,
@@ -541,7 +553,9 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
 
     async arMetrics(actor, providerEntityId) {
       return withOrgContext(db, actor, async (tx): Promise<ArMetricsView> => {
-        const conds = [providerEntityId ? eq(C.providerEntityId, providerEntityId) : undefined].filter(Boolean);
+        const conds = [
+          providerEntityId ? eq(C.providerEntityId, providerEntityId) : undefined,
+        ].filter(Boolean);
         const counts = await tx
           .select({ state: C.state, n: sql<number>`count(*)::int` })
           .from(C)

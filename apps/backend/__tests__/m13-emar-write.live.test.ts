@@ -19,11 +19,11 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import {
   type EmarWriteOutboxPort,
   createDbEmarBackend,
 } from "../src/modules/13-emar/emar-route-service-db";
+import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -56,7 +56,9 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -74,7 +76,9 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     return rows.map((r) => r.event_type as string);
   }
   async function admStatus(id: string): Promise<string> {
-    const { rows } = await admin.query("SELECT status FROM administration_record WHERE id=$1", [id]);
+    const { rows } = await admin.query("SELECT status FROM administration_record WHERE id=$1", [
+      id,
+    ]);
     return rows[0]?.status as string;
   }
   /** Seed a pending `scheduled_dose` (its siting is what recordAdministration copies) as superuser. */
@@ -141,19 +145,33 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m13w@x.test'),($2,'m13w2@x.test')`, [USER, USER2]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'m13w@x.test'),($2,'m13w2@x.test')`,
+      [USER, USER2],
+    );
     for (const org of [ORG_A, ORG_B]) {
       memberOf[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER, org],
+        )
       ).rows[0].id as string;
       member2Of[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER2, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER2, org],
+        )
       ).rows[0].id as string;
       providerOf[org] = (
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M13W-${org.slice(0, 4)}`, `M13W ${org.slice(0, 4)}`, `NPI-M13W-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M13W-${org.slice(0, 4)}`,
+            `M13W ${org.slice(0, 4)}`,
+            `NPI-M13W-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       locationOf[org] = (
@@ -165,7 +183,9 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       ).rows[0].id as string;
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M13_OUTBOX_EVENTS]));
     const outbox: EmarWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m13" }),
@@ -180,7 +200,11 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
 
   it("recordAdministration against a scheduled dose commits + sources siting + flips the dose", async () => {
     const sched = await seedScheduledDose(ORG_A);
-    const view = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ scheduledDoseId: sched }));
+    const view = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({ scheduledDoseId: sched }),
+    );
     expect(view.status).toBe("committed");
     expect(view.patientId).toBe(PATIENT);
     expect(view.scheduledDoseId).toBe(sched);
@@ -190,14 +214,21 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       [sched],
     );
     expect(rows[0].status).toBe("administered");
-    const { rows: adm } = await admin.query("SELECT provider_entity_id FROM administration_record WHERE id=$1", [view.id]);
+    const { rows: adm } = await admin.query(
+      "SELECT provider_entity_id FROM administration_record WHERE id=$1",
+      [view.id],
+    );
     expect(adm[0].provider_entity_id).toBe(providerOf[ORG_A]); // siting copied from the scheduled dose
   });
 
   it("an ad-hoc administration (no scheduled dose) records with null siting + a PRN reassessment emit", async () => {
-    const view = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({
-      prn: { triggeringPrnReason: "breakthrough pain", requestedByKind: "clinician_observed" },
-    }));
+    const view = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({
+        prn: { triggeringPrnReason: "breakthrough pain", requestedByKind: "clinician_observed" },
+      }),
+    );
     expect(view.status).toBe("committed");
     const events = await eventsFor(view.id);
     expect(events).toContain("m13.administration.recorded");
@@ -208,7 +239,11 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     const sched = await seedScheduledDose(ORG_A);
     // No token → WITNESS_REQUIRED (ValidationError, 422).
     await expect(
-      svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({ scheduledDoseId: sched, medClass: "controlled_substance" })),
+      svc.recordAdministration(
+        ORG_A,
+        memberOf[ORG_A],
+        recordArgs({ scheduledDoseId: sched, medClass: "controlled_substance" }),
+      ),
     ).rejects.toMatchObject({ statusCode: 422 });
     // Mint (witness = the second membership) then record — the token's scope must match the resolved
     // patient/order/administering-clinician.
@@ -217,18 +252,25 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       medicationOrderId: MED_ORDER,
       administeringClinicianMembershipId: memberOf[ORG_A],
     });
-    const view = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs({
-      scheduledDoseId: sched,
-      medClass: "controlled_substance",
-      witnessToken: token,
-    }));
+    const view = await svc.recordAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      recordArgs({
+        scheduledDoseId: sched,
+        medClass: "controlled_substance",
+        witnessToken: token,
+      }),
+    );
     expect(view.status).toBe("committed");
     expect(view.isControlledSubstance).toBe(true);
     expect(view.witnessMembershipId).toBe(member2Of[ORG_A]);
     const events = await eventsFor(view.id);
     expect(events).toContain("m13.administration.recorded");
     expect(events).toContain("m13.administration.controlled_witnessed");
-    const { rows } = await admin.query("SELECT count(*)::int AS n FROM administration_witness WHERE administration_record_id=$1", [view.id]);
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM administration_witness WHERE administration_record_id=$1",
+      [view.id],
+    );
     expect(rows[0].n).toBe(1);
   });
 
@@ -251,16 +293,31 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     expect(await eventsFor(cg.id)).toContain("m13.caregiver_administration.acknowledged");
 
     const cg2 = await svc.recordCaregiverAttested(ORG_A, {
-      patientId: PATIENT, medicationOrderId: MED_ORDER, administeredAt: new Date().toISOString(),
-      caregiverSessionId: "88888888-8888-4888-8888-888888888888", route: "oral", doseAmount: 5, doseUnit: "mg",
+      patientId: PATIENT,
+      medicationOrderId: MED_ORDER,
+      administeredAt: new Date().toISOString(),
+      caregiverSessionId: "88888888-8888-4888-8888-888888888888",
+      route: "oral",
+      doseAmount: 5,
+      doseUnit: "mg",
     });
-    await svc.disputeCaregiver(ORG_A, memberOf[ORG_A], cg2.id, "dose does not match the active order");
+    await svc.disputeCaregiver(
+      ORG_A,
+      memberOf[ORG_A],
+      cg2.id,
+      "dose does not match the active order",
+    );
     expect(await eventsFor(cg2.id)).toContain("m13.caregiver_administration.disputed");
   });
 
   it("correctAdministration supersedes the original and mints a committed replacement", async () => {
     const orig = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
-    const corrected = await svc.correctAdministration(ORG_A, memberOf[ORG_A], orig.id, "wrong route recorded");
+    const corrected = await svc.correctAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      orig.id,
+      "wrong route recorded",
+    );
     expect(corrected.status).toBe("committed");
     expect(corrected.id).not.toBe(orig.id);
     expect(await admStatus(orig.id)).toBe("superseded");
@@ -269,12 +326,20 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
 
   it("voidAdministration voids the row; recordRefusal logs a declined dose", async () => {
     const rec = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
-    const voided = await svc.voidAdministration(ORG_A, memberOf[ORG_A], rec.id, "recorded in error");
+    const voided = await svc.voidAdministration(
+      ORG_A,
+      memberOf[ORG_A],
+      rec.id,
+      "recorded in error",
+    );
     expect(voided.status).toBe("voided");
     expect(await eventsFor(rec.id)).toContain("m13.administration.voided");
 
     const refusal = await svc.recordRefusal(ORG_A, memberOf[ORG_A], {
-      patientId: PATIENT, medicationOrderId: MED_ORDER, medClass: "standard", refusedAt: new Date().toISOString(),
+      patientId: PATIENT,
+      medicationOrderId: MED_ORDER,
+      medClass: "standard",
+      refusedAt: new Date().toISOString(),
     });
     expect(refusal.status).toBe("committed");
     expect(await eventsFor(refusal.id)).toContain("m13.administration.refused");
@@ -297,7 +362,9 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   it("reconciliation: record → update decisions, add a caregiver line, finalize with the handshake emits", async () => {
     const ws = await seedWorksheet(ORG_A, 1);
     const afterCarry = await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
-      lineKind: "m12_active", sourceId: MED_ORDER, decision: "carry_forward",
+      lineKind: "m12_active",
+      sourceId: MED_ORDER,
+      decision: "carry_forward",
     });
     expect(afterCarry.status).toBe("in_progress");
     expect(afterCarry.decisions.length).toBe(1);
@@ -314,8 +381,15 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
 
   it("finalizeReconciliation with no decisions → RECONCILIATION_INCOMPLETE (422); voidWorksheet voids", async () => {
     const ws = await seedWorksheet(ORG_A, 2);
-    await expect(svc.finalizeReconciliation(ORG_A, memberOf[ORG_A], ws)).rejects.toMatchObject({ statusCode: 422 });
-    const voided = await svc.voidWorksheet(ORG_A, memberOf[ORG_A], ws, "re-triggered by a transfer correction");
+    await expect(svc.finalizeReconciliation(ORG_A, memberOf[ORG_A], ws)).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    const voided = await svc.voidWorksheet(
+      ORG_A,
+      memberOf[ORG_A],
+      ws,
+      "re-triggered by a transfer correction",
+    );
     expect(voided.status).toBe("voided");
     expect(await eventsFor(ws)).toContain("m13.reconciliation.voided");
   });
@@ -340,6 +414,8 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
   it("RLS: org B cannot void or read org A's administration (404 under the wardenx_app policy)", async () => {
     const rec = await svc.recordAdministration(ORG_A, memberOf[ORG_A], recordArgs());
     await expect(svc.getAdministration(ORG_B, rec.id)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.voidAdministration(ORG_B, memberOf[ORG_B], rec.id, "x")).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.voidAdministration(ORG_B, memberOf[ORG_B], rec.id, "x")).rejects.toMatchObject(
+      { statusCode: 404 },
+    );
   });
 });

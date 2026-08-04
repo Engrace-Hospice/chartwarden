@@ -209,7 +209,11 @@ describe("M20-T06 §4.7 — the six ABAC predicates M20 owns", () => {
   it("the deny-stub resolver denies every predicate (fail-closed, never open)", async () => {
     const built = buildFieldSafetyAbacPredicates({
       resolver: denyStubSafetyAbacResolver,
-      ports: { async onCallForProviderEntity() { return null; } },
+      ports: {
+        async onCallForProviderEntity() {
+          return null;
+        },
+      },
     });
     const context = {
       organizationId: "org-1",
@@ -244,7 +248,11 @@ describe("M20-T06 §4.7 — the six ABAC predicates M20 owns", () => {
   });
 
   it("`supervises_clinician` reads BOTH arms of a vacation-forwarding row", () => {
-    const clinician = { membershipId: "rn-1" as never, locationIds: ["loc-1"], providerEntityId: "pe-1" as never };
+    const clinician = {
+      membershipId: "rn-1" as never,
+      locationIds: ["loc-1"],
+      providerEntityId: "pe-1" as never,
+    };
     const forwarding = {
       supervisorMembershipId: "sup-1" as never,
       clinicianMembershipId: "rn-1" as never,
@@ -455,7 +463,13 @@ describe("M20-T06 §2.4 — the effects runner cannot lose an effect", () => {
     await expect(
       runEffects(
         {},
-        [{ kind: "set_timestamp", field: "posted_at" as never, at: "2026-07-31T10:00:00.000Z" as never }],
+        [
+          {
+            kind: "set_timestamp",
+            field: "posted_at" as never,
+            at: "2026-07-31T10:00:00.000Z" as never,
+          },
+        ],
         baseCtx,
       ),
     ).rejects.toBeInstanceOf(UnknownSafetyEffectError);
@@ -487,17 +501,33 @@ describe("M20-T06 §2.4 — the effects runner cannot lose an effect", () => {
 
   it("writes a history row ONLY for an effect list that declares one (the terminus loop declares none)", async () => {
     const rows: unknown[] = [];
-    const ctx = { ...baseCtx, stateHistory: { async insert(_tx: unknown, row: unknown) { rows.push(row); } } };
+    const ctx = {
+      ...baseCtx,
+      stateHistory: {
+        async insert(_tx: unknown, row: unknown) {
+          rows.push(row);
+        },
+      },
+    };
     // a real transition
     await runEffects(
       {},
-      [{ kind: "sos_state_history", from: "acknowledging", to: "escalation_tier_1", systemActor: true }],
+      [
+        {
+          kind: "sos_state_history",
+          from: "acknowledging",
+          to: "escalation_tier_1",
+          systemActor: true,
+        },
+      ],
       ctx,
     );
     // the terminus re-page: audit only, no history (m20_ssash_no_self would refuse from === to)
     await runEffects({}, [{ kind: "audit" }, { kind: "page_wardenx_ops" }], ctx);
     expect(rows).toHaveLength(1);
-    expect((rows[0] as { transitionedByMembershipId: string | null }).transitionedByMembershipId).toBeNull();
+    expect(
+      (rows[0] as { transitionedByMembershipId: string | null }).transitionedByMembershipId,
+    ).toBeNull();
   });
 
   it("a watchdog transition carries NO acting membership; a human one does", async () => {
@@ -512,7 +542,14 @@ describe("M20-T06 §2.4 — the effects runner cannot lose an effect", () => {
     };
     await runEffects(
       {},
-      [{ kind: "sos_state_history", from: "acknowledging", to: "acknowledged", systemActor: false }],
+      [
+        {
+          kind: "sos_state_history",
+          from: "acknowledging",
+          to: "acknowledged",
+          systemActor: false,
+        },
+      ],
       ctx,
     );
     expect(rows[0]?.transitionedByMembershipId).toBe("sup-1");
@@ -624,13 +661,22 @@ describe("M20-T06 §4.10 — the outbox catalog contribution", () => {
   });
 
   it("the two composite-keyed events declare their discriminators as REQUIRED payload fields", () => {
-    const escalated = M20_OUTBOX_EVENTS.find((e) => e.eventName === "m20.safety.check_in_escalated");
-    const terminus = M20_OUTBOX_EVENTS.find((e) => e.eventName === "m20.safety.sos_terminus_reached");
+    const escalated = M20_OUTBOX_EVENTS.find(
+      (e) => e.eventName === "m20.safety.check_in_escalated",
+    );
+    const terminus = M20_OUTBOX_EVENTS.find(
+      (e) => e.eventName === "m20.safety.sos_terminus_reached",
+    );
     const props = (entry: typeof escalated) =>
-      Object.keys((entry?.payloadSchema as { properties?: Record<string, unknown> })?.properties ?? {});
+      Object.keys(
+        (entry?.payloadSchema as { properties?: Record<string, unknown> })?.properties ?? {},
+      );
     expect(props(escalated)).toContain("tier");
     expect(props(terminus)).toContain("loopIteration");
-    expect(M20_EVENT_IDEMPOTENCY_KEYS["m20.safety.check_in_escalated"]).toEqual(["scheduleId", "tier"]);
+    expect(M20_EVENT_IDEMPOTENCY_KEYS["m20.safety.check_in_escalated"]).toEqual([
+      "scheduleId",
+      "tier",
+    ]);
     expect(M20_EVENT_IDEMPOTENCY_KEYS["m20.safety.sos_terminus_reached"]).toEqual([
       "sosAlertId",
       "loopIteration",
@@ -694,7 +740,9 @@ describe("M20-T06 §4.2 — the request schemas", () => {
   it("the SOS press accepts a coordinate-free body (M20-F16 — §4.2's `required` loses)", () => {
     expect(() => parse(RaiseSosBody, {})).not.toThrow();
     expect(() =>
-      parse(RaiseSosBody, { postedCoordinates: { latitude: 45.5, longitude: -122.6, accuracyM: 8 } }),
+      parse(RaiseSosBody, {
+        postedCoordinates: { latitude: 45.5, longitude: -122.6, accuracyM: 8 },
+      }),
     ).not.toThrow();
   });
 
@@ -745,9 +793,7 @@ describe("M20-T06 §4.2 — the request schemas", () => {
   });
 
   it("the check-in body caps the concern note at §3.3's ≥20 floor", () => {
-    expect(() =>
-      parse(RecordCheckInBody, { kind: "ad_hoc", status: "ok" }),
-    ).not.toThrow();
+    expect(() => parse(RecordCheckInBody, { kind: "ad_hoc", status: "ok" })).not.toThrow();
     expect(() =>
       parse(RecordCheckInBody, {
         kind: "ad_hoc",

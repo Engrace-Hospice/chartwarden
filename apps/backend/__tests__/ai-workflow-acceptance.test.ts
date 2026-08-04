@@ -40,17 +40,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type ModelBackend,
   aiTokenBudgetFor,
   createModelBackendRegistry,
-  type ModelBackend,
 } from "@wardenx/ai-platform";
 import { MODULES } from "../../../architecture/module-manifest";
 
 import {
   M32_ALERT_TYPES,
   M32_OUTBOX_EVENTS,
-  activateAiPromptTemplate,
   activateAiKillSwitch,
+  activateAiPromptTemplate,
   buildAiPlatformAbacPredicates,
   createAiBootValidators,
   createAiInvocationPipeline,
@@ -245,7 +245,10 @@ function platform(options: PlatformOptions = {}) {
   const invocation = createInMemoryAiInvocationStores({
     backends: [
       CLOUD_BACKEND,
-      { ...LOCAL_BACKEND, lastHealthStatus: options.localHealthy === false ? "unhealthy" : "healthy" },
+      {
+        ...LOCAL_BACKEND,
+        lastHealthStatus: options.localHealthy === false ? "unhealthy" : "healthy",
+      },
     ],
     accruals:
       options.seededSpendTokens === undefined
@@ -285,17 +288,27 @@ function platform(options: PlatformOptions = {}) {
     modelVersionPin: LOCAL_BACKEND.modelVersionPin,
   }));
 
-  const backend = (key: string, kind: "cloud" | "local", complete: ModelBackend["complete"]): ModelBackend => ({
+  const backend = (
+    key: string,
+    kind: "cloud" | "local",
+    complete: ModelBackend["complete"],
+  ): ModelBackend => ({
     backendKey: key,
     kind,
     capabilities: () => ({
       backendKey: key,
       kind,
-      modelVersionPin: key === CLOUD_KEY ? CLOUD_BACKEND.modelVersionPin : LOCAL_BACKEND.modelVersionPin,
+      modelVersionPin:
+        key === CLOUD_KEY ? CLOUD_BACKEND.modelVersionPin : LOCAL_BACKEND.modelVersionPin,
       supportedModalities: ["text"],
       contextWindowTokens: 200_000,
       maxOutputTokens: 4_096,
-      supportedFeatures: { structured_output: true, tool_use: true, vision: false, streaming: true },
+      supportedFeatures: {
+        structured_output: true,
+        tool_use: true,
+        vision: false,
+        streaming: true,
+      },
     }),
     health: async () => "healthy",
     complete,
@@ -434,7 +447,9 @@ describe("W1 — HearthNote Layer 2 narrative enhancement, happy path (§7.W1)",
     });
     // The three payloads reach the row ENCRYPTED — the plaintext prompt is nowhere in it.
     expect(row.promptPayloadCipher.toString("utf8")).toContain("enc:");
-    expect(row.promptPayloadCipher.toString("utf8")).not.toBe("pt tolerated visit well, pain better");
+    expect(row.promptPayloadCipher.toString("utf8")).not.toBe(
+      "pt tolerated visit well, pain better",
+    );
 
     // W1.7 — one accrual, carrying the same two counts §3.5 freezes on the invocation.
     expect(p.invocation.accrualRows).toHaveLength(1);
@@ -548,7 +563,9 @@ describe("W2 — hard token cap reached, fallback engagement (§7.W2)", () => {
     // W2.6 — no `completed` event. §4.11 spells the refusal as `m32.capability.invoked` carrying the
     // gate-blocked status rather than inventing a second event name (the enum has no `gate_blocked`).
     expect(OUTBOX_NAMES).toContain("m32.capability.invoked");
-    expect(OUTBOX_NAMES.filter((n) => n.endsWith(".completed"))).toEqual(["m32.evaluation.completed"]);
+    expect(OUTBOX_NAMES.filter((n) => n.endsWith(".completed"))).toEqual([
+      "m32.evaluation.completed",
+    ]);
   });
 });
 
@@ -795,7 +812,11 @@ describe("W5 — hallucination report → triage → capability deprecation (§7
     // survives — correct for R7, and a retry loop for a worker if it were not handled here.
     const executed = await executeAiHallucinationFollowUp(
       p.safetyDeps,
-      { action: "deprecate_capability", killSwitchReason: "sev2_hallucination", demotesCapability: true },
+      {
+        action: "deprecate_capability",
+        killSwitchReason: "sev2_hallucination",
+        demotesCapability: true,
+      },
       CAP_ID,
     );
     expect(executed.killSwitchAlreadyActive).toBe(true);
@@ -870,7 +891,9 @@ describe("W6 — evaluation run → calibration promotion → prompt activation 
     });
     expect(second.isCurrent).toBe(true);
     // Exactly ONE current row per (capability, backend) — the partial unique index, held by the store.
-    const current = p.governance.calibrations.filter((c) => c.isCurrent && c.backendKey === CLOUD_KEY);
+    const current = p.governance.calibrations.filter(
+      (c) => c.isCurrent && c.backendKey === CLOUD_KEY,
+    );
     expect(current).toHaveLength(1);
     expect(current[0]!.id).toBe(second.id);
     expect(OUTBOX_NAMES).toContain("m32.capability.calibrated");
@@ -878,7 +901,14 @@ describe("W6 — evaluation run → calibration promotion → prompt activation 
     // W6.8 — R30 is INSERT-AND-DEPRECATE, not a status flip: the incumbent walks active → deprecated
     // and a NEW row arrives active.
     const activated = await activateAiPromptTemplate(
-      { store: p.prompts, artifacts: { read: async (ref) => (ref === v2Ref ? { body: "v2 body", contentHash: HASH_V2 } : null) }, registry: p.promptRegistry, now: () => T0 },
+      {
+        store: p.prompts,
+        artifacts: {
+          read: async (ref) => (ref === v2Ref ? { body: "v2 body", contentHash: HASH_V2 } : null),
+        },
+        registry: p.promptRegistry,
+        now: () => T0,
+      },
       {
         capabilityKey: "hearthnote_layer2",
         templateKey: "hearthnote_enhancement_v2",
@@ -912,11 +942,12 @@ describe("W6 — evaluation run → calibration promotion → prompt activation 
       prompts: p.prompts,
       promptRegistry: p.promptRegistry,
       artifacts: {
-        read: async (ref) =>
-          ref === v2Ref ? { body: "v2 body", contentHash: HASH_V2 } : null,
+        read: async (ref) => (ref === v2Ref ? { body: "v2 body", contentHash: HASH_V2 } : null),
       },
     });
-    await expect(validators.validateAllActivePromptsResolveToGitArtifacts()).resolves.toBeUndefined();
+    await expect(
+      validators.validateAllActivePromptsResolveToGitArtifacts(),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -1058,7 +1089,11 @@ describe("W9 — a Phase-1 deny-stub returns `unavailable` (§7.W9)", () => {
         locationId: null,
       }),
     };
-    const extractor = createDocLensExtractor({ pipeline: p.pipeline, actors, now: () => new Date(T0) });
+    const extractor = createDocLensExtractor({
+      pipeline: p.pipeline,
+      actors,
+      now: () => new Date(T0),
+    });
 
     const result = await extractor.extract({
       organizationId: ORG,
@@ -1087,7 +1122,9 @@ describe("W9 — a Phase-1 deny-stub returns `unavailable` (§7.W9)", () => {
 
     // W9.5 — no alert. §4.9 declares no alert type for an expected deny-stub refusal, and inventing one
     // would page an operator every time a Phase-1 consumer asks a Phase-2 question.
-    expect(M32_ALERT_TYPES.filter((t) => t.includes("unavailable") || t.includes("deny"))).toEqual([]);
+    expect(M32_ALERT_TYPES.filter((t) => t.includes("unavailable") || t.includes("deny"))).toEqual(
+      [],
+    );
   });
 
   it("answers an UNKNOWN capability key as retired, so the registry cannot be enumerated by probing", async () => {

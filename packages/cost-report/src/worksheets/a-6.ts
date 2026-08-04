@@ -6,7 +6,7 @@
 // allowable cost); no PHI (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** A single adjustment entry against a cost center's expenses. */
 const AdjustmentEntry = Type.Object({

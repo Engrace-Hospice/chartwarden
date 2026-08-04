@@ -87,8 +87,7 @@ export function createScaleSeriesProvider(store: AssessmentReaderStore): ScaleSe
       }
       const priorScore = points[0]!.score;
       const latestScore = points[points.length - 1]!.score;
-      const delta =
-        latestScore !== null && priorScore !== null ? latestScore - priorScore : null;
+      const delta = latestScore !== null && priorScore !== null ? latestScore - priorScore : null;
       return { scaleType, patientId, window, latestScore, priorScore, delta };
     },
   };

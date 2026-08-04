@@ -39,7 +39,11 @@ export type ValidationRunOutcome =
   | "ready_for_submission";
 export type ValidationResultOutcome = "pass" | "fail" | "warn" | "info";
 export type ValidationSeverity = "error" | "warn" | "info";
-export type OverrideRole = "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+export type OverrideRole =
+  | "billing_manager"
+  | "compliance_officer"
+  | "medical_director"
+  | "org_admin";
 export type ClaimSubmissionKind = "claim_837i" | "noe" | "notr";
 export type ClaimSubmissionOutcome =
   | "queued"
@@ -383,7 +387,10 @@ export interface M23ReadRouteService {
     cursor: string | undefined,
     limit: number | undefined,
   ): Promise<CursorPage<ClaimStateHistoryView>>;
-  listClaimSubmissions(actor: M23ReadActor, claimId: string): Promise<readonly ClaimSubmissionView[]>;
+  listClaimSubmissions(
+    actor: M23ReadActor,
+    claimId: string,
+  ): Promise<readonly ClaimSubmissionView[]>;
   listClaimAcknowledgments(
     actor: M23ReadActor,
     claimId: string,

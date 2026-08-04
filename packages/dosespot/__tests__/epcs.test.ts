@@ -8,25 +8,25 @@ import {
   // cert gate + flag
   DEFAULT_DOSESPOT_EPCS_FLAGS,
   type DoseSpotEpcsFlags,
-  evaluateEpcsCertGate,
-  assertEpcsCertified,
-  assertEpcsFeatureEnabled,
-  // ial2
-  IAL2_EXPIRY_WARN_DAYS,
-  IAL2_EXPIRY_CRITICAL_DAYS,
-  isIal2Verified,
-  assertIal2Verified,
-  computeDaysUntilIal2Expiry,
-  classifyIal2ExpiryStage,
-  planIal2ExpiryAlert,
-  // dea
-  isDeaScheduleAuthorized,
-  assertDeaScheduleAuthorized,
   // signing session
   EPCS_2FA_WINDOW_SECONDS,
   type EpcsSigningGateFacts,
+  IAL2_EXPIRY_CRITICAL_DAYS,
+  // ial2
+  IAL2_EXPIRY_WARN_DAYS,
+  assertDeaScheduleAuthorized,
+  assertEpcsCertified,
+  assertEpcsFeatureEnabled,
+  assertIal2Verified,
+  classifyIal2ExpiryStage,
+  computeDaysUntilIal2Expiry,
+  evaluateEpcsCertGate,
   evaluateEpcsSigningGate,
+  // dea
+  isDeaScheduleAuthorized,
+  isIal2Verified,
   planEpcsSigningSession,
+  planIal2ExpiryAlert,
   validateSecondFactor,
 } from "../src/epcs";
 
@@ -117,8 +117,12 @@ describe("§1311.115 IAL2 tracker", () => {
   });
 
   it("computes whole days until expiry (floor; negative once past)", () => {
-    expect(computeDaysUntilIal2Expiry("2026-07-22T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe(30);
-    expect(computeDaysUntilIal2Expiry("2026-06-21T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe(-1);
+    expect(computeDaysUntilIal2Expiry("2026-07-22T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe(
+      30,
+    );
+    expect(computeDaysUntilIal2Expiry("2026-06-21T00:00:00.000Z", "2026-06-22T00:00:00.000Z")).toBe(
+      -1,
+    );
   });
 
   it("classifies the expiry stage at the 30/7 day boundaries", () => {
@@ -168,7 +172,11 @@ describe("§1311.116 evaluateEpcsSigningGate (ladder ordering)", () => {
 
   it("cert gate is checked before IAL2 and DEA", () => {
     expect(
-      evaluateEpcsSigningGate(ON, { ...passingFacts, certStatus: "not_certified", ial2Status: "expired" }),
+      evaluateEpcsSigningGate(ON, {
+        ...passingFacts,
+        certStatus: "not_certified",
+        ial2Status: "expired",
+      }),
     ).toEqual({ ok: false, code: "EPCS_NOT_CERTIFIED" });
   });
 
@@ -262,15 +270,28 @@ describe("§1311.116 validateSecondFactor", () => {
   });
 
   it("records failed_validation for a present-but-invalid proof inside the window", () => {
-    const r = validateSecondFactor({ ...base, nowIso: "2026-06-22T12:00:30.000Z", proofValid: false });
+    const r = validateSecondFactor({
+      ...base,
+      nowIso: "2026-06-22T12:00:30.000Z",
+      proofValid: false,
+    });
     expect(r.outcome).toBe("failed_validation");
-    expect(r.effects).toContainEqual({ kind: "update_signing_attempt", outcome: "failed_validation" });
+    expect(r.effects).toContainEqual({
+      kind: "update_signing_attempt",
+      outcome: "failed_validation",
+    });
   });
 
   it("throws EPCS_SIGNING_ATTEMPT_NOT_PENDING when the attempt is already resolved", () => {
     expect(() =>
-      validateSecondFactor({ ...base, currentOutcome: "succeeded", nowIso: "2026-06-22T12:00:30.000Z" }),
-    ).toThrowError(expect.objectContaining({ code: "EPCS_SIGNING_ATTEMPT_NOT_PENDING", statusCode: 409 }));
+      validateSecondFactor({
+        ...base,
+        currentOutcome: "succeeded",
+        nowIso: "2026-06-22T12:00:30.000Z",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "EPCS_SIGNING_ATTEMPT_NOT_PENDING", statusCode: 409 }),
+    );
   });
 
   it("throws EPCS_2FA_NONCE_MISMATCH when the returned nonce does not match", () => {

@@ -7,7 +7,7 @@
 // (rule→scale map + first-emission severity) the detector and the §4.9 alert builder share.
 
 import { CRITICAL_RULES, isCriticalRule } from "@wardenx/types";
-import type { ScaleType, SignificantChangeRuleId, AssessmentAlertSeverity } from "@wardenx/types";
+import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@wardenx/types";
 
 export { CRITICAL_RULES, isCriticalRule };
 export type { SignificantChangeRuleId, AssessmentAlertSeverity };

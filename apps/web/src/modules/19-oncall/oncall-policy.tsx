@@ -134,7 +134,12 @@ export function OnCallPolicyScreen(): JSX.Element {
   const overrides = parseJsonObject(overridesText);
   const contactValid = emergencyContact === "" || E164_RE.test(emergencyContact);
   const canSave =
-    policy !== null && tiers !== undefined && sla !== undefined && overrides !== undefined && contactValid && !busy;
+    policy !== null &&
+    tiers !== undefined &&
+    sla !== undefined &&
+    overrides !== undefined &&
+    contactValid &&
+    !busy;
 
   async function save(): Promise<void> {
     if (!policy || !tiers || !sla || !overrides) return;
@@ -194,11 +199,11 @@ export function OnCallPolicyScreen(): JSX.Element {
       {policy ? (
         <>
           <Notice tone="warning">
-            Saving this policy needs a recent step-up. The four platform-floor mandatory escalations —
-            suicidal ideation, code-blue equivalent, suspected abuse and the emergency drug request — are
-            NOT configured here and cannot be disabled from anywhere: they live on system-locked protocol
-            questions the database itself refuses to let a tenant write. You may raise a tier; you cannot
-            lower one below the floor.
+            Saving this policy needs a recent step-up. The four platform-floor mandatory escalations
+            — suicidal ideation, code-blue equivalent, suspected abuse and the emergency drug
+            request — are NOT configured here and cannot be disabled from anywhere: they live on
+            system-locked protocol questions the database itself refuses to let a tenant write. You
+            may raise a tier; you cannot lower one below the floor.
           </Notice>
 
           <Card title="Current">
@@ -206,7 +211,12 @@ export function OnCallPolicyScreen(): JSX.Element {
               <Field label="Provider entity" value={policy.providerEntityId} mono />
               <Field
                 label="Deployment model"
-                value={<StatusPill label={humanize(policy.model)} tone={policy.model === "direct" ? "success" : "progress"} />}
+                value={
+                  <StatusPill
+                    label={humanize(policy.model)}
+                    tone={policy.model === "direct" ? "success" : "progress"}
+                  />
+                }
               />
               <Field
                 label="Bound vendor"
@@ -225,10 +235,10 @@ export function OnCallPolicyScreen(): JSX.Element {
               onChange={setModel}
             />
             <span style={mutedStyle}>
-              Only the direct model ships live. Selecting hybrid or centralized on a deployment where the
-              feature flag is off is REFUSED rather than accepted-and-ignored — you must never be able to
-              believe a vendor is answering your nights when none is. The vendor binding itself is
-              configured on its own screen and requires a BAA on file.
+              Only the direct model ships live. Selecting hybrid or centralized on a deployment
+              where the feature flag is off is REFUSED rather than accepted-and-ignored — you must
+              never be able to believe a vendor is answering your nights when none is. The vendor
+              binding itself is configured on its own screen and requires a BAA on file.
             </span>
           </Card>
 
@@ -241,7 +251,10 @@ export function OnCallPolicyScreen(): JSX.Element {
               hint="Edited as JSON because no per-key schema is published for this column — a structured form here would be this screen's guess at a shape the server does not validate, and the first ladder with an unfamiliar key would lose it on save."
             />
             {tiers === undefined ? (
-              <p style={alertStyle}>That is not a JSON object. Fix it before saving — the server expects an object, and an array or a bare value would be refused.</p>
+              <p style={alertStyle}>
+                That is not a JSON object. Fix it before saving — the server expects an object, and
+                an array or a bare value would be refused.
+              </p>
             ) : null}
             <TextAreaField
               label="Callback SLA per severity (JSON object)"
@@ -272,7 +285,9 @@ export function OnCallPolicyScreen(): JSX.Element {
               hint="Your OWN published number. When alert delivery is degraded, this is what the status surface shows a caller — so a failed page never leaves an agency with nothing to say."
             />
             {!contactValid ? (
-              <p style={alertStyle}>A contact number must be E.164 (a leading + and 2–15 digits).</p>
+              <p style={alertStyle}>
+                A contact number must be E.164 (a leading + and 2–15 digits).
+              </p>
             ) : null}
           </Card>
 
@@ -289,15 +304,21 @@ export function OnCallPolicyScreen(): JSX.Element {
             />
             <span style={mutedStyle}>
               Both are advisory: the clinician always selects the protocol, the suggestion is never
-              auto-applied at any confidence, and the risk band alters no disposition option and never
-              reaches the family portal. Turning them on does not make them appear if the capability is
-              deny-stubbed — in that case the panel renders the block visibly disabled, which is a different
-              fact from "the tenant opted out" and is recorded as one.
+              auto-applied at any confidence, and the risk band alters no disposition option and
+              never reaches the family portal. Turning them on does not make them appear if the
+              capability is deny-stubbed — in that case the panel renders the block visibly
+              disabled, which is a different fact from "the tenant opted out" and is recorded as
+              one.
             </span>
           </Card>
 
           {actionError ? <p style={alertStyle}>{actionError}</p> : null}
-          {saved ? <Notice tone="success" live>Policy saved. The new ladder is pinned onto shifts that activate from now on — shifts already active keep the snapshot they opened with.</Notice> : null}
+          {saved ? (
+            <Notice tone="success" live>
+              Policy saved. The new ladder is pinned onto shifts that activate from now on — shifts
+              already active keep the snapshot they opened with.
+            </Notice>
+          ) : null}
 
           <div>
             <button

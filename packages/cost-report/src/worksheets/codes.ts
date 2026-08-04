@@ -13,12 +13,9 @@
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No
 // PHI — worksheet data is aggregate financial/statistical only (D18).
-import { type TSchema } from "@sinclair/typebox";
+import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { WORKSHEET_CODES, type WorksheetCode } from "../contracts";
-import { WorksheetS } from "./s";
-import { WorksheetS1 } from "./s-1";
-import { WorksheetS2 } from "./s-2";
 import { WorksheetA } from "./a";
 import { WorksheetA1 } from "./a-1";
 import { WorksheetA2 } from "./a-2";
@@ -33,6 +30,9 @@ import { WorksheetC } from "./c";
 import { WorksheetF } from "./f";
 import { WorksheetF1 } from "./f-1";
 import { WorksheetF2 } from "./f-2";
+import { WorksheetS } from "./s";
+import { WorksheetS1 } from "./s-1";
+import { WorksheetS2 } from "./s-2";
 
 /**
  * The worksheet-code → schema registry — the single source of truth the resolver delegates to. Keyed by

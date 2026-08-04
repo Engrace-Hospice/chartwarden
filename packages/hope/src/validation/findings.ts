@@ -37,7 +37,8 @@ export const HOPE_VALIDATION_RULES = {
 } as const;
 
 /** A CMS HOPE pre-submission rule id (`hope_validation_finding.rule_id`). */
-export type HopeValidationRuleId = (typeof HOPE_VALIDATION_RULES)[keyof typeof HOPE_VALIDATION_RULES];
+export type HopeValidationRuleId =
+  (typeof HOPE_VALIDATION_RULES)[keyof typeof HOPE_VALIDATION_RULES];
 
 /**
  * One pre-submission validation result — the pure shape the service persists as a `hope_validation_finding`

@@ -1,3 +1,4 @@
+import { buildCapabilityStatement, isSupportedScope } from "@wardenx/fhir";
 // apps/backend/src/modules/28-fhir/routes/fhir-r4.routes.ts — §4.1 R1-R22: the FHIR-spec HTTP surface.
 //
 // These routes authenticate with a SMART bearer token (NOT a WardenX session), so they do NOT compose the
@@ -24,10 +25,8 @@ import {
   FHIR_SESSION_TTL_MINUTES,
   type FhirReadDisclosureEnvelope,
 } from "@wardenx/types";
-import { buildCapabilityStatement, isSupportedScope } from "@wardenx/fhir";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
-import { operationOutcome, sendOutcome, FHIR_JSON_CONTENT_TYPE } from "./operation-outcome";
 import {
   ExportQuery,
   ResourceReadParams,
@@ -37,6 +36,7 @@ import {
   parse,
   parseQuery,
 } from "./m28-typebox";
+import { FHIR_JSON_CONTENT_TYPE, operationOutcome, sendOutcome } from "./operation-outcome";
 import type { FhirBearerContext, FhirGatewayStore } from "./store";
 
 /** A disclosure-audit sink for served FHIR reads (D15 / §164.528). Injected; defaults to a no-op. */
@@ -99,7 +99,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       await reply
         .code(401)
         .header("content-type", FHIR_JSON_CONTENT_TYPE)
-        .send(operationOutcome("error", "security", "the bearer token is invalid or expired", "FHIR_BAD_BEARER"));
+        .send(
+          operationOutcome(
+            "error",
+            "security",
+            "the bearer token is invalid or expired",
+            "FHIR_BAD_BEARER",
+          ),
+        );
       return null;
     }
     return ctx;
@@ -122,8 +129,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
         searchParams: type === "Patient" ? ["identifier", "name"] : ["patient"],
       })),
       operations: [
-        { name: "export", definition: "http://hl7.org/fhir/uv/bulkdata/OperationDefinition/export" },
-        { name: "everything", definition: "http://hl7.org/fhir/OperationDefinition/Patient-everything" },
+        {
+          name: "export",
+          definition: "http://hl7.org/fhir/uv/bulkdata/OperationDefinition/export",
+        },
+        {
+          name: "everything",
+          definition: "http://hl7.org/fhir/OperationDefinition/Patient-everything",
+        },
       ],
     });
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
@@ -175,7 +188,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
     if (!hasReadScope(ctx, "Patient")) {
-      return sendOutcome(reply, 403, "error", "forbidden", "scope system/Patient.read is required", "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        "scope system/Patient.read is required",
+        "FHIR_SCOPE_DENIED",
+      );
     }
     const patientId = (request.params as { id: string }).id;
     await auditRead({
@@ -202,11 +222,21 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     if (ctx === null) return reply;
     const query = parseQuery(ExportQuery, request.query);
     const resourceTypes = query._type
-      ? query._type.split(",").map((s) => s.trim()).filter(Boolean)
+      ? query._type
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [...ADVERTISED_RESOURCES];
     const denied = resourceTypes.find((t) => !hasReadScope(ctx, t));
     if (denied !== undefined) {
-      sendOutcome(reply, 403, "error", "forbidden", `scope system/${denied}.read is required`, "FHIR_SCOPE_DENIED");
+      sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        `scope system/${denied}.read is required`,
+        "FHIR_SCOPE_DENIED",
+      );
       return reply;
     }
     const job = await store.createJob(ctx.organizationId, {
@@ -221,11 +251,18 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
       .code(202)
       .header("content-location", `/fhir/r4/$export-poll-status/${job.id}`)
       .header("content-type", FHIR_JSON_CONTENT_TYPE);
-    return reply.send({ resourceType: "OperationOutcome", issue: [{ severity: "information", code: "informational", diagnostics: "bulk export accepted" }] });
+    return reply.send({
+      resourceType: "OperationOutcome",
+      issue: [
+        { severity: "information", code: "informational", diagnostics: "bulk export accepted" },
+      ],
+    });
   };
 
   app.post("/fhir/r4/$export", async (request, reply) => handleExport(request, reply, "system"));
-  app.post("/fhir/r4/Patient/$export", async (request, reply) => handleExport(request, reply, "patient"));
+  app.post("/fhir/r4/Patient/$export", async (request, reply) =>
+    handleExport(request, reply, "patient"),
+  );
   app.post("/fhir/r4/Group/:id/$export", async (request, reply) =>
     handleExport(request, reply, "group", (request.params as { id: string }).id),
   );
@@ -237,14 +274,33 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const jobId = (request.params as { jobId: string }).jobId;
     const job = await store.getJob(ctx.organizationId, jobId);
     if (job === null) {
-      return sendOutcome(reply, 404, "error", "not-found", "bulk export job not found", "FHIR_EXPORT_JOB_NOT_FOUND");
+      return sendOutcome(
+        reply,
+        404,
+        "error",
+        "not-found",
+        "bulk export job not found",
+        "FHIR_EXPORT_JOB_NOT_FOUND",
+      );
     }
     if (job.status === "expired") {
-      return sendOutcome(reply, 410, "error", "processing", "the bulk export output has expired", "FHIR_EXPORT_EXPIRED");
+      return sendOutcome(
+        reply,
+        410,
+        "error",
+        "processing",
+        "the bulk export output has expired",
+        "FHIR_EXPORT_EXPIRED",
+      );
     }
     if (job.status === "completed") {
       reply.code(200).header("content-type", FHIR_JSON_CONTENT_TYPE);
-      return { transactionTime: job.completedAt, request: `/fhir/r4/$export`, requiresAccessToken: true, output: [] };
+      return {
+        transactionTime: job.completedAt,
+        request: `/fhir/r4/$export`,
+        requiresAccessToken: true,
+        output: [],
+      };
     }
     reply.code(202).header("x-progress", job.status);
     return { status: job.status };
@@ -257,7 +313,12 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const jobId = (request.params as { jobId: string }).jobId;
     await store.cancelJob(ctx.organizationId, jobId, null);
     reply.code(202).header("content-type", FHIR_JSON_CONTENT_TYPE);
-    return { resourceType: "OperationOutcome", issue: [{ severity: "information", code: "informational", diagnostics: "bulk export cancelled" }] };
+    return {
+      resourceType: "OperationOutcome",
+      issue: [
+        { severity: "information", code: "informational", diagnostics: "bulk export cancelled" },
+      ],
+    };
   });
 
   // ── R12 — CodeSystem read ────────────────────────────────────────────────────────────────────────
@@ -265,9 +326,23 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
     if (!hasReadScope(ctx, "CodeSystem")) {
-      return sendOutcome(reply, 403, "error", "forbidden", "scope system/CodeSystem.read is required", "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        "scope system/CodeSystem.read is required",
+        "FHIR_SCOPE_DENIED",
+      );
     }
-    return sendOutcome(reply, 404, "warning", "not-supported", "CodeSystem lookup is not served in Phase 1", "FHIR_NOT_SUPPORTED");
+    return sendOutcome(
+      reply,
+      404,
+      "warning",
+      "not-supported",
+      "CodeSystem lookup is not served in Phase 1",
+      "FHIR_NOT_SUPPORTED",
+    );
   });
 
   // ── R13 — CodeSystem/$validate-code ──────────────────────────────────────────────────────────────
@@ -275,7 +350,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
     if (!hasReadScope(ctx, "CodeSystem")) {
-      return sendOutcome(reply, 403, "error", "forbidden", "scope system/CodeSystem.read is required", "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        "scope system/CodeSystem.read is required",
+        "FHIR_SCOPE_DENIED",
+      );
     }
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
     return { resourceType: "Parameters", parameter: [{ name: "result", valueBoolean: false }] };
@@ -286,9 +368,23 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
     if (!hasReadScope(ctx, "ValueSet")) {
-      return sendOutcome(reply, 403, "error", "forbidden", "scope system/ValueSet.read is required", "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        "scope system/ValueSet.read is required",
+        "FHIR_SCOPE_DENIED",
+      );
     }
-    return sendOutcome(reply, 404, "warning", "not-supported", "ValueSet read is not served in Phase 1", "FHIR_NOT_SUPPORTED");
+    return sendOutcome(
+      reply,
+      404,
+      "warning",
+      "not-supported",
+      "ValueSet read is not served in Phase 1",
+      "FHIR_NOT_SUPPORTED",
+    );
   });
 
   // ── R15 — ValueSet/$expand ───────────────────────────────────────────────────────────────────────
@@ -296,7 +392,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     const ctx = await resolveBearer(request, reply);
     if (ctx === null) return reply;
     if (!hasReadScope(ctx, "ValueSet")) {
-      return sendOutcome(reply, 403, "error", "forbidden", "scope system/ValueSet.read is required", "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        "scope system/ValueSet.read is required",
+        "FHIR_SCOPE_DENIED",
+      );
     }
     reply.header("content-type", FHIR_JSON_CONTENT_TYPE);
     return { resourceType: "ValueSet", status: "active", expansion: { total: 0, contains: [] } };
@@ -308,7 +411,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     if (ctx === null) return reply;
     const { resourceType } = parse(ResourceTypeParams, request.params);
     if (!ctx.scopesGranted.includes(`system/${resourceType}.write`)) {
-      return sendOutcome(reply, 403, "error", "forbidden", `scope system/${resourceType}.write is required`, "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        `scope system/${resourceType}.write is required`,
+        "FHIR_SCOPE_DENIED",
+      );
     }
     const payload = (request.body ?? {}) as Record<string, unknown>;
     try {
@@ -332,7 +442,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     } catch (error) {
       const status = (error as { httpStatus?: number }).httpStatus ?? 500;
       if (status === 501) {
-        return sendOutcome(reply, 501, "error", "not-supported", `inbound staging is not supported for ${resourceType}`, "FHIR_INBOUND_UNSUPPORTED");
+        return sendOutcome(
+          reply,
+          501,
+          "error",
+          "not-supported",
+          `inbound staging is not supported for ${resourceType}`,
+          "FHIR_INBOUND_UNSUPPORTED",
+        );
       }
       throw error;
     }
@@ -344,7 +461,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     if (ctx === null) return reply;
     const { resourceType, id } = parse(ResourceReadParams, request.params);
     if (!hasReadScope(ctx, resourceType)) {
-      return sendOutcome(reply, 403, "error", "forbidden", `scope system/${resourceType}.read is required`, "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        `scope system/${resourceType}.read is required`,
+        "FHIR_SCOPE_DENIED",
+      );
     }
     await auditRead({
       organizationId: ctx.organizationId,
@@ -356,7 +480,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     });
     // Phase 1: the projection reader seams are fail-closed deny-stubs, so no live single-resource read
     // has a data path — a well-formed not-found is the honest answer, never a 500 from a deny-stub throw.
-    return sendOutcome(reply, 404, "warning", "not-found", `${resourceType}/${id} was not found`, "FHIR_NOT_FOUND");
+    return sendOutcome(
+      reply,
+      404,
+      "warning",
+      "not-found",
+      `${resourceType}/${id} was not found`,
+      "FHIR_NOT_FOUND",
+    );
   });
 
   // ── R5 — type-level search ───────────────────────────────────────────────────────────────────────
@@ -365,7 +496,14 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
     if (ctx === null) return reply;
     const { resourceType } = parse(ResourceTypeParams, request.params);
     if (!hasReadScope(ctx, resourceType)) {
-      return sendOutcome(reply, 403, "error", "forbidden", `scope system/${resourceType}.read is required`, "FHIR_SCOPE_DENIED");
+      return sendOutcome(
+        reply,
+        403,
+        "error",
+        "forbidden",
+        `scope system/${resourceType}.read is required`,
+        "FHIR_SCOPE_DENIED",
+      );
     }
     const query = parseQuery(ResourceSearchQuery, request.query);
     await auditRead({
@@ -383,10 +521,24 @@ export function registerFhirR4Routes(app: FastifyInstance, deps: FhirR4RouteDeps
 
   // ── R17 / R18 — FHIR R5 / R6: 415 Unsupported Media Type ─────────────────────────────────────────
   app.get("/fhir/r5/*", async (_request, reply) =>
-    sendOutcome(reply, 415, "error", "not-supported", "FHIR R5 is not supported (D1/D7)", "FHIR_VERSION_UNSUPPORTED"),
+    sendOutcome(
+      reply,
+      415,
+      "error",
+      "not-supported",
+      "FHIR R5 is not supported (D1/D7)",
+      "FHIR_VERSION_UNSUPPORTED",
+    ),
   );
   app.get("/fhir/r6/*", async (_request, reply) =>
-    sendOutcome(reply, 415, "error", "not-supported", "FHIR R6 is not supported (D1/D7)", "FHIR_VERSION_UNSUPPORTED"),
+    sendOutcome(
+      reply,
+      415,
+      "error",
+      "not-supported",
+      "FHIR R6 is not supported (D1/D7)",
+      "FHIR_VERSION_UNSUPPORTED",
+    ),
   );
 }
 

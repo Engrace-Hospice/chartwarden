@@ -36,7 +36,11 @@ describe("createDrizzleEncounterReaderStore.signedEncountersForPatientSince", ()
     const { db, transaction, execute } = fakeScopedDb([ROW]);
     const store = createDrizzleEncounterReaderStore(db);
 
-    const out = await store.signedEncountersForPatientSince("org-1", "pat-1", "2026-02-07T00:00:00.000Z");
+    const out = await store.signedEncountersForPatientSince(
+      "org-1",
+      "pat-1",
+      "2026-02-07T00:00:00.000Z",
+    );
 
     expect(transaction).toHaveBeenCalledTimes(1); // withOrgContext opened a tx
     expect(execute.mock.calls.length).toBeGreaterThanOrEqual(2); // app.org_id + app.user_id set_config
@@ -54,7 +58,11 @@ describe("createDrizzleEncounterReaderStore.signedEncountersForPatientSince", ()
   it("coalesces a null evvBracketState to the non-present state (never counts as EVV-verified)", async () => {
     const { db } = fakeScopedDb([{ ...ROW, evvBracketState: null }]);
     const store = createDrizzleEncounterReaderStore(db);
-    const out = await store.signedEncountersForPatientSince("org-1", "pat-1", "2026-02-07T00:00:00.000Z");
+    const out = await store.signedEncountersForPatientSince(
+      "org-1",
+      "pat-1",
+      "2026-02-07T00:00:00.000Z",
+    );
     expect(out[0]?.evvBracketState).toBe("evv_missing_documented");
   });
 });

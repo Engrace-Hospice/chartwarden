@@ -57,7 +57,9 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -98,17 +100,28 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m11w@x.test'),($2,'m11w2@x.test')`, [USER, USER2]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'m11w@x.test'),($2,'m11w2@x.test')`,
+      [USER, USER2],
+    );
     for (const org of [ORG_A, ORG_B]) {
       memberOf[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER, org],
+        )
       ).rows[0].id as string;
       member2Of[org] = (
-        await admin.query(`INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`, [USER2, org])
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER2, org],
+        )
       ).rows[0].id as string;
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M11_OUTBOX_EVENTS]));
     const outbox: OrderWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m11" }),
@@ -133,7 +146,9 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
 
   it("requestSignature → sign flips the order to active (apply-to-target trigger) and emits signed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
-    const pending = await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
+    const pending = await svc.requestSignature(ORG_A, draft.id, {
+      signerDiscipline: "rn_case_manager",
+    });
     expect(pending.status).toBe("pending_signature");
     expect(pending.cosignRequired).toBe(false);
     expect(await eventsFor(draft.id)).toContain("m11.order.signature_requested");
@@ -147,18 +162,30 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
   });
 
   it("LPN draft requires RN cosign: sign is blocked (409 COSIGN_PENDING), self-cosign rejected, diff-RN cosign then sign", async () => {
-    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs({ drafterDiscipline: "lpn" }));
-    const pending = await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
+    const draft = await svc.createDraft(
+      ORG_A,
+      memberOf[ORG_A],
+      draftArgs({ drafterDiscipline: "lpn" }),
+    );
+    const pending = await svc.requestSignature(ORG_A, draft.id, {
+      signerDiscipline: "rn_case_manager",
+    });
     expect(pending.cosignRequired).toBe(true);
     expect(pending.cosignStatus).toBe("pending");
     expect(await eventsFor(draft.id)).toContain("m11.order.cosign_requested");
     // Signing before cosign is attached is blocked by the pure machine (the DB apply-trigger is silent).
     await expect(
-      svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() }),
+      svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      }),
     ).rejects.toMatchObject({ code: "COSIGN_PENDING" });
     // The order's author may not cosign their own order (§7.3).
     await expect(
-      svc.cosignOrder(ORG_A, memberOf[ORG_A], draft.id, { cosignerRole: "rn_case_manager", attestationText: "x" }),
+      svc.cosignOrder(ORG_A, memberOf[ORG_A], draft.id, {
+        cosignerRole: "rn_case_manager",
+        attestationText: "x",
+      }),
     ).rejects.toMatchObject({ code: "COSIGNER_NOT_ELIGIBLE" });
     // A distinct RN cosigns → attached.
     const cosigned = await svc.cosignOrder(ORG_A, member2Of[ORG_A], draft.id, {
@@ -197,14 +224,20 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
   it("discontinueOrder writes an order_discontinuation ledger row and emits discontinued", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
-    await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() });
+    await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    });
     const dc = await svc.discontinueOrder(ORG_A, memberOf[ORG_A], draft.id, {
       reason: "clinical_judgement",
       effectiveAt: new Date().toISOString(),
       notes: "no longer needed",
     });
     expect(dc.status).toBe("discontinued");
-    const { rows } = await admin.query("SELECT reason FROM order_discontinuation WHERE order_record_id=$1", [draft.id]);
+    const { rows } = await admin.query(
+      "SELECT reason FROM order_discontinuation WHERE order_record_id=$1",
+      [draft.id],
+    );
     expect(rows.map((r) => r.reason)).toContain("clinical_judgement");
     expect(await eventsFor(draft.id)).toContain("m11.order.discontinued");
   });
@@ -212,21 +245,37 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
   it("correctOrder inserts a replacement whose supersede trigger discontinues the original + writes its ledger", async () => {
     const orig = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, orig.id, { signerDiscipline: "rn_case_manager" });
-    await svc.signOrder(ORG_A, memberOf[ORG_A], orig.id, { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() });
-    const correction = await svc.correctOrder(ORG_A, memberOf[ORG_A], orig.id, draftArgs({ data: { hcpcs: "E0265" } }));
+    await svc.signOrder(ORG_A, memberOf[ORG_A], orig.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    });
+    const correction = await svc.correctOrder(
+      ORG_A,
+      memberOf[ORG_A],
+      orig.id,
+      draftArgs({ data: { hcpcs: "E0265" } }),
+    );
     expect(correction.status).toBe("draft");
     expect(correction.replacesOrderId).toBe(orig.id);
     // The AFTER-INSERT supersede trigger discontinued the original + wrote its 'corrected_replacement' ledger.
     expect(await statusOf(orig.id)).toBe("discontinued");
-    const { rows } = await admin.query("SELECT reason FROM order_discontinuation WHERE order_record_id=$1", [orig.id]);
+    const { rows } = await admin.query(
+      "SELECT reason FROM order_discontinuation WHERE order_record_id=$1",
+      [orig.id],
+    );
     expect(rows.map((r) => r.reason)).toContain("corrected_replacement");
-    expect(await eventsFor(correction.id)).toEqual(expect.arrayContaining(["m11.order.draft_created", "m11.order.corrected"]));
+    expect(await eventsFor(correction.id)).toEqual(
+      expect.arrayContaining(["m11.order.draft_created", "m11.order.corrected"]),
+    );
   });
 
   it("completeOrder finishes an active order and emits completed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
-    await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() });
+    await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "rn_case_manager",
+      signedAtClient: new Date().toISOString(),
+    });
     const done = await svc.completeOrder(ORG_A, memberOf[ORG_A], draft.id, "one-shot met");
     expect(done.status).toBe("completed");
     expect(done.completedAt).not.toBeNull();
@@ -248,7 +297,10 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     expect(await statusOf(orderId)).toBe("active");
     const back = await svc.getStandingOrder(ORG_A, so.id);
     expect(back.spawnCount).toBe(1);
-    const { rows } = await admin.query("SELECT id FROM standing_order_instance WHERE order_record_id=$1", [orderId]);
+    const { rows } = await admin.query(
+      "SELECT id FROM standing_order_instance WHERE order_record_id=$1",
+      [orderId],
+    );
     expect(rows.length).toBe(1);
     expect(await eventsFor(orderId)).toContain("m11.order.standing_spawned");
   });
@@ -257,7 +309,9 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     const updated = await svc.putVerbalPolicy(ORG_A, { windowHours: 24, businessHoursOnly: false });
     expect(updated.windowHours).toBe(24);
     // ≥48h is above the platform floor → tighten-only guard rejects.
-    await expect(svc.putVerbalPolicy(ORG_A, { windowHours: 72 })).rejects.toMatchObject({ code: "VERBAL_WINDOW_EXCEEDS_FLOOR" });
+    await expect(svc.putVerbalPolicy(ORG_A, { windowHours: 72 })).rejects.toMatchObject({
+      code: "VERBAL_WINDOW_EXCEEDS_FLOOR",
+    });
     // Regenerate the timer on a verbal_pending order.
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -277,7 +331,10 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toMatchObject({ statusCode: 404 });
     await svc.requestSignature(ORG_A, draft.id, { signerDiscipline: "rn_case_manager" });
     await expect(
-      svc.signOrder(ORG_B, memberOf[ORG_B], draft.id, { signerDiscipline: "rn_case_manager", signedAtClient: new Date().toISOString() }),
+      svc.signOrder(ORG_B, memberOf[ORG_B], draft.id, {
+        signerDiscipline: "rn_case_manager",
+        signedAtClient: new Date().toISOString(),
+      }),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

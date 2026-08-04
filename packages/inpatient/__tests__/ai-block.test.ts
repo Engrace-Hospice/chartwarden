@@ -2,9 +2,9 @@
 import { describe, expect, it } from "vitest";
 import {
   IPU_PROHIBITED_OUTPUT_ENTITY_PREFIXES,
+  IpuAIBlockViolation,
   type IpuAiPromptRegistryPort,
   type IpuAiPromptTarget,
-  IpuAIBlockViolation,
   validateIpuAIBlock,
 } from "../src/ai-block";
 
@@ -21,7 +21,13 @@ describe("validateIpuAIBlock (D16)", () => {
 
   it("aborts boot when a prompt targets the restraint zone", async () => {
     const reg = registry({
-      ipu_restraint_: [{ promptTemplateId: "p1", templateKey: "restraint-justifier", outputEntityTargetPrefix: "ipu_restraint_event" }],
+      ipu_restraint_: [
+        {
+          promptTemplateId: "p1",
+          templateKey: "restraint-justifier",
+          outputEntityTargetPrefix: "ipu_restraint_event",
+        },
+      ],
     });
     await expect(validateIpuAIBlock(reg)).rejects.toBeInstanceOf(IpuAIBlockViolation);
     await expect(validateIpuAIBlock(reg)).rejects.toThrow(/restraint-justifier|D16/);
@@ -35,7 +41,9 @@ describe("validateIpuAIBlock (D16)", () => {
       "ipu_body_release_",
     ]);
     for (const prefix of IPU_PROHIBITED_OUTPUT_ENTITY_PREFIXES) {
-      const reg = registry({ [prefix]: [{ promptTemplateId: "x", templateKey: "k", outputEntityTargetPrefix: prefix }] });
+      const reg = registry({
+        [prefix]: [{ promptTemplateId: "x", templateKey: "k", outputEntityTargetPrefix: prefix }],
+      });
       await expect(validateIpuAIBlock(reg)).rejects.toBeInstanceOf(IpuAIBlockViolation);
     }
   });

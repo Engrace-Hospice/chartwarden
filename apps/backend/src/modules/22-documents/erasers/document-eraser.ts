@@ -273,9 +273,7 @@ export function createDrizzleDocumentEraseStore(
           await tx
             .select({ id: DOC.id })
             .from(DOC)
-            .where(
-              and(inArray(DOC.id, docIds), eq(DOC.retentionClass, "compliance_42cfr_part2")),
-            )
+            .where(and(inArray(DOC.id, docIds), eq(DOC.retentionClass, "compliance_42cfr_part2")))
         ).map((r) => r.id);
 
   /** Of `docIds`, those under an ACTIVE legal hold (doc status OR an unreleased hold row, §3.7). */
@@ -342,9 +340,7 @@ export function createDrizzleDocumentEraseStore(
         }
 
         const batchIds = await batchIdsFor(tx, patientId);
-        const part2Batches = new Set(
-          await skippedBatchIdsFor(tx, batchIds, [...part2]),
-        );
+        const part2Batches = new Set(await skippedBatchIdsFor(tx, batchIds, [...part2]));
         const shredBatchIds = batchIds.filter((id) => !part2Batches.has(id));
         if (shredBatchIds.length === 0) return;
         const pageIds = (
@@ -355,10 +351,7 @@ export function createDrizzleDocumentEraseStore(
         ).map((r) => r.id);
         if (pageIds.length === 0) return;
         const jobIds = (
-          await tx
-            .select({ id: JOB.id })
-            .from(JOB)
-            .where(inArray(JOB.classifiedPageId, pageIds))
+          await tx.select({ id: JOB.id }).from(JOB).where(inArray(JOB.classifiedPageId, pageIds))
         ).map((r) => r.id);
         if (jobIds.length === 0) return;
         await tx
@@ -496,18 +489,12 @@ export function createDrizzleDocumentEraseStore(
                 .returning({ id: CAND.id }),
             );
             extractionJobs = await del(
-              await tx
-                .delete(JOB)
-                .where(inArray(JOB.id, jobIds))
-                .returning({ id: JOB.id }),
+              await tx.delete(JOB).where(inArray(JOB.id, jobIds)).returning({ id: JOB.id }),
             );
           }
           if (pageIds.length > 0) {
             classifiedPages = await del(
-              await tx
-                .delete(PAGE)
-                .where(inArray(PAGE.id, pageIds))
-                .returning({ id: PAGE.id }),
+              await tx.delete(PAGE).where(inArray(PAGE.id, pageIds)).returning({ id: PAGE.id }),
             );
           }
           intakeBatches = await del(
@@ -524,10 +511,7 @@ export function createDrizzleDocumentEraseStore(
         let documents = 0;
         if (docIds.length > 0) {
           documentTags = await del(
-            await tx
-              .delete(TAG)
-              .where(inArray(TAG.documentId, docIds))
-              .returning({ id: TAG.id }),
+            await tx.delete(TAG).where(inArray(TAG.documentId, docIds)).returning({ id: TAG.id }),
           );
           // Only RELEASED hold rows can exist on a deletable doc (an active hold skipped it above).
           legalHoldReleases = await del(
@@ -537,16 +521,10 @@ export function createDrizzleDocumentEraseStore(
               .returning({ id: HOLD.id }),
           );
           documentVersions = await del(
-            await tx
-              .delete(VER)
-              .where(inArray(VER.documentId, docIds))
-              .returning({ id: VER.id }),
+            await tx.delete(VER).where(inArray(VER.documentId, docIds)).returning({ id: VER.id }),
           );
           documents = await del(
-            await tx
-              .delete(DOC)
-              .where(inArray(DOC.id, docIds))
-              .returning({ id: DOC.id }),
+            await tx.delete(DOC).where(inArray(DOC.id, docIds)).returning({ id: DOC.id }),
           );
         }
 

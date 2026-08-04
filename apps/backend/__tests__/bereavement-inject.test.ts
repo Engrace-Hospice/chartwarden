@@ -389,7 +389,9 @@ function createFakeBackend() {
       return { data: rows, next_cursor: null, has_more: false };
     },
     async counselorDashboard(actor, query) {
-      const mine = [...plans.values()].filter((p) => p.assignedCounselorUserId === actor.membershipId);
+      const mine = [...plans.values()].filter(
+        (p) => p.assignedCounselorUserId === actor.membershipId,
+      );
       return {
         counselorUserId: actor.membershipId ?? "",
         caseloadCount: mine.length,
@@ -522,7 +524,12 @@ function createFakeBackend() {
     async cosignClose(actor, planId) {
       const p = plans.get(planId);
       if (!p || !p.closure) throw new NotFoundError("bereavement plan closure not found");
-      p.closure = { ...p.closure, cosignedByUserId: actor.membershipId, cosignedAt: NOW, closeKind: "early_cosigned" };
+      p.closure = {
+        ...p.closure,
+        cosignedByUserId: actor.membershipId,
+        cosignedAt: NOW,
+        closeKind: "early_cosigned",
+      };
       return p.closure;
     },
     async createContact(_actor, planId, input) {
@@ -543,7 +550,8 @@ function createFakeBackend() {
       const c = contacts.get(contactId);
       if (!c) throw new NotFoundError("bereaved contact not found");
       if (input.displayName !== undefined) c.displayName = input.displayName;
-      if (input.preferredLanguageIso639 !== undefined) c.preferredLanguageIso639 = input.preferredLanguageIso639;
+      if (input.preferredLanguageIso639 !== undefined)
+        c.preferredLanguageIso639 = input.preferredLanguageIso639;
       bump(c);
       return contactRow(c);
     },
@@ -768,7 +776,12 @@ function createFakeBackend() {
     async loadContact(_orgId, contactId): Promise<BereavedContactAbacFacts | null> {
       const c = contacts.get(contactId);
       if (!c) return null;
-      return { organizationId: ORG, contactId: c.contactId, planId: c.planId, portalAccountId: c.portalAccountId };
+      return {
+        organizationId: ORG,
+        contactId: c.contactId,
+        planId: c.planId,
+        portalAccountId: c.portalAccountId,
+      };
     },
     async disciplineOf(_orgId, subjectId) {
       return DISCIPLINE_MAP[subjectId] ?? null;
@@ -787,12 +800,26 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     {
       orgId: ORG,
       userId: "counselor_user",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M16_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M16_PERMISSION_KEY_LIST],
+        },
+      ],
     },
     {
       orgId: ORG,
       userId: "supervisor_user",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M16_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M16_PERMISSION_KEY_LIST],
+        },
+      ],
     },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
@@ -804,7 +831,8 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
   const reg = createPredicateRegistry();
   const predicates = buildBereavementAbacPredicates({
     resolver: backend.resolver,
-    volunteerGatesSatisfied: async ({ volunteerMembershipId }) => volunteerMembershipId === VOLUNTEER_ID,
+    volunteerGatesSatisfied: async ({ volunteerMembershipId }) =>
+      volunteerMembershipId === VOLUNTEER_ID,
   });
   for (const [name, predicate] of Object.entries(predicates)) reg.register(name, predicate);
   reg.register("step_up_recent", async () => true);
@@ -888,7 +916,11 @@ describe("M16 §4.1 routes 1–7, 19 — plan worklist, assignment, activation, 
     const plan = backend.seedPlan({ status: "initiating" });
 
     // 1
-    const list = await app.inject({ method: "GET", url: "/api/v1/bereavement/plans", headers: SUPERVISOR });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/bereavement/plans",
+      headers: SUPERVISOR,
+    });
     expect(list.statusCode).toBe(200);
 
     // 3
@@ -937,7 +969,11 @@ describe("M16 §4.1 routes 1–7, 19 — plan worklist, assignment, activation, 
     const pause = await app.inject({
       method: "POST",
       url: `/api/v1/bereavement/plans/${plan.planId}/pause`,
-      headers: { ...COUNSELOR, "idempotency-key": "p-1", "if-match": String(detail.json().version) },
+      headers: {
+        ...COUNSELOR,
+        "idempotency-key": "p-1",
+        "if-match": String(detail.json().version),
+      },
       payload: { pauseKind: "operational", reason: "counselor temporarily unavailable" },
     });
     expect(pause.statusCode).toBe(200);
@@ -1023,7 +1059,11 @@ describe("M16 §4.1 routes 11–18, 26, 32 — bereaved-contact lifecycle", () =
     const update = await app.inject({
       method: "PATCH",
       url: `/api/v1/bereavement/contacts/${contactId}`,
-      headers: { ...COUNSELOR, "idempotency-key": "c-update", "if-match": String(create.json().version) },
+      headers: {
+        ...COUNSELOR,
+        "idempotency-key": "c-update",
+        "if-match": String(create.json().version),
+      },
       payload: { displayName: "Jane A. Roe" },
     });
     expect(update.statusCode).toBe(200);
@@ -1132,29 +1172,45 @@ describe("M16 §4.1 routes 20–25 — outreach lifecycle", () => {
     const complete = await app.inject({
       method: "POST",
       url: `/api/v1/bereavement/outreach/${scheduled.outreachId}/complete`,
-      headers: { ...COUNSELOR, "idempotency-key": "o-complete", "if-match": String(start.json().version) },
+      headers: {
+        ...COUNSELOR,
+        "idempotency-key": "o-complete",
+        "if-match": String(start.json().version),
+      },
       payload: { kind: "phone_call", outcome: "engaged", contactResponded: true },
     });
     expect(complete.statusCode).toBe(200);
     expect(complete.json().status).toBe("completed");
 
     // 22
-    const forDecline = backend.seedOutreach(plan.planId, contact.contactId, { status: "in_progress" });
+    const forDecline = backend.seedOutreach(plan.planId, contact.contactId, {
+      status: "in_progress",
+    });
     const decline = await app.inject({
       method: "POST",
       url: `/api/v1/bereavement/outreach/${forDecline.outreachId}/decline`,
-      headers: { ...COUNSELOR, "idempotency-key": "o-decline", "if-match": String(forDecline.version) },
+      headers: {
+        ...COUNSELOR,
+        "idempotency-key": "o-decline",
+        "if-match": String(forDecline.version),
+      },
       payload: {},
     });
     expect(decline.statusCode).toBe(200);
     expect(decline.json().status).toBe("declined");
 
     // 23
-    const forNoResponse = backend.seedOutreach(plan.planId, contact.contactId, { status: "in_progress" });
+    const forNoResponse = backend.seedOutreach(plan.planId, contact.contactId, {
+      status: "in_progress",
+    });
     const noResponse = await app.inject({
       method: "POST",
       url: `/api/v1/bereavement/outreach/${forNoResponse.outreachId}/no-response`,
-      headers: { ...COUNSELOR, "idempotency-key": "o-noresponse", "if-match": String(forNoResponse.version) },
+      headers: {
+        ...COUNSELOR,
+        "idempotency-key": "o-noresponse",
+        "if-match": String(forNoResponse.version),
+      },
       payload: {},
     });
     expect(noResponse.statusCode).toBe(200);
@@ -1165,7 +1221,11 @@ describe("M16 §4.1 routes 20–25 — outreach lifecycle", () => {
     const cancel = await app.inject({
       method: "POST",
       url: `/api/v1/bereavement/outreach/${forCancel.outreachId}/cancel`,
-      headers: { ...COUNSELOR, "idempotency-key": "o-cancel", "if-match": String(forCancel.version) },
+      headers: {
+        ...COUNSELOR,
+        "idempotency-key": "o-cancel",
+        "if-match": String(forCancel.version),
+      },
       payload: { reason: "family requested a pause" },
     });
     expect(cancel.statusCode).toBe(200);

@@ -111,7 +111,9 @@ export interface InMemoryMedicationOrderEraseSeed {
 }
 
 /** An in-memory {@link MedicationOrderEraseStore} for the slice/tests (seeded counts; idempotent on a second erase). */
-export function createInMemoryMedicationOrderEraseStore(seed: InMemoryMedicationOrderEraseSeed = {}): {
+export function createInMemoryMedicationOrderEraseStore(
+  seed: InMemoryMedicationOrderEraseSeed = {},
+): {
   store: MedicationOrderEraseStore;
   locked: string[];
 } {

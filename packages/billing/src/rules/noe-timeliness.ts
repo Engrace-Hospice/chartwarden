@@ -31,8 +31,10 @@ export const noeTimeliness5d: Rule = {
         fixAction: "file_noe",
       });
     }
-    const warnDay = typeof params["warnDay"] === "number" ? (params["warnDay"] as number) : NOE_WARN_DAY;
-    const blockDay = typeof params["blockDay"] === "number" ? (params["blockDay"] as number) : NOE_BLOCK_DAY;
+    const warnDay =
+      typeof params["warnDay"] === "number" ? (params["warnDay"] as number) : NOE_WARN_DAY;
+    const blockDay =
+      typeof params["blockDay"] === "number" ? (params["blockDay"] as number) : NOE_BLOCK_DAY;
     const noe = ctx.noe;
 
     if (noe.state === "ack_accepted") {
@@ -68,6 +70,11 @@ export const noeTimeliness5d: Rule = {
       );
     }
     // Within the window but not yet accepted — pending, not yet a worklist item.
-    return skip(KEY, "error", "not_applicable", `NOE pending within the 5-day window (day ${noe.admissionDay}).`);
+    return skip(
+      KEY,
+      "error",
+      "not_applicable",
+      `NOE pending within the 5-day window (day ${noe.admissionDay}).`,
+    );
   },
 };

@@ -64,7 +64,9 @@ describe("M24 §8.7 credential envelope crypto", () => {
     expect(isUsableCipher(LEGACY_DEFERRED_SENTINEL)).toBe(false);
     expect(isUsableCipher(null)).toBe(false);
     expect(isUsableCipher("")).toBe(false);
-    expect(isUsableCipher(sealCredentialSecret(SECRET, deriveOrgCredentialDek(KEK, ORG_A)))).toBe(true);
+    expect(isUsableCipher(sealCredentialSecret(SECRET, deriveOrgCredentialDek(KEK, ORG_A)))).toBe(
+      true,
+    );
   });
 
   it("fails closed on a missing or wrong-length KEK rather than defaulting to a zero key", () => {
@@ -74,9 +76,13 @@ describe("M24 §8.7 credential envelope crypto", () => {
   });
 
   it("derives a distinct DEK per org from one KEK", () => {
-    expect(deriveOrgCredentialDek(KEK, ORG_A).equals(deriveOrgCredentialDek(KEK, ORG_B))).toBe(false);
+    expect(deriveOrgCredentialDek(KEK, ORG_A).equals(deriveOrgCredentialDek(KEK, ORG_B))).toBe(
+      false,
+    );
     // Deterministic: the same org always derives the same key (no per-tenant key table in Phase 1).
-    expect(deriveOrgCredentialDek(KEK, ORG_A).equals(deriveOrgCredentialDek(KEK, ORG_A))).toBe(true);
+    expect(deriveOrgCredentialDek(KEK, ORG_A).equals(deriveOrgCredentialDek(KEK, ORG_A))).toBe(
+      true,
+    );
   });
 
   it("exposes an org-scoped port that seals and opens without leaking the DEK", () => {

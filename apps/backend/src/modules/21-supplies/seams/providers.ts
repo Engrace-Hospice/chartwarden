@@ -46,7 +46,7 @@ import type {
   SupplyRequestId,
 } from "@wardenx/types";
 import { SupplyStateError } from "../lifecycle/index";
-import type { SupplyCostTotals, SuppliesSeamStore, SupplyRequestCreator } from "./store";
+import type { SuppliesSeamStore, SupplyCostTotals, SupplyRequestCreator } from "./store";
 
 /** The clock the providers derive "now" from — injected so every seam write is deterministic under test. */
 export type SuppliesSeamClock = () => IsoInstant;

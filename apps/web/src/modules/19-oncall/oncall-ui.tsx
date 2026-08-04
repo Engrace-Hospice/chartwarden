@@ -467,7 +467,9 @@ export function TierPill({ tier }: { tier: string }): JSX.Element {
  *  like a census, and M19 publishes no aggregate route (see the metrics screen's own notice). */
 export function CountGrid({
   entries,
-}: { entries: readonly { label: string; value: number | string; tone?: StatusTone }[] }): JSX.Element {
+}: {
+  entries: readonly { label: string; value: number | string; tone?: StatusTone }[];
+}): JSX.Element {
   return (
     <div
       style={{
@@ -567,7 +569,8 @@ export function RedactionNotice({
   return (
     <Notice tone="warning" live>
       Some content on this call is withheld from you: <strong>{label}</strong>. The record is
-      incomplete as shown — this is a consent/authority decision the server made, not an absence of data.
+      incomplete as shown — this is a consent/authority decision the server made, not an absence of
+      data.
     </Notice>
   );
 }

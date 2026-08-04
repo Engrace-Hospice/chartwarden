@@ -77,7 +77,9 @@ export function passingContext(): ValidationContext {
         gipAdmissionCriteriaDocumented: null,
       },
     ],
-    billableEncounters: [{ encounterId: "enc-1", serviceDate: "2026-03-15", billability: "billable" }],
+    billableEncounters: [
+      { encounterId: "enc-1", serviceDate: "2026-03-15", billability: "billable" },
+    ],
     signedEncounters: [],
     evvBrackets: [{ encounterId: "enc-1", bracketState: "compliant" }],
     terminology: {
@@ -86,7 +88,11 @@ export function passingContext(): ValidationContext {
     },
     mdm: {
       attending: null,
-      hospicePhysician: { npi: "1234567893", status: "active", licenseUnexpiredOnServiceDates: true },
+      hospicePhysician: {
+        npi: "1234567893",
+        status: "active",
+        licenseUnexpiredOnServiceDates: true,
+      },
       placeOfService: "home",
     },
     hipps: {
@@ -113,7 +119,12 @@ export function passingContext(): ValidationContext {
     },
     noe: { state: "ack_accepted", admissionDay: 2, windowBreached: false },
     sequestration: { percentage: "2.0", effectiveFrom: "2026-01-01", effectiveTo: null },
-    wageIndex: { ccn: "123456", fiscalYearStarting: 2026, factorDecimal: "0.9234", cbsaCode: "99999" },
+    wageIndex: {
+      ccn: "123456",
+      fiscalYearStarting: 2026,
+      factorDecimal: "0.9234",
+      cbsaCode: "99999",
+    },
     seams: {
       capProjectionBound: false,
       mdmResolverBound: true,

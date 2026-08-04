@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { humanize, readError, statusTone } from "./portal-format";
-import { PortalPage, PortalLoadState } from "./portal-page";
+import { PortalLoadState, PortalPage } from "./portal-page";
 
 interface SessionContext {
   portalAccountId: string;
@@ -57,13 +57,18 @@ export function PortalPatientPicker(): JSX.Element {
   }, [client]);
 
   async function enter(patientId: string): Promise<void> {
-    const res = await client.POST("/api/v1/portal/sessions/select-patient", { body: { patientId } });
+    const res = await client.POST("/api/v1/portal/sessions/select-patient", {
+      body: { patientId },
+    });
     if (!res.error) navigate(`/p/${patientId}`);
   }
 
   const patientId = ctx?.activePatientId ?? null;
   return (
-    <PortalPage title="Who are you here for?" subtitle="Confirm the person whose care you'd like to see.">
+    <PortalPage
+      title="Who are you here for?"
+      subtitle="Confirm the person whose care you'd like to see."
+    >
       <PortalLoadState
         loading={loading}
         error={error}
@@ -75,7 +80,9 @@ export function PortalPatientPicker(): JSX.Element {
           <span>
             <span style={{ fontWeight: 600 }}>Your loved one's records</span>
             <span style={{ display: "block", color: t.onSurfaceVariant, fontSize: "0.82rem" }}>
-              {ctx ? `${humanize(ctx.relationship)} · ${ctx.scopeSet.length} area${ctx.scopeSet.length === 1 ? "" : "s"} of access` : ""}
+              {ctx
+                ? `${humanize(ctx.relationship)} · ${ctx.scopeSet.length} area${ctx.scopeSet.length === 1 ? "" : "s"} of access`
+                : ""}
             </span>
           </span>
           {ctx ? <StatusPill tone={statusTone(ctx.status)} label={humanize(ctx.status)} /> : null}

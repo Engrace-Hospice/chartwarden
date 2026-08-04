@@ -20,8 +20,8 @@ import {
 } from "./handlers";
 import {
   type M27UpstreamSubscription,
-  M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC,
   M27_UPSTREAM_SUBSCRIPTIONS,
+  M40_PROVIDER_ENTITY_OFFBOARDED_TOPIC,
 } from "./subscription-map";
 
 /**

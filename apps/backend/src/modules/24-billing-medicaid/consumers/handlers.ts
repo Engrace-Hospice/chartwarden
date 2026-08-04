@@ -18,9 +18,15 @@ export async function handleClaimPaid(store: M24ConsumerStore, payload: Record<s
 export async function handleClaimDenied(store: M24ConsumerStore, payload: Record<string, unknown>) {
   return store.markClaimDenied(payload);
 }
-export async function handleMedicarePrimaryAck(store: M24ConsumerStore, payload: Record<string, unknown>) {
+export async function handleMedicarePrimaryAck(
+  store: M24ConsumerStore,
+  payload: Record<string, unknown>,
+) {
   return store.resolveMedicarePrimary(payload);
 }
-export async function handleUpstreamChange(store: M24ConsumerStore, payload: Record<string, unknown>) {
+export async function handleUpstreamChange(
+  store: M24ConsumerStore,
+  payload: Record<string, unknown>,
+) {
   return store.enqueueRevalidation(payload);
 }

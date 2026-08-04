@@ -19,10 +19,7 @@
 //   · A payload that does not parse → THROWS (retry → DLQ): a malformed accepted-proposal event is
 //     an integration defect to surface, not to drop.
 import { getSeam } from "../../../bootstrap/index";
-import {
-  type ProposalAcceptedPayload,
-  decideProposalApply,
-} from "./m29-proposal-accepted";
+import { type ProposalAcceptedPayload, decideProposalApply } from "./m29-proposal-accepted";
 
 /** Structural binding (matches the dispatcher's OutboxConsumerBinding without importing it). */
 export interface M5ProposalApplierBinding {

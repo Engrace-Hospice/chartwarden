@@ -90,7 +90,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
   const [modalError, setModalError] = useState<string | null>(null);
 
   /** The gaps the LAST deactivation reported — kept on screen until the DON acts or reloads. */
-  const [gaps, setGaps] = useState<{ clinicianMembershipId: string; reason: string }[] | null>(null);
+  const [gaps, setGaps] = useState<{ clinicianMembershipId: string; reason: string }[] | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,7 +135,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       ...(providerEntityId.trim() ? { providerEntityId: providerEntityId.trim() } : {}),
       alertKinds: alertKinds as SafetySubscriptionAlertKind[],
       isVacationForwarding: forwarding,
-      ...(forwarding && forwardTo.trim() ? { vacationForwardToMembershipId: forwardTo.trim() } : {}),
+      ...(forwarding && forwardTo.trim()
+        ? { vacationForwardToMembershipId: forwardTo.trim() }
+        : {}),
     });
     setSaving(false);
     if (res.error) {
@@ -203,20 +207,20 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       {gaps !== null ? (
         gaps.length === 0 ? (
           <Notice tone="success" live>
-            That subscription was deactivated and <strong>uncovered nobody</strong> — the server checked
-            every clinician it was the cover for and each still has another.
+            That subscription was deactivated and <strong>uncovered nobody</strong> — the server
+            checked every clinician it was the cover for and each still has another.
           </Notice>
         ) : (
           <Notice tone="error" assertive>
             <strong>
-              That deactivation left {gaps.length} clinician{gaps.length === 1 ? "" : "s"} with nobody
-              watching:
+              That deactivation left {gaps.length} clinician{gaps.length === 1 ? "" : "s"} with
+              nobody watching:
             </strong>
             <ul style={{ margin: `${t.space2} 0 0`, paddingLeft: "1.1rem" }}>
               {gaps.map((g) => (
                 <li key={`${g.clinicianMembershipId}-${g.reason}`}>
-                  <span style={{ fontFamily: t.fontMono }}>{shortId(g.clinicianMembershipId)}</span> —{" "}
-                  {coverageGapLabel(g.reason)}{" "}
+                  <span style={{ fontFamily: t.fontMono }}>{shortId(g.clinicianMembershipId)}</span>{" "}
+                  — {coverageGapLabel(g.reason)}{" "}
                   {/* Every gap reason is a FINDING; none is informational, so each carries its own
                       severity rather than all three reading alike. */}
                   <StatusPill
@@ -227,8 +231,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
               ))}
             </ul>
             The deactivation went through anyway, on purpose: refusing it would have left a departed
-            supervisor's row in place, which is the same hole one step earlier and much harder to see. Fix
-            it now — the §7.8 watchdog will also raise this, but not before somebody presses a button.
+            supervisor's row in place, which is the same hole one step earlier and much harder to
+            see. Fix it now — the §7.8 watchdog will also raise this, but not before somebody
+            presses a button.
           </Notice>
         )
       ) : null}
@@ -238,7 +243,11 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
           entries={[
             { label: "Subscriptions", value: rows.length },
             { label: "Named clinician (explicit)", value: explicit },
-            { label: "Cover SOS", value: sosCovering, tone: sosCovering === 0 ? "error" : undefined },
+            {
+              label: "Cover SOS",
+              value: sosCovering,
+              tone: sosCovering === 0 ? "error" : undefined,
+            },
             {
               label: "Vacation-forwarded",
               value: onVacation,
@@ -268,9 +277,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       <Card title="Subscriptions">
         {rows.length === 0 ? (
           <Notice tone="error" assertive>
-            <strong>No subscription rows at all.</strong> Nobody is configured to be paged for anything.
-            An SOS raised right now would resolve to whatever M19's after-hours on-call path returns and
-            to nothing else — check this before tonight.
+            <strong>No subscription rows at all.</strong> Nobody is configured to be paged for
+            anything. An SOS raised right now would resolve to whatever M19's after-hours on-call
+            path returns and to nothing else — check this before tonight.
           </Notice>
         ) : (
           <table style={tableStyle}>
@@ -338,20 +347,20 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          Deactivating is a soft stop, never a row delete: §3.7 keeps the paging configuration as evidence
-          of who was watching whom on the night an incident happened. A forwarded row still pages — M36
-          delivers to the FORWARD target, not to the supervisor who is on a plane.
+          Deactivating is a soft stop, never a row delete: §3.7 keeps the paging configuration as
+          evidence of who was watching whom on the night an incident happened. A forwarded row still
+          pages — M36 delivers to the FORWARD target, not to the supervisor who is on a plane.
         </span>
       </Card>
 
       <Card title="Why this is a ledger and not the matrix §5.1 sketches">
         <span style={mutedStyle}>
-          A clinicians × supervisors grid needs both rosters, and M20 publishes neither — M2 and M40 own
-          the membership directory and M20 holds no reader for it. A grid built from these rows alone
-          would have axes made only of people who already appear in one, so the clinician nobody is
-          subscribed to — the entire point of D8 and of the §7.8 watchdog — would be the one name the grid
-          cannot show. The coverage-gap report above is that missing axis, delivered at the moment it is
-          cheapest to act on.
+          A clinicians × supervisors grid needs both rosters, and M20 publishes neither — M2 and M40
+          own the membership directory and M20 holds no reader for it. A grid built from these rows
+          alone would have axes made only of people who already appear in one, so the clinician
+          nobody is subscribed to — the entire point of D8 and of the §7.8 watchdog — would be the
+          one name the grid cannot show. The coverage-gap report above is that missing axis,
+          delivered at the moment it is cheapest to act on.
         </span>
       </Card>
 
@@ -431,9 +440,9 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
           />
           {!alertKinds.includes("sos") ? (
             <Notice tone="warning">
-              This row will <strong>not</strong> page for an SOS. That is a legitimate configuration — a
-              compliance officer may want incidents only — but make sure somebody else covers the SOS for
-              these clinicians.
+              This row will <strong>not</strong> page for an SOS. That is a legitimate configuration
+              — a compliance officer may want incidents only — but make sure somebody else covers
+              the SOS for these clinicians.
             </Notice>
           ) : null}
           <SelectField

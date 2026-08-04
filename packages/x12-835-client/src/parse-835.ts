@@ -3,7 +3,6 @@
 // and fails closed (degraded, never throws) on a malformed envelope. Imports ONLY ./types (no ./index —
 // the no-circular rule).
 import {
-  degraded835,
   type ParsedAdjustment,
   type ParsedCasGroupCode,
   type ParsedClaim835,
@@ -14,6 +13,7 @@ import {
   type ParsedServiceLine,
   type PayerProgram,
   type X12WorkerResult,
+  degraded835,
 } from "./types";
 
 const CAS_GROUPS: ReadonlySet<string> = new Set(["CO", "CR", "OA", "PI", "PR"]);
@@ -24,7 +24,7 @@ function isObj(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 function num(v: unknown, fallback = 0): number {
-  const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : NaN;
+  const n = typeof v === "string" ? Number(v) : typeof v === "number" ? v : Number.NaN;
   return Number.isFinite(n) ? n : fallback;
 }
 function str(v: unknown): string | undefined {
@@ -103,7 +103,12 @@ export function mapParsed835(
   payerProgram: PayerProgram,
 ): X12WorkerResult<ParsedRemittanceAdvice> {
   if (!isObj(wire)) {
-    return degraded835("X12_835_PARSE_FAILED", "sidecar response was not an object", "parse835", false);
+    return degraded835(
+      "X12_835_PARSE_FAILED",
+      "sidecar response was not an object",
+      "parse835",
+      false,
+    );
   }
   const isa = str(wire.interchangeControlNumber);
   const st = str(wire.transactionSetControlNumber);
@@ -117,7 +122,12 @@ export function mapParsed835(
   }
   const paymentMethod = str(wire.paymentMethod);
   if (!paymentMethod || !PAYMENT_METHODS.has(paymentMethod)) {
-    return degraded835("X12_835_PARSE_FAILED", "missing/invalid BPR04 payment method", "parse835", false);
+    return degraded835(
+      "X12_835_PARSE_FAILED",
+      "missing/invalid BPR04 payment method",
+      "parse835",
+      false,
+    );
   }
   const claimsRaw = Array.isArray(wire.claims) ? wire.claims : [];
   const claims = claimsRaw.map(mapClaim).filter((c): c is ParsedClaim835 => c !== null);

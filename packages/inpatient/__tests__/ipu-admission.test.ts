@@ -1,5 +1,6 @@
 // @wardenx/inpatient — M37-T04 unit tests for the §2.2 D2 ipu_admission lifecycle machine.
 import { describe, expect, it } from "vitest";
+import { IpuStateError } from "../src/errors";
 import {
   ADMISSION_GRAPH,
   admissionHoldsBed,
@@ -7,7 +8,6 @@ import {
   planOpenAdmission,
   transitionAdmission,
 } from "../src/machines/ipu-admission";
-import { IpuStateError } from "../src/errors";
 
 const effectKinds = (t: { effects: readonly { kind: string }[] }) => t.effects.map((e) => e.kind);
 const outboxOf = (t: { effects: readonly { kind: string; event?: string }[] }) =>
@@ -49,10 +49,20 @@ describe("bed flow pending→bed_pending→bed_assigned→active", () => {
     expect(t.to).toBe("bed_pending");
     expect(outboxOf(t)).toEqual(["m37.ipu_admission.bed_requested"]);
     expect(() =>
-      transitionAdmission("pending", "gip", { type: "requestBed", unitActive: false, rnCoverageActive: true, hasReadyBed: true }),
+      transitionAdmission("pending", "gip", {
+        type: "requestBed",
+        unitActive: false,
+        rnCoverageActive: true,
+        hasReadyBed: true,
+      }),
     ).toThrow(/IPU_UNIT_INACTIVE|not active/);
     expect(() =>
-      transitionAdmission("pending", "gip", { type: "requestBed", unitActive: true, rnCoverageActive: true, hasReadyBed: false }),
+      transitionAdmission("pending", "gip", {
+        type: "requestBed",
+        unitActive: true,
+        rnCoverageActive: true,
+        hasReadyBed: false,
+      }),
     ).toThrow(/no bed in 'ready'/);
   });
 
@@ -70,7 +80,12 @@ describe("bed flow pending→bed_pending→bed_assigned→active", () => {
 
   it("assignBed rejects an opposite-sex room occupancy conflict (M5 privacy)", () => {
     try {
-      transitionAdmission("bed_pending", "gip", { type: "assignBed", bedId: "b", bedReady: true, roomOccupancyAllowed: false });
+      transitionAdmission("bed_pending", "gip", {
+        type: "assignBed",
+        bedId: "b",
+        bedReady: true,
+        roomOccupancyAllowed: false,
+      });
     } catch (e) {
       expect((e as IpuStateError).code).toBe("IPU_ROOM_OCCUPANCY_CONFLICT");
     }
@@ -79,47 +94,77 @@ describe("bed flow pending→bed_pending→bed_assigned→active", () => {
   it("confirm activates, occupies the bed, and requires GIP criteria for a GIP admission", () => {
     // GIP without criteria → 412 GIP_CRITERIA_REQUIRED
     try {
-      transitionAdmission("bed_assigned", "gip", { type: "confirm", lcpConfirmed: true, gipCriteriaExists: false });
+      transitionAdmission("bed_assigned", "gip", {
+        type: "confirm",
+        lcpConfirmed: true,
+        gipCriteriaExists: false,
+      });
       throw new Error("expected throw");
     } catch (e) {
       expect((e as IpuStateError).code).toBe("GIP_CRITERIA_REQUIRED");
       expect((e as IpuStateError).statusCode).toBe(412);
     }
-    const gip = transitionAdmission("bed_assigned", "gip", { type: "confirm", lcpConfirmed: true, gipCriteriaExists: true });
+    const gip = transitionAdmission("bed_assigned", "gip", {
+      type: "confirm",
+      lcpConfirmed: true,
+      gipCriteriaExists: true,
+    });
     expect(gip.to).toBe("active");
     expect(gip.effects).toContainEqual({ kind: "source_bed_cleaning", event: "occupy" });
     expect(effectKinds(gip)).not.toContain("open_irc_episode");
     // IRC opens the irc_episode child row on activation.
-    const irc = transitionAdmission("bed_assigned", "irc", { type: "confirm", lcpConfirmed: true, gipCriteriaExists: false });
+    const irc = transitionAdmission("bed_assigned", "irc", {
+      type: "confirm",
+      lcpConfirmed: true,
+      gipCriteriaExists: false,
+    });
     expect(effectKinds(irc)).toContain("open_irc_episode");
   });
 
   it("confirm blocks when the M6 LCP ack has not arrived", () => {
     expect(() =>
-      transitionAdmission("bed_assigned", "gip", { type: "confirm", lcpConfirmed: false, gipCriteriaExists: true }),
+      transitionAdmission("bed_assigned", "gip", {
+        type: "confirm",
+        lcpConfirmed: false,
+        gipCriteriaExists: true,
+      }),
     ).toThrow(/ADMISSION_LCP_NOT_CONFIRMED|ack has not arrived/);
   });
 });
 
 describe("terminal flows from active", () => {
   it("discharge dirties the bed and closes the irc_episode for an IRC admission", () => {
-    const irc = transitionAdmission("active", "irc", { type: "discharge", dischargeEventExists: true });
+    const irc = transitionAdmission("active", "irc", {
+      type: "discharge",
+      dischargeEventExists: true,
+    });
     expect(irc.to).toBe("discharged");
     expect(effectKinds(irc)).toContain("close_irc_episode");
     expect(irc.effects).toContainEqual({ kind: "source_bed_cleaning", event: "dischargeDirty" });
     // GIP discharge does not close an irc_episode.
-    const gip = transitionAdmission("active", "gip", { type: "discharge", dischargeEventExists: true });
+    const gip = transitionAdmission("active", "gip", {
+      type: "discharge",
+      dischargeEventExists: true,
+    });
     expect(effectKinds(gip)).not.toContain("close_irc_episode");
   });
 
   it("recordDeath is system-only, opens body release, and defers the dirty-bed transition", () => {
     try {
-      transitionAdmission("active", "gip", { type: "recordDeath", deathEventReferencesAdmission: true, isSystemActor: false });
+      transitionAdmission("active", "gip", {
+        type: "recordDeath",
+        deathEventReferencesAdmission: true,
+        isSystemActor: false,
+      });
       throw new Error("expected throw");
     } catch (e) {
       expect((e as IpuStateError).code).toBe("ADMISSION_SYSTEM_ACTOR_REQUIRED");
     }
-    const t = transitionAdmission("active", "gip", { type: "recordDeath", deathEventReferencesAdmission: true, isSystemActor: true });
+    const t = transitionAdmission("active", "gip", {
+      type: "recordDeath",
+      deathEventReferencesAdmission: true,
+      isSystemActor: true,
+    });
     expect(t.to).toBe("deceased");
     expect(effectKinds(t)).toEqual(
       expect.arrayContaining(["open_body_release", "defer_bed_dirty_until_body_release"]),
@@ -129,19 +174,34 @@ describe("terminal flows from active", () => {
 
   it("postCloseSettlement requires system actor + no open child rows", () => {
     expect(() =>
-      transitionAdmission("discharged", "gip", { type: "postCloseSettlement", isSystemActor: true, noOpenChildRows: false }),
+      transitionAdmission("discharged", "gip", {
+        type: "postCloseSettlement",
+        isSystemActor: true,
+        noOpenChildRows: false,
+      }),
     ).toThrow(/ADMISSION_OPEN_CHILD_ROWS|open child row/);
-    const t = transitionAdmission("discharged", "gip", { type: "postCloseSettlement", isSystemActor: true, noOpenChildRows: true });
+    const t = transitionAdmission("discharged", "gip", {
+      type: "postCloseSettlement",
+      isSystemActor: true,
+      noOpenChildRows: true,
+    });
     expect(t.to).toBe("closed");
   });
 });
 
 describe("graph integrity + classifiers", () => {
   it("rejects illegal transitions; closed is terminal", () => {
-    expect(() => transitionAdmission("pending", "gip", { type: "discharge", dischargeEventExists: true })).toThrow(IpuStateError);
+    expect(() =>
+      transitionAdmission("pending", "gip", { type: "discharge", dischargeEventExists: true }),
+    ).toThrow(IpuStateError);
     expect(ADMISSION_GRAPH.closed).toEqual([]);
     try {
-      transitionAdmission("closed", "gip", { type: "requestBed", unitActive: true, rnCoverageActive: true, hasReadyBed: true });
+      transitionAdmission("closed", "gip", {
+        type: "requestBed",
+        unitActive: true,
+        rnCoverageActive: true,
+        hasReadyBed: true,
+      });
     } catch (e) {
       expect((e as IpuStateError).code).toBe("ILLEGAL_ADMISSION_TRANSITION");
     }

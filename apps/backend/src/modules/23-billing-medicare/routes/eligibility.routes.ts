@@ -10,11 +10,11 @@
 // field (D13 / §3.6 / §8.7). Org/actor/membership binding is ALWAYS server-side.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { CheckEligibilityBodySchema, PatientQuerySchema, parse } from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
 import { CASELOAD_OR_SCOPE, P } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
-import { CheckEligibilityBodySchema, PatientQuerySchema, parse } from "./billing-typebox";
 
 export interface EligibilityRouteDeps {
   readonly readService: M23ReadRouteService;

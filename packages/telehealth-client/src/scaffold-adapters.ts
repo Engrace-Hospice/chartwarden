@@ -16,7 +16,9 @@ import type {
 abstract class ScaffoldTelehealthProvider implements TelehealthProvider {
   abstract readonly vendor: TelehealthProviderVendor;
 
-  async mintRoom(_input: TelehealthMintRoomInput): Promise<{ vendorRoomId: string; vendorRoomUrl: string }> {
+  async mintRoom(
+    _input: TelehealthMintRoomInput,
+  ): Promise<{ vendorRoomId: string; vendorRoomUrl: string }> {
     throw this.notEnabled("mintRoom");
   }
 

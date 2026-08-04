@@ -39,12 +39,20 @@ export const M14_AUTO_CLOSE_LINKED_KIND: Readonly<Record<string, IdgActionItemLi
 export function planActionItemAutoClose(
   sourceEventName: string,
   linkedArtifactId: string,
-): { readonly linkedArtifactKind: IdgActionItemLinkedKind; readonly event: ActionItemEvent } | null {
+): {
+  readonly linkedArtifactKind: IdgActionItemLinkedKind;
+  readonly event: ActionItemEvent;
+} | null {
   const linkedArtifactKind = M14_AUTO_CLOSE_LINKED_KIND[sourceEventName];
   if (!linkedArtifactKind) return null;
   return {
     linkedArtifactKind,
-    event: { type: "autoClose", linkedKind: linkedArtifactKind, linkedArtifactId, isSystemActor: true },
+    event: {
+      type: "autoClose",
+      linkedKind: linkedArtifactKind,
+      linkedArtifactId,
+      isSystemActor: true,
+    },
   };
 }
 
@@ -72,7 +80,10 @@ export const M14_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "hope.j2051_trigger_fired", consumerName: "m14.m10-j2051-trigger" },
   { eventName: "hope.sfv_created", consumerName: "m14.m10-sfv-created" },
   { eventName: "m11.order.discontinued", consumerName: "m14.m11-order-discontinued" },
-  { eventName: "m12.medication_order.discontinued", consumerName: "m14.m12-medication-order-discontinued" },
+  {
+    eventName: "m12.medication_order.discontinued",
+    consumerName: "m14.m12-medication-order-discontinued",
+  },
   // M22 PDF render back-ref (§4.4 form-rendering handshake)
   { eventName: "m22.document.rendered", consumerName: "m14.m22-document-backref" },
 ] as const;

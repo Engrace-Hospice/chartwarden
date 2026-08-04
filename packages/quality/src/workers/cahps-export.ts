@@ -14,8 +14,8 @@
 // so they are LAZY fail-closed (the M33 drilldown-encrypt precedent: deny + fail rather than leak/no-op).
 import type { schema } from "@wardenx/db";
 import type { CahpsDecedentSampleRow, CahpsVendor, CahpsVendorAdapter } from "../cahps/adapter";
-import { ALREADY_PROCESSED, type AlreadyProcessedResult, type ProcessingLogPort } from "./ports";
 import { M30_QUEUE_PARAMS } from "./params";
+import { ALREADY_PROCESSED, type AlreadyProcessedResult, type ProcessingLogPort } from "./ports";
 
 // ── the job + the port bundle ───────────────────────────────────────────────────────────────────────────
 
@@ -152,7 +152,10 @@ export async function handleCahpsExport(
   if (await ports.processingLog.isProcessed(job.jobId)) return ALREADY_PROCESSED;
 
   const samplePeriod = { start: job.samplePeriodStart, end: job.samplePeriodEnd };
-  const pending = await ports.samples.listPendingForCycle(job.organizationId, job.samplingCycleMonth);
+  const pending = await ports.samples.listPendingForCycle(
+    job.organizationId,
+    job.samplingCycleMonth,
+  );
 
   // Resolve outside the try so an unconfigured adapter (503) is a clean non-retried config error, not a
   // terminal export_failed (an org with no binding should not poison its sample as permanently failed).
@@ -169,7 +172,10 @@ export async function handleCahpsExport(
 
     const exportedAt = ports.now();
     for (const row of pending) {
-      await ports.samples.markExported(row.id, job.samplingCycleMonth, { exportedAt, vendorAckRef });
+      await ports.samples.markExported(row.id, job.samplingCycleMonth, {
+        exportedAt,
+        vendorAckRef,
+      });
     }
 
     await ports.outbox.emitExportCompleted({
@@ -194,7 +200,8 @@ export async function handleCahpsExport(
     if (isTerminal) {
       // §4.8 — on the final failed attempt the cycle's rows are marked export_failed + the event emitted;
       // the QAPI Coordinator manually re-triggers via R-14. Then rethrow so BullMQ moves it to the DLQ.
-      for (const row of pending) await ports.samples.markExportFailed(row.id, job.samplingCycleMonth);
+      for (const row of pending)
+        await ports.samples.markExportFailed(row.id, job.samplingCycleMonth);
       await ports.outbox.emitExportFailed({
         orgId: job.organizationId,
         samplePeriod,

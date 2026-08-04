@@ -106,7 +106,8 @@ export function buildM35AbacPredicates(): Record<
     // outside grace (fail-closed to the platform-admin gate).
     plan_change_within_period_grace: (context, target) => {
       if (target.prorationBehavior !== "always_invoice") return true;
-      const startMs = typeof target.currentPeriodStartAtMs === "number" ? target.currentPeriodStartAtMs : null;
+      const startMs =
+        typeof target.currentPeriodStartAtMs === "number" ? target.currentPeriodStartAtMs : null;
       const nowMs = typeof target.nowMs === "number" ? target.nowMs : Date.now();
       const sevenDays = 7 * 24 * 3600 * 1000;
       if (startMs !== null && nowMs - startMs <= sevenDays) return true;
@@ -120,7 +121,8 @@ export function buildM35AbacPredicates(): Record<
       const promoActive = target.promoIsActive === true;
       if (!promoActive) return false;
       const nowMs = typeof target.nowMs === "number" ? target.nowMs : Date.now();
-      const validFromMs = typeof target.promoValidFromMs === "number" ? target.promoValidFromMs : null;
+      const validFromMs =
+        typeof target.promoValidFromMs === "number" ? target.promoValidFromMs : null;
       const validToMs = typeof target.promoValidToMs === "number" ? target.promoValidToMs : null;
       if (validFromMs !== null && nowMs < validFromMs) return false;
       if (validToMs !== null && nowMs > validToMs) return false;

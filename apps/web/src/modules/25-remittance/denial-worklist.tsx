@@ -39,7 +39,11 @@ interface DenialRow {
 
 const STATE_FILTERS = ["all", "open", "in_progress", "escalated", "appealed", "resolved", "closed"];
 
-const cellStyle = { padding: "0.55rem 0.75rem", textAlign: "left" as const, verticalAlign: "middle" as const };
+const cellStyle = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left" as const,
+  verticalAlign: "middle" as const,
+};
 const headStyle = {
   ...cellStyle,
   fontSize: "0.72rem",
@@ -95,9 +99,15 @@ export function DenialWorklist(): JSX.Element {
       kpis={
         <KpiStrip>
           <KpiCard label="Total cases" value={rows.length} />
-          <KpiCard label="Open (incl. escalated)" value={rows.filter((r) => r.state !== "resolved" && r.state !== "closed").length} />
+          <KpiCard
+            label="Open (incl. escalated)"
+            value={rows.filter((r) => r.state !== "resolved" && r.state !== "closed").length}
+          />
           <KpiCard label="Open $ at risk" value={money(openValue)} />
-          <KpiCard label="91+ days" value={rows.filter((r) => r.agingBucketLabel === "91+").length} />
+          <KpiCard
+            label="91+ days"
+            value={rows.filter((r) => r.agingBucketLabel === "91+").length}
+          />
         </KpiStrip>
       }
       filters={
@@ -139,17 +149,26 @@ export function DenialWorklist(): JSX.Element {
                     {r.rarcCode ? ` / ${r.rarcCode}` : ""}
                   </td>
                   <td style={cellStyle}>
-                    <StatusPill label={humanize(r.category)} tone={toneOf(DENIAL_CATEGORY_TONE, r.category)} />
+                    <StatusPill
+                      label={humanize(r.category)}
+                      tone={toneOf(DENIAL_CATEGORY_TONE, r.category)}
+                    />
                   </td>
                   <td style={cellStyle}>{humanize(r.source)}</td>
                   <td style={cellStyle}>
-                    <StatusPill label={r.agingBucketLabel} tone={toneOf(AGING_BUCKET_TONE, r.agingBucketLabel)} />
+                    <StatusPill
+                      label={r.agingBucketLabel}
+                      tone={toneOf(AGING_BUCKET_TONE, r.agingBucketLabel)}
+                    />
                   </td>
                   <td style={cellStyle} className="tabular-nums">
                     {money(r.dollarValue)}
                   </td>
                   <td style={cellStyle}>
-                    <StatusPill label={humanize(r.state)} tone={toneOf(DENIAL_STATE_TONE, r.state)} />
+                    <StatusPill
+                      label={humanize(r.state)}
+                      tone={toneOf(DENIAL_STATE_TONE, r.state)}
+                    />
                   </td>
                 </tr>
               ))}

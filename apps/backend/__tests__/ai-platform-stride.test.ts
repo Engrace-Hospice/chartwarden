@@ -27,25 +27,27 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  type ModelBackend,
+  ZdrContractMissingError,
+  aiTokenBudgetFor,
+  createAnthropicModelBackend,
+  createModelBackendRegistry,
+} from "@wardenx/ai-platform";
+import {
   M32_AUDIT_DENYLIST,
   M32_AUDIT_RETENTION_CLASS,
   M32_CIPHER_COLUMNS,
   M32_IMMUTABLE_COLUMNS,
   M32_TABLE_NAMES,
 } from "@wardenx/types";
-import {
-  ZdrContractMissingError,
-  aiTokenBudgetFor,
-  createAnthropicModelBackend,
-  createModelBackendRegistry,
-  type ModelBackend,
-} from "@wardenx/ai-platform";
 
 import {
   AiPromptArtifactError,
+  activateAiKillSwitch,
   buildAiPlatformAbacPredicates,
   createAiBootValidators,
   createAiInvocationPipeline,
+  createAiKillSwitchGate,
   createAiPromptRegistry,
   createDenyingAiChartContextValidator,
   createDenyingAiOptInEvidenceResolver,
@@ -55,8 +57,6 @@ import {
   createInMemoryAiPromptTemplateStore,
   createInMemoryAiProvenanceEraseStore,
   createInMemoryAiSafetyStores,
-  createAiKillSwitchGate,
-  activateAiKillSwitch,
   eraseAiProvenance,
   maskInvocationForActor,
   recordAiClinicianOptOut,
@@ -81,7 +81,10 @@ const INVOCATION_SQL = readFileSync(
   join(MIGRATIONS, "0114_ai_platform_m32_invocation_partitioned.sql"),
   "utf8",
 );
-const RLS_SQL = readFileSync(join(MIGRATIONS, "0116_ai_platform_m32_rls_audit_triggers.sql"), "utf8");
+const RLS_SQL = readFileSync(
+  join(MIGRATIONS, "0116_ai_platform_m32_rls_audit_triggers.sql"),
+  "utf8",
+);
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const OTHER_ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -179,7 +182,12 @@ function spyBackend(backendKey: string) {
       supportedModalities: ["text"],
       contextWindowTokens: 200_000,
       maxOutputTokens: 4_096,
-      supportedFeatures: { structured_output: true, tool_use: true, vision: false, streaming: true },
+      supportedFeatures: {
+        structured_output: true,
+        tool_use: true,
+        vision: false,
+        streaming: true,
+      },
     }),
     health: async () => "healthy",
     complete: complete as unknown as ModelBackend["complete"],
@@ -216,7 +224,10 @@ function pipelineHarness(options: PipelineOptions = {}) {
   return { pipeline, stores, complete };
 }
 
-function invoke(pipeline: ReturnType<typeof pipelineHarness>["pipeline"], prompt = "pt tolerated visit") {
+function invoke(
+  pipeline: ReturnType<typeof pipelineHarness>["pipeline"],
+  prompt = "pt tolerated visit",
+) {
   return pipeline.invoke({
     capabilityKey: "hearthnote_layer2",
     organizationId: ORG,
@@ -278,7 +289,10 @@ function template(
 function policiesFor(table: string): string[] {
   return (
     RLS_SQL.match(
-      new RegExp(`CREATE POLICY[\\s\\S]*?ON "${table}"[\\s\\S]*?(?:WITH CHECK \\([^;]*\\)|USING \\([^;]*\\));`, "g"),
+      new RegExp(
+        `CREATE POLICY[\\s\\S]*?ON "${table}"[\\s\\S]*?(?:WITH CHECK \\([^;]*\\)|USING \\([^;]*\\));`,
+        "g",
+      ),
     ) ?? []
   );
 }
@@ -290,15 +304,21 @@ describe("§8.1 T1/T12/T13 — the kill switch is not reachable by a tenant-side
     const predicates = buildAiPlatformAbacPredicates({ resolver: abacResolver() });
     // The two populations §4.7's definition names, and nothing else.
     await expect(predicates.ai_safety_owner(session(["platform_ops"]), {})).resolves.toBe(true);
-    await expect(predicates.ai_safety_owner(session(["clinical_safety_lead"]), {})).resolves.toBe(true);
+    await expect(predicates.ai_safety_owner(session(["clinical_safety_lead"]), {})).resolves.toBe(
+      true,
+    );
     // A tenant admin is the T1 attacker: the highest role an agency can grant ITSELF.
-    await expect(predicates.ai_safety_owner(session(["org_admin", "administrator"]), {})).resolves.toBe(
+    await expect(
+      predicates.ai_safety_owner(session(["org_admin", "administrator"]), {}),
+    ).resolves.toBe(false);
+    await expect(predicates.ai_safety_owner(session(["registered_nurse"]), {})).resolves.toBe(
       false,
     );
-    await expect(predicates.ai_safety_owner(session(["registered_nurse"]), {})).resolves.toBe(false);
     // …and a compliance officer, who READS the dashboard (R9/R16), still cannot deactivate: §6's matrix
     // gives the write surface to the safety owner alone and the two arms are ORed at the route.
-    await expect(predicates.ai_safety_owner(session(["compliance_officer"]), {})).resolves.toBe(false);
+    await expect(predicates.ai_safety_owner(session(["compliance_officer"]), {})).resolves.toBe(
+      false,
+    );
   });
 
   it("T12 — a tenant-scoped activation stays tenant-scoped, and the platform row needs the platform credential", async () => {
@@ -353,7 +373,8 @@ describe("§8.1 T1/T12/T13 — the kill switch is not reachable by a tenant-side
     expect(update).not.toMatch(/organization_id IS NULL/);
     // No other M32 table's policy mentions a NULL org at all — a second mixed-scope table would be a
     // second way to write a row every tenant reads.
-    const nullOrgPolicies = (RLS_SQL.match(/CREATE POLICY[\s\S]*?organization_id IS NULL/g) ?? []).length;
+    const nullOrgPolicies = (RLS_SQL.match(/CREATE POLICY[\s\S]*?organization_id IS NULL/g) ?? [])
+      .length;
     expect(nullOrgPolicies).toBe(1);
   });
 
@@ -379,7 +400,9 @@ describe("§8.1 T1/T12/T13 — the kill switch is not reachable by a tenant-side
         clinicianOptedOut: async () => true,
       }),
     });
-    await expect(predicates.ai_safety_owner(session(["registered_nurse"]), {})).resolves.toBe(false);
+    await expect(predicates.ai_safety_owner(session(["registered_nurse"]), {})).resolves.toBe(
+      false,
+    );
   });
 });
 
@@ -492,7 +515,10 @@ describe("§8.1 T3 — a prompt whose file diverged from its pin is refused at b
   it("reports the divergence as a finding rather than the first throw (the maintenance leg)", async () => {
     const findings = await verifyActiveAiPromptArtifacts({ store, artifacts: tampered });
     expect(findings).toHaveLength(1);
-    expect(findings[0]).toMatchObject({ problem: "hash_mismatch", capabilityKey: "hearthnote_layer2" });
+    expect(findings[0]).toMatchObject({
+      problem: "hash_mismatch",
+      capabilityKey: "hearthnote_layer2",
+    });
   });
 
   it("REFUSES TO START (the §4.4 step-5 leg), and refuses just as hard when the file cannot be read", async () => {
@@ -700,9 +726,13 @@ describe("§8.1 T6 — the Anthropic adapter has no path to a call without a liv
   it("backs the adapter invariant with a row-level CHECK, so a post-registration flip leaves no unmarked rows", () => {
     // The registry CHECK guards REGISTRATION; this one guards the individual call.
     expect(INVOCATION_SQL).toContain('CONSTRAINT "ai_invocation_zdr_check"');
-    expect(INVOCATION_SQL).toMatch(/"zdr_confirmed" = true OR "backend_key" NOT LIKE 'anthropic-%'/);
+    expect(INVOCATION_SQL).toMatch(
+      /"zdr_confirmed" = true OR "backend_key" NOT LIKE 'anthropic-%'/,
+    );
     // …and D19's registration half: no cloud backend without a BAA and ZDR enabled.
-    expect(TABLES_SQL).toMatch(/"kind" = 'local' OR \("baa_reference" IS NOT NULL AND "zdr_status" = 'enabled'\)/);
+    expect(TABLES_SQL).toMatch(
+      /"kind" = 'local' OR \("baa_reference" IS NOT NULL AND "zdr_status" = 'enabled'\)/,
+    );
   });
 
   it("T9 — keeps `zdr_confirmed` VERBATIM in the audit capture, because it is the whole D19 claim", () => {
@@ -956,7 +986,9 @@ describe("§8.6/§8.7 — every cipher is scrubbed, and every table files a rete
   });
 
   it("§8.7 — the compliance class covers everything except the one operational table", () => {
-    const operational = M32_TABLE_NAMES.filter((t) => M32_AUDIT_RETENTION_CLASS[t] === "operational");
+    const operational = M32_TABLE_NAMES.filter(
+      (t) => M32_AUDIT_RETENTION_CLASS[t] === "operational",
+    );
     // §8.7's table: `ai_token_ledger` files as compliance despite its 6-year partition horizon (the
     // horizon is a drop policy, not a second class), and `ai_routing_override` is the only operational
     // row — a tenant's routing preference is not evidence of a disclosure.
@@ -970,7 +1002,10 @@ describe("§8.6/§8.7 — every cipher is scrubbed, and every table files a rete
 
 describe("§8.8 — a destruction certificate shreds the payloads and PRESERVES the disclosure record", () => {
   it("reports rows shredded rather than rows deleted, and a re-run reports zero", async () => {
-    const { store, locked } = createInMemoryAiProvenanceEraseStore({ clinicalRecord: 3, intake: 1 });
+    const { store, locked } = createInMemoryAiProvenanceEraseStore({
+      clinicalRecord: 3,
+      intake: 1,
+    });
 
     const first = await eraseAiProvenance(ORG, PATIENT, "clinical_record", store);
     expect(first).toEqual({ erased: 3, counts: { invocationsShredded: 3 } });

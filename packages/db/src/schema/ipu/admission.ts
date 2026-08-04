@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 IPU admission unit-of-work (§2.2, §3.3): ipu_admission (the aggregate root) plus its
 // state-history, bed-assignment, and transition ledgers. TENANT-SCOPED, RLS on app.org_id (0148/0149).
 // `ipu_admission_state_history` is MONTHLY-PARTITIONED by `at` (composite PK `(id, at)` in SQL 0149) with
@@ -7,10 +8,9 @@
 // The unit_xor_remote CHECK and the two one-active partial-unique indexes are authoritative in the
 // migration; the ORM view carries columns + the indexes Drizzle expresses.
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import { ipuAdmissionKind, ipuAdmissionState, ipuAdmissionTransitionKind } from "../../enums";
 import { bigintVersion } from "./shared";
 import { inpatientUnit, ipuBed } from "./units";
-import { ipuAdmissionKind, ipuAdmissionState, ipuAdmissionTransitionKind } from "../../enums";
 
 export const ipuAdmission = pgTable(
   "ipu_admission",

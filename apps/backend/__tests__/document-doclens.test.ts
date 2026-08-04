@@ -1,3 +1,11 @@
+import {
+  createInMemoryEffectivePermissionStore,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@wardenx/auth";
 // apps/backend/__tests__/document-doclens.test.ts — M22-T08 the §7.1 W1 DocLens extraction pipeline:
 // (1) the PURE pipeline runs end-to-end when the `documents.doclens` flag is injected ON over a FAKE M32
 // capability (classify → extract → verify → discrepancy → review → decide → provenance);
@@ -18,14 +26,6 @@ import {
   planCommitIntents,
   runExtractionPipeline,
 } from "@wardenx/intake-extraction";
-import {
-  createInMemoryEffectivePermissionStore,
-  registerAbacRegistry,
-  registerEffectivePermissionResolver,
-  resetAbacRegistry,
-  resetAuthorizationContract,
-  resetRbacEngine,
-} from "@wardenx/auth";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -57,26 +57,52 @@ const fakeCapability: DocLensCapabilityPort = {
     return {
       status: "ok",
       value: [
-        { fieldPath: "patient.address", value: "12 Oak St", riskLevel: "low", confidence: 0.98, sudDetected: false, sourcePageNumber: 1 },
-        { fieldPath: "medications[0].name", value: "methadone", riskLevel: "high", confidence: 0.88, sudDetected: true, sourcePageNumber: 2 },
-        { fieldPath: "patient.allergy", value: "penicillin (anaphylaxis)", riskLevel: "high", confidence: 0.91, sudDetected: false, sourcePageNumber: 2 },
+        {
+          fieldPath: "patient.address",
+          value: "12 Oak St",
+          riskLevel: "low",
+          confidence: 0.98,
+          sudDetected: false,
+          sourcePageNumber: 1,
+        },
+        {
+          fieldPath: "medications[0].name",
+          value: "methadone",
+          riskLevel: "high",
+          confidence: 0.88,
+          sudDetected: true,
+          sourcePageNumber: 2,
+        },
+        {
+          fieldPath: "patient.allergy",
+          value: "penicillin (anaphylaxis)",
+          riskLevel: "high",
+          confidence: 0.91,
+          sudDetected: false,
+          sourcePageNumber: 2,
+        },
       ],
     };
   },
   async verify(args) {
-    return { status: "ok", value: args.candidates.map((c) => ({ fieldPath: c.fieldPath, verified: true, confidence: 0.95 })) };
+    return {
+      status: "ok",
+      value: args.candidates.map((c) => ({
+        fieldPath: c.fieldPath,
+        verified: true,
+        confidence: 0.95,
+      })),
+    };
   },
 };
 
 describe("M22-T08 DocLens pure pipeline (§7.1 W1) — flag ON over a fake M32", () => {
   it("classifies pages against the confidence floor (low-confidence → human classification)", () => {
-    const classified = classifyPages(
-      [
-        { pageNumber: 1, documentType: "discharge_summary", confidence: 0.96 },
-        { pageNumber: 2, documentType: "lab", confidence: 0.4 },
-        { pageNumber: 3, documentType: "unknown", confidence: 0.99 },
-      ],
-    );
+    const classified = classifyPages([
+      { pageNumber: 1, documentType: "discharge_summary", confidence: 0.96 },
+      { pageNumber: 2, documentType: "lab", confidence: 0.4 },
+      { pageNumber: 3, documentType: "unknown", confidence: 0.99 },
+    ]);
     expect(classified[0]?.needsHumanClassification).toBe(false);
     expect(classified[1]?.needsHumanClassification).toBe(true); // below 0.75
     expect(classified[2]?.needsHumanClassification).toBe(true); // unknown
@@ -101,7 +127,9 @@ describe("M22-T08 DocLens pure pipeline (§7.1 W1) — flag ON over a fake M32",
       batchId: BATCH,
       jobId: JOB,
       pageCount: 3,
-      chartValues: [{ fieldPath: "patient.allergy", value: "penicillin (rash)", targetModule: "m5" }],
+      chartValues: [
+        { fieldPath: "patient.allergy", value: "penicillin (rash)", targetModule: "m5" },
+      ],
     });
     expect(result.status).toBe("ready_for_review");
     if (result.status !== "ready_for_review") return;
@@ -137,7 +165,11 @@ describe("M22-T08 DocLens pure pipeline (§7.1 W1) — flag ON over a fake M32",
     const decisions = [
       { fieldPath: "patient.address", decision: "approve" as const },
       { fieldPath: "medications[0].name", decision: "reject" as const }, // rejected → no intent
-      { fieldPath: "patient.allergy", decision: "approve_with_edit" as const, editedValue: "penicillin (anaphylaxis, confirmed)" },
+      {
+        fieldPath: "patient.allergy",
+        decision: "approve_with_edit" as const,
+        editedValue: "penicillin (anaphylaxis, confirmed)",
+      },
     ];
     const intents = planCommitIntents(run.review.candidates, chartTargets, decisions);
     // The rejected medication emits no intent; the 2 approved ones do.
@@ -149,7 +181,12 @@ describe("M22-T08 DocLens pure pipeline (§7.1 W1) — flag ON over a fake M32",
     const provenance = buildProvenance(JOB, SRC_DOC, run.review.candidates, decisions, intents);
     expect(provenance).toHaveLength(2);
     const addrProv = provenance.find((p) => p.fieldPath === "patient.address");
-    expect(addrProv).toMatchObject({ jobId: JOB, sourceDocumentId: SRC_DOC, sourcePageNumber: 1, decision: "approve" });
+    expect(addrProv).toMatchObject({
+      jobId: JOB,
+      sourceDocumentId: SRC_DOC,
+      sourcePageNumber: 1,
+      decision: "approve",
+    });
   });
 
   it("stalls the job when the M32 deny-stub reports the capability unavailable (W1 AC)", async () => {
@@ -166,7 +203,17 @@ describe("M22-T08 DocLens pure pipeline (§7.1 W1) — flag ON over a fake M32",
 
   it("detectDiscrepancies ignores fields with no existing chart value", () => {
     const discs = detectDiscrepancies(
-      [{ fieldPath: "x", value: "a", riskLevel: "low", confidence: 1, sudDetected: false, sourcePageNumber: 1, visionVerified: null }],
+      [
+        {
+          fieldPath: "x",
+          value: "a",
+          riskLevel: "low",
+          confidence: 1,
+          sudDetected: false,
+          sourcePageNumber: 1,
+          visionVerified: null,
+        },
+      ],
       [{ fieldPath: "x", value: null, targetModule: "m5" }],
     );
     expect(discs).toHaveLength(0);
@@ -177,22 +224,48 @@ describe("M22-T08 DocLens pipeline service — the flag gate (default OFF → EX
   it("throws EXTRACTION_DISABLED (503) when no flag reader is wired (Phase-1 default)", async () => {
     const svc = createDocLensPipelineService({ capability: fakeCapability });
     await expect(
-      svc.runBatch({ organizationId: ORG, batchId: BATCH, jobId: JOB, pageCount: 3, chartValues: [] }),
+      svc.runBatch({
+        organizationId: ORG,
+        batchId: BATCH,
+        jobId: JOB,
+        pageCount: 3,
+        chartValues: [],
+      }),
     ).rejects.toMatchObject({ code: "EXTRACTION_DISABLED", statusCode: 503 });
   });
 
   it("runs the pipeline when the flag reader reports documents.doclens=true", async () => {
-    const flags: DocumentFeatureFlagReader = { async forOrg() { return { "documents.doclens": true }; } };
+    const flags: DocumentFeatureFlagReader = {
+      async forOrg() {
+        return { "documents.doclens": true };
+      },
+    };
     const svc = createDocLensPipelineService({ capability: fakeCapability, flags });
-    const res = await svc.runBatch({ organizationId: ORG, batchId: BATCH, jobId: JOB, pageCount: 3, chartValues: [] });
+    const res = await svc.runBatch({
+      organizationId: ORG,
+      batchId: BATCH,
+      jobId: JOB,
+      pageCount: 3,
+      chartValues: [],
+    });
     expect(res.status).toBe("ready_for_review");
   });
 
   it("still throws EXTRACTION_DISABLED when the flag map omits documents.doclens", async () => {
-    const flags: DocumentFeatureFlagReader = { async forOrg() { return { "ai.full": true }; } };
+    const flags: DocumentFeatureFlagReader = {
+      async forOrg() {
+        return { "ai.full": true };
+      },
+    };
     const svc = createDocLensPipelineService({ capability: fakeCapability, flags });
     await expect(
-      svc.runBatch({ organizationId: ORG, batchId: BATCH, jobId: JOB, pageCount: 3, chartValues: [] }),
+      svc.runBatch({
+        organizationId: ORG,
+        batchId: BATCH,
+        jobId: JOB,
+        pageCount: 3,
+        chartValues: [],
+      }),
     ).rejects.toMatchObject({ code: "EXTRACTION_DISABLED", statusCode: 503 });
   });
 });
@@ -223,7 +296,13 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
 
   function server(flags?: DocumentFeatureFlagReader) {
     const grantStore = createInMemoryEffectivePermissionStore([
-      { orgId: ORG, userId: "rn_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["intake.review"] }] },
+      {
+        orgId: ORG,
+        userId: "rn_1",
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["intake.review"] },
+        ],
+      },
     ]);
     registerEffectivePermissionResolver(grantStore.store);
     registerAbacRegistry();
@@ -255,7 +334,11 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
   });
 
   it("returns 503 EXTRACTION_DISABLED on commit when the flag is OFF", async () => {
-    const app = server({ async forOrg() { return { "documents.doclens": false }; } });
+    const app = server({
+      async forOrg() {
+        return { "documents.doclens": false };
+      },
+    });
     const res = await app.inject({
       method: "POST",
       url: COMMIT,
@@ -280,7 +363,11 @@ describe("M22-T08 DocLens extraction routes — 503 EXTRACTION_DISABLED when the
   });
 
   it("reaches the pipeline (202) when the flag is injected ON", async () => {
-    const app = server({ async forOrg() { return { "documents.doclens": true }; } });
+    const app = server({
+      async forOrg() {
+        return { "documents.doclens": true };
+      },
+    });
     const res = await app.inject({
       method: "POST",
       url: RUN,

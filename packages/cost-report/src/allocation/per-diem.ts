@@ -65,6 +65,7 @@ export function calculatePerDiem(input: PerDiemInput): PerDiemResult {
 
   const totalCostCents = sumCents(levels.map((l) => l.totalCostCents));
   const totalDays = levels.reduce((s, l) => s + l.totalDays, 0);
-  const totalAverageCostPerDiem = totalDays === 0 ? "0" : ratio(totalCostCents, totalDays).toString();
+  const totalAverageCostPerDiem =
+    totalDays === 0 ? "0" : ratio(totalCostCents, totalDays).toString();
   return { levels, totalCostCents, totalDays, totalAverageCostPerDiem };
 }

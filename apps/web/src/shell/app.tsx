@@ -148,7 +148,10 @@ export function AppShell({
       {
         element: <RootWatcher />,
         children: [
-          ...chromeless.map((s) => ({ path: s.path, element: withSuspense(createElement(s.screen)) })),
+          ...chromeless.map((s) => ({
+            path: s.path,
+            element: withSuspense(createElement(s.screen)),
+          })),
           {
             path: "/",
             element: (

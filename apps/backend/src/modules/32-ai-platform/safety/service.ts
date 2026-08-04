@@ -21,7 +21,15 @@
 // triage write must COMMIT whether or not the follow-up succeeds — a triage decision lost because a
 // kill-switch write failed would leave the report back in the queue with the capability still live.
 import {
+  type AiEvaluationRunTransitionRequest,
   AiGovernanceError,
+  type AiHallucinationFilingRequest,
+  type AiHallucinationFollowUpPlan,
+  type AiHallucinationTriageRequest,
+  type AiKillSwitchActivationRequest,
+  type AiKillSwitchDeactivationRequest,
+  type AiKillSwitchDemotionPlan,
+  type AiKillSwitchVerdict,
   aiKillSwitchFor,
   aiKillSwitchRequiresPlatformCredential,
   aiKillSwitchScopeOf,
@@ -32,14 +40,6 @@ import {
   evaluateAiKillSwitchActivation,
   evaluateAiKillSwitchDeactivation,
   requireAiGovernance,
-  type AiEvaluationRunTransitionRequest,
-  type AiHallucinationFilingRequest,
-  type AiHallucinationFollowUpPlan,
-  type AiHallucinationTriageRequest,
-  type AiKillSwitchActivationRequest,
-  type AiKillSwitchDeactivationRequest,
-  type AiKillSwitchDemotionPlan,
-  type AiKillSwitchVerdict,
 } from "@wardenx/ai-platform";
 import type {
   AiCapabilityLifecycleState,

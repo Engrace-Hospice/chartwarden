@@ -42,7 +42,15 @@ const PHYS = "44444444-4444-4444-8444-444444444444";
 const NOW = "2026-06-08T12:00:00.000Z";
 
 const READ = ["orders.read"];
-const WRITE = ["orders.draft", "orders.sign", "orders.verbal.record", "orders.cosign", "orders.discontinue", "orders.amend", "orders.complete"];
+const WRITE = [
+  "orders.draft",
+  "orders.sign",
+  "orders.verbal.record",
+  "orders.cosign",
+  "orders.discontinue",
+  "orders.amend",
+  "orders.complete",
+];
 const STANDING = ["orders.standing.manage", "orders.standing.spawn"];
 const POLICY = ["orders.policy.read", "orders.policy.manage"];
 const PERMISSION_SEED = [
@@ -110,7 +118,12 @@ describe("M11-T06 — §4.6 RBAC gating", () => {
     const { app } = makeServer();
     const ok = await app.inject({ method: "GET", url: "/api/v1/orders", headers: VIEWER });
     expect(ok.statusCode).toBe(200);
-    const denied = await app.inject({ method: "POST", url: "/api/v1/orders", headers: VIEWER, payload: labBody() });
+    const denied = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: VIEWER,
+      payload: labBody(),
+    });
     expect(denied.statusCode).toBe(403);
     await app.close();
   });
@@ -119,14 +132,24 @@ describe("M11-T06 — §4.6 RBAC gating", () => {
 describe("M11-T06 — §4.7 discipline_can_order floor", () => {
   it("a chaplain holding orders.draft is still blocked by the discipline ABAC floor on a lab order (403)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: CHAPLAIN, payload: labBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: CHAPLAIN,
+      payload: labBody(),
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
 
   it("an RN case manager drafts a lab order (201) and the §4.4 draft_created event fires", async () => {
     const { app, backend } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody(),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("draft");
     expect(backend.drainEvents().map((e) => e.eventName)).toContain("m11.order.draft_created");
@@ -137,15 +160,30 @@ describe("M11-T06 — §4.7 discipline_can_order floor", () => {
 describe("M11-T06 — §2.2 lifecycle: request-signature → sign", () => {
   it("RN drafts → requests signature → signs an active order; §4.4 signed event fires", async () => {
     const { app, backend } = makeServer();
-    const draft = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody() });
+    const draft = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody(),
+    });
     const id = draft.json().id as string;
     backend.drainEvents();
 
-    const req = await app.inject({ method: "POST", url: `/api/v1/orders/${id}/request-signature`, headers: RN, payload: { signerDiscipline: "rn_case_manager" } });
+    const req = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/request-signature`,
+      headers: RN,
+      payload: { signerDiscipline: "rn_case_manager" },
+    });
     expect(req.statusCode).toBe(200);
     expect(req.json().status).toBe("pending_signature");
 
-    const signed = await app.inject({ method: "POST", url: `/api/v1/orders/${id}/sign`, headers: RN, payload: { signerDiscipline: "rn_case_manager", signedAtClient: NOW } });
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/sign`,
+      headers: RN,
+      payload: { signerDiscipline: "rn_case_manager", signedAtClient: NOW },
+    });
     expect(signed.statusCode).toBe(200);
     expect(signed.json().status).toBe("active");
     expect(backend.drainEvents().map((e) => e.eventName)).toContain("m11.order.signed");
@@ -155,8 +193,14 @@ describe("M11-T06 — §2.2 lifecycle: request-signature → sign", () => {
   it("§4.7 signer_eligible blocks a non-physician signing a recertification (403)", async () => {
     const { app } = makeServer();
     const draft = await app.inject({
-      method: "POST", url: "/api/v1/orders", headers: RN,
-      payload: labBody({ kind: "recertification", drafterDiscipline: "medical_director", data: {} }),
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody({
+        kind: "recertification",
+        drafterDiscipline: "medical_director",
+        data: {},
+      }),
     });
     // RN can't even draft recert (discipline floor) — assert that, then a physician path is exercised separately.
     expect(draft.statusCode).toBe(403);
@@ -168,20 +212,42 @@ describe("M11-T06 — §2.5 LPN-drafted cosign axis", () => {
   it("an LPN-drafted lab order requires an RN cosignature before it can be signed (COSIGN_PENDING 412)", async () => {
     const { app } = makeServer();
     const draft = await app.inject({
-      method: "POST", url: "/api/v1/orders", headers: RN,
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
       payload: labBody({ drafterDiscipline: "lpn" }),
     });
     const id = draft.json().id as string;
-    const req = await app.inject({ method: "POST", url: `/api/v1/orders/${id}/request-signature`, headers: RN, payload: { signerDiscipline: "rn_case_manager" } });
+    const req = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/request-signature`,
+      headers: RN,
+      payload: { signerDiscipline: "rn_case_manager" },
+    });
     expect(req.json().cosignRequired).toBe(true);
 
-    const signedBlocked = await app.inject({ method: "POST", url: `/api/v1/orders/${id}/sign`, headers: RN, payload: { signerDiscipline: "rn_case_manager", signedAtClient: NOW } });
+    const signedBlocked = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/sign`,
+      headers: RN,
+      payload: { signerDiscipline: "rn_case_manager", signedAtClient: NOW },
+    });
     expect(signedBlocked.statusCode).toBe(412); // COSIGN_PENDING
 
     // A different RN cosigns (no self-cosign), then the sign succeeds.
-    const cos = await app.inject({ method: "POST", url: `/api/v1/orders/${id}/cosign`, headers: RN2, payload: { cosignerRole: "rn_case_manager", attestationText: "x".repeat(60) } });
+    const cos = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/cosign`,
+      headers: RN2,
+      payload: { cosignerRole: "rn_case_manager", attestationText: "x".repeat(60) },
+    });
     expect(cos.statusCode).toBe(200);
-    const signed = await app.inject({ method: "POST", url: `/api/v1/orders/${id}/sign`, headers: RN, payload: { signerDiscipline: "rn_case_manager", signedAtClient: NOW } });
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/sign`,
+      headers: RN,
+      payload: { signerDiscipline: "rn_case_manager", signedAtClient: NOW },
+    });
     expect(signed.statusCode).toBe(200);
     expect(signed.json().status).toBe("active");
     await app.close();
@@ -191,12 +257,26 @@ describe("M11-T06 — §2.5 LPN-drafted cosign axis", () => {
 describe("M11-T06 — §2.3 verbal policy tighten-only floor", () => {
   it("org admin reads + tightens the verbal policy; >48h is rejected (422)", async () => {
     const { app } = makeServer();
-    const read = await app.inject({ method: "GET", url: "/api/v1/admin/orders/verbal-policy", headers: ADMIN });
+    const read = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/orders/verbal-policy",
+      headers: ADMIN,
+    });
     expect(read.json().windowHours).toBe(48);
-    const tighten = await app.inject({ method: "PUT", url: "/api/v1/admin/orders/verbal-policy", headers: ADMIN, payload: { windowHours: 24 } });
+    const tighten = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/orders/verbal-policy",
+      headers: ADMIN,
+      payload: { windowHours: 24 },
+    });
     expect(tighten.statusCode).toBe(200);
     expect(tighten.json().windowHours).toBe(24);
-    const bad = await app.inject({ method: "PUT", url: "/api/v1/admin/orders/verbal-policy", headers: ADMIN, payload: { windowHours: 72 } });
+    const bad = await app.inject({
+      method: "PUT",
+      url: "/api/v1/admin/orders/verbal-policy",
+      headers: ADMIN,
+      payload: { windowHours: 72 },
+    });
     expect(bad.statusCode).toBe(422); // TypeBox max:48 → VALIDATION_FAILED (M1 envelope, 422)
     await app.close();
   });
@@ -206,21 +286,39 @@ describe("M11-T06 — §2.4 standing-order spawn", () => {
   it("RN creates a lab standing order and PRN-spawns an active order; §4.4 spawn + signed events fire", async () => {
     const { app, backend } = makeServer();
     const create = await app.inject({
-      method: "POST", url: "/api/v1/standing-orders", headers: RN,
-      payload: { patientId: PATIENT, admissionId: ADMISSION, kind: "lab", signerDiscipline: "rn_case_manager", cadence: "prn", data: { loinc: "2160-0" } },
+      method: "POST",
+      url: "/api/v1/standing-orders",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        signerDiscipline: "rn_case_manager",
+        cadence: "prn",
+        data: { loinc: "2160-0" },
+      },
     });
     expect(create.statusCode).toBe(201);
     const id = create.json().id as string;
     backend.drainEvents();
 
-    const spawn = await app.inject({ method: "POST", url: `/api/v1/standing-orders/${id}/spawn`, headers: RN, payload: {} });
+    const spawn = await app.inject({
+      method: "POST",
+      url: `/api/v1/standing-orders/${id}/spawn`,
+      headers: RN,
+      payload: {},
+    });
     expect(spawn.statusCode).toBe(201);
     const events = backend.drainEvents().map((e) => e.eventName);
     expect(events).toContain("m11.order.standing_spawned");
     expect(events).toContain("m11.order.signed");
 
     const spawnedId = spawn.json().orderId as string;
-    const detail = await app.inject({ method: "GET", url: `/api/v1/orders/${spawnedId}`, headers: RN });
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/orders/${spawnedId}`,
+      headers: RN,
+    });
     expect(detail.json().status).toBe("active");
     await app.close();
   });

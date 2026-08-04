@@ -19,7 +19,10 @@ export type BodyReleaseOutboxEvent =
 export type BodyReleaseEffect =
   | { readonly kind: "state"; readonly to: IpuBodyReleaseState }
   /** §2.12 — resume the source bed's cleaning cycle (discharged_dirty) now that release completed. */
-  | { readonly kind: "source_bed_cleaning"; readonly event: Extract<BedCleaningEvent, "dischargeDirty"> }
+  | {
+      readonly kind: "source_bed_cleaning";
+      readonly event: Extract<BedCleaningEvent, "dischargeDirty">;
+    }
   | { readonly kind: "outbox"; readonly event: BodyReleaseOutboxEvent };
 
 /** The deterministic result of a body-release transition. */
@@ -45,7 +48,9 @@ export type BodyReleaseEvent =
   | { readonly type: "postClose"; readonly isSystemActor: boolean };
 
 /** The legal §2.11 transition graph. `closed` is terminal. */
-export const BODY_RELEASE_GRAPH: Readonly<Record<IpuBodyReleaseState, ReadonlyArray<BodyReleaseEvent["type"]>>> = {
+export const BODY_RELEASE_GRAPH: Readonly<
+  Record<IpuBodyReleaseState, ReadonlyArray<BodyReleaseEvent["type"]>>
+> = {
   pending: ["identifyFuneralHome"],
   funeral_home_identified: ["releaseBody"],
   released: ["postClose"],

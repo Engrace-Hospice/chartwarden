@@ -98,6 +98,9 @@ export async function handleRiskRegisterRefresh(
     totalRows: rows.length,
   });
 
-  await ports.processingLog.markProcessed(job.jobId, { outcome: "refreshed", totalRows: rows.length });
+  await ports.processingLog.markProcessed(job.jobId, {
+    outcome: "refreshed",
+    totalRows: rows.length,
+  });
   return { outcome: "refreshed", totalRows: rows.length, refreshedAt };
 }

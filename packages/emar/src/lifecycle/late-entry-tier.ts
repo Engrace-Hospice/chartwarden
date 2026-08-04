@@ -7,7 +7,7 @@
 // computed server-side from both instants; the offline path cannot lower it (§2.10) — an administration
 // captured at 0300 and synced 18h later is `late`, computed off `administeredAt` vs `recordedAt`, not off
 // the sync time alone. PURE: both instants are passed in, so the ladder is deterministic.
-import type { IsoInstant, AdministrationLateEntryTier } from "@wardenx/types";
+import type { AdministrationLateEntryTier, IsoInstant } from "@wardenx/types";
 
 const HOUR_MS = 3_600_000;
 const FOUR_HOURS_MS = 4 * HOUR_MS;

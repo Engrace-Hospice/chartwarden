@@ -9,7 +9,7 @@
 // PURE DATA — no IO, `@wardenx/types`-only. The per-kind TypeBox `data` schemas + cross-field validators
 // + terminology bindings land per-folder in `kinds/<kind>/` in later tasks (§3.1).
 
-import type { OrderKind, M11EventName } from "@wardenx/types";
+import type { M11EventName, OrderKind } from "@wardenx/types";
 
 /**
  * The clinical disciplines the §2.1 signer matrix references. `lpn` appears as a drafter only (an

@@ -1,3 +1,13 @@
+import {
+  EmptyState,
+  FilterBar,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/22-documents — DOC.Explorer (M22 §5.1, Track B / ADR-0030).
 // Spec: docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md §5.1 "DOC.Explorer" — tenant-wide document
 // browse + filter (by patient, type, retention class). Built to the Lantern look (docs/design/DESIGN.md):
@@ -9,16 +19,6 @@
 // write paths harden (the §164.528 access-purpose capture rides the signed-URL request).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  FilterBar,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
 import { Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
 interface DocumentRow {
@@ -88,7 +88,9 @@ export function DocumentExplorer(): JSX.Element {
       }
       filters={
         <FilterBar>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}>
+          <label
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}
+          >
             <span style={{ color: "var(--color-on-surface-variant)" }}>Retention class</span>
             <select value={retentionFilter} onChange={(e) => setRetentionFilter(e.target.value)}>
               <option value="">All</option>

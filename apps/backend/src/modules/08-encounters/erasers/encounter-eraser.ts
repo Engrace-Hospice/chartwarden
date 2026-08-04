@@ -18,7 +18,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DataEraser } from "@wardenx/types";
-import { eq, inArray, or, type SQL } from "drizzle-orm";
+import { type SQL, eq, inArray, or } from "drizzle-orm";
 import { registerEraser } from "../../../bootstrap/index";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -141,9 +141,9 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
 
   /** The addendum ids under those encounters — HearthNote rows may hang off an addendum instead. */
   const addendumIdsFor = async (tx: Tx, encounterIds: string[]): Promise<string[]> =>
-    (
-      await tx.select({ id: ADD.id }).from(ADD).where(inArray(ADD.encounterId, encounterIds))
-    ).map((r) => r.id);
+    (await tx.select({ id: ADD.id }).from(ADD).where(inArray(ADD.encounterId, encounterIds))).map(
+      (r) => r.id,
+    );
 
   /** HearthNote rows hang off the encounter OR one of its addenda (both FKs nullable). */
   const selectionScope = (encounterIds: string[], addendumIds: string[]): SQL | undefined =>
@@ -203,43 +203,25 @@ export function createDrizzleEncounterEraseStore(db: DbClient): EncounterEraseSt
             .where(
               inArray(
                 LLM.assembledOutputId,
-                tx
-                  .select({ id: AO.id })
-                  .from(AO)
-                  .where(assembledScope(encounterIds, addendumIds)),
+                tx.select({ id: AO.id }).from(AO).where(assembledScope(encounterIds, addendumIds)),
               ),
             )
             .returning({ id: LLM.id }),
         );
         const hearthnoteAssembledOutputs = await del(() =>
-          tx
-            .delete(AO)
-            .where(assembledScope(encounterIds, addendumIds))
-            .returning({ id: AO.id }),
+          tx.delete(AO).where(assembledScope(encounterIds, addendumIds)).returning({ id: AO.id }),
         );
         const hearthnoteSelections = await del(() =>
-          tx
-            .delete(SEL)
-            .where(selectionScope(encounterIds, addendumIds))
-            .returning({ id: SEL.id }),
+          tx.delete(SEL).where(selectionScope(encounterIds, addendumIds)).returning({ id: SEL.id }),
         );
         const signatures = await del(() =>
-          tx
-            .delete(SIG)
-            .where(inArray(SIG.encounterId, encounterIds))
-            .returning({ id: SIG.id }),
+          tx.delete(SIG).where(inArray(SIG.encounterId, encounterIds)).returning({ id: SIG.id }),
         );
         const addenda = await del(() =>
-          tx
-            .delete(ADD)
-            .where(inArray(ADD.encounterId, encounterIds))
-            .returning({ id: ADD.id }),
+          tx.delete(ADD).where(inArray(ADD.encounterId, encounterIds)).returning({ id: ADD.id }),
         );
         const carePlanLinks = await del(() =>
-          tx
-            .delete(LINK)
-            .where(inArray(LINK.encounterId, encounterIds))
-            .returning({ id: LINK.id }),
+          tx.delete(LINK).where(inArray(LINK.encounterId, encounterIds)).returning({ id: LINK.id }),
         );
         const cosignatureRequests = await del(() =>
           tx

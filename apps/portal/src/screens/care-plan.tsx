@@ -60,7 +60,15 @@ export function PortalCarePlanView(): JSX.Element {
             <PortalCard key={p.problemId} heading={p.label}>
               {p.goals.length > 0 ? (
                 <>
-                  <div style={{ fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0 0 0.25rem" }}>Goals</div>
+                  <div
+                    style={{
+                      fontSize: "0.78rem",
+                      color: t.onSurfaceVariant,
+                      margin: "0 0 0.25rem",
+                    }}
+                  >
+                    Goals
+                  </div>
                   <ul style={{ margin: "0 0 0.6rem", paddingLeft: "1.1rem", fontSize: "0.92rem" }}>
                     {p.goals.map((g, i) => (
                       <li key={i}>{g}</li>

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `claim_line` (M23 Billing-Medicare §3.3; retention class `compliance`). Child line
 // table of `claim`; internal-only write surface (the routes expose it read-only after a claim leaves
 // DRAFT — spec §3.1). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS).
@@ -24,7 +25,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
 import { m23ClaimLineLevelOfCare, m23ClaimLineQCode, m23ClaimLineRevenueCode } from "./types";
@@ -72,10 +72,7 @@ export const claimLine = pgTable(
       .default(sql`'[]'::jsonb`), // int[] referencing the claim's ICD list 1..12
 
     // Modifier codes (M38 value set vs.cms-hospice-modifiers):
-    modifiers: jsonb("modifiers")
-      .$type<ClaimLineModifiers>()
-      .notNull()
-      .default(sql`'[]'::jsonb`), // string[] up to 4 per X12
+    modifiers: jsonb("modifiers").$type<ClaimLineModifiers>().notNull().default(sql`'[]'::jsonb`), // string[] up to 4 per X12
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

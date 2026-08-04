@@ -1,3 +1,4 @@
+import type { AiPromptActivationPlan, AiPromptTemplateSnapshot } from "@wardenx/ai-platform";
 // apps/backend/src/modules/32-ai-platform/prompts/store.ts — the `ai_prompt_template` port plus the
 // artifact reader `AIPromptRegistry` resolves bodies through (M32-T05).
 //
@@ -19,12 +20,8 @@
 //     Returning `null` would mean "this capability has no active prompt", which is what the invocation
 //     pipeline reads before deciding whether it may dispatch without a template.
 import { type DbClient, schema } from "@wardenx/db";
-import {
-  type PlatformBypassAuditor,
-  withPlatformContext,
-} from "@wardenx/tenancy";
+import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import type { AiPromptTemplateStatus } from "@wardenx/types";
-import type { AiPromptActivationPlan, AiPromptTemplateSnapshot } from "@wardenx/ai-platform";
 import { and, asc, eq, like } from "drizzle-orm";
 
 /** An `ai_prompt_template` row, complete enough for both the summary and the detail projections. */
@@ -48,7 +45,9 @@ export interface AiPromptTemplateStore {
    * index this rides.
    */
   findActiveTargeting(entityPrefix: string): Promise<readonly AiPromptTemplateRowProjection[]>;
-  findActiveWithOutputType(outputTypePrefix: string): Promise<readonly AiPromptTemplateRowProjection[]>;
+  findActiveWithOutputType(
+    outputTypePrefix: string,
+  ): Promise<readonly AiPromptTemplateRowProjection[]>;
   findActiveForCapability(capabilityKey: string): Promise<AiPromptTemplateRowProjection | null>;
   findByCapabilityVersion(
     capabilityKey: string,

@@ -31,13 +31,13 @@ import {
 } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import {
+  hl7InboundMatchLevel,
   labAbnormalFlag,
   labAbnormalSummary,
   labMatchMethod,
   labResultStatus,
   labTerminologyValidation,
   labValueType,
-  hl7InboundMatchLevel,
 } from "./enums";
 
 export const labObservation = pgTable(

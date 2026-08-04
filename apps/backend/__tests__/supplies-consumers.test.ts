@@ -5,20 +5,11 @@
 // that DOES touch a seam (`consumers/order-context.ts`) is exercised only through its pure helper, because
 // binding the M1 registry from a unit test would be testing the registry, not the cascade.
 import type { AdmissionStatusValue, M21EventName, SupplyRequestStatus } from "@wardenx/types";
-import { describe, expect, it } from "vitest";
 import { M21_EVENT_NAMES, M21_SUBSCRIBED_EVENT_NAMES } from "@wardenx/types";
-import {
-  M21_OUTBOX_EVENTS,
-  assertM21EventCatalogComplete,
-} from "../src/modules/21-supplies/events-by-m21";
+import { describe, expect, it } from "vitest";
 import {
   type ComfortKitDispatchContext,
   type M11SupplyFulfillmentRequestedPayload,
-  type SupplyAdmissionContext,
-  type SupplyCancellationTarget,
-  type SupplyDiscontinuationTarget,
-  type SupplyFulfillmentIntakeFacts,
-  type SupplyOrderContext,
   M11_CANCELLATION_CASCADE_REASON,
   M11_ORDER_DISCONTINUED_EVENT,
   M11_SUPPLY_CANCELLATION_REQUESTED_EVENT,
@@ -27,6 +18,11 @@ import {
   M13_CONTROLLED_SUBSTANCE_DISCREPANCY_EVENT,
   M13_REPLENISHMENT_NEEDED_EVENT,
   M13_RETURN_REQUIRED_EVENT,
+  type SupplyAdmissionContext,
+  type SupplyCancellationTarget,
+  type SupplyDiscontinuationTarget,
+  type SupplyFulfillmentIntakeFacts,
+  type SupplyOrderContext,
   deathCensusWindow,
   decideControlledSubstanceReemit,
   decideDeploymentAck,
@@ -37,6 +33,10 @@ import {
   decideSupplyFulfillmentIntake,
   supplyRequestKindForOrderKind,
 } from "../src/modules/21-supplies/consumers/index";
+import {
+  M21_OUTBOX_EVENTS,
+  assertM21EventCatalogComplete,
+} from "../src/modules/21-supplies/events-by-m21";
 
 const ORDER = "0a000000-0000-4000-8000-000000000001";
 const PATIENT = "0b000000-0000-4000-8000-000000000002";
@@ -78,7 +78,9 @@ function admissionAt(
   };
 }
 
-function facts(overrides: Partial<SupplyFulfillmentIntakeFacts> = {}): SupplyFulfillmentIntakeFacts {
+function facts(
+  overrides: Partial<SupplyFulfillmentIntakeFacts> = {},
+): SupplyFulfillmentIntakeFacts {
   return {
     existingRequestId: null,
     order,
@@ -276,9 +278,9 @@ describe("§7.1 W1 — m11.order.supply_fulfillment_requested", () => {
   });
 
   it("does not cancel for an on_hold admission — the patient is still in care", () => {
-    expect(decideSupplyFulfillmentIntake(fulfillment, facts({ admission: admissionAt("on_hold") })).kind).toBe(
-      "open_request",
-    );
+    expect(
+      decideSupplyFulfillmentIntake(fulfillment, facts({ admission: admissionAt("on_hold") })).kind,
+    ).toBe("open_request");
   });
 });
 
@@ -365,14 +367,17 @@ describe("§2.2 — m11.order.discontinued", () => {
 
   it("ignores a one-time purchase — it self-completes on receipt", () => {
     expect(
-      decideOrderDiscontinued(payload, rental("received_confirmed", { rentalCadence: "one_time_purchase" })).kind,
+      decideOrderDiscontinued(
+        payload,
+        rental("received_confirmed", { rentalCadence: "one_time_purchase" }),
+      ).kind,
     ).toBe("no_op");
   });
 
   it("ignores a non-DME kind and an already-terminal row", () => {
-    expect(decideOrderDiscontinued(payload, rental("received_confirmed", { kind: "supply" })).kind).toBe(
-      "no_op",
-    );
+    expect(
+      decideOrderDiscontinued(payload, rental("received_confirmed", { kind: "supply" })).kind,
+    ).toBe("no_op");
     expect(decideOrderDiscontinued(payload, rental("completed")).kind).toBe("no_op");
     expect(decideOrderDiscontinued(payload, null).kind).toBe("no_op");
   });

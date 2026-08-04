@@ -40,9 +40,15 @@ describe("deriveMedicaidControlNumber", () => {
 
   it("rejects a malformed ccn / state / date / attempt", () => {
     expect(() => deriveMedicaidControlNumber({ ...baseInput, ccn: "X" })).toThrow(RangeError);
-    expect(() => deriveMedicaidControlNumber({ ...baseInput, serviceState: "OREGON" })).toThrow(RangeError);
-    expect(() => deriveMedicaidControlNumber({ ...baseInput, serviceFrom: "06/01/26" })).toThrow(RangeError);
-    expect(() => deriveMedicaidControlNumber({ ...baseInput, attemptIndex: -1 })).toThrow(RangeError);
+    expect(() => deriveMedicaidControlNumber({ ...baseInput, serviceState: "OREGON" })).toThrow(
+      RangeError,
+    );
+    expect(() => deriveMedicaidControlNumber({ ...baseInput, serviceFrom: "06/01/26" })).toThrow(
+      RangeError,
+    );
+    expect(() => deriveMedicaidControlNumber({ ...baseInput, attemptIndex: -1 })).toThrow(
+      RangeError,
+    );
   });
 
   it("parse returns null on a non-conforming string", () => {

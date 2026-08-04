@@ -4,7 +4,16 @@
 //
 // CROSS-MODULE FK POLICY: organization_id / provider_entity_id (M1 core) get real FKs; mco_id (M40) is logical.
 import { sql } from "drizzle-orm";
-import { check, index, integer, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
 import { m24Channel } from "./enums";

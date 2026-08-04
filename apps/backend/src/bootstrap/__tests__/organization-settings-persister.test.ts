@@ -4,7 +4,10 @@
 // including `breakglass_cosign_required`, the specific key the M3 break-glass cosign-policy read
 // names in its own comment.
 import { describe, expect, it } from "vitest";
-import { buildDbOrganizationSettingsUpserter, wireOrganizationSettingsRegistry } from "../organization-settings-persister";
+import {
+  type buildDbOrganizationSettingsUpserter,
+  wireOrganizationSettingsRegistry,
+} from "../organization-settings-persister";
 
 interface Captured {
   readonly values: unknown;

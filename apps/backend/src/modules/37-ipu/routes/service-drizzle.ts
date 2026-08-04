@@ -13,8 +13,8 @@ import {
   evaluateVisitorCheckIn,
   normalizeReassessmentInterval,
   planCapOverride,
-  planReassessmentOutcome,
   planOpenAdmission,
+  planReassessmentOutcome,
   requireIpu,
   transitionAdmission,
   transitionBedCleaning,
@@ -70,8 +70,8 @@ import type {
   IrcEpisodeView,
   MealView,
   RestraintView,
-  RoomView,
   RnCoverageView,
+  RoomView,
   ShiftView,
   StaffAssignmentView,
   UnitView,
@@ -100,10 +100,16 @@ export interface IpuRouteServiceDeps {
 }
 
 const iso = (d: Date): string => d.toISOString();
-const ctx = (actor: IpuReadActor) => ({ organizationId: actor.organizationId, userId: actor.userId });
+const ctx = (actor: IpuReadActor) => ({
+  organizationId: actor.organizationId,
+  userId: actor.userId,
+});
 
 /** Build the production Drizzle-backed M37 route service. */
-export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceDeps = {}): IpuRouteService {
+export function buildDrizzleIpuRouteService(
+  db: DbClient,
+  deps: IpuRouteServiceDeps = {},
+): IpuRouteService {
   const outbox = deps.outbox ?? NOOP_OUTBOX;
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
@@ -144,7 +150,10 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
   });
 
   /** Resolve the active bed for an admission (the un-ended bed_assignment's bed) + its cleaning status. */
-  async function activeBedFor(t: DbClient, admissionId: string): Promise<{ id: string; status: string } | null> {
+  async function activeBedFor(
+    t: DbClient,
+    admissionId: string,
+  ): Promise<{ id: string; status: string } | null> {
     const [ba] = await t
       .select()
       .from(schema.ipuBedAssignment)
@@ -301,7 +310,8 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
             displayName: body.displayName ?? cur.displayName,
             rnCoverageHorizonHours: body.rnCoverageHorizonHours ?? cur.rnCoverageHorizonHours,
             turnoverSlaMinutes: body.turnoverSlaMinutes ?? cur.turnoverSlaMinutes,
-            gipReassessmentIntervalHours: body.gipReassessmentIntervalHours ?? cur.gipReassessmentIntervalHours,
+            gipReassessmentIntervalHours:
+              body.gipReassessmentIntervalHours ?? cur.gipReassessmentIntervalHours,
             ircCapOverrideMaxDays: body.ircCapOverrideMaxDays ?? cur.ircCapOverrideMaxDays,
             updatedAt: new Date(),
             version: cur.version + 1,
@@ -496,7 +506,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           if (eff.kind === "outbox") {
             await outbox.publish(t, {
               eventName: eff.event,
-              payload: { ipuAdmissionId: row.id, organizationId: actor.organizationId, levelOfCarePeriodId: row.levelOfCarePeriodId, kind: row.kind },
+              payload: {
+                ipuAdmissionId: row.id,
+                organizationId: actor.organizationId,
+                levelOfCarePeriodId: row.levelOfCarePeriodId,
+                kind: row.kind,
+              },
               organizationId: actor.organizationId,
               aggregateKind: "ipu_admission",
               aggregateId: row.id,
@@ -517,7 +532,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const [cov] = await t
           .select()
           .from(schema.ipuRnCoverageWindow)
-          .where(and(eq(schema.ipuRnCoverageWindow.unitId, body.unitId), eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart)))
+          .where(
+            and(
+              eq(schema.ipuRnCoverageWindow.unitId, body.unitId),
+              eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
+            ),
+          )
           .limit(1);
         const readyBeds = await t
           .select({ id: B.id })
@@ -578,9 +598,15 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
             sourceBedId = bed.id;
             sourceBedStatus = bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS;
           }
-          await t.update(schema.ipuBedAssignment).set({ endedAt: new Date(), unassignReason: body.reason }).where(eq(schema.ipuBedAssignment.id, ba.id));
+          await t
+            .update(schema.ipuBedAssignment)
+            .set({ endedAt: new Date(), unassignReason: body.reason })
+            .where(eq(schema.ipuBedAssignment.id, ba.id));
         }
-        const transition = transitionAdmission(adm.state, adm.kind, { type: "discharge", dischargeEventExists: body.dischargeEventExists });
+        const transition = transitionAdmission(adm.state, adm.kind, {
+          type: "discharge",
+          dischargeEventExists: body.dischargeEventExists,
+        });
         await applyAdmissionTransition(t, actor, adm, transition, { sourceBedId, sourceBedStatus });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
@@ -592,7 +618,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
-        const [gip] = await t.select({ id: GC.id }).from(GC).where(eq(GC.ipuAdmissionId, admissionId)).limit(1);
+        const [gip] = await t
+          .select({ id: GC.id })
+          .from(GC)
+          .where(eq(GC.ipuAdmissionId, admissionId))
+          .limit(1);
         const bed = await activeBedFor(t, admissionId);
         // The route IS the M6 LCP ack handler (or force-flagged), so lcpConfirmed holds.
         const transition = transitionAdmission(adm.state, adm.kind, {
@@ -600,7 +630,13 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           lcpConfirmed: true,
           gipCriteriaExists: gip !== undefined,
         });
-        await applyAdmissionTransition(t, actor, adm, transition, bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {});
+        await applyAdmissionTransition(
+          t,
+          actor,
+          adm,
+          transition,
+          bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {},
+        );
         await t.update(A).set({ activatedAt: new Date() }).where(eq(A.id, admissionId));
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
@@ -619,11 +655,20 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           const [cov] = await t
             .select()
             .from(schema.ipuRnCoverageWindow)
-            .where(and(eq(schema.ipuRnCoverageWindow.unitId, body.destinationUnitId), eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart)))
+            .where(
+              and(
+                eq(schema.ipuRnCoverageWindow.unitId, body.destinationUnitId),
+                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
+              ),
+            )
             .limit(1);
           destinationRnCoverage = cov?.isCovered === true;
         }
-        const transition = transitionAdmission(adm.state, adm.kind, { type: "initiateTransfer", targetKind: body.targetKind, destinationRnCoverage });
+        const transition = transitionAdmission(adm.state, adm.kind, {
+          type: "initiateTransfer",
+          targetKind: body.targetKind,
+          destinationRnCoverage,
+        });
         // Persist the §2.2 transition ledger row + drive the machine's state/history/outbox effects.
         await t.insert(schema.ipuAdmissionTransition).values({
           organizationId: actor.organizationId,
@@ -646,10 +691,22 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
         const bed = await activeBedFor(t, admissionId);
-        const transition = transitionAdmission(adm.state, adm.kind, { type: "confirmTransfer", destinationAcknowledged: body.destinationAcknowledged });
-        await applyAdmissionTransition(t, actor, adm, transition, bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {});
+        const transition = transitionAdmission(adm.state, adm.kind, {
+          type: "confirmTransfer",
+          destinationAcknowledged: body.destinationAcknowledged,
+        });
+        await applyAdmissionTransition(
+          t,
+          actor,
+          adm,
+          transition,
+          bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {},
+        );
         if (bed) {
-          await t.update(schema.ipuBedAssignment).set({ endedAt: new Date(), unassignReason: "transfer" }).where(and(eq(schema.ipuBedAssignment.ipuAdmissionId, admissionId)));
+          await t
+            .update(schema.ipuBedAssignment)
+            .set({ endedAt: new Date(), unassignReason: "transfer" })
+            .where(and(eq(schema.ipuBedAssignment.ipuAdmissionId, admissionId)));
         }
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
@@ -696,7 +753,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         });
         await outbox.publish(t, {
           eventName: "m37.gip_criteria.reassessment_completed",
-          payload: { ipuAdmissionId: admissionId, organizationId: actor.organizationId, criterionStillMet: body.criterionStillMet },
+          payload: {
+            ipuAdmissionId: admissionId,
+            organizationId: actor.organizationId,
+            criterionStillMet: body.criterionStillMet,
+          },
           organizationId: actor.organizationId,
           aggregateKind: "gip_admission_criteria",
           aggregateId: crit.id,
@@ -711,7 +772,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const [ep] = await t.select().from(IE).where(eq(IE.ipuAdmissionId, admissionId)).limit(1);
         if (!ep) throw new NotFoundError("irc_episode not found");
         // §2.5 — break-glass: step-up + reason ≥100 + extension ≤2. Recompute the state under the new cap.
-        const plan = planCapOverride({ reason: body.reason, extensionDays: body.extensionDays, stepUpVerified: actor.stepUpRecent });
+        const plan = planCapOverride({
+          reason: body.reason,
+          extensionDays: body.extensionDays,
+          stepUpVerified: actor.stepUpRecent,
+        });
         const nextState = computeIrcState(ep.consecutiveDayCount, plan.extensionDays);
         const [row] = await t
           .update(IE)
@@ -729,7 +794,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         if (!row) throw new ConflictError("irc override failed");
         await outbox.publish(t, {
           eventName: "m37.irc_episode.cap_override_invoked",
-          payload: { ipuAdmissionId: admissionId, organizationId: actor.organizationId, extensionDays: plan.extensionDays },
+          payload: {
+            ipuAdmissionId: admissionId,
+            organizationId: actor.organizationId,
+            extensionDays: plan.extensionDays,
+          },
           organizationId: actor.organizationId,
           aggregateKind: "irc_episode",
           aggregateId: ep.id,
@@ -770,7 +839,14 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           })
           .returning();
         if (!row) throw new ConflictError("shift insert failed");
-        return { id: row.id, unitId: row.unitId, shiftStartAt: iso(row.shiftStartAt), shiftEndAt: iso(row.shiftEndAt), displayLabel: row.displayLabel, version: row.version };
+        return {
+          id: row.id,
+          unitId: row.unitId,
+          shiftStartAt: iso(row.shiftStartAt),
+          shiftEndAt: iso(row.shiftEndAt),
+          displayLabel: row.displayLabel,
+          version: row.version,
+        };
       });
     },
 
@@ -779,10 +855,21 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const SA = schema.ipuStaffAssignment;
         const [row] = await (tx as DbClient)
           .insert(SA)
-          .values({ organizationId: actor.organizationId, shiftId, membershipId: body.membershipId, role: body.role })
+          .values({
+            organizationId: actor.organizationId,
+            shiftId,
+            membershipId: body.membershipId,
+            role: body.role,
+          })
           .returning();
         if (!row) throw new ConflictError("staff assignment insert failed");
-        return { id: row.id, shiftId: row.shiftId, membershipId: row.membershipId, role: row.role, state: row.state } satisfies StaffAssignmentView;
+        return {
+          id: row.id,
+          shiftId: row.shiftId,
+          membershipId: row.membershipId,
+          role: row.role,
+          state: row.state,
+        } satisfies StaffAssignmentView;
       });
     },
 
@@ -798,15 +885,28 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           .where(eq(SA.id, body.assignmentId))
           .returning();
         if (!row) throw new ConflictError("unassign failed");
-        return { id: row.id, shiftId: row.shiftId, membershipId: row.membershipId, role: row.role, state: row.state } satisfies StaffAssignmentView;
+        return {
+          id: row.id,
+          shiftId: row.shiftId,
+          membershipId: row.membershipId,
+          role: row.role,
+          state: row.state,
+        } satisfies StaffAssignmentView;
       });
     },
 
     async getRnCoverage(actor, unitId: string): Promise<RnCoverageView> {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const W = schema.ipuRnCoverageWindow;
-        const rows = await (tx as DbClient).select().from(W).where(eq(W.unitId, unitId)).orderBy(W.hourStartAt);
-        return { unitId, items: rows.map((r) => ({ hourStartAt: iso(r.hourStartAt), isCovered: r.isCovered })) };
+        const rows = await (tx as DbClient)
+          .select()
+          .from(W)
+          .where(eq(W.unitId, unitId))
+          .orderBy(W.hourStartAt);
+        return {
+          unitId,
+          items: rows.map((r) => ({ hourStartAt: iso(r.hourStartAt), isCovered: r.isCovered })),
+        };
       });
     },
 
@@ -817,7 +917,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         // persistence table, so the ABAC predicate reads the coverage window + this event stream.
         await outbox.publish(tx as DbClient, {
           eventName: "m37.rn_coverage.break_glass_invoked",
-          payload: { unitId, organizationId: actor.organizationId, invokedAt: new Date().toISOString() },
+          payload: {
+            unitId,
+            organizationId: actor.organizationId,
+            invokedAt: new Date().toISOString(),
+          },
           organizationId: actor.organizationId,
           aggregateKind: "inpatient_unit",
           aggregateId: unitId,
@@ -832,10 +936,17 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const [bed] = await t.select().from(B).where(eq(B.id, bedId)).limit(1);
         if (!bed) throw new NotFoundError("ipu_bed not found");
         // Drive the pure §2.12 machine (throws ILLEGAL_BED_CLEANING_TRANSITION on an illegal edge).
-        const result = transitionBedCleaning(bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS, body.event);
+        const result = transitionBedCleaning(
+          bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS,
+          body.event,
+        );
         const [updated] = await t
           .update(B)
-          .set({ cleaningStatus: result.to, cleaningStatusChangedAt: new Date(), version: bed.version + 1 })
+          .set({
+            cleaningStatus: result.to,
+            cleaningStatusChangedAt: new Date(),
+            version: bed.version + 1,
+          })
           .where(eq(B.id, bedId))
           .returning();
         if (!updated) throw new ConflictError("bed update failed");
@@ -848,7 +959,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           notes: body.notes ?? null,
         });
         // Emit the bed lifecycle signal to M33/M36.
-        const evt = result.event === "startCleaning" ? "m37.bed.cleaning_started" : result.event === "completeCleaning" ? "m37.bed.ready" : null;
+        const evt =
+          result.event === "startCleaning"
+            ? "m37.bed.cleaning_started"
+            : result.event === "completeCleaning"
+              ? "m37.bed.ready"
+              : null;
         if (evt) {
           await outbox.publish(t, {
             eventName: evt,
@@ -899,7 +1015,10 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           hasOrderingOrder: body.orderingOrderId.length > 0,
           stepUpVerified: actor.stepUpRecent,
         });
-        const interval = normalizeReassessmentInterval(body.reassessmentIntervalMinutes, body.category);
+        const interval = normalizeReassessmentInterval(
+          body.reassessmentIntervalMinutes,
+          body.category,
+        );
         const [row] = await t
           .insert(RE)
           .values({
@@ -917,7 +1036,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         if (!row) throw new ConflictError("restraint insert failed");
         await outbox.publish(t, {
           eventName: "m37.restraint.applied",
-          payload: { ipuAdmissionId: admissionId, organizationId: actor.organizationId, restraintEventId: row.id, restraintKind: row.restraintKind },
+          payload: {
+            ipuAdmissionId: admissionId,
+            organizationId: actor.organizationId,
+            restraintEventId: row.id,
+            restraintKind: row.restraintKind,
+          },
           organizationId: actor.organizationId,
           aggregateKind: "ipu_restraint_event",
           aggregateId: row.id,
@@ -926,7 +1050,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
       });
     },
 
-    async reassessRestraint(actor: IpuWriteActor, restraintId: string, body: ReassessRestraintBody) {
+    async reassessRestraint(
+      actor: IpuWriteActor,
+      restraintId: string,
+      body: ReassessRestraintBody,
+    ) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
         const [ev] = await t.select().from(RE).where(eq(RE.id, restraintId)).limit(1);
@@ -945,14 +1073,23 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         if (result.closesEvent) {
           const [u] = await t
             .update(RE)
-            .set({ state: result.nextState, releasedAt: new Date(), releasedByMembershipId: actor.membershipId, version: ev.version + 1 })
+            .set({
+              state: result.nextState,
+              releasedAt: new Date(),
+              releasedByMembershipId: actor.membershipId,
+              version: ev.version + 1,
+            })
             .where(eq(RE.id, restraintId))
             .returning();
           if (u) updated = u;
         }
         await outbox.publish(t, {
           eventName: result.outbox,
-          payload: { organizationId: actor.organizationId, restraintEventId: restraintId, outcome: body.outcome },
+          payload: {
+            organizationId: actor.organizationId,
+            restraintEventId: restraintId,
+            outcome: body.outcome,
+          },
           organizationId: actor.organizationId,
           aggregateKind: "ipu_restraint_event",
           aggregateId: restraintId,
@@ -969,7 +1106,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const result = planReassessmentOutcome(ev.state, "release");
         const [u] = await t
           .update(RE)
-          .set({ state: result.nextState, releasedAt: new Date(), releasedByMembershipId: actor.membershipId, version: ev.version + 1 })
+          .set({
+            state: result.nextState,
+            releasedAt: new Date(),
+            releasedByMembershipId: actor.membershipId,
+            version: ev.version + 1,
+          })
           .where(eq(RE.id, restraintId))
           .returning();
         if (!u) throw new ConflictError("restraint release failed");
@@ -993,7 +1135,11 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const VR = schema.ipuVisitorRestriction;
         const restrictions = await t.select().from(VR).where(isNull(VR.liftedAt));
         const applicable = restrictions
-          .filter((r) => (r.scope === "unit" && r.unitId === adm.unitId) || (r.scope === "patient" && r.patientId === adm.patientId))
+          .filter(
+            (r) =>
+              (r.scope === "unit" && r.unitId === adm.unitId) ||
+              (r.scope === "patient" && r.patientId === adm.patientId),
+          )
           .map((r) => ({ kind: r.restrictionKind }));
         // §2.7 — the machine throws VISITOR_RESTRICTION_FULL_BLOCK / VISITOR_IMMEDIATE_FAMILY_ONLY (412).
         const decision = evaluateVisitorCheckIn(body.relationship, applicable);
@@ -1011,16 +1157,34 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           })
           .returning();
         if (!row) throw new ConflictError("visitor insert failed");
-        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, relationship: row.relationship, maskRequired: row.maskRequired, checkedInAt: iso(row.checkedInAt), checkedOutAt: row.checkedOutAt ? iso(row.checkedOutAt) : null } satisfies VisitorView;
+        return {
+          id: row.id,
+          ipuAdmissionId: row.ipuAdmissionId,
+          relationship: row.relationship,
+          maskRequired: row.maskRequired,
+          checkedInAt: iso(row.checkedInAt),
+          checkedOutAt: row.checkedOutAt ? iso(row.checkedOutAt) : null,
+        } satisfies VisitorView;
       });
     },
 
     async checkOutVisitor(actor: IpuWriteActor, visitorId: string) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
-        const [row] = await t.update(schema.ipuVisitor).set({ checkedOutAt: new Date() }).where(eq(schema.ipuVisitor.id, visitorId)).returning();
+        const [row] = await t
+          .update(schema.ipuVisitor)
+          .set({ checkedOutAt: new Date() })
+          .where(eq(schema.ipuVisitor.id, visitorId))
+          .returning();
         if (!row) throw new NotFoundError("ipu_visitor not found");
-        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, relationship: row.relationship, maskRequired: row.maskRequired, checkedInAt: iso(row.checkedInAt), checkedOutAt: row.checkedOutAt ? iso(row.checkedOutAt) : null } satisfies VisitorView;
+        return {
+          id: row.id,
+          ipuAdmissionId: row.ipuAdmissionId,
+          relationship: row.relationship,
+          maskRequired: row.maskRequired,
+          checkedInAt: iso(row.checkedInAt),
+          checkedOutAt: row.checkedOutAt ? iso(row.checkedOutAt) : null,
+        } satisfies VisitorView;
       });
     },
 
@@ -1042,12 +1206,22 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         if (!row) throw new ConflictError("visitor restriction insert failed");
         await outbox.publish(tx as DbClient, {
           eventName: "m37.visitor_restriction.applied",
-          payload: { organizationId: actor.organizationId, restrictionId: row.id, scope: row.scope, kind: row.restrictionKind },
+          payload: {
+            organizationId: actor.organizationId,
+            restrictionId: row.id,
+            scope: row.scope,
+            kind: row.restrictionKind,
+          },
           organizationId: actor.organizationId,
           aggregateKind: "ipu_visitor_restriction",
           aggregateId: row.id,
         });
-        return { id: row.id, scope: row.scope, restrictionKind: row.restrictionKind, liftedAt: null } satisfies VisitorRestrictionView;
+        return {
+          id: row.id,
+          scope: row.scope,
+          restrictionKind: row.restrictionKind,
+          liftedAt: null,
+        } satisfies VisitorRestrictionView;
       });
     },
 
@@ -1060,7 +1234,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           .where(eq(schema.ipuVisitorRestriction.id, body.restrictionId))
           .returning();
         if (!row) throw new NotFoundError("ipu_visitor_restriction not found");
-        return { id: row.id, scope: row.scope, restrictionKind: row.restrictionKind, liftedAt: row.liftedAt ? iso(row.liftedAt) : null } satisfies VisitorRestrictionView;
+        return {
+          id: row.id,
+          scope: row.scope,
+          restrictionKind: row.restrictionKind,
+          liftedAt: row.liftedAt ? iso(row.liftedAt) : null,
+        } satisfies VisitorRestrictionView;
       });
     },
 
@@ -1081,7 +1260,12 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           })
           .returning();
         if (!row) throw new ConflictError("meal insert failed");
-        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, serviceDate: row.serviceDate, mealSlot: row.mealSlot } satisfies MealView;
+        return {
+          id: row.id,
+          ipuAdmissionId: row.ipuAdmissionId,
+          serviceDate: row.serviceDate,
+          mealSlot: row.mealSlot,
+        } satisfies MealView;
       });
     },
 
@@ -1089,7 +1273,16 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
       return withOrgContext(db, ctx(actor), async (tx) => {
         const E = schema.ipuEquipment;
         const rows = await (tx as DbClient).select().from(E).orderBy(desc(E.createdAt));
-        return rows.map((r): EquipmentView => ({ id: r.id, serialNumber: r.serialNumber, equipmentType: r.equipmentType, currentStatus: r.currentStatus, nextInspectionDueDate: r.nextInspectionDueDate, version: r.version }));
+        return rows.map(
+          (r): EquipmentView => ({
+            id: r.id,
+            serialNumber: r.serialNumber,
+            equipmentType: r.equipmentType,
+            currentStatus: r.currentStatus,
+            nextInspectionDueDate: r.nextInspectionDueDate,
+            version: r.version,
+          }),
+        );
       });
     },
 
@@ -1107,14 +1300,25 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           })
           .returning();
         if (!row) throw new ConflictError("equipment insert failed");
-        return { id: row.id, serialNumber: row.serialNumber, equipmentType: row.equipmentType, currentStatus: row.currentStatus, nextInspectionDueDate: row.nextInspectionDueDate, version: row.version } satisfies EquipmentView;
+        return {
+          id: row.id,
+          serialNumber: row.serialNumber,
+          equipmentType: row.equipmentType,
+          currentStatus: row.currentStatus,
+          nextInspectionDueDate: row.nextInspectionDueDate,
+          version: row.version,
+        } satisfies EquipmentView;
       });
     },
 
     async logMaintenance(actor: IpuWriteActor, equipmentId: string, body: LogMaintenanceBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
-        const [eq_] = await t.select().from(schema.ipuEquipment).where(eq(schema.ipuEquipment.id, equipmentId)).limit(1);
+        const [eq_] = await t
+          .select()
+          .from(schema.ipuEquipment)
+          .where(eq(schema.ipuEquipment.id, equipmentId))
+          .limit(1);
         if (!eq_) throw new NotFoundError("ipu_equipment not found");
         await t.insert(schema.ipuEquipmentMaintenance).values({
           organizationId: actor.organizationId,
@@ -1124,14 +1328,25 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           notes: body.notes ?? null,
           vendorInvoiceReference: body.vendorInvoiceReference ?? null,
         });
-        return { id: eq_.id, serialNumber: eq_.serialNumber, equipmentType: eq_.equipmentType, currentStatus: eq_.currentStatus, nextInspectionDueDate: eq_.nextInspectionDueDate, version: eq_.version } satisfies EquipmentView;
+        return {
+          id: eq_.id,
+          serialNumber: eq_.serialNumber,
+          equipmentType: eq_.equipmentType,
+          currentStatus: eq_.currentStatus,
+          nextInspectionDueDate: eq_.nextInspectionDueDate,
+          version: eq_.version,
+        } satisfies EquipmentView;
       });
     },
 
     async logInspection(actor: IpuWriteActor, equipmentId: string, body: LogInspectionBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
-        const [eq_] = await t.select().from(schema.ipuEquipment).where(eq(schema.ipuEquipment.id, equipmentId)).limit(1);
+        const [eq_] = await t
+          .select()
+          .from(schema.ipuEquipment)
+          .where(eq(schema.ipuEquipment.id, equipmentId))
+          .limit(1);
         if (!eq_) throw new NotFoundError("ipu_equipment not found");
         await t.insert(schema.ipuEquipmentInspection).values({
           organizationId: actor.organizationId,
@@ -1155,75 +1370,160 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           .where(eq(schema.ipuEquipment.id, equipmentId))
           .returning();
         if (!row) throw new ConflictError("inspection update failed");
-        return { id: row.id, serialNumber: row.serialNumber, equipmentType: row.equipmentType, currentStatus: row.currentStatus, nextInspectionDueDate: row.nextInspectionDueDate, version: row.version } satisfies EquipmentView;
+        return {
+          id: row.id,
+          serialNumber: row.serialNumber,
+          equipmentType: row.equipmentType,
+          currentStatus: row.currentStatus,
+          nextInspectionDueDate: row.nextInspectionDueDate,
+          version: row.version,
+        } satisfies EquipmentView;
       });
     },
 
-    async assignEquipmentBed(actor: IpuWriteActor, equipmentId: string, body: AssignEquipmentBedBody) {
+    async assignEquipmentBed(
+      actor: IpuWriteActor,
+      equipmentId: string,
+      body: AssignEquipmentBedBody,
+    ) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
-        const [eq_] = await t.select().from(schema.ipuEquipment).where(eq(schema.ipuEquipment.id, equipmentId)).limit(1);
+        const [eq_] = await t
+          .select()
+          .from(schema.ipuEquipment)
+          .where(eq(schema.ipuEquipment.id, equipmentId))
+          .limit(1);
         if (!eq_) throw new NotFoundError("ipu_equipment not found");
         // §2.9 — an overdue biomed inspection blocks assignment (412 EQUIPMENT_INSPECTION_OVERDUE).
         const dueMs = eq_.nextInspectionDueDate ? new Date(eq_.nextInspectionDueDate).getTime() : 0;
         assertInspectionCurrent(dueMs, Date.now());
         const [row] = await t
           .update(schema.ipuEquipment)
-          .set({ currentLocationKind: "bed", currentBedId: body.bedId, currentAssignedPatientId: body.patientId, updatedAt: new Date(), version: eq_.version + 1 })
+          .set({
+            currentLocationKind: "bed",
+            currentBedId: body.bedId,
+            currentAssignedPatientId: body.patientId,
+            updatedAt: new Date(),
+            version: eq_.version + 1,
+          })
           .where(eq(schema.ipuEquipment.id, equipmentId))
           .returning();
         if (!row) throw new ConflictError("equipment assign failed");
-        return { id: row.id, serialNumber: row.serialNumber, equipmentType: row.equipmentType, currentStatus: row.currentStatus, nextInspectionDueDate: row.nextInspectionDueDate, version: row.version } satisfies EquipmentView;
+        return {
+          id: row.id,
+          serialNumber: row.serialNumber,
+          equipmentType: row.equipmentType,
+          currentStatus: row.currentStatus,
+          nextInspectionDueDate: row.nextInspectionDueDate,
+          version: row.version,
+        } satisfies EquipmentView;
       });
     },
 
     async getBodyRelease(actor, admissionId: string): Promise<BodyReleaseView | null> {
       return withOrgContext(db, ctx(actor), async (tx) => {
-        const [row] = await (tx as DbClient).select().from(schema.ipuBodyRelease).where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId)).limit(1);
-        return row ? { id: row.id, ipuAdmissionId: row.ipuAdmissionId, state: row.state, version: row.version } : null;
+        const [row] = await (tx as DbClient)
+          .select()
+          .from(schema.ipuBodyRelease)
+          .where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId))
+          .limit(1);
+        return row
+          ? {
+              id: row.id,
+              ipuAdmissionId: row.ipuAdmissionId,
+              state: row.state,
+              version: row.version,
+            }
+          : null;
       });
     },
 
-    async advanceBodyRelease(actor: IpuWriteActor, admissionId: string, body: AdvanceBodyReleaseBody) {
+    async advanceBodyRelease(
+      actor: IpuWriteActor,
+      admissionId: string,
+      body: AdvanceBodyReleaseBody,
+    ) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
-        const [br] = await t.select().from(schema.ipuBodyRelease).where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId)).limit(1);
+        const [br] = await t
+          .select()
+          .from(schema.ipuBodyRelease)
+          .where(eq(schema.ipuBodyRelease.ipuAdmissionId, admissionId))
+          .limit(1);
         if (!br) throw new NotFoundError("ipu_body_release not found");
         const event =
           body.action === "identifyFuneralHome"
-            ? { type: "identifyFuneralHome" as const, funeralHomeResolved: body.funeralHomeId !== undefined }
+            ? {
+                type: "identifyFuneralHome" as const,
+                funeralHomeResolved: body.funeralHomeId !== undefined,
+              }
             : body.action === "releaseBody"
-              ? { type: "releaseBody" as const, hasReleaseDocument: body.releaseDocumentId !== undefined }
+              ? {
+                  type: "releaseBody" as const,
+                  hasReleaseDocument: body.releaseDocumentId !== undefined,
+                }
               : { type: "postClose" as const, isSystemActor: true };
         const transition = transitionBodyRelease(br.state, event);
         const bed = body.action === "releaseBody" ? await activeBedFor(t, admissionId) : null;
-        const patch: Record<string, unknown> = { state: transition.to, updatedAt: new Date(), version: br.version + 1 };
-        if (body.action === "identifyFuneralHome" && body.funeralHomeId) patch.funeralHomeId = body.funeralHomeId;
+        const patch: Record<string, unknown> = {
+          state: transition.to,
+          updatedAt: new Date(),
+          version: br.version + 1,
+        };
+        if (body.action === "identifyFuneralHome" && body.funeralHomeId)
+          patch.funeralHomeId = body.funeralHomeId;
         if (body.action === "releaseBody") {
           patch.releaseDocumentId = body.releaseDocumentId ?? br.releaseDocumentId;
           patch.releasedAt = new Date();
           patch.releasedByMembershipId = actor.membershipId;
-          if (body.releasedToRepresentativeName) patch.releasedToRepresentativeName = body.releasedToRepresentativeName;
+          if (body.releasedToRepresentativeName)
+            patch.releasedToRepresentativeName = body.releasedToRepresentativeName;
         }
         if (body.action === "postClose") patch.closedAt = new Date();
         for (const eff of transition.effects) {
           if (eff.kind === "outbox") {
             await outbox.publish(t, {
               eventName: eff.event,
-              payload: { organizationId: actor.organizationId, bodyReleaseId: br.id, ...(eff.event === "m37.body_release.funeral_home_identified" && body.funeralHomeId ? { funeralHomeId: body.funeralHomeId } : {}) },
+              payload: {
+                organizationId: actor.organizationId,
+                bodyReleaseId: br.id,
+                ...(eff.event === "m37.body_release.funeral_home_identified" && body.funeralHomeId
+                  ? { funeralHomeId: body.funeralHomeId }
+                  : {}),
+              },
               organizationId: actor.organizationId,
               aggregateKind: "ipu_body_release",
               aggregateId: br.id,
             });
           } else if (eff.kind === "source_bed_cleaning" && bed) {
             const bedResult = transitionBedCleaning(bed.status as never, eff.event);
-            await t.update(B).set({ cleaningStatus: bedResult.to, cleaningStatusChangedAt: new Date() }).where(eq(B.id, bed.id));
-            await t.insert(BCE).values({ organizationId: actor.organizationId, bedId: bed.id, fromStatus: bedResult.from, toStatus: bedResult.to, byMembershipId: actor.membershipId });
+            await t
+              .update(B)
+              .set({ cleaningStatus: bedResult.to, cleaningStatusChangedAt: new Date() })
+              .where(eq(B.id, bed.id));
+            await t
+              .insert(BCE)
+              .values({
+                organizationId: actor.organizationId,
+                bedId: bed.id,
+                fromStatus: bedResult.from,
+                toStatus: bedResult.to,
+                byMembershipId: actor.membershipId,
+              });
           }
         }
-        const [row] = await t.update(schema.ipuBodyRelease).set(patch).where(eq(schema.ipuBodyRelease.id, br.id)).returning();
+        const [row] = await t
+          .update(schema.ipuBodyRelease)
+          .set(patch)
+          .where(eq(schema.ipuBodyRelease.id, br.id))
+          .returning();
         if (!row) throw new ConflictError("body release update failed");
-        return { id: row.id, ipuAdmissionId: row.ipuAdmissionId, state: row.state, version: row.version };
+        return {
+          id: row.id,
+          ipuAdmissionId: row.ipuAdmissionId,
+          state: row.state,
+          version: row.version,
+        };
       });
     },
 

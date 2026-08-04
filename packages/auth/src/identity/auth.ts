@@ -124,7 +124,9 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
     // hosts (comma-separated `TRUSTED_ORIGINS`); dev falls back to the Vite origin. `baseURL` is always
     // trusted regardless, so production that serves the SPA same-origin needs no entry here.
     trustedOrigins: process.env.TRUSTED_ORIGINS
-      ? process.env.TRUSTED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+      ? process.env.TRUSTED_ORIGINS.split(",")
+          .map((o) => o.trim())
+          .filter(Boolean)
       : process.env.NODE_ENV === "production"
         ? []
         : ["http://localhost:5173"],

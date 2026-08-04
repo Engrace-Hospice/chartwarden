@@ -1,7 +1,7 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Provenance & AI Governance Layer (DESIGN.md §9). AI suggestions are marked,
 // cited, and require a human action; system-derived content is a quiet factual chip.
 import { AiSuggestionCard, DerivedBadge } from "@wardenx/ui";
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 const meta: Meta = { title: "Lantern/Provenance" };
@@ -9,7 +9,15 @@ export default meta;
 
 function Stack({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.5rem", maxWidth: "40rem" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "1.25rem",
+        padding: "1.5rem",
+        maxWidth: "40rem",
+      }}
+    >
       {children}
     </div>
   );
@@ -38,7 +46,13 @@ export const AiSuggestionStatic: StoryObj = {
   name: "AI Suggestion Card — static halo",
   render: () => (
     <Stack>
-      <AiSuggestionCard staticHalo model="DocLens extraction" confidence="high" onAccept={() => {}} onDismiss={() => {}}>
+      <AiSuggestionCard
+        staticHalo
+        model="DocLens extraction"
+        confidence="high"
+        onAccept={() => {}}
+        onDismiss={() => {}}
+      >
         Extracted referral diagnosis: <strong>C34.90 — Malignant neoplasm of lung</strong>.
       </AiSuggestionCard>
     </Stack>

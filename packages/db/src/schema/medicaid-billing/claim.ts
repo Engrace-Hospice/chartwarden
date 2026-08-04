@@ -105,10 +105,7 @@ export const medicaidClaim = pgTable(
       "medicare_secondary_requires_medicare_fk",
       sql`(medicare_secondary_context_snapshot IS NULL AND medicare_claim_id IS NULL) OR (medicare_secondary_context_snapshot IS NOT NULL AND medicare_claim_id IS NOT NULL)`,
     ),
-    serviceRangeValid: check(
-      "medicaid_claim_service_range_valid",
-      sql`service_from <= service_to`,
-    ),
+    serviceRangeValid: check("medicaid_claim_service_range_valid", sql`service_from <= service_to`),
   }),
 );
 

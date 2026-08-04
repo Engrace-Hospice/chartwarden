@@ -41,8 +41,8 @@ import {
   resolveSos,
 } from "./safety-api";
 import {
-  ACK_ACTION_TAKEN_MIN_CHARS,
   ACKNOWLEDGMENT_OUTCOMES,
+  ACK_ACTION_TAKEN_MIN_CHARS,
   COORD_ACCESS_REASON_MIN_CHARS,
   DEFAULT_ACK_OUTCOME,
   DEFAULT_SOS_OUTCOME,
@@ -238,10 +238,11 @@ export function SosDetailScreen(): JSX.Element {
 
       {rejectedCancel ? (
         <Notice tone="error" assertive>
-          <strong>A cancel was attempted on this alert and REJECTED.</strong> The biometric check did not
-          pass at {dateTime(alert.cancelAttemptedAt)}, and the alert proceeded exactly as if no cancel had
-          happened. That is D5 working: a phone taken from a clinician cannot be used to silence her call
-          for help. Treat this as a stronger signal than an ordinary SOS, not a weaker one.
+          <strong>A cancel was attempted on this alert and REJECTED.</strong> The biometric check
+          did not pass at {dateTime(alert.cancelAttemptedAt)}, and the alert proceeded exactly as if
+          no cancel had happened. That is D5 working: a phone taken from a clinician cannot be used
+          to silence her call for help. Treat this as a stronger signal than an ordinary SOS, not a
+          weaker one.
         </Notice>
       ) : null}
 
@@ -256,8 +257,8 @@ export function SosDetailScreen(): JSX.Element {
       ) : (
         <Notice tone={alert.lifecycleState === "resolved" ? "success" : "info"} live>
           <strong>{sosStateLabel(alert.lifecycleState)}</strong>
-          {alert.resolvedAt ? ` at ${dateTime(alert.resolvedAt)}` : ""}. This alert is closed; the record
-          below is what a review reads.
+          {alert.resolvedAt ? ` at ${dateTime(alert.resolvedAt)}` : ""}. This alert is closed; the
+          record below is what a review reads.
         </Notice>
       )}
 
@@ -275,7 +276,11 @@ export function SosDetailScreen(): JSX.Element {
               </button>
             ) : null}
             {canResolve ? (
-              <button type="button" onClick={() => setCeremony("resolve")} style={primaryButtonStyle}>
+              <button
+                type="button"
+                onClick={() => setCeremony("resolve")}
+                style={primaryButtonStyle}
+              >
                 Resolve
               </button>
             ) : null}
@@ -309,9 +314,10 @@ export function SosDetailScreen(): JSX.Element {
         </SummaryGrid>
         {alert.coordinatesCaptured ? null : (
           <Notice tone="info">
-            <strong>No coordinate was captured with this press</strong>, and the alert fanned out anyway
-            (M20-F16). Declining location consent never disables the SOS button — it only means the people
-            who were paged were told there is no position. Do not read this as a failed press.
+            <strong>No coordinate was captured with this press</strong>, and the alert fanned out
+            anyway (M20-F16). Declining location consent never disables the SOS button — it only
+            means the people who were paged were told there is no position. Do not read this as a
+            failed press.
           </Notice>
         )}
       </Card>
@@ -323,9 +329,10 @@ export function SosDetailScreen(): JSX.Element {
           <Timeline entries={ledger} />
         )}
         <span style={mutedStyle}>
-          Every row is one <code>safety_sos_alert_state_history</code> entry, in order, with the membership
-          that caused it or "system" for a worker. This is the ledger a deposition reads end to end; it is
-          append-only in the database, so nothing here can be tidied up after the fact.
+          Every row is one <code>safety_sos_alert_state_history</code> entry, in order, with the
+          membership that caused it or "system" for a worker. This is the ledger a deposition reads
+          end to end; it is append-only in the database, so nothing here can be tidied up after the
+          fact.
         </span>
       </Card>
 
@@ -407,10 +414,11 @@ export function SosDetailScreen(): JSX.Element {
         {stream === null ? (
           <>
             <Notice tone="warning">
-              <strong>Coordinates are not loaded, and opening this page did not read them.</strong> The
-              stream is behind its own permission (<code>safety.sos.read_coords</code>), its own predicate
-              and a <strong>warn-severity audit entry naming you</strong>. The clinician who raised this
-              alert can see that access on her own consent surface. Ask for it only when you need it.
+              <strong>Coordinates are not loaded, and opening this page did not read them.</strong>{" "}
+              The stream is behind its own permission (<code>safety.sos.read_coords</code>), its own
+              predicate and a <strong>warn-severity audit entry naming you</strong>. The clinician
+              who raised this alert can see that access on her own consent surface. Ask for it only
+              when you need it.
             </Notice>
             {streamError ? (
               <Notice tone="error" assertive>
@@ -419,8 +427,8 @@ export function SosDetailScreen(): JSX.Element {
             ) : null}
             {alert.coordinatesCaptured ? null : (
               <span style={mutedStyle}>
-                This alert carries no press-time coordinate, so a stream read will most likely return
-                nothing even if you are entitled to it.
+                This alert carries no press-time coordinate, so a stream read will most likely
+                return nothing even if you are entitled to it.
               </span>
             )}
           </>
@@ -432,9 +440,9 @@ export function SosDetailScreen(): JSX.Element {
             </Notice>
             {stream.samples.length === 0 ? (
               <span style={mutedStyle}>
-                No samples were recorded for this alert. Continuous streaming requires BOTH the tenant's
-                opt-in and this clinician's own consent (D6); absent either, the press-time coordinate is
-                all that exists and it is not part of this stream.
+                No samples were recorded for this alert. Continuous streaming requires BOTH the
+                tenant's opt-in and this clinician's own consent (D6); absent either, the press-time
+                coordinate is all that exists and it is not part of this stream.
               </span>
             ) : (
               <table style={tableStyle}>
@@ -460,14 +468,15 @@ export function SosDetailScreen(): JSX.Element {
             )}
             {stream.has_more ? (
               <span style={mutedStyle}>
-                More samples exist beyond this page. Paging fetches them through the same audited route —
-                each page is another disclosure, which is why this screen does not page automatically.
+                More samples exist beyond this page. Paging fetches them through the same audited
+                route — each page is another disclosure, which is why this screen does not page
+                automatically.
               </span>
             ) : null}
             <span style={mutedStyle}>
-              Coordinates are rendered as numbers rather than plotted. A map tile request would send this
-              clinician's position to a third-party tile server, which is a disclosure nobody consented to
-              and one this module has no agreement covering.
+              Coordinates are rendered as numbers rather than plotted. A map tile request would send
+              this clinician's position to a third-party tile server, which is a disclosure nobody
+              consented to and one this module has no agreement covering.
             </span>
           </>
         )}
@@ -557,10 +566,10 @@ export function SosDetailScreen(): JSX.Element {
             onChange={setOpenIncident}
           />
           <span style={mutedStyle}>
-            The checkbox chooses between two <em>different</em> terminal states, not between two ways of
-            saying the same thing: unticked closes the alert as <strong>resolved</strong>; ticked closes it
-            as <strong>incident opened</strong> and creates the incident the workers-comp timeline hangs
-            off. Neither can be undone from here.
+            The checkbox chooses between two <em>different</em> terminal states, not between two
+            ways of saying the same thing: unticked closes the alert as <strong>resolved</strong>;
+            ticked closes it as <strong>incident opened</strong> and creates the incident the
+            workers-comp timeline hangs off. Neither can be undone from here.
           </span>
           {modalError ? (
             <Notice tone="error" assertive>
@@ -596,9 +605,10 @@ export function SosDetailScreen(): JSX.Element {
           {/* SC 3.3.1 error prevention, adapted for a privacy-sensitive READ: the consequence is stated
               before the act, not after it. */}
           <Notice tone="warning" assertive>
-            You are about to view this clinician's location. The access is written to the audit log at{" "}
-            <strong>warn</strong> severity with your name on it, and <strong>she can see it</strong> on her
-            own consent surface. This is not reversible and it is not anonymous.
+            You are about to view this clinician's location. The access is written to the audit log
+            at <strong>warn</strong> severity with your name on it, and{" "}
+            <strong>she can see it</strong> on her own consent surface. This is not reversible and
+            it is not anonymous.
           </Notice>
           {reasonRequired ? (
             <TextAreaField
@@ -611,9 +621,9 @@ export function SosDetailScreen(): JSX.Element {
             />
           ) : (
             <span style={mutedStyle}>
-              This alert is still active, so no written reason is required — you are responding to it right
-              now, and the predicate that let you open this page is the gate. The audit entry is written
-              either way.
+              This alert is still active, so no written reason is required — you are responding to
+              it right now, and the predicate that let you open this page is the gate. The audit
+              entry is written either way.
             </span>
           )}
           {streamError ? (

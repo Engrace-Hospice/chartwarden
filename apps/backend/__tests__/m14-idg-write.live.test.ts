@@ -19,8 +19,11 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import {
+  type IdgWriteOutboxPort,
+  createDbIdgBackend,
+} from "../src/modules/14-idg/idg-route-service-db";
 import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
-import { type IdgWriteOutboxPort, createDbIdgBackend } from "../src/modules/14-idg/idg-route-service-db";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -48,7 +51,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -104,7 +109,12 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M14W-${org.slice(0, 4)}`, `M14W ${org.slice(0, 4)}`, `NPI-M14W-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M14W-${org.slice(0, 4)}`,
+            `M14W ${org.slice(0, 4)}`,
+            `NPI-M14W-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       locationOf[org] = (
@@ -116,7 +126,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       ).rows[0].id as string;
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M14_OUTBOX_EVENTS]));
     const outbox: IdgWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m14" }),
@@ -130,10 +142,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
   });
 
   it("recurring policy create/update persists + emits schedule.materialised", async () => {
-    const created = await svc.createRecurringPolicy(ORG_A, MEMBER, { locationId: locationOf[ORG_A], cadenceDays: 14 });
+    const created = await svc.createRecurringPolicy(ORG_A, MEMBER, {
+      locationId: locationOf[ORG_A],
+      cadenceDays: 14,
+    });
     expect(created.cadenceDays).toBe(14);
     expect(await eventsFor(created.id)).toContain("m14.schedule.materialised");
-    const updated = await svc.updateRecurringPolicy(ORG_A, MEMBER, created.id, { locationId: locationOf[ORG_A], cadenceDays: 7, active: false });
+    const updated = await svc.updateRecurringPolicy(ORG_A, MEMBER, created.id, {
+      locationId: locationOf[ORG_A],
+      cadenceDays: 7,
+      active: false,
+    });
     expect(updated.cadenceDays).toBe(7);
     expect(updated.active).toBe(false);
   });
@@ -152,7 +171,10 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
 
   it("attendance record/update/remove (remove soft-excuses; no DELETE grant)", async () => {
     const m = await seedMeeting(ORG_A, "live");
-    const att = await svc.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
+    const att = await svc.recordAttendance(ORG_A, MEMBER, m, {
+      membershipId: MEMBER,
+      discipline: "rn",
+    });
     expect(att.status).toBe("present");
     expect(await eventsFor(m)).toContain("m14.attendance.checked_in");
     const upd = await svc.updateAttendance(ORG_A, MEMBER, att.id, "tardy");
@@ -165,7 +187,10 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
 
   it("agenda add/remove", async () => {
     const m = await seedMeeting(ORG_A, "live");
-    const agenda = await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
+    const agenda = await svc.addAgendaItem(ORG_A, MEMBER, m, {
+      kind: "patient_review",
+      patientId: PATIENT,
+    });
     expect(agenda.kind).toBe("patient_review");
     expect(agenda.patientId).toBe(PATIENT);
     const removed = await svc.removeAgendaItem(ORG_A, MEMBER, agenda.id);
@@ -176,11 +201,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     const m = await seedMeeting(ORG_A, "live");
     await svc.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
     await svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "patient_review", patientId: PATIENT });
-    const actionable = await svc.recordDecision(ORG_A, MEMBER, m, { patientId: PATIENT, decisionKind: "care_plan_update" });
+    const actionable = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT,
+      decisionKind: "care_plan_update",
+    });
     expect(actionable.status).toBe("open");
     expect(await eventsFor(actionable.id)).toContain("m14.decision.recorded_open");
     // A patient-less team note is recorded but carries no recorded_open event (strict payload needs a patient).
-    const note = await svc.recordDecision(ORG_A, MEMBER, m, { patientId: null, decisionKind: "team_note" });
+    const note = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: null,
+      decisionKind: "team_note",
+    });
     expect(await eventsFor(note.id)).not.toContain("m14.decision.recorded_open");
 
     const adjourned = await svc.adjournMeeting(ORG_A, MEMBER, m, true);
@@ -199,25 +230,38 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(superseded.supersededByDecisionId).not.toBeNull();
 
     // amendment: the final minutes accept an amendment; emits minutes.amended.
-    const amd = await svc.submitAmendment(ORG_A, MEMBER, minutes.id, "corrected the attendance record");
+    const amd = await svc.submitAmendment(
+      ORG_A,
+      MEMBER,
+      minutes.id,
+      "corrected the attendance record",
+    );
     expect(amd.minutesId).toBe(minutes.id);
     expect(await eventsFor(minutes.id)).toContain("m14.minutes.amended");
   });
 
   it("adjourn without a fresh step-up → STEP_UP_REQUIRED (412)", async () => {
     const m = await seedMeeting(ORG_A, "live");
-    await expect(svc.adjournMeeting(ORG_A, MEMBER, m, false)).rejects.toMatchObject({ code: "STEP_UP_REQUIRED" });
+    await expect(svc.adjournMeeting(ORG_A, MEMBER, m, false)).rejects.toMatchObject({
+      code: "STEP_UP_REQUIRED",
+    });
   });
 
   it("recordDecision guards: MEETING_NOT_LIVE (scheduled) + INCLUSION_CRITERIA_FAILED (patient off caseload)", async () => {
     const scheduled = await seedMeeting(ORG_A, "scheduled");
     await expect(
-      svc.recordDecision(ORG_A, MEMBER, scheduled, { patientId: PATIENT, decisionKind: "order_request" }),
+      svc.recordDecision(ORG_A, MEMBER, scheduled, {
+        patientId: PATIENT,
+        decisionKind: "order_request",
+      }),
     ).rejects.toMatchObject({ code: "MEETING_NOT_LIVE" });
 
     const live = await seedMeeting(ORG_A, "live");
     await expect(
-      svc.recordDecision(ORG_A, MEMBER, live, { patientId: PATIENT, decisionKind: "order_request" }),
+      svc.recordDecision(ORG_A, MEMBER, live, {
+        patientId: PATIENT,
+        decisionKind: "order_request",
+      }),
     ).rejects.toMatchObject({ code: "INCLUSION_CRITERIA_FAILED" });
   });
 

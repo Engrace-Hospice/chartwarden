@@ -8,9 +8,9 @@
 import type { schema } from "@wardenx/db";
 import {
   type ComputeHvldlInput,
-  type MeasureRecomputePorts,
-  MEASURE_CATALOG,
   M30_MEASURE_REGISTRATIONS,
+  MEASURE_CATALOG,
+  type MeasureRecomputePorts,
   buildMeasureRegistry,
   computeHvldl,
   handleMeasureRecompute,
@@ -48,10 +48,26 @@ describe("M30 measure registrations", () => {
       periodEnd: "2026-04-01",
       nationalAvg: 0.6,
       decedents: [
-        { patientId: "p1", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 3 },
-        { patientId: "p2", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 2 },
-        { patientId: "p3", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 2 },
-        { patientId: "p4", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 0 },
+        {
+          patientId: "p1",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 3,
+        },
+        {
+          patientId: "p2",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 2,
+        },
+        {
+          patientId: "p3",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 2,
+        },
+        {
+          patientId: "p4",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 0,
+        },
       ],
     };
     const direct = computeHvldl(input);
@@ -120,10 +136,26 @@ describe("measure-recompute worker over the REAL registry (gap closed)", () => {
       periodEnd: "2026-04-01",
       nationalAvg: 0.6,
       decedents: [
-        { patientId: "p1", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 3 },
-        { patientId: "p2", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 2 },
-        { patientId: "p3", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 2 },
-        { patientId: "p4", source: "internal_clinician_recorded", qualifyingDisciplineVisitsInLastDays: 0 },
+        {
+          patientId: "p1",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 3,
+        },
+        {
+          patientId: "p2",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 2,
+        },
+        {
+          patientId: "p3",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 2,
+        },
+        {
+          patientId: "p4",
+          source: "internal_clinician_recorded",
+          qualifyingDisciplineVisitsInLastDays: 0,
+        },
       ],
     };
     const { ports, inserted } = portsOverRegistry(input);
@@ -140,7 +172,11 @@ describe("measure-recompute worker over the REAL registry (gap closed)", () => {
       },
       ports,
     );
-    expect(result).toMatchObject({ outcome: "recomputed", measureCode: "hvldl", valueId: "value-NEW" });
+    expect(result).toMatchObject({
+      outcome: "recomputed",
+      measureCode: "hvldl",
+      valueId: "value-NEW",
+    });
     expect(inserted).toHaveLength(1);
     const row = inserted[0];
     expect(row?.numerator).toBe(3);

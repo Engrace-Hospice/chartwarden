@@ -7,7 +7,6 @@
 // (spec §8.5): no other module names them, and per dependency-cruiser (task 20) this module imports ONLY
 // from ../types — it may not import any sibling jurisdiction module.
 import {
-  degraded,
   MAC_PORTAL_NOT_WIRED,
   type MacJurisdiction,
   type MacPortalClient,
@@ -16,6 +15,7 @@ import {
   type MacPortalStatusRequest,
   type MacPortalSubmitRequest,
   type X12WorkerResult,
+  degraded,
 } from "../types";
 
 /** The NGS J6 launch-case portal client. Implements the shared {@link MacPortalClient} conformance surface. */
@@ -24,12 +24,16 @@ export class NgsJ6PortalClient implements MacPortalClient {
 
   submitFile(_input: MacPortalSubmitRequest): Promise<X12WorkerResult<MacPortalReceipt>> {
     // TODO(Phase 3): drop the 837I file at the NGS J6 portal and return its receipt.
-    return Promise.resolve(degraded<MacPortalReceipt>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport not wired"));
+    return Promise.resolve(
+      degraded<MacPortalReceipt>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport not wired"),
+    );
   }
 
   pollStatus(_input: MacPortalStatusRequest): Promise<X12WorkerResult<MacPortalStatus>> {
     // TODO(Phase 3): poll the NGS J6 portal for the submitted file's status.
-    return Promise.resolve(degraded<MacPortalStatus>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport not wired"));
+    return Promise.resolve(
+      degraded<MacPortalStatus>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport not wired"),
+    );
   }
 }
 

@@ -12,7 +12,11 @@
 // `Idempotency-Key` so M22 renders at-most-once across a redelivered request). Org/actor binding is ALWAYS
 // server-side (request.context, never the body). Mirrors the M33 schedules/views route shape.
 import { requireAbac, requirePermission } from "@wardenx/auth";
-import { CSV_EXPORT_ROW_CAP, CsvExportRowCapExceeded, PdfRowLimitExceeded } from "@wardenx/reporting";
+import {
+  CSV_EXPORT_ROW_CAP,
+  CsvExportRowCapExceeded,
+  PdfRowLimitExceeded,
+} from "@wardenx/reporting";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -116,7 +120,9 @@ export function registerExportRoutes(app: FastifyInstance, deps: ExportRouteDeps
         return reply.code(202).send(res);
       } catch (err) {
         if (err instanceof PdfRowLimitExceeded) {
-          return reply.code(413).send({ error: "PDF_ROW_LIMIT_EXCEEDED", rowLimit: err.rowLimit, cap: err.cap });
+          return reply
+            .code(413)
+            .send({ error: "PDF_ROW_LIMIT_EXCEEDED", rowLimit: err.rowLimit, cap: err.cap });
         }
         throw err;
       }

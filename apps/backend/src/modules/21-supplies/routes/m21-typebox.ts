@@ -406,9 +406,7 @@ export const CreateTemplateBody = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 255 }),
   medications: Type.Array(TemplateMedicationInput, { minItems: 1, maxItems: 16 }),
   stateLabelingPolicy: Type.Optional(Type.Object({}, { additionalProperties: true })),
-  controlledSubstanceHandlingPolicy: Type.Optional(
-    Type.Object({}, { additionalProperties: true }),
-  ),
+  controlledSubstanceHandlingPolicy: Type.Optional(Type.Object({}, { additionalProperties: true })),
 });
 
 /**
@@ -956,7 +954,10 @@ export const ParStockListResponseSchema = Page(ParStockViewSchema);
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
-type _RoutingRuleResolved = Conforms<Static<typeof RoutingRuleResolvedSchema>, TRoutingRuleResolved>;
+type _RoutingRuleResolved = Conforms<
+  Static<typeof RoutingRuleResolvedSchema>,
+  TRoutingRuleResolved
+>;
 type _DispatchedContent = Conforms<
   Static<typeof ComfortKitDispatchedContentSchema>,
   TComfortKitDispatchedContentPayload

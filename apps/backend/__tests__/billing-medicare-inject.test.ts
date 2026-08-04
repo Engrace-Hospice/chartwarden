@@ -77,8 +77,11 @@ import type {
   ValidationRunDetailView,
   ValidationRunView,
 } from "../src/modules/23-billing-medicare/routes/read-service";
-import type { ClaimAssemblyActor, ClaimAssemblyService } from "../src/modules/23-billing-medicare/services/claim-assembly";
 import type { M23WriteRouteService } from "../src/modules/23-billing-medicare/routes/write-service";
+import type {
+  ClaimAssemblyActor,
+  ClaimAssemblyService,
+} from "../src/modules/23-billing-medicare/services/claim-assembly";
 
 // ── header-auth shim (the M11/M15/M19 precedent), extended with the extra `request.context.attributes`
 // M23's write actor + step-up + internal-seam system-principal lock read. ─────────────────────────────────
@@ -120,7 +123,11 @@ const LOC_PERIOD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MEMBERSHIP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const NOW = "2026-08-01T12:00:00.000Z";
 
-function page<T>(items: readonly T[]): { items: readonly T[]; nextCursor: string | null; hasMore: boolean } {
+function page<T>(items: readonly T[]): {
+  items: readonly T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+} {
   return { items, nextCursor: null, hasMore: false };
 }
 
@@ -436,7 +443,8 @@ function createM23TestBackend(): {
       return claimId === CLAIM ? [toRunView(validationRunDetail)] : [];
     },
     async getValidationRun(_actor, _claimId, validationRunId) {
-      if (validationRunId !== VALIDATION_RUN) throw new NotFoundError("validation_run", validationRunId);
+      if (validationRunId !== VALIDATION_RUN)
+        throw new NotFoundError("validation_run", validationRunId);
       return validationRunDetail;
     },
     async listNoes(_actor, _filter: NoeListFilter) {
@@ -617,7 +625,11 @@ function createM23TestBackend(): {
       return updated;
     },
     async checkEligibility(_actor, args) {
-      return { jobId: "job-eligibility-1", patientId: args.patientId, asOfServiceDate: args.asOfServiceDate };
+      return {
+        jobId: "job-eligibility-1",
+        patientId: args.patientId,
+        asOfServiceDate: args.asOfServiceDate,
+      };
     },
     async forwardDateSequestrationPolicy(actor, args) {
       policySeq += 1;
@@ -661,7 +673,10 @@ function createM23TestBackend(): {
   };
 
   const assemblyService: ClaimAssemblyService = {
-    async assemble(_actor: ClaimAssemblyActor, _input: ClaimAssembleRequest): Promise<ClaimAssembleResponse> {
+    async assemble(
+      _actor: ClaimAssemblyActor,
+      _input: ClaimAssembleRequest,
+    ): Promise<ClaimAssembleResponse> {
       return {
         claimId: "80808080-8080-4808-8808-808080808080",
         state: "DRAFT",
@@ -770,8 +785,23 @@ function makeServer() {
   const backend = createM23TestBackend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "super_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M23_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "super_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M23_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -821,7 +851,11 @@ describe("M23 route smoke — the M1 boundary", () => {
 
   it("403s a permission-gated route for a session holding NO M23 grants", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/billing/claims", headers: NONE_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/billing/claims",
+      headers: NONE_HEADERS,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -863,11 +897,29 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/billing/claims/assemble",
     headers: { ...SUPER_HEADERS, ...IDEMP("r01") },
-    payload: { providerEntityId: PROVIDER_ENTITY, patientId: PATIENT, serviceFrom: "2026-01-01", serviceTo: "2026-01-10", tob: "811" },
+    payload: {
+      providerEntityId: PROVIDER_ENTITY,
+      patientId: PATIENT,
+      serviceFrom: "2026-01-01",
+      serviceTo: "2026-01-10",
+      tob: "811",
+    },
     expectStatus: 201,
   },
-  { label: "2 GET /billing/claims", method: "GET", url: "/api/v1/billing/claims", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "3 GET /billing/claims/:id", method: "GET", url: `/api/v1/billing/claims/${CLAIM}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "2 GET /billing/claims",
+    method: "GET",
+    url: "/api/v1/billing/claims",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "3 GET /billing/claims/:id",
+    method: "GET",
+    url: `/api/v1/billing/claims/${CLAIM}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "4 PATCH /billing/claims/:id",
     method: "PATCH",
@@ -915,14 +967,50 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { ifVersion: 1, reason: REASON_40 },
     expectStatus: 201,
   },
-  { label: "10 GET /billing/claims/:id/lines", method: "GET", url: `/api/v1/billing/claims/${CLAIM}/lines`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "11 GET /billing/claims/:id/state-history", method: "GET", url: `/api/v1/billing/claims/${CLAIM}/state-history`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "12 GET /billing/claims/:id/submissions", method: "GET", url: `/api/v1/billing/claims/${CLAIM}/submissions`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "13 GET /billing/claims/:id/acknowledgments", method: "GET", url: `/api/v1/billing/claims/${CLAIM}/acknowledgments`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "10 GET /billing/claims/:id/lines",
+    method: "GET",
+    url: `/api/v1/billing/claims/${CLAIM}/lines`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "11 GET /billing/claims/:id/state-history",
+    method: "GET",
+    url: `/api/v1/billing/claims/${CLAIM}/state-history`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "12 GET /billing/claims/:id/submissions",
+    method: "GET",
+    url: `/api/v1/billing/claims/${CLAIM}/submissions`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "13 GET /billing/claims/:id/acknowledgments",
+    method: "GET",
+    url: `/api/v1/billing/claims/${CLAIM}/acknowledgments`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── validation plane (validation.routes.ts) ─────────────────────────────────────────────────────────
-  { label: "14 GET /claims/:id/validation-runs", method: "GET", url: `/api/v1/claims/${CLAIM}/validation-runs`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "15 GET /claims/:id/validation-runs/:runId", method: "GET", url: `/api/v1/claims/${CLAIM}/validation-runs/${VALIDATION_RUN}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "14 GET /claims/:id/validation-runs",
+    method: "GET",
+    url: `/api/v1/claims/${CLAIM}/validation-runs`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "15 GET /claims/:id/validation-runs/:runId",
+    method: "GET",
+    url: `/api/v1/claims/${CLAIM}/validation-runs/${VALIDATION_RUN}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "16 POST /claims/:id/validate (validation.routes.ts's own registration of route #6)",
     method: "POST",
@@ -942,14 +1030,30 @@ const ROUTE_CASES: readonly RouteCase[] = [
 
   // ── rule-config overlay (routes #18-21) — TASK-051: the 3 mutations now genuinely resolve the
   // regulatory_required_rule_protected target and reach the write service (see the file banner). ──────
-  { label: "18 GET /billing/rule-configs", method: "GET", url: "/api/v1/billing/rule-configs", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "19 GET /billing/rule-configs/:id", method: "GET", url: `/api/v1/billing/rule-configs/${RULE_CONFIG}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "18 GET /billing/rule-configs",
+    method: "GET",
+    url: "/api/v1/billing/rule-configs",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "19 GET /billing/rule-configs/:id",
+    method: "GET",
+    url: `/api/v1/billing/rule-configs/${RULE_CONFIG}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "20 POST /billing/rule-configs/custom",
     method: "POST",
     url: "/api/v1/billing/rule-configs/custom",
     headers: { ...SUPER_HEADERS, ...IDEMP("r20") },
-    payload: { ruleKey: "custom_rule_new", severity: "warn", setReason: "a sufficiently long setup reason for this custom rule" },
+    payload: {
+      ruleKey: "custom_rule_new",
+      severity: "warn",
+      setReason: "a sufficiently long setup reason for this custom rule",
+    },
     expectStatus: 201,
   },
   {
@@ -957,7 +1061,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "PATCH",
     url: `/api/v1/billing/rule-configs/${RULE_CONFIG}`,
     headers: { ...SUPER_HEADERS, ...IDEMP("r21"), ...IFM },
-    payload: { enabled: false, setReason: "a sufficiently long reason to disable this overlay row" },
+    payload: {
+      enabled: false,
+      setReason: "a sufficiently long reason to disable this overlay row",
+    },
     expectStatus: 200,
   },
   {
@@ -969,8 +1076,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── NOE fast path (routes #24-27, numbered per the module header) ──────────────────────────────────
-  { label: "23 GET /noe-records", method: "GET", url: "/api/v1/noe-records", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "24 GET /noe-records/:id", method: "GET", url: `/api/v1/noe-records/${NOE}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "23 GET /noe-records",
+    method: "GET",
+    url: "/api/v1/noe-records",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "24 GET /noe-records/:id",
+    method: "GET",
+    url: `/api/v1/noe-records/${NOE}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "25 POST /noe-records/:id/submit",
     method: "POST",
@@ -989,8 +1108,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── NOTR fast path (routes #28-31) ──────────────────────────────────────────────────────────────────
-  { label: "27 GET /notr-records", method: "GET", url: "/api/v1/notr-records", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "28 GET /notr-records/:id", method: "GET", url: `/api/v1/notr-records/${NOTR}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "27 GET /notr-records",
+    method: "GET",
+    url: "/api/v1/notr-records",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "28 GET /notr-records/:id",
+    method: "GET",
+    url: `/api/v1/notr-records/${NOTR}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "29 POST /notr-records/:id/submit",
     method: "POST",
@@ -1014,27 +1145,72 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/billing/eligibility/check",
     headers: { ...SUPER_HEADERS, ...IDEMP("r31") },
-    payload: { patientId: PATIENT, providerEntityId: PROVIDER_ENTITY, asOfServiceDate: "2026-01-01" },
+    payload: {
+      patientId: PATIENT,
+      providerEntityId: PROVIDER_ENTITY,
+      asOfServiceDate: "2026-01-01",
+    },
     expectStatus: 202,
   },
-  { label: "32 GET /billing/eligibility", method: "GET", url: `/api/v1/billing/eligibility?patientId=${PATIENT}`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "33 GET /billing/eligibility/latest", method: "GET", url: `/api/v1/billing/eligibility/latest?patientId=${PATIENT}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "32 GET /billing/eligibility",
+    method: "GET",
+    url: `/api/v1/billing/eligibility?patientId=${PATIENT}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "33 GET /billing/eligibility/latest",
+    method: "GET",
+    url: `/api/v1/billing/eligibility/latest?patientId=${PATIENT}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── sequestration-policy plane (routes #32-33 + the active-on-now convenience) ─────────────────────────
-  { label: "34 GET /billing/sequestration-policies", method: "GET", url: `/api/v1/billing/sequestration-policies?providerEntityId=${PROVIDER_ENTITY}`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "35 GET /billing/sequestration-policies/active", method: "GET", url: `/api/v1/billing/sequestration-policies/active?providerEntityId=${PROVIDER_ENTITY}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "34 GET /billing/sequestration-policies",
+    method: "GET",
+    url: `/api/v1/billing/sequestration-policies?providerEntityId=${PROVIDER_ENTITY}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "35 GET /billing/sequestration-policies/active",
+    method: "GET",
+    url: `/api/v1/billing/sequestration-policies/active?providerEntityId=${PROVIDER_ENTITY}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "36 POST /billing/sequestration-policies",
     method: "POST",
     url: "/api/v1/billing/sequestration-policies",
     headers: { ...SUPER_HEADERS, ...IDEMP("r36") },
-    payload: { providerEntityId: PROVIDER_ENTITY, percentage: "2.00", effectiveFrom: "2030-01-01", setReason: "forward-dated test policy row" },
+    payload: {
+      providerEntityId: PROVIDER_ENTITY,
+      percentage: "2.00",
+      effectiveFrom: "2030-01-01",
+      setReason: "forward-dated test policy row",
+    },
     expectStatus: 201,
   },
 
   // ── MAC-credential admin (routes #34-35) ────────────────────────────────────────────────────────────
-  { label: "37 GET /billing/mac-credentials", method: "GET", url: "/api/v1/billing/mac-credentials", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "38 GET /billing/mac-credentials/:providerEntityId", method: "GET", url: `/api/v1/billing/mac-credentials/${PROVIDER_ENTITY}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "37 GET /billing/mac-credentials",
+    method: "GET",
+    url: "/api/v1/billing/mac-credentials",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "38 GET /billing/mac-credentials/:providerEntityId",
+    method: "GET",
+    url: `/api/v1/billing/mac-credentials/${PROVIDER_ENTITY}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "39 POST /billing/mac-credentials",
     method: "POST",
@@ -1052,8 +1228,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── dashboards / metrics (routes #37-38) ────────────────────────────────────────────────────────────
-  { label: "40 GET /billing/ar-dashboard", method: "GET", url: "/api/v1/billing/ar-dashboard", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "41 GET /billing/metrics", method: "GET", url: "/api/v1/billing/metrics", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "40 GET /billing/ar-dashboard",
+    method: "GET",
+    url: "/api/v1/billing/ar-dashboard",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "41 GET /billing/metrics",
+    method: "GET",
+    url: "/api/v1/billing/metrics",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── internal service-to-service seam (routes #39-40; SYSTEM principal only) ────────────────────────────
   {
@@ -1075,7 +1263,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M23 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

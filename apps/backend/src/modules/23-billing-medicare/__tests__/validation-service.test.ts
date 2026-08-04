@@ -1,3 +1,6 @@
+import * as billing from "@wardenx/billing";
+import { BillingRuleRegistry, fail, pass } from "@wardenx/billing";
+import type { Rule, ValidationContext } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/validation-service.test.ts — the §10 task-28 / §4.5
 // pre-submission VALIDATION service tests (D1 / §2.6). The service walks an injected ValidationContextPort
 // once, runs the FROZEN rule registry, persists ONE validation_run + its validation_result rows, and drives
@@ -8,18 +11,12 @@
 // on an unchanged claim an idempotent replay (no duplicate run, no second transition); a blocking failure
 // drives `validation_failed`; an AI actor is rejected fail-closed.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as billing from "@wardenx/billing";
-import { BillingRuleRegistry, fail, pass } from "@wardenx/billing";
-import type { Rule, ValidationContext } from "@wardenx/billing";
+import type { BillingWriteActor, ClaimStateService } from "../services/claim-state-service";
 import { buildClaimValidationService } from "../services/claim-validation-service";
 import type {
   ClaimValidationServicePorts,
   ValidationContextPort,
 } from "../services/claim-validation-service";
-import type {
-  BillingWriteActor,
-  ClaimStateService,
-} from "../services/claim-state-service";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
@@ -125,7 +122,12 @@ const blockingFailRule: Rule = {
 };
 
 function makeService(rules: readonly Rule[], ports: ClaimValidationServicePorts) {
-  return buildClaimValidationService(makeFakeDb() as never, buildRegistry(rules), recordingStateService().service, ports);
+  return buildClaimValidationService(
+    makeFakeDb() as never,
+    buildRegistry(rules),
+    recordingStateService().service,
+    ports,
+  );
 }
 
 beforeEach(() => store.reset());
@@ -172,7 +174,10 @@ describe("§2.6 run_input_hash idempotency — same context ⇒ same hash ⇒ no
     );
 
     const first = await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "pre_submission" });
-    const second = await svc.validateClaim(ACTOR, { claimId: "claim-1", trigger: "pre_submission" });
+    const second = await svc.validateClaim(ACTOR, {
+      claimId: "claim-1",
+      trigger: "pre_submission",
+    });
 
     expect(first.idempotentReplay).toBe(false);
     expect(second.idempotentReplay).toBe(true);
@@ -224,7 +229,10 @@ describe("guards", () => {
     seedValidatingClaim();
     const svc = makeService([passRule], { contextPort: constantContextPort() });
     await expect(
-      svc.validateClaim({ ...ACTOR, actorKind: "ai_agent" }, { claimId: "claim-1", trigger: "pre_submission" }),
+      svc.validateClaim(
+        { ...ACTOR, actorKind: "ai_agent" },
+        { claimId: "claim-1", trigger: "pre_submission" },
+      ),
     ).rejects.toMatchObject({ code: "AI_ACTOR_FORBIDDEN" });
     expect(store.runs.size).toBe(0);
   });

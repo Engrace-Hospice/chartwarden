@@ -35,13 +35,13 @@
 // is worth a migration.
 import { WardenXError } from "@wardenx/types";
 
+import type { AiBackendHealthStatus } from "@wardenx/types";
 import type {
   ModelBackend,
   ModelBackendCapabilities,
   ModelBackendCompletionRequest,
   ModelBackendCompletionResult,
 } from "./model-backend";
-import type { AiBackendHealthStatus } from "@wardenx/types";
 
 /** The org's Zero-Data-Retention contract, as §8.4's resolver returns it. */
 export interface AnthropicZdrContract {
@@ -98,9 +98,7 @@ export interface AnthropicModelBackendOptions {
  * call time: a platform that boots with a half-built Anthropic adapter is a platform where the first
  * evidence of the problem is a clinician's failed enhancement. §8.4's "constructor invariant", verbatim.
  */
-export function createAnthropicModelBackend(
-  options: AnthropicModelBackendOptions,
-): ModelBackend {
+export function createAnthropicModelBackend(options: AnthropicModelBackendOptions): ModelBackend {
   if (typeof options.zdrContractResolver !== "function") {
     throw new ZdrContractMissingError(
       `anthropic backend '${options.backendKey}' cannot be constructed without a zdrContractResolver (D19 / §8.4)`,

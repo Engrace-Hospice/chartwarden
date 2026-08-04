@@ -13,12 +13,15 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, type DbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzleM26ReadService } from "../src/modules/26-cap/routes/read-service-drizzle";
 import { buildM26SeamImpls } from "../src/modules/26-cap/seam-impls";
-import { resolveCapContext, type CapAggregateSeam } from "../src/modules/27-cost-report/routes/cap-context";
+import {
+  type CapAggregateSeam,
+  resolveCapContext,
+} from "../src/modules/27-cost-report/routes/cap-context";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -32,9 +35,12 @@ describe.skipIf(!DB_URL)("M26 → M27 cost-report cap seam — LIVE Postgres (D1
 
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+      if (stripVector)
+        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
       await admin.query(sql);
     }
   }
@@ -65,7 +71,10 @@ describe.skipIf(!DB_URL)("M26 → M27 cost-report cap seam — LIVE Postgres (D1
         [ORG, CAP_YEAR],
       )
     ).rows[0].id as string;
-    for (const [patient, paid] of [["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", 4_000_000], ["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", 3_000_000]] as const) {
+    for (const [patient, paid] of [
+      ["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", 4_000_000],
+      ["bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", 3_000_000],
+    ] as const) {
       await admin.query(
         `INSERT INTO cap_beneficiary_accrual (organization_id, cap_period_id, patient_id, mbi_normalized, paid_cents, first_election_in_period)
          VALUES ($1,$2,$3,'1EG4TE5MK73',$4,'2024-10-01')`,

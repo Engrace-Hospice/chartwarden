@@ -62,7 +62,9 @@ export function MedicaidEligibilityCenter(): JSX.Element {
     setError(null);
     const query: Record<string, string> = {};
     if (UUID_RE.test(patientId)) query.patientId = patientId;
-    const res = await client.GET("/api/v1/medicaid-eligibility-checks", { params: { query } } as never);
+    const res = await client.GET("/api/v1/medicaid-eligibility-checks", {
+      params: { query },
+    } as never);
     if (res.error) {
       setError("Eligibility history is unavailable — you may lack billing visibility.");
       setLoading(false);
@@ -109,7 +111,9 @@ export function MedicaidEligibilityCenter(): JSX.Element {
       }
       filters={
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}>
+          <div
+            style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "flex-end" }}
+          >
             <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
               <span style={mutedStyle}>Patient id</span>
               <input
@@ -227,8 +231,8 @@ export function MedicaidEligibilityCenter(): JSX.Element {
       }
       detail={
         <span style={mutedStyle}>
-          The full Recipient ID is never returned to the browser — only the masked last-4 recorded at check
-          time. A stale check is a validation finding at assembly and blocks submission.
+          The full Recipient ID is never returned to the browser — only the masked last-4 recorded
+          at check time. A stale check is a validation finding at assembly and blocks submission.
         </span>
       }
     />
@@ -238,7 +242,8 @@ export function MedicaidEligibilityCenter(): JSX.Element {
 /** Map an eligibility-refresh status code to a precise, PHI-free inline message (§5.4). */
 function refreshErrorMessage(status: number | undefined): string {
   if (status === 404) return "That patient or payer record was not found in your organization.";
-  if (status === 422) return "The payer is not a Medicaid payer, or the service date is out of range.";
+  if (status === 422)
+    return "The payer is not a Medicaid payer, or the service date is out of range.";
   if (status === 401 || status === 403) return "You lack permission to run eligibility checks.";
   if (status === 503)
     return "The state eligibility adapter is not wired for this service state — no check was run.";

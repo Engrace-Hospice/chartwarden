@@ -31,8 +31,8 @@
 // capture-siting.ts header). A correction REUSES its target's stored siting when present (faithful to
 // the original capture event) and only falls back to a fresh resolve for legacy-unsited targets.
 import {
-  cosignRequiredFor,
   computeScaleLicenseStatus,
+  cosignRequiredFor,
   disciplineCanRecordScale,
   isLicensedScale,
   planCorrection,
@@ -70,7 +70,8 @@ const POL = schema.scalePolicies;
 
 /** The §7.4 cosignature attestation text the `cosign` route does not carry yet (a sentinel; the exact
  * attestation language is threaded when the interface carries it — the M8 null-actor convention). */
-const COSIGN_ATTESTATION = "Reviewed and cosigned per the LPN-cosignature policy (attestation pending route capture).";
+const COSIGN_ATTESTATION =
+  "Reviewed and cosigned per the LPN-cosignature policy (attestation pending route capture).";
 
 const SCALE_VERSION = "v1";
 
@@ -100,7 +101,8 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
 
 // PARAM-004: "today" for a scale-license effective/expiry check is the ORG's operating calendar
 // day (org_timezone), never a naive UTC-instant slice — see @wardenx/db's todayForOrganization.
-const toIso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
+const toIso = (v: Date | string): string =>
+  v instanceof Date ? v.toISOString() : new Date(v).toISOString();
 const toNum = (v: string | number | null): number | null => (v === null ? null : Number(v));
 
 /** The columns every AssessmentView projection selects from the partitioned parent. */
@@ -161,7 +163,11 @@ type AssessmentRow = {
 // SUD-context AIMS row is redacted. TODO(M9L): resolve the active 42 CFR Part 2 release and unredact.
 const sudRedacted = (r: AssessmentRow): boolean => r.scaleType === "aims" && r.sudContext;
 
-const toView = (r: AssessmentRow, cosignedAt: string | null, redacted: boolean): AssessmentView => ({
+const toView = (
+  r: AssessmentRow,
+  cosignedAt: string | null,
+  redacted: boolean,
+): AssessmentView => ({
   id: r.id,
   patientId: r.patientId,
   admissionId: r.admissionId,
@@ -204,7 +210,13 @@ export function createDbAssessmentRouteService(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: org,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Is a scale enabled for this tenant? — the explicit `scale_policy.enabled` flag; absent ⇒ enabled. */
@@ -268,7 +280,12 @@ export function createDbAssessmentRouteService(
     args: RecordAssessmentArgs,
     scored: { score: number | null; interpretation: string | null },
     siting: ResolvedCaptureSiting,
-    correction: { correctsAssessmentId: string; correctionReason: string; capturedAt: Date; version: number } | null,
+    correction: {
+      correctsAssessmentId: string;
+      correctionReason: string;
+      capturedAt: Date;
+      version: number;
+    } | null,
   ): Promise<AssessmentView> {
     const row = firstOrThrow(
       await tx
@@ -343,7 +360,10 @@ export function createDbAssessmentRouteService(
   };
 
   async function viewsFor(tx: DbClient, rows: AssessmentRow[]): Promise<AssessmentView[]> {
-    const map = await cosignedMap(tx, rows.map((r) => r.id));
+    const map = await cosignedMap(
+      tx,
+      rows.map((r) => r.id),
+    );
     return rows.map((r) => toView(r, map.get(r.id) ?? null, sudRedacted(r)));
   }
 
@@ -362,7 +382,11 @@ export function createDbAssessmentRouteService(
 
     async getAssessment(organizationId, patientId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx.select(assessmentCols).from(CA).where(eq(CA.id, id)).limit(1)) as AssessmentRow[];
+        const [r] = (await tx
+          .select(assessmentCols)
+          .from(CA)
+          .where(eq(CA.id, id))
+          .limit(1)) as AssessmentRow[];
         if (!r || r.patientId !== patientId) throw new NotFoundError("assessment");
         const map = await cosignedMap(tx as DbClient, [r.id]);
         return toView(r, map.get(r.id) ?? null, sudRedacted(r));
@@ -384,7 +408,9 @@ export function createDbAssessmentRouteService(
         const [r] = (await tx
           .select(assessmentCols)
           .from(CA)
-          .where(and(eq(CA.patientId, patientId), eq(CA.scaleType, scaleType), eq(CA.status, "active")))
+          .where(
+            and(eq(CA.patientId, patientId), eq(CA.scaleType, scaleType), eq(CA.status, "active")),
+          )
           .orderBy(desc(CA.capturedAt), desc(CA.id))
           .limit(1)) as AssessmentRow[];
         if (!r) throw new NotFoundError("assessment");
@@ -396,39 +422,50 @@ export function createDbAssessmentRouteService(
     async seriesScale(organizationId, patientId, scaleType, from, to) {
       const fromI = `${from}T00:00:00.000Z`;
       const toI = `${to}T23:59:59.999Z`;
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx): Promise<ScaleSeries> => {
-        const rows = (await tx
-          .select(assessmentCols)
-          .from(CA)
-          .where(
-            and(
-              eq(CA.patientId, patientId),
-              eq(CA.scaleType, scaleType),
-              eq(CA.status, "active"),
-              gte(CA.capturedAt, new Date(fromI)),
-              lte(CA.capturedAt, new Date(toI)),
-            ),
-          )
-          .orderBy(asc(CA.capturedAt), asc(CA.id))) as AssessmentRow[];
-        const points: ScaleSeriesPoint[] = rows.map((r) => {
-          const redacted = sudRedacted(r);
-          return {
-            assessmentId: r.id,
-            capturedAt: toIso(r.capturedAt),
-            score: redacted ? null : toNum(r.score),
-            scoreInterpretation: redacted ? null : r.scoreInterpretation,
-            significantChange: false,
-          };
-        });
-        return { scaleType, patientId, from: fromI, to: toI, points };
-      });
+      return withOrgContext(
+        db,
+        { organizationId, userId: "" },
+        async (tx): Promise<ScaleSeries> => {
+          const rows = (await tx
+            .select(assessmentCols)
+            .from(CA)
+            .where(
+              and(
+                eq(CA.patientId, patientId),
+                eq(CA.scaleType, scaleType),
+                eq(CA.status, "active"),
+                gte(CA.capturedAt, new Date(fromI)),
+                lte(CA.capturedAt, new Date(toI)),
+              ),
+            )
+            .orderBy(asc(CA.capturedAt), asc(CA.id))) as AssessmentRow[];
+          const points: ScaleSeriesPoint[] = rows.map((r) => {
+            const redacted = sudRedacted(r);
+            return {
+              assessmentId: r.id,
+              capturedAt: toIso(r.capturedAt),
+              score: redacted ? null : toNum(r.score),
+              scoreInterpretation: redacted ? null : r.scoreInterpretation,
+              significantChange: false,
+            };
+          });
+          return { scaleType, patientId, from: fromI, to: toI, points };
+        },
+      );
     },
 
     async deltaScale(organizationId, patientId, scaleType, from, to) {
       const series = await this.seriesScale(organizationId, patientId, scaleType, from, to);
       const window = { from, to };
       const { points } = series;
-      const empty: ScaleDelta = { scaleType, patientId, window, latestScore: null, priorScore: null, delta: null };
+      const empty: ScaleDelta = {
+        scaleType,
+        patientId,
+        window,
+        latestScore: null,
+        priorScore: null,
+        delta: null,
+      };
       if (points.length < 2) return empty;
       const priorScore = points[0]!.score;
       const latestScore = points[points.length - 1]!.score;
@@ -507,7 +544,10 @@ export function createDbAssessmentRouteService(
           expiresAt: l.expiresAt,
           // scale_license has no `seats` column; the in-memory shape carries it, so it reads null here.
           seats: null,
-          status: computeScaleLicenseStatus({ effectiveDate: l.effectiveDate, expiresAt: l.expiresAt }, todayStr),
+          status: computeScaleLicenseStatus(
+            { effectiveDate: l.effectiveDate, expiresAt: l.expiresAt },
+            todayStr,
+          ),
         }));
         return { licenses };
       });
@@ -519,7 +559,10 @@ export function createDbAssessmentRouteService(
           .select({ scaleType: POL.scaleType, enabled: POL.enabled })
           .from(POL)
           .where(eq(POL.organizationId, organizationId));
-        const policies: ScalePolicyView[] = rows.map((p) => ({ scaleType: p.scaleType, enabled: p.enabled }));
+        const policies: ScalePolicyView[] = rows.map((p) => ({
+          scaleType: p.scaleType,
+          enabled: p.enabled,
+        }));
         return { policies };
       });
     },
@@ -536,12 +579,23 @@ export function createDbAssessmentRouteService(
     },
 
     // ── Correct (§2.2.1 append-only amendment; the DB trigger supersedes the target) ─────────────────
-    async correctAssessment(organizationId, actorUserId, patientId, targetId, ifVersion, args: CorrectAssessmentArgs) {
+    async correctAssessment(
+      organizationId,
+      actorUserId,
+      patientId,
+      targetId,
+      ifVersion,
+      args: CorrectAssessmentArgs,
+    ) {
       // Resolved up front (outside the write tx) — used only where the target row is legacy-unsited.
       const fresh = await sitingResolver.resolve(organizationId, patientId, args.admissionId);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [target] = (await t.select(assessmentCols).from(CA).where(eq(CA.id, targetId)).limit(1)) as AssessmentRow[];
+        const [target] = (await t
+          .select(assessmentCols)
+          .from(CA)
+          .where(eq(CA.id, targetId))
+          .limit(1)) as AssessmentRow[];
         if (!target || target.patientId !== patientId) throw new NotFoundError("assessment");
         // §2.3 — validate the correction against its target (active / mismatch / stale-version → §4.4 codes).
         const plan = planCorrection(
@@ -569,12 +623,21 @@ export function createDbAssessmentRouteService(
         };
         // The AFTER-INSERT `clinical_assessment_supersede_on_correction_trg` flips the target to
         // `superseded` + bumps its version; we only insert the amendment (reusing target.captured_at).
-        const view = await insertScale(t, organizationId, actorUserId, patientId, args, scored, siting, {
-          correctsAssessmentId: plan.supersedeTargetId as string,
-          correctionReason: args.correctionReason,
-          capturedAt: new Date(toIso(target.capturedAt)),
-          version: plan.newVersion,
-        });
+        const view = await insertScale(
+          t,
+          organizationId,
+          actorUserId,
+          patientId,
+          args,
+          scored,
+          siting,
+          {
+            correctsAssessmentId: plan.supersedeTargetId as string,
+            correctionReason: args.correctionReason,
+            capturedAt: new Date(toIso(target.capturedAt)),
+            version: plan.newVersion,
+          },
+        );
         await emit(t, organizationId, "m9.assessment.amended", "clinical_assessment", target.id, {
           supersededId: target.id,
           correctingId: view.id,
@@ -589,7 +652,11 @@ export function createDbAssessmentRouteService(
     async cosign(organizationId, actorUserId, id, cosignerDiscipline) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t.select(assessmentCols).from(CA).where(eq(CA.id, id)).limit(1)) as AssessmentRow[];
+        const [r] = (await t
+          .select(assessmentCols)
+          .from(CA)
+          .where(eq(CA.id, id))
+          .limit(1)) as AssessmentRow[];
         if (!r) throw new NotFoundError("assessment");
         const [existing] = await t
           .select({ id: COS.id })
@@ -626,10 +693,7 @@ export function createDbAssessmentRouteService(
           .limit(1);
         if (!ev) throw new NotFoundError("significant_change_event");
         const status = transitionSignificantChange(ev.status, { type: "acknowledge" });
-        await t
-          .update(SCE)
-          .set({ status, acknowledgedAt: new Date() })
-          .where(eq(SCE.id, eventId));
+        await t.update(SCE).set({ status, acknowledgedAt: new Date() }).where(eq(SCE.id, eventId));
         return { status };
       });
     },

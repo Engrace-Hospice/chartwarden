@@ -14,7 +14,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 interface OpenApiDoc {
-  readonly paths: Record<string, Record<string, { responses?: Record<string, { content?: unknown }> }>>;
+  readonly paths: Record<
+    string,
+    Record<string, { responses?: Record<string, { content?: unknown }> }>
+  >;
 }
 
 const doc = JSON.parse(

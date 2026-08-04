@@ -29,11 +29,7 @@ import type {
   IdgMeetingStatus,
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import type {
-  IdgAbacResolver,
-  MeetingScopeFacts,
-  ReviewFloorBreachFact,
-} from "../abac-predicates";
+import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
 export interface RecordedIdgEvent {
@@ -180,41 +176,119 @@ export interface CreateActionItemArgs {
 /** The §4.1 route service contract (the routes layer composes over this). */
 export interface IdgRouteService {
   // schedule + recurring policies
-  listSchedule(orgId: string, q: { location: string; from: string; to: string }): Promise<MeetingScheduleView[]>;
-  createRecurringPolicy(orgId: string, userId: string, args: RecurringPolicyArgs): Promise<RecurringPolicyView>;
-  updateRecurringPolicy(orgId: string, userId: string, id: string, args: RecurringPolicyArgs): Promise<RecurringPolicyView>;
+  listSchedule(
+    orgId: string,
+    q: { location: string; from: string; to: string },
+  ): Promise<MeetingScheduleView[]>;
+  createRecurringPolicy(
+    orgId: string,
+    userId: string,
+    args: RecurringPolicyArgs,
+  ): Promise<RecurringPolicyView>;
+  updateRecurringPolicy(
+    orgId: string,
+    userId: string,
+    id: string,
+    args: RecurringPolicyArgs,
+  ): Promise<RecurringPolicyView>;
   // meeting lifecycle
   getMeeting(orgId: string, id: string): Promise<MeetingView>;
   cancelMeeting(orgId: string, userId: string, id: string, reason: string): Promise<MeetingView>;
-  rescheduleMeeting(orgId: string, userId: string, id: string, args: RescheduleArgs): Promise<MeetingView>;
+  rescheduleMeeting(
+    orgId: string,
+    userId: string,
+    id: string,
+    args: RescheduleArgs,
+  ): Promise<MeetingView>;
   buildPackets(orgId: string, userId: string, id: string): Promise<MeetingView>;
   startMeeting(orgId: string, userId: string, id: string): Promise<MeetingView>;
-  adjournMeeting(orgId: string, userId: string, id: string, stepUpFresh: boolean): Promise<MeetingView>;
+  adjournMeeting(
+    orgId: string,
+    userId: string,
+    id: string,
+    stepUpFresh: boolean,
+  ): Promise<MeetingView>;
   // attendance
-  recordAttendance(orgId: string, userId: string, meetingId: string, args: RecordAttendanceArgs): Promise<AttendanceView>;
-  updateAttendance(orgId: string, userId: string, id: string, status: IdgAttendanceStatus): Promise<AttendanceView>;
-  removeAttendance(orgId: string, userId: string, id: string): Promise<{ id: string; removed: true }>;
+  recordAttendance(
+    orgId: string,
+    userId: string,
+    meetingId: string,
+    args: RecordAttendanceArgs,
+  ): Promise<AttendanceView>;
+  updateAttendance(
+    orgId: string,
+    userId: string,
+    id: string,
+    status: IdgAttendanceStatus,
+  ): Promise<AttendanceView>;
+  removeAttendance(
+    orgId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ id: string; removed: true }>;
   // packets
   listPackets(orgId: string, meetingId: string): Promise<PacketDigestView[]>;
   getPacket(orgId: string, meetingId: string, patientId: string): Promise<PacketDigestView>;
   /** Patient-scoped IDG review history (patient-chart tab); empty meetings when never on an agenda. */
   getPatientIdgHistory(orgId: string, patientId: string): Promise<PatientIdgHistoryView>;
   // agenda
-  addAgendaItem(orgId: string, userId: string, meetingId: string, args: AddAgendaItemArgs): Promise<AgendaItemView>;
+  addAgendaItem(
+    orgId: string,
+    userId: string,
+    meetingId: string,
+    args: AddAgendaItemArgs,
+  ): Promise<AgendaItemView>;
   updateAgendaItem(orgId: string, userId: string, id: string): Promise<AgendaItemView>;
-  removeAgendaItem(orgId: string, userId: string, id: string): Promise<{ id: string; removed: true }>;
+  removeAgendaItem(
+    orgId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ id: string; removed: true }>;
   // decisions
-  recordDecision(orgId: string, userId: string, meetingId: string, args: RecordDecisionArgs): Promise<DecisionView>;
-  updateDecision(orgId: string, userId: string, id: string, decisionKind: IdgDecisionKind): Promise<DecisionView>;
+  recordDecision(
+    orgId: string,
+    userId: string,
+    meetingId: string,
+    args: RecordDecisionArgs,
+  ): Promise<DecisionView>;
+  updateDecision(
+    orgId: string,
+    userId: string,
+    id: string,
+    decisionKind: IdgDecisionKind,
+  ): Promise<DecisionView>;
   supersedeDecision(orgId: string, userId: string, id: string): Promise<DecisionView>;
   // action items
-  createActionItem(orgId: string, userId: string, meetingId: string, args: CreateActionItemArgs): Promise<ActionItemView>;
-  updateActionItem(orgId: string, userId: string, id: string, status: ActionItemPatchStatus): Promise<ActionItemView>;
-  removeActionItem(orgId: string, userId: string, id: string): Promise<{ id: string; removed: true }>;
-  listActionItems(orgId: string, userId: string, q: { assignee?: string; status?: IdgActionItemStatus }): Promise<ActionItemView[]>;
+  createActionItem(
+    orgId: string,
+    userId: string,
+    meetingId: string,
+    args: CreateActionItemArgs,
+  ): Promise<ActionItemView>;
+  updateActionItem(
+    orgId: string,
+    userId: string,
+    id: string,
+    status: ActionItemPatchStatus,
+  ): Promise<ActionItemView>;
+  removeActionItem(
+    orgId: string,
+    userId: string,
+    id: string,
+  ): Promise<{ id: string; removed: true }>;
+  listActionItems(
+    orgId: string,
+    userId: string,
+    q: { assignee?: string; status?: IdgActionItemStatus },
+  ): Promise<ActionItemView[]>;
   // minutes
   getMinutes(orgId: string, meetingId: string): Promise<MinutesView>;
-  submitAmendment(orgId: string, userId: string, minutesId: string, amendmentReason: string): Promise<{ amendmentId: string; minutesId: string }>;
+  submitAmendment(
+    orgId: string,
+    userId: string,
+    minutesId: string,
+    amendmentReason: string,
+  ): Promise<{ amendmentId: string; minutesId: string }>;
 }
 
 // ── seed shapes ──────────────────────────────────────────────────────────────────────────────────────────
@@ -464,7 +538,10 @@ export function createInMemoryIdgBackend(
         includedPatientCount: m.includedPatientIds.size,
       });
       m.status = t.to;
-      emit("m14.packets.build_started", { meetingId: id, includedPatientCount: m.includedPatientIds.size });
+      emit("m14.packets.build_started", {
+        meetingId: id,
+        includedPatientCount: m.includedPatientIds.size,
+      });
       return toMeetingView(m);
     },
     async startMeeting(orgId, _userId, id) {
@@ -485,7 +562,11 @@ export function createInMemoryIdgBackend(
         if (d.meetingId === id && d.status === "open") {
           d.status = "emitted";
           if (d.decisionKind !== "team_note") {
-            emit("idg.decision_recorded", { decisionId: d.id, meetingId: id, patientId: d.patientId });
+            emit("idg.decision_recorded", {
+              decisionId: d.id,
+              meetingId: id,
+              patientId: d.patientId,
+            });
           }
         }
       }

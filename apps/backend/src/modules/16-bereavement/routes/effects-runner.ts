@@ -1,3 +1,4 @@
+import type { M16EventName } from "@wardenx/types";
 // apps/backend/src/modules/16-bereavement/routes/effects-runner.ts — M16-T06 (§2.6).
 //
 // The executor for the DECLARATIVE side-effect lists the §2.2–§2.4 machines return. M16-T03 deliberately
@@ -21,7 +22,6 @@
 // Effects the runner deliberately does NOT execute are listed at {@link UNHANDLED_EFFECT_KINDS} with the
 // reason, so "it silently did nothing" is never the explanation for a missing write.
 import type { BereavementSideEffect, M16ErrorCode } from "../lifecycle/index";
-import type { M16EventName } from "@wardenx/types";
 import type { AlertPort, OutboxEmission, WriteOutboxPort } from "./write-service";
 
 /** The column patch a transition's `set_*` effects accumulate, applied by the caller in one UPDATE. */

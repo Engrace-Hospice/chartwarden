@@ -10,4 +10,8 @@ export * from "./boot";
 // organization row itself failed to load), distinct from the reader's own defaultValue fallback for
 // "row loaded, key just never set".
 export { DEFAULT_ORGANIZATION_TIMEZONE } from "./settings-by-m1";
-export { organizationTimezone, serviceDateForOrganization, todayForOrganization } from "./org-today";
+export {
+  organizationTimezone,
+  serviceDateForOrganization,
+  todayForOrganization,
+} from "./org-today";

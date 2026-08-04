@@ -138,7 +138,7 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
   });
-  
+
   it("audited writes do NOT recurse through audit_event partitions (regression: 0004 guard)", async () => {
     expect(peA).toBeTruthy(); // the seed insert above succeeded → no stack-overflow
     // and the AFTER trigger actually wrote an audit row for it (read as superuser)
@@ -2326,7 +2326,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
             AND c.relrowsecurity AND NOT c.relforcerowsecurity
           ORDER BY c.relname`,
       );
-      expect(r.rows.map((x) => x.relname), "RLS enabled but NOT forced").toEqual([]);
+      expect(
+        r.rows.map((x) => x.relname),
+        "RLS enabled but NOT forced",
+      ).toEqual([]);
     });
 
     it("the 11 platform-only zero-policy tables (migration 0159) each have a reachable policy", async () => {
@@ -2358,7 +2361,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
           ORDER BY c.relname`,
         [PLATFORM_ZERO_POLICY_TABLES],
       );
-      expect(r.rows.map((x) => x.relname), "platform table(s) still policy-less").toEqual([]);
+      expect(
+        r.rows.map((x) => x.relname),
+        "platform table(s) still policy-less",
+      ).toEqual([]);
     });
 
     it("every partition LEAF has RLS enabled + forced, and no policies of its own", async () => {
@@ -2378,7 +2384,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
             AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)
           ORDER BY c.relname`,
       );
-      expect(unprotected.rows.map((x) => x.relname), "partition leaf without forced RLS").toEqual([]);
+      expect(
+        unprotected.rows.map((x) => x.relname),
+        "partition leaf without forced RLS",
+      ).toEqual([]);
 
       const withPolicies = await db.query<{ relname: string }>(
         `SELECT DISTINCT c.relname
@@ -2387,7 +2396,10 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
            JOIN pg_inherits i ON i.inhrelid = c.oid
           ORDER BY c.relname`,
       );
-      expect(withPolicies.rows.map((x) => x.relname), "leaf grew its own policy").toEqual([]);
+      expect(
+        withPolicies.rows.map((x) => x.relname),
+        "leaf grew its own policy",
+      ).toEqual([]);
     });
 
     it("a NEWLY created partition is born protected (the event trigger, not 43 helpers)", async () => {

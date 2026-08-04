@@ -17,10 +17,10 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
-  J2051_SEVERITY_ORDER,
   type HopeRollupPeriod,
   type IsoInstant,
   type J2051Severity,
+  J2051_SEVERITY_ORDER,
 } from "@wardenx/types";
 import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
 
@@ -237,7 +237,9 @@ export function createDrizzleHopeOrgRollupStore(db: DbClient): HopeOrgRollupStor
         const [row] = await tx
           .select({ n: count() })
           .from(SFV)
-          .where(and(eq(SFV.organizationId, organizationId), inArray(SFV.status, ["open", "overdue"])));
+          .where(
+            and(eq(SFV.organizationId, organizationId), inArray(SFV.status, ["open", "overdue"])),
+          );
         return row?.n ?? 0;
       });
     },
@@ -256,9 +258,9 @@ export interface HopeOrgRollupSeed {
 }
 
 /** An in-memory {@link HopeOrgRollupStore} that returns the seeded intermediate rows verbatim (no DB, no RLS). */
-export function createInMemoryHopeOrgRollupStore(
-  seed: HopeOrgRollupSeed = {},
-): { store: HopeOrgRollupStore } {
+export function createInMemoryHopeOrgRollupStore(seed: HopeOrgRollupSeed = {}): {
+  store: HopeOrgRollupStore;
+} {
   return {
     store: {
       async completedTimepoints() {

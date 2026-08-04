@@ -115,7 +115,12 @@ export function createPortalCaregiverSessionResolver(
 
 /** A seeded in-memory {@link CaregiverSessionPort} for the slice/tests. */
 export function createInMemoryCaregiverSessionPort(
-  seed: ReadonlyArray<{ readonly organizationId: string; readonly caregiverSessionId: string } & CaregiverSessionSnapshot>,
+  seed: ReadonlyArray<
+    {
+      readonly organizationId: string;
+      readonly caregiverSessionId: string;
+    } & CaregiverSessionSnapshot
+  >,
 ): CaregiverSessionPort {
   const rows = new Map<string, CaregiverSessionSnapshot>();
   for (const r of seed) rows.set(`${r.organizationId}::${r.caregiverSessionId}`, r);

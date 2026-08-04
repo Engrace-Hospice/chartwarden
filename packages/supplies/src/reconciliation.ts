@@ -12,8 +12,8 @@
 //     flagged     = isControlled AND pct >= 0.05
 // A non-controlled line is never flagged at any shortfall: gloves get used.
 
-import { Decimal } from "decimal.js";
 import type { ControlledSubstanceSchedule } from "@wardenx/types";
+import { Decimal } from "decimal.js";
 
 import { CONTROLLED_DISCREPANCY_THRESHOLD_PCT } from "./policy";
 

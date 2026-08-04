@@ -32,7 +32,9 @@ export function MfaChallenge(): JSX.Element {
     setBusy(false);
     if (err) {
       setError(
-        useBackup ? "Invalid backup code." : "Invalid code. Check your authenticator and try again.",
+        useBackup
+          ? "Invalid backup code."
+          : "Invalid code. Check your authenticator and try again.",
       );
       return;
     }
@@ -96,7 +98,10 @@ export function MfaChallenge(): JSX.Element {
 
 // Segmented 6-digit OTP entry (frame: six mono cells). One numeric box per digit, auto-advancing on
 // entry and back-stepping on Backspace; a paste fills all six. The combined value is the `code`.
-function OtpInput({ value, onChange }: { value: string; onChange: (v: string) => void }): JSX.Element {
+function OtpInput({
+  value,
+  onChange,
+}: { value: string; onChange: (v: string) => void }): JSX.Element {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = Array.from({ length: OTP_LEN }, (_, i) => value[i] ?? "");
 
@@ -175,7 +180,12 @@ const backupInput: CSSProperties = {
   color: t.onSurface,
   textAlign: "center",
 };
-const errorStyle: CSSProperties = { color: t.error, margin: 0, fontSize: "0.85rem", textAlign: "center" };
+const errorStyle: CSSProperties = {
+  color: t.error,
+  margin: 0,
+  fontSize: "0.85rem",
+  textAlign: "center",
+};
 const primaryBtn: CSSProperties = {
   padding: "0.7rem 1rem",
   border: "none",

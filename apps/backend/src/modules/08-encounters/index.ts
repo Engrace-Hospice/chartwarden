@@ -5,12 +5,12 @@
 // (T07), seams (T08), routes (T09) all compose over this pure core.
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
 import {
   type EncounterWriteOutboxPort,
   createDbEncounterAbacResolver,
   createDbEncounterRouteService,
 } from "./encounters-route-service-db";
-import { registerEncounterAbacPredicates as _registerM8Abac } from "./abac-predicates";
 import { registerEncounterRoutes as _registerM8Routes } from "./routes/encounters-routes";
 
 /**

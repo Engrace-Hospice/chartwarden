@@ -8,7 +8,12 @@
 // added or renamed breaks `bun run build` rather than silently drifting from the client. Enum
 // fields are literal unions, never a bare `Type.String()`.
 import { type Static, Type } from "@sinclair/typebox";
-import type { AccountStatus, MembershipStatus, MembershipView, OrgBinding } from "../identity-ports";
+import type {
+  AccountStatus,
+  MembershipStatus,
+  MembershipView,
+  OrgBinding,
+} from "../identity-ports";
 import type { StepUpQualifyingFactor } from "../step-up-ports";
 
 // ── Shared enums (mirrored from the M1-owned enums the ports re-declare) ─────────────────────────

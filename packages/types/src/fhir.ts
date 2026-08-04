@@ -63,11 +63,18 @@ export type PlatformReleaseTag = string;
 
 /** `fhir_client_type` — the credential family a client authenticates with (§3.2). */
 export type FhirClientType = "smart_backend_services" | "api_key";
-export const FHIR_CLIENT_TYPES = ["smart_backend_services", "api_key"] as const satisfies readonly FhirClientType[];
+export const FHIR_CLIENT_TYPES = [
+  "smart_backend_services",
+  "api_key",
+] as const satisfies readonly FhirClientType[];
 
 /** `fhir_client_tier` — the rate-limit class; the floor is `FHIR_TIER_RATE_LIMIT_FLOOR_RPS` (§2.3). */
 export type FhirClientTier = "tier-1" | "tier-2" | "tier-3";
-export const FHIR_CLIENT_TIERS = ["tier-1", "tier-2", "tier-3"] as const satisfies readonly FhirClientTier[];
+export const FHIR_CLIENT_TIERS = [
+  "tier-1",
+  "tier-2",
+  "tier-3",
+] as const satisfies readonly FhirClientTier[];
 
 /** `fhir_client_status` — the §2.2 onboarding FSM. */
 export type FhirClientStatus = "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
@@ -81,11 +88,17 @@ export const FHIR_CLIENT_STATUSES = [
 
 /** `fhir_client_credential_kind` — `api_key` in Phase 1; `jwks_pin` is the future pin option (§2.2). */
 export type FhirClientCredentialKind = "api_key" | "jwks_pin";
-export const FHIR_CLIENT_CREDENTIAL_KINDS = ["api_key", "jwks_pin"] as const satisfies readonly FhirClientCredentialKind[];
+export const FHIR_CLIENT_CREDENTIAL_KINDS = [
+  "api_key",
+  "jwks_pin",
+] as const satisfies readonly FhirClientCredentialKind[];
 
 /** `fhir_client_credential_status` — rotation retires with a 30-day overlap window (§2.2). */
 export type FhirClientCredentialStatus = "active" | "retired";
-export const FHIR_CLIENT_CREDENTIAL_STATUSES = ["active", "retired"] as const satisfies readonly FhirClientCredentialStatus[];
+export const FHIR_CLIENT_CREDENTIAL_STATUSES = [
+  "active",
+  "retired",
+] as const satisfies readonly FhirClientCredentialStatus[];
 
 /** `fhir_bulk_export_status` — the §2.2 async-export FSM. */
 export type FhirBulkExportStatus =
@@ -106,11 +119,18 @@ export const FHIR_BULK_EXPORT_STATUSES = [
 
 /** The two `fhir_bulk_export_status` values that hold the §2.5 per-client concurrency lock — a second
  *  submission while a job is in either returns `429 Too Many Requests` with `Retry-After: 60`. */
-export const FHIR_BULK_EXPORT_ACTIVE_STATUSES = ["accepted", "in_progress"] as const satisfies readonly FhirBulkExportStatus[];
+export const FHIR_BULK_EXPORT_ACTIVE_STATUSES = [
+  "accepted",
+  "in_progress",
+] as const satisfies readonly FhirBulkExportStatus[];
 
 /** `fhir_bulk_export_request_kind` — the `$export` variant a job serves (§3.2). */
 export type FhirBulkExportRequestKind = "system" | "group" | "patient";
-export const FHIR_BULK_EXPORT_REQUEST_KINDS = ["system", "group", "patient"] as const satisfies readonly FhirBulkExportRequestKind[];
+export const FHIR_BULK_EXPORT_REQUEST_KINDS = [
+  "system",
+  "group",
+  "patient",
+] as const satisfies readonly FhirBulkExportRequestKind[];
 
 /** `fhir_inbound_status` — the §2.2 staged-proposal FSM. */
 export type FhirInboundStatus = "pending" | "accepted" | "rejected" | "expired";
@@ -122,11 +142,17 @@ export const FHIR_INBOUND_STATUSES = [
 ] as const satisfies readonly FhirInboundStatus[];
 
 /** The two terminal statuses whose `payload` is destruction-scheduled at +30 days (§2.4, §3.7). */
-export const FHIR_INBOUND_PAYLOAD_ERASE_STATUSES = ["rejected", "expired"] as const satisfies readonly FhirInboundStatus[];
+export const FHIR_INBOUND_PAYLOAD_ERASE_STATUSES = [
+  "rejected",
+  "expired",
+] as const satisfies readonly FhirInboundStatus[];
 
 /** `fhir_inbound_owner_module` — the module owning the native write on acceptance (§3.2, §2.3). */
 export type FhirInboundOwnerModule = "m5" | "m12";
-export const FHIR_INBOUND_OWNER_MODULES = ["m5", "m12"] as const satisfies readonly FhirInboundOwnerModule[];
+export const FHIR_INBOUND_OWNER_MODULES = [
+  "m5",
+  "m12",
+] as const satisfies readonly FhirInboundOwnerModule[];
 
 /** `fhir_version_enum` — the FHIR release a capability snapshot advertises (§3.2). Phase 1 serves R4. */
 export type FhirVersion = "4.0.1" | "5.0.0" | "6.0.0";
@@ -187,10 +213,11 @@ export type FhirSupportedScope = (typeof FHIR_SUPPORTED_SCOPES)[number];
  * Implemented` (§2.3) — distinct from the `404` a write-facing forward-seam resource returns (that
  * resource is KNOWN but gated, this one is UNKNOWN to the inbound pipeline).
  */
-export const FHIR_KNOWN_INBOUND_OWNER: { readonly [resourceType: string]: FhirInboundOwnerModule } = {
-  Patient: "m5",
-  MedicationStatement: "m12",
-};
+export const FHIR_KNOWN_INBOUND_OWNER: { readonly [resourceType: string]: FhirInboundOwnerModule } =
+  {
+    Patient: "m5",
+    MedicationStatement: "m12",
+  };
 
 /** §2.2 — a rejection's `decision_rationale` must be at least this many chars (survey-defense detail). */
 export const FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS = 40;
@@ -351,7 +378,9 @@ export const M28_CIPHER_COLUMNS: { readonly [K in M28TableName]: readonly string
  *  which `arch:ddl` enforces) — `fhir_client_session`'s PK is `(jti, issued_at)`, the inbound row's is
  *  `(id, proposed_at)`. */
 export const M28_PARTITIONED_TABLES: {
-  readonly [K in "fhir_client_session" | "fhir_inbound_resource"]: { readonly partitionKey: string };
+  readonly [K in "fhir_client_session" | "fhir_inbound_resource"]: {
+    readonly partitionKey: string;
+  };
 } = {
   fhir_client_session: { partitionKey: "issued_at" },
   fhir_inbound_resource: { partitionKey: "proposed_at" },

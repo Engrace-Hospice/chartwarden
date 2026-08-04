@@ -432,8 +432,9 @@ export function createInMemoryInvitationStore(
         (p) => p.organizationId === organizationId && p.email === email && p.status === "pending",
       ),
     pendingCount: (organizationId) =>
-      [...pending.values()].filter((p) => p.organizationId === organizationId && p.status === "pending")
-        .length,
+      [...pending.values()].filter(
+        (p) => p.organizationId === organizationId && p.status === "pending",
+      ).length,
     list: (organizationId) =>
       [...pending.values()]
         .filter((p) => p.organizationId === organizationId)

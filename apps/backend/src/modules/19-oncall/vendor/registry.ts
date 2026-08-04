@@ -1,3 +1,7 @@
+import type {
+  ExternalTriageVendorAdapter,
+  VendorMinimizationProfile,
+} from "@wardenx/triage-vendors";
 // apps/backend/src/modules/19-oncall/vendor/registry.ts — M19-T07 (§8.5, architecture §25.14).
 //
 // THE ADAPTER MANDATE, made operational. `@wardenx/triage-vendors` owns the `ExternalTriageVendorAdapter`
@@ -19,10 +23,6 @@
 // would leave a caller on hold while M19 believed a vendor had them. There is no fallback adapter and
 // there is no default; a registry miss is a refusal with the key in the message.
 import { WardenXError } from "@wardenx/types";
-import type {
-  ExternalTriageVendorAdapter,
-  VendorMinimizationProfile,
-} from "@wardenx/triage-vendors";
 
 /** Raised when a tenant's configured `adapter_key` resolves to no registered adapter (§8.5). */
 export class TriageVendorAdapterUnavailableError extends WardenXError {

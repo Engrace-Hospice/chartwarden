@@ -1,3 +1,4 @@
+import { unsupportedScopes } from "@wardenx/fhir";
 // apps/backend/src/modules/28-fhir/routes/admin-clients.routes.ts — §4.1 R23-R30: the FHIR client
 // registry admin surface.
 //
@@ -6,11 +7,7 @@
 // routes bind the §4.6 permission + §4.7 ABAC and shape the request. `rate_limit_rps` is a PLATFORM-FLOOR /
 // tenant-tighten-only value (§2.3): the tier's floor is the default and an override may only LOWER it.
 import { ValidationError } from "@wardenx/types";
-import {
-  FHIR_TIER_RATE_LIMIT_FLOOR_RPS,
-  type FhirClientTier,
-} from "@wardenx/types";
-import { unsupportedScopes } from "@wardenx/fhir";
+import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 
 import { actorOf, writeActorOf } from "./actor";
@@ -63,7 +60,11 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
       const bad = unsupportedScopes(body.allowedScopes);
       if (bad.length > 0) {
         throw new ValidationError("one or more requested scopes are not supported", [
-          { field: "allowedScopes", code: "INVALID_SCOPE", message: `unsupported: ${bad.join(", ")}` },
+          {
+            field: "allowedScopes",
+            code: "INVALID_SCOPE",
+            message: `unsupported: ${bad.join(", ")}`,
+          },
         ]);
       }
       const floor = FHIR_TIER_RATE_LIMIT_FLOOR_RPS[body.tier as FhirClientTier];
@@ -79,7 +80,11 @@ export function registerAdminClientRoutes(app: FastifyInstance, deps: AdminClien
       }
       if (body.type === "smart_backend_services" && !body.jwksUri) {
         throw new ValidationError("smart_backend_services clients require a jwksUri", [
-          { field: "jwksUri", code: "REQUIRED", message: "jwksUri is required for SMART Backend Services" },
+          {
+            field: "jwksUri",
+            code: "REQUIRED",
+            message: "jwksUri is required for SMART Backend Services",
+          },
         ]);
       }
       const result = await store.createClient(actor.organizationId, {

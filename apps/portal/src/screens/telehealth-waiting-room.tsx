@@ -89,7 +89,9 @@ export function TelehealthWaitingRoom(): JSX.Element {
               fontSize: "0.85rem",
             }}
           >
-            {ticket.audioOnlyFallbackActive ? "Audio-only mode (limited connection)" : "Video connected"}
+            {ticket.audioOnlyFallbackActive
+              ? "Audio-only mode (limited connection)"
+              : "Video connected"}
           </div>
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem" }}>
             <button type="button" style={ghostBtn} onClick={() => void leave()}>
@@ -102,18 +104,27 @@ export function TelehealthWaitingRoom(): JSX.Element {
   }
 
   return (
-    <PortalPage title="Telehealth waiting room" subtitle="A few checks before your care team joins.">
+    <PortalPage
+      title="Telehealth waiting room"
+      subtitle="A few checks before your care team joins."
+    >
       <PortalCard heading="Before you join">
         <ul style={{ margin: "0 0 1rem", paddingLeft: "1.1rem", fontSize: "0.9rem" }}>
           <li>Find a quiet, private spot with a steady connection.</li>
           <li>Your microphone and camera will be requested when you join.</li>
           <li>If video won't connect, you can switch to audio-only.</li>
         </ul>
-        <label style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.88rem" }}>
-          <input type="checkbox" checked={consented} onChange={(e) => setConsented(e.target.checked)} />
+        <label
+          style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.88rem" }}
+        >
+          <input
+            type="checkbox"
+            checked={consented}
+            onChange={(e) => setConsented(e.target.checked)}
+          />
           <span>
-            I understand this visit may be recorded with consent, and I agree to take part in a telehealth
-            visit for my loved one.
+            I understand this visit may be recorded with consent, and I agree to take part in a
+            telehealth visit for my loved one.
           </span>
         </label>
         {error ? (
@@ -122,7 +133,12 @@ export function TelehealthWaitingRoom(): JSX.Element {
           </p>
         ) : null}
         <div style={{ marginTop: "1rem" }}>
-          <button type="button" style={primaryBtn} disabled={!consented || joining} onClick={() => void join()}>
+          <button
+            type="button"
+            style={primaryBtn}
+            disabled={!consented || joining}
+            onClick={() => void join()}
+          >
             {joining ? "Connecting…" : "Join visit"}
           </button>
         </div>

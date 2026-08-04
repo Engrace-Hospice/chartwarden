@@ -10,7 +10,7 @@
 //   • `classifyRefillSlaStage`  — the `none | warn | critical` stage for a given hours-pending + policy.
 //   • `planRefillSlaAlert`      — the §2.7/§4.9 side-effect plan (outbox + typed M36 alert) for a stage.
 // Every fact (received instant, `now`, policy) is injected as data — no `Date.now()`, no DB.
-import { type RefillSideEffect } from "./effects";
+import type { RefillSideEffect } from "./effects";
 import { requireRefill } from "./errors";
 
 /** §2.7 — the platform-default warn threshold: a pending refill ageing past 48h emits the routine alert. */
@@ -100,9 +100,7 @@ export function classifyRefillSlaStage(
  * the `*_sla_critical` pair; `none` emits nothing. The cron suppresses re-emission of an already-emitted
  * stage (the `*_sla_*_emitted_at` marker on the row); this function is the pure stage→effects map.
  */
-export function planRefillSlaAlert(
-  stage: RefillSlaStage,
-): ReadonlyArray<RefillSideEffect> {
+export function planRefillSlaAlert(stage: RefillSlaStage): ReadonlyArray<RefillSideEffect> {
   switch (stage) {
     case "warn":
       return [

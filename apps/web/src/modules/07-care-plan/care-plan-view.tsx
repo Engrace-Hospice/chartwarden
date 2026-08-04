@@ -1,13 +1,13 @@
 import {
-  ageYears,
-  cardSurface,
   EmptyState,
-  ghostBorder,
   Glyph,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  ageYears,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -135,7 +135,9 @@ export function CarePlanView(): JSX.Element {
 
   const sortedProblems = useMemo(
     () =>
-      plan ? [...plan.problems].sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9)) : [],
+      plan
+        ? [...plan.problems].sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9))
+        : [],
     [plan],
   );
   const activeVersion = plan?.versions.find((v) => v.id === plan.activeVersionId) ?? null;
@@ -191,8 +193,24 @@ export function CarePlanView(): JSX.Element {
 
           {/* Center — the interdisciplinary care plan document */}
           <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", marginBottom: "1rem" }}>
-              <h1 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1.375rem", color: t.onSurface }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "1rem",
+                marginBottom: "1rem",
+              }}
+            >
+              <h1
+                style={{
+                  margin: 0,
+                  fontFamily: t.fontDisplay,
+                  fontWeight: 500,
+                  fontSize: "1.375rem",
+                  color: t.onSurface,
+                }}
+              >
                 Interdisciplinary care plan
               </h1>
               <StatusPill
@@ -231,11 +249,27 @@ export function CarePlanView(): JSX.Element {
                 <p style={meta}>No active (signed) version yet.</p>
               )}
               {activeVersion ? (
-                <ul style={{ listStyle: "none", padding: 0, margin: "0.5rem 0 0", fontSize: "0.8rem" }}>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: "0.5rem 0 0",
+                    fontSize: "0.8rem",
+                  }}
+                >
                   {activeVersion.requiredSignerSet.map((role) => {
                     const signed = activeVersion.signatures.some((s) => s.signerRole === role);
                     return (
-                      <li key={role} style={{ display: "flex", alignItems: "center", gap: "0.4rem", margin: "0.25rem 0", color: signed ? t.success : t.warning }}>
+                      <li
+                        key={role}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.4rem",
+                          margin: "0.25rem 0",
+                          color: signed ? t.success : t.warning,
+                        }}
+                      >
                         <Glyph name={signed ? "check-circle" : "clock"} size={13} />
                         {cap(role)}
                       </li>
@@ -254,8 +288,9 @@ export function CarePlanView(): JSX.Element {
                 <Glyph name="sparkle" size={15} /> AI suggestion
               </h2>
               <p style={meta}>
-                AI-assisted care-plan suggestions (grounded in the chart, with a provenance + confidence
-                label and accept/dismiss) arrive with the M29 Clinical Copilot. None are generated yet.
+                AI-assisted care-plan suggestions (grounded in the chart, with a provenance +
+                confidence label and accept/dismiss) arrive with the M29 Clinical Copilot. None are
+                generated yet.
               </p>
             </div>
           </aside>
@@ -268,14 +303,26 @@ export function CarePlanView(): JSX.Element {
           </span>
           <span style={{ flex: 1 }} />
           {draftVersion ? (
-            <button type="button" onClick={() => navigate(`/care-plans/${plan.id}/versions`)} style={ghostBtn}>
+            <button
+              type="button"
+              onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
+              style={ghostBtn}
+            >
               Open draft (v{draftVersion.sequence})
             </button>
           ) : null}
-          <button type="button" onClick={() => navigate(`/care-plans/${plan.id}/summary`)} style={ghostBtn}>
+          <button
+            type="button"
+            onClick={() => navigate(`/care-plans/${plan.id}/summary`)}
+            style={ghostBtn}
+          >
             Patient-friendly summary
           </button>
-          <button type="button" onClick={() => navigate(`/care-plans/${plan.id}/versions`)} style={primaryBtn}>
+          <button
+            type="button"
+            onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
+            style={primaryBtn}
+          >
             Version history
           </button>
         </div>
@@ -323,7 +370,12 @@ function ProblemBlock({
             <div key={g.id} style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
               <Glyph name="dot" size={12} />
               <span style={{ flex: 1 }}>
-                <span style={{ color: t.onSurface, fontStyle: g.source !== "clinical" ? "italic" : "normal" }}>
+                <span
+                  style={{
+                    color: t.onSurface,
+                    fontStyle: g.source !== "clinical" ? "italic" : "normal",
+                  }}
+                >
                   {g.revisedText ?? g.originalText}
                 </span>
                 {g.source !== "clinical" ? <span style={tag}> {cap(g.source)}-stated</span> : null}
@@ -344,7 +396,10 @@ function ProblemBlock({
               <Glyph name="dot" size={12} />
               <span style={{ flex: 1, color: t.onSurface }}>
                 {iv.scopeText}
-                <span style={tag}> {cap(iv.discipline)} · {iv.frequencyText}</span>
+                <span style={tag}>
+                  {" "}
+                  {cap(iv.discipline)} · {iv.frequencyText}
+                </span>
               </span>
               <StatusPill label={cap(iv.status)} tone={toneFor(iv.status)} />
             </div>
@@ -357,7 +412,17 @@ function ProblemBlock({
 
 function MonoChip({ children, title }: { children: ReactNode; title?: string }): JSX.Element {
   return (
-    <span title={title} style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, background: t.surfaceContainer, borderRadius: "9999px", padding: "0.15rem 0.55rem" }}>
+    <span
+      title={title}
+      style={{
+        fontFamily: t.fontMono,
+        fontSize: "0.78rem",
+        color: t.onSurfaceVariant,
+        background: t.surfaceContainer,
+        borderRadius: "9999px",
+        padding: "0.15rem 0.55rem",
+      }}
+    >
       {children}
     </span>
   );
@@ -438,7 +503,11 @@ const miniLabel: CSSProperties = {
   textTransform: "uppercase",
   color: t.muted,
 };
-const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.25rem 0 0" };
+const meta: CSSProperties = {
+  fontSize: "0.78rem",
+  color: t.onSurfaceVariant,
+  margin: "0.25rem 0 0",
+};
 const chip: CSSProperties = {
   background: t.surfaceContainer,
   color: t.onSurfaceVariant,

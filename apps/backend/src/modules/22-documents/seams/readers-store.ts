@@ -6,6 +6,7 @@
 // the impls never switch tenants; RLS scopes every read by `app.org_id` (§4.3). Mirrors the M17 seams/store.ts
 // read-seam precedent (one store, many readers). All five seams are READ-only — M22 owns the lifecycle internally.
 import type {
+  ChartTargetModule,
   DocumentAggregateType,
   DocumentDigest,
   DocumentId,
@@ -16,7 +17,6 @@ import type {
   PatientId,
   PortalDocumentDigest,
   ProvenanceRecord,
-  ChartTargetModule,
 } from "@wardenx/types";
 
 /** The render-back-ref shape `RenderedDocumentProvider` returns (the active version per source aggregate). */
@@ -59,7 +59,11 @@ export interface DocumentReaderStore {
   activeVersionForDocument(args: {
     readonly documentVersionId: DocumentVersionId;
     readonly organizationId: OrgId;
-  }): Promise<{ readonly documentId: DocumentId; readonly patientId: PatientId | null; readonly patientFacing: boolean } | null>;
+  }): Promise<{
+    readonly documentId: DocumentId;
+    readonly patientId: PatientId | null;
+    readonly patientFacing: boolean;
+  } | null>;
 
   /** §4.3 IntakeMetricsProvider — the intake-throughput counts for an org over a window. */
   intakeMetrics(args: {
@@ -115,7 +119,11 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
   const metrics = [...(seed.intakeMetrics ?? [])];
   const provenance = [...(seed.provenance ?? [])];
 
-  const sortedForPatient = (patientId: PatientId, organizationId: OrgId, aggregateType?: DocumentAggregateType) =>
+  const sortedForPatient = (
+    patientId: PatientId,
+    organizationId: OrgId,
+    aggregateType?: DocumentAggregateType,
+  ) =>
     documents
       .filter(
         (d) =>
@@ -139,7 +147,9 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
             x.aggregateId === aggregateId &&
             x.organizationId === organizationId,
         );
-        return r ? { documentId: r.documentId, versionId: r.versionId, renderedAt: r.renderedAt } : null;
+        return r
+          ? { documentId: r.documentId, versionId: r.versionId, renderedAt: r.renderedAt }
+          : null;
       },
       async documentsForPatient({ patientId, organizationId, aggregateType, sinceCursor, limit }) {
         let rows = sortedForPatient(patientId, organizationId, aggregateType);
@@ -148,14 +158,18 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
       },
       async documentMetadata({ documentId, organizationId }) {
         return (
-          documents.find((d) => d.documentId === documentId && d.organizationId === organizationId) ?? null
+          documents.find(
+            (d) => d.documentId === documentId && d.organizationId === organizationId,
+          ) ?? null
         );
       },
       async activeVersionForDocument({ documentVersionId, organizationId }) {
         const d = documents.find(
           (x) => x.activeVersionId === documentVersionId && x.organizationId === organizationId,
         );
-        return d ? { documentId: d.documentId, patientId: d.patientId, patientFacing: d.patientFacing } : null;
+        return d
+          ? { documentId: d.documentId, patientId: d.patientId, patientFacing: d.patientFacing }
+          : null;
       },
       async intakeMetrics({ organizationId }) {
         return (

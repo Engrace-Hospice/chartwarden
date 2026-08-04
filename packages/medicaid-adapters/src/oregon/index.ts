@@ -1,3 +1,4 @@
+import { MedicaidAdapterError } from "../errors";
 // @wardenx/medicaid-adapters — the Oregon reference adapter (D14). Engrace Hospice (Pendleton OR, CCN
 // 381588) is the founding customer; Oregon Health Plan (OHP) via OHA DMAP + CCO routing is the Phase-1
 // production target. This adapter ships the REAL declarative metadata + the pure helpers (TOB mapping, the
@@ -6,7 +7,6 @@
 // configured — the same deferral posture as M23's MAC-HTTP/x12-gen. NOT a deny-stub (vendor has no
 // '-deny-stub' suffix; metadata + helpers are real), so `isPhaseOneDenyStub('OR')` is false.
 import type { MedicaidAdapter, MedicaidAdapterMetadata } from "../interface";
-import { MedicaidAdapterError } from "../errors";
 import { replacementTob as stdReplacementTob, voidTob as stdVoidTob } from "../tob";
 
 const OREGON_VENDOR = "oregon-oha-direct";

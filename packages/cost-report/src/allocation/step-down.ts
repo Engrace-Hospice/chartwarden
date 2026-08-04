@@ -38,7 +38,10 @@ export interface StepDownCostCenter {
  */
 export interface StatisticalBasis {
   readonly allocatingCenterCode: string;
-  readonly weights: ReadonlyArray<{ readonly receivingCenterCode: string; readonly statisticValue: number }>;
+  readonly weights: ReadonlyArray<{
+    readonly receivingCenterCode: string;
+    readonly statisticValue: number;
+  }>;
 }
 
 /**
@@ -55,7 +58,10 @@ export interface StepDownAllocateInput {
 export interface StepDownStepDetail {
   readonly allocatingCenterCode: string;
   readonly amountAllocatedCents: Cents;
-  readonly allocations: ReadonlyArray<{ readonly receivingCenterCode: string; readonly amountCents: Cents }>;
+  readonly allocations: ReadonlyArray<{
+    readonly receivingCenterCode: string;
+    readonly amountCents: Cents;
+  }>;
 }
 
 /** A Worksheet B row: a center's direct cost, total overhead received, and final allocated cost. */

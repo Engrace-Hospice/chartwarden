@@ -1,3 +1,4 @@
+import { type AuditContext, audit } from "@wardenx/audit";
 // apps/backend/src/modules/06-admission/outbox-consumers/live-binding.ts — the REAL
 // `m6.admission-event-applier` outbox consumer (§4.8.3, W-M6-31..35). Composes the pure decision core
 // ({@link decideAdmissionEvent}) with a Drizzle execution gateway: facts are resolved from M6's OWN
@@ -29,10 +30,14 @@
 // strict catalog publisher (Value.Check) would reject — and `m6.discharge.death` needs the
 // dischargeEventId that only exists AFTER the service returns. A crash between the two txs loses the
 // emissions but never the discharge; the replay lands on the marker and skips.
-import { schema, type DbClient } from "@wardenx/db";
-import { audit, type AuditContext } from "@wardenx/audit";
+import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { ActiveElectionPeriod, AdmissionSummary, LevelOfCare, LocalDate } from "@wardenx/types";
+import type {
+  ActiveElectionPeriod,
+  AdmissionSummary,
+  LevelOfCare,
+  LocalDate,
+} from "@wardenx/types";
 import { and, desc, eq, inArray, isNotNull, like, ne, sql } from "drizzle-orm";
 import {
   type AdmissionWriteOutboxPort,
@@ -85,7 +90,10 @@ type WindowAction = Extract<ApplierAction, { kind: "open_window" }>;
  * arm. Production = {@link createDrizzleM6ApplierGateway}; unit tests inject an in-memory fake.
  */
 export interface M6ApplierGateway {
-  resolveFacts(organizationId: string, payload: ProposalAcceptedPayload): Promise<ResolvedApplierFacts>;
+  resolveFacts(
+    organizationId: string,
+    payload: ProposalAcceptedPayload,
+  ): Promise<ResolvedApplierFacts>;
   /** §2.4.1 R-EXT-01 — the narrow D14 happy path through `service.discharge` (death cascade). */
   recordExternalDeath(
     organizationId: string,
@@ -412,7 +420,9 @@ export function createDrizzleM6ApplierGateway(
               sendingFacility: action.sendingFacility,
             },
           })
-          .where(and(eq(REF.id, action.referralId), inArray(REF.status, ["received", "evaluated"])));
+          .where(
+            and(eq(REF.id, action.referralId), inArray(REF.status, ["received", "evaluated"])),
+          );
         await outbox.publish(tx, {
           eventName: "m6.referral.withdrawn",
           payload: {
@@ -490,7 +500,8 @@ export function createDrizzleM6ApplierGateway(
             mustCompleteBy,
           })
           .returning({ id: CW.id });
-        if (!row) throw new Error("m6.admission-event-applier: compliance window insert returned no row");
+        if (!row)
+          throw new Error("m6.admission-event-applier: compliance window insert returned no row");
         await outbox.publish(tx, {
           eventName: "m6.compliance.window.opened",
           payload: {
@@ -568,7 +579,11 @@ export interface M6AdmissionEventApplierBinding {
  *  `bindCallerModule(txOutboxPublisher, "m6")` port `mountAdmissionRoutes` receives). A pre-built
  *  gateway may substitute both (tests). */
 export type M6ApplierDeps =
-  | { readonly db: DbClient; readonly outbox: AdmissionWriteOutboxPort; readonly gateway?: M6ApplierGateway }
+  | {
+      readonly db: DbClient;
+      readonly outbox: AdmissionWriteOutboxPort;
+      readonly gateway?: M6ApplierGateway;
+    }
   | { readonly gateway: M6ApplierGateway; readonly db?: undefined; readonly outbox?: undefined };
 
 const RESOURCE_KINDS: readonly ProposalResourceKind[] = [
@@ -628,9 +643,12 @@ function parsePayload(raw: unknown, organizationId: string): ProposalAcceptedPay
  * it preserves the interim fail-visible posture (m6-owned → throw → DLQ) so an unwired boot can
  * never silently complete an accepted external event.
  */
-export function buildM6ProposalAcceptedConsumer(deps?: M6ApplierDeps): M6AdmissionEventApplierBinding {
+export function buildM6ProposalAcceptedConsumer(
+  deps?: M6ApplierDeps,
+): M6AdmissionEventApplierBinding {
   const gateway: M6ApplierGateway | null = deps
-    ? (deps.gateway ?? createDrizzleM6ApplierGateway(deps.db as DbClient, deps.outbox as AdmissionWriteOutboxPort))
+    ? (deps.gateway ??
+      createDrizzleM6ApplierGateway(deps.db as DbClient, deps.outbox as AdmissionWriteOutboxPort))
     : null;
   return {
     consumerName: "m6.admission-event-applier",

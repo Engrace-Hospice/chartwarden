@@ -15,16 +15,8 @@
 //
 // These suites are pure — they NEVER touch a DB; effects (cursor source, response sink, DEK, audit append,
 // outbox) are injected fakes.
-import { schema } from "@wardenx/db";
+import type { schema } from "@wardenx/db";
 import { describe, expect, it } from "vitest";
-import {
-  type CsvExportPorts,
-  type CsvExportRequest,
-  CSV_EXPORT_ROW_CAP,
-  csvHeaderLine,
-  csvRowLine,
-  handleCsvExport,
-} from "../src/export/csv-stream";
 import {
   type DrilldownAuditInput,
   type DrilldownAuditPorts,
@@ -33,16 +25,24 @@ import {
   writeDrilldownAudit,
 } from "../src/drilldown/audit-writer";
 import {
-  shapeTileResult,
-  type SqlRow,
-  type TileShapeContext,
-} from "../src/translator/result-shaper";
+  CSV_EXPORT_ROW_CAP,
+  type CsvExportPorts,
+  type CsvExportRequest,
+  csvHeaderLine,
+  csvRowLine,
+  handleCsvExport,
+} from "../src/export/csv-stream";
 import {
   type ReportableScopeEnvelope,
   type Translation,
   type TranslatorBaseCatalog,
   translateSpec,
 } from "../src/translator/index";
+import {
+  type SqlRow,
+  type TileShapeContext,
+  shapeTileResult,
+} from "../src/translator/result-shaper";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────────────────────────
 
@@ -56,8 +56,20 @@ const DIMENSIONS: schema.DimensionCatalog[] = [
 ];
 
 const MEASURES: schema.MeasureCatalog[] = [
-  { measureKey: "census_count", displayName: "Census", metricKey: "m.census", unit: "count", aggregation: "sum" },
-  { measureKey: "avg_los", displayName: "Avg LOS", metricKey: "m.los", unit: "days", aggregation: "avg" },
+  {
+    measureKey: "census_count",
+    displayName: "Census",
+    metricKey: "m.census",
+    unit: "count",
+    aggregation: "sum",
+  },
+  {
+    measureKey: "avg_los",
+    displayName: "Avg LOS",
+    metricKey: "m.los",
+    unit: "days",
+    aggregation: "avg",
+  },
 ];
 
 function makeBase(overrides: Partial<TranslatorBaseCatalog> = {}): TranslatorBaseCatalog {
@@ -75,7 +87,9 @@ function makeBase(overrides: Partial<TranslatorBaseCatalog> = {}): TranslatorBas
   };
 }
 
-function makeSpec(overrides: Partial<schema.ReportDefinitionSpec> = {}): schema.ReportDefinitionSpec {
+function makeSpec(
+  overrides: Partial<schema.ReportDefinitionSpec> = {},
+): schema.ReportDefinitionSpec {
   return {
     dimensions: [{ dimensionKey: "team_name" }],
     measures: [{ measureKey: "census_count" }],
@@ -87,21 +101,36 @@ function makeSpec(overrides: Partial<schema.ReportDefinitionSpec> = {}): schema.
 const ORG_SCOPE: ReportableScopeEnvelope = { scopeKind: "org", organizationId: ORG_ID };
 
 /** Identifier columns that must NEVER appear in any M33 output (header, cell, shaped result, or event). */
-const PHI_TOKENS = ["first_name", "last_name", "patient_name", "mrn", "ssn", "address", "Jane Doe", "123-45-6789"];
+const PHI_TOKENS = [
+  "first_name",
+  "last_name",
+  "patient_name",
+  "mrn",
+  "ssn",
+  "address",
+  "Jane Doe",
+  "123-45-6789",
+];
 
 // ── (A) translator — aggregate-only + whitelisted: no PHI column can be requested or projected ─────
 
 describe("translator (D6) — no row-level PHI column is requestable or projected", () => {
   it("rejects a spec that names a patient-identifier dimension (not in the catalog) BEFORE any SQL", () => {
     for (const phiKey of ["patient_name", "mrn", "ssn", "first_name", "address"]) {
-      expect(() => translateSpec(makeSpec({ dimensions: [{ dimensionKey: phiKey }] }), makeBase(), ORG_SCOPE))
-        .toThrowError(expect.objectContaining({ code: "DIMENSION_NOT_IN_BASE", statusCode: 422 }));
+      expect(() =>
+        translateSpec(makeSpec({ dimensions: [{ dimensionKey: phiKey }] }), makeBase(), ORG_SCOPE),
+      ).toThrowError(expect.objectContaining({ code: "DIMENSION_NOT_IN_BASE", statusCode: 422 }));
     }
   });
 
   it("rejects a spec that names a patient-identifier measure (not in the catalog)", () => {
-    expect(() => translateSpec(makeSpec({ measures: [{ measureKey: "patient_name" }] }), makeBase(), ORG_SCOPE))
-      .toThrowError(expect.objectContaining({ code: "MEASURE_NOT_IN_BASE", statusCode: 422 }));
+    expect(() =>
+      translateSpec(
+        makeSpec({ measures: [{ measureKey: "patient_name" }] }),
+        makeBase(),
+        ORG_SCOPE,
+      ),
+    ).toThrowError(expect.objectContaining({ code: "MEASURE_NOT_IN_BASE", statusCode: 422 }));
   });
 
   it("rejects a FILTER on a patient-identifier column (not in the catalog)", () => {
@@ -127,7 +156,13 @@ describe("translator (D6) — no row-level PHI column is requestable or projecte
     if (t.kind !== "sql") throw new Error("expected sql");
     // A hostile/buggy MV row carrying extra identifier columns beyond the whitelist.
     const smuggled: SqlRow[] = [
-      { team_name: "Alpha", census_count: 12, patient_name: "Jane Doe", mrn: "MRN-1", ssn: "123-45-6789" },
+      {
+        team_name: "Alpha",
+        census_count: 12,
+        patient_name: "Jane Doe",
+        mrn: "MRN-1",
+        ssn: "123-45-6789",
+      },
     ];
     const ctx: TileShapeContext = {
       tileKey: "tile-1",
@@ -209,7 +244,14 @@ describe("CSV exporter (D6) — only whitelisted aggregate columns reach the str
 
   it("projects away smuggled PHI columns — not one identifier byte reaches the CSV", async () => {
     const rows: SqlRow[] = [
-      { team_name: "Alpha", census_count: 7, patient_name: "Jane Doe", mrn: "MRN-1", ssn: "123-45-6789", address: "1 Main St" },
+      {
+        team_name: "Alpha",
+        census_count: 7,
+        patient_name: "Jane Doe",
+        mrn: "MRN-1",
+        ssn: "123-45-6789",
+        address: "1 Main St",
+      },
       { team_name: "Bravo", census_count: 3, first_name: "John", last_name: "Roe" },
     ];
     const { ports, written, emitted } = capturingPorts(rows);
@@ -325,7 +367,9 @@ describe("drilldown audit (D6 / §3.6) — patient identifier is envelope-encryp
 
   it("FAILS CLOSED — a DEK failure DENIES the drilldown and writes NOTHING (never plaintext at rest)", async () => {
     const { ports, appended, events } = makeDrilldownPorts({ dekThrows: true });
-    await expect(writeDrilldownAudit(makeDrilldownInput(), ports)).rejects.toBeInstanceOf(DrilldownDekUnavailable);
+    await expect(writeDrilldownAudit(makeDrilldownInput(), ports)).rejects.toBeInstanceOf(
+      DrilldownDekUnavailable,
+    );
     expect(appended).toEqual([]); // nothing persisted
     expect(events).toEqual([]); // nothing emitted
   });

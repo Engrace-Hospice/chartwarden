@@ -105,9 +105,7 @@ export function planBereavedWindowClose(input: {
 }): BereavedFlipPlan {
   const liveBereaved = input.accountGrants.filter(
     (g) =>
-      g.patientId === input.decedentPatientId &&
-      g.grantKind === "bereaved_family" &&
-      !g.revoked,
+      g.patientId === input.decedentPatientId && g.grantKind === "bereaved_family" && !g.revoked,
   );
   return {
     revoke: liveBereaved.map((g) => ({

@@ -17,11 +17,11 @@ import type {
   ExtractionDiscrepancyKind,
   ExtractionJobStatus,
 } from "@wardenx/types";
-import {
-  type ClassifiedPageResult,
-  type DocLensCapabilityPort,
-  type ExtractedCandidate,
-  type VisionVerificationResult,
+import type {
+  ClassifiedPageResult,
+  DocLensCapabilityPort,
+  ExtractedCandidate,
+  VisionVerificationResult,
 } from "./capability";
 
 /** §2.3 — the default classifier confidence floor; pages below it route to human classification (single
@@ -198,7 +198,10 @@ export function planCommitIntents(
     out.push({
       fieldPath: d.fieldPath,
       targetModule: target,
-      value: d.decision === "approve_with_edit" && d.editedValue !== undefined ? d.editedValue : cand.value,
+      value:
+        d.decision === "approve_with_edit" && d.editedValue !== undefined
+          ? d.editedValue
+          : cand.value,
       riskLevel: cand.riskLevel,
     });
   }

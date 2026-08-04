@@ -4,8 +4,8 @@
 // Aligned to Form CMS-1984-14: Worksheets B-1 (statistical basis), C (per-diem), F (balance sheet) — no D/E-1.
 import { describe, expect, it } from "vitest";
 import {
-  type RawValidationInputs,
   DEFAULT_VALIDATION_RULES,
+  type RawValidationInputs,
   assembleValidationContext,
   normalizeMacJurisdiction,
   runValidation,
@@ -20,14 +20,31 @@ function rawInputs(over: Partial<RawValidationInputs> = {}): RawValidationInputs
     worksheets: [
       { worksheetCode: "S", data: { providerCcn: "123456" } },
       { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000 } },
-      { worksheetCode: "B", data: { totalFullyAllocatedCostCents: 5_000_000, tiesToWorksheetAGrandTotal: true } },
-      { worksheetCode: "B-1", data: { columns: [{ generalServiceCostCenterCode: "AG", allocationBasis: "sqft" }] } },
+      {
+        worksheetCode: "B",
+        data: { totalFullyAllocatedCostCents: 5_000_000, tiesToWorksheetAGrandTotal: true },
+      },
+      {
+        worksheetCode: "B-1",
+        data: { columns: [{ generalServiceCostCenterCode: "AG", allocationBasis: "sqft" }] },
+      },
       { worksheetCode: "C", data: { tiesToWorksheetBTotal: true } },
       { worksheetCode: "F", data: {} },
       { worksheetCode: "S-2", data: {} },
     ],
-    statistic: { monthlyBreakdown: { "2026-01": { rhc: { medicare: { patientDays: 200 } }, gip: { medicare: { patientDays: 165 } } } } },
-    mappings: [{ cmsCostCenterCode: "00100" }, { cmsCostCenterCode: "00200" }, { cmsCostCenterCode: null }],
+    statistic: {
+      monthlyBreakdown: {
+        "2026-01": {
+          rhc: { medicare: { patientDays: 200 } },
+          gip: { medicare: { patientDays: 165 } },
+        },
+      },
+    },
+    mappings: [
+      { cmsCostCenterCode: "00100" },
+      { cmsCostCenterCode: "00200" },
+      { cmsCostCenterCode: null },
+    ],
     trialBalanceAccounts: [{ debitCents: 5_000_000, creditCents: 5_000_000 }],
     badDebt: [],
     complianceWindow: { currentEffectiveDeadlineDate: "2027-02-28", closedAt: null },
@@ -55,7 +72,11 @@ describe("assembleValidationContext", () => {
     expect(ctx.macJurisdiction).toBe("NGS-J6");
     expect(ctx.demographics.ccnPresent).toBe(true);
     expect(ctx.demographics.relatedPartyDisclosed).toBe(true); // S-2 present
-    expect(ctx.trialBalance).toEqual({ present: true, totalDebitsCents: 5_000_000, totalCreditsCents: 5_000_000 });
+    expect(ctx.trialBalance).toEqual({
+      present: true,
+      totalDebitsCents: 5_000_000,
+      totalCreditsCents: 5_000_000,
+    });
     expect(ctx.mapping).toEqual({ mappedAccountCount: 2, orphanAccountCount: 1 });
     expect(ctx.statistics.serviceCensusPatientDays).toBe(365);
     expect(ctx.statistics.hasNegativeCensusValue).toBe(false);
@@ -80,7 +101,9 @@ describe("assembleValidationContext", () => {
 
   it("a negative census cell is flagged (data-integrity defect)", () => {
     const ctx = assembleValidationContext(
-      rawInputs({ statistic: { monthlyBreakdown: { "2026-01": { rhc: { medicare: { patientDays: -5 } } } } } }),
+      rawInputs({
+        statistic: { monthlyBreakdown: { "2026-01": { rhc: { medicare: { patientDays: -5 } } } } },
+      }),
     );
     expect(ctx.statistics.hasNegativeCensusValue).toBe(true);
   });
@@ -93,16 +116,32 @@ describe("assembleValidationContext", () => {
     expect(unbound.seams.patientDaysProviderBound).toBe(false);
 
     const bound = assembleValidationContext(
-      rawInputs({ cap: { capContext: { aggregateCapCents: 6_893_068, aggregatePaymentsCents: 5_000_000, inpatientDays: 7, totalMedicareDays: 100 }, capProviderBound: true } }),
+      rawInputs({
+        cap: {
+          capContext: {
+            aggregateCapCents: 6_893_068,
+            aggregatePaymentsCents: 5_000_000,
+            inpatientDays: 7,
+            totalMedicareDays: 100,
+          },
+          capProviderBound: true,
+        },
+      }),
     );
-    expect(bound.cap).toEqual({ aggregateCapCents: 6_893_068, aggregatePaymentsCents: 5_000_000, inpatientDays: 7, totalMedicareDays: 100 });
+    expect(bound.cap).toEqual({
+      aggregateCapCents: 6_893_068,
+      aggregatePaymentsCents: 5_000_000,
+      inpatientDays: 7,
+      totalMedicareDays: 100,
+    });
     expect(bound.seams.capProviderBound).toBe(true);
   });
 });
 
 describe("assembled context drives runValidation seam-gating", () => {
   const outcomeOf = (ctx: ReturnType<typeof assembleValidationContext>, code: string) =>
-    runValidation(DEFAULT_VALIDATION_RULES, ctx).results.find((r) => r.ruleCode === code)?.result.outcome;
+    runValidation(DEFAULT_VALIDATION_RULES, ctx).results.find((r) => r.ruleCode === code)?.result
+      .outcome;
 
   it("M23-gated + cap rules SKIP when unbound; cap rules EVALUATE once cap binds", () => {
     const unbound = assembleValidationContext(rawInputs());
@@ -111,7 +150,17 @@ describe("assembled context drives runValidation seam-gating", () => {
     expect(outcomeOf(unbound, "cap.aggregate_beneficiary_cap")).toBe("skip"); // M26 cap null
 
     const bound = assembleValidationContext(
-      rawInputs({ cap: { capContext: { aggregateCapCents: 6_893_068, aggregatePaymentsCents: 5_000_000, inpatientDays: 7, totalMedicareDays: 100 }, capProviderBound: true } }),
+      rawInputs({
+        cap: {
+          capContext: {
+            aggregateCapCents: 6_893_068,
+            aggregatePaymentsCents: 5_000_000,
+            inpatientDays: 7,
+            totalMedicareDays: 100,
+          },
+          capProviderBound: true,
+        },
+      }),
     );
     expect(outcomeOf(bound, "cap.aggregate_beneficiary_cap")).not.toBe("skip"); // M26 bound → the rule runs
   });
@@ -119,14 +168,21 @@ describe("assembled context drives runValidation seam-gating", () => {
 
 describe("the live M23/M12 cost-report binds drive their rules live", () => {
   const outcomeOf = (ctx: ReturnType<typeof assembleValidationContext>, code: string) =>
-    runValidation(DEFAULT_VALIDATION_RULES, ctx).results.find((r) => r.ruleCode === code)?.result.outcome;
+    runValidation(DEFAULT_VALIDATION_RULES, ctx).results.find((r) => r.ruleCode === code)?.result
+      .outcome;
 
   // A report whose worksheets + billing binds all tie out cleanly.
   function boundInputs(over: Partial<RawValidationInputs> = {}): RawValidationInputs {
     return rawInputs({
       worksheets: [
         { worksheetCode: "S", data: { providerCcn: "123456" } },
-        { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [{ code: "drugs", totalCostCents: 250_000 }] } },
+        {
+          worksheetCode: "A",
+          data: {
+            grandTotalCostsCents: 5_000_000,
+            costCenters: [{ code: "drugs", totalCostCents: 250_000 }],
+          },
+        },
       ],
       billing: {
         billedCensusPatientDays: 365,
@@ -155,7 +211,11 @@ describe("the live M23/M12 cost-report binds drive their rules live", () => {
     expect(outcomeOf(ctx, "drug_cost.billed_reconciles")).toBe("pass");
     // Bound seam but no pharmacy cost center on Worksheet A → the cross-check is not applicable (skip).
     const noPharmacy = assembleValidationContext(
-      boundInputs({ worksheets: [{ worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [] } }] }),
+      boundInputs({
+        worksheets: [
+          { worksheetCode: "A", data: { grandTotalCostsCents: 5_000_000, costCenters: [] } },
+        ],
+      }),
     );
     expect(noPharmacy.drugCost.worksheetAPharmacyCents).toBeNull();
     expect(outcomeOf(noPharmacy, "drug_cost.billed_reconciles")).toBe("skip");

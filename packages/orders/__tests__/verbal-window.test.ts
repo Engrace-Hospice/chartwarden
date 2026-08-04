@@ -1,23 +1,25 @@
 // @wardenx/orders — §2.3 D3 verbal-order workflow + 48h timer — M11-T04.
 import { describe, expect, it } from "vitest";
+import type { OrderSideEffect } from "../src/lifecycle/effects";
+import { OrderStateError } from "../src/lifecycle/errors";
 import {
   VERBAL_PLATFORM_FLOOR_HOURS,
-  validateVerbalWindowHours,
-  computeVerbalDeadline,
-  classifyPreExpiryTier,
-  isVerbalExpired,
-  hoursOverdue,
-  planVerbalExpiry,
   type VerbalDeadlinePolicy,
+  classifyPreExpiryTier,
+  computeVerbalDeadline,
+  hoursOverdue,
+  isVerbalExpired,
+  planVerbalExpiry,
+  validateVerbalWindowHours,
 } from "../src/lifecycle/verbal-window";
-import { OrderStateError } from "../src/lifecycle/errors";
-import type { OrderSideEffect } from "../src/lifecycle/effects";
 
 const HOUR = 3_600_000;
 const at = (ms: number): string => new Date(ms).toISOString();
 
 function outboxEvents(effects: ReadonlyArray<OrderSideEffect>): string[] {
-  return effects.filter((e): e is Extract<OrderSideEffect, { kind: "outbox" }> => e.kind === "outbox").map((e) => e.event);
+  return effects
+    .filter((e): e is Extract<OrderSideEffect, { kind: "outbox" }> => e.kind === "outbox")
+    .map((e) => e.event);
 }
 
 describe("§2.3 D3 validateVerbalWindowHours (tighten-only floor)", () => {
@@ -38,9 +40,15 @@ describe("§2.3 D3 validateVerbalWindowHours (tighten-only floor)", () => {
   });
 
   it("rejects < 1h and non-integers", () => {
-    expect(() => validateVerbalWindowHours(0)).toThrowError(expect.objectContaining({ code: "VERBAL_WINDOW_OUT_OF_RANGE" }));
-    expect(() => validateVerbalWindowHours(-4)).toThrowError(expect.objectContaining({ code: "VERBAL_WINDOW_OUT_OF_RANGE" }));
-    expect(() => validateVerbalWindowHours(12.5)).toThrowError(expect.objectContaining({ code: "VERBAL_WINDOW_OUT_OF_RANGE" }));
+    expect(() => validateVerbalWindowHours(0)).toThrowError(
+      expect.objectContaining({ code: "VERBAL_WINDOW_OUT_OF_RANGE" }),
+    );
+    expect(() => validateVerbalWindowHours(-4)).toThrowError(
+      expect.objectContaining({ code: "VERBAL_WINDOW_OUT_OF_RANGE" }),
+    );
+    expect(() => validateVerbalWindowHours(12.5)).toThrowError(
+      expect.objectContaining({ code: "VERBAL_WINDOW_OUT_OF_RANGE" }),
+    );
   });
 });
 
@@ -52,13 +60,21 @@ describe("§2.3 D3 computeVerbalDeadline (wall-clock)", () => {
 
   it("honours a tightened 24h tenant window", () => {
     const received = "2026-06-22T10:00:00.000Z";
-    const policy: VerbalDeadlinePolicy = { windowHours: 24, businessHoursOnly: false, policyVersion: "v2" };
+    const policy: VerbalDeadlinePolicy = {
+      windowHours: 24,
+      businessHoursOnly: false,
+      policyVersion: "v2",
+    };
     expect(computeVerbalDeadline(received, policy)).toBe(at(Date.parse(received) + 24 * HOUR));
   });
 
   it("validates the window before computing", () => {
     expect(() =>
-      computeVerbalDeadline("2026-06-22T10:00:00.000Z", { windowHours: 96, businessHoursOnly: false, policyVersion: "x" }),
+      computeVerbalDeadline("2026-06-22T10:00:00.000Z", {
+        windowHours: 96,
+        businessHoursOnly: false,
+        policyVersion: "x",
+      }),
     ).toThrowError(expect.objectContaining({ code: "VERBAL_WINDOW_EXCEEDS_FLOOR" }));
   });
 });
@@ -70,7 +86,12 @@ describe("§2.3 D3 computeVerbalDeadline (business-hours, weekend/holiday-skip)"
     // 2026-06-19 is a Friday. 09:00 PT = 16:00Z. An 8-business-hour window opened at 16:00Z (09:00 PT)
     // consumes Fri 09:00–17:00 PT only → deadline is Fri 17:00 PT = Sat 00:00Z.
     const received = "2026-06-19T16:00:00.000Z";
-    const policy: VerbalDeadlinePolicy = { windowHours: 8, businessHoursOnly: true, timeZone: tz, policyVersion: "biz" };
+    const policy: VerbalDeadlinePolicy = {
+      windowHours: 8,
+      businessHoursOnly: true,
+      timeZone: tz,
+      policyVersion: "biz",
+    };
     const deadline = computeVerbalDeadline(received, policy);
     expect(deadline).toBe(at(Date.parse(received) + 8 * HOUR));
   });
@@ -79,7 +100,12 @@ describe("§2.3 D3 computeVerbalDeadline (business-hours, weekend/holiday-skip)"
     // Friday 22:00 PT (Sat 05:00Z). A 4-business-hour window: Fri 22:00–24:00 PT count (2h), then Sat/Sun
     // skip, then Mon 00:00–02:00 PT count (2h) → deadline Mon 02:00 PT.
     const received = "2026-06-20T05:00:00.000Z"; // Fri 22:00 PT
-    const policy: VerbalDeadlinePolicy = { windowHours: 4, businessHoursOnly: true, timeZone: tz, policyVersion: "biz" };
+    const policy: VerbalDeadlinePolicy = {
+      windowHours: 4,
+      businessHoursOnly: true,
+      timeZone: tz,
+      policyVersion: "biz",
+    };
     const deadline = computeVerbalDeadline(received, policy);
     // Monday is 2026-06-22; 00:00 PT = 07:00Z; +2h = 09:00Z.
     expect(deadline).toBe("2026-06-22T09:00:00.000Z");
@@ -121,7 +147,9 @@ describe("§2.3 / §4.9 classifyPreExpiryTier", () => {
   });
 
   it("does not fire a mark just outside the ±15-min tolerance", () => {
-    expect(classifyPreExpiryTier(at(Date.parse(deadline) - 12 * HOUR - 16 * 60_000), deadline)).toBeNull();
+    expect(
+      classifyPreExpiryTier(at(Date.parse(deadline) - 12 * HOUR - 16 * 60_000), deadline),
+    ).toBeNull();
   });
 });
 

@@ -23,6 +23,7 @@ import {
   getPlan,
   seedRosterAndSchedule,
 } from "./bereavement-api";
+import { RELATIONSHIP_CODES, humanize, shortDate, shortId } from "./bereavement-status";
 import {
   Card,
   CheckboxField,
@@ -43,7 +44,6 @@ import {
   td,
   th,
 } from "./bereavement-ui";
-import { RELATIONSHIP_CODES, humanize, shortDate, shortId } from "./bereavement-status";
 
 /** The §D4 platform floor, stated for the counselor. Cumulative: a high-risk survivor gets the low-tier
  *  touchpoints AND the extra ones, never a replacement set. */
@@ -88,10 +88,14 @@ export function BereavementRosterSeed(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!plan || !planId)
-    return <EmptyState title="Not found" description="This bereavement plan does not exist, or is not on your caseload." />;
+    return (
+      <EmptyState
+        title="Not found"
+        description="This bereavement plan does not exist, or is not on your caseload."
+      />
+    );
 
-  const addDraft = () =>
-    setDrafts([...drafts, { displayName: "", relationshipCode: "friend" }]);
+  const addDraft = () => setDrafts([...drafts, { displayName: "", relationshipCode: "friend" }]);
   const setDraft = (i: number, next: ContactDraft) =>
     setDrafts(drafts.map((d, j) => (j === i ? next : d)));
   const removeDraft = (i: number) => setDrafts(drafts.filter((_, j) => j !== i));
@@ -134,15 +138,16 @@ export function BereavementRosterSeed(): JSX.Element {
 
       {plan.status !== "initiating" ? (
         <Notice tone="warning">
-          This plan is {humanize(plan.status).toLowerCase()}. Seeding opens a plan from `initiating`; the
-          server refuses the transition from any other state.
+          This plan is {humanize(plan.status).toLowerCase()}. Seeding opens a plan from
+          `initiating`; the server refuses the transition from any other state.
         </Notice>
       ) : null}
 
       {result ? (
         <Notice tone="success">
-          Plan opened. {result.contactsSeededCount} contacts seeded · {result.outreachScheduledCount}{" "}
-          touchpoints scheduled · {result.anniversaryRemindersCount} anniversary reminders queued.{" "}
+          Plan opened. {result.contactsSeededCount} contacts seeded ·{" "}
+          {result.outreachScheduledCount} touchpoints scheduled · {result.anniversaryRemindersCount}{" "}
+          anniversary reminders queued.{" "}
           <Link to={`/bereavement/plans/${planId}/outreach`} style={linkStyle}>
             Open the outreach planner
           </Link>
@@ -167,8 +172,8 @@ export function BereavementRosterSeed(): JSX.Element {
           onChange={setSeedFromCaregivers}
         />
         <span style={mutedStyle}>
-          Seeded contacts land in `proposed`. Each one is confirmed individually, which is where the M39
-          bereavement-outreach consent verdict is resolved — fail-CLOSED.
+          Seeded contacts land in `proposed`. Each one is confirmed individually, which is where the
+          M39 bereavement-outreach consent verdict is resolved — fail-CLOSED.
         </span>
       </Card>
 
@@ -182,13 +187,20 @@ export function BereavementRosterSeed(): JSX.Element {
       >
         {drafts.length === 0 ? (
           <span style={mutedStyle}>
-            No custom contacts. Survivors the caregiver roster does not carry — a sibling in another state,
-            a close friend — are added here.
+            No custom contacts. Survivors the caregiver roster does not carry — a sibling in another
+            state, a close friend — are added here.
           </span>
         ) : (
           drafts.map((d, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: a draft row has no id until the server assigns one
-            <div key={i} style={{ display: "grid", gap: "0.5rem", gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))" }}>
+            <div
+              key={i}
+              style={{
+                display: "grid",
+                gap: "0.5rem",
+                gridTemplateColumns: "repeat(auto-fit, minmax(11rem, 1fr))",
+              }}
+            >
               <TextField
                 label="Display name"
                 value={d.displayName}
@@ -198,7 +210,9 @@ export function BereavementRosterSeed(): JSX.Element {
                 label="Relationship"
                 value={d.relationshipCode}
                 options={RELATIONSHIP_CODES.map((c) => ({ value: c, label: humanize(c) }))}
-                onChange={(v) => setDraft(i, { ...d, relationshipCode: v as BereavementRelationshipCode })}
+                onChange={(v) =>
+                  setDraft(i, { ...d, relationshipCode: v as BereavementRelationshipCode })
+                }
               />
               <TextField
                 label="Email"
@@ -238,10 +252,10 @@ export function BereavementRosterSeed(): JSX.Element {
           </tbody>
         </table>
         <span style={mutedStyle}>
-          The floor is cumulative: a high-risk survivor receives the shared touchpoints AND the extra ones.
-          Your organization may tighten this — add touchpoints, or move one earlier — but may never drop a
-          floor item or push it past its scheduled date. What is actually materialized is reported above
-          once the plan opens.
+          The floor is cumulative: a high-risk survivor receives the shared touchpoints AND the
+          extra ones. Your organization may tighten this — add touchpoints, or move one earlier —
+          but may never drop a floor item or push it past its scheduled date. What is actually
+          materialized is reported above once the plan opens.
         </span>
       </Card>
 

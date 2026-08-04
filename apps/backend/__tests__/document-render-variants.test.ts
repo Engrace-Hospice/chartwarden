@@ -5,32 +5,32 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
 import {
-  PLATFORM_TEMPLATE_TABLE,
-  // render variants
-  SUD_REDACTED_PLACEHOLDER,
-  SUD_REDACTION_BANNER,
-  SUD_RETENTION_CLASS,
-  planEvvVerificationRender,
-  planEncounterRender,
-  planLabResultsRender,
-  redactSudValue,
-  type EvvVerificationPayload,
-  type EncounterRenderPayload,
-  type LabResultsRenderPayload,
-  // statement of disagreement
-  SOD_AMENDMENT_TAG,
-  StatementOfDisagreementError,
-  planStatementOfDisagreement,
   type AmendmentDeniedPayload,
+  type EncounterRenderPayload,
+  type EvvVerificationPayload,
+  type LabBackrefFacts,
+  type LabResultsRenderPayload,
+  type LabResultsRequestPayload,
   // lab back-ref consumer
   M22_LAB_RESULTS_BINDING,
   M22_LAB_RESULTS_BINDING_DEFERRED,
   M22_LAB_RESULTS_CONSUMER,
   M22_LAB_RESULTS_EVENT,
+  PLATFORM_TEMPLATE_TABLE,
+  // statement of disagreement
+  SOD_AMENDMENT_TAG,
+  // render variants
+  SUD_REDACTED_PLACEHOLDER,
+  SUD_REDACTION_BANNER,
+  SUD_RETENTION_CLASS,
+  StatementOfDisagreementError,
   decideLabBackref,
+  planEncounterRender,
+  planEvvVerificationRender,
+  planLabResultsRender,
+  planStatementOfDisagreement,
+  redactSudValue,
   resolveLabResultsPayload,
-  type LabBackrefFacts,
-  type LabResultsRequestPayload,
 } from "../src/modules/22-documents/index";
 
 const ORG = "00000000-0000-4000-8000-0000000000ee";
@@ -48,14 +48,19 @@ describe("M22-T09 — §7.5 W5 Statement of Disagreement", () => {
       patientId: PAT,
       organizationId: ORG,
       decision: "denied",
-      statementText: "I disagree with the recorded allergy; I have never had a penicillin reaction.",
+      statementText:
+        "I disagree with the recorded allergy; I have never had a penicillin reaction.",
       denialReason: "The chart entry is supported by the admitting H&P.",
       ...over,
     };
   }
 
   it("attaches the SoD as a GENESIS version (append-only) with attach_to_disclosures + the amendment tag", () => {
-    const plan = planStatementOfDisagreement({ payload: denied(), versionId: "v1", currentMaxVersion: 0 });
+    const plan = planStatementOfDisagreement({
+      payload: denied(),
+      versionId: "v1",
+      currentMaxVersion: 0,
+    });
 
     expect(plan.templateKey).toBe("patient_amendment_statement_of_disagreement");
     // §7.5: the SoD does NOT alter the original — it is an append-only version (T03 versioning).
@@ -81,8 +86,15 @@ describe("M22-T09 — §7.5 W5 Statement of Disagreement", () => {
   });
 
   it("appends a SECOND SoD as version n≥2 (m22.document.versioned), preserving the prior SoD", () => {
-    const plan = planStatementOfDisagreement({ payload: denied(), versionId: "v2", currentMaxVersion: 1 });
-    expect(plan.version.effects).toContainEqual({ kind: "outbox", event: "m22.document.versioned" });
+    const plan = planStatementOfDisagreement({
+      payload: denied(),
+      versionId: "v2",
+      currentMaxVersion: 1,
+    });
+    expect(plan.version.effects).toContainEqual({
+      kind: "outbox",
+      event: "m22.document.versioned",
+    });
     expect(plan.version.effects).not.toContainEqual({ kind: "set_status", status: "superseded" });
   });
 
@@ -108,7 +120,11 @@ describe("M22-T09 — §7.5 W5 Statement of Disagreement", () => {
 
 describe("M22-T09 — §7.16 SUD-redacted placeholder render", () => {
   it("redacts a SUD-class value to the fixed PHI-free placeholder when consent is absent", () => {
-    const out = redactSudValue({ value: "positive (methadone)", isSudClass: true, consentPresent: false });
+    const out = redactSudValue({
+      value: "positive (methadone)",
+      isSudClass: true,
+      consentPresent: false,
+    });
     expect(out.redacted).toBe(true);
     expect(out.value).toBe(SUD_REDACTED_PLACEHOLDER);
     // no PHI in the placeholder — the actual value never appears.
@@ -116,7 +132,11 @@ describe("M22-T09 — §7.16 SUD-redacted placeholder render", () => {
   });
 
   it("passes the plaintext value through when consent IS present", () => {
-    const out = redactSudValue({ value: "positive (methadone)", isSudClass: true, consentPresent: true });
+    const out = redactSudValue({
+      value: "positive (methadone)",
+      isSudClass: true,
+      consentPresent: true,
+    });
     expect(out.redacted).toBe(false);
     expect(out.value).toBe("positive (methadone)");
   });
@@ -138,8 +158,22 @@ describe("M22-T09 — §7.15/§7.16 lab-results render variant", () => {
       orderingPhysician: "Dr. Vega",
       signedAt: "2026-06-24T10:00:00.000Z",
       resultValues: [
-        { observationId: "o1", loincCode: "2823-3", label: "Potassium", value: "5.2", unit: "mEq/L", isSudClass: false },
-        { observationId: "o2", loincCode: "19357-1", label: "Methadone, urine", value: "positive", unit: null, isSudClass: true },
+        {
+          observationId: "o1",
+          loincCode: "2823-3",
+          label: "Potassium",
+          value: "5.2",
+          unit: "mEq/L",
+          isSudClass: false,
+        },
+        {
+          observationId: "o2",
+          loincCode: "19357-1",
+          label: "Methadone, urine",
+          value: "positive",
+          unit: null,
+          isSudClass: true,
+        },
       ],
       ...over,
     };
@@ -149,7 +183,14 @@ describe("M22-T09 — §7.15/§7.16 lab-results render variant", () => {
     const v = planLabResultsRender({
       payload: labPayload({
         resultValues: [
-          { observationId: "o1", loincCode: "2823-3", label: "Potassium", value: "5.2", unit: "mEq/L", isSudClass: false },
+          {
+            observationId: "o1",
+            loincCode: "2823-3",
+            label: "Potassium",
+            value: "5.2",
+            unit: "mEq/L",
+            isSudClass: false,
+          },
         ],
       }),
       consentPresent: false,
@@ -168,7 +209,11 @@ describe("M22-T09 — §7.15/§7.16 lab-results render variant", () => {
     expect(v.sudRedacted).toBe(true);
     expect(v.retentionClassOverride).toBe(SUD_RETENTION_CLASS);
     expect(v.content.sudBanner).toBe(SUD_REDACTION_BANNER);
-    const rows = v.content.resultValues as Array<{ value: string | null; redacted: boolean; isSudClass: boolean }>;
+    const rows = v.content.resultValues as Array<{
+      value: string | null;
+      redacted: boolean;
+      isSudClass: boolean;
+    }>;
     expect(rows[0]?.value).toBe("5.2"); // non-SUD plaintext
     expect(rows[1]?.value).toBe(SUD_REDACTED_PLACEHOLDER); // SUD redacted
     expect(rows[1]?.redacted).toBe(true);
@@ -206,7 +251,9 @@ describe("M22-T09 — §7.12 EVV verification render variant", () => {
   }
 
   it("renders the map-snapshot section for a geo-verified visit", () => {
-    const v = planEvvVerificationRender(evv({ geoVerification: { lat: 45.5, lng: -122.6, mapSnapshotRef: "snap1" } }));
+    const v = planEvvVerificationRender(
+      evv({ geoVerification: { lat: 45.5, lng: -122.6, mapSnapshotRef: "snap1" } }),
+    );
     expect(v.templateKey).toBe("evv_verification");
     expect(v.aggregateType).toBe("evv_verification");
     expect(v.sudRedacted).toBe(false);
@@ -216,7 +263,9 @@ describe("M22-T09 — §7.12 EVV verification render variant", () => {
   });
 
   it("renders the exception narrative for an alternate-method visit (geo unavailable)", () => {
-    const v = planEvvVerificationRender(evv({ alternateMethodReason: "rural area, no GPS signal" }));
+    const v = planEvvVerificationRender(
+      evv({ alternateMethodReason: "rural area, no GPS signal" }),
+    );
     const geo = v.content.geoSection as { kind: string; narrative: string };
     expect(geo.kind).toBe("exception_narrative");
     expect(geo.narrative).toContain("alternate method used: rural area, no GPS signal");
@@ -248,7 +297,13 @@ describe("M22-T09 — §7.13 encounter PDF render variant", () => {
 
   it("renders the AI-assisted narrative sidebar + capability-disclosure footer when M32 enhancement present", () => {
     const v = planEncounterRender(
-      enc({ aiNarrative: { text: "Suggested summary…", capabilityId: "cap_narr", reviewedByClinician: "Nurse Ada" } }),
+      enc({
+        aiNarrative: {
+          text: "Suggested summary…",
+          capabilityId: "cap_narr",
+          reviewedByClinician: "Nurse Ada",
+        },
+      }),
     );
     const sidebar = v.content.aiNarrativeSidebar as { present: boolean; label: string };
     expect(sidebar.present).toBe(true);
@@ -281,7 +336,14 @@ describe("M22-T09 — §7.15 lab back-ref consumer (deny-stub, M29 Wave H)", () 
         orderingPhysician: "Dr. Vega",
         signedAt: "2026-06-24T10:00:00.000Z",
         resultValues: [
-          { observationId: "o1", loincCode: "2823-3", label: "Potassium", value: "5.2", unit: "mEq/L", isSudClass: false },
+          {
+            observationId: "o1",
+            loincCode: "2823-3",
+            label: "Potassium",
+            value: "5.2",
+            unit: "mEq/L",
+            isSudClass: false,
+          },
         ],
       },
       sudConsentPresent: false,
@@ -297,11 +359,16 @@ describe("M22-T09 — §7.15 lab back-ref consumer (deny-stub, M29 Wave H)", () 
   });
 
   it("idempotent-skips a re-delivered order (D14)", () => {
-    expect(decideLabBackref(reqPayload(), labFacts({ alreadyRendered: true }))).toEqual({ kind: "idempotent_skip" });
+    expect(decideLabBackref(reqPayload(), labFacts({ alreadyRendered: true }))).toEqual({
+      kind: "idempotent_skip",
+    });
   });
 
   it("DEFERS (never renders) when the M29 observation reader is unavailable — the deny-stub path", () => {
-    const action = decideLabBackref(reqPayload(), labFacts({ observationsResolved: false, renderPayload: null }));
+    const action = decideLabBackref(
+      reqPayload(),
+      labFacts({ observationsResolved: false, renderPayload: null }),
+    );
     expect(action).toEqual({ kind: "observations_unresolved", observationId: "o1" });
   });
 
@@ -316,7 +383,11 @@ describe("M22-T09 — §7.15 lab back-ref consumer (deny-stub, M29 Wave H)", () 
   });
 
   it("the M29 deny-stub resolver fail-CLOSES to null against an empty seam registry (Wave H)", async () => {
-    const out = await resolveLabResultsPayload({ organizationId: ORG, orderId: AGG, observationId: "o1" });
+    const out = await resolveLabResultsPayload({
+      organizationId: ORG,
+      orderId: AGG,
+      observationId: "o1",
+    });
     expect(out).toBeNull();
   });
 });

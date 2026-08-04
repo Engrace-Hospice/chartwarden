@@ -27,6 +27,7 @@ import type { AbacContext } from "@wardenx/auth";
 import { ForbiddenError, NotFoundError } from "@wardenx/types";
 import type { IsoInstant } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
+import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import {
   type BereavementAbacResolver,
   M16_ABAC_PREDICATES,
@@ -39,8 +40,8 @@ import {
   disciplineForRoleKeys,
   eraseBereavementRecord,
 } from "../src/modules/16-bereavement/index";
-import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import type { M16ReadActor } from "../src/modules/16-bereavement/routes/actor";
+import type { PreHandler } from "../src/modules/16-bereavement/routes/actor";
 import {
   M16_PAGE_SIZES,
   clampLimit,
@@ -53,9 +54,11 @@ import {
   isBereavementVolunteer,
   resolveBereavementDisclosure,
 } from "../src/modules/16-bereavement/routes/disclosure";
-import { MissingOutboxPayloadError, runEffects } from "../src/modules/16-bereavement/routes/effects-runner";
+import {
+  MissingOutboxPayloadError,
+  runEffects,
+} from "../src/modules/16-bereavement/routes/effects-runner";
 import { ABAC_ANY } from "../src/modules/16-bereavement/routes/guards";
-import type { PreHandler } from "../src/modules/16-bereavement/routes/actor";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const PLAN = "22222222-2222-4222-8222-222222222222";
@@ -256,7 +259,11 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 
   it("denies when the discipline cannot be resolved — never 'no discipline means anyone'", async () => {
     const predicates = buildBereavementAbacPredicates({
-      resolver: resolverFor({ async disciplineOf() { return null; } }),
+      resolver: resolverFor({
+        async disciplineOf() {
+          return null;
+        },
+      }),
     });
     expect(
       await predicates.discipline_can_provide_bereavement!(ctx(), { counselorUserId: OUTSIDER }),
@@ -265,7 +272,11 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 
   it("denies a discipline outside the §4.8 set", async () => {
     const predicates = buildBereavementAbacPredicates({
-      resolver: resolverFor({ async disciplineOf() { return "home_health_aide"; } }),
+      resolver: resolverFor({
+        async disciplineOf() {
+          return "home_health_aide";
+        },
+      }),
     });
     expect(
       await predicates.discipline_can_provide_bereavement!(ctx(), { counselorUserId: OUTSIDER }),
@@ -274,7 +285,11 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 
   it("denies a VOLUNTEER when the 418.78 gate probe is unbound (fail-CLOSED)", async () => {
     const predicates = buildBereavementAbacPredicates({
-      resolver: resolverFor({ async disciplineOf() { return "bereavement_volunteer"; } }),
+      resolver: resolverFor({
+        async disciplineOf() {
+          return "bereavement_volunteer";
+        },
+      }),
     });
     expect(
       await predicates.discipline_can_provide_bereavement!(ctx(), { volunteerUserId: VOLUNTEER }),
@@ -283,7 +298,11 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 
   it("denies a VOLUNTEER when the 418.78 gate probe THROWS (an M15 outage never assumes compliance)", async () => {
     const predicates = buildBereavementAbacPredicates({
-      resolver: resolverFor({ async disciplineOf() { return "bereavement_volunteer"; } }),
+      resolver: resolverFor({
+        async disciplineOf() {
+          return "bereavement_volunteer";
+        },
+      }),
       volunteerGatesSatisfied: async () => {
         throw new Error("m15 unavailable");
       },
@@ -295,7 +314,11 @@ describe("M16-T06 §4.8 — discipline_can_provide_bereavement", () => {
 
   it("admits a VOLUNTEER whose gates are satisfied", async () => {
     const predicates = buildBereavementAbacPredicates({
-      resolver: resolverFor({ async disciplineOf() { return "bereavement_volunteer"; } }),
+      resolver: resolverFor({
+        async disciplineOf() {
+          return "bereavement_volunteer";
+        },
+      }),
       volunteerGatesSatisfied: async () => true,
     });
     expect(
@@ -320,7 +343,10 @@ describe("M16-T06 §4.8 — oversight and portal-self", () => {
 
   it("oversight admits a clinical supervisor and denies a caseload clinician", async () => {
     expect(
-      await predicates.org_scope_bereavement_oversight!(ctx({ roles: ["clinical_supervisor"] }), {}),
+      await predicates.org_scope_bereavement_oversight!(
+        ctx({ roles: ["clinical_supervisor"] }),
+        {},
+      ),
     ).toBe(true);
     expect(
       await predicates.org_scope_bereavement_oversight!(ctx({ roles: ["chaplain"] }), {}),
@@ -428,18 +454,14 @@ describe("M16-T06 §2.6 — the effect runner", () => {
 
   it("publishes the declared event with the aggregate identity on the caller's tx", async () => {
     const published: unknown[] = [];
-    await runEffects(
-      "tx-handle",
-      [{ kind: "outbox", event: "m16.bereavement.plan_resumed" }],
-      {
-        ...baseCtx({ "m16.bereavement.plan_resumed": { planId: PLAN } }),
-        outbox: {
-          async publish(tx, emission) {
-            published.push({ tx, emission });
-          },
+    await runEffects("tx-handle", [{ kind: "outbox", event: "m16.bereavement.plan_resumed" }], {
+      ...baseCtx({ "m16.bereavement.plan_resumed": { planId: PLAN } }),
+      outbox: {
+        async publish(tx, emission) {
+          published.push({ tx, emission });
         },
       },
-    );
+    });
     expect(published).toEqual([
       {
         tx: "tx-handle",
@@ -578,7 +600,12 @@ describe("M16-T06 — the cursor envelope", () => {
 
   it("emits `{data, next_cursor, has_more}` and clamps `limit` into the route's policy", () => {
     const rows = [1, 2, 3].map((n) => ({ id: `id-${n}`, at: `2026-01-0${n}T00:00:00.000Z` }));
-    const page = toCursorPage(rows, 2, (r) => ({ a: r.at, id: r.id }), (r) => r.id);
+    const page = toCursorPage(
+      rows,
+      2,
+      (r) => ({ a: r.at, id: r.id }),
+      (r) => r.id,
+    );
     expect(page.data).toEqual(["id-1", "id-2"]);
     expect(page.has_more).toBe(true);
     expect(page.next_cursor).not.toBeNull();

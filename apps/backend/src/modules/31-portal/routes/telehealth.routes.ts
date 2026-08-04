@@ -42,33 +42,34 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   const adapter = deps.telehealth ?? NOOP_ADAPTER;
   const now = deps.now ?? (() => new Date());
 
-  const joinHandler = (who: "patient" | "clinician") => async (request: import("fastify").FastifyRequest) => {
-    const actor = actorOf(request);
-    const { visitId } = request.params as { visitId: string };
-    const visit = await store.telehealthById(actor.organizationId, visitId);
-    if (!visit) throw new NotFoundError("telehealth visit not found");
-    const nextState = foldParticipantJoin(visit.lifecycleState, who);
-    if (nextState !== visit.lifecycleState) {
-      const startsNow = visit.visitStartedAt === null && nextState === "in_progress";
-      await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
-        lifecycleState: nextState,
-        firstParticipantJoinedAt: visit.visitStartedAt === null ? now() : undefined,
-        ...(startsNow ? { visitStartedAt: now() } : {}),
+  const joinHandler =
+    (who: "patient" | "clinician") => async (request: import("fastify").FastifyRequest) => {
+      const actor = actorOf(request);
+      const { visitId } = request.params as { visitId: string };
+      const visit = await store.telehealthById(actor.organizationId, visitId);
+      if (!visit) throw new NotFoundError("telehealth visit not found");
+      const nextState = foldParticipantJoin(visit.lifecycleState, who);
+      if (nextState !== visit.lifecycleState) {
+        const startsNow = visit.visitStartedAt === null && nextState === "in_progress";
+        await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
+          lifecycleState: nextState,
+          firstParticipantJoinedAt: visit.visitStartedAt === null ? now() : undefined,
+          ...(startsNow ? { visitStartedAt: now() } : {}),
+        });
+      }
+      const token = await adapter.mintParticipantToken({
+        telehealthVisitId: visitId,
+        role: who,
       });
-    }
-    const token = await adapter.mintParticipantToken({
-      telehealthVisitId: visitId,
-      role: who,
-    });
-    return {
-      vendor: adapter.vendor,
-      vendorJoinUrl: `https://telehealth.invalid/${visitId}`,
-      vendorParticipantToken: token.token,
-      tokenExpiresAt: token.expiresAt,
-      audioOnlyFallbackActive: visit.audioOnlyFallbackActive,
-      recordingActive: false,
+      return {
+        vendor: adapter.vendor,
+        vendorJoinUrl: `https://telehealth.invalid/${visitId}`,
+        vendorParticipantToken: token.token,
+        tokenExpiresAt: token.expiresAt,
+        audioOnlyFallbackActive: visit.audioOnlyFallbackActive,
+        recordingActive: false,
+      };
     };
-  };
 
   const leaveHandler = async (request: import("fastify").FastifyRequest) => {
     const actor = actorOf(request);
@@ -81,24 +82,48 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   // portal-side join / leave (patient or caregiver).
   app.post(
     "/api/v1/portal/telehealth/visits/:visitId/join",
-    { preHandler: [P("telehealth.join_patient_or_caregiver"), ABAC_TELEHEALTH_CONSENT("telehealth.join_patient_or_caregiver"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("telehealth.join_patient_or_caregiver"),
+        ABAC_TELEHEALTH_CONSENT("telehealth.join_patient_or_caregiver"),
+        IDEMPOTENT,
+      ],
+    },
     joinHandler("patient"),
   );
   app.post(
     "/api/v1/portal/telehealth/visits/:visitId/leave",
-    { preHandler: [P("telehealth.join_patient_or_caregiver"), ABAC_TELEHEALTH_CONSENT("telehealth.join_patient_or_caregiver"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("telehealth.join_patient_or_caregiver"),
+        ABAC_TELEHEALTH_CONSENT("telehealth.join_patient_or_caregiver"),
+        IDEMPOTENT,
+      ],
+    },
     leaveHandler,
   );
 
   // staff-side join / leave (clinician).
   app.post(
     "/api/v1/telehealth/visits/:visitId/join",
-    { preHandler: [P("telehealth.join_clinician"), ABAC_IN_ORG("telehealth.join_clinician"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("telehealth.join_clinician"),
+        ABAC_IN_ORG("telehealth.join_clinician"),
+        IDEMPOTENT,
+      ],
+    },
     joinHandler("clinician"),
   );
   app.post(
     "/api/v1/telehealth/visits/:visitId/leave",
-    { preHandler: [P("telehealth.join_clinician"), ABAC_IN_ORG("telehealth.join_clinician"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("telehealth.join_clinician"),
+        ABAC_IN_ORG("telehealth.join_clinician"),
+        IDEMPOTENT,
+      ],
+    },
     leaveHandler,
   );
 
@@ -131,7 +156,9 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
   // stop recording — idempotent.
   app.post(
     "/api/v1/telehealth/visits/:visitId/stop-recording",
-    { preHandler: [P("telehealth.record_stop"), ABAC_IN_ORG("telehealth.record_stop"), IDEMPOTENT] },
+    {
+      preHandler: [P("telehealth.record_stop"), ABAC_IN_ORG("telehealth.record_stop"), IDEMPOTENT],
+    },
     async (request) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
@@ -177,9 +204,13 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     reply: import("fastify").FastifyReply,
   ) => {
     const headers = Object.fromEntries(
-      Object.entries(request.headers).map(([k, v]) => [k, Array.isArray(v) ? (v[0] ?? "") : String(v ?? "")]),
+      Object.entries(request.headers).map(([k, v]) => [
+        k,
+        Array.isArray(v) ? (v[0] ?? "") : String(v ?? ""),
+      ]),
     );
-    const raw = typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
+    const raw =
+      typeof request.body === "string" ? request.body : JSON.stringify(request.body ?? {});
     const ok = adapter.verifyWebhookSignature(headers, raw);
     if (!ok) return reply.code(401).send({ received: false });
     return reply.code(200).send({ received: true });

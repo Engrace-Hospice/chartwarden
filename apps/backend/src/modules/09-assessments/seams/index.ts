@@ -9,10 +9,7 @@
 import type { LatestAssessmentProvider, ScaleSeriesProvider } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createLatestAssessmentProvider, createScaleSeriesProvider } from "./providers";
-import {
-  type AssessmentReaderStore,
-  createInMemoryAssessmentReaderStore,
-} from "./store";
+import { type AssessmentReaderStore, createInMemoryAssessmentReaderStore } from "./store";
 
 export {
   type AssessmentReaderSeed,

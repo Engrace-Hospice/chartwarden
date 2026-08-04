@@ -13,10 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  AI_PHASE_1_BACKENDS,
-  AI_PHASE_1_CAPABILITIES,
-} from "@wardenx/ai-platform";
+import { AI_PHASE_1_BACKENDS, AI_PHASE_1_CAPABILITIES } from "@wardenx/ai-platform";
 import {
   aiBackendHealthStatus,
   aiCapabilityLifecycleState,
@@ -48,15 +45,6 @@ import {
   AI_KILL_SWITCH_AUTOMATED_ACTOR_KINDS,
   AI_PHASE_1_SHELL_REFUSAL,
   AI_PLATFORM_INVOKER_ACTOR_KIND,
-  M32_AUDIT_DENYLIST,
-  M32_AUDIT_RETENTION_CLASS,
-  M32_CIPHER_COLUMNS,
-  M32_ERASER_DATA_CLASSES,
-  M32_IMMUTABILITY_RULE,
-  M32_IMMUTABLE_COLUMNS,
-  M32_PARTITIONED_TABLES,
-  M32_TABLE_NAMES,
-  M32_TABLE_TENANCY,
   type AiBackendHealthStatus,
   type AiCapabilityLifecycleState,
   type AiCapabilityOwningRole,
@@ -78,6 +66,15 @@ import {
   type AiRoutingDecision,
   type AiRoutingReason,
   type AiTenantOptInStatus,
+  M32_AUDIT_DENYLIST,
+  M32_AUDIT_RETENTION_CLASS,
+  M32_CIPHER_COLUMNS,
+  M32_ERASER_DATA_CLASSES,
+  M32_IMMUTABILITY_RULE,
+  M32_IMMUTABLE_COLUMNS,
+  M32_PARTITIONED_TABLES,
+  M32_TABLE_NAMES,
+  M32_TABLE_TENANCY,
 } from "@wardenx/types";
 import { MODULES } from "../../../architecture/module-manifest";
 
@@ -118,7 +115,13 @@ const MIRRORS = [
   [
     "ai_fda_samd_classification",
     aiFdaSamdClassification.enumValues,
-    ["class_i", "class_ii", "class_iii", "class_iv", "not_samd"] satisfies AiFdaSamdClassification[],
+    [
+      "class_i",
+      "class_ii",
+      "class_iii",
+      "class_iv",
+      "not_samd",
+    ] satisfies AiFdaSamdClassification[],
   ],
   [
     "ai_model_backend_kind",

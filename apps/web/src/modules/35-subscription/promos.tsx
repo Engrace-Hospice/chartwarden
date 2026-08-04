@@ -65,20 +65,27 @@ export function Promos(): JSX.Element {
   }, [client, code]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !sub) return <EmptyState title="Unavailable" description={error ?? "No subscription."} />;
+  if (error || !sub)
+    return <EmptyState title="Unavailable" description={error ?? "No subscription."} />;
 
   return (
     <DetailPageLayout
       header={<PageHeader title="Promo codes" breadcrumb="Billing" />}
       aside={
-        <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-          <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>Current plan</span>
+        <div
+          style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
+          <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
+            Current plan
+          </span>
           <span style={{ fontWeight: 600 }}>{sub.planName}</span>
           <StatusPill label={cap(sub.status)} tone={subscriptionTone(sub.status)} />
         </div>
       }
     >
-      <section style={{ maxWidth: "28rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <section
+        style={{ maxWidth: "28rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}
+      >
         <label htmlFor="promo-code" style={{ fontSize: "0.85rem", fontWeight: 500 }}>
           Apply a promo code
         </label>
@@ -119,15 +126,18 @@ export function Promos(): JSX.Element {
         </div>
         {outcome ? (
           <div role="status" aria-live="polite">
-            <StatusPill
-              label={outcome.message}
-              tone={outcome.ok ? "success" : "error"}
-            />
+            <StatusPill label={outcome.message} tone={outcome.ok ? "success" : "error"} />
           </div>
         ) : null}
-        <p style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)", marginTop: "0.5rem" }}>
-          Applied promotions are reflected on your next invoice. The subscription summary does not list
-          previously-applied codes here — see your invoices for the discount lines.
+        <p
+          style={{
+            fontSize: "0.8rem",
+            color: "var(--color-on-surface-variant)",
+            marginTop: "0.5rem",
+          }}
+        >
+          Applied promotions are reflected on your next invoice. The subscription summary does not
+          list previously-applied codes here — see your invoices for the discount lines.
         </p>
       </section>
     </DetailPageLayout>

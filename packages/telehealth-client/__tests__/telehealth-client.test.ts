@@ -34,7 +34,12 @@ function stubFetch(responses: Array<{ ok?: boolean; status?: number; json?: unkn
   fetchImpl: FetchLike;
   calls: Array<{ url: string; method?: string; headers?: Record<string, string>; body?: string }>;
 } {
-  const calls: Array<{ url: string; method?: string; headers?: Record<string, string>; body?: string }> = [];
+  const calls: Array<{
+    url: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  }> = [];
   let i = 0;
   const fetchImpl: FetchLike = async (url, init) => {
     calls.push({ url, method: init?.method, headers: init?.headers, body: init?.body });
@@ -50,7 +55,10 @@ function stubFetch(responses: Array<{ ok?: boolean; status?: number; json?: unkn
   return { fetchImpl, calls };
 }
 
-function makeAdapter(fetchImpl: FetchLike, now = () => "2026-08-02T12:00:00.000Z"): DailyCoTelehealthProvider {
+function makeAdapter(
+  fetchImpl: FetchLike,
+  now = () => "2026-08-02T12:00:00.000Z",
+): DailyCoTelehealthProvider {
   return new DailyCoTelehealthProvider({
     endpoint: ENDPOINT,
     apiKey: API_KEY,
@@ -136,7 +144,8 @@ describe("DailyCoTelehealthProvider — PHI boundary (D1)", () => {
       participantKind: "patient",
       ttlSeconds: 10,
     });
-    const expectedFloorMs = Date.parse("2026-08-02T12:00:00.000Z") + TELEHEALTH_TOKEN_TTL_FLOOR_SECONDS * 1000;
+    const expectedFloorMs =
+      Date.parse("2026-08-02T12:00:00.000Z") + TELEHEALTH_TOKEN_TTL_FLOOR_SECONDS * 1000;
     expect(Date.parse(belowFloor.expiresAt)).toBe(expectedFloorMs);
 
     expect(clampTtl(10)).toBe(TELEHEALTH_TOKEN_TTL_FLOOR_SECONDS);
@@ -147,8 +156,16 @@ describe("DailyCoTelehealthProvider — PHI boundary (D1)", () => {
   it("marks the clinician as room owner and the patient as non-owner", async () => {
     const { fetchImpl, calls } = stubFetch([{ json: { token: "a" } }, { json: { token: "b" } }]);
     const adapter = makeAdapter(fetchImpl);
-    await adapter.mintParticipantToken({ vendorRoomId: "tlh_x", participantKind: "clinician", ttlSeconds: 1800 });
-    await adapter.mintParticipantToken({ vendorRoomId: "tlh_x", participantKind: "patient", ttlSeconds: 1800 });
+    await adapter.mintParticipantToken({
+      vendorRoomId: "tlh_x",
+      participantKind: "clinician",
+      ttlSeconds: 1800,
+    });
+    await adapter.mintParticipantToken({
+      vendorRoomId: "tlh_x",
+      participantKind: "patient",
+      ttlSeconds: 1800,
+    });
     expect(JSON.parse(calls[0]?.body ?? "{}").properties.is_owner).toBe(true);
     expect(JSON.parse(calls[1]?.body ?? "{}").properties.is_owner).toBe(false);
   });
@@ -166,7 +183,11 @@ describe("DailyCoTelehealthProvider — degraded envelope (§7.3)", () => {
     const adapter = makeAdapter(fetchImpl);
     expect.assertions(4);
     try {
-      await adapter.mintRoom({ telehealthVisitId: "v", scheduledStartedAt: "2026-08-02T12:00:00.000Z", recordingEnabled: false });
+      await adapter.mintRoom({
+        telehealthVisitId: "v",
+        scheduledStartedAt: "2026-08-02T12:00:00.000Z",
+        recordingEnabled: false,
+      });
     } catch (e) {
       expect(isTelehealthDegradedError(e)).toBe(true);
       expect((e as TelehealthDegradedError).retryable).toBe(true);
@@ -177,7 +198,11 @@ describe("DailyCoTelehealthProvider — degraded envelope (§7.3)", () => {
 
   it("fails fast with a degraded error once the circuit is open (no fetch attempted)", async () => {
     const { fetchImpl, calls } = stubFetch([
-      new Error("x"), new Error("x"), new Error("x"), new Error("x"), new Error("x"),
+      new Error("x"),
+      new Error("x"),
+      new Error("x"),
+      new Error("x"),
+      new Error("x"),
     ]);
     const adapter = makeAdapter(fetchImpl);
     // Trip the breaker with 5 failed startRecording calls (threshold).
@@ -201,18 +226,34 @@ describe("DailyCoTelehealthProvider — webhook HMAC verify (D13)", () => {
   });
 
   it("rejects a tampered body, a wrong-secret signature, and a missing header", () => {
-    expect(adapter.verifyWebhookSignature({ "x-webhook-signature": sign(body) }, `${body} `)).toBe(false);
-    expect(adapter.verifyWebhookSignature({ "x-webhook-signature": createHmac("sha256", "other").update(body).digest("hex") }, body)).toBe(false);
+    expect(adapter.verifyWebhookSignature({ "x-webhook-signature": sign(body) }, `${body} `)).toBe(
+      false,
+    );
+    expect(
+      adapter.verifyWebhookSignature(
+        { "x-webhook-signature": createHmac("sha256", "other").update(body).digest("hex") },
+        body,
+      ),
+    ).toBe(false);
     expect(adapter.verifyWebhookSignature({}, body)).toBe(false);
-    expect(adapter.verifyWebhookSignature({ "x-webhook-signature": "not-hex-zz" }, body)).toBe(false);
+    expect(adapter.verifyWebhookSignature({ "x-webhook-signature": "not-hex-zz" }, body)).toBe(
+      false,
+    );
   });
 });
 
 describe("scaffold adapters (§4.5 — interface conformance only)", () => {
   it("refuse every vendor call with a non-retryable degraded error", async () => {
-    for (const adapter of [new TwilioVideoTelehealthProvider(), new NativeWebrtcTelehealthProvider()]) {
+    for (const adapter of [
+      new TwilioVideoTelehealthProvider(),
+      new NativeWebrtcTelehealthProvider(),
+    ]) {
       try {
-        await adapter.mintRoom({ telehealthVisitId: "v", scheduledStartedAt: "2026-08-02T12:00:00.000Z", recordingEnabled: false });
+        await adapter.mintRoom({
+          telehealthVisitId: "v",
+          scheduledStartedAt: "2026-08-02T12:00:00.000Z",
+          recordingEnabled: false,
+        });
         throw new Error("expected refusal");
       } catch (e) {
         expect(isTelehealthDegradedError(e)).toBe(true);
@@ -225,8 +266,12 @@ describe("scaffold adapters (§4.5 — interface conformance only)", () => {
   it("all three adapters conform to TelehealthProvider (compile-time)", () => {
     const providers: TelehealthProvider[] = [
       new DailyCoTelehealthProvider({
-        endpoint: ENDPOINT, apiKey: API_KEY, roomNameSecret: ROOM_SECRET, webhookSecret: WEBHOOK_SECRET,
-        now: () => "2026-08-02T12:00:00.000Z", fetchImpl: stubFetch([{}]).fetchImpl,
+        endpoint: ENDPOINT,
+        apiKey: API_KEY,
+        roomNameSecret: ROOM_SECRET,
+        webhookSecret: WEBHOOK_SECRET,
+        now: () => "2026-08-02T12:00:00.000Z",
+        fetchImpl: stubFetch([{}]).fetchImpl,
       }),
       new TwilioVideoTelehealthProvider(),
       new NativeWebrtcTelehealthProvider(),

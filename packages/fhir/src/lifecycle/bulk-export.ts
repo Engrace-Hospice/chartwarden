@@ -75,7 +75,9 @@ export function fhirBulkExportTransition(
   from: FhirBulkExportStatus | null,
   to: FhirBulkExportStatus,
 ): FhirStatusTransition<FhirBulkExportStatus> | null {
-  return FHIR_BULK_EXPORT_TRANSITIONS.find((t) => t.fromStatus === from && t.toStatus === to) ?? null;
+  return (
+    FHIR_BULK_EXPORT_TRANSITIONS.find((t) => t.fromStatus === from && t.toStatus === to) ?? null
+  );
 }
 
 /** True when the FSM permits the transition. Fails CLOSED. */

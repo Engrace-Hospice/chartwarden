@@ -149,7 +149,10 @@ export interface InvoiceStore {
     periodEnd: Date | null;
     paidAt: Date | null;
   }): Promise<InvoiceMirrorRecord>;
-  replaceInvoiceLines(input: { invoiceId: string; lines: readonly InvoiceLineMirrorInput[] }): Promise<void>;
+  replaceInvoiceLines(input: {
+    invoiceId: string;
+    lines: readonly InvoiceLineMirrorInput[];
+  }): Promise<void>;
 }
 
 // ── Usage store port (§2.2 append-only ledger + §2.6 three-level idempotency owned by the impl) ─────────

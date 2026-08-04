@@ -4,7 +4,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4352 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet F-2 — statement of revenues and operating expenses. */
 export const WorksheetF2 = Type.Object(

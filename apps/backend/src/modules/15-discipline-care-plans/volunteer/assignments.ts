@@ -161,10 +161,7 @@ export function decideInactivateAssignmentsForGate(args: {
     effects:
       inactivations.length === 0
         ? []
-        : [
-            { kind: "audit" },
-            { kind: "outbox", event: "m15.volunteer.assignment_inactivated" },
-          ],
+        : [{ kind: "audit" }, { kind: "outbox", event: "m15.volunteer.assignment_inactivated" }],
   };
 }
 
@@ -184,11 +181,7 @@ export function decideReactivateAssignment(args: {
     "ASSIGNMENT_NOT_INACTIVE",
     "this volunteer assignment is already open",
   );
-  const status = effectiveStatusFor(
-    args.assignment.volunteerMembershipId,
-    args.gates,
-    args.now,
-  );
+  const status = effectiveStatusFor(args.assignment.volunteerMembershipId, args.gates, args.now);
   require_(
     status.isActive,
     "VOLUNTEER_GATE_UNMET",

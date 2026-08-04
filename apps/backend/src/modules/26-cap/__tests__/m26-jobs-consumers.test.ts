@@ -2,20 +2,13 @@
 // over a stub store), and the §3.7 eraser (per-patient redaction counts + tenant FK-ordered destruction).
 import { describe, expect, it, vi } from "vitest";
 import {
-  createCapEraser,
-  createInMemoryCapRedactStore,
-} from "../erasers/cap-eraser";
-import {
   type CapConsumerStore,
+  M26_UPSTREAM_SUBSCRIPTIONS,
   createInMemoryCapConsumerStore,
   dispatchM26UpstreamEvent,
-  M26_UPSTREAM_SUBSCRIPTIONS,
 } from "../consumers/index";
-import {
-  runCapYearClose,
-  runNightlyProjection,
-  runPsrVarianceWatchdog,
-} from "../jobs/m26-jobs";
+import { createCapEraser, createInMemoryCapRedactStore } from "../erasers/cap-eraser";
+import { runCapYearClose, runNightlyProjection, runPsrVarianceWatchdog } from "../jobs/m26-jobs";
 
 describe("M26 §4.4 consumer dispatch", () => {
   it("subscribes the eight upstream topics", () => {
@@ -36,23 +29,56 @@ describe("M26 §4.4 consumer dispatch", () => {
     const r = await dispatchM26UpstreamEvent(
       {
         topic: "m25.remittance.advice_posted",
-        payload: { organizationId: "o1", patientId: "p1", remittanceLineId: "rl1", paidAmountCents: 12345, serviceFrom: "2025-01-01", serviceTo: "2025-01-31", postedAt: "2025-02-01T00:00:00Z" },
+        payload: {
+          organizationId: "o1",
+          patientId: "p1",
+          remittanceLineId: "rl1",
+          paidAmountCents: 12345,
+          serviceFrom: "2025-01-01",
+          serviceTo: "2025-01-31",
+          postedAt: "2025-02-01T00:00:00Z",
+        },
       },
       store,
     );
     expect(r.handled).toBe(true);
-    expect(calls[0]).toMatchObject({ sourceKind: "remittance", amountCents: 12345, patientId: "p1" });
+    expect(calls[0]).toMatchObject({
+      sourceKind: "remittance",
+      amountCents: 12345,
+      patientId: "p1",
+    });
   });
 
   it("routes claim.line_finalized rev 0656 → recordInpatientDay; ignores non-inpatient rev codes", async () => {
-    const store: CapConsumerStore = { ...createInMemoryCapConsumerStore(), recordInpatientDay: vi.fn(async () => ({ recorded: true })) };
+    const store: CapConsumerStore = {
+      ...createInMemoryCapConsumerStore(),
+      recordInpatientDay: vi.fn(async () => ({ recorded: true })),
+    };
     const gip = await dispatchM26UpstreamEvent(
-      { topic: "m23.claim.line_finalized", payload: { organizationId: "o1", patientId: "p1", claimLineId: "cl1", revCode: "0656", days: 3 } },
+      {
+        topic: "m23.claim.line_finalized",
+        payload: {
+          organizationId: "o1",
+          patientId: "p1",
+          claimLineId: "cl1",
+          revCode: "0656",
+          days: 3,
+        },
+      },
       store,
     );
     expect(gip.handled).toBe(true);
     const other = await dispatchM26UpstreamEvent(
-      { topic: "m23.claim.line_finalized", payload: { organizationId: "o1", patientId: "p1", claimLineId: "cl2", revCode: "0651", days: 3 } },
+      {
+        topic: "m23.claim.line_finalized",
+        payload: {
+          organizationId: "o1",
+          patientId: "p1",
+          claimLineId: "cl2",
+          revCode: "0651",
+          days: 3,
+        },
+      },
       store,
     );
     expect(other.handled).toBe(false);
@@ -61,7 +87,13 @@ describe("M26 §4.4 consumer dispatch", () => {
   it("routes m5.patient.deceased → freezePatient", async () => {
     const freeze = vi.fn(async () => ({ frozen: true }));
     const store: CapConsumerStore = { ...createInMemoryCapConsumerStore(), freezePatient: freeze };
-    const r = await dispatchM26UpstreamEvent({ topic: "m5.patient.deceased", payload: { organizationId: "o1", patientId: "p1", deceasedAt: "2025-03-01" } }, store);
+    const r = await dispatchM26UpstreamEvent(
+      {
+        topic: "m5.patient.deceased",
+        payload: { organizationId: "o1", patientId: "p1", deceasedAt: "2025-03-01" },
+      },
+      store,
+    );
     expect(r.handled).toBe(true);
     expect(freeze).toHaveBeenCalledWith("o1", "p1", "2025-03-01");
   });
@@ -70,17 +102,28 @@ describe("M26 §4.4 consumer dispatch", () => {
 describe("M26 §4.8 pure cron handlers", () => {
   it("nightly projection recomputes every open period", async () => {
     const recompute = vi.fn(async () => {});
-    const r = await runNightlyProjection({ listOpenPeriods: async () => [{ id: "a" }, { id: "b" }], recompute }, "o1");
+    const r = await runNightlyProjection(
+      { listOpenPeriods: async () => [{ id: "a" }, { id: "b" }], recompute },
+      "o1",
+    );
     expect(r.recomputed).toBe(2);
     expect(recompute).toHaveBeenCalledTimes(2);
   });
   it("cap-year close closes every period past the grace window", async () => {
     const close = vi.fn(async () => {});
-    const r = await runCapYearClose({ listClosablePeriods: async () => [{ id: "a" }], close }, "o1", "2026-11-01");
+    const r = await runCapYearClose(
+      { listClosablePeriods: async () => [{ id: "a" }], close },
+      "o1",
+      "2026-11-01",
+    );
     expect(r.closed).toBe(1);
   });
   it("psr watchdog reports the stale count", async () => {
-    const r = await runPsrVarianceWatchdog({ staleReconciliationCount: async () => 4 }, "o1", "2026-01-01T00:00:00Z");
+    const r = await runPsrVarianceWatchdog(
+      { staleReconciliationCount: async () => 4 },
+      "o1",
+      "2026-01-01T00:00:00Z",
+    );
     expect(r.stale).toBe(4);
   });
 });

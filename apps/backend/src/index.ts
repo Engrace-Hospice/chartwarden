@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { audit } from "@wardenx/audit";
-import { sql } from "drizzle-orm";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
 // the server, runs the seam/eraser boot gate, and registers each Phase-1 module's real seams
@@ -22,9 +21,11 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
-import { Queue, type ConnectionOptions, type Worker } from "bullmq";
+import { type ConnectionOptions, Queue, type Worker } from "bullmq";
+import { sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
-import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
+import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
+import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import {
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
@@ -35,25 +36,6 @@ import {
   registerEraser,
   registerSeam,
 } from "./bootstrap/index";
-import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
-import {
-  buildOrgProviderEntityLister,
-  buildPrimaryProviderEntityResolver,
-} from "./bootstrap/provider-entity-resolver";
-import {
-  type OutboxPublishPort,
-  type OutboxTx,
-  buildBootOutboxCatalog,
-  buildTxOutboxPublisher,
-  wireOutboxCatalog,
-} from "./bootstrap/outbox-persister";
-import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
-import {
-  M1_OUTBOX_DISPATCHER_JOB_ID,
-  type OutboxDispatcher,
-  createOutboxDispatcher,
-} from "./bootstrap/outbox-dispatcher";
-import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import {
   buildMetricsRegistry,
   mountMetricsRoute,
@@ -61,16 +43,37 @@ import {
   registerHttpMetrics,
   registerOutboxMetrics,
 } from "./bootstrap/metrics";
+import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
+import {
+  M1_OUTBOX_DISPATCHER_JOB_ID,
+  type OutboxDispatcher,
+  createOutboxDispatcher,
+} from "./bootstrap/outbox-dispatcher";
+import {
+  type OutboxPublishPort,
+  type OutboxTx,
+  buildBootOutboxCatalog,
+  buildTxOutboxPublisher,
+  wireOutboxCatalog,
+} from "./bootstrap/outbox-persister";
+import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
+import {
+  buildOrgProviderEntityLister,
+  buildPrimaryProviderEntityResolver,
+} from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
+// The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
+// §D10 readers via `getSeam` in the worker-runner block below).
+import type { QualityHopeConsumer } from "@wardenx/quality";
 import {
+  createDrizzleIdentityEraserStore,
   mountIdentityRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
-  createDrizzleIdentityEraserStore,
 } from "./modules/02-identity/index";
 import {
   mountAuthorizationRoutes,
@@ -78,70 +81,70 @@ import {
 } from "./modules/03-authorization/index";
 import {
   assertAuditActionCatalog,
+  createDrizzleAuditEraserPorts,
+  createDrizzleAuditEraserStore,
   mountAuditRoutes,
   registerAuditErasers,
-  createDrizzleAuditEraserStore,
-  createDrizzleAuditEraserPorts,
 } from "./modules/04-audit/index";
 import {
+  M5_OUTBOX_EVENTS,
+  buildM29ProposalApplierConsumer,
+  createDrizzlePatientEraseStore,
+  createDrizzlePatientMutatorStore,
+  createDrizzlePatientReaderStore,
+  getPatientCoverageReader,
   mountPatientRoutes,
   registerPatientErasers,
-  getPatientCoverageReader,
   registerPatientSeams,
-  createDrizzlePatientReaderStore,
-  createDrizzlePatientMutatorStore,
-  buildM29ProposalApplierConsumer,
-  M5_OUTBOX_EVENTS,
-  createDrizzlePatientEraseStore,
 } from "./modules/05-patient/index";
 import {
+  M6_OUTBOX_EVENTS,
+  buildM6ProposalAcceptedConsumer,
+  createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   mountAdmissionRoutes,
-  buildM6ProposalAcceptedConsumer,
-  M6_OUTBOX_EVENTS,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
   registerAdmissionRoutes,
   registerAdmissionSeams,
-  createDrizzleAdmissionEraseStore,
 } from "./modules/06-admission/index";
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
+  buildM7WorkerDeps,
   createDbCarePlanAbacResolver,
+  createDrizzleCarePlanEraseStore,
+  createDrizzleCarePlanReaderStore,
+  mountCarePlanRoutes,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
   registerCarePlanRoutes,
   registerCarePlanSeams,
-  createDrizzleCarePlanReaderStore,
-  mountCarePlanRoutes,
-  createDrizzleCarePlanEraseStore,
-  buildM7WorkerDeps,
   registerM7CronWorkers,
   scheduleM7Jobs,
   wireM7Tenancy,
 } from "./modules/07-care-plan/index";
 import {
   M8_OUTBOX_EVENTS,
+  createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
+  mountEncounterRoutes,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
   registerEncounterRoutes,
   registerEncounterSeams,
-  mountEncounterRoutes,
-  createDrizzleEncounterEraseStore,
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
   M9_PLATFORM_JOB_ID,
+  buildM9WorkerDeps,
+  createDrizzleAssessmentEraseStore,
   createDrizzleAssessmentReaderStore,
+  mountAssessmentRoutes,
   registerAssessmentAbacPredicates,
   registerAssessmentErasers,
   registerAssessmentRoutes,
   registerAssessmentSeams,
-  mountAssessmentRoutes,
-  createDrizzleAssessmentEraseStore,
-  buildM9WorkerDeps,
   registerM9CronWorkers,
   scheduleM9Jobs,
   wireM9Tenancy,
@@ -149,57 +152,57 @@ import {
 import {
   M10_OUTBOX_EVENTS,
   M10_PLATFORM_JOB_ID,
+  buildM10WorkerDeps,
+  createDrizzleHopeEraseStore,
+  mountHopeRoutes,
   registerHopeAbacPredicates,
   registerHopeErasers,
   registerHopeRoutes,
   registerHopeSeams,
-  mountHopeRoutes,
-  createDrizzleHopeEraseStore,
-  buildM10WorkerDeps,
   registerM10CronWorkers,
   scheduleM10Jobs,
   wireM10Tenancy,
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
+  createDrizzleOrderEraseStore,
+  createDrizzleOrderSeamStore,
+  createMedicationOrderSignatureCascade,
+  mountOrderRoutes,
   registerOrderAbacPredicates,
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
-  createDrizzleOrderSeamStore,
-  mountOrderRoutes,
-  createDrizzleOrderEraseStore,
-  createMedicationOrderSignatureCascade,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  createDrizzleDoseSpotSeamStore,
+  createDrizzleMedicationOrderEraseStore,
+  mountDoseSpotRoutes,
   registerDoseSpotAbacPredicates,
   registerDoseSpotErasers,
   registerDoseSpotRoutes,
   registerDoseSpotSeams,
-  createDrizzleDoseSpotSeamStore,
-  mountDoseSpotRoutes,
-  createDrizzleMedicationOrderEraseStore,
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
+  createDrizzleEmarEraseStore,
+  createDrizzleEmarSeamStore,
+  mountEmarRoutes,
   registerEmarAbacPredicates,
   registerEmarErasers,
   registerEmarRoutes,
   registerEmarSeams,
-  createDrizzleEmarSeamStore,
-  mountEmarRoutes,
-  createDrizzleEmarEraseStore,
 } from "./modules/13-emar/index";
 import {
   M14_OUTBOX_EVENTS,
+  createDrizzleIdgEraseStore,
+  createDrizzleIdgSeamStore,
+  mountIdgRoutes,
   registerIdgAbacPredicates,
   registerIdgErasers,
   registerIdgRoutes,
   registerIdgSeams,
-  createDrizzleIdgSeamStore,
-  mountIdgRoutes,
-  createDrizzleIdgEraseStore,
 } from "./modules/14-idg/index";
 import {
   M15_OUTBOX_EVENTS,
@@ -207,12 +210,12 @@ import {
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
   createDrizzleDisciplinePlanEraseStore,
+  createDrizzleDisciplinePlanSeamStore,
   denyStubDisciplinePlanAbacResolver,
   mountM15Routes,
   registerDisciplinePlanAbacPredicates,
   registerDisciplinePlanErasers,
   registerDisciplinePlanSeams,
-  createDrizzleDisciplinePlanSeamStore,
 } from "./modules/15-discipline-care-plans/index";
 import {
   M16_OUTBOX_EVENTS,
@@ -220,28 +223,28 @@ import {
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   createDrizzleBereavementEraseStore,
+  createDrizzleBereavementSeamStore,
   denyStubBereavementAbacResolver,
   mountM16Routes,
   registerBereavementAbacPredicates,
   registerBereavementErasers,
   registerBereavementSeams,
-  createDrizzleBereavementSeamStore,
 } from "./modules/16-bereavement/index";
 import {
   M17_OUTBOX_EVENTS,
+  createDrizzleSchedulingSeamStore,
+  mountSchedulingRoutes,
   registerSchedulingAbacPredicates,
   registerSchedulingRoutes,
   registerSchedulingSeams,
-  createDrizzleSchedulingSeamStore,
-  mountSchedulingRoutes,
 } from "./modules/17-scheduling/index";
 import {
   M18_OUTBOX_EVENTS,
+  createDrizzleEvvSeamStore,
+  mountEvvRoutes,
   registerEvvAbacPredicates,
   registerEvvRoutes,
   registerEvvSeams,
-  createDrizzleEvvSeamStore,
-  mountEvvRoutes,
 } from "./modules/18-evv/index";
 import {
   buildDrizzleM19ReadService,
@@ -270,6 +273,7 @@ import {
 } from "./modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
+  bindSupplyRequestCreator,
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
   buildDrizzleSuppliesAbacResolver,
@@ -278,97 +282,126 @@ import {
   denyStubSuppliesAbacResolver,
   mountM21Routes,
   registerSuppliesAbacPredicates,
-  bindSupplyRequestCreator,
   registerSuppliesSeams,
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
   M22_DOCUMENT_REQUEST_EVENTS,
   M22_LAB_RESULTS_EVENT,
+  createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createRefusingObjectStore,
   createS3ObjectStore,
-  s3ObjectStoreConfigFromEnv,
   createSignedUrlService,
+  mountDocumentRoutes,
   registerDocumentAbacPredicates,
   registerDocumentErasers,
   registerDocumentRoutes,
   registerDocumentSeams,
-  mountDocumentRoutes,
-  createDrizzleDocumentEraseStore,
+  s3ObjectStoreConfigFromEnv,
 } from "./modules/22-documents/index";
+// M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
+// mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
+// eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
+// (claim/NOE/NOTR submit[.retry], 999/277CA ack pulls, eligibility refresh, NOE/NOTR window-watch, eligibility
+// stale-watch, MAC-portal health, the revalidate consumer). Every worker infra/seam/x12/portal port stays
+// fail-closed-unbound at boot (RULE 4); the assembly reader seams + the live MAC/X12 binds are follow-ups.
 import {
-  buildDrizzlePortalStore,
-  buildPortalAbacResolverFromStore,
-  createM31PublishedSeamImpls,
-  denyStubPortalAbacResolver,
-  mountM31Routes,
-  registerM31PublishedSeams,
-  registerPortalAbacPredicates,
-  registerPortalErasers,
-} from "./modules/31-portal/index";
+  M23_OUTBOX_EVENTS,
+  buildDrizzleM23ReadService,
+  buildDrizzleM23WriteService,
+  buildM23BootAssemblyService,
+  buildM23WorkerDeps,
+  createDrizzleBillingEraseStore,
+  mountM23Routes,
+  registerBillingErasers,
+  registerM23AbacPredicates,
+  registerM23CronWorkers,
+  registerM23PublishedSeams,
+  registerM23Workers,
+  scheduleM23Jobs,
+} from "./modules/23-billing-medicare/index";
+// M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
+// (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
+// medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
+// / state_trading_partner_credential_admin), the §4.1 route mount over the Drizzle read/write services, and the
+// §3.7 `medicaid_billing_record` eraser. The write service's `m24.*` transactional outbox publisher binds at
+// boot; the §4.3 published-seam registration + the §4.9 per-state-adapter workers + the consumed-reader binds
+// are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
 import {
-  buildDrizzleM33ExportDrilldownService,
-  buildDrizzleM33ReadService,
-  buildDrizzleM33WriteService,
-  M33_OUTBOX_EVENTS,
-  buildM33ReadEnqueue,
-  buildM33WorkerDeps,
-  mountM33ExportDrilldownRoutes,
-  mountM33ReadRoutes,
-  mountM33WriteRoutes,
-  registerM33AbacPredicates,
-  registerM33Workers,
-  registerReportingErasers,
-  registerReportingMetricsSeam,
-  scheduleM33Jobs,
-  wireM33Tenancy,
-  createDrizzleReportingEraseStore,
-} from "./modules/33-reporting/index";
+  M24_OUTBOX_EVENTS,
+  buildCredentialCipherPort,
+  buildDrizzleM24ReadService,
+  buildDrizzleM24WriteService,
+  createDrizzleMedicaidRedactStore,
+  mountM24Routes,
+  registerM24AbacPredicates,
+  registerM24PublishedSeams,
+  registerMedicaidErasers,
+} from "./modules/24-billing-medicaid/index";
+// M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
+// (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
+// read/write services. The write service's transactional outbox publisher + the read service's M38
+// terminology lookup stay on their fail-closed defaults at boot (no-op emit / deny-stub lookup) until those
+// binds land — a documented follow-up (the M23/M27 deferred-bind posture); routes are fully live otherwise.
 import {
-  buildDrizzleM30ReadService,
-  buildDrizzleM30WriteService,
-  M30_OUTBOX_EVENTS,
-  M30_PLATFORM_JOB_ID,
-  buildM30RecomputeEnqueue,
-  buildM30WorkerDeps,
-  mountM30Routes,
-  registerM30AbacPredicates,
-  registerM30CronWorkers,
-  registerM30PublishedSeams,
-  registerM30Workers,
-  registerQualityErasers,
-  scheduleM30Jobs,
-  wireM30Tenancy,
-  createDrizzleQualityEraseStore,
-} from "./modules/30-quality/index";
-// M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
-// and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
-// the §4.1 route mount over the T03/T04/T05 command services + T07's read port. `ai.full` stays OFF.
+  type WorkerAlertPort as M25WorkerAlertPort,
+  M25_OUTBOX_EVENTS,
+  M25_PLATFORM_JOB_ID,
+  type TerminologyLookupPort,
+  buildDrizzleM25ReadService,
+  buildDrizzleM25WriteService,
+  buildM25WorkerDeps,
+  createDrizzleRemittanceEraseStore,
+  mountM25Routes,
+  registerM25AbacPredicates,
+  registerM25CronWorkers,
+  registerM25PublishedSeams,
+  registerRemittanceErasers,
+  scheduleM25Jobs,
+  wireM25Tenancy,
+} from "./modules/25-remittance/index";
+// M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
+// _in_settlement / _settled / _methodology_unlocked / cap_platform_admin), and the §4.1 route mount over the
+// Drizzle read/write services. The write service's transactional outbox publisher binds at boot; the §4.3
+// published-seam impls + the §4.8 BullMQ workers + the §3.7 eraser land in P4 (the M27 deferred posture).
 import {
-  M32_OUTBOX_EVENTS,
-  M32_PLATFORM_JOB_ID,
-  buildDrizzleAiPlatformAbacResolver,
-  buildDrizzleM32ReadService,
-  createAiPromptRegistry,
-  createDrizzleAiCapabilityRegistryStore,
-  createDrizzleAiEvaluationRunStore,
-  createDrizzleAiHallucinationReportStore,
-  createDrizzleAiKillSwitchStore,
-  createDrizzleAiProvenanceEraseStore,
-  createDrizzleAiPromptTemplateStore,
-  createDrizzleAiRoutingOverrideStore,
-  createDrizzleAiTenantConsentStore,
-  createUnconfiguredAiTokenBudgetResolver,
-  createUnresolvableAiPromptArtifactReader,
-  createDenyingAiOptInEvidenceResolver,
-  denyStubAiPlatformAbacResolver,
-  mountM32Routes,
-  registerAiPlatformAbacPredicates,
-  registerAiPlatformSeams,
-  registerAiProvenanceErasers,
-  wireM32Tenancy,
-} from "./modules/32-ai-platform/index";
+  M26_OUTBOX_EVENTS,
+  buildDrizzleM26ReadService,
+  buildDrizzleM26WriteService,
+  createDrizzleCapRedactStore,
+  mountM26Routes,
+  registerCapErasers,
+  registerM26AbacPredicates,
+  registerM26CronWorkers,
+  registerM26PublishedSeams,
+  scheduleM26Jobs,
+} from "./modules/26-cap/index";
+// M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
+// over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
+// (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
+// enqueue + the live Xero/Gusto + M6/M8 statistics seam binds are P4 follow-ups (jobs/m27-jobs.ts TODO).
+import {
+  type ClaimSettlementSeam as M27ClaimSettlementSeam,
+  type DrugCostSeam as M27DrugCostSeam,
+  type PatientDaysSeam as M27PatientDaysSeam,
+  type ProviderEntityResolver as M27ProviderEntityResolver,
+  M27_OUTBOX_EVENTS,
+  buildDrizzleM27ReadService,
+  buildDrizzleM27WriteService,
+  buildM27AllocationInputs,
+  buildM27ValidationContext,
+  buildM27WorkerDeps,
+  createDrizzleCostReportEraseStore,
+  m27CapSeamResolver,
+  mountM27Routes,
+  registerCostReportErasers,
+  registerM27AbacPredicates,
+  registerM27CronWorkers,
+  registerM27PublishedSeams,
+  registerM27Workers,
+  scheduleM27Jobs,
+} from "./modules/27-cost-report/index";
 // M28 (FHIR Gateway) boot surface — the §4.3 published read seams (M28-T06). The three impls register over
 // their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
 // T08, so the store is unbound this wave and the fail-closed deny-stubs stand (the M19/M20 posture).
@@ -388,6 +421,7 @@ import {
 // supplied (db-less boot keeps the fail-closed deny-stubs); the ABAC resolver binds the M3 permission store +
 // a lazy M5 CaseloadProvider adapter.
 import {
+  M29_OUTBOX_EVENTS,
   buildDrizzleM29AbacResolver,
   createDrizzleM29PublishedSeamStore,
   createDrizzleM29Store,
@@ -395,8 +429,99 @@ import {
   mountM29Routes,
   registerM29AbacPredicates,
   registerM29PublishedSeams,
-  M29_OUTBOX_EVENTS,
 } from "./modules/29-external-interfaces/index";
+import {
+  M30_OUTBOX_EVENTS,
+  M30_PLATFORM_JOB_ID,
+  buildDrizzleM30ReadService,
+  buildDrizzleM30WriteService,
+  buildM30RecomputeEnqueue,
+  buildM30WorkerDeps,
+  createDrizzleQualityEraseStore,
+  mountM30Routes,
+  registerM30AbacPredicates,
+  registerM30CronWorkers,
+  registerM30PublishedSeams,
+  registerM30Workers,
+  registerQualityErasers,
+  scheduleM30Jobs,
+  wireM30Tenancy,
+} from "./modules/30-quality/index";
+import {
+  buildDrizzlePortalStore,
+  buildPortalAbacResolverFromStore,
+  createM31PublishedSeamImpls,
+  denyStubPortalAbacResolver,
+  mountM31Routes,
+  registerM31PublishedSeams,
+  registerPortalAbacPredicates,
+  registerPortalErasers,
+} from "./modules/31-portal/index";
+// M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
+// and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
+// the §4.1 route mount over the T03/T04/T05 command services + T07's read port. `ai.full` stays OFF.
+import {
+  M32_OUTBOX_EVENTS,
+  M32_PLATFORM_JOB_ID,
+  buildDrizzleAiPlatformAbacResolver,
+  buildDrizzleM32ReadService,
+  createAiPromptRegistry,
+  createDenyingAiOptInEvidenceResolver,
+  createDrizzleAiCapabilityRegistryStore,
+  createDrizzleAiEvaluationRunStore,
+  createDrizzleAiHallucinationReportStore,
+  createDrizzleAiKillSwitchStore,
+  createDrizzleAiPromptTemplateStore,
+  createDrizzleAiProvenanceEraseStore,
+  createDrizzleAiRoutingOverrideStore,
+  createDrizzleAiTenantConsentStore,
+  createUnconfiguredAiTokenBudgetResolver,
+  createUnresolvableAiPromptArtifactReader,
+  denyStubAiPlatformAbacResolver,
+  mountM32Routes,
+  registerAiPlatformAbacPredicates,
+  registerAiPlatformSeams,
+  registerAiProvenanceErasers,
+  wireM32Tenancy,
+} from "./modules/32-ai-platform/index";
+import {
+  M33_OUTBOX_EVENTS,
+  buildDrizzleM33ExportDrilldownService,
+  buildDrizzleM33ReadService,
+  buildDrizzleM33WriteService,
+  buildM33ReadEnqueue,
+  buildM33WorkerDeps,
+  createDrizzleReportingEraseStore,
+  mountM33ExportDrilldownRoutes,
+  mountM33ReadRoutes,
+  mountM33WriteRoutes,
+  registerM33AbacPredicates,
+  registerM33Workers,
+  registerReportingErasers,
+  registerReportingMetricsSeam,
+  scheduleM33Jobs,
+  wireM33Tenancy,
+} from "./modules/33-reporting/index";
+import {
+  type BootstrapModule34Deps,
+  M34_OUTBOX_EVENTS,
+  type TenantPlatformAbacResolver,
+  bootstrapModule34,
+  buildDrizzlePlatformService,
+  buildDrizzleTenantService,
+  buildM34WorkerDeps,
+  buildPlatformEnqueue,
+  buildTenantEnqueue,
+  createDrizzleSaasTenantPlatformEraseStore,
+  mountTenantPlatformRoutes,
+  registerLiveM34Seams,
+  registerM34Workers,
+  registerSaasTenantPlatformErasers,
+  registerTenantPlatformAbacPredicates,
+  scheduleM34Jobs,
+  validateModule34Seams,
+  wireM34Tenancy,
+} from "./modules/34-saas-tenant-platform/index";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -409,6 +534,14 @@ import {
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
+import {
+  createDbMessagingProvider,
+  createDrizzleMessagingEraseStore,
+  mountMessagingRoutes,
+  registerMessagingErasers,
+  registerMessagingSeams,
+  selectTransactionalEmailTransport,
+} from "./modules/36-messaging/index";
 // M37 (Inpatient Unit / IPU Management) boot surface — the §4.7 ABAC predicates, the §4.4 outbox catalog,
 // and the §4.1 core route mount over the Drizzle route service. The write path emits `m37.*` through the
 // bound transactional-outbox publisher. (The remaining §4.1 routes + §7.7 eraser + SeamRegistry extend this.)
@@ -422,161 +555,28 @@ import {
   registerM37AbacPredicates,
   validateIpuAIBlock,
 } from "./modules/37-ipu/index";
-// M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
-// over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
-// (the M30 precedent). Worker infra/seam ports stay fail-closed-unbound at boot (RULE 4); the recompute
-// enqueue + the live Xero/Gusto + M6/M8 statistics seam binds are P4 follow-ups (jobs/m27-jobs.ts TODO).
-import {
-  M27_OUTBOX_EVENTS,
-  type ProviderEntityResolver as M27ProviderEntityResolver,
-  type PatientDaysSeam as M27PatientDaysSeam,
-  type ClaimSettlementSeam as M27ClaimSettlementSeam,
-  type DrugCostSeam as M27DrugCostSeam,
-  buildDrizzleM27ReadService,
-  buildDrizzleM27WriteService,
-  buildM27AllocationInputs,
-  buildM27ValidationContext,
-  buildM27WorkerDeps,
-  m27CapSeamResolver,
-  mountM27Routes,
-  registerCostReportErasers,
-  registerM27AbacPredicates,
-  registerM27PublishedSeams,
-  registerM27CronWorkers,
-  registerM27Workers,
-  scheduleM27Jobs,
-  createDrizzleCostReportEraseStore,
-} from "./modules/27-cost-report/index";
-// M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
-// (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
-// read/write services. The write service's transactional outbox publisher + the read service's M38
-// terminology lookup stay on their fail-closed defaults at boot (no-op emit / deny-stub lookup) until those
-// binds land — a documented follow-up (the M23/M27 deferred-bind posture); routes are fully live otherwise.
-import {
-  M25_OUTBOX_EVENTS,
-  type TerminologyLookupPort,
-  buildDrizzleM25ReadService,
-  buildDrizzleM25WriteService,
-  M25_PLATFORM_JOB_ID,
-  type WorkerAlertPort as M25WorkerAlertPort,
-  buildM25WorkerDeps,
-  mountM25Routes,
-  registerM25AbacPredicates,
-  registerM25CronWorkers,
-  registerM25PublishedSeams,
-  registerRemittanceErasers,
-  scheduleM25Jobs,
-  wireM25Tenancy,
-  createDrizzleRemittanceEraseStore,
-} from "./modules/25-remittance/index";
-// M26 (Cap Management) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers (cap_period_open /
-// _in_settlement / _settled / _methodology_unlocked / cap_platform_admin), and the §4.1 route mount over the
-// Drizzle read/write services. The write service's transactional outbox publisher binds at boot; the §4.3
-// published-seam impls + the §4.8 BullMQ workers + the §3.7 eraser land in P4 (the M27 deferred posture).
-import {
-  M26_OUTBOX_EVENTS,
-  buildDrizzleM26ReadService,
-  buildDrizzleM26WriteService,
-  mountM26Routes,
-  registerM26AbacPredicates,
-  registerM26PublishedSeams,
-  registerCapErasers,
-  registerM26CronWorkers,
-  scheduleM26Jobs,
-  createDrizzleCapRedactStore,
-} from "./modules/26-cap/index";
-// M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
-// (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
-// medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
-// / state_trading_partner_credential_admin), the §4.1 route mount over the Drizzle read/write services, and the
-// §3.7 `medicaid_billing_record` eraser. The write service's `m24.*` transactional outbox publisher binds at
-// boot; the §4.3 published-seam registration + the §4.9 per-state-adapter workers + the consumed-reader binds
-// are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
-import {
-  M24_OUTBOX_EVENTS,
-  buildCredentialCipherPort,
-  buildDrizzleM24ReadService,
-  buildDrizzleM24WriteService,
-  mountM24Routes,
-  registerM24AbacPredicates,
-  registerM24PublishedSeams,
-  registerMedicaidErasers,
-  createDrizzleMedicaidRedactStore,
-} from "./modules/24-billing-medicaid/index";
-// M23 (Billing — Medicare) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route
-// mount over the Drizzle read/write services + the boot-time claim-assembly service, the §3.7 `billing_record`
-// eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
-// (claim/NOE/NOTR submit[.retry], 999/277CA ack pulls, eligibility refresh, NOE/NOTR window-watch, eligibility
-// stale-watch, MAC-portal health, the revalidate consumer). Every worker infra/seam/x12/portal port stays
-// fail-closed-unbound at boot (RULE 4); the assembly reader seams + the live MAC/X12 binds are follow-ups.
-import {
-  M23_OUTBOX_EVENTS,
-  buildDrizzleM23ReadService,
-  buildDrizzleM23WriteService,
-  buildM23BootAssemblyService,
-  buildM23WorkerDeps,
-  mountM23Routes,
-  registerBillingErasers,
-  registerM23AbacPredicates,
-  registerM23CronWorkers,
-  registerM23PublishedSeams,
-  registerM23Workers,
-  scheduleM23Jobs,
-  createDrizzleBillingEraseStore,
-} from "./modules/23-billing-medicare/index";
-// The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
-// §D10 readers via `getSeam` in the worker-runner block below).
-import type { QualityHopeConsumer } from "@wardenx/quality";
-import {
-  type BootstrapModule34Deps,
-  type TenantPlatformAbacResolver,
-  M34_OUTBOX_EVENTS,
-  bootstrapModule34,
-  buildDrizzlePlatformService,
-  buildDrizzleTenantService,
-  buildM34WorkerDeps,
-  buildPlatformEnqueue,
-  buildTenantEnqueue,
-  mountTenantPlatformRoutes,
-  registerLiveM34Seams,
-  registerM34Workers,
-  registerSaasTenantPlatformErasers,
-  registerTenantPlatformAbacPredicates,
-  scheduleM34Jobs,
-  validateModule34Seams,
-  wireM34Tenancy,
-  createDrizzleSaasTenantPlatformEraseStore,
-} from "./modules/34-saas-tenant-platform/index";
-import {
-  createDbMessagingProvider,
-  mountMessagingRoutes,
-  registerMessagingErasers,
-  registerMessagingSeams,
-  selectTransactionalEmailTransport,
-  createDrizzleMessagingEraseStore,
-} from "./modules/36-messaging/index";
 import {
   createDbTerminologyStore,
+  createDrizzleTerminologyEraseStore,
   mountTerminologyRoutes,
   registerTerminologyErasers,
   registerTerminologySeams,
-  createDrizzleTerminologyEraseStore,
 } from "./modules/38-terminology/index";
 import {
   createDbConsentStore,
+  createDrizzleConsentEraseStore,
   mountConsentRoutes,
   registerConsentAbacPredicates,
   registerConsentErasers,
   registerConsentSeams,
-  createDrizzleConsentEraseStore,
 } from "./modules/39-consent/index";
 import {
   createDbBaaStore,
   createDbMdmStore,
+  createDrizzleMdmEraseStore,
   mountMdmRoutes,
   registerMdmErasers,
   registerMdmSeams,
-  createDrizzleMdmEraseStore,
 } from "./modules/40-mdm/index";
 
 export { buildServer };
@@ -688,9 +688,7 @@ export function wireModuleSeams(
   // KNOWN GAP (agent finding): the M9 route write path never populates provider_entity_id/location_id,
   // so a route-recorded row's latest-read throws AssessmentSeamDataGapError until the write path sites
   // captures — loud, never a fabricated context.
-  registerAssessmentSeams(
-    deps.db ? { store: createDrizzleAssessmentReaderStore(deps.db) } : {},
-  );
+  registerAssessmentSeams(deps.db ? { store: createDrizzleAssessmentReaderStore(deps.db) } : {});
   // M10 — the three PER-ENTITY §2 / D10 owned seams (HopeTimepointProvider + HopeJ2051Provider +
   // HopeSubmissionProvider) M14/M22/M30/M32 consume for open HOPE windows, J2051 trigger/SFV obligations,
   // and per-PE submission status (in-memory store). PLUS the ORG-LEVEL HopeOrgRollupProvider (#107) the M30
@@ -1197,9 +1195,7 @@ export function wireModuleSeams(
   // STORE-GATED (the M28/M19/M20 posture): a db-less boot passes no store and the fail-closed deny-stubs
   // stand, so M28's DiagnosticReport egress / M5+M6 review badges / M33+M34 feed status deny LOUDLY rather
   // than reading a projection minted from an unwired store.
-  registerM29PublishedSeams(
-    deps.db ? { store: createDrizzleM29PublishedSeamStore(deps.db) } : {},
-  );
+  registerM29PublishedSeams(deps.db ? { store: createDrizzleM29PublishedSeamStore(deps.db) } : {});
   // M29-T08 (§4.8) — the six named ABAC predicate resolvers. The resolver binds the M3 effective-permission
   // store + a LAZY M5 CaseloadProvider adapter (resolved via getSeam at call time, so a not-yet-registered
   // M5 provider fails closed via the registry deny-stub, never at boot). The db-less path binds the deny-stub
@@ -1243,10 +1239,20 @@ export function wireModuleSeams(
     // (DegradedError) — what remains in-memory is the renderer's document-ROW write store, which is
     // unreachable-for-success anyway (every render refuses at the object write) but is still a Map
     // wearing a contract, so it stays on the ledger until the MinIO adapter + Drizzle write store land.
-    noteInMemoryBinding({ kind: "seam", label: "M22 registerDocumentSeams — DocumentRenderer's document-row WRITE store in-memory (readers Drizzle; object store refuses pending the MinIO adapter)", task: "M22 MinIO adapter + Drizzle render-write store" });
+    noteInMemoryBinding({
+      kind: "seam",
+      label:
+        "M22 registerDocumentSeams — DocumentRenderer's document-row WRITE store in-memory (readers Drizzle; object store refuses pending the MinIO adapter)",
+      task: "M22 MinIO adapter + Drizzle render-write store",
+    });
     if (!deps.outboxPublisher) {
       // Slice boots that pass a db but no catalog publisher keep the in-memory PatientMutator.
-      noteInMemoryBinding({ kind: "seam", label: "M5 registerPatientSeams — PatientMutator on an in-memory store (no outbox publisher supplied)", task: t2 });
+      noteInMemoryBinding({
+        kind: "seam",
+        label:
+          "M5 registerPatientSeams — PatientMutator on an in-memory store (no outbox publisher supplied)",
+        task: t2,
+      });
     }
   }
   // M3 — flip the Authorization Contract's ABAC evaluator from its fail-closed DENY_ALL default to the
@@ -1430,9 +1436,7 @@ export function wireModuleErasers(
   // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
   // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
   // without one the slice's in-memory store stands.
-  registerBereavementErasers(
-    deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {},
-  );
+  registerBereavementErasers(deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {});
   registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
   // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
   // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
@@ -1522,9 +1526,7 @@ export function wireModuleErasers(
   // the §164.528 disclosure record — a targeted shred of the cursor-signing key, the credential ciphers,
   // the export/session rows and the inbound payloads, while every accounting row survives. The Drizzle
   // store binds when a DB client is present; without one the in-memory slice store stands.
-  registerFhirGatewayEraser(
-    deps.db ? { store: createDrizzleFhirGatewayEraseStore(deps.db) } : {},
-  );
+  registerFhirGatewayEraser(deps.db ? { store: createDrizzleFhirGatewayEraseStore(deps.db) } : {});
   // M31-T06 — `portal_record` (per-PATIENT destruction-cert callback, §3.7/D15): aborts the patient's active
   // telehealth visits and shreds their vendor-room recording refs, revokes the patient's grants with
   // `revoke_cascade_source='destruction'`, and flips any account the revocation left with no active grant to
@@ -2044,7 +2046,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // M35A-T03 — resolve the M2 `OrganizationReader` seam LAZILY (per call, after validateSeams has
               // applied its graceful deny-stub / M2 has registered the real reader), so the platform-ops admin
               // lists label cross-tenant rows with an org display name instead of a raw UUID.
-              organizationReader: { readByIds: (ids) => getSeam("OrganizationReader").readByIds(ids) },
+              organizationReader: {
+                readByIds: (ids) => getSeam("OrganizationReader").readByIds(ids),
+              },
               // Platform-ops cross-tenant runner: each call is ONE allowlisted ("m35-subscription-admin"),
               // audited (`platform.bypass_invoked` via the shared M34 auditor) `withPlatformContext` tx against
               // the platform credential. Undefined → fail-closed (503), never a tenant-pool read.
@@ -2193,39 +2197,36 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             roleGrants: createDbEffectivePermissionStore(dbHandle.db),
           });
           const m21WriteService = buildDrizzleM21WriteService(dbHandle.db, m21ReadService, {
-              outbox: m21OutboxPublisher,
-              dispatcherEligible: async ({ organizationId, membershipId, locationId }) => {
-                const roleKeys = await m21AbacResolver.roleKeysOf(organizationId, membershipId);
-                const locationIds = await m21AbacResolver.locationIdsOf(
+            outbox: m21OutboxPublisher,
+            dispatcherEligible: async ({ organizationId, membershipId, locationId }) => {
+              const roleKeys = await m21AbacResolver.roleKeysOf(organizationId, membershipId);
+              const locationIds = await m21AbacResolver.locationIdsOf(organizationId, membershipId);
+              return decideDispatcherEligible(
+                {
                   organizationId,
-                  membershipId,
-                );
-                return decideDispatcherEligible(
-                  {
-                    organizationId,
-                    targetId: "",
-                    locationId,
-                    involvesControlledSubstance: true,
-                  },
-                  { organizationId, membershipId, roleKeys, locationIds },
-                );
-              },
-              vendorActive: async ({ organizationId, vendorId }) => {
-                try {
-                  const provider = getSeam("MdmEntityProvider") as {
-                    isActiveEntity?: (
-                      orgId: string,
-                      kind: string,
-                      entityId: string,
-                    ) => Promise<boolean>;
-                  };
-                  if (typeof provider.isActiveEntity !== "function") return false;
-                  return await provider.isActiveEntity(organizationId, "dme_vendor", vendorId);
-                } catch {
-                  return false;
-                }
-              },
-            });
+                  targetId: "",
+                  locationId,
+                  involvesControlledSubstance: true,
+                },
+                { organizationId, membershipId, roleKeys, locationIds },
+              );
+            },
+            vendorActive: async ({ organizationId, vendorId }) => {
+              try {
+                const provider = getSeam("MdmEntityProvider") as {
+                  isActiveEntity?: (
+                    orgId: string,
+                    kind: string,
+                    entityId: string,
+                  ) => Promise<boolean>;
+                };
+                if (typeof provider.isActiveEntity !== "function") return false;
+                return await provider.isActiveEntity(organizationId, "dme_vendor", vendorId);
+              } catch {
+                return false;
+              }
+            },
+          });
           mountM21Routes(app, { readService: m21ReadService, writeService: m21WriteService });
           // §4.8 — bind the WRITE service as the seam's creation path, so a coordinator's direct entry
           // through `SupplyFulfillmentProvider.createDirectSupplyRequest` takes the SAME route as an HTTP
@@ -2392,7 +2393,6 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountM29Routes(app, {
             store: createDrizzleM29Store(dbHandle.db, { outbox: m29OutboxPublisher }),
           });
-
         }
       : undefined,
     registerModuleSeams: () =>
@@ -2419,7 +2419,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // queues are actually constructed, further below, inside the worker-runner block.
   const metricsRegistry = buildMetricsRegistry();
   registerHttpMetrics(app, metricsRegistry);
-  const outboxMetrics = registerOutboxMetrics(metricsRegistry, { pendingDepth: outboxPendingDepth });
+  const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
+    pendingDepth: outboxPendingDepth,
+  });
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
   // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
@@ -2494,7 +2496,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // using BullMQ's own `Worker.name` (the queue name) as the source label — one call site, not one
     // bespoke wiring per module.
     const attachDlqAlertsToAll = (workers: readonly Worker[], modulePrefix: string): void => {
-      for (const w of workers) attachDlqPromotionAlert(w, `${modulePrefix}:${w.name}`, dlqPromotionSink);
+      for (const w of workers)
+        attachDlqPromotionAlert(w, `${modulePrefix}:${w.name}`, dlqPromotionSink);
     };
     const m34Workers = registerM34Workers(
       buildM34WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
@@ -2604,7 +2607,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       deathDischargeReader: m30DeathDischargeReader,
       signedEncounters: m30SignedEncounters,
     });
-    const m30Workers = [...registerM30Workers(m30WorkerDeps), ...registerM30CronWorkers(m30WorkerDeps)];
+    const m30Workers = [
+      ...registerM30Workers(m30WorkerDeps),
+      ...registerM30CronWorkers(m30WorkerDeps),
+    ];
     attachDlqAlertsToAll(m30Workers, "m30");
     app.addHook("onClose", async () => {
       await Promise.all(m30Workers.map((w) => w.close()));
@@ -2649,7 +2655,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       // basis → Worksheet C per-diem cost by level of care). No cap/settlement worksheet on the form (M26).
       allocationInputs: buildM27AllocationInputs(),
     });
-    const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];
+    const m27Workers = [
+      ...registerM27Workers(m27WorkerDeps),
+      ...registerM27CronWorkers(m27WorkerDeps),
+    ];
     attachDlqAlertsToAll(m27Workers, "m27");
     app.addHook("onClose", async () => {
       await Promise.all(m27Workers.map((w) => w.close()));
@@ -2675,7 +2684,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       connection: queueConnection,
       db: dbHandle.db,
     });
-    const m23Workers = [...registerM23Workers(m23WorkerDeps), ...registerM23CronWorkers(m23WorkerDeps)];
+    const m23Workers = [
+      ...registerM23Workers(m23WorkerDeps),
+      ...registerM23CronWorkers(m23WorkerDeps),
+    ];
     attachDlqAlertsToAll(m23Workers, "m23");
     app.addHook("onClose", async () => {
       await Promise.all(m23Workers.map((w) => w.close()));
@@ -2703,7 +2715,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       reason: "M25 §4.8 cron fan-out (active-org enumeration)",
     });
     const m25AlertEmitter = getSeam("AlertEmitter") as {
-      emit(orgId: string, input: { eventType: string; payload: Record<string, unknown>; severity: string; correlationId: string }): Promise<unknown>;
+      emit(
+        orgId: string,
+        input: {
+          eventType: string;
+          payload: Record<string, unknown>;
+          severity: string;
+          correlationId: string;
+        },
+      ): Promise<unknown>;
     };
     const m25Alerts: M25WorkerAlertPort = {
       dispatch: async ({ alertCode, severity, organizationId, payload }) => {
@@ -2860,7 +2880,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       ...m10Workers,
     ];
     const metricsQueueNames = [...new Set(allWorkers.map((w) => w.name))];
-    const metricsQueues = metricsQueueNames.map((name) => new Queue(name, { connection: queueConnection }));
+    const metricsQueues = metricsQueueNames.map(
+      (name) => new Queue(name, { connection: queueConnection }),
+    );
     registerBullMQQueueMetrics(metricsRegistry, metricsQueues);
     app.addHook("onClose", async () => {
       await Promise.all(metricsQueues.map((q) => q.close()));
@@ -2963,9 +2985,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // default 3001) so /health + /ready are reachable for its OWN liveness/readiness probes without
   // colliding with an API process's PORT on the same host (local/dev single-host runs).
   const port =
-    role === "worker"
-      ? Number(process.env.WORKER_PORT ?? 3001)
-      : Number(process.env.PORT ?? 3000);
+    role === "worker" ? Number(process.env.WORKER_PORT ?? 3001) : Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);

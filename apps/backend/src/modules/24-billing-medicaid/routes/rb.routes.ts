@@ -37,21 +37,54 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   // 24 — create DRAFT arrangement
   app.post(
     "/api/v1/rb-arrangements",
-    { preHandler: [P("medicaid.rb_arrangement.create"), ABAC_BODY_PE("medicaid.rb_arrangement.create", "rb_arrangement_visible_in_scope"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.rb_arrangement.create"),
+        ABAC_BODY_PE("medicaid.rb_arrangement.create", "rb_arrangement_visible_in_scope"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) =>
-      reply.code(201).send(await writeService.createRbArrangement(writeActorOf(request), parse(CreateRbArrangementBody, request.body))),
+      reply
+        .code(201)
+        .send(
+          await writeService.createRbArrangement(
+            writeActorOf(request),
+            parse(CreateRbArrangementBody, request.body),
+          ),
+        ),
   );
 
   // 25 — list arrangements
-  app.get("/api/v1/rb-arrangements", { preHandler: [P("medicaid.rb_arrangement.read")], config: { auditRead: { none: "room-and-board arrangements with facilities — contractual, no patient data" } } }, async (request, reply) => {
-    const q = parseQuery(RbArrangementListQuery, request.query);
-    return reply.send(await readService.listRbArrangements(actorOf(request), q));
-  });
+  app.get(
+    "/api/v1/rb-arrangements",
+    {
+      preHandler: [P("medicaid.rb_arrangement.read")],
+      config: {
+        auditRead: {
+          none: "room-and-board arrangements with facilities — contractual, no patient data",
+        },
+      },
+    },
+    async (request, reply) => {
+      const q = parseQuery(RbArrangementListQuery, request.query);
+      return reply.send(await readService.listRbArrangements(actorOf(request), q));
+    },
+  );
 
   // 26 — read one with day history
   app.get(
     "/api/v1/rb-arrangements/:id",
-    { preHandler: [P("medicaid.rb_arrangement.read"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.read", "rb_arrangement_visible_in_scope")], config: { auditRead: { none: "one room-and-board arrangement — contractual, no patient data" } } },
+    {
+      preHandler: [
+        P("medicaid.rb_arrangement.read"),
+        ABAC_ARRANGEMENT("medicaid.rb_arrangement.read", "rb_arrangement_visible_in_scope"),
+      ],
+      config: {
+        auditRead: { none: "one room-and-board arrangement — contractual, no patient data" },
+      },
+    },
     async (request, reply) => {
       const arr = await readService.getRbArrangement(actorOf(request), pParam(request, "id"));
       if (!arr) throw new NotFoundError("R&B arrangement not found");
@@ -62,35 +95,82 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
   // 27 — edit DRAFT arrangement
   app.patch(
     "/api/v1/rb-arrangements/:id",
-    { preHandler: [P("medicaid.rb_arrangement.edit"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.edit", "rb_arrangement_visible_in_scope"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.rb_arrangement.edit"),
+        ABAC_ARRANGEMENT("medicaid.rb_arrangement.edit", "rb_arrangement_visible_in_scope"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const body = parse(EditRbArrangementBody, request.body);
-      return reply.send(await writeService.editRbArrangement(writeActorOf(request), pParam(request, "id"), { expectedVersion: ifMatchVersion(request), ...body }));
+      return reply.send(
+        await writeService.editRbArrangement(writeActorOf(request), pParam(request, "id"), {
+          expectedVersion: ifMatchVersion(request),
+          ...body,
+        }),
+      );
     },
   );
 
   // 28 — activate (step-up)
   app.post(
     "/api/v1/rb-arrangements/:id/activate",
-    { preHandler: [P("medicaid.rb_arrangement.activate"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.activate", "rb_arrangement_visible_in_scope"), STEP_UP("medicaid.rb_arrangement.activate"), AI, IDEMPOTENT] },
-    async (request, reply) => reply.send(await writeService.activateRbArrangement(writeActorOf(request), pParam(request, "id"), ifMatchVersion(request))),
+    {
+      preHandler: [
+        P("medicaid.rb_arrangement.activate"),
+        ABAC_ARRANGEMENT("medicaid.rb_arrangement.activate", "rb_arrangement_visible_in_scope"),
+        STEP_UP("medicaid.rb_arrangement.activate"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
+    async (request, reply) =>
+      reply.send(
+        await writeService.activateRbArrangement(
+          writeActorOf(request),
+          pParam(request, "id"),
+          ifMatchVersion(request),
+        ),
+      ),
   );
 
   // 29 — terminate (step-up)
   app.post(
     "/api/v1/rb-arrangements/:id/terminate",
-    { preHandler: [P("medicaid.rb_arrangement.activate"), ABAC_ARRANGEMENT("medicaid.rb_arrangement.activate", "rb_arrangement_visible_in_scope"), STEP_UP("medicaid.rb_arrangement.activate"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.rb_arrangement.activate"),
+        ABAC_ARRANGEMENT("medicaid.rb_arrangement.activate", "rb_arrangement_visible_in_scope"),
+        STEP_UP("medicaid.rb_arrangement.activate"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const body = parse(TerminateRbArrangementBody, request.body);
-      return reply.send(await writeService.terminateRbArrangement(writeActorOf(request), pParam(request, "id"), { expectedVersion: ifMatchVersion(request), reason: body.reason }));
+      return reply.send(
+        await writeService.terminateRbArrangement(writeActorOf(request), pParam(request, "id"), {
+          expectedVersion: ifMatchVersion(request),
+          reason: body.reason,
+        }),
+      );
     },
   );
 
   // 30 — list rb_days
-  app.get("/api/v1/rb-days", { preHandler: [P("medicaid.rb_arrangement.read")], config: { auditRead: { resourceKind: "rb_day", list: true } } }, async (request, reply) => {
-    const q = parseQuery(RbDayListQuery, request.query);
-    return reply.send(await readService.listRbDays(actorOf(request), q));
-  });
+  app.get(
+    "/api/v1/rb-days",
+    {
+      preHandler: [P("medicaid.rb_arrangement.read")],
+      config: { auditRead: { resourceKind: "rb_day", list: true } },
+    },
+    async (request, reply) => {
+      const q = parseQuery(RbDayListQuery, request.query);
+      return reply.send(await readService.listRbDays(actorOf(request), q));
+    },
+  );
 
   // 31 — override day status with reason
   app.patch(
@@ -98,7 +178,10 @@ export function registerRbRoutes(app: FastifyInstance, deps: RbRouteDeps): void 
     { preHandler: [P("medicaid.rb_day.override"), AI, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(OverrideRbDayBody, request.body);
-      await writeService.overrideRbDay(writeActorOf(request), pParam(request, "id"), { expectedVersion: ifMatchVersion(request), ...body });
+      await writeService.overrideRbDay(writeActorOf(request), pParam(request, "id"), {
+        expectedVersion: ifMatchVersion(request),
+        ...body,
+      });
       return reply.code(204).send();
     },
   );

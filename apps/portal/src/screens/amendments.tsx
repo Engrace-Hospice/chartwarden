@@ -6,7 +6,14 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { day, humanize, readError, statusTone } from "./portal-format";
-import { PortalCard, PortalLoadState, PortalPage, tableCell, tableHead, tableRow } from "./portal-page";
+import {
+  PortalCard,
+  PortalLoadState,
+  PortalPage,
+  tableCell,
+  tableHead,
+  tableRow,
+} from "./portal-page";
 
 interface Amendment {
   id?: string;
@@ -80,10 +87,18 @@ export function PortalAmendments(): JSX.Element {
   }
 
   return (
-    <PortalPage title="Request a correction" subtitle="Ask your team to fix something in the record (HIPAA §164.526).">
+    <PortalPage
+      title="Request a correction"
+      subtitle="Ask your team to fix something in the record (HIPAA §164.526)."
+    >
       <PortalCard heading="New request">
         <form onSubmit={(e) => void submit(e)} style={{ display: "grid", gap: "0.6rem" }}>
-          <select value={targetKind} onChange={(e) => setTargetKind(e.target.value as TargetKind)} style={control} aria-label="What to correct">
+          <select
+            value={targetKind}
+            onChange={(e) => setTargetKind(e.target.value as TargetKind)}
+            style={control}
+            aria-label="What to correct"
+          >
             <option value="patient_demographic">Personal details (name, address, contact)</option>
             <option value="encounter_narrative">Something written about a visit</option>
           </select>
@@ -104,7 +119,11 @@ export function PortalAmendments(): JSX.Element {
           {submitState ? (
             <p
               role={submitState.tone === "err" ? "alert" : "status"}
-              style={{ margin: 0, fontSize: "0.85rem", color: submitState.tone === "err" ? t.error : t.success }}
+              style={{
+                margin: 0,
+                fontSize: "0.85rem",
+                color: submitState.tone === "err" ? t.error : t.success,
+              }}
             >
               {submitState.msg}
             </p>
@@ -135,7 +154,13 @@ export function PortalAmendments(): JSX.Element {
                   <td style={tableCell}>{day(a.submittedAt)}</td>
                   <td style={tableCell}>{a.targetKind ? humanize(a.targetKind) : "—"}</td>
                   <td style={tableCell}>{a.requestedChange ?? "—"}</td>
-                  <td style={tableCell}>{a.status ? <StatusPill tone={statusTone(a.status)} label={humanize(a.status)} /> : "—"}</td>
+                  <td style={tableCell}>
+                    {a.status ? (
+                      <StatusPill tone={statusTone(a.status)} label={humanize(a.status)} />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

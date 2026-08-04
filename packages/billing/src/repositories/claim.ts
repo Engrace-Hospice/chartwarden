@@ -17,13 +17,13 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { ClaimState } from "../contracts";
 import {
   type BillingDb,
+  type CursorPage,
+  type VersionedUpdateResult,
   buildCursorPage,
   claimStateCodec,
-  type CursorPage,
   decodeCursor,
   keysetBefore,
   pageSizeOf,
-  type VersionedUpdateResult,
   versionConflict,
   versionOk,
 } from "./db";
@@ -83,7 +83,10 @@ export class ClaimRepository {
   /** Insert a claim (defaults to `draft`). Returns the domain-cased inserted record. */
   async create(input: NewClaimInput): Promise<ClaimRecord> {
     const { state, ...rest } = input;
-    const values: schema.NewClaim = { ...rest, ...(state ? { state: claimStateCodec.toDb(state) } : {}) };
+    const values: schema.NewClaim = {
+      ...rest,
+      ...(state ? { state: claimStateCodec.toDb(state) } : {}),
+    };
     const [row] = await this.db.insert(C).values(values).returning();
     if (!row) throw new Error("claim insert returned no row");
     return toClaimRecord(row);
@@ -103,7 +106,9 @@ export class ClaimRepository {
     const [row] = await this.db
       .select()
       .from(C)
-      .where(and(eq(C.providerEntityId, providerEntityId), eq(C.claimControlNumber, claimControlNumber)))
+      .where(
+        and(eq(C.providerEntityId, providerEntityId), eq(C.claimControlNumber, claimControlNumber)),
+      )
       .limit(1);
     return row ? toClaimRecord(row) : null;
   }
@@ -124,7 +129,11 @@ export class ClaimRepository {
     // actor with an EMPTY provider scope gets an empty page rather than the whole org's claims.
     const scope = filter.providerEntityScope;
     const scopeClause =
-      scope === undefined ? undefined : scope.length === 0 ? sql`false` : inArray(C.providerEntityId, scope);
+      scope === undefined
+        ? undefined
+        : scope.length === 0
+          ? sql`false`
+          : inArray(C.providerEntityId, scope);
     const where = and(
       eq(C.organizationId, organizationId),
       scopeClause,

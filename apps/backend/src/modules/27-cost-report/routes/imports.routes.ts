@@ -9,15 +9,15 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { EDITOR_FOR_PROVIDER, P } from "./guards";
-import type { M27ReadRouteService } from "./read-service";
-import type { M27WriteRouteService } from "./write-service";
 import {
   CostReportIdParamsSchema,
   ManualTrialBalanceBodySchema,
   ManualWageDataBodySchema,
   parse,
 } from "./cost-report-typebox";
+import { EDITOR_FOR_PROVIDER, P } from "./guards";
+import type { M27ReadRouteService } from "./read-service";
+import type { M27WriteRouteService } from "./write-service";
 
 export interface ImportRouteDeps {
   readonly readService: M27ReadRouteService;
@@ -72,15 +72,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
   );
 
   // GET /cost-reports/:id/imports/wage-data — list wage-data import history. §4.1.
-  app.get(
-    "/api/v1/cost-reports/:id/imports/wage-data",
-    { preHandler: [READ] },
-    async (request) => {
-      const actor = actorOf(request);
-      const { id } = parse(CostReportIdParamsSchema, request.params);
-      return readService.listWageDataImports(actor, id);
-    },
-  );
+  app.get("/api/v1/cost-reports/:id/imports/wage-data", { preHandler: [READ] }, async (request) => {
+    const actor = actorOf(request);
+    const { id } = parse(CostReportIdParamsSchema, request.params);
+    return readService.listWageDataImports(actor, id);
+  });
 
   // POST /cost-reports/:id/imports/wage-data — trigger an immediate Gusto pull (202 job id). §4.1.
   app.post(

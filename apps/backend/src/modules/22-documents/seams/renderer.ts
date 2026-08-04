@@ -45,22 +45,42 @@ export interface TemplateDescriptor {
  * Keys mirror the §7.2 examples + the M39 `consent_record` key the consent module already renders through.
  */
 export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor>> = {
-  cti: { aggregateType: "cti", retentionClass: "compliance", defaultTitle: "Certification of Terminal Illness" },
-  f2f: { aggregateType: "f2f", retentionClass: "compliance", defaultTitle: "Face-to-Face Encounter" },
+  cti: {
+    aggregateType: "cti",
+    retentionClass: "compliance",
+    defaultTitle: "Certification of Terminal Illness",
+  },
+  f2f: {
+    aggregateType: "f2f",
+    retentionClass: "compliance",
+    defaultTitle: "Face-to-Face Encounter",
+  },
   nor: { aggregateType: "nor", retentionClass: "compliance", defaultTitle: "Notice of Right" },
   election_statement: {
     aggregateType: "election_statement",
     retentionClass: "compliance",
     defaultTitle: "Hospice Election Statement",
   },
-  revocation: { aggregateType: "revocation", retentionClass: "compliance", defaultTitle: "Revocation" },
+  revocation: {
+    aggregateType: "revocation",
+    retentionClass: "compliance",
+    defaultTitle: "Revocation",
+  },
   discharge_summary: {
     aggregateType: "discharge_summary",
     retentionClass: "clinical_record",
     defaultTitle: "Discharge Summary",
   },
-  encounter: { aggregateType: "encounter", retentionClass: "clinical_record", defaultTitle: "Encounter Note" },
-  order_record: { aggregateType: "order_record", retentionClass: "clinical_record", defaultTitle: "Order" },
+  encounter: {
+    aggregateType: "encounter",
+    retentionClass: "clinical_record",
+    defaultTitle: "Encounter Note",
+  },
+  order_record: {
+    aggregateType: "order_record",
+    retentionClass: "clinical_record",
+    defaultTitle: "Order",
+  },
   medication_order: {
     aggregateType: "medication_order",
     retentionClass: "clinical_record",
@@ -81,7 +101,11 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "operational",
     defaultTitle: "Visit Verification",
   },
-  consent_record: { aggregateType: "consent_record", retentionClass: "compliance", defaultTitle: "Consent" },
+  consent_record: {
+    aggregateType: "consent_record",
+    retentionClass: "compliance",
+    defaultTitle: "Consent",
+  },
   // §7.5 W5 — the Statement-of-Disagreement template (M5 amendment-denied; compliance class, D13).
   patient_amendment_statement_of_disagreement: {
     aggregateType: "patient_amendment_statement_of_disagreement",
@@ -143,7 +167,11 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
   const shortId = deps.shortId ?? realShortId;
 
   return {
-    async render(scope: OrgScope, templateKey: string, payload: unknown): Promise<{ documentId: string }> {
+    async render(
+      scope: OrgScope,
+      templateKey: string,
+      payload: unknown,
+    ): Promise<{ documentId: string }> {
       const descriptor = templates[templateKey];
       if (descriptor === undefined) throw new UnknownTemplateError(templateKey);
 

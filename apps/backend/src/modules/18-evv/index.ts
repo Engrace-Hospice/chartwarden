@@ -15,8 +15,8 @@
 // inventory behind the M3 Authorization Contract over the in-memory `EvvRouteService` slice.
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
 import { registerEvvAbacPredicates as _registerM18Abac } from "./abac-predicates";
+import { type EvvWriteOutboxPort, createDbEvvBackend } from "./evv-route-service-db";
 import { registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
 
 /**
@@ -27,7 +27,11 @@ import { registerEvvRoutes as _registerM18Routes } from "./routes/evv-routes";
  * every mutation emits its strict `m18.evv.*` catalog payload on the bound transactional `outbox`. Replaces the
  * in-memory clinical-core scaffold mount for M18.
  */
-export function mountEvvRoutes(app: FastifyInstance, db: DbClient, outbox?: EvvWriteOutboxPort): void {
+export function mountEvvRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: EvvWriteOutboxPort,
+): void {
   const backend = createDbEvvBackend(db, outbox);
   _registerM18Abac({ resolver: backend });
   _registerM18Routes(app, { service: backend });
@@ -66,7 +70,11 @@ export {
   isAggregatorSubmissionTerminal,
   transitionAggregatorSubmission,
 } from "./domain/aggregator-submission";
-export { type SubmissionPassResult, dispatchSubmission, pollSubmissionOnce } from "./submission-flow";
+export {
+  type SubmissionPassResult,
+  dispatchSubmission,
+  pollSubmissionOnce,
+} from "./submission-flow";
 // M18-T07 — the §4.10 outbox-event catalog (the full `m18.evv.*` taxonomy; check-fitness-gaps.ts scans
 // events-by-m18.ts for naming + ownership + declared consumers). **`m18.evv.check_in_recorded` /
 // `m18.evv.check_out_recorded` wire LIVE M8's encounter.period EVV-bracket forward seam (M8 D9) and drive M17's

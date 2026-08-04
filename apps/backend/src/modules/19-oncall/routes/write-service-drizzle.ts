@@ -54,8 +54,8 @@ import {
 } from "../alerts";
 import { linkTriageEncounter } from "../clinical/encounter-link";
 import {
-  type SelectableDisposition,
   DEFAULT_UNRESOLVED_ESCALATION_TIER,
+  type SelectableDisposition,
 } from "../lifecycle/disposition";
 import type { TriageSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
@@ -106,6 +106,7 @@ import type {
 import type {
   AbandonCallInput,
   AlertPort,
+  AnswerWriteResult,
   ApplyProtocolInput,
   AwaitingCallbackInput,
   CancelShiftInput,
@@ -125,7 +126,6 @@ import type {
   PatchVendorBindingInput,
   ProtocolQuestionInput,
   RecordAnswerInput,
-  AnswerWriteResult,
   ResolveEscalationInput,
   SelectDispositionInput,
   WriteOutboxPort,
@@ -140,7 +140,9 @@ const iso = (d: Date | string): IsoInstant =>
 
 /** §8.3.3 — the command-payload digest the state-history row carries. The cleartext is never stored. */
 const digestOf = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value ?? {})).digest("hex");
+  createHash("sha256")
+    .update(JSON.stringify(value ?? {}))
+    .digest("hex");
 
 /**
  * The per-tenant DEK envelope (D14) the `caller_quote_cipher` / `transcript_cipher` columns ride.
@@ -320,7 +322,12 @@ export function buildDrizzleM19WriteService(
   async function insertEscalation(
     tx: Tx,
     actor: M19WriteActor,
-    call: { id: string; organizationId: string; providerEntityId: string; locationId: string | null },
+    call: {
+      id: string;
+      organizationId: string;
+      providerEntityId: string;
+      locationId: string | null;
+    },
     effect: Extract<TriageSideEffect, { kind: "create_escalation" }>,
     recipient: { membershipId: string | null; externalActorId: string | null },
     triggerDetail: string | null,
@@ -524,7 +531,11 @@ export function buildDrizzleM19WriteService(
       );
 
       // Decisions 2 + 3 — the ADVISORIES, read after the row exists and gated by the tenant's own flags.
-      const advisories = await readAdvisories(actor, created.call, input.chiefComplaintText ?? null);
+      const advisories = await readAdvisories(
+        actor,
+        created.call,
+        input.chiefComplaintText ?? null,
+      );
       if (advisories.suggestedProtocolId !== null || advisories.hospitalizationRiskBand !== null) {
         await withOrgContext(db, ctx(actor), async (tx) => {
           await tx
@@ -613,7 +624,8 @@ export function buildDrizzleM19WriteService(
             chiefComplaintLabel: protocolRow.chiefComplaintLabel,
             organizationId: protocolRow.organizationId,
             isSystemLocked: protocolRow.isSystemLocked,
-            disciplineRequired: protocolRow.disciplineRequired as TriageProtocolFacts["disciplineRequired"],
+            disciplineRequired:
+              protocolRow.disciplineRequired as TriageProtocolFacts["disciplineRequired"],
             requiresMandatoryEscalation: protocolRow.requiresMandatoryEscalation,
             mandatoryEscalationTier: protocolRow.mandatoryEscalationTier,
             version: protocolRow.version,
@@ -1010,7 +1022,12 @@ export function buildDrizzleM19WriteService(
           const handOff = input.handOffCall === true;
           if (handOff) {
             effects.push(
-              { kind: "state_history", from: call.state as never, to: "escalated_unresolved", systemActor: false },
+              {
+                kind: "state_history",
+                from: call.state as never,
+                to: "escalated_unresolved",
+                systemActor: false,
+              },
               {
                 kind: "set_disposition",
                 disposition: "escalated_unresolved",
@@ -1509,10 +1526,7 @@ export function buildDrizzleM19WriteService(
     },
 
     // ── §4.1 rows 34-35 — vendor bindings (§8.5) ──────────────────────────────────────────────────────
-    async createVendorBinding(
-      actor,
-      input: CreateVendorBindingInput,
-    ): Promise<VendorBindingView> {
+    async createVendorBinding(actor, input: CreateVendorBindingInput): Promise<VendorBindingView> {
       const at = now();
       // §8.5 — the BAA is a PRECONDITION for enabling an adapter at runtime, so a binding created without
       // the attestation is refused rather than created-and-inert. An inert binding is the worse outcome:
@@ -1542,7 +1556,11 @@ export function buildDrizzleM19WriteService(
       });
       const bindings = await readService.listVendorBindings(actor);
       const found = bindings.find((b) => b.id === vendorId);
-      require_(found !== undefined, "VENDOR_BINDING_NOT_FOUND", "the vendor binding did not persist");
+      require_(
+        found !== undefined,
+        "VENDOR_BINDING_NOT_FOUND",
+        "the vendor binding did not persist",
+      );
       return found;
     },
 
@@ -1830,7 +1848,12 @@ export function buildDrizzleM19WriteService(
         const nextVersion = await applyCallPatch(inner, call.id, call.version, {});
         const nextQuestion = nextUnansweredQuestion(walk.questions, [
           ...walk.answers,
-          { answerId, questionId: question.questionId, correctionOfAnswerId, redFlagHit: decision.redFlagHit },
+          {
+            answerId,
+            questionId: question.questionId,
+            correctionOfAnswerId,
+            redFlagHit: decision.redFlagHit,
+          },
         ]);
 
         return {
@@ -1961,7 +1984,11 @@ export function buildDrizzleM19WriteService(
   async function findShift(actor: M19WriteActor, shiftId: string): Promise<OnCallShiftView> {
     const page = await readService.listShifts(actor, { limit: 200 });
     const found = page.data.find((s) => s.id === shiftId);
-    require_(found !== undefined, "SHIFT_NOT_FOUND", `shift ${shiftId} is not readable after the write`);
+    require_(
+      found !== undefined,
+      "SHIFT_NOT_FOUND",
+      `shift ${shiftId} is not readable after the write`,
+    );
     return found;
   }
 
@@ -2018,15 +2045,12 @@ export function buildDrizzleM19WriteService(
             );
           return rows.map((r) => r.key);
         });
-        const result = await getProtocolSuggestionProvider().suggestProtocol(
-          actor.organizationId,
-          {
-            triageCallId: call.id,
-            patientId: call.patientId,
-            chiefComplaintText,
-            candidateProtocolKeys: candidateKeys,
-          },
-        );
+        const result = await getProtocolSuggestionProvider().suggestProtocol(actor.organizationId, {
+          triageCallId: call.id,
+          patientId: call.patientId,
+          chiefComplaintText,
+          candidateProtocolKeys: candidateKeys,
+        });
         if (result.kind === "suggestion") {
           suggestedProtocolId = result.suggestion.suggestedProtocolId;
           confidence = result.suggestion.confidence;

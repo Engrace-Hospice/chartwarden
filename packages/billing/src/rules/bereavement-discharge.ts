@@ -50,7 +50,11 @@ export const bereavementDischargeLegitimacy: Rule = {
     }
 
     if (defects.length === 0) {
-      return pass(KEY, "error", "Discharge facts complete and no improperly-billed bereavement service.");
+      return pass(
+        KEY,
+        "error",
+        "Discharge facts complete and no improperly-billed bereavement service.",
+      );
     }
     return fail(
       KEY,

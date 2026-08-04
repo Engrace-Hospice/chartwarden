@@ -23,7 +23,6 @@ import type {
   RenderedDocumentProvider,
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
-import { createDocumentRenderer } from "./renderer";
 import {
   createDocumentReader,
   createExtractionProvenanceReader,
@@ -37,6 +36,7 @@ import {
   createInMemoryDocumentReaderStore,
   createInMemoryPortalConsentPort,
 } from "./readers-store";
+import { createDocumentRenderer } from "./renderer";
 import { createDocumentStorageProvider } from "./storage-provider";
 export {
   createDrizzleDocumentReaderStore,
@@ -139,7 +139,10 @@ export function registerDocumentSeams(deps: DocumentSeamDeps = {}): void {
   // for the portal mint). Registering them CLOSES the M28/M30/M31/M33 + every source module back-ref deny-stub.
   registerSeam("RenderedDocumentProvider", createRenderedDocumentProvider(readers));
   registerSeam("DocumentReader", createDocumentReader(readers));
-  registerSeam("PortalDocumentReader", createPortalDocumentReader({ store: readers, objects, consent: portalConsent }));
+  registerSeam(
+    "PortalDocumentReader",
+    createPortalDocumentReader({ store: readers, objects, consent: portalConsent }),
+  );
   registerSeam("IntakeMetricsProvider", createIntakeMetricsProvider(readers));
   registerSeam("ExtractionProvenanceReader", createExtractionProvenanceReader(readers));
 }

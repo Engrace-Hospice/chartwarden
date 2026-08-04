@@ -25,11 +25,11 @@ import type {
   DerivedRiskFactors,
 } from "@wardenx/bereavement";
 import {
+  DETERMINISTIC_AUGMENTATION_COLUMNS,
+  RISK_TIER_OVERRIDE_REASON_MIN_LENGTH,
   computeBereavementRiskScore,
   deriveRiskFactors,
-  DETERMINISTIC_AUGMENTATION_COLUMNS,
   promoteTierForGriefScreen,
-  RISK_TIER_OVERRIDE_REASON_MIN_LENGTH,
   weightedScoreToRuleScore,
 } from "@wardenx/bereavement";
 import type {
@@ -41,7 +41,7 @@ import type {
 } from "@wardenx/types";
 import { BereavementStateError } from "../lifecycle/index";
 import type { BereavementSideEffect } from "../lifecycle/index";
-import { gatherRiskEvidence, type RiskExtractionInput } from "./extract";
+import { type RiskExtractionInput, gatherRiskEvidence } from "./extract";
 
 /** D8 — why this immutable row was appended. Rides `risk_factors_jsonb` (§3.3.3 forward-seam fields). */
 export type BereavementAmendmentKind =

@@ -124,22 +124,56 @@ function createIpuTestBackend(): IpuRouteService {
   const gipCriteria = new Map<string, GipCriteriaView & { organizationId: string }>(); // keyed by admissionId
   const ircEpisodes = new Map<
     string,
-    { organizationId: string; id: string; ipuAdmissionId: string; state: string; consecutiveDayCount: number; capOverrideInvoked: boolean; version: number }
+    {
+      organizationId: string;
+      id: string;
+      ipuAdmissionId: string;
+      state: string;
+      consecutiveDayCount: number;
+      capOverrideInvoked: boolean;
+      version: number;
+    }
   >(); // keyed by admissionId
   const shifts = new Map<string, ShiftView & { organizationId: string }>();
   const staffAssignments = new Map<string, StaffAssignmentView & { organizationId: string }>();
   const restraints = new Map<string, RestraintView & { organizationId: string }>();
   const visitors = new Map<
     string,
-    { organizationId: string; id: string; ipuAdmissionId: string; relationship: string; maskRequired: boolean; checkedInAt: string; checkedOutAt: string | null }
+    {
+      organizationId: string;
+      id: string;
+      ipuAdmissionId: string;
+      relationship: string;
+      maskRequired: boolean;
+      checkedInAt: string;
+      checkedOutAt: string | null;
+    }
   >();
   const visitorRestrictions = new Map<
     string,
-    { organizationId: string; id: string; scope: string; restrictionKind: string; liftedAt: string | null }
+    {
+      organizationId: string;
+      id: string;
+      scope: string;
+      restrictionKind: string;
+      liftedAt: string | null;
+    }
   >();
-  const meals = new Map<string, { organizationId: string; id: string; ipuAdmissionId: string; serviceDate: string; mealSlot: string }>();
+  const meals = new Map<
+    string,
+    {
+      organizationId: string;
+      id: string;
+      ipuAdmissionId: string;
+      serviceDate: string;
+      mealSlot: string;
+    }
+  >();
   const equipment = new Map<string, EquipmentView & { organizationId: string }>();
-  const bodyReleases = new Map<string, { organizationId: string; id: string; ipuAdmissionId: string; state: string; version: number }>(); // keyed by admissionId
+  const bodyReleases = new Map<
+    string,
+    { organizationId: string; id: string; ipuAdmissionId: string; state: string; version: number }
+  >(); // keyed by admissionId
 
   return {
     async listUnits(actor) {
@@ -163,7 +197,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async updateUnit(actor, unitId, body) {
       const row = units.get(unitId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("inpatient_unit", unitId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("inpatient_unit", unitId);
       const updated = {
         ...row,
         displayName: body.displayName ?? row.displayName,
@@ -176,13 +211,16 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async deactivateUnit(actor, unitId) {
       const row = units.get(unitId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("inpatient_unit", unitId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("inpatient_unit", unitId);
       const updated = { ...row, isActive: false, version: row.version + 1 };
       units.set(unitId, updated);
       return updated;
     },
     async listRooms(actor, unitId) {
-      return [...rooms.values()].filter((r) => r.organizationId === actor.organizationId && r.unitId === unitId);
+      return [...rooms.values()].filter(
+        (r) => r.organizationId === actor.organizationId && r.unitId === unitId,
+      );
     },
     async createRoom(actor, unitId, body) {
       const id = randomUUID();
@@ -201,7 +239,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async updateRoom(actor, roomId, body) {
       const row = rooms.get(roomId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_room", roomId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_room", roomId);
       const updated = {
         ...row,
         roomNumber: body.roomNumber ?? row.roomNumber,
@@ -213,7 +252,9 @@ function createIpuTestBackend(): IpuRouteService {
       return updated;
     },
     async listBeds(actor, roomId) {
-      return [...beds.values()].filter((b) => b.organizationId === actor.organizationId && b.roomId === roomId);
+      return [...beds.values()].filter(
+        (b) => b.organizationId === actor.organizationId && b.roomId === roomId,
+      );
     },
     async createBed(actor, roomId, body) {
       const id = randomUUID();
@@ -232,7 +273,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async updateBed(actor, bedId, body) {
       const row = beds.get(bedId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_bed", bedId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_bed", bedId);
       const updated = { ...row, bedLabel: body.bedLabel ?? row.bedLabel, version: row.version + 1 };
       beds.set(bedId, updated);
       return updated;
@@ -262,7 +304,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async requestBed(actor, admissionId, body) {
       const row = admissions.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_admission", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_admission", admissionId);
       void body;
       const updated = { ...row, state: "bed_pending", version: row.version + 1 };
       admissions.set(admissionId, updated);
@@ -270,7 +313,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async assignBed(actor, admissionId, body) {
       const row = admissions.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_admission", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_admission", admissionId);
       const bed = beds.get(body.bedId);
       if (bed) beds.set(body.bedId, { ...bed, cleaningStatus: "reserved" });
       const updated = { ...row, state: "bed_assigned", version: row.version + 1 };
@@ -280,7 +324,8 @@ function createIpuTestBackend(): IpuRouteService {
     async discharge(actor, admissionId, body) {
       void body;
       const row = admissions.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_admission", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_admission", admissionId);
       const updated = { ...row, state: "discharged", version: row.version + 1 };
       admissions.set(admissionId, updated);
       return updated;
@@ -288,7 +333,8 @@ function createIpuTestBackend(): IpuRouteService {
     async confirm(actor, admissionId, body) {
       void body;
       const row = admissions.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_admission", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_admission", admissionId);
       const updated = { ...row, state: "active", version: row.version + 1 };
       admissions.set(admissionId, updated);
       return updated;
@@ -296,7 +342,8 @@ function createIpuTestBackend(): IpuRouteService {
     async initiateTransfer(actor, admissionId, body) {
       void body;
       const row = admissions.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_admission", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_admission", admissionId);
       const updated = { ...row, state: "transfer_pending", version: row.version + 1 };
       admissions.set(admissionId, updated);
       return updated;
@@ -304,7 +351,8 @@ function createIpuTestBackend(): IpuRouteService {
     async confirmTransfer(actor, admissionId, body) {
       void body;
       const row = admissions.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_admission", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_admission", admissionId);
       const updated = { ...row, state: "transferred", version: row.version + 1 };
       admissions.set(admissionId, updated);
       return updated;
@@ -324,7 +372,8 @@ function createIpuTestBackend(): IpuRouteService {
     async reassessGip(actor, admissionId, body) {
       void body;
       const row = gipCriteria.get(admissionId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("gip_admission_criteria", admissionId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("gip_admission_criteria", admissionId);
       const updated = { ...row, version: row.version + 1 };
       gipCriteria.set(admissionId, updated);
       return updated;
@@ -394,7 +443,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async transitionBed(actor, bedId, body) {
       const row = beds.get(bedId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_bed", bedId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_bed", bedId);
       const next: Record<string, string> = {
         reserve: "reserved",
         occupy: "occupied",
@@ -404,7 +454,11 @@ function createIpuTestBackend(): IpuRouteService {
         retire: "retired",
         expireReservation: "ready",
       };
-      const updated = { ...row, cleaningStatus: next[body.event] ?? row.cleaningStatus, version: row.version + 1 };
+      const updated = {
+        ...row,
+        cleaningStatus: next[body.event] ?? row.cleaningStatus,
+        version: row.version + 1,
+      };
       beds.set(bedId, updated);
       return updated;
     },
@@ -428,7 +482,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async reassessRestraint(actor, restraintId, body) {
       const row = restraints.get(restraintId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_restraint", restraintId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_restraint", restraintId);
       const state = body.outcome === "release" ? "released" : row.state;
       const updated = { ...row, state, version: row.version + 1 };
       restraints.set(restraintId, updated);
@@ -436,7 +491,8 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async releaseRestraint(actor, restraintId) {
       const row = restraints.get(restraintId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_restraint", restraintId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_restraint", restraintId);
       const updated = { ...row, state: "released", version: row.version + 1 };
       restraints.set(restraintId, updated);
       return updated;
@@ -457,14 +513,21 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async checkOutVisitor(actor, visitorId) {
       const row = visitors.get(visitorId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_visitor", visitorId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_visitor", visitorId);
       const updated = { ...row, checkedOutAt: NOW };
       visitors.set(visitorId, updated);
       return updated;
     },
     async applyVisitorRestriction(actor, body) {
       const id = randomUUID();
-      const row = { organizationId: actor.organizationId, id, scope: body.scope, restrictionKind: body.restrictionKind, liftedAt: null };
+      const row = {
+        organizationId: actor.organizationId,
+        id,
+        scope: body.scope,
+        restrictionKind: body.restrictionKind,
+        liftedAt: null,
+      };
       visitorRestrictions.set(id, row);
       return row;
     },
@@ -479,7 +542,13 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async logMeal(actor, body) {
       const id = randomUUID();
-      const row = { organizationId: actor.organizationId, id, ipuAdmissionId: body.ipuAdmissionId, serviceDate: body.serviceDate, mealSlot: body.mealSlot };
+      const row = {
+        organizationId: actor.organizationId,
+        id,
+        ipuAdmissionId: body.ipuAdmissionId,
+        serviceDate: body.serviceDate,
+        mealSlot: body.mealSlot,
+      };
       meals.set(id, row);
       return row;
     },
@@ -503,22 +572,29 @@ function createIpuTestBackend(): IpuRouteService {
     async logMaintenance(actor, equipmentId, body) {
       void body;
       const row = equipment.get(equipmentId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_equipment", equipmentId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_equipment", equipmentId);
       const updated = { ...row, version: row.version + 1 };
       equipment.set(equipmentId, updated);
       return updated;
     },
     async logInspection(actor, equipmentId, body) {
       const row = equipment.get(equipmentId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_equipment", equipmentId);
-      const updated = { ...row, nextInspectionDueDate: body.nextInspectionDueDate, version: row.version + 1 };
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_equipment", equipmentId);
+      const updated = {
+        ...row,
+        nextInspectionDueDate: body.nextInspectionDueDate,
+        version: row.version + 1,
+      };
       equipment.set(equipmentId, updated);
       return updated;
     },
     async assignEquipmentBed(actor, equipmentId, body) {
       void body;
       const row = equipment.get(equipmentId);
-      if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("ipu_equipment", equipmentId);
+      if (!row || row.organizationId !== actor.organizationId)
+        throw new NotFoundError("ipu_equipment", equipmentId);
       const updated = { ...row, currentStatus: "in_use", version: row.version + 1 };
       equipment.set(equipmentId, updated);
       return updated;
@@ -548,8 +624,18 @@ function makeServer() {
   const service = createIpuTestBackend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "super_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ALL_M37_PERMISSIONS }] },
-    { orgId: ORG, userId: "nobody_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "super_1",
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ALL_M37_PERMISSIONS },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "nobody_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -600,14 +686,23 @@ describe("M37-T11 auth + schema boundary", () => {
 
   it("an authenticated actor holding NO permissions → 403", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/inpatient-units", headers: NOBODY });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/inpatient-units",
+      headers: NOBODY,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
 
   it("a correctly-permissioned actor posting an empty body → 422 (TypeBox VALIDATION_FAILED)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/inpatient-units", headers: SUPER, payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/inpatient-units",
+      headers: SUPER,
+      payload: {},
+    });
     expect(res.statusCode).toBe(422);
     await app.close();
   });
@@ -630,7 +725,11 @@ describe("M37-T11 §4.1 unit + room + bed CRUD (routes 1-8)", () => {
     const unitId = created.json().id as string;
 
     // 1 — list
-    const list = await app.inject({ method: "GET", url: "/api/v1/inpatient-units", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/inpatient-units",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.map((u: { id: string }) => u.id)).toContain(unitId);
 
@@ -655,7 +754,11 @@ describe("M37-T11 §4.1 unit + room + bed CRUD (routes 1-8)", () => {
     const roomId = room.json().id as string;
 
     // 5 — list rooms
-    const rooms = await app.inject({ method: "GET", url: `/api/v1/inpatient-units/${unitId}/rooms`, headers: SUPER });
+    const rooms = await app.inject({
+      method: "GET",
+      url: `/api/v1/inpatient-units/${unitId}/rooms`,
+      headers: SUPER,
+    });
     expect(rooms.statusCode).toBe(200);
     expect(rooms.json().items.map((r: { id: string }) => r.id)).toContain(roomId);
 
@@ -680,7 +783,11 @@ describe("M37-T11 §4.1 unit + room + bed CRUD (routes 1-8)", () => {
     const bedId = bed.json().id as string;
 
     // 7 — list beds
-    const beds = await app.inject({ method: "GET", url: `/api/v1/ipu-rooms/${roomId}/beds`, headers: SUPER });
+    const beds = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-rooms/${roomId}/beds`,
+      headers: SUPER,
+    });
     expect(beds.statusCode).toBe(200);
     expect(beds.json().items.map((b: { id: string }) => b.id)).toContain(bedId);
 
@@ -695,7 +802,11 @@ describe("M37-T11 §4.1 unit + room + bed CRUD (routes 1-8)", () => {
     expect(bedUpdated.json().bedLabel).toBe("A1");
 
     // 4 — deactivate unit (step-up)
-    const deactivated = await app.inject({ method: "POST", url: `/api/v1/inpatient-units/${unitId}/deactivate`, headers: SUPER });
+    const deactivated = await app.inject({
+      method: "POST",
+      url: `/api/v1/inpatient-units/${unitId}/deactivate`,
+      headers: SUPER,
+    });
     expect(deactivated.statusCode).toBe(200);
     expect(deactivated.json().isActive).toBe(false);
 
@@ -816,8 +927,16 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
       providerEntityId: randomUUID(),
       kind: "gip",
     });
-    const unit = await service.createUnit(SEED_ACTOR, { facilityId: randomUUID(), displayName: "Seed Unit", bedCount: 2 });
-    const room = await service.createRoom(SEED_ACTOR, unit.id, { roomNumber: "1", kind: "private", bedCount: 1 });
+    const unit = await service.createUnit(SEED_ACTOR, {
+      facilityId: randomUUID(),
+      displayName: "Seed Unit",
+      bedCount: 2,
+    });
+    const room = await service.createRoom(SEED_ACTOR, unit.id, {
+      roomNumber: "1",
+      kind: "private",
+      bedCount: 1,
+    });
     const bed = await service.createBed(SEED_ACTOR, room.id, { bedLabel: "A" });
 
     // 10 — list
@@ -826,12 +945,21 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
     expect(list.json().items.map((a: { id: string }) => a.id)).toContain(admission.id);
 
     // 12 — get
-    const detail = await app.inject({ method: "GET", url: `/api/v1/ipu-admissions/${admission.id}`, headers: SUPER });
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-admissions/${admission.id}`,
+      headers: SUPER,
+    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().id).toBe(admission.id);
 
     // 15 — confirm (system-internal M6-ack handler)
-    const confirmed = await app.inject({ method: "POST", url: `/api/v1/ipu-admissions/${admission.id}/confirm`, headers: SUPER, payload: {} });
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${admission.id}/confirm`,
+      headers: SUPER,
+      payload: {},
+    });
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.json().state).toBe("active");
 
@@ -932,7 +1060,11 @@ describe("M37-T11 §4.1 restraint reassess/release (routes 23-24)", () => {
     expect(reassessed.statusCode).toBe(200);
 
     // 24
-    const released = await app.inject({ method: "POST", url: `/api/v1/ipu-restraint/${restraint.id}/release`, headers: SUPER });
+    const released = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-restraint/${restraint.id}/release`,
+      headers: SUPER,
+    });
     expect(released.statusCode).toBe(200);
     expect(released.json().state).toBe("released");
 
@@ -951,7 +1083,11 @@ describe("M37-T11 §4.1 shifts + staff + RN coverage (routes 25-28)", () => {
       method: "POST",
       url: "/api/v1/ipu-shifts",
       headers: SUPER,
-      payload: { unitId: randomUUID(), shiftStartAt: "2026-08-04T07:00:00.000Z", shiftEndAt: "2026-08-04T19:00:00.000Z" },
+      payload: {
+        unitId: randomUUID(),
+        shiftStartAt: "2026-08-04T07:00:00.000Z",
+        shiftEndAt: "2026-08-04T19:00:00.000Z",
+      },
     });
     expect(shift.statusCode).toBe(201);
     const shiftId = shift.json().id as string;
@@ -983,12 +1119,20 @@ describe("M37-T11 §4.1 shifts + staff + RN coverage (routes 25-28)", () => {
 
     // 27 — read RN coverage
     const unitId = randomUUID();
-    const coverage = await app.inject({ method: "GET", url: `/api/v1/ipu-units/${unitId}/rn-coverage`, headers: SUPER });
+    const coverage = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage`,
+      headers: SUPER,
+    });
     expect(coverage.statusCode).toBe(200);
     expect(coverage.json().unitId).toBe(unitId);
 
     // 28 — break-glass override (step-up)
-    const breakGlass = await app.inject({ method: "POST", url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`, headers: SUPER });
+    const breakGlass = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+    });
     expect(breakGlass.statusCode).toBe(200);
     expect(breakGlass.json().invoked).toBe(true);
 
@@ -1007,13 +1151,22 @@ describe("M37-T11 §4.1 visitors + visitor restrictions (routes 29-31)", () => {
       method: "POST",
       url: "/api/v1/ipu-visitors",
       headers: SUPER,
-      payload: { ipuAdmissionId: randomUUID(), visitorName: "Jordan Lee", relationship: "spouse", screeningOutcome: { feverFree: true } },
+      payload: {
+        ipuAdmissionId: randomUUID(),
+        visitorName: "Jordan Lee",
+        relationship: "spouse",
+        screeningOutcome: { feverFree: true },
+      },
     });
     expect(checkedIn.statusCode).toBe(201);
     const visitorId = checkedIn.json().id as string;
 
     // 30 — check out
-    const checkedOut = await app.inject({ method: "POST", url: `/api/v1/ipu-visitors/${visitorId}/check-out`, headers: SUPER });
+    const checkedOut = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-visitors/${visitorId}/check-out`,
+      headers: SUPER,
+    });
     expect(checkedOut.statusCode).toBe(200);
     expect(checkedOut.json().checkedOutAt).not.toBeNull();
 
@@ -1022,7 +1175,13 @@ describe("M37-T11 §4.1 visitors + visitor restrictions (routes 29-31)", () => {
       method: "POST",
       url: "/api/v1/ipu-visitor-restrictions",
       headers: SUPER,
-      payload: { scope: "unit", unitId: randomUUID(), restrictionKind: "mask_required", rationale: "Local respiratory outbreak.", sourceKind: "infection_control" },
+      payload: {
+        scope: "unit",
+        unitId: randomUUID(),
+        restrictionKind: "mask_required",
+        rationale: "Local respiratory outbreak.",
+        sourceKind: "infection_control",
+      },
     });
     expect(applied.statusCode).toBe(201);
     const restrictionId = applied.json().id as string;
@@ -1050,7 +1209,12 @@ describe("M37-T11 §4.1 meal logging (route 32)", () => {
       method: "POST",
       url: "/api/v1/ipu-meals",
       headers: SUPER,
-      payload: { ipuAdmissionId: randomUUID(), serviceDate: "2026-08-04", mealSlot: "lunch", intakeFraction: 0.5 },
+      payload: {
+        ipuAdmissionId: randomUUID(),
+        serviceDate: "2026-08-04",
+        mealSlot: "lunch",
+        intakeFraction: 0.5,
+      },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().mealSlot).toBe("lunch");
@@ -1063,8 +1227,16 @@ describe("M37-T11 §4.1 meal logging (route 32)", () => {
 describe("M37-T11 §4.1 equipment lifecycle (routes 33-36)", () => {
   it("creates equipment, lists it, logs maintenance + an inspection, assigns it to a bed", async () => {
     const { app, service } = makeServer();
-    const unit = await service.createUnit(SEED_ACTOR, { facilityId: randomUUID(), displayName: "Equip Seed Unit", bedCount: 1 });
-    const room = await service.createRoom(SEED_ACTOR, unit.id, { roomNumber: "1", kind: "private", bedCount: 1 });
+    const unit = await service.createUnit(SEED_ACTOR, {
+      facilityId: randomUUID(),
+      displayName: "Equip Seed Unit",
+      bedCount: 1,
+    });
+    const room = await service.createRoom(SEED_ACTOR, unit.id, {
+      roomNumber: "1",
+      kind: "private",
+      bedCount: 1,
+    });
     const bed = await service.createBed(SEED_ACTOR, room.id, { bedLabel: "A" });
 
     // 33b — create
@@ -1072,7 +1244,12 @@ describe("M37-T11 §4.1 equipment lifecycle (routes 33-36)", () => {
       method: "POST",
       url: "/api/v1/ipu-equipment",
       headers: SUPER,
-      payload: { serialNumber: "SN-001", equipmentType: "oxygen_concentrator", manufacturer: "Acme", modelNumber: "OC-9" },
+      payload: {
+        serialNumber: "SN-001",
+        equipmentType: "oxygen_concentrator",
+        manufacturer: "Acme",
+        modelNumber: "OC-9",
+      },
     });
     expect(created.statusCode).toBe(201);
     const equipmentId = created.json().id as string;
@@ -1096,7 +1273,11 @@ describe("M37-T11 §4.1 equipment lifecycle (routes 33-36)", () => {
       method: "POST",
       url: `/api/v1/ipu-equipment/${equipmentId}/inspection`,
       headers: SUPER,
-      payload: { inspectionKind: "annual_biomed", outcome: "pass", nextInspectionDueDate: "2027-08-04" },
+      payload: {
+        inspectionKind: "annual_biomed",
+        outcome: "pass",
+        nextInspectionDueDate: "2027-08-04",
+      },
     });
     expect(inspected.statusCode).toBe(200);
 
@@ -1131,7 +1312,11 @@ describe("M37-T11 §4.1 body release (route 37)", () => {
     expect(advanced.statusCode).toBe(200);
 
     // 37 (GET) — read
-    const read = await app.inject({ method: "GET", url: `/api/v1/ipu-body-release/${admissionId}`, headers: SUPER });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-body-release/${admissionId}`,
+      headers: SUPER,
+    });
     expect(read.statusCode).toBe(200);
     expect(read.json().ipuAdmissionId).toBe(admissionId);
 
@@ -1144,7 +1329,11 @@ describe("M37-T11 §4.1 body release (route 37)", () => {
 describe("M37-T11 §4.1 census (route 38)", () => {
   it("reads a census snapshot for a service date", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/ipu-census/2026-08-04", headers: SUPER });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ipu-census/2026-08-04",
+      headers: SUPER,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().serviceDate).toBe("2026-08-04");
     await app.close();

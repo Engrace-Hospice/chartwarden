@@ -7,10 +7,10 @@
 import { sql } from "drizzle-orm";
 import { index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { significantChangeRuleId, significantChangeStatus } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const significantChangeEvents = pgTable(
   "significant_change_event",

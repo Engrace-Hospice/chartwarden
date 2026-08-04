@@ -1,14 +1,16 @@
-// apps/backend/__tests__/portal-seams.test.ts — M31-T06 the seven §4.3 published reader seams + §3.7 eraser.
-//
-// Covers each seam impl over the in-memory slice (PHI-minimal digests in, projections out), the §4.4 consumed
-// contract + published-name tuple, and the §3.7/D15 destruction eraser order-of-operations. No IO.
-import { describe, expect, it } from "vitest";
 import type {
   PortalAccessGrantDigest,
   PortalAccountDigest,
   PortalScopeSet,
   TelehealthVisitDigest,
 } from "@wardenx/types";
+// apps/backend/__tests__/portal-seams.test.ts — M31-T06 the seven §4.3 published reader seams + §3.7 eraser.
+//
+// Covers each seam impl over the in-memory slice (PHI-minimal digests in, projections out), the §4.4 consumed
+// contract + published-name tuple, and the §3.7/D15 destruction eraser order-of-operations. No IO.
+import { describe, expect, it } from "vitest";
+import { createInMemoryPortalEraseStore, erasePortalRecord } from "../src/modules/31-portal/eraser";
+import { PortalStateError } from "../src/modules/31-portal/lifecycle/index";
 import {
   M31_PUBLISHED_SEAM_NAMES,
   M31_REQUIRED_SEAMS,
@@ -20,11 +22,6 @@ import {
   createTelehealthMetricsProvider,
   registerM31PublishedSeams,
 } from "../src/modules/31-portal/seams/index";
-import {
-  createInMemoryPortalEraseStore,
-  erasePortalRecord,
-} from "../src/modules/31-portal/eraser";
-import { PortalStateError } from "../src/modules/31-portal/lifecycle/index";
 
 const scope = (cats: Partial<Record<string, boolean>>): PortalScopeSet => ({
   categories: cats as PortalScopeSet["categories"],
@@ -78,10 +75,26 @@ function visit(over: Partial<TelehealthVisitDigest> = {}): TelehealthVisitDigest
 describe("§4.3 seam 1 — PortalAccountReader", () => {
   const { stores } = createInMemoryM31SeamStores({
     accounts: [
-      { orgId: "org-1", digest: account({ portalAccountId: "a1", status: "active" }), patientIds: ["pat-1"] },
-      { orgId: "org-1", digest: account({ portalAccountId: "a2", userId: "user-2", status: "invited" }), patientIds: ["pat-1"] },
-      { orgId: "org-1", digest: account({ portalAccountId: "a3", userId: "user-3", status: "revoked" }), patientIds: ["pat-2"] },
-      { orgId: "org-2", digest: account({ portalAccountId: "b1", userId: "user-9", status: "active" }), patientIds: ["pat-9"] },
+      {
+        orgId: "org-1",
+        digest: account({ portalAccountId: "a1", status: "active" }),
+        patientIds: ["pat-1"],
+      },
+      {
+        orgId: "org-1",
+        digest: account({ portalAccountId: "a2", userId: "user-2", status: "invited" }),
+        patientIds: ["pat-1"],
+      },
+      {
+        orgId: "org-1",
+        digest: account({ portalAccountId: "a3", userId: "user-3", status: "revoked" }),
+        patientIds: ["pat-2"],
+      },
+      {
+        orgId: "org-2",
+        digest: account({ portalAccountId: "b1", userId: "user-9", status: "active" }),
+        patientIds: ["pat-9"],
+      },
     ],
   });
   const reader = createPortalAccountReader(stores.accounts);
@@ -109,10 +122,27 @@ describe("§4.3 seam 1 — PortalAccountReader", () => {
 describe("§4.3 seam 2 — PortalAccessGrantReader", () => {
   const { stores } = createInMemoryM31SeamStores({
     grants: [
-      { orgId: "org-1", digest: grant({ grantId: "g1", portalAccountId: "a1", patientId: "pat-1" }) },
-      { orgId: "org-1", digest: grant({ grantId: "g2", portalAccountId: "a1", patientId: "pat-2" }) },
-      { orgId: "org-1", digest: grant({ grantId: "g3", portalAccountId: "a2", patientId: "pat-1" }) },
-      { orgId: "org-1", digest: grant({ grantId: "g4", portalAccountId: "a2", patientId: "pat-3", revokedAt: "2026-07-15T00:00:00.000Z" }) },
+      {
+        orgId: "org-1",
+        digest: grant({ grantId: "g1", portalAccountId: "a1", patientId: "pat-1" }),
+      },
+      {
+        orgId: "org-1",
+        digest: grant({ grantId: "g2", portalAccountId: "a1", patientId: "pat-2" }),
+      },
+      {
+        orgId: "org-1",
+        digest: grant({ grantId: "g3", portalAccountId: "a2", patientId: "pat-1" }),
+      },
+      {
+        orgId: "org-1",
+        digest: grant({
+          grantId: "g4",
+          portalAccountId: "a2",
+          patientId: "pat-3",
+          revokedAt: "2026-07-15T00:00:00.000Z",
+        }),
+      },
     ],
   });
   const reader = createPortalAccessGrantReader(stores.grants);
@@ -123,7 +153,9 @@ describe("§4.3 seam 2 — PortalAccessGrantReader", () => {
   });
 
   it("resolves the active grant for (account, patient)", async () => {
-    expect((await reader.activeGrantForAccountAndPatient("org-1", "a1", "pat-2"))?.grantId).toBe("g2");
+    expect((await reader.activeGrantForAccountAndPatient("org-1", "a1", "pat-2"))?.grantId).toBe(
+      "g2",
+    );
     expect(await reader.activeGrantForAccountAndPatient("org-1", "a2", "pat-3")).toBeNull(); // revoked
   });
 
@@ -137,8 +169,25 @@ describe("§4.3 seam 2 — PortalAccessGrantReader", () => {
 describe("§4.3 seams 4/5 — Telehealth metrics + visit reader", () => {
   const { stores } = createInMemoryM31SeamStores({
     visits: [
-      { orgId: "org-1", digest: visit({ telehealthVisitId: "tv-1", m17VisitId: "v-1", lifecycleState: "ended_clean", totalDurationSec: 1200 }) },
-      { orgId: "org-1", digest: visit({ telehealthVisitId: "tv-2", m17VisitId: "v-2", lifecycleState: "ended_aborted", audioOnlyFallbackActive: true, totalDurationSec: 300 }) },
+      {
+        orgId: "org-1",
+        digest: visit({
+          telehealthVisitId: "tv-1",
+          m17VisitId: "v-1",
+          lifecycleState: "ended_clean",
+          totalDurationSec: 1200,
+        }),
+      },
+      {
+        orgId: "org-1",
+        digest: visit({
+          telehealthVisitId: "tv-2",
+          m17VisitId: "v-2",
+          lifecycleState: "ended_aborted",
+          audioOnlyFallbackActive: true,
+          totalDurationSec: 300,
+        }),
+      },
     ],
   });
   const impls = createM31PublishedSeamImpls(stores);
@@ -158,13 +207,16 @@ describe("§4.3 seams 4/5 — Telehealth metrics + visit reader", () => {
   it("sums minutes by tenant", async () => {
     const mins = createTelehealthMetricsProvider(stores.telehealth);
     expect(
-      (await mins.minutesByTenant("org-1", "2026-08-01T00:00:00.000Z", "2026-08-02T00:00:00.000Z")).totalMinutes,
+      (await mins.minutesByTenant("org-1", "2026-08-01T00:00:00.000Z", "2026-08-02T00:00:00.000Z"))
+        .totalMinutes,
     ).toBe(25); // (1200+300)/60
   });
 
   it("reads a visit by id and by M17 visit id, null cross-tenant", async () => {
     expect((await impls.telehealthVisitReader.getById("org-1", "tv-1"))?.m17VisitId).toBe("v-1");
-    expect((await impls.telehealthVisitReader.getByM17VisitId("org-1", "v-2"))?.telehealthVisitId).toBe("tv-2");
+    expect(
+      (await impls.telehealthVisitReader.getByM17VisitId("org-1", "v-2"))?.telehealthVisitId,
+    ).toBe("tv-2");
     expect(await impls.telehealthVisitReader.getById("org-2", "tv-1")).toBeNull();
   });
 });
@@ -172,7 +224,12 @@ describe("§4.3 seams 4/5 — Telehealth metrics + visit reader", () => {
 describe("§4.3 seam 6 — PortalSessionMinter (M28 SMART user-launch)", () => {
   it("mints a session bound to the resolved active grant", async () => {
     const { stores, createdSessions } = createInMemoryM31SeamStores({
-      grants: [{ orgId: "org-1", digest: grant({ grantId: "g1", portalAccountId: "a1", patientId: "pat-1" }) }],
+      grants: [
+        {
+          orgId: "org-1",
+          digest: grant({ grantId: "g1", portalAccountId: "a1", patientId: "pat-1" }),
+        },
+      ],
     });
     const minter = createPortalSessionMinter({ grants: stores.grants, sessions: stores.sessions });
     const out = await minter.mintSessionForSmartLaunch({
@@ -185,7 +242,11 @@ describe("§4.3 seam 6 — PortalSessionMinter (M28 SMART user-launch)", () => {
     expect(out.activeGrantId).toBe("g1");
     expect(out.resolvedScopes).toHaveLength(2);
     expect(createdSessions).toHaveLength(1);
-    expect(createdSessions[0]).toMatchObject({ portalAccountId: "a1", patientId: "pat-1", activeGrantId: "g1" });
+    expect(createdSessions[0]).toMatchObject({
+      portalAccountId: "a1",
+      patientId: "pat-1",
+      activeGrantId: "g1",
+    });
   });
 
   it("fails closed when the account has no active grant for the patient", async () => {
@@ -207,8 +268,26 @@ describe("§4.3 seam 7 — PortalDisclosureAccountingProvider (§164.528)", () =
   it("returns only in-window disclosures for the patient", async () => {
     const { stores } = createInMemoryM31SeamStores({
       disclosures: [
-        { orgId: "org-1", record: { portalAccountId: "a1", patientId: "pat-1", routePath: "/p/pat-1/medications", dataCategoriesDisclosed: ["medications"], viewedAt: "2026-07-10T00:00:00.000Z" } },
-        { orgId: "org-1", record: { portalAccountId: "a1", patientId: "pat-1", routePath: "/p/pat-1/visits", dataCategoriesDisclosed: ["visits"], viewedAt: "2026-06-01T00:00:00.000Z" } },
+        {
+          orgId: "org-1",
+          record: {
+            portalAccountId: "a1",
+            patientId: "pat-1",
+            routePath: "/p/pat-1/medications",
+            dataCategoriesDisclosed: ["medications"],
+            viewedAt: "2026-07-10T00:00:00.000Z",
+          },
+        },
+        {
+          orgId: "org-1",
+          record: {
+            portalAccountId: "a1",
+            patientId: "pat-1",
+            routePath: "/p/pat-1/visits",
+            dataCategoriesDisclosed: ["visits"],
+            viewedAt: "2026-06-01T00:00:00.000Z",
+          },
+        },
       ],
     });
     const impls = createM31PublishedSeamImpls(stores);

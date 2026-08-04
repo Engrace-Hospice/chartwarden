@@ -114,8 +114,11 @@ describe("M33 §4.4 / W-R-05 consent narrowing — FAIL-CLOSED when M39 is unava
 
 function makeAuditPorts(opts: { dekThrows?: boolean } = {}) {
   const calls: string[] = [];
-  const appended: { queryFiltersCipher: string; isConsentNarrowed: boolean; consentNarrowingReason: string | null }[] =
-    [];
+  const appended: {
+    queryFiltersCipher: string;
+    isConsentNarrowed: boolean;
+    consentNarrowingReason: string | null;
+  }[] = [];
   const emitted: unknown[] = [];
   return {
     calls,
@@ -167,7 +170,9 @@ const AUDIT_INPUT: DrilldownAuditInput = {
 describe("M33 §3.6 / W-R-05 audit writer — FAIL-CLOSED when the per-tenant DEK is unavailable", () => {
   it("★ a DEK-port throw DENIES the drilldown and writes NOTHING (no plaintext fallback)", async () => {
     const { ports, calls, appended, emitted } = makeAuditPorts({ dekThrows: true });
-    await expect(writeDrilldownAudit(AUDIT_INPUT, ports)).rejects.toBeInstanceOf(DrilldownDekUnavailable);
+    await expect(writeDrilldownAudit(AUDIT_INPUT, ports)).rejects.toBeInstanceOf(
+      DrilldownDekUnavailable,
+    );
     // The encrypt was attempted, but NOTHING was persisted or emitted — fail-closed, never plaintext at rest.
     expect(calls).toEqual(["encrypt"]);
     expect(appended).toHaveLength(0);

@@ -15,7 +15,11 @@
 // numerator, which is the direction that produces a false CoP failure.
 //
 // PURE — entries, durations and `now` are injected; the Drizzle reads + the cron land in M15-T06.
-import { VOLUNTEER_RATIO_POLICY, fiscalYearFor, volunteerRatioStatus } from "@wardenx/discipline-plans";
+import {
+  VOLUNTEER_RATIO_POLICY,
+  fiscalYearFor,
+  volunteerRatioStatus,
+} from "@wardenx/discipline-plans";
 import type {
   EncounterId,
   FiscalYear,
@@ -118,7 +122,8 @@ export function aggregateVolunteerHours(args: {
   readonly asOfAt: IsoInstant;
   readonly fiscalYearStartMonth?: number;
 }): VolunteerHourAggregate {
-  const startMonth = args.fiscalYearStartMonth ?? VOLUNTEER_RATIO_POLICY.defaultFiscalYearStartMonth;
+  const startMonth =
+    args.fiscalYearStartMonth ?? VOLUNTEER_RATIO_POLICY.defaultFiscalYearStartMonth;
   const ledgered = new Set(
     args.existingEntries
       .map((e) => e.sourceEncounterId)

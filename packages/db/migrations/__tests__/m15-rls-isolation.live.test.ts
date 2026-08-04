@@ -61,263 +61,268 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "volunteer_hour_entry", key: "hourEntry" },
 ];
 
-describe.skipIf(!DB_URL)("M15 Discipline Care Plans — RLS cross-tenant denial — LIVE Postgres (§3.7)", () => {
-  let db: Client;
-  let a: SeedIds;
+describe.skipIf(!DB_URL)(
+  "M15 Discipline Care Plans — RLS cross-tenant denial — LIVE Postgres (§3.7)",
+  () => {
+    let db: Client;
+    let a: SeedIds;
 
-  async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
-    await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
-    try {
-      return await fn();
-    } finally {
-      await db.query("RESET ROLE");
-    }
-  }
-
-  async function resetSchema() {
-    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
-    await db.query("CREATE SCHEMA public");
-    for (const r of ROLES) {
-      await db.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-      );
-    }
-  }
-
-  async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    const files = readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-    for (const f of files) {
-      let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) {
-        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+    async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
+      await db.query("SET ROLE wardenx_app");
+      await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
+      try {
+        return await fn();
+      } finally {
+        await db.query("RESET ROLE");
       }
-      await db.query(sql);
     }
-  }
 
-  /** Seed one full M15 chain for `org` as superuser (RLS + grants bypassed). `n` distinguishes the rows. */
-  async function seedOrg(org: string, n: number): Promise<SeedIds> {
-    const patient = `4444444${n}-4444-4444-4444-444444444444`;
-    const admission = `5555555${n}-5555-5555-5555-555555555555`;
-    const pe = (
-      await db.query(
-        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+    async function resetSchema() {
+      await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await db.query("CREATE SCHEMA public");
+      for (const r of ROLES) {
+        await db.query(
+          `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
+            `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
+        );
+      }
+    }
+
+    async function applyMigrations() {
+      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const files = readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
+      for (const f of files) {
+        let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+        if (stripVector) {
+          sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+        }
+        await db.query(sql);
+      }
+    }
+
+    /** Seed one full M15 chain for `org` as superuser (RLS + grants bypassed). `n` distinguishes the rows. */
+    async function seedOrg(org: string, n: number): Promise<SeedIds> {
+      const patient = `4444444${n}-4444-4444-4444-444444444444`;
+      const admission = `5555555${n}-5555-5555-5555-555555555555`;
+      const pe = (
+        await db.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1,'00000${n}','PE','123456789${n}','enc','0930') RETURNING id`,
-        [org],
-      )
-    ).rows[0].id as string;
-    const location = (
-      await db.query(
-        `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+          [org],
+        )
+      ).rows[0].id as string;
+      const location = (
+        await db.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
          VALUES ($1,'Main Office','1 Main St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
-        [pe],
-      )
-    ).rows[0].id as string;
-    const plan = (
-      await db.query(
-        `INSERT INTO discipline_care_plan (organization_id, patient_id, admission_id, provider_entity_id,
+          [pe],
+        )
+      ).rows[0].id as string;
+      const plan = (
+        await db.query(
+          `INSERT INTO discipline_care_plan (organization_id, patient_id, admission_id, provider_entity_id,
            location_id, kind, status, aide_membership_id, supervising_rn_membership_id, next_supervisory_due_at,
            initial_assessment_clock_started_at)
          VALUES ($1,$2,$3,$4,$5,'aide_poc','active',$6,$6, now() + interval '14 days', now()) RETURNING id`,
-        [org, patient, admission, pe, location, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const version = (
-      await db.query(
-        `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
+          [org, patient, admission, pe, location, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const version = (
+        await db.query(
+          `INSERT INTO discipline_care_plan_version (organization_id, provider_entity_id, location_id, plan_id,
            sequence, status, kind, state_snapshot, required_signer_set, finalized_at)
          VALUES ($1,$2,$3,$4,1,'in_review','initial','{"goals":[]}'::jsonb,
            '[{"role":"rn_case_manager","count":1,"isAcknowledgment":false}]'::jsonb, now()) RETURNING id`,
-        [org, pe, location, plan],
-      )
-    ).rows[0].id as string;
-    const signature = (
-      await db.query(
-        `INSERT INTO discipline_care_plan_signature (organization_id, provider_entity_id, location_id,
+          [org, pe, location, plan],
+        )
+      ).rows[0].id as string;
+      const signature = (
+        await db.query(
+          `INSERT INTO discipline_care_plan_signature (organization_id, provider_entity_id, location_id,
            version_id, signer_membership_id, signer_role, attestation_text)
          VALUES ($1,$2,$3,$4,$5,'rn_case_manager','I attest to this plan of care.') RETURNING id`,
-        [org, pe, location, version, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const goal = (
-      await db.query(
-        `INSERT INTO discipline_goal (organization_id, provider_entity_id, location_id, plan_id, source,
+          [org, pe, location, version, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const goal = (
+        await db.query(
+          `INSERT INTO discipline_goal (organization_id, provider_entity_id, location_id, plan_id, source,
            original_text, added_by_membership_id, added_by_discipline)
          VALUES ($1,$2,$3,$4,'clinical','Patient bathes with standby assist.',$5,'aide') RETURNING id`,
-        [org, pe, location, plan, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const intervention = (
-      await db.query(
-        `INSERT INTO discipline_intervention (organization_id, provider_entity_id, location_id, plan_id,
+          [org, pe, location, plan, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const intervention = (
+        await db.query(
+          `INSERT INTO discipline_intervention (organization_id, provider_entity_id, location_id, plan_id,
            scope_text, frequency_text, frequency_value, discipline, added_by_membership_id, added_by_discipline)
          VALUES ($1,$2,$3,$4,'Assist with bathing','three times weekly','3:visit:week','aide',$5,'aide')
          RETURNING id`,
-        [org, pe, location, plan, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const assessment = (
-      await db.query(
-        `INSERT INTO discipline_assessment (organization_id, provider_entity_id, location_id, plan_id, kind,
+          [org, pe, location, plan, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const assessment = (
+        await db.query(
+          `INSERT INTO discipline_assessment (organization_id, provider_entity_id, location_id, plan_id, kind,
            status, captured_at, is_initial, data, captured_by_membership_id)
          VALUES ($1,$2,$3,$4,'aide_environmental','draft', now(), true, '{"notes":"home is safe"}'::jsonb,$5)
          RETURNING id`,
-        [org, pe, location, plan, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const supervisoryVisit = (
-      await db.query(
-        `INSERT INTO aide_supervisory_visit (organization_id, provider_entity_id, location_id, plan_id,
+          [org, pe, location, plan, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const supervisoryVisit = (
+        await db.query(
+          `INSERT INTO aide_supervisory_visit (organization_id, provider_entity_id, location_id, plan_id,
            aide_membership_id, supervising_rn_membership_id, supervisory_at, attestation_mode,
            aide_performance_satisfactory, supervisory_narrative, next_due_at, cadence_days_at_insert,
            captured_by_membership_id)
          VALUES ($1,$2,$3,$4,$5,$5, now(),'aide_present', true,
            'Observed the aide provide personal care; technique and infection control were appropriate.',
            now() + interval '14 days', 14, $5) RETURNING id`,
-        [org, pe, location, plan, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const assignment = (
-      await db.query(
-        `INSERT INTO volunteer_assignment (organization_id, provider_entity_id, location_id, plan_id,
+          [org, pe, location, plan, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const assignment = (
+        await db.query(
+          `INSERT INTO volunteer_assignment (organization_id, provider_entity_id, location_id, plan_id,
            volunteer_membership_id, coordinator_membership_id, activities, starts_at)
          VALUES ($1,$2,$3,$4,$5,$5,'["companionship"]'::jsonb, now()) RETURNING id`,
-        [org, pe, location, plan, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const gate = (
-      await db.query(
-        `INSERT INTO volunteer_compliance_gate (organization_id, volunteer_membership_id, gate_kind, status,
+          [org, pe, location, plan, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const gate = (
+        await db.query(
+          `INSERT INTO volunteer_compliance_gate (organization_id, volunteer_membership_id, gate_kind, status,
            valid_from, valid_until, recorded_by_membership_id)
          VALUES ($1,$2,'tb_screening','satisfied', now(), now() + interval '365 days', $2) RETURNING id`,
-        [org, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    const ledger = (
-      await db.query(
-        `INSERT INTO volunteer_hour_ledger (organization_id, provider_entity_id, fiscal_year,
+          [org, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      const ledger = (
+        await db.query(
+          `INSERT INTO volunteer_hour_ledger (organization_id, provider_entity_id, fiscal_year,
            total_volunteer_hour_minutes)
          VALUES ($1,$2,2026,600) RETURNING id`,
-        [org, pe],
-      )
-    ).rows[0].id as string;
-    const hourEntry = (
-      await db.query(
-        `INSERT INTO volunteer_hour_entry (organization_id, ledger_id, volunteer_membership_id, source,
+          [org, pe],
+        )
+      ).rows[0].id as string;
+      const hourEntry = (
+        await db.query(
+          `INSERT INTO volunteer_hour_entry (organization_id, ledger_id, volunteer_membership_id, source,
            duration_minutes, occurred_at)
          VALUES ($1,$2,$3,'volunteer_admin_hours',120, now()) RETURNING id`,
-        [org, ledger, MEMBERSHIP],
-      )
-    ).rows[0].id as string;
-    return {
-      pe,
-      location,
-      plan,
-      version,
-      signature,
-      goal,
-      intervention,
-      assessment,
-      supervisoryVisit,
-      assignment,
-      gate,
-      ledger,
-      hourEntry,
-    };
-  }
-
-  beforeAll(async () => {
-    db = new Client({ connectionString: DB_URL });
-    await db.connect();
-    await resetSchema();
-    await applyMigrations();
-    await db.query(
-      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
-      [ORG_A, ORG_B],
-    );
-    a = await seedOrg(ORG_A, 1);
-    await seedOrg(ORG_B, 2);
-  }, 120_000);
-
-  afterAll(async () => {
-    if (db) await db.end();
-  });
-
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
-    const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].rolbypassrls).toBe(false);
-  });
-
-  it("every M15 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0099_discipline_plans_m15_rls_audit_triggers.sql"),
-      "utf8",
-    );
-    const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
-    expect(policyBlocks.length).toBe(11);
-    for (const block of policyBlocks) {
-      const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
-      expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
-      expect(block).not.toMatch(/pg_has_role/i);
-      expect(block).not.toMatch(/IS NULL/i);
-      // The PE narrowing the patient-bearing tables carry is ABAC at the handler, never a second pivot.
-      expect(block).not.toMatch(/provider_entity_id\s*=/i);
+          [org, ledger, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+      return {
+        pe,
+        location,
+        plan,
+        version,
+        signature,
+        goal,
+        intervention,
+        assessment,
+        supervisoryVisit,
+        assignment,
+        gate,
+        ledger,
+        hourEntry,
+      };
     }
-  });
 
-  it.each(COVERED)(
-    "$table: org A sees its row, org B cannot (cross-tenant denial)",
-    async ({ table, key }) => {
-      const id = a[key];
-      const seenByA = await withOrg(ORG_A, () =>
-        db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
+    beforeAll(async () => {
+      db = new Client({ connectionString: DB_URL });
+      await db.connect();
+      await resetSchema();
+      await applyMigrations();
+      await db.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
+        [ORG_A, ORG_B],
       );
-      expect(seenByA.rows[0].n).toBe(1); // isolation is not "deny everything"
-      const seenByB = await withOrg(ORG_B, () =>
-        db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
-      );
-      expect(seenByB.rows[0].n).toBe(0); // org B cannot read org A's row
-    },
-  );
+      a = await seedOrg(ORG_A, 1);
+      await seedOrg(ORG_B, 2);
+    }, 120_000);
 
-  it("an UPDATE from the wrong tenant touches zero rows (not just an unreadable SELECT)", async () => {
-    const res = await withOrg(ORG_B, () =>
-      db.query("UPDATE discipline_goal SET measurable_outcome = 'tampered' WHERE id=$1", [a.goal]),
+    afterAll(async () => {
+      if (db) await db.end();
+    });
+
+    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+      const { rows } = await db.query<{ rolbypassrls: boolean }>(
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].rolbypassrls).toBe(false);
+    });
+
+    it("every M15 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
+      const rls = readFileSync(
+        join(MIGRATIONS_DIR, "0099_discipline_plans_m15_rls_audit_triggers.sql"),
+        "utf8",
+      );
+      const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
+      expect(policyBlocks.length).toBe(11);
+      for (const block of policyBlocks) {
+        const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
+        expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
+        expect(block).not.toMatch(/pg_has_role/i);
+        expect(block).not.toMatch(/IS NULL/i);
+        // The PE narrowing the patient-bearing tables carry is ABAC at the handler, never a second pivot.
+        expect(block).not.toMatch(/provider_entity_id\s*=/i);
+      }
+    });
+
+    it.each(COVERED)(
+      "$table: org A sees its row, org B cannot (cross-tenant denial)",
+      async ({ table, key }) => {
+        const id = a[key];
+        const seenByA = await withOrg(ORG_A, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
+        );
+        expect(seenByA.rows[0].n).toBe(1); // isolation is not "deny everything"
+        const seenByB = await withOrg(ORG_B, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
+        );
+        expect(seenByB.rows[0].n).toBe(0); // org B cannot read org A's row
+      },
     );
-    expect(res.rowCount).toBe(0);
-    const check = await db.query("SELECT measurable_outcome FROM discipline_goal WHERE id=$1", [
-      a.goal,
-    ]);
-    expect(check.rows[0].measurable_outcome).toBeNull();
-  });
 
-  it("a WITH CHECK refuses an INSERT into another tenant's scope", async () => {
-    await expect(
-      withOrg(ORG_B, () =>
-        db.query(
-          `INSERT INTO volunteer_compliance_gate (organization_id, volunteer_membership_id, gate_kind, status,
+    it("an UPDATE from the wrong tenant touches zero rows (not just an unreadable SELECT)", async () => {
+      const res = await withOrg(ORG_B, () =>
+        db.query("UPDATE discipline_goal SET measurable_outcome = 'tampered' WHERE id=$1", [
+          a.goal,
+        ]),
+      );
+      expect(res.rowCount).toBe(0);
+      const check = await db.query("SELECT measurable_outcome FROM discipline_goal WHERE id=$1", [
+        a.goal,
+      ]);
+      expect(check.rows[0].measurable_outcome).toBeNull();
+    });
+
+    it("a WITH CHECK refuses an INSERT into another tenant's scope", async () => {
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO volunteer_compliance_gate (organization_id, volunteer_membership_id, gate_kind, status,
              valid_from, recorded_by_membership_id)
            VALUES ($1,$2,'annual_ce','satisfied', now(), $2)`,
-          [ORG_A, MEMBERSHIP], // B tries to write a row scoped to A
+            [ORG_A, MEMBERSHIP], // B tries to write a row scoped to A
+          ),
         ),
-      ),
-    ).rejects.toThrow();
-  });
+      ).rejects.toThrow();
+    });
 
-  it("wardenx_app holds no DELETE on the M15 tables — destruction runs through the eraser (§8.5)", async () => {
-    const { rows } = await db.query<{ table_name: string }>(
-      `SELECT table_name FROM information_schema.role_table_grants
+    it("wardenx_app holds no DELETE on the M15 tables — destruction runs through the eraser (§8.5)", async () => {
+      const { rows } = await db.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.role_table_grants
        WHERE grantee='wardenx_app' AND privilege_type='DELETE' AND table_name = ANY($1)`,
-      [COVERED.map((c) => c.table)],
-    );
-    expect(rows.map((r) => r.table_name)).toEqual([]);
-  });
-});
+        [COVERED.map((c) => c.table)],
+      );
+      expect(rows.map((r) => r.table_name)).toEqual([]);
+    });
+  },
+);

@@ -13,7 +13,9 @@ const LOC = "loc-1";
 const SKU = "sku-1";
 const AT = new Date("2026-07-01T12:00:00Z");
 
-const rule = (over: Partial<RoutingRuleCandidate> & Pick<RoutingRuleCandidate, "ruleId" | "scopeKind">): RoutingRuleCandidate => ({
+const rule = (
+  over: Partial<RoutingRuleCandidate> & Pick<RoutingRuleCandidate, "ruleId" | "scopeKind">,
+): RoutingRuleCandidate => ({
   scopeId: null,
   skuClassPattern: "E",
   assignedVendorId: "vendor-default",
@@ -44,7 +46,12 @@ describe("D4 precedence ladder", () => {
     const res = resolveVendorRouting(
       [
         rule({ ruleId: "r-platform", scopeKind: "platform", assignedVendorId: "v-platform" }),
-        rule({ ruleId: "r-tenant", scopeKind: "tenant", scopeId: ORG, assignedVendorId: "v-tenant" }),
+        rule({
+          ruleId: "r-tenant",
+          scopeKind: "tenant",
+          scopeId: ORG,
+          assignedVendorId: "v-tenant",
+        }),
         rule({ ruleId: "r-loc", scopeKind: "location", scopeId: LOC, assignedVendorId: "v-loc" }),
         rule({ ruleId: "r-sku", scopeKind: "sku", scopeId: SKU, assignedVendorId: "v-sku" }),
       ],
@@ -61,14 +68,19 @@ describe("D4 precedence ladder", () => {
     const res = resolveVendorRouting(
       [
         rule({ ruleId: "r-loc", scopeKind: "location", scopeId: LOC, skuClassPattern: "A" }),
-        rule({ ruleId: "r-tenant", scopeKind: "tenant", scopeId: ORG, assignedVendorId: "v-tenant" }),
+        rule({
+          ruleId: "r-tenant",
+          scopeKind: "tenant",
+          scopeId: ORG,
+          assignedVendorId: "v-tenant",
+        }),
       ],
       input,
     );
     expect(res.resolved.precedenceLevelUsed).toBe("tenant");
-    expect(
-      res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-loc")?.reason,
-    ).toBe("sku_class_mismatch");
+    expect(res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-loc")?.reason).toBe(
+      "sku_class_mismatch",
+    );
   });
 
   it("ignores a rule that is not effective at the resolution instant", () => {
@@ -80,28 +92,45 @@ describe("D4 precedence ladder", () => {
           scopeId: SKU,
           effectiveTo: new Date("2026-06-01T00:00:00Z"),
         }),
-        rule({ ruleId: "r-tenant", scopeKind: "tenant", scopeId: ORG, assignedVendorId: "v-tenant" }),
+        rule({
+          ruleId: "r-tenant",
+          scopeKind: "tenant",
+          scopeId: ORG,
+          assignedVendorId: "v-tenant",
+        }),
       ],
       input,
     );
     expect(res.resolved.precedenceLevelUsed).toBe("tenant");
-    expect(
-      res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-sku-expired")?.reason,
-    ).toBe("not_effective_at_resolution_time");
+    expect(res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-sku-expired")?.reason).toBe(
+      "not_effective_at_resolution_time",
+    );
   });
 
   it("breaks a within-scope tie on precedencePriority, lowest first", () => {
     const res = resolveVendorRouting(
       [
-        rule({ ruleId: "r-b", scopeKind: "tenant", scopeId: ORG, precedencePriority: 50, assignedVendorId: "v-b" }),
-        rule({ ruleId: "r-a", scopeKind: "tenant", scopeId: ORG, precedencePriority: 10, assignedVendorId: "v-a" }),
+        rule({
+          ruleId: "r-b",
+          scopeKind: "tenant",
+          scopeId: ORG,
+          precedencePriority: 50,
+          assignedVendorId: "v-b",
+        }),
+        rule({
+          ruleId: "r-a",
+          scopeKind: "tenant",
+          scopeId: ORG,
+          precedencePriority: 10,
+          assignedVendorId: "v-a",
+        }),
       ],
       input,
     );
     expect(res.resolved.matchedRuleId).toBe("r-a");
-    expect(
-      res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-b")?.reason,
-    ).toBe("outranked_within_scope");
+    expect(res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-b")?.reason).toBe(
+      "outranked_within_scope",
+    );
   });
 
   it("breaks a priority tie deterministically on ruleId", () => {
@@ -122,9 +151,9 @@ describe("D4 precedence ladder", () => {
       input,
     );
     expect(res.resolved.candidatesEvaluated).toHaveLength(2);
-    expect(
-      res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-sku-other")?.reason,
-    ).toBe("no_pin_for_sku");
+    expect(res.resolved.candidatesEvaluated.find((c) => c.ruleId === "r-sku-other")?.reason).toBe(
+      "no_pin_for_sku",
+    );
     expect(res.resolved.routingPolicyDigest).toBe("sha256:test");
   });
 
@@ -169,10 +198,18 @@ describe("§2.10 vendor-assignment coherence", () => {
 
   it("requires a vendor id in vendor mode", () => {
     expect(
-      isVendorAssignmentCoherent({ ...base, assignedFulfillmentMode: "vendor", assignedVendorId: "v" }),
+      isVendorAssignmentCoherent({
+        ...base,
+        assignedFulfillmentMode: "vendor",
+        assignedVendorId: "v",
+      }),
     ).toBe(true);
     expect(
-      isVendorAssignmentCoherent({ ...base, assignedFulfillmentMode: "vendor", assignedVendorId: null }),
+      isVendorAssignmentCoherent({
+        ...base,
+        assignedFulfillmentMode: "vendor",
+        assignedVendorId: null,
+      }),
     ).toBe(false);
   });
 

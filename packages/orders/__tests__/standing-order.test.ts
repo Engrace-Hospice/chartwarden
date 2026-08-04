@@ -1,22 +1,24 @@
+import type { OrderKind } from "@wardenx/types";
 // @wardenx/orders — §2.4 D5 standing-order template + spawn engine — M11-T04.
 import { describe, expect, it } from "vitest";
-import type { OrderKind } from "@wardenx/types";
+import type { OrderSideEffect } from "../src/lifecycle/effects";
 import {
+  DEFAULT_SPAWN_HOUR,
+  type StandingOrderSpawnFacts,
+  assertSpawnAllowed,
   assertStandingKindEligible,
   computeNextSpawnAt,
   isSpawnDue,
-  assertSpawnAllowed,
   planStandingCreation,
-  planStandingSpawn,
   planStandingDiscontinuation,
-  DEFAULT_SPAWN_HOUR,
-  type StandingOrderSpawnFacts,
+  planStandingSpawn,
 } from "../src/lifecycle/standing-order";
-import type { OrderSideEffect } from "../src/lifecycle/effects";
 
 const TZ = "America/Los_Angeles";
 function outboxEvents(effects: ReadonlyArray<OrderSideEffect>): string[] {
-  return effects.filter((e): e is Extract<OrderSideEffect, { kind: "outbox" }> => e.kind === "outbox").map((e) => e.event);
+  return effects
+    .filter((e): e is Extract<OrderSideEffect, { kind: "outbox" }> => e.kind === "outbox")
+    .map((e) => e.event);
 }
 
 describe("§2.4 D5 assertStandingKindEligible", () => {
@@ -27,8 +29,16 @@ describe("§2.4 D5 assertStandingKindEligible", () => {
   });
 
   it("rejects dme / comfort_kit / loc-change / recert / idg", () => {
-    for (const kind of ["dme", "comfort_kit", "level_of_care_change", "recertification", "idg_requested"] as OrderKind[]) {
-      expect(() => assertStandingKindEligible(kind)).toThrowError(expect.objectContaining({ code: "STANDING_KIND_NOT_ELIGIBLE" }));
+    for (const kind of [
+      "dme",
+      "comfort_kit",
+      "level_of_care_change",
+      "recertification",
+      "idg_requested",
+    ] as OrderKind[]) {
+      expect(() => assertStandingKindEligible(kind)).toThrowError(
+        expect.objectContaining({ code: "STANDING_KIND_NOT_ELIGIBLE" }),
+      );
     }
   });
 });
@@ -42,11 +52,15 @@ describe("§2.4 D5 computeNextSpawnAt", () => {
   });
 
   it("weekly → next configured weekday (a week out from a same-day anchor)", () => {
-    expect(computeNextSpawnAt("weekly", { daysOfWeek: ["mon"] }, monday0800, TZ)).toBe("2026-06-29T13:00:00.000Z");
+    expect(computeNextSpawnAt("weekly", { daysOfWeek: ["mon"] }, monday0800, TZ)).toBe(
+      "2026-06-29T13:00:00.000Z",
+    );
   });
 
   it("biweekly → the configured weekday a fortnight out", () => {
-    expect(computeNextSpawnAt("biweekly", { daysOfWeek: ["mon"] }, monday0800, TZ)).toBe("2026-07-06T13:00:00.000Z");
+    expect(computeNextSpawnAt("biweekly", { daysOfWeek: ["mon"] }, monday0800, TZ)).toBe(
+      "2026-07-06T13:00:00.000Z",
+    );
   });
 
   it("weekly with no daysOfWeek defaults to the anchor's weekday", () => {
@@ -69,7 +83,9 @@ describe("§2.4 D5 computeNextSpawnAt", () => {
   });
 
   it("honours a tenant spawnHour override", () => {
-    expect(computeNextSpawnAt("daily", { spawnHour: 9 }, monday0800, TZ)).toBe("2026-06-23T16:00:00.000Z");
+    expect(computeNextSpawnAt("daily", { spawnHour: 9 }, monday0800, TZ)).toBe(
+      "2026-06-23T16:00:00.000Z",
+    );
     expect(DEFAULT_SPAWN_HOUR).toBe(6);
   });
 });
@@ -93,25 +109,33 @@ describe("§2.4 D5 spawn gate (isSpawnDue / assertSpawnAllowed)", () => {
   it("is not due / throws when the template is not active", () => {
     const paused = { ...base, status: "paused" as const };
     expect(isSpawnDue(paused, now)).toBe(false);
-    expect(() => assertSpawnAllowed(paused, now)).toThrowError(expect.objectContaining({ code: "STANDING_ORDER_NOT_ACTIVE" }));
+    expect(() => assertSpawnAllowed(paused, now)).toThrowError(
+      expect.objectContaining({ code: "STANDING_ORDER_NOT_ACTIVE" }),
+    );
   });
 
   it("is not due / throws when the template is unsigned (no signature anchor)", () => {
     const unsigned = { ...base, isSigned: false };
     expect(isSpawnDue(unsigned, now)).toBe(false);
-    expect(() => assertSpawnAllowed(unsigned, now)).toThrowError(expect.objectContaining({ code: "STANDING_ORDER_NOT_SIGNED" }));
+    expect(() => assertSpawnAllowed(unsigned, now)).toThrowError(
+      expect.objectContaining({ code: "STANDING_ORDER_NOT_SIGNED" }),
+    );
   });
 
   it("is not due / throws outside the effective window", () => {
     const early = { ...base, effectiveFrom: "2026-07-01T00:00:00.000Z" };
     expect(isSpawnDue(early, now)).toBe(false);
-    expect(() => assertSpawnAllowed(early, now)).toThrowError(expect.objectContaining({ code: "STANDING_OUTSIDE_EFFECTIVE_WINDOW" }));
+    expect(() => assertSpawnAllowed(early, now)).toThrowError(
+      expect.objectContaining({ code: "STANDING_OUTSIDE_EFFECTIVE_WINDOW" }),
+    );
   });
 
   it("is not due / throws when the max_spawns cap is reached", () => {
     const capped = { ...base, maxSpawns: 3, spawnCount: 3 };
     expect(isSpawnDue(capped, now)).toBe(false);
-    expect(() => assertSpawnAllowed(capped, now)).toThrowError(expect.objectContaining({ code: "STANDING_MAX_SPAWNS_REACHED" }));
+    expect(() => assertSpawnAllowed(capped, now)).toThrowError(
+      expect.objectContaining({ code: "STANDING_MAX_SPAWNS_REACHED" }),
+    );
   });
 
   it("treats a null max_spawns as uncapped", () => {
@@ -127,13 +151,15 @@ describe("§2.4 / §5.5 planStandingCreation", () => {
   });
 
   it("rejects an ineligible standing kind", () => {
-    expect(() => planStandingCreation({ kind: "dme", signerDiscipline: "medical_director" })).toThrowError(
-      expect.objectContaining({ code: "STANDING_KIND_NOT_ELIGIBLE" }),
-    );
+    expect(() =>
+      planStandingCreation({ kind: "dme", signerDiscipline: "medical_director" }),
+    ).toThrowError(expect.objectContaining({ code: "STANDING_KIND_NOT_ELIGIBLE" }));
   });
 
   it("rejects a signer not eligible for the kind", () => {
-    expect(() => planStandingCreation({ kind: "lab", signerDiscipline: "msw" })).toThrowError(expect.objectContaining({ code: "SIGNER_NOT_ELIGIBLE" }));
+    expect(() => planStandingCreation({ kind: "lab", signerDiscipline: "msw" })).toThrowError(
+      expect.objectContaining({ code: "SIGNER_NOT_ELIGIBLE" }),
+    );
   });
 });
 
@@ -178,7 +204,14 @@ describe("§2.4 D5 / W-SO-01 / W-SO-02 planStandingSpawn", () => {
 
   it("rejects spawning an ineligible kind", () => {
     expect(() =>
-      planStandingSpawn({ kind: "recertification", cadence: "weekly", cadenceDetail: {}, spawnedBy: "system", now, timeZone: TZ }),
+      planStandingSpawn({
+        kind: "recertification",
+        cadence: "weekly",
+        cadenceDetail: {},
+        spawnedBy: "system",
+        now,
+        timeZone: TZ,
+      }),
     ).toThrowError(expect.objectContaining({ code: "STANDING_KIND_NOT_ELIGIBLE" }));
   });
 });

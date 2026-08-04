@@ -1,3 +1,4 @@
+import { OsrmRoutingProvider, type RoutingCache, matrixCacheKey } from "@wardenx/routing-client";
 // apps/backend/__tests__/scheduling-workflow-acceptance.test.ts — M17-T09 the §9 workflow-acceptance suite (the
 // FINAL M17 task). One scenario per the §7 plan-named Scheduling workflows — §7.1 (frequency-driven proposal →
 // publish → EVV start → encounter-sign completion → caseload contribution), §7.3 (drag-drop reschedule mints a
@@ -24,11 +25,10 @@ import {
   parseRrule,
   planFrequencyProposals,
 } from "@wardenx/scheduling";
-import { type RoutingCache, OsrmRoutingProvider, matrixCacheKey } from "@wardenx/routing-client";
 import { describe, expect, it, vi } from "vitest";
 import {
-  type SchedulingSeed,
   SchedulingRouteService,
+  type SchedulingSeed,
   buildSchedulingAbacPredicates,
   planVisitCompletionFromEncounter,
 } from "../src/modules/17-scheduling/index";
@@ -131,7 +131,11 @@ describe("M17-T09 §7 workflow acceptance", () => {
       { encounterId: "enc-1", patientId: PATIENT, visitId: visit.id, signedAt: NOW },
       { state: "in_visit" },
     );
-    expect(plan).toEqual({ kind: "complete", visitId: visit.id, event: { type: "complete", isSystemActor: true } });
+    expect(plan).toEqual({
+      kind: "complete",
+      visitId: visit.id,
+      event: { type: "complete", isSystemActor: true },
+    });
   });
 
   it("§7.3 — a reschedule mints a linked successor visit and bumps the optimistic-concurrency version", () => {
@@ -182,9 +186,16 @@ describe("M17-T09 §7 workflow acceptance", () => {
 
     // The §4.7 predicates resolve the same facts independently: discipline matches for the RN, denies the volunteer.
     const predicates = buildSchedulingAbacPredicates({ resolver: svc });
-    const target = { membershipId: MEM_RN, visitPurpose: "routine_visit", patientId: PATIENT, serviceDate: "2026-06-23" };
+    const target = {
+      membershipId: MEM_RN,
+      visitPurpose: "routine_visit",
+      patientId: PATIENT,
+      serviceDate: "2026-06-23",
+    };
     expect(await predicates.discipline_matches_visit!(ctx(), target)).toBe(true);
-    expect(await predicates.discipline_matches_visit!(ctx(), { ...target, membershipId: MEM_VOL })).toBe(false);
+    expect(
+      await predicates.discipline_matches_visit!(ctx(), { ...target, membershipId: MEM_VOL }),
+    ).toBe(false);
     expect(await predicates.within_caseload_or_unassigned_pool!(ctx(), target)).toBe(true);
   });
 
@@ -224,7 +235,13 @@ describe("M17-T09 §7 workflow acceptance", () => {
 
     // A self-attest with no step-up is refused.
     expect(() =>
-      svc.startVisit(ORG, "rn", visit.id, "x".repeat(EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH), false),
+      svc.startVisit(
+        ORG,
+        "rn",
+        visit.id,
+        "x".repeat(EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH),
+        false,
+      ),
     ).toThrowError(expect.objectContaining({ code: "EVV_SELF_ATTEST_STEP_UP_REQUIRED" }));
 
     // A step-up but a too-short reason is refused.
@@ -233,7 +250,8 @@ describe("M17-T09 §7 workflow acceptance", () => {
     );
 
     // Step-up + a ≥40-char documented reason → the visit advances to en_route.
-    const reason = "Cell signal failure at patient location — verified by patient signature on the tablet at start";
+    const reason =
+      "Cell signal failure at patient location — verified by patient signature on the tablet at start";
     const enRoute = svc.startVisit(ORG, "rn", visit.id, reason, true);
     expect(enRoute.status).toBe("en_route");
     expect(eventNames(svc.drainEvents())).toContain("m17.visit.started");
@@ -278,7 +296,12 @@ describe("M17-T09 §7 workflow acceptance", () => {
     const visit = svc.createVisit(ORG, "sched_1", ROUTINE_VISIT);
     svc.drainEvents();
 
-    const noShow = svc.noShowVisit(ORG, "sched_1", visit.id, "Patient went to ER per family; did not answer door");
+    const noShow = svc.noShowVisit(
+      ORG,
+      "sched_1",
+      visit.id,
+      "Patient went to ER per family; did not answer door",
+    );
     expect(noShow.status).toBe("no_show");
     const names = eventNames(svc.drainEvents());
     expect(names).toContain("m17.visit.no_show_detected");
@@ -288,12 +311,23 @@ describe("M17-T09 §7 workflow acceptance", () => {
   it("§7.9 — route optimisation is degraded when the flag is OFF and when OSRM is unhealthy (Phase-1 path)", async () => {
     // Flag OFF (Phase 1 default) → degraded with `optimization_disabled`, no OSRM call.
     const off = service();
-    const offResult = await off.optimizeDay(ORG, "sched_1", { membershipId: MEM_RN, serviceDate: "2026-06-23" });
-    expect(offResult).toMatchObject({ degraded: true, reason: "optimization_disabled", segmentCount: 0 });
+    const offResult = await off.optimizeDay(ORG, "sched_1", {
+      membershipId: MEM_RN,
+      serviceDate: "2026-06-23",
+    });
+    expect(offResult).toMatchObject({
+      degraded: true,
+      reason: "optimization_disabled",
+      segmentCount: 0,
+    });
     expect(eventNames(off.drainEvents())).toContain("m17.route_optimization_degraded");
 
     // Flag ON but the circuit-breaker reports unhealthy → degraded with `osrm_unavailable`.
-    const unhealthyRouting = { healthy: vi.fn(async () => false), matrix: vi.fn(), directions: vi.fn() };
+    const unhealthyRouting = {
+      healthy: vi.fn(async () => false),
+      matrix: vi.fn(),
+      directions: vi.fn(),
+    };
     const onButDown = new SchedulingRouteService({
       now: () => NOW,
       newId: idSeq(),
@@ -301,7 +335,10 @@ describe("M17-T09 §7 workflow acceptance", () => {
       routing: unhealthyRouting as never,
       routeOptimizationEnabled: true,
     });
-    const downResult = await onButDown.optimizeDay(ORG, "sched_1", { membershipId: MEM_RN, serviceDate: "2026-06-23" });
+    const downResult = await onButDown.optimizeDay(ORG, "sched_1", {
+      membershipId: MEM_RN,
+      serviceDate: "2026-06-23",
+    });
     expect(downResult).toMatchObject({ degraded: true, reason: "osrm_unavailable" });
     expect(unhealthyRouting.matrix).not.toHaveBeenCalled(); // no PHI-bearing call when degraded
   });
@@ -325,7 +362,20 @@ describe("M17-T09 §7 workflow acceptance", () => {
       now: () => NOW,
       fetchImpl: async (url: string) => {
         capturedUrl = url;
-        return { ok: true, status: 200, json: async () => ({ durations: [[0, 60], [60, 0]], distances: [[0, 1609], [1609, 0]] }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            durations: [
+              [0, 60],
+              [60, 0],
+            ],
+            distances: [
+              [0, 1609],
+              [1609, 0],
+            ],
+          }),
+        };
       },
     });
     await adapter.matrix(coords);
@@ -341,19 +391,35 @@ describe("M17-T09 §9.3 / §9.4 security & layer-independence (org-pinned non-le
     const svc = service();
     const visit = svc.createVisit(ORG, "sched_1", ROUTINE_VISIT);
     expect(svc.getVisit(ORG, visit.id).id).toBe(visit.id);
-    expect(() => svc.getVisit(ORG_B, visit.id)).toThrowError(expect.objectContaining({ code: "NOT_FOUND" }));
+    expect(() => svc.getVisit(ORG_B, visit.id)).toThrowError(
+      expect.objectContaining({ code: "NOT_FOUND" }),
+    );
     expect(svc.listVisits(ORG_B, {})).toEqual([]);
   });
 
   it("§9.4 the §4.7 ABAC predicates fail closed for a cross-tenant caller (the resolver is org-pinned)", async () => {
     const svc = service();
     const predicates = buildSchedulingAbacPredicates({ resolver: svc });
-    const target = { membershipId: MEM_RN, visitPurpose: "routine_visit", patientId: PATIENT, serviceDate: "2026-06-23" };
+    const target = {
+      membershipId: MEM_RN,
+      visitPurpose: "routine_visit",
+      patientId: PATIENT,
+      serviceDate: "2026-06-23",
+    };
     // The seeded facts live tenant-agnostically in the in-mem resolver, but caseload denies for an absent pair and
     // credentials deny on an unknown membership — the live RLS block proves the org boundary on real Postgres.
-    expect(await predicates.discipline_matches_visit!(ctx(), { ...target, membershipId: "unknown_mem" })).toBe(false);
-    expect(await predicates.within_caseload_or_unassigned_pool!(ctx(), { ...target, patientId: "other-patient" })).toBe(false);
-    expect(await predicates.clinician_credentials_active!(ctx(), { ...target, membershipId: MEM_VOL })).toBe(false);
+    expect(
+      await predicates.discipline_matches_visit!(ctx(), { ...target, membershipId: "unknown_mem" }),
+    ).toBe(false);
+    expect(
+      await predicates.within_caseload_or_unassigned_pool!(ctx(), {
+        ...target,
+        patientId: "other-patient",
+      }),
+    ).toBe(false);
+    expect(
+      await predicates.clinician_credentials_active!(ctx(), { ...target, membershipId: MEM_VOL }),
+    ).toBe(false);
   });
 
   it("§9.4 an incomplete ABAC target denies (fail-closed) rather than throwing", async () => {
@@ -361,6 +427,11 @@ describe("M17-T09 §9.3 / §9.4 security & layer-independence (org-pinned non-le
     const predicates = buildSchedulingAbacPredicates({ resolver: svc });
     expect(await predicates.discipline_matches_visit!(ctx(), {})).toBe(false);
     expect(await predicates.not_on_pto!(ctx(), { membershipId: MEM_RN })).toBe(false); // missing window → deny
-    expect(await predicates.discipline_matches_visit!(ctx(), { membershipId: MEM_RN, visitPurpose: "not_a_purpose" })).toBe(false);
+    expect(
+      await predicates.discipline_matches_visit!(ctx(), {
+        membershipId: MEM_RN,
+        visitPurpose: "not_a_purpose",
+      }),
+    ).toBe(false);
   });
 });

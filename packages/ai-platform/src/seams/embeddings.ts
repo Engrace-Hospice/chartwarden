@@ -12,11 +12,7 @@
 import type { AiSeamRefusal } from "./common";
 
 /** The tenant-scoped vector namespaces §4.2.6 names. */
-export type EmbeddingsNamespace =
-  | "clinical_record"
-  | "document"
-  | "intake"
-  | "protocol_library";
+export type EmbeddingsNamespace = "clinical_record" | "document" | "intake" | "protocol_library";
 
 export interface EmbeddingsInput {
   readonly organizationId: string;

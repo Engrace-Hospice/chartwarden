@@ -48,7 +48,10 @@ export function validateRestraintApply(input: {
 }
 
 /** §2.10 — normalize a configured reassessment interval against its category floor (tighten-only). */
-export function normalizeReassessmentInterval(configuredMinutes: number, category: RestraintCategory): number {
+export function normalizeReassessmentInterval(
+  configuredMinutes: number,
+  category: RestraintCategory,
+): number {
   const floor = RESTRAINT_REASSESS_FLOOR_MINUTES[category];
   requireIpu(
     configuredMinutes <= floor,
@@ -62,7 +65,11 @@ export function normalizeReassessmentInterval(configuredMinutes: number, categor
  * §2.10 — is an active restraint past its reassessment interval? The `restraint-reassessment-watchdog`
  * (every 15 min) calls this against `applied_at` or the last reassessment `reassessed_at`.
  */
-export function isRestraintReassessmentDue(lastAtMs: number, intervalMinutes: number, nowMs: number): boolean {
+export function isRestraintReassessmentDue(
+  lastAtMs: number,
+  intervalMinutes: number,
+  nowMs: number,
+): boolean {
   return nowMs - lastAtMs >= intervalMinutes * 60_000;
 }
 
@@ -92,11 +99,26 @@ export function planReassessmentOutcome(
   );
   switch (outcome) {
     case "continue":
-      return { closesEvent: false, forksNewEvent: false, nextState: "active", outbox: "m37.restraint.reassessment_completed" };
+      return {
+        closesEvent: false,
+        forksNewEvent: false,
+        nextState: "active",
+        outbox: "m37.restraint.reassessment_completed",
+      };
     case "modify":
-      return { closesEvent: true, forksNewEvent: true, nextState: "released", outbox: "m37.restraint.reassessment_completed" };
+      return {
+        closesEvent: true,
+        forksNewEvent: true,
+        nextState: "released",
+        outbox: "m37.restraint.reassessment_completed",
+      };
     case "release":
-      return { closesEvent: true, forksNewEvent: false, nextState: "released", outbox: "m37.restraint.released" };
+      return {
+        closesEvent: true,
+        forksNewEvent: false,
+        nextState: "released",
+        outbox: "m37.restraint.released",
+      };
   }
 }
 

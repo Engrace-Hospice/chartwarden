@@ -100,12 +100,12 @@ describe("M15 §2.2.6 volunteer compliance gate lifecycle", () => {
   });
 
   it("derives expiring_soon inside the 30-day lead-in and satisfied outside it", () => {
-    expect(deriveGateStatus(gate("annual_ce", { validUntil: "2026-03-20T12:00:00.000Z" }), NOW)).toBe(
-      "expiring_soon",
-    );
-    expect(deriveGateStatus(gate("annual_ce", { validUntil: "2026-06-01T12:00:00.000Z" }), NOW)).toBe(
-      "satisfied",
-    );
+    expect(
+      deriveGateStatus(gate("annual_ce", { validUntil: "2026-03-20T12:00:00.000Z" }), NOW),
+    ).toBe("expiring_soon");
+    expect(
+      deriveGateStatus(gate("annual_ce", { validUntil: "2026-06-01T12:00:00.000Z" }), NOW),
+    ).toBe("satisfied");
   });
 
   it("treats a lifetime gate (null valid_until) as satisfied and a future window as not_yet_satisfied", () => {
@@ -204,7 +204,11 @@ describe("M15 §2.2.6 volunteer compliance gate lifecycle", () => {
     const gates = [
       gate("tb_screening", { gateId: "g1", validUntil: "2026-02-01T00:00:00.000Z" }),
       gate("annual_ce", { gateId: "g2" }),
-      gate("background_check", { gateId: "g3", validUntil: "2026-01-01T00:00:00.000Z", revokedAt: NOW }),
+      gate("background_check", {
+        gateId: "g3",
+        validUntil: "2026-01-01T00:00:00.000Z",
+        revokedAt: NOW,
+      }),
     ];
     expect(gatesToExpire(gates, NOW).map((g) => g.gateId)).toEqual(["g1"]);
   });
@@ -258,7 +262,9 @@ describe("M15 §7.4 / §4.4 volunteer effective status", () => {
 
   it("keeps expiring_soon clearing — the 30-day notice warns, it does not strand the volunteer", () => {
     const soon = allGatesSatisfied().map((g) =>
-      g.gateKind === "annual_ce" ? gate("annual_ce", { validUntil: "2026-03-15T12:00:00.000Z" }) : g,
+      g.gateKind === "annual_ce"
+        ? gate("annual_ce", { validUntil: "2026-03-15T12:00:00.000Z" })
+        : g,
     );
     expect(effectiveStatusFor(VOLUNTEER, soon, NOW).isActive).toBe(true);
   });
@@ -308,10 +314,7 @@ describe("M15 §7.4 / §8.6 volunteer assignment gating", () => {
   };
 
   it("saves cleanly for a fully-credentialed volunteer", () => {
-    const decision = decideCreateVolunteerAssignment(
-      { ...base, gates: allGatesSatisfied() },
-      NOW,
-    );
+    const decision = decideCreateVolunteerAssignment({ ...base, gates: allGatesSatisfied() }, NOW);
     expect(decision).toMatchObject({ failingGates: [], overridden: false });
   });
 
@@ -321,7 +324,10 @@ describe("M15 §7.4 / §8.6 volunteer assignment gating", () => {
         ? gate("tb_screening", { validUntil: "2026-01-01T00:00:00.000Z" })
         : g,
     );
-    expectCode(() => decideCreateVolunteerAssignment({ ...base, gates }, NOW), "VOLUNTEER_GATE_UNMET");
+    expectCode(
+      () => decideCreateVolunteerAssignment({ ...base, gates }, NOW),
+      "VOLUNTEER_GATE_UNMET",
+    );
   });
 
   it("refuses an assignment on a plan that is not a volunteer plan", () => {
@@ -520,11 +526,26 @@ describe("M15 §2.2.7 volunteer hour ledger", () => {
       existingEntries: existing,
       candidates: [
         // already ledgered → skipped
-        { encounterId: "enc-1", volunteerMembershipId: VOLUNTEER, occurredAt: "2026-01-10T00:00:00.000Z", durationMinutes: 60 },
+        {
+          encounterId: "enc-1",
+          volunteerMembershipId: VOLUNTEER,
+          occurredAt: "2026-01-10T00:00:00.000Z",
+          durationMinutes: 60,
+        },
         // new, in year → counted
-        { encounterId: "enc-2", volunteerMembershipId: VOLUNTEER, occurredAt: "2026-02-14T00:00:00.000Z", durationMinutes: 45 },
+        {
+          encounterId: "enc-2",
+          volunteerMembershipId: VOLUNTEER,
+          occurredAt: "2026-02-14T00:00:00.000Z",
+          durationMinutes: 45,
+        },
         // out of the bucket's fiscal year → ignored
-        { encounterId: "enc-3", volunteerMembershipId: VOLUNTEER, occurredAt: "2025-12-30T00:00:00.000Z", durationMinutes: 30 },
+        {
+          encounterId: "enc-3",
+          volunteerMembershipId: VOLUNTEER,
+          occurredAt: "2025-12-30T00:00:00.000Z",
+          durationMinutes: 30,
+        },
       ],
       asOfAt: NOW,
     });
@@ -544,7 +565,12 @@ describe("M15 §2.2.7 volunteer hour ledger", () => {
       fiscalYear: 2026,
       existingEntries: [],
       candidates: [
-        { encounterId: "enc-9", volunteerMembershipId: VOLUNTEER, occurredAt: "2026-02-01T00:00:00.000Z", durationMinutes: null },
+        {
+          encounterId: "enc-9",
+          volunteerMembershipId: VOLUNTEER,
+          occurredAt: "2026-02-01T00:00:00.000Z",
+          durationMinutes: null,
+        },
       ],
       asOfAt: NOW,
     });

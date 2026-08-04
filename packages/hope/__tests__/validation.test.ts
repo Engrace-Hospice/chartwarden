@@ -1,15 +1,12 @@
 // @wardenx/hope — CMS HOPE pre-submission validation engine (§2.3, §3, §86) — M10-T04.
 import { describe, expect, it } from "vitest";
-import {
-  missingRequiredSections,
-  REQUIRED_SECTIONS_BY_RFA,
-} from "../src/sections/required-items";
+import { REQUIRED_SECTIONS_BY_RFA, missingRequiredSections } from "../src/sections/required-items";
 import { HOPE_VALIDATION_RULES, hasBlockingError } from "../src/validation/findings";
-import { valueSetOracle } from "../src/validation/value-set-oracle";
 import {
-  validateHopeAssessment,
   type HopeAssessmentValidationInput,
+  validateHopeAssessment,
 } from "../src/validation/validate-hope-assessment";
+import { valueSetOracle } from "../src/validation/value-set-oracle";
 
 const ORACLE = valueSetOracle({
   hospiceTerminalDiagnoses: ["G30.9", "I50.9", "C34.90"],
@@ -91,9 +88,9 @@ describe("validateHopeAssessment — Section I value set (§86)", () => {
       { ...cleanAdmission(), sectionI: { primaryDiagnosisIcd10: " g30.9 " } },
       ORACLE,
     );
-    expect(ok.some((f) => f.ruleId === HOPE_VALIDATION_RULES.SECTION_I_DIAGNOSIS_NOT_IN_VALUE_SET)).toBe(
-      false,
-    );
+    expect(
+      ok.some((f) => f.ruleId === HOPE_VALIDATION_RULES.SECTION_I_DIAGNOSIS_NOT_IN_VALUE_SET),
+    ).toBe(false);
     // SFV carries no diagnosis section → no diagnosis value-set finding even with a bogus code.
     const sfv = validateHopeAssessment(
       {
@@ -104,9 +101,9 @@ describe("validateHopeAssessment — Section I value set (§86)", () => {
       },
       ORACLE,
     );
-    expect(sfv.some((f) => f.ruleId === HOPE_VALIDATION_RULES.SECTION_I_DIAGNOSIS_NOT_IN_VALUE_SET)).toBe(
-      false,
-    );
+    expect(
+      sfv.some((f) => f.ruleId === HOPE_VALIDATION_RULES.SECTION_I_DIAGNOSIS_NOT_IN_VALUE_SET),
+    ).toBe(false);
   });
 });
 
@@ -117,7 +114,9 @@ describe("validateHopeAssessment — Section J value set + cross-field (§86, M1
       sectionJ: { ...cleanAdmission().sectionJ, jCodes: ["J2030", "J9999"] },
     };
     const findings = validateHopeAssessment(input, ORACLE);
-    const f = findings.find((x) => x.ruleId === HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET);
+    const f = findings.find(
+      (x) => x.ruleId === HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET,
+    );
     expect(f).toMatchObject({ severity: "warning", section: "J", itemCode: "J9999" });
     expect(hasBlockingError(findings)).toBe(false);
   });
@@ -125,7 +124,11 @@ describe("validateHopeAssessment — Section J value set + cross-field (§86, M1
   it("errors when J2030=Yes but pain characteristics are absent", () => {
     const input = {
       ...cleanAdmission(),
-      sectionJ: { ...cleanAdmission().sectionJ, painScreenedYes: true, painCharacteristicsPresent: false },
+      sectionJ: {
+        ...cleanAdmission().sectionJ,
+        painScreenedYes: true,
+        painCharacteristicsPresent: false,
+      },
     };
     const f = validateHopeAssessment(input, ORACLE).find(
       (x) => x.ruleId === HOPE_VALIDATION_RULES.J2030_PAIN_CHARACTERISTICS_MISSING,
@@ -136,7 +139,11 @@ describe("validateHopeAssessment — Section J value set + cross-field (§86, M1
   it("errors when J2050=Yes but dyspnea characteristics are absent", () => {
     const input = {
       ...cleanAdmission(),
-      sectionJ: { ...cleanAdmission().sectionJ, dyspneaScreenedYes: true, dyspneaCharacteristicsPresent: false },
+      sectionJ: {
+        ...cleanAdmission().sectionJ,
+        dyspneaScreenedYes: true,
+        dyspneaCharacteristicsPresent: false,
+      },
     };
     const f = validateHopeAssessment(input, ORACLE).find(
       (x) => x.ruleId === HOPE_VALIDATION_RULES.J2050_DYSPNEA_CHARACTERISTICS_MISSING,
@@ -262,8 +269,12 @@ describe("validateHopeAssessment — iQIES envelope (§2.3)", () => {
       },
     };
     const findings = validateHopeAssessment(input, ORACLE);
-    expect(findings.some((f) => f.ruleId === HOPE_VALIDATION_RULES.ENVELOPE_CCN_MISMATCH)).toBe(true);
-    expect(findings.some((f) => f.ruleId === HOPE_VALIDATION_RULES.ENVELOPE_MBI_MISMATCH)).toBe(true);
+    expect(findings.some((f) => f.ruleId === HOPE_VALIDATION_RULES.ENVELOPE_CCN_MISMATCH)).toBe(
+      true,
+    );
+    expect(findings.some((f) => f.ruleId === HOPE_VALIDATION_RULES.ENVELOPE_MBI_MISMATCH)).toBe(
+      true,
+    );
     expect(hasBlockingError(findings)).toBe(true);
   });
 });

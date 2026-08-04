@@ -48,10 +48,6 @@ export class DocumentStateError extends WardenXError {
 }
 
 /** Throw a {@link DocumentStateError} when `condition` is false (guard helper). */
-export function require_(
-  condition: boolean,
-  code: M22LifecycleErrorCode,
-  message: string,
-): void {
+export function require_(condition: boolean, code: M22LifecycleErrorCode, message: string): void {
   if (!condition) throw new DocumentStateError(code, message);
 }

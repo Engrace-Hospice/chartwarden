@@ -2,10 +2,10 @@
 import { describe, expect, it } from "vitest";
 import {
   assertMinutesMutable,
-  planMinutesFinalize,
-  planMinutesAmendmentRequest,
-  planMinutesAmendmentApproval,
   outboxEvents,
+  planMinutesAmendmentApproval,
+  planMinutesAmendmentRequest,
+  planMinutesFinalize,
 } from "../src/lifecycle";
 
 describe("D10 in_progress mutability", () => {

@@ -46,9 +46,9 @@ import {
   CallStatePill,
   Card,
   CountGrid,
+  Field,
   Notice,
   SummaryGrid,
-  Field,
   columnStyle,
   ghostButtonStyle,
   linkStyle,
@@ -109,7 +109,8 @@ export function MyOnCallScreen(): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
   const activeShift =
-    shifts.find((s) => s.status === "active" && isWithinWindow(s.shiftStartsAt, s.shiftEndsAt)) ?? null;
+    shifts.find((s) => s.status === "active" && isWithinWindow(s.shiftStartsAt, s.shiftEndsAt)) ??
+    null;
   const nextShift =
     [...shifts]
       .filter((s) => s.status === "scheduled" && Date.parse(s.shiftStartsAt) > Date.now())
@@ -149,22 +150,33 @@ export function MyOnCallScreen(): JSX.Element {
         </Notice>
       ) : coverage === "off" ? (
         <Notice tone="info" live>
-          <strong>OFF</strong> — no actor is covering in your scope right now. That is the server's answer,
-          read at {dateTime(current?.asOf)}, not an absence of data.
+          <strong>OFF</strong> — no actor is covering in your scope right now. That is the server's
+          answer, read at {dateTime(current?.asOf)}, not an absence of data.
         </Notice>
       ) : (
         <Notice tone="warning" live>
-          <strong>Coverage status unknown.</strong> The live read did not answer. This is NOT "off call" —
-          do not treat it as one. Check the roster, and assume you are reachable until you know otherwise.
+          <strong>Coverage status unknown.</strong> The live read did not answer. This is NOT "off
+          call" — do not treat it as one. Check the roster, and assume you are reachable until you
+          know otherwise.
         </Notice>
       )}
 
       <Card title="Shift">
         {activeShift ? (
           <SummaryGrid>
-            <Field label="Shift" value={<Link to={`/triage/shifts/${activeShift.id}`} style={linkStyle}>{shortId(activeShift.id)}</Link>} />
+            <Field
+              label="Shift"
+              value={
+                <Link to={`/triage/shifts/${activeShift.id}`} style={linkStyle}>
+                  {shortId(activeShift.id)}
+                </Link>
+              }
+            />
             <Field label="Discipline" value={disciplineLabel(activeShift.discipline)} />
-            <Field label="Started" value={dateTime(activeShift.openedAt ?? activeShift.shiftStartsAt)} />
+            <Field
+              label="Started"
+              value={dateTime(activeShift.openedAt ?? activeShift.shiftStartsAt)}
+            />
             <Field label="Ends" value={dateTime(activeShift.shiftEndsAt)} />
             <Field
               label="On shift for"
@@ -175,23 +187,30 @@ export function MyOnCallScreen(): JSX.Element {
           <SummaryGrid>
             <Field
               label="Next shift"
-              value={<Link to={`/triage/shifts/${nextShift.id}`} style={linkStyle}>{shortId(nextShift.id)}</Link>}
+              value={
+                <Link to={`/triage/shifts/${nextShift.id}`} style={linkStyle}>
+                  {shortId(nextShift.id)}
+                </Link>
+              }
             />
             <Field label="Discipline" value={disciplineLabel(nextShift.discipline)} />
             <Field label="Starts" value={dateTime(nextShift.shiftStartsAt)} />
             <Field label="Ends" value={dateTime(nextShift.shiftEndsAt)} />
-            <Field label="Status" value={<StatusPill label={humanize(nextShift.status)} tone="progress" />} />
+            <Field
+              label="Status"
+              value={<StatusPill label={humanize(nextShift.status)} tone="progress" />}
+            />
           </SummaryGrid>
         ) : (
           <span style={mutedStyle}>
-            No active or upcoming shift is on the roster in this window. The roster read is scoped by the
-            server; a shift belonging to a colleague is simply absent.
+            No active or upcoming shift is on the roster in this window. The roster read is scoped
+            by the server; a shift belonging to a colleague is simply absent.
           </span>
         )}
         <span style={mutedStyle}>
           The roster shows what is scheduled for your scope, not "assigned to me" — M19 publishes no
-          per-membership roster filter, and a triage call has no assignee at all: the covering shift is the
-          assignment.
+          per-membership roster filter, and a triage call has no assignee at all: the covering shift
+          is the assignment.
         </span>
       </Card>
 
@@ -199,7 +218,11 @@ export function MyOnCallScreen(): JSX.Element {
         <CountGrid
           entries={[
             { label: "Open calls", value: calls.length },
-            { label: "With an escalation", value: escalated, tone: escalated > 0 ? "error" : undefined },
+            {
+              label: "With an escalation",
+              value: escalated,
+              tone: escalated > 0 ? "error" : undefined,
+            },
             { label: "Red-flagged", value: redFlagged, tone: redFlagged > 0 ? "error" : undefined },
           ]}
         />
@@ -239,12 +262,12 @@ export function MyOnCallScreen(): JSX.Element {
 
       <Card title="Working a call away from a desk">
         <span style={mutedStyle}>
-          The triage panel is <strong>online-only</strong>. If connectivity drops mid-call, finish on paper
-          and re-enter it when service is restored — no partial triage state is kept on the device, because
-          a disposition gate that can be reconstructed offline is not a gate. The paper re-entry path is a
-          separate, permissioned screen and it back-dates the call honestly, inside the outage window it is
-          filed against. Push notification, Do-Not-Disturb bypass and one-tap dialling belong to the native
-          shell rather than to this web view.
+          The triage panel is <strong>online-only</strong>. If connectivity drops mid-call, finish
+          on paper and re-enter it when service is restored — no partial triage state is kept on the
+          device, because a disposition gate that can be reconstructed offline is not a gate. The
+          paper re-entry path is a separate, permissioned screen and it back-dates the call
+          honestly, inside the outage window it is filed against. Push notification, Do-Not-Disturb
+          bypass and one-tap dialling belong to the native shell rather than to this web view.
         </span>
       </Card>
     </div>

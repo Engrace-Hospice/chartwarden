@@ -23,4 +23,8 @@ export type CostReportDb = DbClient;
  */
 export type VersionedUpdateResult<TRow> =
   | { readonly ok: true; readonly row: TRow }
-  | { readonly ok: false; readonly conflict: "VERSION_CONFLICT"; readonly currentVersion: number | null };
+  | {
+      readonly ok: false;
+      readonly conflict: "VERSION_CONFLICT";
+      readonly currentVersion: number | null;
+    };

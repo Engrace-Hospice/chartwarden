@@ -98,9 +98,9 @@ describe("§2.4 capability inventory", () => {
     // catalog joins them into one `mortality-decline-prediction`, and architecture wins on conflict.
     expect(AI_PHASE_1_CAPABILITIES).toHaveLength(17);
     expect(new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.capabilityKey)).size).toBe(17);
-    expect(
-      AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id),
-    ).toContain("prediction-capability-count-does-not-reconcile");
+    expect(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).toContain(
+      "prediction-capability-count-does-not-reconcile",
+    );
   });
 
   it("marks three APPROVED — the §2.4 table and its closer against its own lead sentence", () => {
@@ -113,9 +113,7 @@ describe("§2.4 capability inventory", () => {
 
   it("puts nothing at MONITORING, DEPRECATED or RETIRED at lock time", () => {
     for (const capability of AI_PHASE_1_CAPABILITIES) {
-      expect(["PROPOSED", "DESIGN_REVIEW", "APPROVED"]).toContain(
-        capability.phase1LifecycleState,
-      );
+      expect(["PROPOSED", "DESIGN_REVIEW", "APPROVED"]).toContain(capability.phase1LifecycleState);
     }
   });
 
@@ -169,9 +167,9 @@ describe("§2.4 capability inventory", () => {
     // Every registered capability now resolves to a catalog id — the six that did not were added to
     // docs/ai/capability-catalog.yaml and to AI Governance §4.1, and check-ai-governance.ts enforces
     // all eighteen. A capability registered here with no governance doc is the hole this closes.
-    const uncatalogued = AI_PHASE_1_CAPABILITIES.filter(
-      (c) => c.governanceCatalogId === null,
-    ).map((c) => c.capabilityKey);
+    const uncatalogued = AI_PHASE_1_CAPABILITIES.filter((c) => c.governanceCatalogId === null).map(
+      (c) => c.capabilityKey,
+    );
     expect(uncatalogued).toEqual([]);
     expect(new Set(AI_PHASE_1_CAPABILITIES.map((c) => c.governanceCatalogId)).size).toBe(
       AI_PHASE_1_CAPABILITIES.length,

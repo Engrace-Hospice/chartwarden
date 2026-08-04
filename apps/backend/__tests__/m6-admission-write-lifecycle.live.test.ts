@@ -42,7 +42,9 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     }
   }
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort())
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
 
@@ -71,7 +73,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
   it("createReferral → triageReferral(eligible): received → evaluated with version bumps", async () => {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "phone", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "Doe, Jane" },
+      {
+        source: "phone",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "Doe, Jane",
+      },
       USER,
     );
     expect(ref.state).toBe("received");
@@ -84,7 +91,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
   it("a stale ifVersion is a 409 VERSION_MISMATCH (optimistic lock)", async () => {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "fax", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "Stale, Sam" },
+      {
+        source: "fax",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "Stale, Sam",
+      },
       USER,
     );
     await svc.triageReferral(ORG_A, ref.id, "eligible", 0); // → version 1
@@ -97,7 +109,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
   it("acceptReferral mints a draft admission + benefit period + the 4 §2.5 compliance windows", async () => {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "portal", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "Accept, Ann" },
+      {
+        source: "portal",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "Accept, Ann",
+      },
       USER,
     );
     await svc.triageReferral(ORG_A, ref.id, "eligible", 0);
@@ -129,7 +146,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
   it("acknowledgeNor → notice_of_rights_acknowledged, closes the NOR window; then activate enforces R-AC-01", async () => {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "walk_in", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "Flow, Fred" },
+      {
+        source: "walk_in",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "Flow, Fred",
+      },
       USER,
     );
     await svc.triageReferral(ORG_A, ref.id, "eligible", 0);
@@ -184,7 +206,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
   it("RLS: org B cannot triage org A's referral through the service (cross-tenant → 404)", async () => {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "phone", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "Iso, Ivy" },
+      {
+        source: "phone",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "Iso, Ivy",
+      },
       USER,
     );
     await expect(svc.triageReferral(ORG_B, ref.id, "eligible", 0)).rejects.toMatchObject({

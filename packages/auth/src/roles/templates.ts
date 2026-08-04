@@ -294,7 +294,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     scopeLevel: "organization",
     systemDefault: true,
     systemLocked: false,
-    description: "Platform-ops owner — full billing-admin surface incl. refund approval and MRR/ARR.",
+    description:
+      "Platform-ops owner — full billing-admin surface incl. refund approval and MRR/ARR.",
     floor: [],
     grants: PLATFORM_OPS_ROLE_GRANTS.platform_owner,
   },
@@ -305,7 +306,8 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     scopeLevel: "organization",
     systemDefault: true,
     systemLocked: false,
-    description: "Platform-ops admin — full billing-admin surface incl. refund approval (four-eyes approver).",
+    description:
+      "Platform-ops admin — full billing-admin surface incl. refund approval (four-eyes approver).",
     floor: [],
     grants: PLATFORM_OPS_ROLE_GRANTS.platform_admin,
   },

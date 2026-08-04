@@ -106,7 +106,11 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   app.get(
     "/api/v1/safety/supervisor-subscriptions",
     {
-      preHandler: [P("safety_supervisor.read"), ABAC_SUPERVISOR("safety_supervisor.read"), NO_OFFSET],
+      preHandler: [
+        P("safety_supervisor.read"),
+        ABAC_SUPERVISOR("safety_supervisor.read"),
+        NO_OFFSET,
+      ],
       config: { auditRead: SUBSCRIPTION_NO_PHI },
     },
     async (request) =>
@@ -122,7 +126,11 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   app.post(
     "/api/v1/safety/supervisor-subscriptions",
     {
-      preHandler: [P("safety_supervisor.edit"), ABAC_SUPERVISOR("safety_supervisor.edit"), IDEMPOTENT],
+      preHandler: [
+        P("safety_supervisor.edit"),
+        ABAC_SUPERVISOR("safety_supervisor.edit"),
+        IDEMPOTENT,
+      ],
     },
     async (request, reply) => {
       const body = parse(CreateSubscriptionBody, request.body);
@@ -137,7 +145,11 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   app.delete(
     "/api/v1/safety/supervisor-subscriptions/:subscriptionId",
     {
-      preHandler: [P("safety_supervisor.edit"), ABAC_SUPERVISOR("safety_supervisor.edit"), IDEMPOTENT],
+      preHandler: [
+        P("safety_supervisor.edit"),
+        ABAC_SUPERVISOR("safety_supervisor.edit"),
+        IDEMPOTENT,
+      ],
     },
     async (request) => {
       const { subscriptionId } = parse(SubscriptionIdParams, request.params);

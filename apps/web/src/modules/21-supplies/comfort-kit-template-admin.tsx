@@ -30,6 +30,13 @@ import {
   supersedeComfortKitTemplate,
 } from "./supplies-api";
 import {
+  CONTROLLED_SCHEDULES,
+  dateTime,
+  fractionAsPct,
+  shortDate,
+  shortId,
+} from "./supplies-status";
+import {
   Card,
   CheckboxField,
   Field,
@@ -53,7 +60,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import { CONTROLLED_SCHEDULES, dateTime, fractionAsPct, shortDate, shortId } from "./supplies-status";
 
 /** A medication row under edit. Kept as strings — `expectedQuantity` and the threshold are `numeric`. */
 interface MedDraft extends TemplateMedicationInput {
@@ -117,7 +123,11 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
 
   // The floor is pinned at the top of the rail — it is the row every tenant template is measured against.
   const ordered = [...templates].sort((a, b) =>
-    a.isPlatformFloor === b.isPlatformFloor ? a.name.localeCompare(b.name) : a.isPlatformFloor ? -1 : 1,
+    a.isPlatformFloor === b.isPlatformFloor
+      ? a.name.localeCompare(b.name)
+      : a.isPlatformFloor
+        ? -1
+        : 1,
   );
   const selected = ordered.find((tm) => tm.comfortKitTemplateId === selectedId) ?? null;
   const floor = ordered.find((tm) => tm.isPlatformFloor) ?? null;
@@ -216,7 +226,10 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
     void load();
   };
 
-  const ready = name.trim() !== "" && meds.length > 0 && meds.every((m) => m.drugName.trim() !== "" && m.rxnorm.trim() !== "");
+  const ready =
+    name.trim() !== "" &&
+    meds.length > 0 &&
+    meds.every((m) => m.drugName.trim() !== "" && m.rxnorm.trim() !== "");
 
   return (
     <div style={columnStyle}>
@@ -236,10 +249,10 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
       />
 
       <Notice tone="info">
-        A tenant template must contain every platform-floor medication at a quantity at or above the floor,
-        and may add more. It may raise a replenishment threshold (which replenishes sooner), never lower it.
-        The server validates this before writing anything, so a template that violates the floor never exists
-        even briefly.
+        A tenant template must contain every platform-floor medication at a quantity at or above the
+        floor, and may add more. It may raise a replenishment threshold (which replenishes sooner),
+        never lower it. The server validates this before writing anything, so a template that
+        violates the floor never exists even briefly.
       </Notice>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
@@ -250,12 +263,23 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
         onChange={setIncludeSuperseded}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(14rem, 22rem) 1fr", gap: t.space4 }}>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "minmax(14rem, 22rem) 1fr", gap: t.space4 }}
+      >
         <Card title="Templates">
           {ordered.length === 0 ? (
             <span style={mutedStyle}>No template is visible.</span>
           ) : (
-            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: t.space2 }}>
+            <ul
+              style={{
+                listStyle: "none",
+                margin: 0,
+                padding: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: t.space2,
+              }}
+            >
               {ordered.map((tm) => (
                 <li key={tm.comfortKitTemplateId}>
                   <button
@@ -355,8 +379,9 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
               </table>
               {selected.isPlatformFloor ? (
                 <span style={mutedStyle}>
-                  Seeded with the migration chain and locked. Every tenant reads it; no tenant can write it —
-                  its organization is null and the write policy admits only the platform role.
+                  Seeded with the migration chain and locked. Every tenant reads it; no tenant can
+                  write it — its organization is null and the write policy admits only the platform
+                  role.
                 </span>
               ) : null}
             </Card>
@@ -364,7 +389,11 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
 
           {editorMode !== "none" ? (
             <Card
-              title={editorMode === "supersede" ? "Revise template (creates a new version)" : "New tenant template"}
+              title={
+                editorMode === "supersede"
+                  ? "Revise template (creates a new version)"
+                  : "New tenant template"
+              }
               actions={
                 <div style={{ display: "flex", gap: t.space2 }}>
                   <button
@@ -375,7 +404,11 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                   >
                     Save
                   </button>
-                  <button type="button" style={ghostButtonStyle} onClick={() => setEditorMode("none")}>
+                  <button
+                    type="button"
+                    style={ghostButtonStyle}
+                    onClick={() => setEditorMode("none")}
+                  >
                     Cancel
                   </button>
                 </div>
@@ -383,8 +416,9 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
             >
               {editorMode === "supersede" ? (
                 <Notice tone="warning">
-                  Saving does not edit this template. It writes a NEW version pointing back at this one and
-                  closes this one's window, so every dispatch keeps resolving the recipe it actually used.
+                  Saving does not edit this template. It writes a NEW version pointing back at this
+                  one and closes this one's window, so every dispatch keeps resolving the recipe it
+                  actually used.
                 </Notice>
               ) : null}
               <TextField label="Template name" value={name} onChange={setName} />
@@ -441,7 +475,9 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                         <input
                           aria-label="Route of administration"
                           value={m.routeOfAdministration}
-                          onChange={(e) => patchMed(m.key, { routeOfAdministration: e.target.value })}
+                          onChange={(e) =>
+                            patchMed(m.key, { routeOfAdministration: e.target.value })
+                          }
                           style={{ ...inputStyle, minWidth: "6rem" }}
                         />
                       </td>
@@ -459,7 +495,8 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
                             onChange={(v) =>
                               // `v` is always one of CONTROLLED_SCHEDULES — this SelectField offers no other value.
                               patchMed(m.key, {
-                                controlledSubstanceSchedule: v as MedDraft["controlledSubstanceSchedule"],
+                                controlledSubstanceSchedule:
+                                  v as MedDraft["controlledSubstanceSchedule"],
                               })
                             }
                           />
@@ -505,13 +542,14 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
               </div>
               {meds.some((m) => m.isControlledSubstance) ? (
                 <Notice tone="warning">
-                  A controlled medication on this recipe means every dispatch of this kit enters the DEA
-                  perpetual log, with a lot number and expiration required on that line at dispatch time.
+                  A controlled medication on this recipe means every dispatch of this kit enters the
+                  DEA perpetual log, with a lot number and expiration required on that line at
+                  dispatch time.
                 </Notice>
               ) : null}
               <span style={mutedStyle}>
-                Floor validation runs on the server and names the medication it is missing. Templates
-                effective from {shortDate(floor?.effectiveFrom)} carry the current floor.
+                Floor validation runs on the server and names the medication it is missing.
+                Templates effective from {shortDate(floor?.effectiveFrom)} carry the current floor.
               </span>
             </Card>
           ) : null}

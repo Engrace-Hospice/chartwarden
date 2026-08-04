@@ -5,7 +5,12 @@
 //
 // The parser is intentionally PERMISSIVE: handles a UTF-8 BOM, CRLF/LF, trailing whitespace, quoted fields,
 // and the per-MAC column-name variants below. No PHI is logged; the MBI is a join key, never audit-captured.
-import { DEFAULT_PSR_VARIANCE_THRESHOLD_CENTS, type MacRegion, type PsrReconScope, type PsrVarianceReason } from "./types";
+import {
+  DEFAULT_PSR_VARIANCE_THRESHOLD_CENTS,
+  type MacRegion,
+  type PsrReconScope,
+  type PsrVarianceReason,
+} from "./types";
 
 /** Canonical PS&R fields M26 reconciles against, mapped from each MAC's column header variants. */
 export interface PsrColumnDictionary {
@@ -16,13 +21,41 @@ export interface PsrColumnDictionary {
 
 /** Per-MAC header aliases (the "two layout variants currently in circulation", §5.1.5). Lower-cased match. */
 export const PSR_COLUMN_DICTIONARY: Record<MacRegion, PsrColumnDictionary> = {
-  ngs: { mbi: ["mbi", "hic", "hicn"], paidAmount: ["paid amount", "payments", "total paid"], inpatientDays: ["inpatient days", "gip+irc days", "ipu days"] },
-  cgs: { mbi: ["mbi", "hic"], paidAmount: ["paid amount", "reimbursement"], inpatientDays: ["inpatient days", "ip days"] },
-  palmetto: { mbi: ["mbi", "hicn"], paidAmount: ["paid amount", "payments"], inpatientDays: ["inpatient days"] },
-  wps: { mbi: ["mbi", "hic"], paidAmount: ["paid amount", "total payments"], inpatientDays: ["inpatient days"] },
-  noridian: { mbi: ["mbi", "hicn"], paidAmount: ["paid amount", "payments"], inpatientDays: ["inpatient days"] },
-  first_coast: { mbi: ["mbi", "hic"], paidAmount: ["paid amount"], inpatientDays: ["inpatient days"] },
-  novitas: { mbi: ["mbi", "hicn"], paidAmount: ["paid amount", "payments"], inpatientDays: ["inpatient days"] },
+  ngs: {
+    mbi: ["mbi", "hic", "hicn"],
+    paidAmount: ["paid amount", "payments", "total paid"],
+    inpatientDays: ["inpatient days", "gip+irc days", "ipu days"],
+  },
+  cgs: {
+    mbi: ["mbi", "hic"],
+    paidAmount: ["paid amount", "reimbursement"],
+    inpatientDays: ["inpatient days", "ip days"],
+  },
+  palmetto: {
+    mbi: ["mbi", "hicn"],
+    paidAmount: ["paid amount", "payments"],
+    inpatientDays: ["inpatient days"],
+  },
+  wps: {
+    mbi: ["mbi", "hic"],
+    paidAmount: ["paid amount", "total payments"],
+    inpatientDays: ["inpatient days"],
+  },
+  noridian: {
+    mbi: ["mbi", "hicn"],
+    paidAmount: ["paid amount", "payments"],
+    inpatientDays: ["inpatient days"],
+  },
+  first_coast: {
+    mbi: ["mbi", "hic"],
+    paidAmount: ["paid amount"],
+    inpatientDays: ["inpatient days"],
+  },
+  novitas: {
+    mbi: ["mbi", "hicn"],
+    paidAmount: ["paid amount", "payments"],
+    inpatientDays: ["inpatient days"],
+  },
 };
 
 export interface PsrParsedRow {
@@ -45,11 +78,16 @@ function splitCsvLine(line: string): string[] {
     const ch = line[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (line[i + 1] === '"') { cur += '"'; i++; } else inQuotes = false;
+        if (line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else inQuotes = false;
       } else cur += ch;
     } else if (ch === '"') inQuotes = true;
-    else if (ch === ",") { out.push(cur); cur = ""; }
-    else cur += ch;
+    else if (ch === ",") {
+      out.push(cur);
+      cur = "";
+    } else cur += ch;
   }
   out.push(cur);
   return out.map((f) => f.trim());
@@ -68,7 +106,9 @@ export function dollarsToCents(raw: string): number {
 
 /** Parse a PS&R CSV for a MAC region into canonical rows. Unknown/missing columns yield 0 for that field. */
 export function parsePsrCsv(text: string, macRegion: MacRegion): PsrParsedRow[] {
-  const lines = normalize(text).split("\n").filter((l) => l.trim().length > 0);
+  const lines = normalize(text)
+    .split("\n")
+    .filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
   const header = splitCsvLine(lines[0]!).map((h) => h.toLowerCase());
   const dict = PSR_COLUMN_DICTIONARY[macRegion];
@@ -85,7 +125,8 @@ export function parsePsrCsv(text: string, macRegion: MacRegion): PsrParsedRow[] 
     rows.push({
       mbi,
       paidCents: paidIdx >= 0 ? dollarsToCents(fields[paidIdx] ?? "") : 0,
-      inpatientDays: ipIdx >= 0 ? Math.round(Number((fields[ipIdx] ?? "0").replace(/[^\d.-]/g, "")) || 0) : 0,
+      inpatientDays:
+        ipIdx >= 0 ? Math.round(Number((fields[ipIdx] ?? "0").replace(/[^\d.-]/g, "")) || 0) : 0,
     });
   }
   return rows;
@@ -109,7 +150,10 @@ export interface PsrVarianceLine {
 }
 
 /** Heuristic categorical reason for a variance (the clerk confirms/overrides). */
-export function classifyVariance(m26Cents: number | null, psrCents: number | null): PsrVarianceReason {
+export function classifyVariance(
+  m26Cents: number | null,
+  psrCents: number | null,
+): PsrVarianceReason {
   if (m26Cents == null && psrCents != null) return "mbi_mismatch"; // PS&R has a beneficiary we don't
   if (psrCents == null && m26Cents != null) return "timing"; // we have a beneficiary PS&R hasn't posted yet
   return "unknown";

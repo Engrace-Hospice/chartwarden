@@ -155,7 +155,9 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
       // both read as "consumed" only via the literal token `getSeam(`, so an alias assignment
       // followed by a call through the ALIAS was invisible before.
       for (const m of src.matchAll(/getSeam\(\s*['"]([A-Za-z0-9_]+)['"]/g)) consumed.set(m[1]!, f);
-      const aliasNames = [...src.matchAll(/const\s+(\w+)\s*=[^;]*\bgetSeam\b[^;]*;/g)].map((m) => m[1]!);
+      const aliasNames = [...src.matchAll(/const\s+(\w+)\s*=[^;]*\bgetSeam\b[^;]*;/g)].map(
+        (m) => m[1]!,
+      );
       for (const alias of aliasNames) {
         const callRe = new RegExp(`\\b${alias}(?:<[^>]*>)?\\(\\s*['"]([A-Za-z0-9_]+)['"]`, "g");
         for (const m of src.matchAll(callRe)) consumed.set(m[1]!, f);

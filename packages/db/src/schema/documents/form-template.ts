@@ -6,11 +6,7 @@
 // canonical-entity precedent). `publishedActiveVersionId` is a deferred ref to form_template_version
 // (plain uuid, no FK, avoids the cycle with form_template_version.template_id).
 import { boolean, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import {
-  documentAggregateType,
-  documentRetentionClass,
-  formRenderEngine,
-} from "../../enums";
+import { documentAggregateType, documentRetentionClass, formRenderEngine } from "../../enums";
 
 export const formTemplates = pgTable(
   "form_template",

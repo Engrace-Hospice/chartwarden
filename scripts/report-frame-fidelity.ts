@@ -103,8 +103,12 @@ function renderMarkdown(): string {
   const L: string[] = [];
   L.push("# WardenX — Frame-Fidelity Report");
   L.push("");
-  L.push("> **Generated, advisory report** (`bun run frame:fidelity`). Tracks how much of the built");
-  L.push("> web surface has been visually matched to its Pencil frame — the layout-fidelity gap the");
+  L.push(
+    "> **Generated, advisory report** (`bun run frame:fidelity`). Tracks how much of the built",
+  );
+  L.push(
+    "> web surface has been visually matched to its Pencil frame — the layout-fidelity gap the",
+  );
   L.push("> Lantern reconciliation left open. Do not hand-edit; edit the registry and regenerate.");
   L.push("> Process: `docs/design/FRAME_FIDELITY_PLAYBOOK.md`.");
   L.push("");

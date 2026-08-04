@@ -246,16 +246,19 @@ export function createDrizzleSaasTenantPlatformEraseStore(
 
     eraseTenantExportJobs(orgId) {
       return serialize(() =>
-        inPlatform("m34 tenant-offboarding erase: tenant_export_job (+ event ledger)", async (tx) => {
-          // The event ledger rides along with its jobs (app-validated parent ref, partitioned table);
-          // the port reports the JOB count. `dsar_export_job` (+ events) is NEVER touched (§164.528).
-          await tx.delete(JOB_EVENT).where(eq(JOB_EVENT.organizationId, orgId));
-          const jobs = await tx
-            .delete(JOB)
-            .where(eq(JOB.organizationId, orgId))
-            .returning({ id: JOB.id });
-          return { erased: jobs.length };
-        }),
+        inPlatform(
+          "m34 tenant-offboarding erase: tenant_export_job (+ event ledger)",
+          async (tx) => {
+            // The event ledger rides along with its jobs (app-validated parent ref, partitioned table);
+            // the port reports the JOB count. `dsar_export_job` (+ events) is NEVER touched (§164.528).
+            await tx.delete(JOB_EVENT).where(eq(JOB_EVENT.organizationId, orgId));
+            const jobs = await tx
+              .delete(JOB)
+              .where(eq(JOB.organizationId, orgId))
+              .returning({ id: JOB.id });
+            return { erased: jobs.length };
+          },
+        ),
       );
     },
   };

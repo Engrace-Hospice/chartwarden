@@ -1,7 +1,7 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Sensitivity & Consent Layer (DESIGN.md §8). Masked identifiers, sealed Part-2
 // blocks, the ambient break-glass banner, and consent-gated badges.
 import { BreakGlassBanner, ConsentBadge, MaskedIdentifier, SealedBlock } from "@wardenx/ui";
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import { type JSX, useState } from "react";
 
 const meta: Meta = { title: "Lantern/Sensitivity" };
@@ -9,7 +9,15 @@ export default meta;
 
 function Stack({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.5rem", maxWidth: "44rem" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "1.25rem",
+        padding: "1.5rem",
+        maxWidth: "44rem",
+      }}
+    >
       {children}
     </div>
   );
@@ -29,7 +37,11 @@ export const Masked: StoryObj = {
       </div>
       <div>
         MBI:{" "}
-        <MaskedIdentifier label="Medicare Beneficiary Identifier" value="1EG4-TE5-MK73" onReveal={() => "1EG4-TE5-MK73"} />
+        <MaskedIdentifier
+          label="Medicare Beneficiary Identifier"
+          value="1EG4-TE5-MK73"
+          onReveal={() => "1EG4-TE5-MK73"}
+        />
       </div>
       <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
         Read-only (no reveal affordance): <MaskedIdentifier value="987-65-4321" />
@@ -45,7 +57,13 @@ export const Sealed: StoryObj = {
     return (
       <Stack>
         <SealedBlock unsealed={unsealed} onUnseal={() => setUnsealed(true)}>
-          <div style={{ padding: "1rem", background: "var(--color-surface-low)", borderRadius: "0.75rem" }}>
+          <div
+            style={{
+              padding: "1rem",
+              background: "var(--color-surface-low)",
+              borderRadius: "0.75rem",
+            }}
+          >
             SUD treatment note — patient enrolled in MAT program; last buprenorphine dose 06/20.
           </div>
         </SealedBlock>

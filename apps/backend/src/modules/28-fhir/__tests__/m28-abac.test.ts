@@ -3,10 +3,10 @@ import type { AbacContext, AbacTarget } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildFhirGatewayAbacPredicates,
-  denyStubFhirGatewayAbacResolver,
   FHIR_OWNER_MODULE_WRITE_PERMISSION,
   type FhirGatewayAbacResolver,
+  buildFhirGatewayAbacPredicates,
+  denyStubFhirGatewayAbacResolver,
 } from "../abac-predicates";
 
 const ORG = "org-1";
@@ -27,12 +27,20 @@ const resolver = (over: Partial<FhirGatewayAbacResolver>): FhirGatewayAbacResolv
 describe("fhir_client_organization_scope", () => {
   it("allows a client in the actor's org and denies a cross-tenant one", async () => {
     const p = buildFhirGatewayAbacPredicates({
-      resolver: resolver({ async clientOrgId() { return ORG; } }),
+      resolver: resolver({
+        async clientOrgId() {
+          return ORG;
+        },
+      }),
     }).fhir_client_organization_scope;
     expect(await p(ctx(), { clientId: "c1" } as AbacTarget)).toBe(true);
 
     const cross = buildFhirGatewayAbacPredicates({
-      resolver: resolver({ async clientOrgId() { return "other-org"; } }),
+      resolver: resolver({
+        async clientOrgId() {
+          return "other-org";
+        },
+      }),
     }).fhir_client_organization_scope;
     expect(await cross(ctx(), { clientId: "c1" } as AbacTarget)).toBe(false);
   });
@@ -50,7 +58,9 @@ describe("fhir_inbound_owner_module_match", () => {
         },
       }),
     });
-    expect(await predicates.fhir_inbound_owner_module_match(ctx(), { proposalId: "p1" } as AbacTarget)).toBe(true);
+    expect(
+      await predicates.fhir_inbound_owner_module_match(ctx(), { proposalId: "p1" } as AbacTarget),
+    ).toBe(true);
 
     const denied = buildFhirGatewayAbacPredicates({
       resolver: resolver({
@@ -62,12 +72,15 @@ describe("fhir_inbound_owner_module_match", () => {
         },
       }),
     });
-    expect(await denied.fhir_inbound_owner_module_match(ctx(), { proposalId: "p1" } as AbacTarget)).toBe(false);
+    expect(
+      await denied.fhir_inbound_owner_module_match(ctx(), { proposalId: "p1" } as AbacTarget),
+    ).toBe(false);
   });
 
   it("fails closed when the proposal is unreadable", async () => {
-    const p = buildFhirGatewayAbacPredicates({ resolver: denyStubFhirGatewayAbacResolver })
-      .fhir_inbound_owner_module_match;
+    const p = buildFhirGatewayAbacPredicates({
+      resolver: denyStubFhirGatewayAbacResolver,
+    }).fhir_inbound_owner_module_match;
     expect(await p(ctx(), { proposalId: "p1" } as AbacTarget)).toBe(false);
   });
 });
@@ -77,7 +90,12 @@ describe("bulk_export_initiator_or_admin", () => {
     const p = buildFhirGatewayAbacPredicates({
       resolver: resolver({
         async loadBulkExportJob() {
-          return { jobId: "j1", organizationId: ORG, clientId: "c1", initiatedByMembershipId: "m1" };
+          return {
+            jobId: "j1",
+            organizationId: ORG,
+            clientId: "c1",
+            initiatedByMembershipId: "m1",
+          };
         },
       }),
     }).bulk_export_initiator_or_admin;
@@ -88,7 +106,12 @@ describe("bulk_export_initiator_or_admin", () => {
     const p = buildFhirGatewayAbacPredicates({
       resolver: resolver({
         async loadBulkExportJob() {
-          return { jobId: "j1", organizationId: ORG, clientId: "c1", initiatedByMembershipId: "someone-else" };
+          return {
+            jobId: "j1",
+            organizationId: ORG,
+            clientId: "c1",
+            initiatedByMembershipId: "someone-else",
+          };
         },
         async holdsPermission() {
           return true;
@@ -102,7 +125,12 @@ describe("bulk_export_initiator_or_admin", () => {
     const p = buildFhirGatewayAbacPredicates({
       resolver: resolver({
         async loadBulkExportJob() {
-          return { jobId: "j1", organizationId: ORG, clientId: "c1", initiatedByMembershipId: "someone-else" };
+          return {
+            jobId: "j1",
+            organizationId: ORG,
+            clientId: "c1",
+            initiatedByMembershipId: "someone-else",
+          };
         },
         async holdsPermission() {
           return false;

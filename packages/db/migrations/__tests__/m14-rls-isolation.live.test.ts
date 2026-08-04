@@ -249,12 +249,9 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
   });
 
   it("every M14 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"),
-      "utf8",
-    );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const rls = readFileSync(join(MIGRATIONS_DIR, "0043_idg_m14_rls_audit_triggers.sql"), "utf8");
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // All nine M14 tables carry a direct app.org_id policy — the partitioned idg_patient_packet's policy
     // lives on the parent (0043) and is inherited by every leaf, so it counts here too.

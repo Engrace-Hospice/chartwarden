@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `notr_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). The Notice of Termination/Revocation: one regulatory NOTR per terminating event
 // (revocation / transfer-out / discharge), with the timely-filing window watched by the cron watchdog
@@ -10,8 +11,16 @@
 // `patient_id`/`admission_id` (M5/M6), the revocation/transfer/discharge event ids (M6), and the
 // latest_*/*_document_id pointers are LOGICAL FKs — plain uuid, validated at runtime (mirrors the M27
 // cost-report precedent). No MBI is ever stored here (D13, §8.7).
-import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { m23NotrState, m23NotrTriggerKind } from "./types";
 
@@ -60,7 +69,10 @@ export const notrRecord = pgTable(
     (trigger_kind = 'transfer_out' AND transfer_event_id IS NOT NULL) OR
     (trigger_kind = 'discharge' AND discharge_event_id IS NOT NULL)
   )`,
-    controlNumberUq: uniqueIndex("notr_control_number_uq").on(t.providerEntityId, t.notrControlNumber),
+    controlNumberUq: uniqueIndex("notr_control_number_uq").on(
+      t.providerEntityId,
+      t.notrControlNumber,
+    ),
     uniqueByEvent: uniqueIndex("notr_unique_by_event_uq")
       .on(t.revocationEventId, t.transferEventId, t.dischargeEventId)
       .where(sql`state NOT IN ('CANCELLED','ACK_REJECTED')`),

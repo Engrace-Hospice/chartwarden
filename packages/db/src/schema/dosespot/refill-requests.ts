@@ -12,10 +12,10 @@
 import { sql } from "drizzle-orm";
 import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { refillRequestStatus, refillResponseChannel } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const refillRequests = pgTable(
   "refill_request",

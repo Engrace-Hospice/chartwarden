@@ -35,7 +35,11 @@ import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { PreHandler } from "./actor";
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";
@@ -44,7 +48,8 @@ const param = (request: TargetRequest, key: string): string =>
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
 /** §4.1 — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate (rule 4). */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;
 
 /**
  * Rule 1 — the §4.1 `∨` cell as ONE preHandler.

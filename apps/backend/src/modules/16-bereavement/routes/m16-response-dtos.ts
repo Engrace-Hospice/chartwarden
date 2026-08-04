@@ -10,16 +10,6 @@
 import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
 import type {
-  BereavedContactRowView as SvcBereavedContactRowView,
-  BereavementClosureView as SvcBereavementClosureView,
-  BereavementOutreachRowView as SvcBereavementOutreachRowView,
-  BereavementPlanDetail as SvcBereavementPlanDetail,
-  BereavementPlanListItem as SvcBereavementPlanListItem,
-  BereavementRiskScoreView as SvcBereavementRiskScoreView,
-  CounselorDashboardView as SvcCounselorDashboardView,
-  SupervisorDashboardView as SvcSupervisorDashboardView,
-} from "./read-service";
-import type {
   BereavedContactRowViewResponseSchema,
   BereavementClosureViewResponseSchema,
   BereavementContactLogViewResponseSchema,
@@ -35,6 +25,16 @@ import type {
   ScheduleRegenerationViewResponseSchema,
   SupervisorDashboardViewResponseSchema,
 } from "./m16-typebox";
+import type {
+  BereavedContactRowView as SvcBereavedContactRowView,
+  BereavementClosureView as SvcBereavementClosureView,
+  BereavementOutreachRowView as SvcBereavementOutreachRowView,
+  BereavementPlanDetail as SvcBereavementPlanDetail,
+  BereavementPlanListItem as SvcBereavementPlanListItem,
+  BereavementRiskScoreView as SvcBereavementRiskScoreView,
+  CounselorDashboardView as SvcCounselorDashboardView,
+  SupervisorDashboardView as SvcSupervisorDashboardView,
+} from "./read-service";
 import type {
   BereavementContactLogView as SvcBereavementContactLogView,
   PlanActivationView as SvcPlanActivationView,

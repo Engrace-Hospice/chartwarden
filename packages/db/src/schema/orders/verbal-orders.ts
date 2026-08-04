@@ -10,10 +10,10 @@
 import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { orderSignatureTargetKind, verbalOrderStatus } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const verbalOrders = pgTable(
   "verbal_order",

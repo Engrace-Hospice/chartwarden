@@ -15,7 +15,8 @@ import type { RouteObject } from "react-router-dom";
 import type { AdminScreen, AdminScreenDescriptor } from "./shell/registry";
 
 function newCorrelationId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+    return crypto.randomUUID();
   return "cid-admin";
 }
 
@@ -49,7 +50,8 @@ function AdminHome(): JSX.Element {
         Platform Operations
       </h1>
       <p style={{ color: t.onSurfaceVariant, marginTop: "0.5rem", maxWidth: "40rem" }}>
-        Select a surface from the nav rail. Platform modules contribute their screens into this shell.
+        Select a surface from the nav rail. Platform modules contribute their screens into this
+        shell.
       </p>
     </div>
   );
@@ -85,7 +87,11 @@ export interface AdminAppProps {
   correlationId?: string;
 }
 
-export function AdminApp({ registry, client, correlationId = newCorrelationId() }: AdminAppProps): JSX.Element {
+export function AdminApp({
+  registry,
+  client,
+  correlationId = newCorrelationId(),
+}: AdminAppProps): JSX.Element {
   const router = useMemo(() => {
     const screens = registry.screens();
     const chromeless = screens.filter((s) => s.chrome === false);
@@ -98,7 +104,10 @@ export function AdminApp({ registry, client, correlationId = newCorrelationId() 
         element: <AdminFrame nav={nav} />,
         children: [
           { index: true, element: <AdminHome /> },
-          ...chromed.map((s) => ({ path: s.path.replace(/^\//, ""), element: createElement(s.screen) })),
+          ...chromed.map((s) => ({
+            path: s.path.replace(/^\//, ""),
+            element: createElement(s.screen),
+          })),
         ],
       },
     ];

@@ -16,6 +16,7 @@ import {
   errorMessage,
   getSupervisorDashboard,
 } from "./bereavement-api";
+import { humanize } from "./bereavement-status";
 import {
   Card,
   CountGrid,
@@ -28,7 +29,6 @@ import {
   mutedStyle,
   pageTitleStyle,
 } from "./bereavement-ui";
-import { humanize } from "./bereavement-status";
 
 export function BereavementSupervisorDashboard(): JSX.Element {
   const client = useApiClient();
@@ -55,7 +55,8 @@ export function BereavementSupervisorDashboard(): JSX.Element {
 
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (!view) return <EmptyState title="No data" description="No bereavement rollups were returned." />;
+  if (!view)
+    return <EmptyState title="No data" description="No bereavement rollups were returned." />;
 
   const { numerator, denominator } = view.copCounts;
   const entries = (m: Record<string, number>) =>
@@ -89,7 +90,8 @@ export function BereavementSupervisorDashboard(): JSX.Element {
           {view.externalSourceCosignPendingCount === 1
             ? "One external-source plan is"
             : `${view.externalSourceCosignPendingCount} external-source plans are`}{" "}
-          awaiting the platform-mandated medical-director cosign. First contact is locked on those plans.
+          awaiting the platform-mandated medical-director cosign. First contact is locked on those
+          plans.
         </Notice>
       ) : null}
 
@@ -109,8 +111,8 @@ export function BereavementSupervisorDashboard(): JSX.Element {
           />
         </SummaryGrid>
         <span style={mutedStyle}>
-          Reported as a count pair. A scope with no touchpoints owed shows no rate rather than 0% — an
-          undivided pair is what lets the HQRP surface apply CMS small-N suppression downstream.
+          Reported as a count pair. A scope with no touchpoints owed shows no rate rather than 0% —
+          an undivided pair is what lets the HQRP surface apply CMS small-N suppression downstream.
         </span>
       </Card>
 
@@ -129,8 +131,8 @@ export function BereavementSupervisorDashboard(): JSX.Element {
       <Card title="Closures by reason">
         <CountGrid entries={entries(view.closureCountsByReason)} />
         <span style={mutedStyle}>
-          Only `thirteen_month_completion` is the 13-month obligation met in full; every other reason ended
-          the program early or by cascade.
+          Only `thirteen_month_completion` is the 13-month obligation met in full; every other
+          reason ended the program early or by cascade.
         </span>
       </Card>
     </div>

@@ -9,11 +9,7 @@
 // The scope keys are the T01 leaf `PortalDataCategory` union — the committed contract; §6.2's finer
 // `care_plan_read`/`document_upload` tokens are the route-permission layer, resolved in M31-T07 against a
 // category being readable here. The route/DB binding (persisting `scope_set_jsonb`) lands in M31-T07.
-import type {
-  PortalAccessGrantKind,
-  PortalDataCategory,
-  PortalScopeSet,
-} from "@wardenx/types";
+import type { PortalAccessGrantKind, PortalDataCategory, PortalScopeSet } from "@wardenx/types";
 import { PortalStateError } from "./errors";
 
 /** Every data category, in canonical order (the §6.4 floor is expressed as an allow/deny over this set). */
@@ -81,7 +77,10 @@ const GRANT_KIND_FLOOR: Record<PortalAccessGrantKind, readonly PortalDataCategor
 };
 
 /** The §6.4 platform-floor scope for a grant kind (every floor-allowed category `true`, the rest `false`). */
-export function platformFloorScopeSet(kind: PortalAccessGrantKind, floorVersion: string): PortalScopeSet {
+export function platformFloorScopeSet(
+  kind: PortalAccessGrantKind,
+  floorVersion: string,
+): PortalScopeSet {
   const allow = new Set(GRANT_KIND_FLOOR[kind]);
   const categories: { [K in PortalDataCategory]?: boolean } = {};
   for (const cat of PORTAL_DATA_CATEGORIES) categories[cat] = allow.has(cat);

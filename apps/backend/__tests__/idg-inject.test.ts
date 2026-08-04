@@ -114,8 +114,18 @@ function makeServer(meetings: readonly IdgMeetingSeed[] = []) {
   return { app, backend };
 }
 
-const SUPER = { "x-test-user": "coord_1", "x-test-org": ORG, "x-test-roles": "idg_coordinator", "x-test-loc": LOC };
-const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "none", "x-test-loc": LOC };
+const SUPER = {
+  "x-test-user": "coord_1",
+  "x-test-org": ORG,
+  "x-test-roles": "idg_coordinator",
+  "x-test-loc": LOC,
+};
+const NOPERM = {
+  "x-test-user": "noperm_1",
+  "x-test-org": ORG,
+  "x-test-roles": "none",
+  "x-test-loc": LOC,
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -131,7 +141,10 @@ afterEach(() => {
 describe("M14-idg-inject — auth gating", () => {
   it("no auth headers at all → 401 (route: GET /idg/schedule)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/idg/schedule?location=${LOC}&from=2026-06-01T00:00:00.000Z&to=2026-06-15T00:00:00.000Z` });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/schedule?location=${LOC}&from=2026-06-01T00:00:00.000Z&to=2026-06-15T00:00:00.000Z`,
+    });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
@@ -149,7 +162,12 @@ describe("M14-idg-inject — auth gating", () => {
 
   it("a correctly-permissioned actor with an empty body → 422 VALIDATION_FAILED (route: POST /idg/recurring-policies)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/idg/recurring-policies", headers: SUPER, payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/idg/recurring-policies",
+      headers: SUPER,
+      payload: {},
+    });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("VALIDATION_FAILED");
     await app.close();
@@ -159,9 +177,20 @@ describe("M14-idg-inject — auth gating", () => {
 describe("M14-idg-inject — meeting lifecycle transitions (each on its own freshly-seeded meeting)", () => {
   it("POST /idg/meetings/:id/packets/build — scheduled → packets_building (201/200)", async () => {
     const { app } = makeServer([
-      { id: MEETING_BUILD, organizationId: ORG, locationId: LOC, scheduledStart: NOW, scheduledEnd: NOW, includedPatientIds: [PATIENT] },
+      {
+        id: MEETING_BUILD,
+        organizationId: ORG,
+        locationId: LOC,
+        scheduledStart: NOW,
+        scheduledEnd: NOW,
+        includedPatientIds: [PATIENT],
+      },
     ]);
-    const res = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_BUILD}/packets/build`, headers: SUPER });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_BUILD}/packets/build`,
+      headers: SUPER,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("packets_building");
     await app.close();
@@ -169,9 +198,20 @@ describe("M14-idg-inject — meeting lifecycle transitions (each on its own fres
 
   it("POST /idg/meetings/:id/start — packets_ready → live (200)", async () => {
     const { app } = makeServer([
-      { id: MEETING_START, organizationId: ORG, locationId: LOC, status: "packets_ready", scheduledStart: NOW, scheduledEnd: NOW },
+      {
+        id: MEETING_START,
+        organizationId: ORG,
+        locationId: LOC,
+        status: "packets_ready",
+        scheduledStart: NOW,
+        scheduledEnd: NOW,
+      },
     ]);
-    const res = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_START}/start`, headers: SUPER });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_START}/start`,
+      headers: SUPER,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("live");
     await app.close();
@@ -179,7 +219,13 @@ describe("M14-idg-inject — meeting lifecycle transitions (each on its own fres
 
   it("POST /idg/meetings/:id/cancel — scheduled → cancelled (200, per_patient_review_floor_clear passes on no breaches)", async () => {
     const { app } = makeServer([
-      { id: MEETING_CANCEL, organizationId: ORG, locationId: LOC, scheduledStart: NOW, scheduledEnd: NOW },
+      {
+        id: MEETING_CANCEL,
+        organizationId: ORG,
+        locationId: LOC,
+        scheduledStart: NOW,
+        scheduledEnd: NOW,
+      },
     ]);
     const res = await app.inject({
       method: "POST",
@@ -194,7 +240,13 @@ describe("M14-idg-inject — meeting lifecycle transitions (each on its own fres
 
   it("POST /idg/meetings/:id/reschedule — scheduled → rescheduled (200)", async () => {
     const { app } = makeServer([
-      { id: MEETING_RESCHED, organizationId: ORG, locationId: LOC, scheduledStart: NOW, scheduledEnd: NOW },
+      {
+        id: MEETING_RESCHED,
+        organizationId: ORG,
+        locationId: LOC,
+        scheduledStart: NOW,
+        scheduledEnd: NOW,
+      },
     ]);
     const res = await app.inject({
       method: "POST",
@@ -229,13 +281,33 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
 
     // route #10 — record the four IDG_REQUIRED_QUORUM disciplines present (unblocks the decisions route's
     // `quorate_decision` §4.7 predicate below).
-    const rn = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`, headers: SUPER, payload: { membershipId: RN_MSHIP, discipline: "rn_case_manager" } });
+    const rn = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: RN_MSHIP, discipline: "rn_case_manager" },
+    });
     expect(rn.statusCode).toBe(201);
-    const msw = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`, headers: SUPER, payload: { membershipId: MSW_MSHIP, discipline: "msw" } });
+    const msw = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: MSW_MSHIP, discipline: "msw" },
+    });
     expect(msw.statusCode).toBe(201);
-    const chap = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`, headers: SUPER, payload: { membershipId: CHAP_MSHIP, discipline: "chaplain" } });
+    const chap = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: CHAP_MSHIP, discipline: "chaplain" },
+    });
     expect(chap.statusCode).toBe(201);
-    const phys = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`, headers: SUPER, payload: { membershipId: PHYS_MSHIP, discipline: "hospice_physician" } });
+    const phys = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: PHYS_MSHIP, discipline: "hospice_physician" },
+    });
     expect(phys.statusCode).toBe(201);
 
     // route #1 — schedule list (location + date-range scoped).
@@ -248,22 +320,38 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     expect(schedule.json().map((m: { id: string }) => m.id)).toContain(MEETING_LIVE);
 
     // route #4 — read one meeting (idg_meeting_scope).
-    const meeting = await app.inject({ method: "GET", url: `/api/v1/idg/meetings/${MEETING_LIVE}`, headers: SUPER });
+    const meeting = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}`,
+      headers: SUPER,
+    });
     expect(meeting.statusCode).toBe(200);
     expect(meeting.json().status).toBe("live");
 
     // route #13 — list a meeting's packets.
-    const packets = await app.inject({ method: "GET", url: `/api/v1/idg/meetings/${MEETING_LIVE}/packets`, headers: SUPER });
+    const packets = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/packets`,
+      headers: SUPER,
+    });
     expect(packets.statusCode).toBe(200);
     expect(packets.json()).toHaveLength(1);
 
     // route #14 — read one patient's packet.
-    const packet = await app.inject({ method: "GET", url: `/api/v1/idg/meetings/${MEETING_LIVE}/packets/${PATIENT}`, headers: SUPER });
+    const packet = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/packets/${PATIENT}`,
+      headers: SUPER,
+    });
     expect(packet.statusCode).toBe(200);
     expect(packet.json().patientId).toBe(PATIENT);
 
     // route #14b — patient-scoped IDG review history.
-    const history = await app.inject({ method: "GET", url: `/api/v1/patients/${PATIENT}/idg-history`, headers: SUPER });
+    const history = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/idg-history`,
+      headers: SUPER,
+    });
     expect(history.statusCode).toBe(200);
     expect(history.json().meetings).toHaveLength(1);
 
@@ -291,17 +379,29 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
       method: "POST",
       url: `/api/v1/idg/meetings/${MEETING_LIVE}/action-items`,
       headers: SUPER,
-      payload: { patientId: PATIENT, assignedToMembershipId: RN_MSHIP, dueDate: "2026-07-01T00:00:00.000Z" },
+      payload: {
+        patientId: PATIENT,
+        assignedToMembershipId: RN_MSHIP,
+        dueDate: "2026-07-01T00:00:00.000Z",
+      },
     });
     expect(actionItem.statusCode).toBe(201);
 
     // route #24 — list action items (org-scoped).
-    const actionItems = await app.inject({ method: "GET", url: "/api/v1/idg/action-items", headers: SUPER });
+    const actionItems = await app.inject({
+      method: "GET",
+      url: "/api/v1/idg/action-items",
+      headers: SUPER,
+    });
     expect(actionItems.statusCode).toBe(200);
     expect(actionItems.json().length).toBeGreaterThanOrEqual(1);
 
     // route #25 — read the meeting's minutes (still in_progress pre-adjournment).
-    const minutesBefore = await app.inject({ method: "GET", url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`, headers: SUPER });
+    const minutesBefore = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`,
+      headers: SUPER,
+    });
     expect(minutesBefore.statusCode).toBe(200);
     expect(minutesBefore.json().status).toBe("in_progress");
 
@@ -321,108 +421,180 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
 });
 
 describe("M14-idg-inject — known limitation: server-generated sub-resource ids are not uuid-shaped", () => {
-  it(
-    "IdParamsSchema requires `format: 'uuid'`; the in-memory backend's `nextId()` mints " +
-      "`<prefix>-00000001`-style ids for attendance/agenda/decision/action-item/minutes/recurring-policy — " +
-      "so a fully-permissioned actor's follow-on PATCH/DELETE/POST 422s on the `id` param before the handler " +
-      "runs, even with a well-formed body. This asserts the REAL current behavior (not a fabricated pass); " +
-      "the production Drizzle backend mints real UUIDs so this does not reach prod. The POST calls that mint " +
-      "these ids (routes #2, and #10/#15/#18/#21 already proven 2xx above) genuinely succeed — only the " +
-      "follow-on id-keyed call fails.",
-    async () => {
-      const { app } = makeServer([
-        {
-          id: MEETING_KL,
-          organizationId: ORG,
-          locationId: LOC,
-          status: "live",
-          scheduledStart: NOW,
-          scheduledEnd: NOW,
-          includedPatientIds: [PATIENT],
-        },
-      ]);
+  it("IdParamsSchema requires `format: 'uuid'`; the in-memory backend's `nextId()` mints " +
+    "`<prefix>-00000001`-style ids for attendance/agenda/decision/action-item/minutes/recurring-policy — " +
+    "so a fully-permissioned actor's follow-on PATCH/DELETE/POST 422s on the `id` param before the handler " +
+    "runs, even with a well-formed body. This asserts the REAL current behavior (not a fabricated pass); " +
+    "the production Drizzle backend mints real UUIDs so this does not reach prod. The POST calls that mint " +
+    "these ids (routes #2, and #10/#15/#18/#21 already proven 2xx above) genuinely succeed — only the " +
+    "follow-on id-keyed call fails.", async () => {
+    const { app } = makeServer([
+      {
+        id: MEETING_KL,
+        organizationId: ORG,
+        locationId: LOC,
+        status: "live",
+        scheduledStart: NOW,
+        scheduledEnd: NOW,
+        includedPatientIds: [PATIENT],
+      },
+    ]);
 
-      // route #2 (genuine 201) → route #3 (blocked, 422 on `id`).
-      const policy = await app.inject({ method: "POST", url: "/api/v1/idg/recurring-policies", headers: SUPER, payload: { locationId: LOC, cadenceDays: 14 } });
-      expect(policy.statusCode).toBe(201);
-      const policyId = policy.json().id as string;
-      const policyPatch = await app.inject({ method: "PATCH", url: `/api/v1/idg/recurring-policies/${policyId}`, headers: SUPER, payload: { locationId: LOC, cadenceDays: 7 } });
-      expect(policyPatch.statusCode).toBe(422);
-      expect(policyPatch.json().error.details[0].field).toBe("id");
+    // route #2 (genuine 201) → route #3 (blocked, 422 on `id`).
+    const policy = await app.inject({
+      method: "POST",
+      url: "/api/v1/idg/recurring-policies",
+      headers: SUPER,
+      payload: { locationId: LOC, cadenceDays: 14 },
+    });
+    expect(policy.statusCode).toBe(201);
+    const policyId = policy.json().id as string;
+    const policyPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/recurring-policies/${policyId}`,
+      headers: SUPER,
+      payload: { locationId: LOC, cadenceDays: 7 },
+    });
+    expect(policyPatch.statusCode).toBe(422);
+    expect(policyPatch.json().error.details[0].field).toBe("id");
 
-      // quorum attendance (unblocks the decisions route below).
-      const rn = await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`, headers: SUPER, payload: { membershipId: RN_MSHIP, discipline: "rn_case_manager" } });
-      const attendanceId = rn.json().id as string;
-      await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`, headers: SUPER, payload: { membershipId: MSW_MSHIP, discipline: "msw" } });
-      await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`, headers: SUPER, payload: { membershipId: CHAP_MSHIP, discipline: "chaplain" } });
-      await app.inject({ method: "POST", url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`, headers: SUPER, payload: { membershipId: PHYS_MSHIP, discipline: "hospice_physician" } });
+    // quorum attendance (unblocks the decisions route below).
+    const rn = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: RN_MSHIP, discipline: "rn_case_manager" },
+    });
+    const attendanceId = rn.json().id as string;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: MSW_MSHIP, discipline: "msw" },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: CHAP_MSHIP, discipline: "chaplain" },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/attendance`,
+      headers: SUPER,
+      payload: { membershipId: PHYS_MSHIP, discipline: "hospice_physician" },
+    });
 
-      // route #11 / #12 — blocked, 422 on `id`.
-      const attPatch = await app.inject({ method: "PATCH", url: `/api/v1/idg/attendance/${attendanceId}`, headers: SUPER, payload: { status: "tardy" } });
-      expect(attPatch.statusCode).toBe(422);
-      const attDelete = await app.inject({ method: "DELETE", url: `/api/v1/idg/attendance/${attendanceId}`, headers: SUPER });
-      expect(attDelete.statusCode).toBe(422);
+    // route #11 / #12 — blocked, 422 on `id`.
+    const attPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/attendance/${attendanceId}`,
+      headers: SUPER,
+      payload: { status: "tardy" },
+    });
+    expect(attPatch.statusCode).toBe(422);
+    const attDelete = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/idg/attendance/${attendanceId}`,
+      headers: SUPER,
+    });
+    expect(attDelete.statusCode).toBe(422);
 
-      // route #15 (genuine 201) → route #16 / #17 (blocked, 422 on `id`).
-      const agenda = await app.inject({
-        method: "POST",
-        url: `/api/v1/idg/meetings/${MEETING_KL}/agenda`,
-        headers: SUPER,
-        payload: { kind: "patient_review", patientId: PATIENT },
-      });
-      const agendaId = agenda.json().id as string;
-      const agendaPatch = await app.inject({ method: "PATCH", url: `/api/v1/idg/agenda/${agendaId}`, headers: SUPER, payload: { noteText: "revised" } });
-      expect(agendaPatch.statusCode).toBe(422);
-      const agendaDelete = await app.inject({ method: "DELETE", url: `/api/v1/idg/agenda/${agendaId}`, headers: SUPER });
-      expect(agendaDelete.statusCode).toBe(422);
+    // route #15 (genuine 201) → route #16 / #17 (blocked, 422 on `id`).
+    const agenda = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/agenda`,
+      headers: SUPER,
+      payload: { kind: "patient_review", patientId: PATIENT },
+    });
+    const agendaId = agenda.json().id as string;
+    const agendaPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/agenda/${agendaId}`,
+      headers: SUPER,
+      payload: { noteText: "revised" },
+    });
+    expect(agendaPatch.statusCode).toBe(422);
+    const agendaDelete = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/idg/agenda/${agendaId}`,
+      headers: SUPER,
+    });
+    expect(agendaDelete.statusCode).toBe(422);
 
-      // route #18 (genuine 201) → route #19 / #20 (blocked, 422 on `id`).
-      const decision = await app.inject({
-        method: "POST",
-        url: `/api/v1/idg/meetings/${MEETING_KL}/decisions`,
-        headers: SUPER,
-        payload: { patientId: PATIENT, payload: { kind: "referral" } },
-      });
-      const decisionId = decision.json().id as string;
-      const decisionPatch = await app.inject({ method: "PATCH", url: `/api/v1/idg/decisions/${decisionId}`, headers: SUPER, payload: { payload: { kind: "team_note" } } });
-      expect(decisionPatch.statusCode).toBe(422);
-      const decisionSupersede = await app.inject({ method: "POST", url: `/api/v1/idg/decisions/${decisionId}/supersede`, headers: SUPER, payload: {} });
-      expect(decisionSupersede.statusCode).toBe(422);
+    // route #18 (genuine 201) → route #19 / #20 (blocked, 422 on `id`).
+    const decision = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/decisions`,
+      headers: SUPER,
+      payload: { patientId: PATIENT, payload: { kind: "referral" } },
+    });
+    const decisionId = decision.json().id as string;
+    const decisionPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/decisions/${decisionId}`,
+      headers: SUPER,
+      payload: { payload: { kind: "team_note" } },
+    });
+    expect(decisionPatch.statusCode).toBe(422);
+    const decisionSupersede = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/decisions/${decisionId}/supersede`,
+      headers: SUPER,
+      payload: {},
+    });
+    expect(decisionSupersede.statusCode).toBe(422);
 
-      // route #21 (genuine 201) → route #22 / #23 (blocked, 422 on `id`).
-      const actionItem = await app.inject({
-        method: "POST",
-        url: `/api/v1/idg/meetings/${MEETING_KL}/action-items`,
-        headers: SUPER,
-        payload: { patientId: PATIENT, assignedToMembershipId: RN_MSHIP, dueDate: "2026-07-01T00:00:00.000Z" },
-      });
-      const actionItemId = actionItem.json().id as string;
-      const actionItemPatch = await app.inject({ method: "PATCH", url: `/api/v1/idg/action-items/${actionItemId}`, headers: SUPER, payload: { status: "in_progress" } });
-      expect(actionItemPatch.statusCode).toBe(422);
-      const actionItemDelete = await app.inject({ method: "DELETE", url: `/api/v1/idg/action-items/${actionItemId}`, headers: SUPER });
-      expect(actionItemDelete.statusCode).toBe(422);
+    // route #21 (genuine 201) → route #22 / #23 (blocked, 422 on `id`).
+    const actionItem = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/action-items`,
+      headers: SUPER,
+      payload: {
+        patientId: PATIENT,
+        assignedToMembershipId: RN_MSHIP,
+        dueDate: "2026-07-01T00:00:00.000Z",
+      },
+    });
+    const actionItemId = actionItem.json().id as string;
+    const actionItemPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/idg/action-items/${actionItemId}`,
+      headers: SUPER,
+      payload: { status: "in_progress" },
+    });
+    expect(actionItemPatch.statusCode).toBe(422);
+    const actionItemDelete = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/idg/action-items/${actionItemId}`,
+      headers: SUPER,
+    });
+    expect(actionItemDelete.statusCode).toBe(422);
 
-      // adjourn to finalize the minutes, then route #26 (blocked, 422 on `id`).
-      const adjourn = await app.inject({
-        method: "POST",
-        url: `/api/v1/idg/meetings/${MEETING_KL}/adjourn`,
-        headers: { ...SUPER, "x-step-up": "fresh" },
-        payload: {},
-      });
-      expect(adjourn.statusCode).toBe(200);
-      const minutes = await app.inject({ method: "GET", url: `/api/v1/idg/meetings/${MEETING_KL}/minutes`, headers: SUPER });
-      expect(minutes.json().status).toBe("final");
-      const minutesId = minutes.json().id as string;
-      const amendment = await app.inject({
-        method: "POST",
-        url: `/api/v1/idg/minutes/${minutesId}/amendments`,
-        headers: SUPER,
-        payload: { amendmentReason: "correction needed" },
-      });
-      expect(amendment.statusCode).toBe(422);
-      expect(amendment.json().error.details[0].field).toBe("id");
+    // adjourn to finalize the minutes, then route #26 (blocked, 422 on `id`).
+    const adjourn = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/adjourn`,
+      headers: { ...SUPER, "x-step-up": "fresh" },
+      payload: {},
+    });
+    expect(adjourn.statusCode).toBe(200);
+    const minutes = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_KL}/minutes`,
+      headers: SUPER,
+    });
+    expect(minutes.json().status).toBe("final");
+    const minutesId = minutes.json().id as string;
+    const amendment = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/minutes/${minutesId}/amendments`,
+      headers: SUPER,
+      payload: { amendmentReason: "correction needed" },
+    });
+    expect(amendment.statusCode).toBe(422);
+    expect(amendment.json().error.details[0].field).toBe("id");
 
-      await app.close();
-    },
-  );
+    await app.close();
+  });
 });

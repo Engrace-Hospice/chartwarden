@@ -3,7 +3,7 @@
 // dispatcher validates each `m26.cap.*` publish against the matching payload schema inside the mutation
 // transaction (transactional outbox). Names use the `m26.<resource=cap>.<verb>` form (no version suffix — the
 // M27/M30/M33 catalog convention supersedes the spec's `.v1` proposal). No PHI beyond patient-id pointers.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

@@ -136,8 +136,7 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
       a.sortOrder - b.sortOrder || a.chiefComplaintLabel.localeCompare(b.chiefComplaintLabel),
   );
 
-  const canCreate =
-    KEY_RE.test(key) && label.trim().length >= 3 && SNOMED_RE.test(snomed) && !busy;
+  const canCreate = KEY_RE.test(key) && label.trim().length >= 3 && SNOMED_RE.test(snomed) && !busy;
 
   async function commitCreate(): Promise<void> {
     setBusy(true);
@@ -182,9 +181,9 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
       />
 
       <Notice tone="info">
-        The platform floor ships with the product and is read-only to every tenant role. You may add your
-        own protocols and you may make them stricter than the floor; you cannot make the floor weaker.
-        Attempting to edit a locked row is refused by name, not silently ignored.
+        The platform floor ships with the product and is read-only to every tenant role. You may add
+        your own protocols and you may make them stricter than the floor; you cannot make the floor
+        weaker. Attempting to edit a locked row is refused by name, not silently ignored.
       </Notice>
 
       <Card title="Catalog">
@@ -211,14 +210,20 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           onChange={setDiscipline}
         />
         <SelectField label="Show" value={scope} options={EFFECTIVE_FILTERS} onChange={setScope} />
-        <TextField label="Search" value={search} onChange={setSearch} placeholder="pain, restlessness…" />
+        <TextField
+          label="Search"
+          value={search}
+          onChange={setSearch}
+          placeholder="pain, restlessness…"
+        />
       </FilterRow>
 
       <Card title="Protocols">
         {sorted.length === 0 ? (
           <span style={mutedStyle}>
-            Nothing matches. If you have filtered to tenant-authored only and see nothing, the honest
-            reading is "only platform-floor protocols are active" — which is a complete, working catalog.
+            Nothing matches. If you have filtered to tenant-authored only and see nothing, the
+            honest reading is "only platform-floor protocols are active" — which is a complete,
+            working catalog.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -256,7 +261,9 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
                   <td style={td}>
                     {p.requiresMandatoryEscalation ? (
                       <StatusPill
-                        label={p.mandatoryEscalationTier ? tierLabel(p.mandatoryEscalationTier) : "Yes"}
+                        label={
+                          p.mandatoryEscalationTier ? tierLabel(p.mandatoryEscalationTier) : "Yes"
+                        }
                         tone="error"
                       />
                     ) : (
@@ -275,9 +282,10 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          Versioning here is by effective date, not by a draft/publish workflow: there is no draft state on
-          a protocol row. A call freezes its protocol version when the protocol is applied, so a version
-          that becomes effective mid-call never switches the questions under the clinician walking it.
+          Versioning here is by effective date, not by a draft/publish workflow: there is no draft
+          state on a protocol row. A call freezes its protocol version when the protocol is applied,
+          so a version that becomes effective mid-call never switches the questions under the
+          clinician walking it.
         </span>
       </Card>
 
@@ -304,9 +312,10 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
           }
         >
           <Notice tone="warning">
-            This write needs a recent step-up. It creates a TENANT protocol — there is no way to mint a
-            platform-floor row from here, and the "system locked" flag is not a field, because accepting it
-            and ignoring it would leave you believing you had authored a protected question.
+            This write needs a recent step-up. It creates a TENANT protocol — there is no way to
+            mint a platform-floor row from here, and the "system locked" flag is not a field,
+            because accepting it and ignoring it would leave you believing you had authored a
+            protected question.
           </Notice>
           <TextField
             label="Key"

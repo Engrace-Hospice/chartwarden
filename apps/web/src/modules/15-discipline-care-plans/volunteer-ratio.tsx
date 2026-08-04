@@ -26,6 +26,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { type HourRatioView, errorMessage, getHourRatio, writeHeaders } from "./discipline-api";
+import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 import {
   Card,
   Field,
@@ -41,7 +42,6 @@ import {
   mutedStyle,
   primaryButtonStyle,
 } from "./discipline-ui";
-import { RATIO_STATUS_TONE, hours, humanize, pct, toneOf } from "./discipline-status";
 
 /** The §7.6 bands, stated on the page so the color is never the only signal (Hard Rule §10.10). */
 // The band NAME is the pill (it, not the tone, is what carries the meaning for a reader who cannot
@@ -119,7 +119,10 @@ export function VolunteerHourRatio(): JSX.Element {
               label="Ratio"
               value={ratio ? (unavailable ? "unavailable" : pct(ratio.ratio)) : "—"}
             />
-            <KpiCard label="Volunteer hours" value={ratio ? hours(ratio.volunteerHourMinutes) : "—"} />
+            <KpiCard
+              label="Volunteer hours"
+              value={ratio ? hours(ratio.volunteerHourMinutes) : "—"}
+            />
             <KpiCard
               label="Patient-care hours"
               value={ratio ? hours(ratio.staffPatientCareMinutes) : "—"}
@@ -172,7 +175,10 @@ export function VolunteerHourRatio(): JSX.Element {
                 </Notice>
               ) : null}
               <SummaryGrid>
-                <Field label="Volunteer hours (numerator)" value={hours(ratio.volunteerHourMinutes)} />
+                <Field
+                  label="Volunteer hours (numerator)"
+                  value={hours(ratio.volunteerHourMinutes)}
+                />
                 <Field
                   label="Patient-care hours (denominator)"
                   value={
@@ -211,9 +217,9 @@ export function VolunteerHourRatio(): JSX.Element {
             </Card>
             <Card title="Numerator sources">
               <span style={mutedStyle}>
-                Signed volunteer visits are ledgered nightly; administrative volunteer time is its own
-                typed source; a manual adjustment is the audited correction path and is the only entry
-                that may carry negative minutes.
+                Signed volunteer visits are ledgered nightly; administrative volunteer time is its
+                own typed source; a manual adjustment is the audited correction path and is the only
+                entry that may carry negative minutes.
               </span>
             </Card>
           </div>

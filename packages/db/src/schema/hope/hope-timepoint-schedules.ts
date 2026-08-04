@@ -10,14 +10,10 @@
 // write-audit trigger (alert_cadence denylisted, §8.1) land in the RLS migration.
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import {
-  hopeRfaKind,
-  hopeScheduleStatus,
-  hopeScheduleGeneratedBy,
-} from "../../enums";
+import { hopeRfaKind, hopeScheduleGeneratedBy, hopeScheduleStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const hopeTimepointSchedules = pgTable(
   "hope_timepoint_schedule",

@@ -1,5 +1,4 @@
 import {
-  cardSurface,
   EmptyState,
   FilterBar,
   KpiCard,
@@ -7,9 +6,11 @@ import {
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  cardSurface,
   t,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/30-quality — M30 QAPI & INCIDENTS (§5.1, Track B / ADR-0030).
 // Spec: docs/design/screens/compliance/WARDENX_UI_QAPI_INCIDENTS.md.
 //
@@ -23,7 +24,6 @@ import {
 // this table performs on its own.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import type { paths } from "@wardenx/ui";
 import {
   INCIDENT_SEVERITY_TONE,
   INCIDENT_STATE_TONE,
@@ -64,7 +64,11 @@ const SETTLED_STATES: readonly IncidentRow["state"][] = ["resolved", "closed_fol
 /** The severities that escalate (`severe`/`critical` — NOT the spec's `major`/`sentinel`). */
 const ESCALATED_SEVERITIES: readonly IncidentRow["severity"][] = ["severe", "critical"];
 
-const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
+const cell: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left",
+  verticalAlign: "middle",
+};
 const head: CSSProperties = {
   ...cell,
   fontSize: "0.72rem",
@@ -198,7 +202,10 @@ export function QapiIncidents(): JSX.Element {
                     />
                   </td>
                   <td style={cell}>
-                    <StatusPill tone={toneOf(INCIDENT_STATE_TONE, i.state)} label={humanize(i.state)} />
+                    <StatusPill
+                      tone={toneOf(INCIDENT_STATE_TONE, i.state)}
+                      label={humanize(i.state)}
+                    />
                   </td>
                   <td style={cell}>{i.occurredAt.slice(0, 10)}</td>
                   <td style={cell}>{i.reportedAt.slice(0, 10)}</td>

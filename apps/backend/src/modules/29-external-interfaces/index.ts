@@ -50,9 +50,9 @@ export {
 } from "./routes/index";
 // task-11 — the §4.10 outbox surface: the event catalog + the store's publish port (structural).
 export { M29_OUTBOX_EVENTS } from "./events-by-m29";
-export {
-  type DrizzleM29StoreDeps,
-  type M29WriteOutboxPort,
+export type {
+  DrizzleM29StoreDeps,
+  M29WriteOutboxPort,
 } from "./routes/store-drizzle";
 export {
   registerM29PublishedSeams,
@@ -282,13 +282,13 @@ export {
   buildOrmO01,
   summarizeSegments,
 } from "./outbound/orm-o01";
-export {
-  type LabOrderTransmittedPayload,
-  type LabOrderTransmissionFailureReason,
-  type LabOrderTransmissionFailedPayload,
-  type OutboundOutboxEvent,
-  type OutboundAlert,
-  type OutboundAuditRecord,
+export type {
+  LabOrderTransmittedPayload,
+  LabOrderTransmissionFailureReason,
+  LabOrderTransmissionFailedPayload,
+  OutboundOutboxEvent,
+  OutboundAlert,
+  OutboundAuditRecord,
 } from "./outbound/outbound-events";
 export {
   ORM_SOURCE_KIND,
@@ -342,15 +342,15 @@ export {
   type HttpFetchInit,
   type HttpFetchResponse,
 } from "./nppes/nppes-client";
-export {
-  type NppesProviderSnapshot,
-  type ProviderSyncedPayload,
-  type ProviderDeactivatedPayload,
-  type SyncRunStartedPayload,
-  type SyncRunCompletedPayload,
-  type SyncRunFailedPayload,
-  type NppesOutboxEvent,
-  type NppesOutboxSink,
+export type {
+  NppesProviderSnapshot,
+  ProviderSyncedPayload,
+  ProviderDeactivatedPayload,
+  SyncRunStartedPayload,
+  SyncRunCompletedPayload,
+  SyncRunFailedPayload,
+  NppesOutboxEvent,
+  NppesOutboxSink,
 } from "./nppes/sync-events";
 export {
   type CachedProviderView,

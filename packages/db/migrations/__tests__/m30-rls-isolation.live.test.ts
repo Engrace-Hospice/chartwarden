@@ -406,7 +406,7 @@ describe.skipIf(!DB_URL)(
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
     });
-    
+
     it("§3.5 every org-scoped policy keys ONLY on the canonical app.org_id variable", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0067_quality_m30_rls.sql"), "utf8");
       for (const { table } of COVERED) {
@@ -463,24 +463,25 @@ describe.skipIf(!DB_URL)(
     // A FOR ALL policy on the partitioned PARENT propagates to every leaf (PG11+), so org B cannot
     // UPDATE org A's PHI row even though the row exists in a shared current-month leaf — the UPDATE
     // matches zero rows under org B's predicate (RLS hides it; not an error).
-    describe.each(PHI_PARTITIONED)("%s — partitioned-parent policy hides cross-tenant rows", (table) => {
-      it("org B's UPDATE of org A's PHI row matches zero rows (policy propagates to the leaf)", async () => {
-        const id = a[
-          COVERED.find((c) => c.table === table)!.key
-        ];
-        // A no-op self-assignment on a column present on all four tables (not every partitioned PHI
-        // table carries a `version` column) — what matters is the row count, not the SET expression.
-        const res = await withOrg(ORG_B, () =>
-          db.query(`UPDATE "${table}" SET organization_id = organization_id WHERE id = $1`, [id]),
-        );
-        expect(res.rowCount).toBe(0);
-        // and org A still sees exactly its one row, unmutated by B's attempt
-        const stillThere = await withOrg(ORG_A, () =>
-          db.query(`SELECT count(*)::int AS n FROM "${table}" WHERE id = $1`, [id]),
-        );
-        expect(stillThere.rows[0].n).toBe(1);
-      });
-    });
+    describe.each(PHI_PARTITIONED)(
+      "%s — partitioned-parent policy hides cross-tenant rows",
+      (table) => {
+        it("org B's UPDATE of org A's PHI row matches zero rows (policy propagates to the leaf)", async () => {
+          const id = a[COVERED.find((c) => c.table === table)!.key];
+          // A no-op self-assignment on a column present on all four tables (not every partitioned PHI
+          // table carries a `version` column) — what matters is the row count, not the SET expression.
+          const res = await withOrg(ORG_B, () =>
+            db.query(`UPDATE "${table}" SET organization_id = organization_id WHERE id = $1`, [id]),
+          );
+          expect(res.rowCount).toBe(0);
+          // and org A still sees exactly its one row, unmutated by B's attempt
+          const stillThere = await withOrg(ORG_A, () =>
+            db.query(`SELECT count(*)::int AS n FROM "${table}" WHERE id = $1`, [id]),
+          );
+          expect(stillThere.rows[0].n).toBe(1);
+        });
+      },
+    );
 
     // ── Cross-tenant WRITE rejection (WITH CHECK) ────────────────────────────────────────────────
     it("§3.5 org B cannot INSERT a qapi_program stamped with org A (WITH CHECK)", async () => {
@@ -512,14 +513,17 @@ describe.skipIf(!DB_URL)(
     // The request-scoped app role has no DELETE grant on ANY M30 table; the compliance-class
     // evidence tables are additionally never deletable even by the M4 eraseFn (the eraser package
     // REFUSES them). Here we prove the SQL-layer floor: wardenx_app DELETE → permission denied.
-    describe.each(COMPLIANCE_EVIDENCE)("%s — §3.7 destruction-blocked at the SQL layer", (table) => {
-      it("wardenx_app cannot DELETE an own-org row (no DELETE grant)", async () => {
-        const id = a[COVERED.find((c) => c.table === table)!.key];
-        await expect(
-          withOrg(ORG_A, () => db.query(`DELETE FROM "${table}" WHERE id = $1`, [id])),
-        ).rejects.toThrow(/permission denied/i);
-      });
-    });
+    describe.each(COMPLIANCE_EVIDENCE)(
+      "%s — §3.7 destruction-blocked at the SQL layer",
+      (table) => {
+        it("wardenx_app cannot DELETE an own-org row (no DELETE grant)", async () => {
+          const id = a[COVERED.find((c) => c.table === table)!.key];
+          await expect(
+            withOrg(ORG_A, () => db.query(`DELETE FROM "${table}" WHERE id = $1`, [id])),
+          ).rejects.toThrow(/permission denied/i);
+        });
+      },
+    );
 
     // ── ADR-0010 mixed session variable — only `app.org_id` grants access ────────────────────────
     it("ADR-0010 a session that sets the legacy app.current_org_id (not app.org_id) sees NOTHING", async () => {
@@ -530,10 +534,9 @@ describe.skipIf(!DB_URL)(
       try {
         await fresh.query("SET ROLE wardenx_app");
         await fresh.query("SELECT set_config('app.current_org_id', $1, false)", [ORG_A]);
-        const r = await fresh.query(
-          "SELECT count(*)::int AS n FROM qapi_program WHERE id = $1",
-          [a.qapiProgram],
-        );
+        const r = await fresh.query("SELECT count(*)::int AS n FROM qapi_program WHERE id = $1", [
+          a.qapiProgram,
+        ]);
         expect(r.rows[0].n).toBe(0); // the wrong (legacy) variable grants no access
       } finally {
         await fresh.end();

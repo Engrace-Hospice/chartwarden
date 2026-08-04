@@ -8,9 +8,9 @@
 // (§3.3). RLS + grants + trigger land in the RLS migration (M14-T02).
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { idgAgendaItemKind } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 import { idgMeeting } from "./idg-meetings";
 
 export const idgAgendaItem = pgTable(
@@ -41,7 +41,11 @@ export const idgAgendaItem = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    byMeeting: index("idg_agenda_item_meeting_idx").on(t.organizationId, t.idgMeetingId, t.sortOrder),
+    byMeeting: index("idg_agenda_item_meeting_idx").on(
+      t.organizationId,
+      t.idgMeetingId,
+      t.sortOrder,
+    ),
   }),
 );
 

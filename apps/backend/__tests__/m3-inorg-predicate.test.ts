@@ -1,3 +1,9 @@
+import {
+  type AbacContext,
+  type AbacTarget,
+  abacRegistry,
+  resetAuthorizationContract,
+} from "@wardenx/auth";
 // apps/backend/__tests__/m3-inorg-predicate.test.ts — the M3-base `inOrg` ABAC predicate.
 //
 // Modules composed on `inOrg` as if it existed — M30's abac-predicates.ts says "`inOrg` is excluded — it
@@ -10,12 +16,6 @@
 // These tests pin what the predicate asserts AND what it does not: it is the cheap org-scoping
 // precondition, never a substitute for RLS.
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  type AbacContext,
-  type AbacTarget,
-  abacRegistry,
-  resetAuthorizationContract,
-} from "@wardenx/auth";
 import { M3_IN_ORG_PREDICATE } from "../src/modules/03-authorization/index";
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";

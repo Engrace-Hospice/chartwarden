@@ -1,10 +1,10 @@
+import { paramStringMap } from "./_util";
 // @wardenx/billing — §4.5 rule `place_of_service_consistency` (pos, error, regulatory). Each line's
 // Q-code must match the patient's documented place of service (home / ALF / SNF / IPU) per the M5/M40
 // facility lookup; place-of-service changes must be documented with effective dates (M6). Reads the
 // resolved `mdm.placeOfService` + line Q-codes; SKIPs when the M40 resolver is unbound. PURE: reads ctx.
 import type { Rule } from "./types";
 import { fail, pass, skip } from "./types";
-import { paramStringMap } from "./_util";
 
 const KEY = "place_of_service_consistency";
 
@@ -41,7 +41,12 @@ export const placeOfServiceConsistency: Rule = {
   defaultParameters: { placeByQCode: POS_BY_QCODE },
   check: (ctx, params) => {
     if (!ctx.seams.mdmResolverBound) {
-      return skip(KEY, "error", "seam_not_bound", "MDM/facility resolver (M40) not bound — POS check deferred.");
+      return skip(
+        KEY,
+        "error",
+        "seam_not_bound",
+        "MDM/facility resolver (M40) not bound — POS check deferred.",
+      );
     }
     const documentedPos = ctx.mdm.placeOfService;
     if (documentedPos === null) {
@@ -60,18 +65,25 @@ export const placeOfServiceConsistency: Rule = {
       if (expectedPos === undefined) {
         mismatches.push(`${line.serviceDate}: unknown Q-code ${line.qCode}`);
       } else if (expectedPos !== documentedPos) {
-        mismatches.push(`${line.serviceDate}: Q-code ${line.qCode} (${expectedPos}) ≠ documented ${documentedPos}`);
+        mismatches.push(
+          `${line.serviceDate}: Q-code ${line.qCode} (${expectedPos}) ≠ documented ${documentedPos}`,
+        );
       }
     }
     if (mismatches.length === 0) {
-      return pass(KEY, "error", `Every line's Q-code matches the documented place of service (${documentedPos}).`);
+      return pass(
+        KEY,
+        "error",
+        `Every line's Q-code matches the documented place of service (${documentedPos}).`,
+      );
     }
     return fail(
       KEY,
       "error",
       `${mismatches.length} line(s) have a Q-code / place-of-service mismatch.`,
       {
-        summary: "Correct the line Q-code or document the place-of-service change with effective dates (M6).",
+        summary:
+          "Correct the line Q-code or document the place-of-service change with effective dates (M6).",
         blameTarget: "claim_line",
         fixAction: "edit_in_m6",
       },

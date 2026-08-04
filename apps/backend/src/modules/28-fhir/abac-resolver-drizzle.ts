@@ -157,7 +157,9 @@ export function buildDrizzleFhirGatewayAbacResolver(
           .limit(1);
         if (!row) return null;
         // `system/Patient.read` → `Patient`.
-        return asStringArray(row.allowedScopes).map((s) => s.replace(/^system\//, "").split(".")[0]!);
+        return asStringArray(row.allowedScopes).map(
+          (s) => s.replace(/^system\//, "").split(".")[0]!,
+        );
       } catch {
         return null;
       }

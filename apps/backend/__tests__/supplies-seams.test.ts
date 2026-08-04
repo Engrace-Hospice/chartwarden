@@ -14,11 +14,7 @@
 //   • an unresolvable dispatched line RAISES rather than silently dropping a controlled-substance count;
 //   • the cost summaries return TOTALS and COUNTS, sum their own parts, and REFUSE to relabel one tenant's
 //     numbers with another tenant's org id.
-import type {
-  DispatchDetailView,
-  OrgId,
-  SupplyRequestStatusView,
-} from "@wardenx/types";
+import type { DispatchDetailView, OrgId, SupplyRequestStatusView } from "@wardenx/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/index";
 import {

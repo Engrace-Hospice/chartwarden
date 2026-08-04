@@ -73,37 +73,41 @@ export function buildDrizzleSuppliesAbacResolver(
   return {
     async loadDispatch(orgId, dispatchId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<SupplyDispatchAbacFacts | null> => {
-          const [row] = await tx
-            .select({
-              organizationId: DISPATCH.organizationId,
-              id: DISPATCH.id,
-              locationId: DISPATCH.locationId,
-            })
-            .from(DISPATCH)
-            .where(eq(DISPATCH.id, dispatchId))
-            .limit(1);
-          if (!row) return null;
-          // A comfort-kit dispatch is treated as controlled unless every dispatched line says otherwise.
-          // Reading the CONTENT rows rather than assuming keeps a non-scheduled kit (some agencies dispatch
-          // a purely anti-emetic kit) out of the tighter gate, without ever assuming the safe direction.
-          const controlled = await tx
-            .select({ id: DISPATCHED.id })
-            .from(DISPATCHED)
-            .where(
-              and(
-                eq(DISPATCHED.dispatchId, dispatchId),
-                eq(DISPATCHED.isControlledSubstance, true),
-              ),
-            )
-            .limit(1);
-          return {
-            organizationId: row.organizationId,
-            targetId: row.id,
-            locationId: row.locationId,
-            involvesControlledSubstance: controlled.length > 0,
-          };
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<SupplyDispatchAbacFacts | null> => {
+            const [row] = await tx
+              .select({
+                organizationId: DISPATCH.organizationId,
+                id: DISPATCH.id,
+                locationId: DISPATCH.locationId,
+              })
+              .from(DISPATCH)
+              .where(eq(DISPATCH.id, dispatchId))
+              .limit(1);
+            if (!row) return null;
+            // A comfort-kit dispatch is treated as controlled unless every dispatched line says otherwise.
+            // Reading the CONTENT rows rather than assuming keeps a non-scheduled kit (some agencies dispatch
+            // a purely anti-emetic kit) out of the tighter gate, without ever assuming the safe direction.
+            const controlled = await tx
+              .select({ id: DISPATCHED.id })
+              .from(DISPATCHED)
+              .where(
+                and(
+                  eq(DISPATCHED.dispatchId, dispatchId),
+                  eq(DISPATCHED.isControlledSubstance, true),
+                ),
+              )
+              .limit(1);
+            return {
+              organizationId: row.organizationId,
+              targetId: row.id,
+              locationId: row.locationId,
+              involvesControlledSubstance: controlled.length > 0,
+            };
+          },
+        );
       } catch {
         return null;
       }
@@ -111,25 +115,29 @@ export function buildDrizzleSuppliesAbacResolver(
 
     async loadRequest(orgId, supplyRequestId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<SupplyDispatchAbacFacts | null> => {
-          const [row] = await tx
-            .select({
-              organizationId: REQUEST.organizationId,
-              id: REQUEST.id,
-              locationId: REQUEST.locationId,
-              kind: REQUEST.kind,
-            })
-            .from(REQUEST)
-            .where(eq(REQUEST.id, supplyRequestId))
-            .limit(1);
-          if (!row) return null;
-          return {
-            organizationId: row.organizationId,
-            targetId: row.id,
-            locationId: row.locationId,
-            involvesControlledSubstance: KIT_KINDS.has(row.kind),
-          };
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<SupplyDispatchAbacFacts | null> => {
+            const [row] = await tx
+              .select({
+                organizationId: REQUEST.organizationId,
+                id: REQUEST.id,
+                locationId: REQUEST.locationId,
+                kind: REQUEST.kind,
+              })
+              .from(REQUEST)
+              .where(eq(REQUEST.id, supplyRequestId))
+              .limit(1);
+            if (!row) return null;
+            return {
+              organizationId: row.organizationId,
+              targetId: row.id,
+              locationId: row.locationId,
+              involvesControlledSubstance: KIT_KINDS.has(row.kind),
+            };
+          },
+        );
       } catch {
         return null;
       }
@@ -137,49 +145,53 @@ export function buildDrizzleSuppliesAbacResolver(
 
     async loadReturn(orgId, returnId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<ComfortKitReturnAbacFacts | null> => {
-          const [row] = await tx
-            .select({
-              organizationId: RETURN.organizationId,
-              id: RETURN.id,
-              dispatchId: RETURN.dispatchId,
-              assignedRetrievingMembershipId: RETURN.assignedRetrievingMembershipId,
-              disposalWitnessMembershipId: RETURN.disposalWitnessMembershipId,
-            })
-            .from(RETURN)
-            .where(eq(RETURN.id, returnId))
-            .limit(1);
-          if (!row) return null;
-          const [dispatch] = await tx
-            .select({ dispatchedByMembershipId: DISPATCH.dispatchedByMembershipId })
-            .from(DISPATCH)
-            .where(eq(DISPATCH.id, row.dispatchId))
-            .limit(1);
-          // No dispatch ⇒ no dispatcher ⇒ the separation-of-duties clause is UNDECIDABLE, so the whole
-          // predicate denies. Inventing an empty dispatcher id would make every reconciler pass clause (a).
-          if (!dispatch) return null;
-          const controlled = await tx
-            .select({ id: DISPATCHED.id })
-            .from(DISPATCHED)
-            .where(
-              and(
-                eq(DISPATCHED.dispatchId, row.dispatchId),
-                eq(DISPATCHED.isControlledSubstance, true),
-              ),
-            )
-            .limit(1);
-          return {
-            organizationId: row.organizationId,
-            returnId: row.id,
-            dispatchId: row.dispatchId,
-            dispatchedByMembershipId: dispatch.dispatchedByMembershipId as MembershipId,
-            assignedRetrievingMembershipId:
-              (row.assignedRetrievingMembershipId ?? null) as MembershipId | null,
-            disposalWitnessMembershipId:
-              (row.disposalWitnessMembershipId ?? null) as MembershipId | null,
-            containsControlledSubstance: controlled.length > 0,
-          };
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<ComfortKitReturnAbacFacts | null> => {
+            const [row] = await tx
+              .select({
+                organizationId: RETURN.organizationId,
+                id: RETURN.id,
+                dispatchId: RETURN.dispatchId,
+                assignedRetrievingMembershipId: RETURN.assignedRetrievingMembershipId,
+                disposalWitnessMembershipId: RETURN.disposalWitnessMembershipId,
+              })
+              .from(RETURN)
+              .where(eq(RETURN.id, returnId))
+              .limit(1);
+            if (!row) return null;
+            const [dispatch] = await tx
+              .select({ dispatchedByMembershipId: DISPATCH.dispatchedByMembershipId })
+              .from(DISPATCH)
+              .where(eq(DISPATCH.id, row.dispatchId))
+              .limit(1);
+            // No dispatch ⇒ no dispatcher ⇒ the separation-of-duties clause is UNDECIDABLE, so the whole
+            // predicate denies. Inventing an empty dispatcher id would make every reconciler pass clause (a).
+            if (!dispatch) return null;
+            const controlled = await tx
+              .select({ id: DISPATCHED.id })
+              .from(DISPATCHED)
+              .where(
+                and(
+                  eq(DISPATCHED.dispatchId, row.dispatchId),
+                  eq(DISPATCHED.isControlledSubstance, true),
+                ),
+              )
+              .limit(1);
+            return {
+              organizationId: row.organizationId,
+              returnId: row.id,
+              dispatchId: row.dispatchId,
+              dispatchedByMembershipId: dispatch.dispatchedByMembershipId as MembershipId,
+              assignedRetrievingMembershipId: (row.assignedRetrievingMembershipId ??
+                null) as MembershipId | null,
+              disposalWitnessMembershipId: (row.disposalWitnessMembershipId ??
+                null) as MembershipId | null,
+              containsControlledSubstance: controlled.length > 0,
+            };
+          },
+        );
       } catch {
         return null;
       }
@@ -212,16 +224,20 @@ export function buildDrizzleSuppliesAbacResolver(
 
     async locationIdsOf(orgId, membershipId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<readonly string[] | null> => {
-          const [row] = await tx
-            .select({ defaultLocationIds: MEMBERSHIP.defaultLocationIds })
-            .from(MEMBERSHIP)
-            .where(and(eq(MEMBERSHIP.id, membershipId), eq(MEMBERSHIP.organizationId, orgId)))
-            .limit(1);
-          if (!row) return null;
-          const ids = row.defaultLocationIds;
-          return Array.isArray(ids) ? ids.filter((v): v is string => typeof v === "string") : [];
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<readonly string[] | null> => {
+            const [row] = await tx
+              .select({ defaultLocationIds: MEMBERSHIP.defaultLocationIds })
+              .from(MEMBERSHIP)
+              .where(and(eq(MEMBERSHIP.id, membershipId), eq(MEMBERSHIP.organizationId, orgId)))
+              .limit(1);
+            if (!row) return null;
+            const ids = row.defaultLocationIds;
+            return Array.isArray(ids) ? ids.filter((v): v is string => typeof v === "string") : [];
+          },
+        );
       } catch {
         return null;
       }

@@ -36,7 +36,8 @@ export const duplicateBillingCheck: Rule = {
         "error",
         "Service dates overlap the immediately-prior claim for this patient/CCN.",
         {
-          summary: "Trim this claim's start to the day after the prior claim's through-date, or void/replace.",
+          summary:
+            "Trim this claim's start to the day after the prior claim's through-date, or void/replace.",
           blameTarget: "claim",
           blameTargetId: c.claimId,
           fixAction: "edit_claim",
@@ -47,6 +48,10 @@ export const duplicateBillingCheck: Rule = {
     // NOTE(P3): exhaustive duplicate detection across ALL prior accepted claims is performed by the
     // repository via the §3.4 partial unique index `(patient_id, provider_entity_id, [service range])`;
     // the pure rule only has the prior-claim continuity facts in `ClaimSnapshot`.
-    return pass(KEY, "error", "No overlap with the prior claim (structural duplicate index is the backstop).");
+    return pass(
+      KEY,
+      "error",
+      "No overlap with the prior claim (structural duplicate index is the backstop).",
+    );
   },
 };

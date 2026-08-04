@@ -6,12 +6,12 @@
 // recert CTI sign + F2F window math + window override — the pure org-TZ window math (certification/).
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predicates";
 import {
   type AdmissionWriteOutboxPort,
   createDbAdmissionAbacResolver,
   createDbAdmissionRouteService,
 } from "./admission-route-service-db";
-import { registerAdmissionAbacPredicates as _registerM6Abac } from "./abac-predicates";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
 
 export * from "./state-machines";

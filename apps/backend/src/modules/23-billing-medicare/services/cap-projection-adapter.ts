@@ -7,8 +7,12 @@
 // DEGRADE, never throw (D8): a deny-stub throw (M26 db-unbound) or an absent projection resolves to
 // `status:"unavailable"` so the cap rules WARN-degrade rather than block claim submission. M26 is the
 // authoritative cap engine; M23 never fabricates a cap figure.
-import type { CapOrgProjectionResult, CapPatientProjectionResult, CapProjectionProvider } from "@wardenx/billing";
-import { fromDecimal, RegulatoryDecimal } from "@wardenx/shared/money";
+import type {
+  CapOrgProjectionResult,
+  CapPatientProjectionResult,
+  CapProjectionProvider,
+} from "@wardenx/billing";
+import { RegulatoryDecimal, fromDecimal } from "@wardenx/shared/money";
 import { getSeam } from "../../../bootstrap/index";
 
 /** The minimal M26 `CapProjectionProvider` surface M23 consumes (date-keyed; M23 has the claim service date). */

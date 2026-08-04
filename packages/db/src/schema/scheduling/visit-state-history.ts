@@ -11,9 +11,9 @@
 // layer (append-only). RLS + grants + the M4 write-audit trigger land in M17-T02.
 import { index, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { visitStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const visitStateHistory = pgTable(
   "visit_state_history",

@@ -19,13 +19,13 @@
 //   6. If M11's worker flips the `verbal_order` to expired_unsigned, the M11→M12 backref consumer drives the
 //      machine's `expire` transition and the M36 high-severity alert (M12-T08 wires the consumer).
 import type {
+  EpcsSecondFactorType,
   MedClass,
   RecordVerbalOrderInput,
   SignOrderTargetInput,
-  EpcsSecondFactorType,
 } from "@wardenx/types";
-import { isEpcsRequired } from "./medication-order-machine";
 import { require_ } from "./errors";
+import { isEpcsRequired } from "./medication-order-machine";
 
 /** The M12 medication-order facts the §2.3 M11-seam payload builders read (no Drizzle row crosses here). */
 export interface VerbalMedicationOrderFacts {

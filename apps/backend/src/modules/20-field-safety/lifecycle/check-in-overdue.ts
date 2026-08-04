@@ -89,7 +89,10 @@ export function overdueTierFor(
   minutesOverdue: number,
   policy: Pick<
     SafetyPolicyEffectiveDto,
-    "gentleReminderMinutes" | "supervisorAlertMinutes" | "escalationMinutes" | "sosEquivalentMinutes"
+    | "gentleReminderMinutes"
+    | "supervisorAlertMinutes"
+    | "escalationMinutes"
+    | "sosEquivalentMinutes"
   >,
 ): SafetyOverdueTier {
   if (minutesOverdue >= policy.sosEquivalentMinutes) return "sos_equivalent";
@@ -106,7 +109,10 @@ export function overdueTierAt(input: {
   readonly atIso: IsoInstant;
   readonly policy: Pick<
     SafetyPolicyEffectiveDto,
-    "gentleReminderMinutes" | "supervisorAlertMinutes" | "escalationMinutes" | "sosEquivalentMinutes"
+    | "gentleReminderMinutes"
+    | "supervisorAlertMinutes"
+    | "escalationMinutes"
+    | "sosEquivalentMinutes"
   >;
 }): SafetyOverdueTier {
   return overdueTierFor(minutesPastExpected(input.expectedAt, input.atIso), input.policy);
@@ -213,16 +219,15 @@ export function decideOverdueCheckIn(input: {
   });
 
   // A row that flipped to `recorded` between the scan and this decision is an ordinary race, not a fault.
-  if (!(SAFETY_SCHEDULE_ACTIONABLE_STATES as readonly SafetyCheckInState[]).includes(schedule.state)) {
+  if (
+    !(SAFETY_SCHEDULE_ACTIONABLE_STATES as readonly SafetyCheckInState[]).includes(schedule.state)
+  ) {
     return { kind: "none", tier, badge, nextDueAt: null, reason: "not_actionable" };
   }
 
   // §4.8 — the flip out of `proposed` is governed by the fulfilment WINDOW, not by a D4 threshold: the
   // clinician is not late until the window they were given has closed.
-  if (
-    schedule.state === "proposed" &&
-    minutesOverdue < schedule.windowMinutes
-  ) {
+  if (schedule.state === "proposed" && minutesOverdue < schedule.windowMinutes) {
     return {
       kind: "none",
       tier,

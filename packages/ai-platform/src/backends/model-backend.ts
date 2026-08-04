@@ -97,9 +97,7 @@ export interface ModelBackend {
   health(): Promise<AiBackendHealthStatus>;
   complete?(request: ModelBackendCompletionRequest): Promise<ModelBackendCompletionResult>;
   embed?(request: ModelBackendEmbeddingRequest): Promise<ModelBackendEmbeddingResult>;
-  classify?(
-    request: ModelBackendClassificationRequest,
-  ): Promise<ModelBackendClassificationResult>;
+  classify?(request: ModelBackendClassificationRequest): Promise<ModelBackendClassificationResult>;
 }
 
 /** Resolves a `backend_key` from `ai_model_backend` to the adapter that speaks to it. */

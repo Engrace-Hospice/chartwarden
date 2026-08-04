@@ -57,8 +57,17 @@ export function AiSuggestionCard({
     >
       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: t.success }}>
         <Glyph name="sparkle" size={18} label="AI suggestion" />
-        <strong style={{ fontFamily: t.fontSans, fontSize: "0.8125rem", fontWeight: 600 }}>AI suggestion</strong>
-        <span style={{ marginLeft: "auto", fontSize: "0.6875rem", color: t.onSurfaceVariant, fontWeight: 500 }}>
+        <strong style={{ fontFamily: t.fontSans, fontSize: "0.8125rem", fontWeight: 600 }}>
+          AI suggestion
+        </strong>
+        <span
+          style={{
+            marginLeft: "auto",
+            fontSize: "0.6875rem",
+            color: t.onSurfaceVariant,
+            fontWeight: 500,
+          }}
+        >
           suggestion — review before relying
         </span>
       </div>
@@ -66,7 +75,15 @@ export function AiSuggestionCard({
       <div style={{ color: t.onSurface, fontSize: "0.875rem" }}>{children}</div>
 
       {/* Provenance line — model · confidence. */}
-      <div style={{ fontSize: "0.75rem", color: t.onSurfaceVariant, display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+      <div
+        style={{
+          fontSize: "0.75rem",
+          color: t.onSurfaceVariant,
+          display: "flex",
+          gap: "0.4rem",
+          flexWrap: "wrap",
+        }}
+      >
         <span>{model}</span>
         {conf ? <span>· {conf}</span> : null}
       </div>
@@ -103,7 +120,14 @@ export function AiSuggestionCard({
             <button
               type="button"
               onClick={onDismiss}
-              style={{ border: "none", background: "transparent", color: t.onSurfaceVariant, fontWeight: 600, cursor: "pointer", padding: "0.4rem 0.75rem" }}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: t.onSurfaceVariant,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: "0.4rem 0.75rem",
+              }}
             >
               Dismiss
             </button>
@@ -112,7 +136,15 @@ export function AiSuggestionCard({
             <button
               type="button"
               onClick={onEdit}
-              style={{ border: "none", background: t.surfaceHigh, color: t.onSurface, fontWeight: 600, borderRadius: t.radiusMd, cursor: "pointer", padding: "0.4rem 0.85rem" }}
+              style={{
+                border: "none",
+                background: t.surfaceHigh,
+                color: t.onSurface,
+                fontWeight: 600,
+                borderRadius: t.radiusMd,
+                cursor: "pointer",
+                padding: "0.4rem 0.85rem",
+              }}
             >
               Edit
             </button>
@@ -121,7 +153,15 @@ export function AiSuggestionCard({
             <button
               type="button"
               onClick={onAccept}
-              style={{ border: "none", background: t.success, color: t.onEmphasis, fontWeight: 600, borderRadius: "9999px", cursor: "pointer", padding: "0.4rem 1rem" }}
+              style={{
+                border: "none",
+                background: t.success,
+                color: t.onEmphasis,
+                fontWeight: 600,
+                borderRadius: "9999px",
+                cursor: "pointer",
+                padding: "0.4rem 1rem",
+              }}
             >
               Accept
             </button>

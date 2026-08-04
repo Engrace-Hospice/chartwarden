@@ -10,8 +10,6 @@
 // Imports ONLY from ./types (the extracted contract leaf) — never from ./index — to keep the no-circular
 // fitness rule (the M27 index↔client cycle gotcha) satisfied.
 import {
-  degraded,
-  X12_WORKER_NOT_WIRED,
   type Eligibility270Request,
   type Eligibility271Result,
   type Generate837iNoeRequest,
@@ -24,6 +22,8 @@ import {
   type Parsed999,
   type X12WorkerClient,
   type X12WorkerResult,
+  X12_WORKER_NOT_WIRED,
+  degraded,
 } from "./types";
 
 /** A single sidecar HTTP exchange. The transport is injected so this package holds no network code. */
@@ -68,27 +68,37 @@ export class LiveX12WorkerClient implements X12WorkerClient {
 
   generate837i(_input: Generate837iRequest): Promise<X12WorkerResult<Generated837i>> {
     // TODO(Phase 3): build the /generate-837i payload and call this.deps.http.request(...).
-    return Promise.resolve(degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"));
+    return Promise.resolve(
+      degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
+    );
   }
 
   generate837iNoe(_input: Generate837iNoeRequest): Promise<X12WorkerResult<Generated837i>> {
     // TODO(Phase 3): build the /generate-noe payload and call this.deps.http.request(...).
-    return Promise.resolve(degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"));
+    return Promise.resolve(
+      degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
+    );
   }
 
   generate837iNotr(_input: Generate837iNotrRequest): Promise<X12WorkerResult<Generated837i>> {
     // TODO(Phase 3): build the /generate-notr payload and call this.deps.http.request(...).
-    return Promise.resolve(degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"));
+    return Promise.resolve(
+      degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
+    );
   }
 
   parse999(_input: Parse999Request): Promise<X12WorkerResult<Parsed999>> {
     // TODO(Phase 3): POST raw 999 to /parse-999 and normalize the response.
-    return Promise.resolve(degraded<Parsed999>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"));
+    return Promise.resolve(
+      degraded<Parsed999>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
+    );
   }
 
   parse277ca(_input: Parse277caRequest): Promise<X12WorkerResult<Parsed277ca>> {
     // TODO(Phase 3): POST raw 277CA to /parse-277ca and normalize the response.
-    return Promise.resolve(degraded<Parsed277ca>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"));
+    return Promise.resolve(
+      degraded<Parsed277ca>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
+    );
   }
 
   eligibility270(_input: Eligibility270Request): Promise<X12WorkerResult<Eligibility271Result>> {

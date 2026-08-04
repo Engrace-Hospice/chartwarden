@@ -35,7 +35,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.draft_created",
     moduleOwner: "m23",
-    description: "A claim DRAFT was assembled from clinical artifacts (PE + patient + admission + TOB + service window).",
+    description:
+      "A claim DRAFT was assembled from clinical artifacts (PE + patient + admission + TOB + service window).",
     payloadSchema: Type.Object({
       claimId: id,
       providerEntityId: id,
@@ -51,7 +52,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.validation_started",
     moduleOwner: "m23",
-    description: "A claim entered VALIDATING; a validation_run was enqueued against the current claim state.",
+    description:
+      "A claim entered VALIDATING; a validation_run was enqueued against the current claim state.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id, trigger: str }),
     declaredConsumers: ["m33"],
     isOutboxOnly: true,
@@ -59,15 +61,21 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.validation_failed",
     moduleOwner: "m23",
-    description: "A validation run produced one or more failing rules; the failed rule keys are attached.",
-    payloadSchema: Type.Object({ claimId: id, validationRunId: id, failedRuleKeys: Type.Array(str) }),
+    description:
+      "A validation run produced one or more failing rules; the failed rule keys are attached.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      validationRunId: id,
+      failedRuleKeys: Type.Array(str),
+    }),
     declaredConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.claim.ready_for_submission",
     moduleOwner: "m23",
-    description: "Validation completed with no unresolved blocking failures; the claim transitioned VALIDATING → READY.",
+    description:
+      "Validation completed with no unresolved blocking failures; the claim transitioned VALIDATING → READY.",
     payloadSchema: Type.Object({ claimId: id, validationRunId: id }),
     declaredConsumers: ["m33", "m36"],
     isOutboxOnly: true,
@@ -75,15 +83,22 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.submit_requested",
     moduleOwner: "m23",
-    description: "The user clicked Submit (D2): the same-transaction outbox emit that drives the claim.submit worker.",
-    payloadSchema: Type.Object({ claimId: id, submissionId: id, claimControlNumber: str, attemptIndex: int }),
+    description:
+      "The user clicked Submit (D2): the same-transaction outbox emit that drives the claim.submit worker.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      submissionId: id,
+      claimControlNumber: str,
+      attemptIndex: int,
+    }),
     declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.claim.submitted",
     moduleOwner: "m23",
-    description: "The submission worker uploaded the 837I to the MAC portal; the claim transitioned READY → SUBMITTED.",
+    description:
+      "The submission worker uploaded the 837I to the MAC portal; the claim transitioned READY → SUBMITTED.",
     payloadSchema: Type.Object({
       claimId: id,
       submissionId: id,
@@ -97,7 +112,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.submission_failed",
     moduleOwner: "m23",
-    description: "The submission worker reported a MAC-portal upload failure; the retry worker picks it up.",
+    description:
+      "The submission worker reported a MAC-portal upload failure; the retry worker picks it up.",
     payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: int, reason: str }),
     declaredConsumers: ["m33"],
     isOutboxOnly: true,
@@ -105,7 +121,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.submission_stalled",
     moduleOwner: "m23",
-    description: "The retry worker exhausted its attempts (max 5); the stalled-submission alert is dispatched.",
+    description:
+      "The retry worker exhausted its attempts (max 5); the stalled-submission alert is dispatched.",
     payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: int, reason: str }),
     declaredConsumers: ["m36", "m33"],
     isOutboxOnly: true,
@@ -113,7 +130,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.acknowledged",
     moduleOwner: "m23",
-    description: "The 277CA accepted the claim; ACK_PENDING → ACK_ACCEPTED with the payer claim control number.",
+    description:
+      "The 277CA accepted the claim; ACK_PENDING → ACK_ACCEPTED with the payer claim control number.",
     payloadSchema: Type.Object({ claimId: id, acknowledgmentId: id, payerClaimControlNumber: str }),
     declaredConsumers: ["m22", "m25", "m26", "m33", "m36"],
     isOutboxOnly: true,
@@ -121,7 +139,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.acknowledgment_partial",
     moduleOwner: "m23",
-    description: "The 277CA partially accepted the claim; ACK_PENDING → ACK_PARTIAL with per-line accept/reject sets.",
+    description:
+      "The 277CA partially accepted the claim; ACK_PENDING → ACK_PARTIAL with per-line accept/reject sets.",
     payloadSchema: Type.Object({
       claimId: id,
       acknowledgmentId: id,
@@ -135,7 +154,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.rejected",
     moduleOwner: "m23",
-    description: "A 999 syntax fail or 277CA reject; the claim transitioned to ACK_REJECTED with the rejection stage + codes.",
+    description:
+      "A 999 syntax fail or 277CA reject; the claim transitioned to ACK_REJECTED with the rejection stage + codes.",
     payloadSchema: Type.Object({
       claimId: id,
       acknowledgmentId: id,
@@ -148,7 +168,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.paid",
     moduleOwner: "m23",
-    description: "M25 posted the 835 with full payment; ACK_ACCEPTED → PAID with the paid amount (cents).",
+    description:
+      "M25 posted the 835 with full payment; ACK_ACCEPTED → PAID with the paid amount (cents).",
     payloadSchema: Type.Object({
       claimId: id,
       remittanceAdviceId: id,
@@ -162,18 +183,27 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.claim.denied",
     moduleOwner: "m23",
     description: "M25 posted a denial 835; ACK_ACCEPTED → DENIED with the denial codes.",
-    payloadSchema: Type.Object({ claimId: id, remittanceAdviceId: id, denialCodes: Type.Array(str) }),
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceAdviceId: id,
+      denialCodes: Type.Array(str),
+    }),
     declaredConsumers: ["m25", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.claim.adjudicated",
     moduleOwner: "m23",
-    description: "The claim reached a terminal adjudication outcome (the single 'adjudication complete' signal for measure recompute).",
+    description:
+      "The claim reached a terminal adjudication outcome (the single 'adjudication complete' signal for measure recompute).",
     payloadSchema: Type.Object({
       claimId: id,
       providerEntityId: id,
-      outcome: Type.Union([Type.Literal("paid"), Type.Literal("partial_paid"), Type.Literal("denied")]),
+      outcome: Type.Union([
+        Type.Literal("paid"),
+        Type.Literal("partial_paid"),
+        Type.Literal("denied"),
+      ]),
       remittanceAdviceId: id,
       adjudicatedAt: isoInstant,
     }),
@@ -183,7 +213,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.line_finalized",
     moduleOwner: "m23",
-    description: "A claim_line reached a final adjudicated state (per posted remittance line) — day-level accrual signal.",
+    description:
+      "A claim_line reached a final adjudicated state (per posted remittance line) — day-level accrual signal.",
     payloadSchema: Type.Object({
       claimId: id,
       claimLineId: id,
@@ -198,7 +229,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.replaced",
     moduleOwner: "m23",
-    description: "A TOB 817 replacement was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → REPLACED.",
+    description:
+      "A TOB 817 replacement was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → REPLACED.",
     payloadSchema: Type.Object({ originalClaimId: id, replacementClaimId: id, reason: str }),
     declaredConsumers: ["m26", "m27", "m33"],
     isOutboxOnly: true,
@@ -206,7 +238,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.voided",
     moduleOwner: "m23",
-    description: "A TOB 818 void was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → VOIDED.",
+    description:
+      "A TOB 818 void was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → VOIDED.",
     payloadSchema: Type.Object({ originalClaimId: id, voidClaimId: id, reason: str }),
     declaredConsumers: ["m26", "m27", "m33"],
     isOutboxOnly: true,
@@ -214,7 +247,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.override_applied",
     moduleOwner: "m23",
-    description: "A validation_override was inserted against a failing result (audit-prominent; surveyor-mode reflected).",
+    description:
+      "A validation_override was inserted against a failing result (audit-prominent; surveyor-mode reflected).",
     payloadSchema: Type.Object({
       claimId: id,
       validationRunId: id,
@@ -230,7 +264,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.noe.draft_created",
     moduleOwner: "m23",
-    description: "A NOE draft was created from m6.election.signed; the 5-day filing window target was computed.",
+    description:
+      "A NOE draft was created from m6.election.signed; the 5-day filing window target was computed.",
     payloadSchema: Type.Object({
       noeId: id,
       providerEntityId: id,
@@ -244,7 +279,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.noe.submit_requested",
     moduleOwner: "m23",
-    description: "A NOE became READY; the same-transaction outbox emit that drives the noe.submit worker.",
+    description:
+      "A NOE became READY; the same-transaction outbox emit that drives the noe.submit worker.",
     payloadSchema: Type.Object({ noeId: id, submissionId: id, noeControlNumber: str }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -260,7 +296,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.noe.accepted",
     moduleOwner: "m23",
-    description: "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOE compliance window.",
+    description:
+      "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOE compliance window.",
     payloadSchema: Type.Object({ noeId: id, acknowledgmentId: id, payerNoeControlNumber: str }),
     declaredConsumers: ["m6", "m33"],
     isOutboxOnly: true,
@@ -276,7 +313,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.noe.window_warning",
     moduleOwner: "m23",
-    description: "The day-3 NOE-window watchdog tick fired (the 5-day CMS filing window is at risk).",
+    description:
+      "The day-3 NOE-window watchdog tick fired (the 5-day CMS filing window is at risk).",
     payloadSchema: Type.Object({ noeId: id, admissionId: id, daysIntoWindow: int }),
     declaredConsumers: ["m36", "m33"],
     isOutboxOnly: true,
@@ -293,7 +331,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.notr.draft_created",
     moduleOwner: "m23",
-    description: "A NOTR draft was created from a discharge/revocation; the filing window target was computed.",
+    description:
+      "A NOTR draft was created from a discharge/revocation; the filing window target was computed.",
     payloadSchema: Type.Object({
       notrId: id,
       providerEntityId: id,
@@ -307,7 +346,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.notr.submit_requested",
     moduleOwner: "m23",
-    description: "A NOTR became READY; the same-transaction outbox emit that drives the notr.submit worker.",
+    description:
+      "A NOTR became READY; the same-transaction outbox emit that drives the notr.submit worker.",
     payloadSchema: Type.Object({ notrId: id, submissionId: id, notrControlNumber: str }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -323,7 +363,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.notr.accepted",
     moduleOwner: "m23",
-    description: "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOTR compliance window.",
+    description:
+      "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOTR compliance window.",
     payloadSchema: Type.Object({ notrId: id, acknowledgmentId: id, payerNotrControlNumber: str }),
     declaredConsumers: ["m6", "m33"],
     isOutboxOnly: true,
@@ -356,7 +397,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.eligibility.refresh_requested",
     moduleOwner: "m23",
-    description: "A HETS 270/271 refresh was requested (route 22 or stale-at-assembly); drives the eligibility.refresh worker.",
+    description:
+      "A HETS 270/271 refresh was requested (route 22 or stale-at-assembly); drives the eligibility.refresh worker.",
     payloadSchema: Type.Object({ patientId: id, asOfServiceDate: isoInstant }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -364,7 +406,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.eligibility.checked",
     moduleOwner: "m23",
-    description: "An eligibility_check row was inserted (MBI never persisted); the outcome + staleAt are attached.",
+    description:
+      "An eligibility_check row was inserted (MBI never persisted); the outcome + staleAt are attached.",
     payloadSchema: Type.Object({
       checkId: id,
       patientId: id,
@@ -379,7 +422,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.eligibility.expired",
     moduleOwner: "m23",
-    description: "The stale-watch cron marked an eligibility_check past its staleAt; the re-check prompt is raised.",
+    description:
+      "The stale-watch cron marked an eligibility_check past its staleAt; the re-check prompt is raised.",
     payloadSchema: Type.Object({ patientId: id, lastCheckedAt: isoInstant }),
     declaredConsumers: ["m36", "m33"],
     isOutboxOnly: true,
@@ -388,7 +432,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.mac_credential.updated",
     moduleOwner: "m23",
-    description: "A per-PE mac_submitter_credential was upserted (secrets never emitted); the version is bumped.",
+    description:
+      "A per-PE mac_submitter_credential was upserted (secrets never emitted); the version is bumped.",
     payloadSchema: Type.Object({ providerEntityId: id, macJurisdiction: str, version: int }),
     declaredConsumers: ["m34", "m33"],
     isOutboxOnly: true,
@@ -396,16 +441,26 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.mac_portal.unavailable",
     moduleOwner: "m23",
-    description: "The health cron observed a MAC portal transition to down; a Tier-3 system-status event is raised.",
-    payloadSchema: Type.Object({ macJurisdiction: str, lastSeenUpAt: nullableInstant, downedAt: isoInstant }),
+    description:
+      "The health cron observed a MAC portal transition to down; a Tier-3 system-status event is raised.",
+    payloadSchema: Type.Object({
+      macJurisdiction: str,
+      lastSeenUpAt: nullableInstant,
+      downedAt: isoInstant,
+    }),
     declaredConsumers: ["m36", "m33", "m1"],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.mac_portal.recovered",
     moduleOwner: "m23",
-    description: "The health cron observed a MAC portal transition back up; the system-status event clears.",
-    payloadSchema: Type.Object({ macJurisdiction: str, downedAt: isoInstant, recoveredAt: isoInstant }),
+    description:
+      "The health cron observed a MAC portal transition back up; the system-status event clears.",
+    payloadSchema: Type.Object({
+      macJurisdiction: str,
+      downedAt: isoInstant,
+      recoveredAt: isoInstant,
+    }),
     declaredConsumers: ["m36", "m33", "m1"],
     isOutboxOnly: true,
   },
@@ -413,7 +468,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.billing.document_render_requested",
     moduleOwner: "m23",
-    description: "An M22 PDF render+store was requested at NOE/NOTR submit or claim ack — typed per document kind.",
+    description:
+      "An M22 PDF render+store was requested at NOE/NOTR submit or claim ack — typed per document kind.",
     payloadSchema: Type.Object({
       kind: Type.Union([
         Type.Literal("noe_confirmation_receipt"),
@@ -430,7 +486,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.abn.required",
     moduleOwner: "m23",
-    description: "A coverage determination resolved a service line as non-covered; the CMS-R-131 ABN render is requested.",
+    description:
+      "A coverage determination resolved a service line as non-covered; the CMS-R-131 ABN render is requested.",
     payloadSchema: Type.Object({
       abnId: id,
       patientId: id,

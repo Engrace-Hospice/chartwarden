@@ -60,7 +60,9 @@ export function rejectAiActor(): PreHandler {
   return async (request) => {
     const kind = request.context?.attributes?.actorKind;
     if (typeof kind === "string" && kind.startsWith("ai_")) {
-      throw new ForbiddenError("AI principals cannot create or modify Medicaid billing records (D12)");
+      throw new ForbiddenError(
+        "AI principals cannot create or modify Medicaid billing records (D12)",
+      );
     }
   };
 }

@@ -125,10 +125,7 @@ export const comfortKitDispatchedContent = pgTable(
       sql`(is_controlled_substance = true AND controlled_substance_schedule IS NOT NULL)
           OR (is_controlled_substance = false AND controlled_substance_schedule IS NULL)`,
     ),
-    quantityPositive: check(
-      "m21_ckit_disp_content_qty_positive",
-      sql`dispatched_quantity > 0`,
-    ),
+    quantityPositive: check("m21_ckit_disp_content_qty_positive", sql`dispatched_quantity > 0`),
   }),
 );
 

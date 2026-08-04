@@ -13,7 +13,11 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";

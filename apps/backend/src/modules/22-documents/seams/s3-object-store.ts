@@ -92,8 +92,7 @@ const S3_SERVICE = "s3";
 const DEFAULT_REGION = "us-east-1";
 const UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
 /** sha256("") — the payload hash for bodyless signed requests (GET list / DELETE). */
-const EMPTY_BODY_SHA256 =
-  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+const EMPTY_BODY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
 // ── SigV4 pure helpers (exported for the deterministic official-test-vector tests) ──────────────
 
@@ -108,7 +107,10 @@ function hmac(key: Uint8Array | string, data: string): Buffer {
 
 /** `Date` → SigV4 `x-amz-date` (`YYYYMMDDTHHMMSSZ`); slice(0, 8) of it is the credential date. */
 export function sigV4AmzDate(now: Date): string {
-  return now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  return now
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}/, "");
 }
 
 /**
@@ -317,9 +319,7 @@ export function createS3ObjectStore(
   const target = (bucket: string, objectKey: string | null): ResolvedTarget => {
     const host = pathStyle ? endpointUrl.host : `${bucket}.${endpointUrl.host}`;
     const keyPath = objectKey === null ? "" : `/${sigV4UriEncode(objectKey, false)}`;
-    const canonicalUri = pathStyle
-      ? `/${sigV4UriEncode(bucket, true)}${keyPath}`
-      : keyPath || "/";
+    const canonicalUri = pathStyle ? `/${sigV4UriEncode(bucket, true)}${keyPath}` : keyPath || "/";
     return { origin: `${endpointUrl.protocol}//${host}`, host, canonicalUri };
   };
 
@@ -339,8 +339,7 @@ export function createS3ObjectStore(
     const amzDate = sigV4AmzDate(at);
     const dateStamp = amzDate.slice(0, 8);
     const t = target(args.bucket, args.objectKey);
-    const payloadHash =
-      args.payload === null ? EMPTY_BODY_SHA256 : sigV4Sha256Hex(args.payload);
+    const payloadHash = args.payload === null ? EMPTY_BODY_SHA256 : sigV4Sha256Hex(args.payload);
     const headers: Record<string, string> = {
       host: t.host,
       "x-amz-content-sha256": payloadHash,
@@ -450,9 +449,7 @@ export function createS3ObjectStore(
           ["prefix", objectKey],
           ["versions", ""],
           ...(keyMarker !== null ? [["key-marker", keyMarker] as const] : []),
-          ...(versionIdMarker !== null
-            ? [["version-id-marker", versionIdMarker] as const]
-            : []),
+          ...(versionIdMarker !== null ? [["version-id-marker", versionIdMarker] as const] : []),
         ];
         const listRes = await signedFetch({
           method: "GET",
@@ -462,7 +459,8 @@ export function createS3ObjectStore(
           payload: null,
         });
         if (listRes.status === 404) return; // bucket gone ⇒ every version already gone
-        if (!listRes.ok) throw opError("destroyAllVersions:list", listRes.status, bucket, objectKey);
+        if (!listRes.ok)
+          throw opError("destroyAllVersions:list", listRes.status, bucket, objectKey);
         const page = parseListObjectVersionsXml(await listRes.text());
 
         // Delete every version + delete-marker for the EXACT key, sequentially (D12/DR-019).

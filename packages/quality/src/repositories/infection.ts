@@ -6,7 +6,7 @@
 // `exposure_source` (free-text identifying) is audit-denylisted (§3.6). The ≥3-events/14d detector reads
 // `listEventsForOutbreakWindow`; the outbreak case is idempotent on the V-18 window unique.
 import { schema } from "@wardenx/db";
-import { and, asc, desc, eq, gte, inArray, lt, lte, or, type SQL } from "drizzle-orm";
+import { type SQL, and, asc, desc, eq, gte, inArray, lt, lte, or } from "drizzle-orm";
 import type { QualityDb } from "./db";
 
 const E = schema.infectionSurveillanceEvent;
@@ -141,7 +141,8 @@ export class InfectionRepository {
       values.windowStart,
       values.windowEnd,
     );
-    if (!existing) throw new Error("infection_outbreak_case create produced neither insert nor hit");
+    if (!existing)
+      throw new Error("infection_outbreak_case create produced neither insert nor hit");
     return existing;
   }
 

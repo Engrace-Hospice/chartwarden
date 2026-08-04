@@ -40,8 +40,8 @@ import type {
   AiLifecycleTransition,
 } from "@wardenx/types";
 
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "./errors";
 import { aiLifecycleTransition } from "../lifecycle/state-machine";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 
 /** The states in which a capability is live enough to owe a periodic re-approval (§3.2.1's index). */
 export const AI_REAPPROVAL_BEARING_STATES: readonly AiCapabilityLifecycleState[] = [
@@ -108,7 +108,11 @@ export interface AiLifecyclePatch {
 
 /** The gate's verdict. */
 export type AiLifecycleDecision =
-  | { readonly ok: true; readonly transition: AiLifecycleTransition; readonly patch: AiLifecyclePatch }
+  | {
+      readonly ok: true;
+      readonly transition: AiLifecycleTransition;
+      readonly patch: AiLifecyclePatch;
+    }
   | AiGovernanceRefusal;
 
 /** Add whole months to an ISO instant, preserving the instant-of-day. */

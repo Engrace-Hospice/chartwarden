@@ -10,15 +10,15 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { APPROVER_FOR_PROVIDER, EDITOR_FOR_PROVIDER, P, STEP_UP } from "./guards";
-import type { M27ReadRouteService } from "./read-service";
-import type { M27WriteRouteService } from "./write-service";
 import {
   CostReportIdParamsSchema,
   OverrideValidationResultBodySchema,
   ValidationParamsSchema,
   parse,
 } from "./cost-report-typebox";
+import { APPROVER_FOR_PROVIDER, EDITOR_FOR_PROVIDER, P, STEP_UP } from "./guards";
+import type { M27ReadRouteService } from "./read-service";
+import type { M27WriteRouteService } from "./write-service";
 
 export interface ValidationRouteDeps {
   readonly readService: M27ReadRouteService;
@@ -45,15 +45,11 @@ export function registerValidationRoutes(app: FastifyInstance, deps: ValidationR
   });
 
   // GET /cost-reports/:id/validations/:vid — read a run with per-rule results + override status. §4.1.
-  app.get(
-    "/api/v1/cost-reports/:id/validations/:vid",
-    { preHandler: [READ] },
-    async (request) => {
-      const actor = actorOf(request);
-      const { id, vid } = parse(ValidationParamsSchema, request.params);
-      return readService.getValidation(actor, id, vid);
-    },
-  );
+  app.get("/api/v1/cost-reports/:id/validations/:vid", { preHandler: [READ] }, async (request) => {
+    const actor = actorOf(request);
+    const { id, vid } = parse(ValidationParamsSchema, request.params);
+    return readService.getValidation(actor, id, vid);
+  });
 
   // POST /cost-reports/:id/validate — enqueue a validation run (202; state → validating). §4.1.
   app.post(

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `mac_submitter_credential` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `operational`). Per-provider-entity MAC trading-partner identifiers + portal credentials. The portal
 // client secret is stored ciphertext only (encrypted under a per-tenant DEK; never plaintext at rest);
@@ -8,7 +9,6 @@
 // FKs — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). baa_record_ref is an
 // opaque M4 BAA-registry reference string. No PHI / MBI is stored here (D13, D18).
 import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import { m23MacJurisdiction } from "./types";
 

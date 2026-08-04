@@ -1,18 +1,16 @@
 // M35-T04 — §4.13/§4.14/§8.7 Stripe adapter pure cores (verifier / redactor / idempotency / dispatcher /
 // webhook ingestion). Pure, no DB — in-memory fakes for every injected port.
 import { createHmac } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
 import type { OrgId, StripeApiCallAuditId } from "@wardenx/types";
-import { REDACTED, redactForAudit } from "../src/stripe/redactor";
-import { STRIPE_IDEMPOTENCY_PREFIX, deriveIdempotencyKey } from "../src/stripe/idempotency";
-import {
-  DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
-  StripeSignatureError,
-  verifyStripeWebhook,
-} from "../src/stripe/webhook-verifier";
-import { STRIPE_MAX_ATTEMPTS, dispatchStripeCall, type StripeDispatcherDeps } from "../src/stripe/dispatcher";
-import { WEBHOOK_MAX_AGE_DAYS, ingestStripeWebhook, type WebhookIngestDeps } from "../src/stripe/webhook-handler";
+import { describe, expect, it, vi } from "vitest";
 import { createStripeClient, failClosedStripeHttpPort } from "../src/stripe/client";
+import {
+  STRIPE_MAX_ATTEMPTS,
+  type StripeDispatcherDeps,
+  dispatchStripeCall,
+} from "../src/stripe/dispatcher";
+import { STRIPE_IDEMPOTENCY_PREFIX, deriveIdempotencyKey } from "../src/stripe/idempotency";
+import { REDACTED, redactForAudit } from "../src/stripe/redactor";
 import type {
   StripeApiCallAuditStore,
   StripeApiError,
@@ -23,6 +21,16 @@ import type {
   StripeWebhookEventStore,
   WebhookPayloadEncryptor,
 } from "../src/stripe/types";
+import {
+  WEBHOOK_MAX_AGE_DAYS,
+  type WebhookIngestDeps,
+  ingestStripeWebhook,
+} from "../src/stripe/webhook-handler";
+import {
+  DEFAULT_SIGNATURE_TOLERANCE_SECONDS,
+  StripeSignatureError,
+  verifyStripeWebhook,
+} from "../src/stripe/webhook-verifier";
 
 const ORG = "11111111-1111-1111-1111-111111111111" as OrgId;
 
@@ -45,7 +53,10 @@ describe("redactForAudit (§8.7)", () => {
   });
 
   it("redacts secret-shaped VALUES regardless of key", () => {
-    const out = redactForAudit({ note: "the key is sk_live_ABCDEF1234567890", ok: "plain" }) as Record<string, unknown>;
+    const out = redactForAudit({
+      note: "the key is sk_live_ABCDEF1234567890",
+      ok: "plain",
+    }) as Record<string, unknown>;
     expect(out.note).toBe(REDACTED);
     expect(out.ok).toBe("plain");
   });
@@ -78,22 +89,36 @@ describe("redactForAudit (§8.7)", () => {
 describe("deriveIdempotencyKey (§4.13)", () => {
   it("is deterministic and shaped stripe-idem-{op}-{businessKey}-{attempt}", () => {
     const ev = { operation: "subscription.update", businessKey: "sub_1", attemptIndex: 0 } as const;
-    expect(deriveIdempotencyKey(ev)).toBe(`${STRIPE_IDEMPOTENCY_PREFIX}-subscription.update-sub_1-0`);
+    expect(deriveIdempotencyKey(ev)).toBe(
+      `${STRIPE_IDEMPOTENCY_PREFIX}-subscription.update-sub_1-0`,
+    );
     expect(deriveIdempotencyKey(ev)).toBe(deriveIdempotencyKey(ev));
   });
 
   it("changes with the attempt index (each attempt is individually keyed)", () => {
-    const a = deriveIdempotencyKey({ operation: "invoice.pay", businessKey: "in_1", attemptIndex: 0 });
-    const b = deriveIdempotencyKey({ operation: "invoice.pay", businessKey: "in_1", attemptIndex: 1 });
+    const a = deriveIdempotencyKey({
+      operation: "invoice.pay",
+      businessKey: "in_1",
+      attemptIndex: 0,
+    });
+    const b = deriveIdempotencyKey({
+      operation: "invoice.pay",
+      businessKey: "in_1",
+      attemptIndex: 1,
+    });
     expect(a).not.toBe(b);
   });
 
   it("sanitizes odd businessKey bytes and rejects empties / bad attempts", () => {
-    expect(deriveIdempotencyKey({ operation: "refund.create", businessKey: "a b/c", attemptIndex: 0 })).toBe(
-      `${STRIPE_IDEMPOTENCY_PREFIX}-refund.create-a-b-c-0`,
-    );
-    expect(() => deriveIdempotencyKey({ operation: "refund.create", businessKey: "", attemptIndex: 0 })).toThrow();
-    expect(() => deriveIdempotencyKey({ operation: "refund.create", businessKey: "x", attemptIndex: -1 })).toThrow();
+    expect(
+      deriveIdempotencyKey({ operation: "refund.create", businessKey: "a b/c", attemptIndex: 0 }),
+    ).toBe(`${STRIPE_IDEMPOTENCY_PREFIX}-refund.create-a-b-c-0`);
+    expect(() =>
+      deriveIdempotencyKey({ operation: "refund.create", businessKey: "", attemptIndex: 0 }),
+    ).toThrow();
+    expect(() =>
+      deriveIdempotencyKey({ operation: "refund.create", businessKey: "x", attemptIndex: -1 }),
+    ).toThrow();
   });
 });
 
@@ -104,7 +129,13 @@ function signedHeader(rawBody: string, tSeconds: number, secret = SECRET): strin
   return `t=${tSeconds},v1=${sig}`;
 }
 function eventBody(overrides: Record<string, unknown> = {}): string {
-  return JSON.stringify({ id: "evt_1", type: "invoice.paid", created: 1_700_000_000, api_version: "2024-06-20", ...overrides });
+  return JSON.stringify({
+    id: "evt_1",
+    type: "invoice.paid",
+    created: 1_700_000_000,
+    api_version: "2024-06-20",
+    ...overrides,
+  });
 }
 
 describe("verifyStripeWebhook (§4.14)", () => {
@@ -113,7 +144,12 @@ describe("verifyStripeWebhook (§4.14)", () => {
 
   it("accepts a valid signature within tolerance and parses the envelope", () => {
     const raw = eventBody();
-    const env = verifyStripeWebhook({ rawBody: raw, signatureHeader: signedHeader(raw, created), webhookSecret: SECRET, nowMs });
+    const env = verifyStripeWebhook({
+      rawBody: raw,
+      signatureHeader: signedHeader(raw, created),
+      webhookSecret: SECRET,
+      nowMs,
+    });
     expect(env.id).toBe("evt_1");
     expect(env.type).toBe("invoice.paid");
     expect(env.apiVersion).toBe("2024-06-20");
@@ -123,38 +159,83 @@ describe("verifyStripeWebhook (§4.14)", () => {
   it("rejects a tampered body (HMAC mismatch)", () => {
     const raw = eventBody();
     const header = signedHeader(raw, created);
-    expect(() => verifyStripeWebhook({ rawBody: raw + " ", signatureHeader: header, webhookSecret: SECRET, nowMs })).toThrow(
-      StripeSignatureError,
-    );
+    expect(() =>
+      verifyStripeWebhook({
+        rawBody: raw + " ",
+        signatureHeader: header,
+        webhookSecret: SECRET,
+        nowMs,
+      }),
+    ).toThrow(StripeSignatureError);
   });
 
   it("rejects the wrong secret", () => {
     const raw = eventBody();
     expect(() =>
-      verifyStripeWebhook({ rawBody: raw, signatureHeader: signedHeader(raw, created, "whsec_other"), webhookSecret: SECRET, nowMs }),
+      verifyStripeWebhook({
+        rawBody: raw,
+        signatureHeader: signedHeader(raw, created, "whsec_other"),
+        webhookSecret: SECRET,
+        nowMs,
+      }),
     ).toThrow(StripeSignatureError);
   });
 
   it("rejects a missing/blank header and a missing secret", () => {
     const raw = eventBody();
-    expect(() => verifyStripeWebhook({ rawBody: raw, signatureHeader: undefined, webhookSecret: SECRET, nowMs })).toThrow();
-    expect(() => verifyStripeWebhook({ rawBody: raw, signatureHeader: "", webhookSecret: SECRET, nowMs })).toThrow();
-    expect(() => verifyStripeWebhook({ rawBody: raw, signatureHeader: signedHeader(raw, created), webhookSecret: "", nowMs })).toThrow();
+    expect(() =>
+      verifyStripeWebhook({
+        rawBody: raw,
+        signatureHeader: undefined,
+        webhookSecret: SECRET,
+        nowMs,
+      }),
+    ).toThrow();
+    expect(() =>
+      verifyStripeWebhook({ rawBody: raw, signatureHeader: "", webhookSecret: SECRET, nowMs }),
+    ).toThrow();
+    expect(() =>
+      verifyStripeWebhook({
+        rawBody: raw,
+        signatureHeader: signedHeader(raw, created),
+        webhookSecret: "",
+        nowMs,
+      }),
+    ).toThrow();
   });
 
   it("rejects a timestamp outside the tolerance window", () => {
     const raw = eventBody();
     const farNow = (created + DEFAULT_SIGNATURE_TOLERANCE_SECONDS + 5) * 1000;
-    expect(() => verifyStripeWebhook({ rawBody: raw, signatureHeader: signedHeader(raw, created), webhookSecret: SECRET, nowMs: farNow })).toThrow(
-      StripeSignatureError,
-    );
+    expect(() =>
+      verifyStripeWebhook({
+        rawBody: raw,
+        signatureHeader: signedHeader(raw, created),
+        webhookSecret: SECRET,
+        nowMs: farNow,
+      }),
+    ).toThrow(StripeSignatureError);
   });
 
   it("rejects a malformed header and a body missing required fields", () => {
     const raw = eventBody();
-    expect(() => verifyStripeWebhook({ rawBody: raw, signatureHeader: "garbage", webhookSecret: SECRET, nowMs })).toThrow();
+    expect(() =>
+      verifyStripeWebhook({
+        rawBody: raw,
+        signatureHeader: "garbage",
+        webhookSecret: SECRET,
+        nowMs,
+      }),
+    ).toThrow();
     const noId = JSON.stringify({ type: "x", created });
-    expect(() => verifyStripeWebhook({ rawBody: noId, signatureHeader: signedHeader(noId, created), webhookSecret: SECRET, nowMs })).toThrow();
+    expect(() =>
+      verifyStripeWebhook({
+        rawBody: noId,
+        signatureHeader: signedHeader(noId, created),
+        webhookSecret: SECRET,
+        nowMs,
+      }),
+    ).toThrow();
   });
 });
 
@@ -205,7 +286,10 @@ describe("dispatchStripeCall (§4.13)", () => {
   it("records a redacted request, calls Stripe with the idempotency key, applies the mirror on 2xx", async () => {
     const { store, calls } = fakeAuditStore();
     const insertSpy = vi.spyOn(store, "insertCall");
-    const response: StripeApiResponse = { statusCode: 200, body: { id: "sub_1", client_secret: "leaked" } };
+    const response: StripeApiResponse = {
+      statusCode: 200,
+      body: { id: "sub_1", client_secret: "leaked" },
+    };
     const client: StripeHttpPort = { execute: vi.fn(async () => response) };
     const apply = vi.fn();
     const mirror: StripeMirrorApplier = { apply };
@@ -217,7 +301,9 @@ describe("dispatchStripeCall (§4.13)", () => {
     expect(apply).toHaveBeenCalledOnce();
     // request envelope redacted before it reaches the store
     const inserted = insertSpy.mock.calls[0][0];
-    expect((inserted.requestEnvelopeRedacted as Record<string, unknown>).client_secret).toBe(REDACTED);
+    expect((inserted.requestEnvelopeRedacted as Record<string, unknown>).client_secret).toBe(
+      REDACTED,
+    );
     // Stripe called with the deterministic key
     expect((client.execute as ReturnType<typeof vi.fn>).mock.calls[0][1]).toEqual({
       idempotencyKey: deriveIdempotencyKey(dispatchEvent),
@@ -254,7 +340,10 @@ describe("dispatchStripeCall (§4.13)", () => {
     const client: StripeHttpPort = { execute: async () => Promise.reject(err) };
     const mirror: StripeMirrorApplier = { apply: vi.fn() };
     const deps: StripeDispatcherDeps = { client, auditStore: store, mirror, nowMs: () => 0 };
-    const out = await dispatchStripeCall(deps, { ...dispatchEvent, attemptIndex: STRIPE_MAX_ATTEMPTS });
+    const out = await dispatchStripeCall(deps, {
+      ...dispatchEvent,
+      attemptIndex: STRIPE_MAX_ATTEMPTS,
+    });
     expect(out.kind).toBe("failed_permanent");
   });
 });
@@ -263,9 +352,9 @@ describe("dispatchStripeCall (§4.13)", () => {
 describe("failClosedStripeHttpPort", () => {
   it("rejects every call until a live transport is wired", async () => {
     const client = createStripeClient(failClosedStripeHttpPort());
-    await expect(client.execute({ operation: "customer.create", payload: {} }, { idempotencyKey: "k" })).rejects.toThrow(
-      /STRIPE_NOT_CONFIGURED/,
-    );
+    await expect(
+      client.execute({ operation: "customer.create", payload: {} }, { idempotencyKey: "k" }),
+    ).rejects.toThrow(/STRIPE_NOT_CONFIGURED/);
   });
 });
 
@@ -282,7 +371,9 @@ function fakeWebhookDeps(overrides: Partial<WebhookIngestDeps> = {}): {
       return { inserted: true };
     },
   };
-  const encryptor: WebhookPayloadEncryptor = { encrypt: (pt) => ({ ciphertext: `enc(${pt.length})`, dekRef: "dek-1" }) };
+  const encryptor: WebhookPayloadEncryptor = {
+    encrypt: (pt) => ({ ciphertext: `enc(${pt.length})`, dekRef: "dek-1" }),
+  };
   const created = 1_700_000_000;
   const deps: WebhookIngestDeps = {
     store,
@@ -300,7 +391,10 @@ describe("ingestStripeWebhook (§4.14)", () => {
   it("verifies, dedups, and emits exactly one webhook_received intent on first receipt", async () => {
     const { deps, inserted } = fakeWebhookDeps();
     const raw = eventBody({ created });
-    const res = await ingestStripeWebhook(deps, { rawBody: raw, signatureHeader: signedHeader(raw, created) });
+    const res = await ingestStripeWebhook(deps, {
+      rawBody: raw,
+      signatureHeader: signedHeader(raw, created),
+    });
     expect(res.kind).toBe("accepted");
     if (res.kind === "accepted") {
       expect(res.stripeEventId).toBe("evt_1");
@@ -322,7 +416,10 @@ describe("ingestStripeWebhook (§4.14)", () => {
   it("returns invalid_signature on a bad signature (no store write)", async () => {
     const { deps, inserted } = fakeWebhookDeps();
     const raw = eventBody({ created });
-    const res = await ingestStripeWebhook(deps, { rawBody: raw, signatureHeader: "t=1,v1=deadbeef" });
+    const res = await ingestStripeWebhook(deps, {
+      rawBody: raw,
+      signatureHeader: "t=1,v1=deadbeef",
+    });
     expect(res.kind).toBe("invalid_signature");
     expect(inserted).toHaveLength(0);
   });
@@ -330,19 +427,30 @@ describe("ingestStripeWebhook (§4.14)", () => {
   it("returns too_old for an event beyond the 30-day replay window", async () => {
     const oldCreated = created;
     const nowMs = (oldCreated + (WEBHOOK_MAX_AGE_DAYS + 1) * 86_400) * 1000;
-    const { deps } = fakeWebhookDeps({ nowMs: () => nowMs, toleranceSeconds: Number.MAX_SAFE_INTEGER });
+    const { deps } = fakeWebhookDeps({
+      nowMs: () => nowMs,
+      toleranceSeconds: Number.MAX_SAFE_INTEGER,
+    });
     const raw = eventBody({ created: oldCreated });
-    const res = await ingestStripeWebhook(deps, { rawBody: raw, signatureHeader: signedHeader(raw, oldCreated) });
+    const res = await ingestStripeWebhook(deps, {
+      rawBody: raw,
+      signatureHeader: signedHeader(raw, oldCreated),
+    });
     expect(res.kind).toBe("too_old");
   });
 
   it("carries a resolved derivedOrganizationId onto the intent", async () => {
     const { deps } = fakeWebhookDeps({ resolveOrgFromEvent: () => ORG });
     const raw = eventBody({ created });
-    const res = await ingestStripeWebhook(deps, { rawBody: raw, signatureHeader: signedHeader(raw, created) });
+    const res = await ingestStripeWebhook(deps, {
+      rawBody: raw,
+      signatureHeader: signedHeader(raw, created),
+    });
     expect(res.kind).toBe("accepted");
     if (res.kind === "accepted") {
-      expect((res.outbox[0].payload as { derivedOrganizationId: unknown }).derivedOrganizationId).toBe(ORG);
+      expect(
+        (res.outbox[0].payload as { derivedOrganizationId: unknown }).derivedOrganizationId,
+      ).toBe(ORG);
     }
   });
 });

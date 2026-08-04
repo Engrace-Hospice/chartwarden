@@ -31,8 +31,8 @@
 // nuance instead.
 import type { FastifyInstance } from "fastify";
 
-import { NotFoundError } from "@wardenx/types";
 import type { AIPromptRegistry } from "@wardenx/ai-platform";
+import { NotFoundError } from "@wardenx/types";
 
 import type { AiPromptServiceDeps } from "../prompts/service";
 import { activateAiPromptTemplate } from "../prompts/service";
@@ -43,6 +43,7 @@ import {
   readAiEvaluationRun,
 } from "../safety/service";
 import { writeActorOf } from "./actor";
+import { actorOf } from "./actor";
 import { ABAC_SAFETY_OWNER, P, STEP_UP } from "./guards";
 import {
   ActivatePromptTemplateBody,
@@ -55,7 +56,6 @@ import {
   parseQuery,
 } from "./m32-typebox";
 import type { M32ReadService } from "./read-service";
-import { actorOf } from "./actor";
 
 export interface SafetyOpsRouteDeps {
   readonly safety: AiSafetyServiceDeps;

@@ -42,15 +42,15 @@ import { type AnyColumn, and, asc, desc, eq, gte, inArray, isNotNull, lte, sql }
 import { BereavementStateError } from "../lifecycle/index";
 import type { RiskFactorsJsonb } from "../risk/score";
 import {
+  type BereavedPortalRow,
+  type BereavementPlanFacts,
+  type BereavementRiskScoreFacts,
+  type BereavementSeamStore,
   COP_DENOMINATOR_STATUSES,
   COP_NUMERATOR_STATUSES,
   EMPTY_CLOSURE_COUNTS,
   EMPTY_OUTREACH_STATUS_COUNTS,
   EMPTY_TIER_DISTRIBUTION,
-  type BereavedPortalRow,
-  type BereavementPlanFacts,
-  type BereavementRiskScoreFacts,
-  type BereavementSeamStore,
 } from "./store";
 
 type PlanRow = typeof schema.bereavementPlan.$inferSelect;
@@ -105,8 +105,10 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
     deathDate: localDate(r.deathDate),
     openedAt: isoN(r.openedAt),
     closedAt: isoN(r.closedAt),
-    assignedCounselorUserId: (r.assignedCounselorUserId ?? null) as BereavementPlanFacts["assignedCounselorUserId"],
-    assignedVolunteerUserId: (r.assignedVolunteerUserId ?? null) as BereavementPlanFacts["assignedVolunteerUserId"],
+    assignedCounselorUserId: (r.assignedCounselorUserId ??
+      null) as BereavementPlanFacts["assignedCounselorUserId"],
+    assignedVolunteerUserId: (r.assignedVolunteerUserId ??
+      null) as BereavementPlanFacts["assignedVolunteerUserId"],
     currentRiskTier: r.currentRiskTier ?? null,
     externalSource: (r.externalSourceMetadata ?? null) as BereavementPlanFacts["externalSource"],
   });
@@ -167,7 +169,10 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
   };
 
   /** The org + optional PE/location walls for a scope-parameter rollup (§3.3.1's denormalization). */
-  const scopeWalls = (cols: { org: AnyColumn; pe: AnyColumn; loc: AnyColumn }, scope: BereavementScope) =>
+  const scopeWalls = (
+    cols: { org: AnyColumn; pe: AnyColumn; loc: AnyColumn },
+    scope: BereavementScope,
+  ) =>
     [
       eq(cols.org, scope.orgId),
       scope.providerEntityId !== undefined ? eq(cols.pe, scope.providerEntityId) : undefined,
@@ -273,22 +278,27 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
           .from(CLOSURE)
           .where(eq(CLOSURE.planId, planId))
           .limit(1);
-        return row === undefined ? null : { reason: row.reason, closureDocumentId: row.documentId ?? null };
+        return row === undefined
+          ? null
+          : { reason: row.reason, closureDocumentId: row.documentId ?? null };
       });
     },
 
     // ── outreach reads (BereavementOutreachProvider) ──────────────────────────────────────────────────
     async outreachForPlan(planId) {
-      return withOrgContextFromRequest(db, async (tx): Promise<readonly BereavementOutreachView[]> => {
-        // EVERY touchpoint on the plan — the §4.6 filter set is the provider's (`applyOutreachFilters`),
-        // so its semantics have one implementation whichever adapter is bound.
-        const rows = await tx
-          .select()
-          .from(OUTREACH)
-          .where(eq(OUTREACH.planId, planId))
-          .orderBy(asc(OUTREACH.dueAt), asc(OUTREACH.id));
-        return rows.map(outreachViewOf);
-      });
+      return withOrgContextFromRequest(
+        db,
+        async (tx): Promise<readonly BereavementOutreachView[]> => {
+          // EVERY touchpoint on the plan — the §4.6 filter set is the provider's (`applyOutreachFilters`),
+          // so its semantics have one implementation whichever adapter is bound.
+          const rows = await tx
+            .select()
+            .from(OUTREACH)
+            .where(eq(OUTREACH.planId, planId))
+            .orderBy(asc(OUTREACH.dueAt), asc(OUTREACH.id));
+          return rows.map(outreachViewOf);
+        },
+      );
     },
 
     async outreachStatusCounts(scope) {
@@ -303,7 +313,10 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
         const counts = await statusCountsFor(tx, scope);
         const sumOf = (statuses: readonly BereavementOutreachStatus[]): number =>
           statuses.reduce((total, s) => total + counts[s], 0);
-        return { numerator: sumOf(COP_NUMERATOR_STATUSES), denominator: sumOf(COP_DENOMINATOR_STATUSES) };
+        return {
+          numerator: sumOf(COP_NUMERATOR_STATUSES),
+          denominator: sumOf(COP_DENOMINATOR_STATUSES),
+        };
       });
     },
 
@@ -319,7 +332,11 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
           .where(
             and(
               ...scopeWalls(
-                { org: CONTACT.organizationId, pe: CONTACT.providerEntityId, loc: CONTACT.locationId },
+                {
+                  org: CONTACT.organizationId,
+                  pe: CONTACT.providerEntityId,
+                  loc: CONTACT.locationId,
+                },
                 scope,
               ),
               eq(CONTACT.status, "active"),
@@ -379,15 +396,20 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
 
     // ── risk reads + the ONE write (BereavementRiskFactorsProvider + BereavementRiskTierProvider) ─────
     async latestScoreForContact(contactId, asOfIso) {
-      return withOrgContextFromRequest(db, async (tx): Promise<BereavementRiskScoreFacts | null> => {
-        const [row] = await tx
-          .select()
-          .from(SCORE)
-          .where(and(eq(SCORE.bereavedContactId, contactId), lte(SCORE.assessedAt, new Date(asOfIso))))
-          .orderBy(desc(SCORE.assessedAt), desc(SCORE.id))
-          .limit(1);
-        return row === undefined ? null : scoreFactsOf(row);
-      });
+      return withOrgContextFromRequest(
+        db,
+        async (tx): Promise<BereavementRiskScoreFacts | null> => {
+          const [row] = await tx
+            .select()
+            .from(SCORE)
+            .where(
+              and(eq(SCORE.bereavedContactId, contactId), lte(SCORE.assessedAt, new Date(asOfIso))),
+            )
+            .orderBy(desc(SCORE.assessedAt), desc(SCORE.id))
+            .limit(1);
+          return row === undefined ? null : scoreFactsOf(row);
+        },
+      );
     },
 
     async appendAugmentedScore(draft) {
@@ -458,7 +480,11 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
           .where(
             and(
               ...scopeWalls(
-                { org: CONTACT.organizationId, pe: CONTACT.providerEntityId, loc: CONTACT.locationId },
+                {
+                  org: CONTACT.organizationId,
+                  pe: CONTACT.providerEntityId,
+                  loc: CONTACT.locationId,
+                },
                 scope,
               ),
               isNotNull(CONTACT.currentRiskTier),

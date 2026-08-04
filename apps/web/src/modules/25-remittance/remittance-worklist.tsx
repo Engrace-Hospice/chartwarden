@@ -33,7 +33,11 @@ interface LineRow {
   receivedAt: string;
 }
 
-const cellStyle = { padding: "0.55rem 0.75rem", textAlign: "left" as const, verticalAlign: "middle" as const };
+const cellStyle = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left" as const,
+  verticalAlign: "middle" as const,
+};
 const headStyle = {
   ...cellStyle,
   fontSize: "0.72rem",
@@ -59,14 +63,14 @@ export function RemittanceWorklist(): JSX.Element {
       client.GET("/api/v1/remittance/unmatched"),
     ]);
     if (adviceRes.error) {
-      setError("Remittance worklist unavailable — you may lack provider scope, or the read seam is unbound.");
+      setError(
+        "Remittance worklist unavailable — you may lack provider scope, or the read seam is unbound.",
+      );
       setLoading(false);
       return;
     }
     setAdvices(adviceRes.data?.items ?? []);
-    setUnmatched(
-      unmatchedRes.error ? [] : (unmatchedRes.data?.items ?? []),
-    );
+    setUnmatched(unmatchedRes.error ? [] : (unmatchedRes.data?.items ?? []));
     setLoading(false);
   }, [client]);
 
@@ -94,7 +98,10 @@ export function RemittanceWorklist(): JSX.Element {
           <section>
             <h2 style={sectionTitle}>835 envelopes</h2>
             {advices.length === 0 ? (
-              <EmptyState title="No remittances" description="No 835 advices have been received yet." />
+              <EmptyState
+                title="No remittances"
+                description="No 835 advices have been received yet."
+              />
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -116,7 +123,10 @@ export function RemittanceWorklist(): JSX.Element {
                         {money(a.totalPaymentAmount)}
                       </td>
                       <td style={cellStyle}>
-                        <StatusPill label={humanize(a.parseStatus)} tone={toneOf(PARSE_STATUS_TONE, a.parseStatus)} />
+                        <StatusPill
+                          label={humanize(a.parseStatus)}
+                          tone={toneOf(PARSE_STATUS_TONE, a.parseStatus)}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -128,7 +138,10 @@ export function RemittanceWorklist(): JSX.Element {
           <section>
             <h2 style={sectionTitle}>Manual-match backlog</h2>
             {unmatched.length === 0 ? (
-              <EmptyState title="Nothing to match" description="Every posted line is matched to a claim." />
+              <EmptyState
+                title="Nothing to match"
+                description="Every posted line is matched to a claim."
+              />
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -150,7 +163,10 @@ export function RemittanceWorklist(): JSX.Element {
                         {money(l.clp04TotalPaymentAmount)}
                       </td>
                       <td style={cellStyle}>
-                        <StatusPill label={humanize(l.matchState)} tone={toneOf(MATCH_STATE_TONE, l.matchState)} />
+                        <StatusPill
+                          label={humanize(l.matchState)}
+                          tone={toneOf(MATCH_STATE_TONE, l.matchState)}
+                        />
                       </td>
                     </tr>
                   ))}

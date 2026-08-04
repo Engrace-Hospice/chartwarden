@@ -80,7 +80,10 @@ export function PortalMessages(): JSX.Element {
       >
         <PortalCard heading="New message">
           <form onSubmit={(e) => void send(e)}>
-            <label htmlFor="portal-msg" style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem" }}>
+            <label
+              htmlFor="portal-msg"
+              style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem" }}
+            >
               Write to your care team
             </label>
             <textarea
@@ -99,7 +102,11 @@ export function PortalMessages(): JSX.Element {
             {sendState ? (
               <p
                 role={sendState.tone === "err" ? "alert" : "status"}
-                style={{ margin: "0.6rem 0 0", fontSize: "0.85rem", color: sendState.tone === "err" ? t.error : t.success }}
+                style={{
+                  margin: "0.6rem 0 0",
+                  fontSize: "0.85rem",
+                  color: sendState.tone === "err" ? t.error : t.success,
+                }}
               >
                 {sendState.msg}
               </p>

@@ -292,7 +292,9 @@ export function createDrizzleEmarEraseStore(db: DbClient): EmarEraseStore {
         const comfortKitDeployments =
           kitIds.length === 0
             ? 0
-            : await del(() => tx.delete(KIT).where(inArray(KIT.id, kitIds)).returning({ id: KIT.id }));
+            : await del(() =>
+                tx.delete(KIT).where(inArray(KIT.id, kitIds)).returning({ id: KIT.id }),
+              );
 
         const worksheetIds = (
           await tx.select({ id: WS.id }).from(WS).where(eq(WS.patientId, patientId))
@@ -309,7 +311,9 @@ export function createDrizzleEmarEraseStore(db: DbClient): EmarEraseStore {
         const reconciliationWorksheets =
           worksheetIds.length === 0
             ? 0
-            : await del(() => tx.delete(WS).where(inArray(WS.id, worksheetIds)).returning({ id: WS.id }));
+            : await del(() =>
+                tx.delete(WS).where(inArray(WS.id, worksheetIds)).returning({ id: WS.id }),
+              );
 
         // `administration_policy` is org-scoped tenant configuration — never touched (§7.7 #7).
         return {
@@ -339,7 +343,10 @@ export interface EmarEraserDeps {
 }
 
 /** Build M13's `emar_record` DataEraser. `subjectId` is the patient being destroyed (§7.7). */
-export function createEmarEraser(store: EmarEraseStore, options: EmarEraseOptions = {}): DataEraser {
+export function createEmarEraser(
+  store: EmarEraseStore,
+  options: EmarEraseOptions = {},
+): DataEraser {
   return {
     async erase(scope, subjectId) {
       const { erased } = await eraseEmarRecord(scope.orgId, subjectId, store, options);

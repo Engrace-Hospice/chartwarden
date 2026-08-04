@@ -45,7 +45,9 @@ export interface DocumentBackRefTarget {
  * the inbound handler deliberately does NOT record it; the appeal-letter linkage is tracked by the M25 appeal
  * workflow when M25 lands (fail-closed: M23 never writes a stray back-ref). Total over the four kinds.
  */
-export function resolveDocumentBackRefTarget(kind: M23DocumentRenderKind): DocumentBackRefTarget | null {
+export function resolveDocumentBackRefTarget(
+  kind: M23DocumentRenderKind,
+): DocumentBackRefTarget | null {
   switch (kind) {
     case "noe_confirmation_receipt":
       return { table: "noe_record", column: "confirmation_document_id" };

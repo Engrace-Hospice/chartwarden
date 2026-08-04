@@ -225,7 +225,10 @@ export function registerM20AlertResolvers(
       // A membership whose user will not resolve is DROPPED, not fabricated: a made-up user id pages
       // nobody while LOOKING like a recipient on the delivery ledger. The drop is reported so it reads as
       // a configuration fault rather than as a supervisor who was simply not subscribed.
-      ports.onCompositionGap(org, { kind: "unresolvable_memberships", membershipIds: unresolvable });
+      ports.onCompositionGap(org, {
+        kind: "unresolvable_memberships",
+        membershipIds: unresolvable,
+      });
     }
 
     const out: string[] = [];

@@ -8,7 +8,15 @@
 import type { VisitPurpose } from "@wardenx/types";
 
 /** The discipline vocabulary (mirrors `encounter_discipline` / the M2-M3 catalog). */
-export type SchedulingDiscipline = "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer" | "md" | "np";
+export type SchedulingDiscipline =
+  | "rn"
+  | "lpn"
+  | "chha"
+  | "msw"
+  | "chaplain"
+  | "volunteer"
+  | "md"
+  | "np";
 
 /** §1.1 D8 predicate 3 (`discipline_matches_visit`) — the acceptable clinician disciplines for each
  * `visit_purpose`. An RN visit needs RN; an aide POC needs CHHA; a volunteer visit needs Volunteer; the

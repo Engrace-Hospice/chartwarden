@@ -50,11 +50,7 @@ export class ReportViewRepository {
       .select()
       .from(W)
       .where(
-        and(
-          eq(W.organizationId, organizationId),
-          eq(W.shareScope, "org"),
-          eq(W.status, "active"),
-        ),
+        and(eq(W.organizationId, organizationId), eq(W.shareScope, "org"), eq(W.status, "active")),
       )
       .orderBy(desc(W.createdAt));
   }
@@ -65,11 +61,7 @@ export class ReportViewRepository {
       .select()
       .from(W)
       .where(
-        and(
-          eq(W.organizationId, organizationId),
-          eq(W.isOrgDefault, true),
-          eq(W.status, "active"),
-        ),
+        and(eq(W.organizationId, organizationId), eq(W.isOrgDefault, true), eq(W.status, "active")),
       )
       .limit(1);
     return row ?? null;

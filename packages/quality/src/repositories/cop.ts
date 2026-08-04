@@ -56,12 +56,7 @@ export class CopComplianceRepository {
     return this.db
       .select()
       .from(C)
-      .where(
-        and(
-          eq(C.organizationId, organizationId),
-          inArray(C.status, ["at_risk", "deficient"]),
-        ),
-      )
+      .where(and(eq(C.organizationId, organizationId), inArray(C.status, ["at_risk", "deficient"])))
       .orderBy(desc(C.updatedAt));
   }
 

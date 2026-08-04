@@ -31,10 +31,17 @@ interface Message {
 
 const channelLabel = (c: ChannelSummary): string => c.title ?? c.kind.replace(/_/g, " ");
 const channelScope = (c: ChannelSummary): string =>
-  c.subjectId ? "Patient-scoped" : c.kind.replace(/_/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
+  c.subjectId
+    ? "Patient-scoped"
+    : c.kind.replace(/_/g, " ").replace(/\b\w/g, (x) => x.toUpperCase());
 function initialsOf(s: string): string {
   const w = s.split(/[\s,_]+/).filter(Boolean);
-  return (w.slice(0, 2).map((x) => x[0]?.toUpperCase() ?? "").join("") || "·").slice(0, 2);
+  return (
+    w
+      .slice(0, 2)
+      .map((x) => x[0]?.toUpperCase() ?? "")
+      .join("") || "·"
+  ).slice(0, 2);
 }
 function relTime(iso: string): string {
   const then = new Date(iso).getTime();
@@ -85,7 +92,10 @@ export function StaffMessaging(): JSX.Element {
       {activeChannel ? (
         <Thread channel={activeChannel} meId={meId} />
       ) : (
-        <EmptyState title="No channel selected" description="Pick a channel to view its messages." />
+        <EmptyState
+          title="No channel selected"
+          description="Pick a channel to view its messages."
+        />
       )}
     </ConversationView>
   );
@@ -127,7 +137,15 @@ function ChannelList({
                   <span style={listAvatar} aria-hidden>
                     {initialsOf(channelLabel(c))}
                   </span>
-                  <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.1rem" }}>
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.1rem",
+                    }}
+                  >
                     <span style={convTitle}>{channelLabel(c)}</span>
                     <span style={convPreview}>{channelScope(c)}</span>
                   </span>
@@ -214,8 +232,19 @@ function Thread({ channel, meId }: { channel: ChannelSummary; meId: string | nul
               >
                 <div style={mine ? bubbleMine : bubbleTheirs}>
                   <span style={{ whiteSpace: "pre-wrap" }}>{m.body}</span>
-                  <span style={{ ...bubbleMeta, color: mine ? `color-mix(in srgb, ${t.onEmphasis} 75%, transparent)` : t.muted }}>
-                    {mine ? "You" : <span className="wx-data-md">{m.authorUserId?.slice(0, 8)}</span>}{" "}
+                  <span
+                    style={{
+                      ...bubbleMeta,
+                      color: mine
+                        ? `color-mix(in srgb, ${t.onEmphasis} 75%, transparent)`
+                        : t.muted,
+                    }}
+                  >
+                    {mine ? (
+                      "You"
+                    ) : (
+                      <span className="wx-data-md">{m.authorUserId?.slice(0, 8)}</span>
+                    )}{" "}
                     · {relTime(m.createdAt)}
                   </span>
                 </div>

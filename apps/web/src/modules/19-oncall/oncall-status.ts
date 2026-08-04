@@ -18,8 +18,8 @@ import type {
   OncallModel,
   ShiftDiscipline,
   TriageAnswerType,
-  TriageCallerKind,
   TriageCallState,
+  TriageCallerKind,
   TriageDispositionValue,
   TriageInboundChannel,
 } from "./oncall-api";
@@ -250,7 +250,10 @@ export const AI_CONFIDENCE_AT_OR_ABOVE_FLOOR: readonly string[] = ["high"];
 export const AI_OVERRIDE_REASON_MIN_CHARS = 10;
 
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(map: Record<string, StatusTone>, key: string | null | undefined): StatusTone {
+export function toneOf(
+  map: Record<string, StatusTone>,
+  key: string | null | undefined,
+): StatusTone {
   return key ? (map[key] ?? "neutral") : "neutral";
 }
 
@@ -323,7 +326,12 @@ export function dispositionLabel(disposition: string | null | undefined): string
  *  renders as prose; an unknown arm renders its raw `kind` rather than silently reading as "no predicate",
  *  because a red-flag question with no visible predicate is the one nobody checks. */
 export function redFlagMatchLabel(match: unknown): string {
-  const m = match as { kind?: string; value?: boolean; threshold?: number; values?: string[] } | null;
+  const m = match as {
+    kind?: string;
+    value?: boolean;
+    threshold?: number;
+    values?: string[];
+  } | null;
   if (!m || typeof m.kind !== "string") return "—";
   switch (m.kind) {
     case "bool_is":
@@ -401,11 +409,7 @@ export function toInstant(local: string): string {
 
 /** Is `now` inside the half-open window `[startsAt, endsAt)`? The "am I on shift right now?" question the
  *  §5.1 `/me/oncall` banner answers, computed from the row rather than asked of a second route. */
-export function isWithinWindow(
-  startsAt: string,
-  endsAt: string,
-  now = Date.now(),
-): boolean {
+export function isWithinWindow(startsAt: string, endsAt: string, now = Date.now()): boolean {
   const s = Date.parse(startsAt);
   const e = Date.parse(endsAt);
   if (Number.isNaN(s) || Number.isNaN(e)) return false;

@@ -60,8 +60,11 @@ export function evaluateBreaker(
 ): { readonly effectiveState: BreakerState; readonly allowed: boolean } {
   if (snapshot.state === "open") {
     const openedAt = snapshot.openedAt;
-    const cooled = openedAt != null && ms(nowInstant) - ms(openedAt) >= config.openDurationSeconds * 1000;
-    return cooled ? { effectiveState: "half_open", allowed: true } : { effectiveState: "open", allowed: false };
+    const cooled =
+      openedAt != null && ms(nowInstant) - ms(openedAt) >= config.openDurationSeconds * 1000;
+    return cooled
+      ? { effectiveState: "half_open", allowed: true }
+      : { effectiveState: "open", allowed: false };
   }
   // closed or half_open — both permit an attempt (half_open permits the single probe).
   return { effectiveState: snapshot.state, allowed: true };

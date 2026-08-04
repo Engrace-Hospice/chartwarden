@@ -118,7 +118,10 @@ export function registerComfortKitRoutes(app: FastifyInstance, deps: ComfortKitR
     {
       preHandler: [P("comfort_kit.perpetual_log.read")],
       config: {
-        auditRead: { resourceKind: "comfort_kit_dispatched_content", resourceIdParam: "dispatchId" },
+        auditRead: {
+          resourceKind: "comfort_kit_dispatched_content",
+          resourceIdParam: "dispatchId",
+        },
       },
     },
     async (request) => {

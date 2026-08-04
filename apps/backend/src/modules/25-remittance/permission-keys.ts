@@ -5,7 +5,7 @@
 // platform mirror via allPermissionMirrorRows); this module-local surface re-exports it + the ordered key
 // list so the §4.1 routes gate on `requirePermission(key)` without re-declaring the map (no drift — unlike
 // the M23 self-contained mirror, M25 references the auth package directly).
-import { M25_CONTRIBUTED_PERMISSIONS, type M25ContributedPermissionKey } from "@wardenx/auth";
+import { type M25ContributedPermissionKey, M25_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
 
 export { M25_CONTRIBUTED_PERMISSIONS, type M25ContributedPermissionKey } from "@wardenx/auth";
 

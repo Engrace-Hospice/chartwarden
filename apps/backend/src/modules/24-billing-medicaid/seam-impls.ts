@@ -17,7 +17,11 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import type { M24ReadActor } from "./routes/actor";
 import type { M24ReadService } from "./routes/read-service";
 
-const systemActor = (orgId: string): M24ReadActor => ({ organizationId: orgId, userId: "system", roles: [] });
+const systemActor = (orgId: string): M24ReadActor => ({
+  organizationId: orgId,
+  userId: "system",
+  roles: [],
+});
 const cents = (n: number | null | undefined): string => String(n ?? 0);
 
 // ── locally-declared seam contracts (PHI-free; cents-as-string) ─────────────────────────────────────────
@@ -38,12 +42,28 @@ export interface MedicaidClaimSummary {
 }
 export interface MedicaidClaimReader {
   claimById(orgId: string, claimId: string): Promise<MedicaidClaimSummary | null>;
-  claimByControlNumber(orgId: string, state: string, controlNumber: string): Promise<MedicaidClaimSummary | null>;
-  medicaidDaysByLocInFiscalYear(orgId: string, providerEntityId: string, fyEnd: string): Promise<DaysByLevelOfCare>;
+  claimByControlNumber(
+    orgId: string,
+    state: string,
+    controlNumber: string,
+  ): Promise<MedicaidClaimSummary | null>;
+  medicaidDaysByLocInFiscalYear(
+    orgId: string,
+    providerEntityId: string,
+    fyEnd: string,
+  ): Promise<DaysByLevelOfCare>;
 }
 export interface MedicaidClaimDayProjectionProvider {
-  daysForPatientInCapYear(orgId: string, patientId: string, capYear: string): Promise<DaysByLevelOfCare>;
-  aggregateForOrgInFiscalYear(orgId: string, providerEntityId: string, fyEnd: string): Promise<DaysByLevelOfCare>;
+  daysForPatientInCapYear(
+    orgId: string,
+    patientId: string,
+    capYear: string,
+  ): Promise<DaysByLevelOfCare>;
+  aggregateForOrgInFiscalYear(
+    orgId: string,
+    providerEntityId: string,
+    fyEnd: string,
+  ): Promise<DaysByLevelOfCare>;
 }
 export interface AcceptedMedicaidSubmission {
   readonly submissionId: string;
@@ -58,10 +78,17 @@ export interface MedicaidClaimSubmissionReader {
     state: string,
     windowIso: { from: string; to: string },
   ): Promise<AcceptedMedicaidSubmission[]>;
-  submissionByControlNumber(orgId: string, state: string, controlNumber: string): Promise<AcceptedMedicaidSubmission | null>;
+  submissionByControlNumber(
+    orgId: string,
+    state: string,
+    controlNumber: string,
+  ): Promise<AcceptedMedicaidSubmission | null>;
 }
 export interface MedicaidClaimMetricsProvider {
-  arAgingBuckets(orgId: string, providerEntityId: string | "all"): Promise<{ bucket: string; count: number; chargesCents: string }[]>;
+  arAgingBuckets(
+    orgId: string,
+    providerEntityId: string | "all",
+  ): Promise<{ bucket: string; count: number; chargesCents: string }[]>;
   denialRateForWindow(orgId: string): Promise<number>;
 }
 export interface MedicaidEligibilitySnapshot {
@@ -71,17 +98,35 @@ export interface MedicaidEligibilitySnapshot {
   readonly staleAt: string;
 }
 export interface MedicaidEligibilityReader {
-  latestActiveEligibilityForPatient(orgId: string, patientId: string, asOfServiceDate: string): Promise<MedicaidEligibilitySnapshot | null>;
+  latestActiveEligibilityForPatient(
+    orgId: string,
+    patientId: string,
+    asOfServiceDate: string,
+  ): Promise<MedicaidEligibilitySnapshot | null>;
 }
 export interface StateRateScheduleReader {
-  rateForLocOnDate(state: string, loc: string, serviceDate: string): Promise<{ rateCents: string } | null>;
+  rateForLocOnDate(
+    state: string,
+    loc: string,
+    serviceDate: string,
+  ): Promise<{ rateCents: string } | null>;
 }
 export interface RoomAndBoardReader {
-  rbDaysForOrgInFiscalYear(orgId: string, providerEntityId: string, fyEnd: string): Promise<{ totalRbDays: number }>;
-  activeRbArrangementsForPatient(orgId: string, patientId: string, asOf: string): Promise<{ arrangementId: string; effectiveFrom: string; effectiveTo: string | null }[]>;
+  rbDaysForOrgInFiscalYear(
+    orgId: string,
+    providerEntityId: string,
+    fyEnd: string,
+  ): Promise<{ totalRbDays: number }>;
+  activeRbArrangementsForPatient(
+    orgId: string,
+    patientId: string,
+    asOf: string,
+  ): Promise<{ arrangementId: string; effectiveFrom: string; effectiveTo: string | null }[]>;
 }
 export interface MedicaidTradingPartnerAdmin {
-  listForOrg(orgId: string): Promise<{ id: string; providerEntityId: string; serviceState: string; channel: string }[]>;
+  listForOrg(
+    orgId: string,
+  ): Promise<{ id: string; providerEntityId: string; serviceState: string; channel: string }[]>;
 }
 
 export interface M24SeamImpls {
@@ -104,18 +149,37 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
       if (!c) return null;
       const lines = await read.listClaimLines(systemActor(orgId), claimId);
       const total = lines.reduce((s, l) => s + l.chargesCents, 0);
-      return { claimId: c.id, state: c.state, controlNumber: c.medicaidClaimControlNumber, serviceState: c.serviceState, totalChargesCents: cents(total) };
+      return {
+        claimId: c.id,
+        state: c.state,
+        controlNumber: c.medicaidClaimControlNumber,
+        serviceState: c.serviceState,
+        totalChargesCents: cents(total),
+      };
     },
     async claimByControlNumber(orgId, state, controlNumber) {
       return withOrgContext(db, systemActor(orgId), async (tx) => {
         const C = schema.medicaidClaim;
         const rows = await tx
-          .select({ id: C.id, state: C.state, ctrl: C.medicaidClaimControlNumber, st: C.serviceState })
+          .select({
+            id: C.id,
+            state: C.state,
+            ctrl: C.medicaidClaimControlNumber,
+            st: C.serviceState,
+          })
           .from(C)
           .where(and(eq(C.serviceState, state), eq(C.medicaidClaimControlNumber, controlNumber)))
           .limit(1);
         const r = rows[0];
-        return r ? { claimId: r.id, state: r.state, controlNumber: r.ctrl, serviceState: r.st, totalChargesCents: "0" } : null;
+        return r
+          ? {
+              claimId: r.id,
+              state: r.state,
+              controlNumber: r.ctrl,
+              serviceState: r.st,
+              totalChargesCents: "0",
+            }
+          : null;
       });
     },
     async medicaidDaysByLocInFiscalYear(orgId, providerEntityId, fyEnd) {
@@ -169,7 +233,12 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
           .limit(1);
         const r = rows[0];
         return r
-          ? { submissionId: r.id, claimId: r.medicaidClaimId, controlNumber: r.medicaidClaimControlNumber, submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null }
+          ? {
+              submissionId: r.id,
+              claimId: r.medicaidClaimId,
+              controlNumber: r.medicaidClaimControlNumber,
+              submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
+            }
           : null;
       });
     },
@@ -177,8 +246,15 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
 
   const metrics: MedicaidClaimMetricsProvider = {
     async arAgingBuckets(orgId, providerEntityId) {
-      const dash = await read.arDashboard(systemActor(orgId), providerEntityId === "all" ? undefined : providerEntityId);
-      return dash.buckets.map((b) => ({ bucket: b.bucket, count: b.count, chargesCents: cents(b.chargesCents) }));
+      const dash = await read.arDashboard(
+        systemActor(orgId),
+        providerEntityId === "all" ? undefined : providerEntityId,
+      );
+      return dash.buckets.map((b) => ({
+        bucket: b.bucket,
+        count: b.count,
+        chargesCents: cents(b.chargesCents),
+      }));
     },
     async denialRateForWindow(orgId) {
       const m = await read.arMetrics(systemActor(orgId));
@@ -191,7 +267,12 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
       const checks = await read.listEligibilityChecks(systemActor(orgId), { patientId });
       const latest = checks[0];
       if (!latest) return null;
-      return { outcome: latest.outcome, mcoId: latest.mcoId ?? null, checkedAt: latest.checkedAt, staleAt: latest.staleAt };
+      return {
+        outcome: latest.outcome,
+        mcoId: latest.mcoId ?? null,
+        checkedAt: latest.checkedAt,
+        staleAt: latest.staleAt,
+      };
     },
   };
 
@@ -208,40 +289,83 @@ export function buildM24SeamImpls(db: DbClient, read: M24ReadService): M24SeamIm
       return withOrgContext(db, systemActor(orgId), async (tx) => {
         const RD = schema.rbDay;
         const fy = new Date(fyEnd);
-        const fyStart = new Date(Date.UTC(fy.getUTCFullYear() - 1, fy.getUTCMonth(), fy.getUTCDate() + 1));
+        const fyStart = new Date(
+          Date.UTC(fy.getUTCFullYear() - 1, fy.getUTCMonth(), fy.getUTCDate() + 1),
+        );
         const rows = await tx
           .select({ n: sql<number>`count(*)::int` })
           .from(RD)
-          .where(and(eq(RD.providerEntityId, providerEntityId), gte(RD.serviceDate, fyStart), lte(RD.serviceDate, fy), eq(RD.status, "billed")));
+          .where(
+            and(
+              eq(RD.providerEntityId, providerEntityId),
+              gte(RD.serviceDate, fyStart),
+              lte(RD.serviceDate, fy),
+              eq(RD.status, "billed"),
+            ),
+          );
         return { totalRbDays: rows[0]?.n ?? 0 };
       });
     },
     async activeRbArrangementsForPatient(orgId, patientId) {
-      const arrs = await read.listRbArrangements(systemActor(orgId), { patientId, state: "ACTIVE" });
-      return arrs.map((a) => ({ arrangementId: a.id, effectiveFrom: a.effectiveFrom, effectiveTo: a.effectiveTo }));
+      const arrs = await read.listRbArrangements(systemActor(orgId), {
+        patientId,
+        state: "ACTIVE",
+      });
+      return arrs.map((a) => ({
+        arrangementId: a.id,
+        effectiveFrom: a.effectiveFrom,
+        effectiveTo: a.effectiveTo,
+      }));
     },
   };
 
   const tradingPartner: MedicaidTradingPartnerAdmin = {
     async listForOrg(orgId) {
       const creds = await read.listTradingPartnerCredentials(systemActor(orgId));
-      return creds.map((c) => ({ id: c.id, providerEntityId: c.providerEntityId, serviceState: c.serviceState, channel: c.channel }));
+      return creds.map((c) => ({
+        id: c.id,
+        providerEntityId: c.providerEntityId,
+        serviceState: c.serviceState,
+        channel: c.channel,
+      }));
     },
   };
 
-  return { claim, dayProjection, submission, metrics, eligibility, rateSchedule, roomAndBoard, tradingPartner };
+  return {
+    claim,
+    dayProjection,
+    submission,
+    metrics,
+    eligibility,
+    rateSchedule,
+    roomAndBoard,
+    tradingPartner,
+  };
 }
 
 /** Sum billed claim-line units by level-of-care for a PE within the fiscal year ending `fyEnd`. */
-async function daysByLoc(db: DbClient, orgId: string, providerEntityId: string, fyEnd: string): Promise<DaysByLevelOfCare> {
+async function daysByLoc(
+  db: DbClient,
+  orgId: string,
+  providerEntityId: string,
+  fyEnd: string,
+): Promise<DaysByLevelOfCare> {
   return withOrgContext(db, systemActor(orgId), async (tx) => {
     const CL = schema.medicaidClaimLine;
     const fy = new Date(fyEnd);
-    const fyStart = new Date(Date.UTC(fy.getUTCFullYear() - 1, fy.getUTCMonth(), fy.getUTCDate() + 1));
+    const fyStart = new Date(
+      Date.UTC(fy.getUTCFullYear() - 1, fy.getUTCMonth(), fy.getUTCDate() + 1),
+    );
     const rows = await tx
       .select({ loc: CL.levelOfCare, units: sql<number>`coalesce(sum(${CL.units}),0)::int` })
       .from(CL)
-      .where(and(eq(CL.providerEntityId, providerEntityId), gte(CL.serviceDate, fyStart), lte(CL.serviceDate, fy)))
+      .where(
+        and(
+          eq(CL.providerEntityId, providerEntityId),
+          gte(CL.serviceDate, fyStart),
+          lte(CL.serviceDate, fy),
+        ),
+      )
       .groupBy(CL.levelOfCare);
     const by = new Map(rows.map((r) => [r.loc, r.units]));
     const rhc = by.get("RHC") ?? 0;

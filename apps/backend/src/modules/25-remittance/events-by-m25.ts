@@ -26,7 +26,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.edi.835_received",
     moduleOwner: "m25",
-    description: "M25 pulled an 835/ERA from the clearinghouse (payerProgram discriminator); triggers parse.",
+    description:
+      "M25 pulled an 835/ERA from the clearinghouse (payerProgram discriminator); triggers parse.",
     payloadSchema: Type.Object({
       remittanceAdviceId: id,
       providerEntityId: id,
@@ -45,7 +46,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.remittance.parsed",
     moduleOwner: "m25",
-    description: "The x12-worker parsed the 835 into line/service-line/adjustment/remark rows; enqueues posting.",
+    description:
+      "The x12-worker parsed the 835 into line/service-line/adjustment/remark rows; enqueues posting.",
     payloadSchema: Type.Object({ remittanceAdviceId: id, lineCount: Type.Integer() }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -53,7 +55,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.remittance.advice_posted",
     moduleOwner: "m25",
-    description: "Posting completed for an advice (all lines matched/posted or flagged); cap + org-day rollup signal.",
+    description:
+      "Posting completed for an advice (all lines matched/posted or flagged); cap + org-day rollup signal.",
     payloadSchema: Type.Object({
       remittanceAdviceId: id,
       providerEntityId: id,
@@ -68,7 +71,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.remittance.manual_match_recorded",
     moduleOwner: "m25",
-    description: "A billing specialist manually bound an unmatched line to a claim (audit-prominent).",
+    description:
+      "A billing specialist manually bound an unmatched line to a claim (audit-prominent).",
     payloadSchema: Type.Object({ remittanceLineId: id, claimId: id, matchedByMembershipId: id }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -78,7 +82,12 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m25.remittance.claim_paid",
     moduleOwner: "m25",
     description: "A line posted with full payment; advances the M23 claim ACK_ACCEPTED → PAID.",
-    payloadSchema: Type.Object({ claimId: id, remittanceLineId: id, paidAmount: money, postedAt: isoInstant }),
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceLineId: id,
+      paidAmount: money,
+      postedAt: isoInstant,
+    }),
     declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
@@ -99,16 +108,28 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.remittance.claim_denied",
     moduleOwner: "m25",
-    description: "A line posted with zero payment + a denial-category CARC; advances the M23 claim to DENIED.",
-    payloadSchema: Type.Object({ claimId: id, remittanceLineId: id, carcCodes: Type.Array(str), postedAt: isoInstant }),
+    description:
+      "A line posted with zero payment + a denial-category CARC; advances the M23 claim to DENIED.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceLineId: id,
+      carcCodes: Type.Array(str),
+      postedAt: isoInstant,
+    }),
     declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {
     eventName: "m25.remittance.claim_recouped",
     moduleOwner: "m25",
-    description: "A CLP02=22 reversal posted (42 CFR §424.526); reverses the M23 claim PAID + the M26 cap accrual.",
-    payloadSchema: Type.Object({ claimId: id, remittanceLineId: id, recoupedAmount: money, postedAt: isoInstant }),
+    description:
+      "A CLP02=22 reversal posted (42 CFR §424.526); reverses the M23 claim PAID + the M26 cap accrual.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceLineId: id,
+      recoupedAmount: money,
+      postedAt: isoInstant,
+    }),
     declaredConsumers: ["m23", "m26"],
     isOutboxOnly: true,
   },
@@ -116,7 +137,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.denial.opened",
     moduleOwner: "m25",
-    description: "A denial_case was seeded (from a CARC, a 277CA rejection, or an EVV-aggregator rejection).",
+    description:
+      "A denial_case was seeded (from a CARC, a 277CA rejection, or an EVV-aggregator rejection).",
     payloadSchema: Type.Object({
       denialCaseId: id,
       providerEntityId: id,
@@ -132,7 +154,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.denial.resolved_favorable_via_appeal",
     moduleOwner: "m25",
-    description: "An appeal decided favorably; the underlying denial resolved and M23 may re-post the original line.",
+    description:
+      "An appeal decided favorably; the underlying denial resolved and M23 may re-post the original line.",
     payloadSchema: Type.Object({ denialCaseId: id, appealCaseId: id, claimId: id, tier: str }),
     declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
@@ -140,8 +163,14 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.taxonomy.unmapped_code_observed",
     moduleOwner: "m25",
-    description: "The first occurrence of a CARC absent from M38's catalog (D13); proposes an M23 pre-submission rule.",
-    payloadSchema: Type.Object({ carcCode: str, rarcCode: Type.Union([str, Type.Null()]), providerEntityId: id, denialCaseId: id }),
+    description:
+      "The first occurrence of a CARC absent from M38's catalog (D13); proposes an M23 pre-submission rule.",
+    payloadSchema: Type.Object({
+      carcCode: str,
+      rarcCode: Type.Union([str, Type.Null()]),
+      providerEntityId: id,
+      denialCaseId: id,
+    }),
     declaredConsumers: ["m23", "m36"],
     isOutboxOnly: true,
   },
@@ -149,7 +178,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.patient_responsibility.recorded",
     moduleOwner: "m25",
-    description: "A CAS group-PR adjustment recorded a patient_responsibility_ledger row (future Patient Statement).",
+    description:
+      "A CAS group-PR adjustment recorded a patient_responsibility_ledger row (future Patient Statement).",
     payloadSchema: Type.Object({ ledgerId: id, patientId: id, prAmount: money }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -158,24 +188,39 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m25.appeal.submitted",
     moduleOwner: "m25",
-    description: "An appeal transitioned draft → submitted (step-up gated, within deadline); dashboard + packet signal.",
-    payloadSchema: Type.Object({ appealCaseId: id, denialCaseId: id, tier: str, submittedAt: isoInstant }),
+    description:
+      "An appeal transitioned draft → submitted (step-up gated, within deadline); dashboard + packet signal.",
+    payloadSchema: Type.Object({
+      appealCaseId: id,
+      denialCaseId: id,
+      tier: str,
+      submittedAt: isoInstant,
+    }),
     declaredConsumers: ["m22", "m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m25.appeal_packet.render_requested",
     moduleOwner: "m25",
-    description: "A typed appeal-packet render payload was emitted for M22 to render the tier-specific letter PDF.",
-    payloadSchema: Type.Object({ appealCaseId: id, tier: str, payload: Type.Record(Type.String(), Type.Unknown()) }),
+    description:
+      "A typed appeal-packet render payload was emitted for M22 to render the tier-specific letter PDF.",
+    payloadSchema: Type.Object({
+      appealCaseId: id,
+      tier: str,
+      payload: Type.Record(Type.String(), Type.Unknown()),
+    }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
     eventName: "m25.denial_resolution_letter.render_requested",
     moduleOwner: "m25",
-    description: "A denial-resolution-letter render payload was emitted for M22 to render + persist the PDF.",
-    payloadSchema: Type.Object({ denialCaseId: id, payload: Type.Record(Type.String(), Type.Unknown()) }),
+    description:
+      "A denial-resolution-letter render payload was emitted for M22 to render + persist the PDF.",
+    payloadSchema: Type.Object({
+      denialCaseId: id,
+      payload: Type.Record(Type.String(), Type.Unknown()),
+    }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },

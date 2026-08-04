@@ -16,9 +16,9 @@
 // narrative free-text (cover_summary_layer1/2 + the built_snapshot discipline_views / sinceLastIdg keys) is
 // denylisted in the M4 write-audit trigger (§3.3). RLS + grants + trigger + partition land in M14-T02.
 import { index, jsonb, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const idgPatientPacket = pgTable(
   "idg_patient_packet",

@@ -9,8 +9,8 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { ial2Status } from "../../enums";
-import { organizations } from "../organizations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
 
 export const dosespotPrescribers = pgTable(
   "dosespot_prescriber",

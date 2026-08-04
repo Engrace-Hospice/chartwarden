@@ -97,13 +97,17 @@ describe("D3 tenant-tighten-only validator", () => {
 
   it("refuses LOWERING a replenishment threshold — that is the 2am-without-morphine direction", () => {
     expect(
-      codes(validateTenantTemplate(asTenantLines({ [MORPHINE]: { replenishmentThresholdPct: 0.1 } }))),
+      codes(
+        validateTenantTemplate(asTenantLines({ [MORPHINE]: { replenishmentThresholdPct: 0.1 } })),
+      ),
     ).toContain("threshold_loosened");
   });
 
   it("refuses clearing the platform-managed controlled-substance flag", () => {
     expect(
-      codes(validateTenantTemplate(asTenantLines({ [MORPHINE]: { isControlledSubstance: false } }))),
+      codes(
+        validateTenantTemplate(asTenantLines({ [MORPHINE]: { isControlledSubstance: false } })),
+      ),
     ).toContain("controlled_flag_disarmed");
   });
 

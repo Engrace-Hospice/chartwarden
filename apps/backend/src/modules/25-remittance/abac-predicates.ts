@@ -56,7 +56,10 @@ export interface ReadingM25AbacResolver {
     denialCaseId: string,
   ): Promise<{ assigneeMembershipId: string | null; providerEntityId: string } | null>;
   /** The appeal's tier deadline (ISO instant). */
-  loadAppealDeadline(ctx: M25AbacReadContext, appealCaseId: string): Promise<{ deadlineAt: string } | null>;
+  loadAppealDeadline(
+    ctx: M25AbacReadContext,
+    appealCaseId: string,
+  ): Promise<{ deadlineAt: string } | null>;
   /** The acting user's membership id within the org (for the assignment check). */
   loadActorMembershipId(ctx: M25AbacReadContext): Promise<string | null>;
 }
@@ -87,12 +90,20 @@ export function buildDrizzleM25AbacResolver(db: DbClient): ReadingM25AbacResolve
     async loadDenialAssignment(ctx, denialCaseId) {
       return withOrgContext(db, ctx, async (tx) => {
         const rows = await tx
-          .select({ assigneeMembershipId: DC.assigneeMembershipId, providerEntityId: DC.providerEntityId })
+          .select({
+            assigneeMembershipId: DC.assigneeMembershipId,
+            providerEntityId: DC.providerEntityId,
+          })
           .from(DC)
           .where(eq(DC.id, denialCaseId))
           .limit(1);
         const row = rows[0];
-        return row ? { assigneeMembershipId: row.assigneeMembershipId, providerEntityId: row.providerEntityId } : null;
+        return row
+          ? {
+              assigneeMembershipId: row.assigneeMembershipId,
+              providerEntityId: row.providerEntityId,
+            }
+          : null;
       });
     },
     async loadAppealDeadline(ctx, appealCaseId) {

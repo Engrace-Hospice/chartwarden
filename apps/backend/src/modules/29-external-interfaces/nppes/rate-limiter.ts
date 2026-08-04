@@ -15,7 +15,8 @@ export interface RateLimiterConfig {
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
-const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 export class RateLimiter {
   private tokens: number;

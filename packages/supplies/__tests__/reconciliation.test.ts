@@ -26,7 +26,9 @@ describe("D8 per-line reconciliation math", () => {
   });
 
   it("splits returned and home-disposed quantities", () => {
-    const r = computeReturnLine(controlled({ quantityReturned: "10", quantityDisposedAtHome: "20" }));
+    const r = computeReturnLine(
+      controlled({ quantityReturned: "10", quantityDisposedAtHome: "20" }),
+    );
     expect(r.quantityUnaccounted).toBe("0");
     expect(r.discrepancyFlagged).toBe(false);
   });
@@ -47,7 +49,11 @@ describe("D8 per-line reconciliation math", () => {
 
   it("never flags a NON-controlled line, however short — gloves get used", () => {
     const r = computeReturnLine(
-      controlled({ isControlledSubstance: false, controlledSubstanceSchedule: null, quantityReturned: "0" }),
+      controlled({
+        isControlledSubstance: false,
+        controlledSubstanceSchedule: null,
+        quantityReturned: "0",
+      }),
     );
     expect(r.discrepancyPct).toBe(1);
     expect(r.discrepancyFlagged).toBe(false);
@@ -55,7 +61,11 @@ describe("D8 per-line reconciliation math", () => {
 
   it("keeps decimal quantities exact — 0.1 + 0.2 must not drift", () => {
     const r = computeReturnLine(
-      controlled({ dispatchedQuantity: "0.3", quantityReturned: "0.1", quantityDisposedAtHome: "0.2" }),
+      controlled({
+        dispatchedQuantity: "0.3",
+        quantityReturned: "0.1",
+        quantityDisposedAtHome: "0.2",
+      }),
     );
     expect(r.quantityUnaccounted).toBe("0");
     expect(r.discrepancyPct).toBe(0);
@@ -72,15 +82,15 @@ describe("D8 per-line reconciliation math", () => {
 
 describe("§2.10 return-line coherence", () => {
   it("accepts accounting for exactly what went out", () => {
-    expect(isReturnLineCoherent(controlled({ quantityReturned: "20", quantityDisposedAtHome: "10" }))).toBe(
-      true,
-    );
+    expect(
+      isReturnLineCoherent(controlled({ quantityReturned: "20", quantityDisposedAtHome: "10" })),
+    ).toBe(true);
   });
 
   it("refuses accounting for MORE than went out — that writes a negative into the perpetual log", () => {
-    expect(isReturnLineCoherent(controlled({ quantityReturned: "20", quantityDisposedAtHome: "20" }))).toBe(
-      false,
-    );
+    expect(
+      isReturnLineCoherent(controlled({ quantityReturned: "20", quantityDisposedAtHome: "20" })),
+    ).toBe(false);
   });
 });
 
@@ -89,7 +99,11 @@ describe("whole-return reconciliation", () => {
     const summary = computeReturnReconciliation([
       controlled(),
       controlled({ quantityReturned: "0" }),
-      controlled({ isControlledSubstance: false, controlledSubstanceSchedule: null, quantityReturned: "0" }),
+      controlled({
+        isControlledSubstance: false,
+        controlledSubstanceSchedule: null,
+        quantityReturned: "0",
+      }),
     ]);
     expect(summary.flaggedLineCount).toBe(1);
     expect(summary.discrepancyDetected).toBe(true);
@@ -140,7 +154,10 @@ describe("§2.6 witness distinctness", () => {
   });
 
   it("does not require a witness for take-back or pharmacy transfer", () => {
-    for (const method of ["take_back_by_supply_team", "transferred_to_disposing_pharmacy"] as const) {
+    for (const method of [
+      "take_back_by_supply_team",
+      "transferred_to_disposing_pharmacy",
+    ] as const) {
       expect(
         isDisposalWitnessValid({
           disposalMethod: method,

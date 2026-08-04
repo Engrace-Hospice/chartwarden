@@ -173,11 +173,11 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
   });
-  
+
   it("every M4 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
     const rls = readFileSync(join(MIGRATIONS_DIR, "0012_audit_m4_rls_grants.sql"), "utf8");
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      ORG_SCOPED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => ORG_SCOPED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(ORG_SCOPED.length);
     for (const block of policyBlocks) {
@@ -250,15 +250,20 @@ describe.skipIf(!DB_URL)("M4 Audit — RLS cross-tenant denial — LIVE Postgres
     },
   );
 
-  it.each(PLATFORM_REFERENCE)("%s is NOT writable by the app role (SELECT-only grant)", async (table) => {
-    await expect(
-      withOrg(ORG_A, () => db.query(`DELETE FROM ${table}`)),
-    ).rejects.toThrow(/permission denied/i);
-  });
+  it.each(PLATFORM_REFERENCE)(
+    "%s is NOT writable by the app role (SELECT-only grant)",
+    async (table) => {
+      await expect(withOrg(ORG_A, () => db.query(`DELETE FROM ${table}`))).rejects.toThrow(
+        /permission denied/i,
+      );
+    },
+  );
 
   it("the seeded state retention overrides are visible to a tenant (the §24.4 lookup works live)", async () => {
     const r = await withOrg(ORG_A, () =>
-      db.query("SELECT retention_spec FROM state_retention_override WHERE state_code='OR' AND data_class='clinical_record'"),
+      db.query(
+        "SELECT retention_spec FROM state_retention_override WHERE state_code='OR' AND data_class='clinical_record'",
+      ),
     );
     expect(r.rows[0]?.retention_spec).toBe("7y");
   });

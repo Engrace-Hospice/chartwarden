@@ -337,10 +337,10 @@ function renderMarkdown(): string {
       "a RATIO, not a tick; ⚠️ = some route publishes no request/response schema. `arch:openapi-coverage` ratchets it) · " +
       "Screens (registered web `screens.ts`) · " +
       "Tests (package `__tests__` or slug-matched backend test, *heuristic*) · Adapter (vendor/client package built; — = none owned, *heuristic*) · " +
-      "Live (owned tables NAMED in a `*.live.test.ts` / owned tables — a RATIO, and still a name match, "
-      + "not an executed proof; ⚠️ marks any module with an unproven table). This column was a boolean "
-      + "`some()` and read ✅ for M35, a placeholder with zero migrations. Headline status keys off the "
-      + "placeholder marker + schema + routes only.",
+      "Live (owned tables NAMED in a `*.live.test.ts` / owned tables — a RATIO, and still a name match, " +
+      "not an executed proof; ⚠️ marks any module with an unproven table). This column was a boolean " +
+      "`some()` and read ✅ for M35, a placeholder with zero migrations. Headline status keys off the " +
+      "placeholder marker + schema + routes only.",
   );
   lines.push("");
   lines.push(

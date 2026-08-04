@@ -1,14 +1,15 @@
 import {
-  cardSurface,
   EmptyState,
   KpiCard,
   KpiStrip,
   LoadingSpinner,
   PageHeader,
   StatusPill,
+  cardSurface,
   t,
   useApiClient,
 } from "@wardenx/ui";
+import type { paths } from "@wardenx/ui";
 // apps/web/src/modules/30-quality — M30 QUALITY HUB (§5.1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HQRP_QUALITY.md — Quality Hub (KPI strip + CoP strip).
 //
@@ -21,7 +22,6 @@ import {
 // as a miss would invent one, and counting it as a pass would hide one.
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import type { paths } from "@wardenx/ui";
 import {
   COP_STATUS_TONE,
   DOMAIN_LABEL,
@@ -42,7 +42,11 @@ type MeasureRow =
 type CitationRow =
   paths["/api/v1/quality/cop/citations"]["get"]["responses"][200]["content"]["application/json"]["items"][number];
 
-const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
+const cell: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left",
+  verticalAlign: "middle",
+};
 const head: CSSProperties = {
   ...cell,
   fontSize: "0.72rem",
@@ -121,8 +125,8 @@ export function QualityHub(): JSX.Element {
       <section style={{ ...cardSurface, marginInline: t.space5 }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Measures</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Latest computed value per measure. The population is shown beside every rate — a rate without its
-          denominator cannot be judged, and a suppressed measure shows “—”, never 0%.
+          Latest computed value per measure. The population is shown beside every rate — a rate
+          without its denominator cannot be judged, and a suppressed measure shows “—”, never 0%.
         </p>
         {loading ? (
           <LoadingSpinner />
@@ -183,11 +187,14 @@ export function QualityHub(): JSX.Element {
       <section style={{ ...cardSurface, marginTop: "1rem", marginInline: t.space5 }}>
         <h2 style={{ margin: 0, fontSize: "1.05rem" }}>Conditions of Participation</h2>
         <p style={{ margin: "0.25rem 0 1rem", color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
-          Survey citation posture. A deficiency is grounds for termination under 418.310, so it reads as an
-          error, not a warning.
+          Survey citation posture. A deficiency is grounds for termination under 418.310, so it
+          reads as an error, not a warning.
         </p>
         {citations.length === 0 ? (
-          <EmptyState title="No citations" description="No CoP citations are on file for this agency." />
+          <EmptyState
+            title="No citations"
+            description="No CoP citations are on file for this agency."
+          />
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -205,7 +212,10 @@ export function QualityHub(): JSX.Element {
                   <td style={cell}>{c.citationRef}</td>
                   <td style={cell}>{c.displayName}</td>
                   <td style={cell}>
-                    <StatusPill tone={toneOf(COP_STATUS_TONE, c.status)} label={humanize(c.status)} />
+                    <StatusPill
+                      tone={toneOf(COP_STATUS_TONE, c.status)}
+                      label={humanize(c.status)}
+                    />
                   </td>
                   <td style={cell}>{c.lastReviewedAt?.slice(0, 10) ?? "—"}</td>
                   <td style={cell}>{c.nextReviewDueAt?.slice(0, 10) ?? "—"}</td>

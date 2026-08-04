@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M7L-T02 — the Drizzle care-plan WRITE lifecycle, proven against real Postgres.
  *
@@ -13,14 +14,10 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  buildBootOutboxCatalog,
-  buildTxOutboxPublisher,
-} from "../src/bootstrap/outbox-persister";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   type CarePlanWriteOutboxPort,
   M7_OUTBOX_EVENTS,
@@ -54,7 +51,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       );
   }
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort())
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
 
@@ -110,9 +109,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
   it("one active plan per admission — a second bootstrap for the same admission is 409", async () => {
     const admissionId = randomUUID();
     await svc.bootstrapCarePlan(ORG_A, randomUUID(), admissionId);
-    await expect(
-      svc.bootstrapCarePlan(ORG_A, randomUUID(), admissionId),
-    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.bootstrapCarePlan(ORG_A, randomUUID(), admissionId)).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 
   it("authoring → finalize → the D5 initial quorum signs the version and activates the plan", async () => {
@@ -125,7 +124,11 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     await svc.addGoal(
       ORG_A,
       boot.id,
-      { problemId: prob.id, originalText: "I want to stay comfortable at home", source: "patient_stated" },
+      {
+        problemId: prob.id,
+        originalText: "I want to stay comfortable at home",
+        source: "patient_stated",
+      },
       false,
     );
     await svc.addIntervention(ORG_A, boot.id, {
@@ -136,7 +139,13 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
       discipline: "rn",
     });
     // draft (v1) → in_review (v2)
-    const finalized = (await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null)) as Version;
+    const finalized = (await svc.finalizeVersion(
+      ORG_A,
+      boot.id,
+      boot.initialVersionId,
+      1,
+      null,
+    )) as Version;
     expect(finalized.status).toBe("in_review");
     expect(finalized.version).toBe(2);
     // First required signature (RN case manager) — quorum not yet met.
@@ -160,10 +169,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     )) as Version;
     expect(sig2.status).toBe("signed");
     expect(sig2.signatures.length).toBe(2);
-    const [row] = (await admin.query(
-      "SELECT status, active_version_id FROM care_plan WHERE id=$1",
-      [boot.id],
-    )).rows;
+    const [row] = (
+      await admin.query("SELECT status, active_version_id FROM care_plan WHERE id=$1", [boot.id])
+    ).rows;
     expect(row.status).toBe("active");
     expect(row.active_version_id).toBe(boot.initialVersionId);
     expect(await eventsFor(boot.initialVersionId)).toContain("m7.care_plan.version_signed");
@@ -210,10 +218,26 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
 
   it("return-to-draft clears the collected signatures (D8)", async () => {
     const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
-    await svc.addProblem(ORG_A, boot.id, { description: "Pain", kind: "terminal", source: "clinical" });
+    await svc.addProblem(ORG_A, boot.id, {
+      description: "Pain",
+      kind: "terminal",
+      source: "clinical",
+    });
     await svc.finalizeVersion(ORG_A, boot.id, boot.initialVersionId, 1, null);
-    await svc.signVersion(ORG_A, boot.id, boot.initialVersionId, 2, "rn_case_manager", new Date().toISOString());
-    const returned = (await svc.returnVersionToDraft(ORG_A, boot.id, boot.initialVersionId, 3)) as Version;
+    await svc.signVersion(
+      ORG_A,
+      boot.id,
+      boot.initialVersionId,
+      2,
+      "rn_case_manager",
+      new Date().toISOString(),
+    );
+    const returned = (await svc.returnVersionToDraft(
+      ORG_A,
+      boot.id,
+      boot.initialVersionId,
+      3,
+    )) as Version;
     expect(returned.status).toBe("draft");
     expect(returned.signatures.length).toBe(0);
   });
@@ -223,9 +247,9 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     await expect(svc.getVersion(ORG_B, boot.id, boot.initialVersionId)).rejects.toMatchObject({
       statusCode: 404,
     });
-    await expect(
-      svc.createVersion(ORG_B, boot.id, "interim_revision", null),
-    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.createVersion(ORG_B, boot.id, "interim_revision", null)).rejects.toMatchObject(
+      { statusCode: 404 },
+    );
   });
 
   it("the Drizzle CarePlanAbacResolver resolves real plan/problem/version facts and fails closed cross-tenant", async () => {
@@ -253,7 +277,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     const version = await resolver.loadVersion(ORG_A, boot.initialVersionId);
     expect(version?.planId).toBe(boot.id);
     expect(Array.isArray(version?.requiredSignerSet)).toBe(true);
-    expect((version?.requiredSignerSet.length ?? 0)).toBeGreaterThan(0);
+    expect(version?.requiredSignerSet.length ?? 0).toBeGreaterThan(0);
 
     // Fail-closed: RLS hides org A's rows from org B → every loader returns null (never leaks existence).
     expect(await resolver.loadPlan(ORG_B, boot.id)).toBeNull();

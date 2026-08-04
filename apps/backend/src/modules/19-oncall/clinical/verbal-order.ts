@@ -1,3 +1,4 @@
+import { isStepUpRecent } from "@wardenx/auth";
 // apps/backend/src/modules/19-oncall/clinical/verbal-order.ts — M19-T05 (D9, §7.7, §2.4, §6).
 //
 // THE M11 BINDING. §7.7's scene: 2 a.m., the patient vomited her morning morphine, the RN takes a verbal
@@ -45,10 +46,9 @@ import type {
   VerbalOrderId,
 } from "@wardenx/types";
 import { STEP_UP_POLICY } from "@wardenx/types";
-import { isStepUpRecent } from "@wardenx/auth";
+import { permittedDispositions } from "../lifecycle/disposition";
 import type { TriageSideEffect } from "../lifecycle/effects";
 import { require_ } from "../lifecycle/errors";
-import { permittedDispositions } from "../lifecycle/disposition";
 import type { TriageActorDiscipline } from "../lifecycle/protocol";
 import { getOrderSignatureProvider } from "../seams/consumed";
 

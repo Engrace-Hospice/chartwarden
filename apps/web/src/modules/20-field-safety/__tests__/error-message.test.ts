@@ -43,7 +43,8 @@ describe("M20 errorMessage — the wire envelope, not problem+json", () => {
         {
           error: {
             code: "IF_MATCH_REQUIRED",
-            message: "this route requires an If-Match header carrying the row version you read (§2.5)",
+            message:
+              "this route requires an If-Match header carrying the row version you read (§2.5)",
             correlationId: "c",
           },
         },
@@ -62,7 +63,10 @@ describe("M20 errorMessage — the wire envelope, not problem+json", () => {
   });
 
   it("keeps 404 deliberately ambiguous — absent OR out of reach", () => {
-    const msg = errorMessage({ error: { code: "NOT_FOUND", message: "", correlationId: "c" } }, FALLBACK);
+    const msg = errorMessage(
+      { error: { code: "NOT_FOUND", message: "", correlationId: "c" } },
+      FALLBACK,
+    );
     expect(msg).toContain("does not distinguish");
   });
 

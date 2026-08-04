@@ -26,7 +26,9 @@ export type DrilldownOutcome = "emitted" | "denied" | "target_unavailable";
  *  filter context (fail-closed; §3.6). */
 export class DrilldownDekUnavailable extends Error {
   constructor(reason: string) {
-    super(`drilldown audit denied — per-tenant DEK unavailable, refusing to store plaintext filter context: ${reason}`);
+    super(
+      `drilldown audit denied — per-tenant DEK unavailable, refusing to store plaintext filter context: ${reason}`,
+    );
     this.name = "DrilldownDekUnavailable";
   }
 }
@@ -36,7 +38,10 @@ export class DrilldownDekUnavailable extends Error {
 /** Envelope-encrypts the drilldown filter context under the per-tenant DEK (§3.6). Bound at boot to the M1 DEK
  *  helper; a fail-closed thunk until then — any throw here denies the drilldown (never plaintext at rest). */
 export interface DrilldownFilterEncryptionPort {
-  encryptFilters(input: { readonly organizationId: string; readonly plaintext: string }): Promise<string>;
+  encryptFilters(input: {
+    readonly organizationId: string;
+    readonly plaintext: string;
+  }): Promise<string>;
 }
 
 /** The insert-only write port over `report_drilldown_audit` (bound at boot to `ReportDrilldownAuditRepository.
@@ -160,7 +165,13 @@ export async function writeDrilldownAudit(
 
   const outcome = input.outcome ?? "emitted";
   const drilldownTraceId = ports.newTraceId();
-  const row = buildDrilldownAuditRow(input, queryFiltersCipher, ports.newRowId(), drilldownTraceId, ports.now());
+  const row = buildDrilldownAuditRow(
+    input,
+    queryFiltersCipher,
+    ports.newRowId(),
+    drilldownTraceId,
+    ports.now(),
+  );
 
   await ports.audit.append(row);
   await ports.outbox.emitDrilldown({

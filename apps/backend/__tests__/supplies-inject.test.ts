@@ -1065,7 +1065,13 @@ function createFakeBackend() {
       r.lines = lines;
       r.discrepancyDetected = false;
       r.updatedAt = NOW;
-      return { returnId, state: "reconciled", discrepancyDetected: false, perMedication: lines, updatedAt: NOW };
+      return {
+        returnId,
+        state: "reconciled",
+        discrepancyDetected: false,
+        perMedication: lines,
+        updatedAt: NOW,
+      };
     },
     async declareUnreturnable(actor, returnId, input) {
       const r = returns.get(returnId) ?? notFound("return");
@@ -1139,7 +1145,9 @@ function createFakeBackend() {
     // §4.8 seam entry point — not a route (mounted only through the M1 registry). Never called by this
     // HTTP-layer smoke file; a trivial throw keeps the fake honest about what it actually backs.
     async createDirect() {
-      throw new Error("createDirect is a §4.8 seam entry point, not exercised over HTTP by this file");
+      throw new Error(
+        "createDirect is a §4.8 seam entry point, not exercised over HTTP by this file",
+      );
     },
   };
 
@@ -1163,7 +1171,8 @@ function createFakeBackend() {
         organizationId: ORG,
         targetId: r.supplyRequestId,
         locationId: r.locationId,
-        involvesControlledSubstance: r.kind === "comfort_kit_deploy" || r.kind === "comfort_kit_replenish",
+        involvesControlledSubstance:
+          r.kind === "comfort_kit_deploy" || r.kind === "comfort_kit_replenish",
       };
     },
     async loadReturn(_orgId, returnId) {
@@ -1202,7 +1211,14 @@ function makeServer(): { app: ReturnType<typeof buildServer>; backend: FakeBacke
     [COORD_ID, DISPATCHER_ID, RECONCILER_ID, ADMIN_ID].map((membershipId) => ({
       orgId: ORG,
       userId: `user_${membershipId}`,
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M21_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M21_PERMISSION_KEY_LIST],
+        },
+      ],
     })),
   );
   registerEffectivePermissionResolver(grantStore.store);
@@ -1475,7 +1491,12 @@ describe("M21 §4.1 rows 11-19 — SKU catalog, tenant overlay, comfort-kit temp
       method: "POST",
       url: "/api/v1/supplies/supply-items",
       headers: { ...ADMIN, "idempotency-key": "item-1" },
-      payload: { name: "Hospital bed, semi-electric", skuClass: "E", defaultUnit: "each", hcpcs: "E0260" },
+      payload: {
+        name: "Hospital bed, semi-electric",
+        skuClass: "E",
+        defaultUnit: "each",
+        hcpcs: "E0260",
+      },
     });
     expect(createItem.statusCode).toBe(201);
     const itemId = createItem.json().supplyItemId as string;
@@ -1522,7 +1543,11 @@ describe("M21 §4.1 rows 11-19 — SKU catalog, tenant overlay, comfort-kit temp
       method: "PUT",
       url: `/api/v1/supplies/tenant-supply-items/${tenantItemId}`,
       headers: { ...ADMIN, "idempotency-key": "tenant-item-1-edit" },
-      payload: { name: "Agency-branded wipes (large)", localSkuCode: "WIPE-01L", defaultUnit: "pack" },
+      payload: {
+        name: "Agency-branded wipes (large)",
+        localSkuCode: "WIPE-01L",
+        defaultUnit: "pack",
+      },
     });
     expect(tenantItemEdit.statusCode).toBe(200);
     expect(tenantItemEdit.json().localSkuCode).toBe("WIPE-01L");
@@ -1763,7 +1788,11 @@ describe("M21 §4.1 rows 20-30 — comfort-kit dispatch through reconciliation a
         pharmacyDispatchMode: "supply_hub_dispatch",
         kitSerialNumber: "KIT-0002",
         contents: [
-          { comfortKitTemplateMedicationId: medId, dispatchedQuantity: "30", dispatchedUnit: "tablet" },
+          {
+            comfortKitTemplateMedicationId: medId,
+            dispatchedQuantity: "30",
+            dispatchedUnit: "tablet",
+          },
         ],
       },
     });
@@ -1799,7 +1828,11 @@ describe("M21 §4.1 rows 31-37 — the D4 vendor-routing ladder and the D5 par-s
       method: "POST",
       url: "/api/v1/supplies/vendor-routing-rules",
       headers: { ...ADMIN, "idempotency-key": "rule-1" },
-      payload: { scopeKind: "tenant", assignedVendorId: null, assignedFulfillmentMode: "internal_supply_hub" },
+      payload: {
+        scopeKind: "tenant",
+        assignedVendorId: null,
+        assignedFulfillmentMode: "internal_supply_hub",
+      },
     });
     expect(createRule.statusCode).toBe(201);
     const ruleId = createRule.json().ruleId as string;

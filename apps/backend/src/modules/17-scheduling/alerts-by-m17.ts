@@ -75,7 +75,8 @@ export const M17_ALERT_PAYLOADS: ModuleAlertContribution = [
       clinicianMembershipId: id,
     }),
     requiresResponseTracking: false,
-    description: "A visit was marked no-show — the supervisor warning (M19 on-call triage in Phase 2).",
+    description:
+      "A visit was marked no-show — the supervisor warning (M19 on-call triage in Phase 2).",
   },
   {
     payloadType: "m17.reassignment_needed",
@@ -94,7 +95,8 @@ export const M17_ALERT_PAYLOADS: ModuleAlertContribution = [
       affectedClinicianMembershipId: id,
     }),
     requiresResponseTracking: true,
-    description: "A published visit's clinician became ineligible — the scheduler warning to reassign.",
+    description:
+      "A published visit's clinician became ineligible — the scheduler warning to reassign.",
   },
   {
     payloadType: "m17.time_off.requested",
@@ -123,7 +125,8 @@ export const M17_ALERT_PAYLOADS: ModuleAlertContribution = [
       reassignmentTaskCount: Type.Integer({ minimum: 0 }),
     }),
     requiresResponseTracking: false,
-    description: "A PTO request was approved — the confirmation to the requester with the reassignment count.",
+    description:
+      "A PTO request was approved — the confirmation to the requester with the reassignment count.",
   },
   {
     payloadType: "m17.time_off.denied",
@@ -153,7 +156,8 @@ export const M17_ALERT_PAYLOADS: ModuleAlertContribution = [
       totalProposedDriveMinutes: Type.Number(),
     }),
     requiresResponseTracking: false,
-    description: "A day route was optimised — the optimisation-completed notice (route_optimization ON only).",
+    description:
+      "A day route was optimised — the optimisation-completed notice (route_optimization ON only).",
   },
   {
     payloadType: "m17.route_unoptimized",
@@ -168,7 +172,8 @@ export const M17_ALERT_PAYLOADS: ModuleAlertContribution = [
       reason: Type.Union([Type.Literal("osrm_unavailable"), Type.Literal("no_visits")]),
     }),
     requiresResponseTracking: false,
-    description: "Day-route optimisation fell back to the degraded path — the §7.9 unoptimised notice.",
+    description:
+      "Day-route optimisation fell back to the degraded path — the §7.9 unoptimised notice.",
   },
   {
     payloadType: "m17.stale_visit_detected",
@@ -198,6 +203,7 @@ export const M17_ALERT_PAYLOADS: ModuleAlertContribution = [
       channel: Type.Union([Type.Literal("sms"), Type.Literal("email")]),
     }),
     requiresResponseTracking: false,
-    description: "An opted-in visit is ~24h out — the caregiver reminder (rendered by M22, delivered by M36).",
+    description:
+      "An opted-in visit is ~24h out — the caregiver reminder (rendered by M22, delivered by M36).",
   },
 ];

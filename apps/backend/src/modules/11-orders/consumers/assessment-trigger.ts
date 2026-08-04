@@ -9,10 +9,7 @@
 // STRING literal only (no M9 schema import): M11 reads M9 solely through the foundation outbox, never via
 // a `dependsOn` edge (§4 boundary rule).
 import type { OrderKind } from "@wardenx/types";
-import {
-  type SuggestionAction,
-  type SuggestionFacts,
-} from "./suggestion-banner";
+import type { SuggestionAction, SuggestionFacts } from "./suggestion-banner";
 
 // ── The significant-change payload M11 consumes (M9 owns the canonical wire shape) ────────────────────
 

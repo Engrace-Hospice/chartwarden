@@ -1,3 +1,4 @@
+import { Client } from "pg";
 /**
  * scripts/db/sync-ai-capability-catalog.ts — idempotent `ai_capability` sync from the M32 §2.4
  * in-code inventory (ARCH-019 / TASK-062).
@@ -22,7 +23,6 @@ import {
   AI_PHASE_1_INVENTORY_GAPS,
   aiCapabilityGovernanceDefaults,
 } from "../../packages/ai-platform/src/inventory/capabilities";
-import { Client } from "pg";
 
 async function main(): Promise<void> {
   const url = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;

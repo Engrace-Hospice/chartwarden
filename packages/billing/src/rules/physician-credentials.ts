@@ -10,7 +10,8 @@ const KEY = "physician_credentials_active";
 function credentialDefect(label: string, p: PhysicianResolution | null): string | null {
   if (p === null) return `${label} physician is not identified`;
   if (p.status !== "active") return `${label} NPI ${p.npi} is ${p.status} in NPPES`;
-  if (!p.licenseUnexpiredOnServiceDates) return `${label} state license is expired on a service date`;
+  if (!p.licenseUnexpiredOnServiceDates)
+    return `${label} state license is expired on a service date`;
   return null;
 }
 
@@ -27,7 +28,12 @@ export const physicianCredentialsActive: Rule = {
   overrideRoleRequired: "billing_manager",
   check: (ctx) => {
     if (!ctx.seams.mdmResolverBound) {
-      return skip(KEY, "error", "seam_not_bound", "MDM/NPPES resolver (M40) not bound — credential check deferred.");
+      return skip(
+        KEY,
+        "error",
+        "seam_not_bound",
+        "MDM/NPPES resolver (M40) not bound — credential check deferred.",
+      );
     }
     const defects: string[] = [];
     // The hospice physician is always required; the attending is required when one is on file.
@@ -38,7 +44,11 @@ export const physicianCredentialsActive: Rule = {
       if (attendingDefect !== null) defects.push(attendingDefect);
     }
     if (defects.length === 0) {
-      return pass(KEY, "error", "Attending and hospice physician credentials are active and licensed.");
+      return pass(
+        KEY,
+        "error",
+        "Attending and hospice physician credentials are active and licensed.",
+      );
     }
     return fail(
       KEY,

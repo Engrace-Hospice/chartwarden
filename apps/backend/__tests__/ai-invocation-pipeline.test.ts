@@ -5,11 +5,10 @@
 // `ai_invocation` rows, what those rows contain, that a refused call never reaches a backend, and that
 // the four Phase-1 unbound ports refuse rather than wave a call through.
 
-import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 
-import { VENDOR_ADAPTERS } from "../../../architecture/module-manifest";
 import {
   ZdrContractMissingError,
   aiTokenBudgetFor,
@@ -19,6 +18,7 @@ import {
 } from "@wardenx/ai-platform";
 import type { ModelBackend } from "@wardenx/ai-platform";
 import type { AiConsumerContextRef } from "@wardenx/types";
+import { VENDOR_ADAPTERS } from "../../../architecture/module-manifest";
 
 import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";
 import type { AiTenantOptInRow } from "../src/modules/32-ai-platform/governance/store";
@@ -114,10 +114,7 @@ function capabilityStore(row: AiInvocationCapabilityRow | null): AiInvocationCap
   return { findByKey: async () => row };
 }
 
-function textBackend(
-  backendKey: string,
-  complete: ModelBackend["complete"],
-): ModelBackend {
+function textBackend(backendKey: string, complete: ModelBackend["complete"]): ModelBackend {
   return {
     backendKey,
     kind: backendKey.startsWith("local-") ? "local" : "cloud",
@@ -266,7 +263,11 @@ describe("aiSdk.invoke — completed dispatch (W1)", () => {
     const { pipeline, stores } = harness();
     await pipeline.invoke(REQUEST);
     const row = stores.invocationRows[0]!;
-    for (const buf of [row.promptPayloadCipher, row.chartContextCipher, row.responsePayloadCipher]) {
+    for (const buf of [
+      row.promptPayloadCipher,
+      row.chartContextCipher,
+      row.responsePayloadCipher,
+    ]) {
       expect(buf).not.toBeNull();
       expect(buf!.toString("utf8").startsWith(`enc:${ORG}:`)).toBe(true);
     }
@@ -650,9 +651,10 @@ describe("aiSdk.invoke — a backend that throws or hangs", () => {
       modelBackends: createModelBackendRegistry([
         textBackend(
           CLOUD.backendKey,
-          () => new Promise(() => {
-            /* never settles */
-          }),
+          () =>
+            new Promise(() => {
+              /* never settles */
+            }),
         ),
       ]),
       tokenBudget: { budgetFor: async () => aiTokenBudgetFor(10_000) },
@@ -788,10 +790,7 @@ describe("the Anthropic adapter (D19 / §8.4)", () => {
       readFileSync(join(import.meta.dirname, "../../../package.json"), "utf8"),
     ) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
     const pkg = JSON.parse(
-      readFileSync(
-        join(import.meta.dirname, "../../../packages/ai-platform/package.json"),
-        "utf8",
-      ),
+      readFileSync(join(import.meta.dirname, "../../../packages/ai-platform/package.json"), "utf8"),
     ) as { dependencies?: Record<string, string> };
     expect(root.dependencies?.["@anthropic-ai/sdk"]).toBeUndefined();
     expect(root.devDependencies?.["@anthropic-ai/sdk"]).toBeUndefined();

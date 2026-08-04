@@ -10,7 +10,10 @@ import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
 import { SCALE_TYPES } from "@wardenx/types";
-import type { ScaleDelta as ServiceScaleDelta, ScaleSeries as ServiceScaleSeries } from "@wardenx/types";
+import type {
+  ScaleDelta as ServiceScaleDelta,
+  ScaleSeries as ServiceScaleSeries,
+} from "@wardenx/types";
 import type {
   AssessmentView as ServiceAssessmentView,
   ScaleLicenseView as ServiceScaleLicenseView,
@@ -65,7 +68,9 @@ const CommonRecordFields = {
   scaleType: SCALE_TYPE,
   capturedAt: Type.String({ format: "date-time" }),
   sourceEncounterId: Type.Optional(Type.String({ format: "uuid" })),
-  actingAs: Type.Optional(Type.Union([Type.Literal("self"), Type.Literal("patient_representative")])),
+  actingAs: Type.Optional(
+    Type.Union([Type.Literal("self"), Type.Literal("patient_representative")]),
+  ),
   actingConsentId: Type.Optional(Type.String({ format: "uuid" })),
   sudContext: Type.Optional(Type.Boolean()), // only meaningful for scaleType='aims'
   // The per-scale `data` payload (typed per scaleType in the client SDK + the per-scale `schema.ts`); the
@@ -318,12 +323,18 @@ type _SignificantChangeList = Conforms<
   Static<typeof SignificantChangeListResponseSchema>,
   { readonly events: readonly ServiceSignificantChangeView[] }
 >;
-type _ScaleLicenseView = Conforms<Static<typeof ScaleLicenseViewResponseSchema>, ServiceScaleLicenseView>;
+type _ScaleLicenseView = Conforms<
+  Static<typeof ScaleLicenseViewResponseSchema>,
+  ServiceScaleLicenseView
+>;
 type _ScaleLicenseList = Conforms<
   Static<typeof ScaleLicenseListResponseSchema>,
   { readonly licenses: readonly ServiceScaleLicenseView[] }
 >;
-type _ScalePolicyView = Conforms<Static<typeof ScalePolicyViewResponseSchema>, ServiceScalePolicyView>;
+type _ScalePolicyView = Conforms<
+  Static<typeof ScalePolicyViewResponseSchema>,
+  ServiceScalePolicyView
+>;
 type _ScalePolicyList = Conforms<
   Static<typeof ScalePolicyListResponseSchema>,
   { readonly policies: readonly ServiceScalePolicyView[] }

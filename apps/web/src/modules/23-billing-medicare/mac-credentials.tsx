@@ -109,12 +109,13 @@ export function MacCredentials(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET(
-      "/api/v1/billing/mac-credentials",
-      { params: { query: { limit: 200 } } } as never,
-    );
+    const { data, error: err } = await client.GET("/api/v1/billing/mac-credentials", {
+      params: { query: { limit: 200 } },
+    } as never);
     if (err) {
-      setError("MAC credentials unavailable — the billing read seam is not bound, or you lack scope.");
+      setError(
+        "MAC credentials unavailable — the billing read seam is not bound, or you lack scope.",
+      );
       setLoading(false);
       return;
     }
@@ -155,7 +156,11 @@ export function MacCredentials(): JSX.Element {
             title="MAC Credentials"
             breadcrumb="Billing — Medicare · Submitter credentials"
             actions={
-              <button type="button" onClick={() => setDraft(emptyDraft())} style={primaryButtonStyle}>
+              <button
+                type="button"
+                onClick={() => setDraft(emptyDraft())}
+                style={primaryButtonStyle}
+              >
                 Add credential
               </button>
             }
@@ -228,7 +233,14 @@ function CredentialRail({
               <span style={{ fontSize: "0.85rem", fontWeight: 600, color: t.onSurface }}>
                 {macLabel(c.macJurisdiction)}
               </span>
-              <span style={{ fontFamily: t.fontMono, fontSize: "0.72rem", color: t.onSurfaceVariant, overflowWrap: "anywhere" }}>
+              <span
+                style={{
+                  fontFamily: t.fontMono,
+                  fontSize: "0.72rem",
+                  color: t.onSurfaceVariant,
+                  overflowWrap: "anywhere",
+                }}
+              >
                 {c.providerEntityId}
               </span>
               <span style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
@@ -257,15 +269,31 @@ function CredentialDetail({
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "40rem" }}>
       <header style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-        <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.25rem", color: t.onSurface }}>
+        <h2
+          style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.25rem", color: t.onSurface }}
+        >
           {macLabel(credential.macJurisdiction)}
         </h2>
-        <span style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, overflowWrap: "anywhere" }}>
+        <span
+          style={{
+            fontFamily: t.fontMono,
+            fontSize: "0.78rem",
+            color: t.onSurfaceVariant,
+            overflowWrap: "anywhere",
+          }}
+        >
           {credential.providerEntityId}
         </span>
       </header>
 
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.6rem 1.25rem", margin: 0 }}>
+      <dl
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: "0.6rem 1.25rem",
+          margin: 0,
+        }}
+      >
         <Term label="Submitter id" />
         <Desc>
           <MaskedIdentifier value={credential.submitterId} label="MAC submitter id" />
@@ -368,7 +396,9 @@ function UpsertCeremony({
         tradingPartnerId: draft.tradingPartnerId.trim(),
         clientId: draft.clientId.trim(),
         clientSecret: draft.clientSecret,
-        ...(draft.baaRecordRef.trim().length > 0 ? { baaRecordRef: draft.baaRecordRef.trim() } : {}),
+        ...(draft.baaRecordRef.trim().length > 0
+          ? { baaRecordRef: draft.baaRecordRef.trim() }
+          : {}),
         ...(draft.credentialExpiresAt.trim().length > 0
           ? { credentialExpiresAt: new Date(draft.credentialExpiresAt).toISOString() }
           : {}),
@@ -401,7 +431,9 @@ function UpsertCeremony({
   return (
     <div role="dialog" aria-label="MAC credential upsert" style={drawerStyle}>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem", maxWidth: "30rem" }}>
-        <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.25rem", color: t.onSurface }}>
+        <h2
+          style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.25rem", color: t.onSurface }}
+        >
           {isEdit ? "Edit MAC credential" : "Add MAC credential"}
         </h2>
 
@@ -419,7 +451,9 @@ function UpsertCeremony({
           <select
             id="mc-mac"
             value={draft.macJurisdiction}
-            onChange={(e) => onChange({ ...draft, macJurisdiction: e.target.value as MacJurisdiction })}
+            onChange={(e) =>
+              onChange({ ...draft, macJurisdiction: e.target.value as MacJurisdiction })
+            }
             style={selectStyle}
           >
             {MAC_JURISDICTIONS.map((m) => (
@@ -509,7 +543,8 @@ function UpsertCeremony({
           <span>
             You are {isEdit ? "updating" : "creating"} the MAC submitter credential for{" "}
             <strong style={{ fontFamily: t.fontMono }}>{draft.providerEntityId}</strong> (
-            {macLabel(draft.macJurisdiction)}). The client secret is encrypted at rest and never displayed.
+            {macLabel(draft.macJurisdiction)}). The client secret is encrypted at rest and never
+            displayed.
           </span>
         }
         legalText="I confirm I am authorized to manage this provider entity's clearinghouse credentials."
@@ -539,7 +574,9 @@ function Labeled({
 }
 
 function Term({ label }: { label: string }): JSX.Element {
-  return <dt style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}>{label}</dt>;
+  return (
+    <dt style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}>{label}</dt>
+  );
 }
 function Desc({ children }: { children: JSX.Element | string }): JSX.Element {
   return <dd style={{ margin: 0, fontSize: "0.85rem", color: t.onSurface }}>{children}</dd>;

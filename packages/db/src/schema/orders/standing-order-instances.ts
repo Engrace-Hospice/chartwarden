@@ -8,10 +8,10 @@
 // land in the RLS migration.
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { standingOrderSpawnedBy } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { standingOrders } from "./standing-orders";
 
 export const standingOrderInstances = pgTable(

@@ -89,9 +89,11 @@ const GEO_TIMEOUT_MS = 3000;
 
 /** Ask the browser for a position, and RESOLVE `null` on every failure path — denial, timeout, no API.
  *  Never rejects: a rejected promise here would be one more thing between the tap and the alert. */
-async function tryPosition(): Promise<
-  { latitude: number; longitude: number; accuracyM: number } | null
-> {
+async function tryPosition(): Promise<{
+  latitude: number;
+  longitude: number;
+  accuracyM: number;
+} | null> {
   if (typeof navigator === "undefined" || !navigator.geolocation) return null;
   return new Promise((resolve) => {
     let settled = false;
@@ -209,7 +211,9 @@ export function MySafetyScreen(): JSX.Element {
     // which is the correct outcome, and the copy below says so before she taps.
     const res = await cancelSos(client, raised.id, {});
     if (res.error || !res.result) {
-      setSosError(errorMessage(res.error, "The cancel did not go through. The alert is still open."));
+      setSosError(
+        errorMessage(res.error, "The cancel did not go through. The alert is still open."),
+      );
       return;
     }
     setCancelState(res.result.cancelStatus);
@@ -279,14 +283,14 @@ export function MySafetyScreen(): JSX.Element {
             <SosButton onPress={() => void press()} disabled={sosDenied} busy={pressing} />
             <span style={{ ...mutedStyle, textAlign: "center", maxWidth: "28rem" }}>
               One press raises the alert immediately. You get {""}
-              <strong>a few seconds to take it back</strong> and nothing else stands between the press and
-              the people who will be paged — not consent, not a location, not your device.
+              <strong>a few seconds to take it back</strong> and nothing else stands between the
+              press and the people who will be paged — not consent, not a location, not your device.
             </span>
             {sosDenied ? (
               <Notice tone="error" assertive>
-                The server refused this press: your membership is not field-eligible for SOS. That is a
-                configuration your agency controls — ask your supervisor. It is not a fault on this device
-                and pressing again will not change it.
+                The server refused this press: your membership is not field-eligible for SOS. That
+                is a configuration your agency controls — ask your supervisor. It is not a fault on
+                this device and pressing again will not change it.
               </Notice>
             ) : null}
             {sosError && !sosDenied ? (
@@ -296,15 +300,15 @@ export function MySafetyScreen(): JSX.Element {
             ) : null}
             {coordConsent === false ? (
               <Notice tone="info">
-                You have <strong>not</strong> consented to sharing your location with an SOS. The button
-                still works and the alert still goes — the people paged will simply be told there is no
-                position. You can change that on your consent page at any time.
+                You have <strong>not</strong> consented to sharing your location with an SOS. The
+                button still works and the alert still goes — the people paged will simply be told
+                there is no position. You can change that on your consent page at any time.
               </Notice>
             ) : null}
             {coordConsent === null ? (
               <Notice tone="warning" live>
-                Your consent settings could not be read just now. That changes nothing about the button:
-                pressing it raises the alert either way.
+                Your consent settings could not be read just now. That changes nothing about the
+                button: pressing it raises the alert either way.
               </Notice>
             ) : null}
           </div>
@@ -319,16 +323,17 @@ export function MySafetyScreen(): JSX.Element {
             {raised.acknowledgersDispatched === null ? (
               <Notice tone="error" assertive>
                 <strong>We could not work out who to page.</strong> Your alert is recorded and the
-                escalation clock is running, but the system could not reach the service that resolves your
-                supervisors — so nobody may have been notified. Do not wait on this screen: ring your
-                agency's emergency line now, and 911 if you are in immediate danger.
+                escalation clock is running, but the system could not reach the service that
+                resolves your supervisors — so nobody may have been notified. Do not wait on this
+                screen: ring your agency's emergency line now, and 911 if you are in immediate
+                danger.
               </Notice>
             ) : raised.acknowledgersDispatched === 0 ? (
               <Notice tone="error" assertive>
-                <strong>Nobody is subscribed to be paged for you.</strong> The system asked and got an
-                empty answer — this is a configuration gap, not an outage. Your alert is recorded and
-                escalating, but ring your agency's emergency line as well, and 911 if you are in immediate
-                danger.
+                <strong>Nobody is subscribed to be paged for you.</strong> The system asked and got
+                an empty answer — this is a configuration gap, not an outage. Your alert is recorded
+                and escalating, but ring your agency's emergency line as well, and 911 if you are in
+                immediate danger.
               </Notice>
             ) : (
               <Notice tone="warning" assertive>
@@ -336,9 +341,9 @@ export function MySafetyScreen(): JSX.Element {
                   {raised.acknowledgersDispatched}{" "}
                   {raised.acknowledgersDispatched === 1 ? "person was" : "people were"} paged.
                 </strong>{" "}
-                That is how many the system resolved and handed to messaging — delivery is out of this
-                screen's sight, so it is not a promise that a phone rang. This page will show an
-                acknowledgment when somebody signs on.
+                That is how many the system resolved and handed to messaging — delivery is out of
+                this screen's sight, so it is not a promise that a phone rang. This page will show
+                an acknowledgment when somebody signs on.
               </Notice>
             )}
 
@@ -351,17 +356,17 @@ export function MySafetyScreen(): JSX.Element {
               />
             ) : cancelState === "cancelled_in_window" ? (
               <Notice tone="success" assertive>
-                <strong>Cancelled.</strong> You withdrew the alert inside the window and nobody is being
-                escalated. The press and the cancel are both on the record — that is normal and nobody has
-                to explain it.
+                <strong>Cancelled.</strong> You withdrew the alert inside the window and nobody is
+                being escalated. The press and the cancel are both on the record — that is normal
+                and nobody has to explain it.
               </Notice>
             ) : (
               <Notice tone="error" assertive>
-                <strong>The cancel was not accepted, and the alert is still going.</strong> Your agency
-                requires a check this device could not make, so the attempt was recorded as a rejected
-                cancel and the escalation continues. That is deliberate: it is what stops a phone taken
-                from you being used to silence your call for help. If you are safe, tell the responder when
-                they reach you.
+                <strong>The cancel was not accepted, and the alert is still going.</strong> Your
+                agency requires a check this device could not make, so the attempt was recorded as a
+                rejected cancel and the escalation continues. That is deliberate: it is what stops a
+                phone taken from you being used to silence your call for help. If you are safe, tell
+                the responder when they reach you.
               </Notice>
             )}
 
@@ -381,8 +386,8 @@ export function MySafetyScreen(): JSX.Element {
               Open this alert's record
             </Link>
             <span style={mutedStyle}>
-              A responder must acknowledge and then resolve this alert. It does not close by itself and it
-              does not time out — if nobody answers, it keeps climbing.
+              A responder must acknowledge and then resolve this alert. It does not close by itself
+              and it does not time out — if nobody answers, it keeps climbing.
             </span>
           </div>
         )}
@@ -392,13 +397,14 @@ export function MySafetyScreen(): JSX.Element {
       <Card title="Check-ins you owe">
         {error ? (
           <Notice tone="warning" live>
-            {error} Your obligations may be incomplete below — that is a failed read, not an empty list.
+            {error} Your obligations may be incomplete below — that is a failed read, not an empty
+            list.
           </Notice>
         ) : null}
         {obligations.length === 0 ? (
           <span style={mutedStyle}>
-            Nothing outstanding{day ? ` as of ${dateTime(day.asOf)}` : ""}. Prompts appear here as your
-            visits reach their pre-visit, mid-visit and post-visit windows.
+            Nothing outstanding{day ? ` as of ${dateTime(day.asOf)}` : ""}. Prompts appear here as
+            your visits reach their pre-visit, mid-visit and post-visit windows.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -482,9 +488,9 @@ export function MySafetyScreen(): JSX.Element {
           onChange={setKind}
         />
         <span style={mutedStyle}>
-          Only the two unprompted kinds are offered here. A pre-visit, mid-visit or post-visit check-in
-          belongs to a specific visit and is answered from its row above — posting one loose would be
-          refused, because the record has to say which visit it attests to.
+          Only the two unprompted kinds are offered here. A pre-visit, mid-visit or post-visit
+          check-in belongs to a specific visit and is answered from its row above — posting one
+          loose would be refused, because the record has to say which visit it attests to.
         </span>
         {noteOwed ? (
           <TextAreaField
@@ -498,8 +504,8 @@ export function MySafetyScreen(): JSX.Element {
         ) : null}
         {status === "concerned_stop" ? (
           <Notice tone="warning">
-            Choosing <strong>{checkInStatusLabel("concerned_stop")}</strong> starts a callback clock on
-            your supervisor's side. You do not have to justify stopping.
+            Choosing <strong>{checkInStatusLabel("concerned_stop")}</strong> starts a callback clock
+            on your supervisor's side. You do not have to justify stopping.
           </Notice>
         ) : null}
         <button
@@ -536,23 +542,24 @@ export function MySafetyScreen(): JSX.Element {
 
       <Card title="What this web page cannot do">
         <span style={mutedStyle}>
-          <strong>It cannot dial for you.</strong> D15 wants one tap to your on-duty supervisor's number
-          when the network is degraded. No M20 route returns a phone number — §8.2 keeps numbers off every
-          DTO in the module and §9.5 forbids falling back to a hard-coded one — so a dial button here
-          would have to invent a number, which is worse than not having one. Use your agency's own
-          emergency line, and 911 for immediate danger.
+          <strong>It cannot dial for you.</strong> D15 wants one tap to your on-duty supervisor's
+          number when the network is degraded. No M20 route returns a phone number — §8.2 keeps
+          numbers off every DTO in the module and §9.5 forbids falling back to a hard-coded one — so
+          a dial button here would have to invent a number, which is worse than not having one. Use
+          your agency's own emergency line, and 911 for immediate danger.
         </span>
         <span style={mutedStyle}>
-          <strong>It cannot capture a press while you are offline.</strong> D15's offline queue is an
-          encrypted store in the native shell (ADR-0035); a browser tab has nowhere to put it and no
-          background sync to drain it. If this page cannot reach the server, the press does not exist —
-          the message above says so rather than showing a hopeful spinner.
+          <strong>It cannot capture a press while you are offline.</strong> D15's offline queue is
+          an encrypted store in the native shell (ADR-0035); a browser tab has nowhere to put it and
+          no background sync to drain it. If this page cannot reach the server, the press does not
+          exist — the message above says so rather than showing a hopeful spinner.
         </span>
         <span style={mutedStyle}>
-          <strong>It cannot verify your face or fingerprint.</strong> The D5 biometric cancel is a device
-          capability. Cancelling from here sends no verdict, so on an agency that requires one your cancel
-          is recorded as attempted-and-rejected and the alert continues — which is the safe direction of
-          that failure, and is spelled out above the button rather than discovered afterwards.
+          <strong>It cannot verify your face or fingerprint.</strong> The D5 biometric cancel is a
+          device capability. Cancelling from here sends no verdict, so on an agency that requires
+          one your cancel is recorded as attempted-and-rejected and the alert continues — which is
+          the safe direction of that failure, and is spelled out above the button rather than
+          discovered afterwards.
         </span>
       </Card>
     </div>

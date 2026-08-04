@@ -60,7 +60,11 @@ export const MEDICAID_CLAIM_TRANSITIONS: readonly MedicaidClaimTransition[] = [
   { from: "READY", event: "revalidate", to: "VALIDATING" },
 
   { from: "AWAITING_MEDICARE_PRIMARY", event: "medicare_primary_acknowledged", to: "READY" },
-  { from: "AWAITING_MEDICARE_PRIMARY", event: "medicare_primary_rejected", to: "FAILED_MEDICARE_PRIMARY" },
+  {
+    from: "AWAITING_MEDICARE_PRIMARY",
+    event: "medicare_primary_rejected",
+    to: "FAILED_MEDICARE_PRIMARY",
+  },
   { from: "FAILED_MEDICARE_PRIMARY", event: "medicare_primary_acknowledged", to: "READY" },
 
   { from: "SUBMITTED", event: "accepted_sync", to: "ACK_PENDING" },

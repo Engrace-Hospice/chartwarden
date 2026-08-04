@@ -30,7 +30,12 @@ describe("MedicaidAdapterRegistry", () => {
     expect(
       () =>
         new MedicaidAdapterRegistry([
-          { stateCode: "TX", active: true, adapterVendor: "texas-mmis", operatingModel: "ffs_only" },
+          {
+            stateCode: "TX",
+            active: true,
+            adapterVendor: "texas-mmis",
+            operatingModel: "ffs_only",
+          },
         ]),
     ).toThrow(/no such adapter is registered/);
   });
@@ -39,7 +44,12 @@ describe("MedicaidAdapterRegistry", () => {
     expect(
       () =>
         new MedicaidAdapterRegistry([
-          { stateCode: "OR", active: true, adapterVendor: "oregon-oha-direct", operatingModel: "hybrid" },
+          {
+            stateCode: "OR",
+            active: true,
+            adapterVendor: "oregon-oha-direct",
+            operatingModel: "hybrid",
+          },
         ]),
     ).not.toThrow();
   });
@@ -64,7 +74,12 @@ describe("MedicaidAdapterRegistry", () => {
   it("a deny-stub state throws ADAPTER_DENY_STUB on every I/O method", async () => {
     const wa = new MedicaidAdapterRegistry().requireAdapterForState("WA");
     await expect(
-      wa.submit({ body: new Uint8Array(), idempotencyKey: "k", channel: "direct_mmis", credentials: {} as never }),
+      wa.submit({
+        body: new Uint8Array(),
+        idempotencyKey: "k",
+        channel: "direct_mmis",
+        credentials: {} as never,
+      }),
     ).rejects.toMatchObject({ code: "ADAPTER_DENY_STUB" });
   });
 });

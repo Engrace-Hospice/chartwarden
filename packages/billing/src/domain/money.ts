@@ -12,7 +12,7 @@
 // same `decimal.js` domain as `toDecimal`/`fromDecimal`, never a separately-configured instance).
 export * from "@wardenx/shared/money";
 
-import { type Cents, fromDecimal, RegulatoryDecimal as D, toDecimal } from "@wardenx/shared/money";
+import { type Cents, RegulatoryDecimal as D, fromDecimal, toDecimal } from "@wardenx/shared/money";
 
 // ── billing-specific rate primitives (D6 / D7 / D11) ───────────────────────────────────────────────────
 

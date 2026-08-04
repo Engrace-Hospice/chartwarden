@@ -8,8 +8,8 @@
 // feeds them here. The §2.3 bounds (`radius_m ∈ [50,1000]`, `max_accuracy_m ∈ [5,100]`) are mirrored by DB
 // CHECKs (M18-T02) as defense in depth.
 import type { EvvGeofencePolicyScope } from "@wardenx/types";
-import type { GeofenceSettings } from "./geofence";
 import { require_ } from "./errors";
+import type { GeofenceSettings } from "./geofence";
 
 /** §2.2.2 / Phase-D — the seeded platform-floor radius (metres). */
 export const PLATFORM_FLOOR_RADIUS_M = 200;
@@ -50,7 +50,9 @@ export function resolveEffectivePolicy(
   patientAddressId: string | null,
 ): GeofenceSettings {
   const applicable = layers.filter(
-    (l) => l.scope !== "patient_address" || (patientAddressId !== null && l.patientAddressId === patientAddressId),
+    (l) =>
+      l.scope !== "patient_address" ||
+      (patientAddressId !== null && l.patientAddressId === patientAddressId),
   );
   require_(
     applicable.length > 0,
@@ -71,7 +73,8 @@ export function assertPolicyBounds(settings: GeofenceSettings): void {
     `radius_m must be within [${GEOFENCE_RADIUS_MIN_M}, ${GEOFENCE_RADIUS_MAX_M}].`,
   );
   require_(
-    settings.maxAccuracyM >= GEOFENCE_MAX_ACCURACY_MIN_M && settings.maxAccuracyM <= GEOFENCE_MAX_ACCURACY_MAX_M,
+    settings.maxAccuracyM >= GEOFENCE_MAX_ACCURACY_MIN_M &&
+      settings.maxAccuracyM <= GEOFENCE_MAX_ACCURACY_MAX_M,
     "GEOFENCE_MAX_ACCURACY_OUT_OF_RANGE",
     `max_accuracy_m must be within [${GEOFENCE_MAX_ACCURACY_MIN_M}, ${GEOFENCE_MAX_ACCURACY_MAX_M}].`,
   );

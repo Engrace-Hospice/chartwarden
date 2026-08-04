@@ -1,3 +1,10 @@
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/22-documents — INTAKE.BatchDetail (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "INTAKE.BatchDetail" — the per-batch DocLens view: batch metadata + per-page extraction-job
 // pipeline status. The original-thumbnails strip, the DocLens side-by-side review (§5.1 INTAKE.ReviewSideBySide),
@@ -10,7 +17,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, useApiClient } from "@wardenx/ui";
 import { Card, CardTitle, Eyebrow, Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
 interface BatchHeader {
@@ -56,7 +62,10 @@ export function IntakeBatchDetail(): JSX.Element {
     void load();
   }, [load]);
 
-  const done = useMemo(() => jobs.filter((j) => /complete|writeback/.test(j.status.toLowerCase())).length, [jobs]);
+  const done = useMemo(
+    () => jobs.filter((j) => /complete|writeback/.test(j.status.toLowerCase())).length,
+    [jobs],
+  );
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading && !batch) return <LoadingSpinner />;
@@ -69,10 +78,24 @@ export function IntakeBatchDetail(): JSX.Element {
           <aside style={{ width: "20rem", flexShrink: 0, padding: "1.5rem" }}>
             <Card>
               <Eyebrow>Pages</Eyebrow>
-              <div style={{ fontSize: "2rem", fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}>
+              <div
+                style={{
+                  fontSize: "2rem",
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                  lineHeight: 1.1,
+                }}
+              >
                 {batch.pages}
               </div>
-              <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.5rem", fontSize: "0.85rem" }}>
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  display: "grid",
+                  gap: "0.5rem",
+                  fontSize: "0.85rem",
+                }}
+              >
                 <div>
                   <Eyebrow>Status</Eyebrow>
                   <StatusPill tone={lifecycleTone(batch.status)}>{batch.status}</StatusPill>

@@ -47,13 +47,13 @@ import {
   type AiPhiMinimizationVerdict,
   type AiResolvedRoute,
   type AiTokenCapState,
+  type ModelBackendRegistry,
   aiInvocationGateRecordsLedgerRow,
   aiTokenCapStateFor,
   aiTokenCapWindowFor,
   aiTokenSoftCapCrossedBy,
   evaluateAiInvocationGates,
   resolveAiRoute,
-  type ModelBackendRegistry,
 } from "@wardenx/ai-platform";
 import type {
   AiCapabilityLifecycleState,
@@ -243,9 +243,7 @@ const DEFAULT_DISPATCH_TIMEOUT_MS = 8_000;
 const DEFAULT_MAX_OUTPUT_TOKENS = 1_024;
 
 /** Build the pipeline. */
-export function createAiInvocationPipeline(
-  deps: AiInvocationPipelineDeps,
-): AiInvocationPipeline {
+export function createAiInvocationPipeline(deps: AiInvocationPipelineDeps): AiInvocationPipeline {
   const tokenBudget = deps.tokenBudget ?? createUnconfiguredAiTokenBudgetResolver();
   const chartContextValidator = deps.chartContext ?? createDenyingAiChartContextValidator();
   const timeoutMs = deps.dispatchTimeoutMs ?? DEFAULT_DISPATCH_TIMEOUT_MS;
@@ -307,14 +305,11 @@ export function createAiInvocationPipeline(
           request.actorMembershipId,
           capability.id,
         ),
-        deps.overrides.findActiveOverride(
-          request.organizationId,
-          capability.id,
-          request.invokedAt,
-        ),
+        deps.overrides.findActiveOverride(request.organizationId, capability.id, request.invokedAt),
       ]);
 
-      const routingPreference: AiRoutingPreference | null = optIn?.routingPreferenceSnapshot ?? null;
+      const routingPreference: AiRoutingPreference | null =
+        optIn?.routingPreferenceSnapshot ?? null;
 
       const chainKeys = [
         capability.defaultBackendKey,
@@ -435,7 +430,10 @@ export function createAiInvocationPipeline(
       const responseCipher =
         output === null
           ? null
-          : await deps.cipher.encrypt(request.organizationId, JSON.stringify({ text: output.text }));
+          : await deps.cipher.encrypt(
+              request.organizationId,
+              JSON.stringify({ text: output.text }),
+            );
 
       const recorded = await deps.ledger.recordInvocation(
         {
@@ -595,7 +593,10 @@ const TIMED_OUT = Symbol("ai-dispatch-timeout");
  * bucket. The in-flight request is not cancelled — the vendor may still answer, and if it does the
  * disclosure happened; the row already records the attempt, which is what §164.528 needs.
  */
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | typeof TIMED_OUT> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | typeof TIMED_OUT> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

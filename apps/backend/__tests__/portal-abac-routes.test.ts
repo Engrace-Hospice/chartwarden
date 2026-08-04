@@ -8,9 +8,9 @@ import { M31_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
 import type { AbacContext, AbacTarget } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 import {
+  M31_ABAC_PREDICATES,
   type PortalAbacPorts,
   type PortalAbacResolver,
-  M31_ABAC_PREDICATES,
   buildPortalAbacPredicates,
   decideCaregiverPrimaryOrDpoa,
   decidePortalAccountActive,
@@ -47,7 +47,12 @@ const resolver = (over: Partial<PortalAbacResolver> = {}): PortalAbacResolver =>
     return { portalAccountId: ACCOUNT, userId: "user-1", status: "active" };
   },
   async activeGrant() {
-    return { grantId: "g1", portalAccountId: ACCOUNT, patientId: PATIENT, grantKind: "family_caregiver" };
+    return {
+      grantId: "g1",
+      portalAccountId: ACCOUNT,
+      patientId: PATIENT,
+      grantKind: "family_caregiver",
+    };
   },
   async loadTelehealthVisit() {
     return { telehealthVisitId: "v1", patientId: PATIENT };
@@ -109,7 +114,11 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
     expect(await consentGone.portal_grant_active_for_patient(ctx(), target)).toBe(false);
 
     const noGrant = buildPortalAbacPredicates({
-      resolver: resolver({ async activeGrant() { return null; } }),
+      resolver: resolver({
+        async activeGrant() {
+          return null;
+        },
+      }),
       ports: ports(true),
     });
     expect(await noGrant.portal_grant_active_for_patient(ctx(), target)).toBe(false);
@@ -117,7 +126,9 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
 
   it("a non-portal session class denies every portal predicate", async () => {
     const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
-    const staff = ctx({ attributes: { sessionClass: "staff", portalAccountId: ACCOUNT, portalPatientId: PATIENT } });
+    const staff = ctx({
+      attributes: { sessionClass: "staff", portalAccountId: ACCOUNT, portalPatientId: PATIENT },
+    });
     expect(await p.portal_account_active(staff, target)).toBe(false);
     expect(await p.portal_grant_active_for_patient(staff, target)).toBe(false);
   });
@@ -131,20 +142,34 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
 
   it("state_two_party_recording_consent_present: two-party state needs consent; one-party passes", async () => {
     const twoParty = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(false) });
-    expect(await twoParty.state_two_party_recording_consent_present(ctx(), { telehealthVisitId: "v1" })).toBe(false);
+    expect(
+      await twoParty.state_two_party_recording_consent_present(ctx(), { telehealthVisitId: "v1" }),
+    ).toBe(false);
     const oneParty = buildPortalAbacPredicates({
       resolver: resolver(),
-      ports: ports(false, { async patientResidenceState() { return "TX"; } }),
+      ports: ports(false, {
+        async patientResidenceState() {
+          return "TX";
+        },
+      }),
     });
-    expect(await oneParty.state_two_party_recording_consent_present(ctx(), { telehealthVisitId: "v1" })).toBe(true);
+    expect(
+      await oneParty.state_two_party_recording_consent_present(ctx(), { telehealthVisitId: "v1" }),
+    ).toBe(true);
   });
 });
 
 describe("M31-T07 §4.7 pure decisions", () => {
   it("decidePortalAccountActive: active/bereaved live, others deny", () => {
-    expect(decidePortalAccountActive({ portalAccountId: ACCOUNT, userId: "u", status: "active" })).toBe(true);
-    expect(decidePortalAccountActive({ portalAccountId: ACCOUNT, userId: "u", status: "bereaved" })).toBe(true);
-    expect(decidePortalAccountActive({ portalAccountId: ACCOUNT, userId: "u", status: "suspended" })).toBe(false);
+    expect(
+      decidePortalAccountActive({ portalAccountId: ACCOUNT, userId: "u", status: "active" }),
+    ).toBe(true);
+    expect(
+      decidePortalAccountActive({ portalAccountId: ACCOUNT, userId: "u", status: "bereaved" }),
+    ).toBe(true);
+    expect(
+      decidePortalAccountActive({ portalAccountId: ACCOUNT, userId: "u", status: "suspended" }),
+    ).toBe(false);
     expect(decidePortalAccountActive(null)).toBe(false);
   });
 
@@ -152,21 +177,36 @@ describe("M31-T07 §4.7 pure decisions", () => {
     const account = { portalAccountId: ACCOUNT, userId: "u1", status: "active" as const };
     expect(
       decideCaregiverPrimaryOrDpoa({
-        grant: { grantId: "g", portalAccountId: ACCOUNT, patientId: PATIENT, grantKind: "dpoa_healthcare" },
+        grant: {
+          grantId: "g",
+          portalAccountId: ACCOUNT,
+          patientId: PATIENT,
+          grantKind: "dpoa_healthcare",
+        },
         account,
         primaryCaregiverUserId: null,
       }),
     ).toBe(true);
     expect(
       decideCaregiverPrimaryOrDpoa({
-        grant: { grantId: "g", portalAccountId: ACCOUNT, patientId: PATIENT, grantKind: "family_caregiver" },
+        grant: {
+          grantId: "g",
+          portalAccountId: ACCOUNT,
+          patientId: PATIENT,
+          grantKind: "family_caregiver",
+        },
         account,
         primaryCaregiverUserId: "u1",
       }),
     ).toBe(true);
     expect(
       decideCaregiverPrimaryOrDpoa({
-        grant: { grantId: "g", portalAccountId: ACCOUNT, patientId: PATIENT, grantKind: "family_caregiver" },
+        grant: {
+          grantId: "g",
+          portalAccountId: ACCOUNT,
+          patientId: PATIENT,
+          grantKind: "family_caregiver",
+        },
         account,
         primaryCaregiverUserId: "someone-else",
       }),

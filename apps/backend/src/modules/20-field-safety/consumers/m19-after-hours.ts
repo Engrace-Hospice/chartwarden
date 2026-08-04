@@ -27,7 +27,13 @@
 // `recipients.length === 0 && externalActors.length > 0` is "covered, but not by anyone M36 can reach as a
 // membership", and it is the fan-out layer's job (M20-T06) to route that through the vendor's own channel.
 // The distinction is made HERE, in the open, rather than by an empty list somewhere downstream.
-import type { IsoInstant, OnCallActor, OrgId, ProviderEntityId, SafetyPolicyEffectiveDto } from "@wardenx/types";
+import type {
+  IsoInstant,
+  OnCallActor,
+  OrgId,
+  ProviderEntityId,
+  SafetyPolicyEffectiveDto,
+} from "@wardenx/types";
 import { isAfterHours } from "../lifecycle/policy";
 import { getOnCallProvider } from "../seams/consumed";
 

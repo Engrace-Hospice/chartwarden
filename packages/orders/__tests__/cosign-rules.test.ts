@@ -1,13 +1,13 @@
 // @wardenx/orders — §2.5 cosignature rules — M11-T03.
 import { describe, expect, it } from "vitest";
 import {
+  type CosignAttest,
+  DEFAULT_COSIGN_POLICY,
+  escalationJumpCosignRequired,
   lpnCosignRequired,
   npCosignRequired,
-  escalationJumpCosignRequired,
-  resolveCosignRequirement,
   planCosignAttest,
-  DEFAULT_COSIGN_POLICY,
-  type CosignAttest,
+  resolveCosignRequirement,
 } from "../src/lifecycle/cosign-rules";
 
 describe("§2.5 axis 1 — LPN-cosign-by-RN", () => {
@@ -23,7 +23,12 @@ describe("§2.5 axis 1 — LPN-cosign-by-RN", () => {
   });
 
   it("respects a tenant policy that omits a kind", () => {
-    expect(lpnCosignRequired("lpn", "lab", { lpnCosignRequiredKinds: ["dme"], npCosignRequiredKinds: [] })).toBe(false);
+    expect(
+      lpnCosignRequired("lpn", "lab", {
+        lpnCosignRequiredKinds: ["dme"],
+        npCosignRequiredKinds: [],
+      }),
+    ).toBe(false);
   });
 });
 
@@ -57,7 +62,11 @@ describe("§2.5 axis 3 — for-cause escalation jump", () => {
 
 describe("§2.5 resolveCosignRequirement (axis precedence)", () => {
   it("LPN-cosign wins first and demands an RN", () => {
-    const r = resolveCosignRequirement({ kind: "lab", drafterDiscipline: "lpn", signerDiscipline: "np" });
+    const r = resolveCosignRequirement({
+      kind: "lab",
+      drafterDiscipline: "lpn",
+      signerDiscipline: "np",
+    });
     expect(r).toEqual({ axis: "lpn_cosign", cosignerRoleNeeded: "rn_case_manager" });
   });
 
@@ -72,7 +81,13 @@ describe("§2.5 resolveCosignRequirement (axis precedence)", () => {
   });
 
   it("returns null when no axis fires (the order signs directly)", () => {
-    expect(resolveCosignRequirement({ kind: "lab", drafterDiscipline: "rn_case_manager", signerDiscipline: "medical_director" })).toBeNull();
+    expect(
+      resolveCosignRequirement({
+        kind: "lab",
+        drafterDiscipline: "rn_case_manager",
+        signerDiscipline: "medical_director",
+      }),
+    ).toBeNull();
   });
 });
 
@@ -88,7 +103,9 @@ describe("§2.5 / §7.3 planCosignAttest", () => {
 
   it("either RN role satisfies an RN demand → emits cosigned", () => {
     expect(planCosignAttest(base)).toEqual({ orderId: "o1", emitsCosigned: true });
-    expect(planCosignAttest({ ...base, cosignerRole: "clinical_supervisor" }).emitsCosigned).toBe(true);
+    expect(planCosignAttest({ ...base, cosignerRole: "clinical_supervisor" }).emitsCosigned).toBe(
+      true,
+    );
   });
 
   it("refuses cosign on an order that does not require it (422 COSIGN_NOT_REQUIRED)", () => {
@@ -105,7 +122,11 @@ describe("§2.5 / §7.3 planCosignAttest", () => {
 
   it("refuses a role that does not satisfy the demand (403 COSIGNER_NOT_ELIGIBLE)", () => {
     expect(() =>
-      planCosignAttest({ ...base, cosignerRole: "rn_case_manager", cosignerRoleNeeded: "medical_director" }),
+      planCosignAttest({
+        ...base,
+        cosignerRole: "rn_case_manager",
+        cosignerRoleNeeded: "medical_director",
+      }),
     ).toThrowError(expect.objectContaining({ code: "COSIGNER_NOT_ELIGIBLE", statusCode: 403 }));
   });
 

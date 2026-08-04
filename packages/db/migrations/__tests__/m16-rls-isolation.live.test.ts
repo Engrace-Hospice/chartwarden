@@ -276,7 +276,11 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
   });
 
   it("RLS is ENABLED and FORCEd on every owned table (a table-owner read would otherwise skip the policy)", async () => {
-    const { rows } = await db.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
+    const { rows } = await db.query<{
+      relname: string;
+      relrowsecurity: boolean;
+      relforcerowsecurity: boolean;
+    }>(
       `SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
        WHERE relname = ANY($1) AND relkind IN ('r','p')`,
       [COVERED.map((c) => c.table)],
@@ -344,7 +348,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       db.query("UPDATE bereaved_contact SET display_name = 'tampered' WHERE id=$1", [a.contact]),
     );
     expect(res.rowCount).toBe(0);
-    const check = await db.query("SELECT display_name FROM bereaved_contact WHERE id=$1", [a.contact]);
+    const check = await db.query("SELECT display_name FROM bereaved_contact WHERE id=$1", [
+      a.contact,
+    ]);
     expect(check.rows[0].display_name).toBe("Survivor");
   });
 
@@ -367,7 +373,9 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         db.query("UPDATE bereavement_risk_score SET rule_tier = 'low' WHERE id=$1", [a.risk]),
       ),
     ).rejects.toThrow();
-    const check = await db.query("SELECT rule_tier FROM bereavement_risk_score WHERE id=$1", [a.risk]);
+    const check = await db.query("SELECT rule_tier FROM bereavement_risk_score WHERE id=$1", [
+      a.risk,
+    ]);
     expect(check.rows[0].rule_tier).toBe("moderate");
   });
 

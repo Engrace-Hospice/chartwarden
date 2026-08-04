@@ -30,6 +30,8 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   type IsoInstant,
+  NotFoundError,
+  SAFETY_SOS_OPEN_STATES,
   type SafetyAlertKind,
   type SafetyCheckInKind,
   type SafetyCheckInState,
@@ -48,8 +50,6 @@ import {
   type SafetySosLifecycleState,
   type SafetySosOutcome,
   type SafetySubscriptionScopeKind,
-  NotFoundError,
-  SAFETY_SOS_OPEN_STATES,
   WardenXError,
 } from "@wardenx/types";
 import { and, asc, desc, eq, gte, isNull, lt, lte, or, sql } from "drizzle-orm";
@@ -57,7 +57,6 @@ import { ACTIVE_SOS_RESPONDER_STATES, decideSafetySupervisorOrAbove } from "../a
 import { mergeEffectivePolicy, safetyPolicyFloorSeed } from "../lifecycle/policy";
 import { getSafetyDashboardProvider } from "../seams/index";
 import type { M20ReadActor } from "./actor";
-import { coordinatesCaptured, decodeCoordinates } from "./coordinates";
 import {
   type CursorPage,
   M20_PAGE_SIZES,
@@ -65,6 +64,7 @@ import {
   decodeCursor,
   toCursorPage,
 } from "./concurrency";
+import { coordinatesCaptured, decodeCoordinates } from "./coordinates";
 import type {
   ActiveSosView,
   CheckInFilters,
@@ -141,10 +141,7 @@ async function openCipher(
   }
 }
 
-export function buildDrizzleM20ReadService(
-  db: DbClient,
-  deps: M20ReadDeps = {},
-): M20ReadService {
+export function buildDrizzleM20ReadService(db: DbClient, deps: M20ReadDeps = {}): M20ReadService {
   const CHECK_IN = schema.safetyCheckIn;
   const SCHEDULE = schema.safetyCheckInSchedule;
   const SOS = schema.safetySosAlert;
@@ -197,32 +194,35 @@ export function buildDrizzleM20ReadService(
           ...safetyPolicyFloorSeed(),
         };
       }
-      return mergeEffectivePolicy(actor.organizationId as SafetyPolicyEffectiveDto["organizationId"], {
-        versionId: row.id as SafetyPolicyEffectiveDto["versionId"],
-        effectiveFrom: isoReq(row.effectiveFrom),
-        effectiveTo: iso(row.effectiveTo),
-        midVisitCadenceMinutes: row.midVisitCadenceMinutes,
-        midVisitMinVisitDurationMinutes: row.midVisitMinVisitDurationMinutes,
-        preVisitWindowMinutes: row.preVisitWindowMinutes,
-        postVisitWindowMinutes: row.postVisitWindowMinutes,
-        gentleReminderMinutes: row.gentleReminderMinutes,
-        supervisorAlertMinutes: row.supervisorAlertMinutes,
-        escalationMinutes: row.escalationMinutes,
-        sosEquivalentMinutes: row.sosEquivalentMinutes,
-        sosCancelWindowSeconds: row.sosCancelWindowSeconds,
-        sosCancelRequiresBiometric: row.sosCancelRequiresBiometric,
-        sosContinuousLocationEnabled: row.sosContinuousLocationEnabled,
-        sosContinuousLocationSampleSeconds: row.sosContinuousLocationSampleSeconds,
-        sosContinuousLocationMaxDurationHours: row.sosContinuousLocationMaxDurationHours,
-        sosTier1SlaSeconds: row.sosTier1SlaSeconds,
-        sosTier2SlaSeconds: row.sosTier2SlaSeconds,
-        sosTier3SlaSeconds: row.sosTier3SlaSeconds,
-        subscriptionModel: row.subscriptionModel,
-        afterHoursStartHour: row.afterHoursStartHour,
-        afterHoursEndHour: row.afterHoursEndHour,
-        oshaReportableAutoFlagCategories: (row.oshaReportableAutoFlagCategories ??
-          []) as readonly SafetyIncidentCategory[],
-      });
+      return mergeEffectivePolicy(
+        actor.organizationId as SafetyPolicyEffectiveDto["organizationId"],
+        {
+          versionId: row.id as SafetyPolicyEffectiveDto["versionId"],
+          effectiveFrom: isoReq(row.effectiveFrom),
+          effectiveTo: iso(row.effectiveTo),
+          midVisitCadenceMinutes: row.midVisitCadenceMinutes,
+          midVisitMinVisitDurationMinutes: row.midVisitMinVisitDurationMinutes,
+          preVisitWindowMinutes: row.preVisitWindowMinutes,
+          postVisitWindowMinutes: row.postVisitWindowMinutes,
+          gentleReminderMinutes: row.gentleReminderMinutes,
+          supervisorAlertMinutes: row.supervisorAlertMinutes,
+          escalationMinutes: row.escalationMinutes,
+          sosEquivalentMinutes: row.sosEquivalentMinutes,
+          sosCancelWindowSeconds: row.sosCancelWindowSeconds,
+          sosCancelRequiresBiometric: row.sosCancelRequiresBiometric,
+          sosContinuousLocationEnabled: row.sosContinuousLocationEnabled,
+          sosContinuousLocationSampleSeconds: row.sosContinuousLocationSampleSeconds,
+          sosContinuousLocationMaxDurationHours: row.sosContinuousLocationMaxDurationHours,
+          sosTier1SlaSeconds: row.sosTier1SlaSeconds,
+          sosTier2SlaSeconds: row.sosTier2SlaSeconds,
+          sosTier3SlaSeconds: row.sosTier3SlaSeconds,
+          subscriptionModel: row.subscriptionModel,
+          afterHoursStartHour: row.afterHoursStartHour,
+          afterHoursEndHour: row.afterHoursEndHour,
+          oshaReportableAutoFlagCategories: (row.oshaReportableAutoFlagCategories ??
+            []) as readonly SafetyIncidentCategory[],
+        },
+      );
     });
   }
 
@@ -252,8 +252,7 @@ export function buildDrizzleM20ReadService(
           correctsCheckInId: row.correctsCheckInId,
           supersededAt: iso(row.supersededAt),
           supersededByCheckInId: row.supersededByCheckInId,
-          amendableUntil:
-            row.supersededAt === null && graceEnds > now() ? isoReq(graceEnds) : null,
+          amendableUntil: row.supersededAt === null && graceEnds > now() ? isoReq(graceEnds) : null,
         };
       });
     },
@@ -266,7 +265,8 @@ export function buildDrizzleM20ReadService(
         filters.from !== undefined
           ? new Date(filters.from)
           : new Date(at.getTime() - 24 * 3_600_000);
-      const to = filters.to !== undefined ? new Date(filters.to) : new Date(at.getTime() + 24 * 3_600_000);
+      const to =
+        filters.to !== undefined ? new Date(filters.to) : new Date(at.getTime() + 24 * 3_600_000);
       return withOrgContext(db, ctx(actor), async (tx): Promise<SafetyMyDayView> => {
         const obligations = await tx
           .select()
@@ -500,10 +500,7 @@ export function buildDrizzleM20ReadService(
             postedByFirstName: "",
             postedAt: isoReq(r.postedAt),
             lifecycleState: r.lifecycleState as SafetySosLifecycleState,
-            minutesOpen: Math.max(
-              0,
-              Math.round((at.getTime() - r.postedAt.getTime()) / 60_000),
-            ),
+            minutesOpen: Math.max(0, Math.round((at.getTime() - r.postedAt.getTime()) / 60_000)),
             acknowledgedAt: iso(r.acknowledgedAt),
           })),
           fetchedAt: isoReq(at),
@@ -516,7 +513,9 @@ export function buildDrizzleM20ReadService(
         const [row] = await tx
           .select()
           .from(INCIDENT)
-          .where(and(eq(INCIDENT.id, incidentId), eq(INCIDENT.organizationId, actor.organizationId)))
+          .where(
+            and(eq(INCIDENT.id, incidentId), eq(INCIDENT.organizationId, actor.organizationId)),
+          )
           .limit(1);
         if (!row) throw new NotFoundError("safety incident");
         const history = await tx
@@ -712,7 +711,9 @@ export function buildDrizzleM20ReadService(
       // Decision 3 — the board IS the §4.3 seam.
       const provider = getSafetyDashboardProvider();
       const asOf = (filters.asOf ?? now().toISOString()) as IsoInstant;
-      const orgId = actor.organizationId as Parameters<typeof provider.clinicianStatusForLocation>[0];
+      const orgId = actor.organizationId as Parameters<
+        typeof provider.clinicianStatusForLocation
+      >[0];
       const supervisor = decideSafetySupervisorOrAbove(actor.roles);
 
       const snapshot: SafetyDashboardSnapshot =
@@ -725,7 +726,11 @@ export function buildDrizzleM20ReadService(
           : filters.locationId !== undefined
             ? await provider.clinicianStatusForLocation(orgId, filters.locationId as never, asOf)
             : supervisor && actor.membershipId !== null
-              ? await provider.clinicianStatusForSupervisor(orgId, actor.membershipId as never, asOf)
+              ? await provider.clinicianStatusForSupervisor(
+                  orgId,
+                  actor.membershipId as never,
+                  asOf,
+                )
               : { clinicians: [], activeSosCount: 0, overdueCount: 0, fetchedAt: asOf };
 
       // Decision 4 — §6's "clinicians see their own state only". Applied AFTER the seam so the tiles are

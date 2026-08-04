@@ -10,8 +10,8 @@
 // baseline.
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { fhirClientCredentialKind, fhirClientCredentialStatus } from "../../enums";
-import { fhirClient } from "./client";
 import { bytea } from "./cipher-column";
+import { fhirClient } from "./client";
 
 export const fhirClientCredential = pgTable("fhir_client_credential", {
   id: uuid("id").primaryKey().defaultRandom(),

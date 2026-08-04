@@ -11,10 +11,16 @@
 // `scheduled_started_at` / `scheduled_ended_at` instants. The actual `visit` row genesis (and the
 // `visit_state_history` row) is `planVisitProposed` (visit-machine).
 import type { IsoDate, IsoInstant, RruleByDay } from "@wardenx/types";
-import { SUPPORTED_RRULE_FREQ, RRULE_BYDAY, type SupportedRruleFreq } from "../rrule";
-import { addCalendarDays, calendarDaysBetween, dayOfWeekIndex, weekdayCode, atOrgLocalTime } from "./time";
-import { type SchedulingSideEffect } from "./effects";
+import { RRULE_BYDAY, SUPPORTED_RRULE_FREQ, type SupportedRruleFreq } from "../rrule";
+import type { SchedulingSideEffect } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";
+import {
+  addCalendarDays,
+  atOrgLocalTime,
+  calendarDaysBetween,
+  dayOfWeekIndex,
+  weekdayCode,
+} from "./time";
 
 /** The §2.2.3 / §7.7 default rolling materialization horizon (days). */
 export const MATERIALIZE_HORIZON_DAYS = 90;
@@ -38,7 +44,8 @@ const ALLOWED_KEYS = new Set(["FREQ", "INTERVAL", "BYDAY", "COUNT", "UNTIL", "WK
 /** Parse the RFC 5545 `UNTIL` value (`YYYYMMDD` or `YYYYMMDDThhmmssZ`) into an `IsoDate` (date portion). */
 function parseUntil(raw: string): IsoDate {
   const m = /^(\d{4})(\d{2})(\d{2})(T\d{6}Z?)?$/.exec(raw);
-  if (!m) throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", `malformed UNTIL value '${raw}'`);
+  if (!m)
+    throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", `malformed UNTIL value '${raw}'`);
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
@@ -54,10 +61,17 @@ export function parseRrule(rrule: string): ParsedRrule {
   for (const segment of rrule.trim().split(";")) {
     if (segment === "") continue;
     const eq = segment.indexOf("=");
-    if (eq < 0) throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", `malformed RRULE segment '${segment}'`);
+    if (eq < 0)
+      throw new SchedulingStateError(
+        "RECURRENCE_INVALID_RRULE",
+        `malformed RRULE segment '${segment}'`,
+      );
     const key = segment.slice(0, eq).toUpperCase();
     if (!ALLOWED_KEYS.has(key)) {
-      throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", `RRULE operator '${key}' is outside the supported subset`);
+      throw new SchedulingStateError(
+        "RECURRENCE_INVALID_RRULE",
+        `RRULE operator '${key}' is outside the supported subset`,
+      );
     }
     parts.set(key, segment.slice(eq + 1));
   }
@@ -80,20 +94,29 @@ export function parseRrule(rrule: string): ParsedRrule {
   if (parts.has("INTERVAL")) {
     interval = Number(parts.get("INTERVAL"));
     if (!Number.isInteger(interval) || interval < 1) {
-      throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", "INTERVAL must be a positive integer");
+      throw new SchedulingStateError(
+        "RECURRENCE_INVALID_RRULE",
+        "INTERVAL must be a positive integer",
+      );
     }
   }
 
   const hasCount = parts.has("COUNT");
   const hasUntil = parts.has("UNTIL");
   if (hasCount && hasUntil) {
-    throw new SchedulingStateError("RECURRENCE_TERMINATOR_CONFLICT", "RRULE may carry COUNT or UNTIL, not both");
+    throw new SchedulingStateError(
+      "RECURRENCE_TERMINATOR_CONFLICT",
+      "RRULE may carry COUNT or UNTIL, not both",
+    );
   }
   let count: number | null = null;
   if (hasCount) {
     count = Number(parts.get("COUNT"));
     if (!Number.isInteger(count) || count < 1) {
-      throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", "COUNT must be a positive integer");
+      throw new SchedulingStateError(
+        "RECURRENCE_INVALID_RRULE",
+        "COUNT must be a positive integer",
+      );
     }
   }
   const until = hasUntil ? parseUntil(parts.get("UNTIL") as string) : null;
@@ -101,17 +124,24 @@ export function parseRrule(rrule: string): ParsedRrule {
   let byDay: readonly RruleByDay[] = [];
   if (freq === "WEEKLY") {
     const raw = parts.get("BYDAY");
-    if (!raw) throw new SchedulingStateError("RECURRENCE_BYDAY_INVALID", "a WEEKLY rule requires BYDAY");
+    if (!raw)
+      throw new SchedulingStateError("RECURRENCE_BYDAY_INVALID", "a WEEKLY rule requires BYDAY");
     const days = raw.split(",").map((d) => d.toUpperCase());
     for (const d of days) {
       if (!BYDAY_SET.has(d)) {
-        throw new SchedulingStateError("RECURRENCE_BYDAY_INVALID", `'${d}' is not a valid BYDAY weekday`);
+        throw new SchedulingStateError(
+          "RECURRENCE_BYDAY_INVALID",
+          `'${d}' is not a valid BYDAY weekday`,
+        );
       }
     }
     // Preserve canonical week order; dedupe.
     byDay = RRULE_BYDAY.filter((d) => days.includes(d));
   } else if (parts.has("BYDAY")) {
-    throw new SchedulingStateError("RECURRENCE_INVALID_RRULE", "BYDAY is only supported on a WEEKLY rule");
+    throw new SchedulingStateError(
+      "RECURRENCE_INVALID_RRULE",
+      "BYDAY is only supported on a WEEKLY rule",
+    );
   }
 
   return { freq, interval, byDay, count, until };
@@ -218,7 +248,11 @@ export function materializeRecurrence(
 export function planRecurrenceDiscontinuation(
   currentStatus: "active" | "discontinued",
 ): ReadonlyArray<SchedulingSideEffect> {
-  require_(currentStatus === "active", "RECURRENCE_POLICY_NOT_ACTIVE", "the recurring policy is already discontinued");
+  require_(
+    currentStatus === "active",
+    "RECURRENCE_POLICY_NOT_ACTIVE",
+    "the recurring policy is already discontinued",
+  );
   return [
     { kind: "set_timestamp", field: "discontinued_at" },
     { kind: "bump_version" },

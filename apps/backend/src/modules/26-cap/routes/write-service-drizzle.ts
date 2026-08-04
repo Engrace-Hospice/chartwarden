@@ -6,6 +6,8 @@
 // snapshots, and emits. Money is BIGINT cents; no MBI/PHI enters an outbox payload (D13).
 import { createHash } from "node:crypto";
 import {
+  type AlertBand,
+  type Methodology,
   agencyAllocatedCap,
   assertTransition,
   capYearWindow,
@@ -15,8 +17,6 @@ import {
   isEscalation,
   settlementDirection,
   statusOnFirstAccrual,
-  type AlertBand,
-  type Methodology,
 } from "@wardenx/cap-management";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -96,9 +96,16 @@ export function buildDrizzleM26WriteService(
         // Snapshot the platform constant for the cap year (must be published, D3).
         const pc = await tx.select().from(PC).where(eq(PC.capYear, input.capYear)).limit(1);
         const constant = pc[0];
-        if (!constant) throw new ConflictError("CAP_CONSTANT_UNPUBLISHED", `no platform cap constant for ${input.capYear}`);
+        if (!constant)
+          throw new ConflictError(
+            "CAP_CONSTANT_UNPUBLISHED",
+            `no platform cap constant for ${input.capYear}`,
+          );
         if (constant.aggregateCapAmountCents == null)
-          throw new ConflictError("CAP_AMOUNT_UNPUBLISHED", `the ${input.capYear} per-beneficiary cap amount is not yet published`);
+          throw new ConflictError(
+            "CAP_AMOUNT_UNPUBLISHED",
+            `the ${input.capYear} per-beneficiary cap amount is not yet published`,
+          );
         const window = capYearWindow(input.capYear);
         // CCN is resolved from M40 canonicalCcnForOrg when bound; default sentinel until then (§4.4 fallback).
         const ccn = "000000";
@@ -143,7 +150,11 @@ export function buildDrizzleM26WriteService(
     async lockMethodology(actor, periodId, input: LockMethodologyInput) {
       return withOrgContext(db, actor, async (tx) => {
         const period = await loadPeriod(tx, periodId);
-        if (period.methodology) throw new ConflictError("METHODOLOGY_LOCKED", "methodology is already set for this period");
+        if (period.methodology)
+          throw new ConflictError(
+            "METHODOLOGY_LOCKED",
+            "methodology is already set for this period",
+          );
         await tx.insert(ML).values({
           capPeriodId: periodId,
           organizationId: actor.organizationId,
@@ -211,13 +222,21 @@ export function buildDrizzleM26WriteService(
 
         // ── Agency aggregate ──
         const accr = await tx
-          .select({ paid: BA.paidCents, outstanding: BA.outstandingBilledCents, weight: BA.methodologyWeight })
+          .select({
+            paid: BA.paidCents,
+            outstanding: BA.outstandingBilledCents,
+            weight: BA.methodologyWeight,
+          })
           .from(BA)
           .where(eq(BA.capPeriodId, periodId));
         const paidYtd = accr.reduce((s, a) => s + a.paid, 0);
         const outstanding = accr.reduce((s, a) => s + a.outstanding, 0);
         const weights = accr.map((a) => Number(a.weight));
-        const { capCents } = agencyAllocatedCap(perBenCap, methodology, weights.length ? weights : []);
+        const { capCents } = agencyAllocatedCap(
+          perBenCap,
+          methodology,
+          weights.length ? weights : [],
+        );
         const agencyProj = computeAggregateProjection({
           paidYtdCents: paidYtd,
           outstandingBilledCents: outstanding,
@@ -227,15 +246,24 @@ export function buildDrizzleM26WriteService(
           methodology,
         });
         results.push(
-          await persistSnapshot(tx, outbox, actor.organizationId, periodId, "agency_aggregate", null, methodology, {
-            paidYtdCents: agencyProj.paidYtdCents,
-            outstandingBilledCents: agencyProj.outstandingBilledCents,
-            projectedYearEndCents: agencyProj.projectedYearEndCents,
-            capAmountCents: agencyProj.capAmountCents,
-            pctOfCap: agencyProj.pctOfCap,
-            alertBand: agencyProj.alertBand,
-            beneficiaryCount: weights.length,
-          }),
+          await persistSnapshot(
+            tx,
+            outbox,
+            actor.organizationId,
+            periodId,
+            "agency_aggregate",
+            null,
+            methodology,
+            {
+              paidYtdCents: agencyProj.paidYtdCents,
+              outstandingBilledCents: agencyProj.outstandingBilledCents,
+              projectedYearEndCents: agencyProj.projectedYearEndCents,
+              capAmountCents: agencyProj.capAmountCents,
+              pctOfCap: agencyProj.pctOfCap,
+              alertBand: agencyProj.alertBand,
+              beneficiaryCount: weights.length,
+            },
+          ),
         );
 
         // ── Inpatient ──
@@ -249,22 +277,34 @@ export function buildDrizzleM26WriteService(
             asOf,
           });
           results.push(
-            await persistSnapshot(tx, outbox, actor.organizationId, periodId, "inpatient", null, methodology, {
-              paidYtdCents: 0,
-              outstandingBilledCents: 0,
-              projectedYearEndCents: 0,
-              capAmountCents: null,
-              pctOfCap: inp.inpatientPctProjected,
-              alertBand: inp.alertBand,
-              inpatientDaysYtd: inp.inpatientDaysYtd,
-              inpatientPctYtd: inp.inpatientPctYtd,
-            }),
+            await persistSnapshot(
+              tx,
+              outbox,
+              actor.organizationId,
+              periodId,
+              "inpatient",
+              null,
+              methodology,
+              {
+                paidYtdCents: 0,
+                outstandingBilledCents: 0,
+                projectedYearEndCents: 0,
+                capAmountCents: null,
+                pctOfCap: inp.inpatientPctProjected,
+                alertBand: inp.alertBand,
+                inpatientDaysYtd: inp.inpatientDaysYtd,
+                inpatientPctYtd: inp.inpatientPctYtd,
+              },
+            ),
           );
         }
 
         // Promote open → active on first projection with accruals.
         if (period.status === "open" && paidYtd > 0) {
-          await tx.update(P).set({ status: statusOnFirstAccrual("open") }).where(eq(P.id, periodId));
+          await tx
+            .update(P)
+            .set({ status: statusOnFirstAccrual("open") })
+            .where(eq(P.id, periodId));
         }
         return results;
       });
@@ -274,7 +314,11 @@ export function buildDrizzleM26WriteService(
       await withOrgContext(db, actor, async (tx) => {
         const updated = await tx
           .update(TE)
-          .set({ acknowledgedBy: actor.userId, acknowledgedAt: new Date(), notes: input.notes ?? null })
+          .set({
+            acknowledgedBy: actor.userId,
+            acknowledgedAt: new Date(),
+            notes: input.notes ?? null,
+          })
           .where(eq(TE.id, eventId))
           .returning({ id: TE.id });
         if (!updated[0]) throw new NotFoundError("threshold event not found");
@@ -298,7 +342,7 @@ export function buildDrizzleM26WriteService(
           .values({
             organizationId: actor.organizationId,
             capPeriodId: periodId,
-            macRegion: input.macRegion as typeof PI.macRegion.enumValues[number],
+            macRegion: input.macRegion as (typeof PI.macRegion.enumValues)[number],
             psrPeriodFrom: input.psrPeriodFrom,
             psrPeriodTo: input.psrPeriodTo,
             // The raw CSV is stored DEK-encrypted via MinIO when the storage seam binds (§3.3); the key is
@@ -319,7 +363,7 @@ export function buildDrizzleM26WriteService(
           .update(PR)
           .set({
             status: "resolved",
-            varianceReason: input.varianceReason as typeof PR.varianceReason.enumValues[number],
+            varianceReason: input.varianceReason as (typeof PR.varianceReason.enumValues)[number],
             resolutionNotes: input.resolutionNotes,
             resolvedBy: actor.userId,
             resolvedAt: new Date(),
@@ -334,9 +378,15 @@ export function buildDrizzleM26WriteService(
       return withOrgContext(db, actor, async (tx) => {
         const period = await loadPeriod(tx, periodId);
         if (period.status !== "in_settlement")
-          throw new ConflictError("PERIOD_NOT_IN_SETTLEMENT", "the cap period is not in settlement");
+          throw new ConflictError(
+            "PERIOD_NOT_IN_SETTLEMENT",
+            "the cap period is not in settlement",
+          );
         if (!period.methodology)
-          throw new ConflictError("METHODOLOGY_UNSET", "lock a methodology before proposing a settlement");
+          throw new ConflictError(
+            "METHODOLOGY_UNSET",
+            "lock a methodology before proposing a settlement",
+          );
         const accr = await tx
           .select({ paid: BA.paidCents, weight: BA.methodologyWeight })
           .from(BA)
@@ -367,7 +417,10 @@ export function buildDrizzleM26WriteService(
         const upserted = await tx
           .insert(ST)
           .values(values)
-          .onConflictDoUpdate({ target: ST.capPeriodId, set: { ...values, proposedAt: new Date() } })
+          .onConflictDoUpdate({
+            target: ST.capPeriodId,
+            set: { ...values, proposedAt: new Date() },
+          })
           .returning();
         const row = upserted[0]!;
         await outbox.publish(tx, {
@@ -389,14 +442,20 @@ export function buildDrizzleM26WriteService(
         const period = await loadPeriod(tx, periodId);
         const sRows = await tx.select().from(ST).where(eq(ST.capPeriodId, periodId)).limit(1);
         const settlement = sRows[0];
-        if (!settlement) throw new ConflictError("NO_SETTLEMENT", "propose a settlement before finalizing");
+        if (!settlement)
+          throw new ConflictError("NO_SETTLEMENT", "propose a settlement before finalizing");
         if (settlement.status === "final")
           throw new ConflictError("ALREADY_FINAL", "the settlement is already final");
         assertTransition(period.status, "settled");
         const finalizedAt = new Date();
         const updated = await tx
           .update(ST)
-          .set({ status: "final", finalizedAt, finalizedBy: actor.userId, stepUpSessionId: actor.userId })
+          .set({
+            status: "final",
+            finalizedAt,
+            finalizedBy: actor.userId,
+            stepUpSessionId: actor.userId,
+          })
           .where(eq(ST.capPeriodId, periodId))
           .returning();
         await tx
@@ -455,7 +514,11 @@ export function buildDrizzleM26WriteService(
         })
         .where(and(eq(PC.capYear, capYear), sql`${PC.firstTenantUseAt} IS NULL`))
         .returning({ capYear: PC.capYear });
-      if (!updated[0]) throw new ConflictError("CONSTANT_IN_USE", "cannot amend a cap amount already referenced by a tenant period");
+      if (!updated[0])
+        throw new ConflictError(
+          "CONSTANT_IN_USE",
+          "cannot amend a cap amount already referenced by a tenant period",
+        );
     },
   };
 }
@@ -490,7 +553,8 @@ async function persistSnapshot(
     .where(and(eq(PS.capPeriodId, capPeriodId), eq(PS.scope, scope)))
     .orderBy(sql`${PS.computedAt} DESC`)
     .limit(1);
-  const priorBand = (prior[0]?.band ?? (scope === "inpatient" ? "inpatient_safe" : "safe")) as AlertBand;
+  const priorBand = (prior[0]?.band ??
+    (scope === "inpatient" ? "inpatient_safe" : "safe")) as AlertBand;
   const inserted = await tx
     .insert(PS)
     .values({
@@ -514,7 +578,14 @@ async function persistSnapshot(
   const snap = inserted[0]!;
   await outbox.publish(tx, {
     eventName: "m26.cap.projection_updated",
-    payload: { organizationId, capPeriodId, scope, snapshotId: snap.id, band: m.alertBand, computedAt: iso(snap.computedAt) },
+    payload: {
+      organizationId,
+      capPeriodId,
+      scope,
+      snapshotId: snap.id,
+      band: m.alertBand,
+      computedAt: iso(snap.computedAt),
+    },
   });
   if (isEscalation(priorBand, m.alertBand)) {
     const ev = await tx
@@ -533,7 +604,15 @@ async function persistSnapshot(
     if (ev[0]) {
       await outbox.publish(tx, {
         eventName: "m26.cap.threshold_crossed",
-        payload: { organizationId, capPeriodId, scope, patientId, bandFrom: priorBand, bandTo: m.alertBand, eventId: ev[0].id },
+        payload: {
+          organizationId,
+          capPeriodId,
+          scope,
+          patientId,
+          bandFrom: priorBand,
+          bandTo: m.alertBand,
+          eventId: ev[0].id,
+        },
       });
     }
   }
@@ -557,7 +636,10 @@ async function persistSnapshot(
   };
 }
 
-function toSettlementView(r: typeof schema.capSettlement.$inferSelect, direction: string): SettlementView {
+function toSettlementView(
+  r: typeof schema.capSettlement.$inferSelect,
+  direction: string,
+): SettlementView {
   return {
     id: r.id,
     capPeriodId: r.capPeriodId,
@@ -569,7 +651,14 @@ function toSettlementView(r: typeof schema.capSettlement.$inferSelect, direction
     inpatientTotalDays: r.inpatientTotalDays,
     inpatientOverageDays: r.inpatientOverageDays,
     inpatientOverageCents: r.inpatientOverageCents,
-    proposedAt: r.proposedAt instanceof Date ? r.proposedAt.toISOString() : new Date(r.proposedAt).toISOString(),
-    finalizedAt: r.finalizedAt ? (r.finalizedAt instanceof Date ? r.finalizedAt.toISOString() : new Date(r.finalizedAt).toISOString()) : null,
+    proposedAt:
+      r.proposedAt instanceof Date
+        ? r.proposedAt.toISOString()
+        : new Date(r.proposedAt).toISOString(),
+    finalizedAt: r.finalizedAt
+      ? r.finalizedAt instanceof Date
+        ? r.finalizedAt.toISOString()
+        : new Date(r.finalizedAt).toISOString()
+      : null,
   };
 }

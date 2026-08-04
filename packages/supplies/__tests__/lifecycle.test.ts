@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { SupplyRequestKind, SupplyRequestStatus } from "@wardenx/types";
+import { describe, expect, it } from "vitest";
 
 import {
   SUPPLY_REQUEST_EDGES,
@@ -63,9 +63,9 @@ describe("§2.2 two-phase cancellation", () => {
     expect(resolveTransition("ordered", "dme", "requestCancellation")?.to).toBe(
       "cancellation_pending",
     );
-    expect(resolveTransition("cancellation_pending", "dme", "vendorConfirmedCancellation")?.to).toBe(
-      "cancelled",
-    );
+    expect(
+      resolveTransition("cancellation_pending", "dme", "vendorConfirmedCancellation")?.to,
+    ).toBe("cancelled");
   });
 
   it("walks a refused cancellation BACK to a live state, not to an error state", () => {

@@ -18,7 +18,7 @@
 // not by re-registering them). `caseload_or_scope` / `collaborator_patient_match` / `portal_patient_match`
 // are likewise shared. Registration is idempotent: the shared registry is single-owner / no-clear, so
 // re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { anyDisciplineCanRecordScale, ASSESSMENT_DISCIPLINES } from "@wardenx/assessments";
+import { ASSESSMENT_DISCIPLINES, anyDisciplineCanRecordScale } from "@wardenx/assessments";
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { ScaleType } from "@wardenx/types";
 import type { AssessmentAbacResolver } from "./routes/service";
@@ -30,7 +30,10 @@ import type { AssessmentAbacResolver } from "./routes/service";
  * replaced by a resolver that could never find its target field — always denying, with no error anywhere
  * (ARCH-001/002). Single-owner across the platform registry.
  */
-export const M9_ABAC_PREDICATES = ["discipline_can_record_scale", "m9.cosigner_role_match"] as const;
+export const M9_ABAC_PREDICATES = [
+  "discipline_can_record_scale",
+  "m9.cosigner_role_match",
+] as const;
 
 /** The disciplines that may attest an assessment cosignature (§6 `assessment.cosign`; lower-case keys). */
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
@@ -46,14 +49,18 @@ export function disciplinesOf(context: AbacContext): readonly string[] {
   const fromAttributes = Array.isArray(context.attributes.disciplines)
     ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
     : [];
-  const fromRoles = context.roles.filter((r) => (ASSESSMENT_DISCIPLINES as readonly string[]).includes(r));
+  const fromRoles = context.roles.filter((r) =>
+    (ASSESSMENT_DISCIPLINES as readonly string[]).includes(r),
+  );
   return [...new Set([...fromAttributes, ...fromRoles])];
 }
 
 /** Whether the actor holds a cosign-eligible role/discipline (RN / RN Case Manager / Clinical Supervisor). */
 function isCosignEligible(context: AbacContext): boolean {
   if (COSIGN_ELIGIBLE_DISCIPLINES.some((r) => hasRole(context, r))) return true;
-  return disciplinesOf(context).some((d) => (COSIGN_ELIGIBLE_DISCIPLINES as readonly string[]).includes(d));
+  return disciplinesOf(context).some((d) =>
+    (COSIGN_ELIGIBLE_DISCIPLINES as readonly string[]).includes(d),
+  );
 }
 
 /** Deps for M9's ABAC predicate resolvers (the slice injects an in-memory resolver over its dataset). */

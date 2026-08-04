@@ -25,6 +25,15 @@ import {
   getDispatch,
 } from "./supplies-api";
 import {
+  DISPATCH_STATUS_TONE,
+  dateTime,
+  deploymentSiteLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./supplies-status";
+import {
   Card,
   Field,
   Modal,
@@ -48,15 +57,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import {
-  DISPATCH_STATUS_TONE,
-  dateTime,
-  deploymentSiteLabel,
-  humanize,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./supplies-status";
 
 type Ceremony = "deploy" | "return" | null;
 
@@ -154,17 +154,17 @@ export function ComfortKitDispatchDetail(): JSX.Element {
 
       {dispatch.dispatchStatus === "reconciled_with_discrepancy" ? (
         <Notice tone="error" assertive>
-          This kit closed with an unexplained controlled-substance shortfall. The M30 survey investigation
-          and the M36 high-severity alert were raised automatically; only closing that investigation marks
-          the discrepancy explained — nothing on this screen can.
+          This kit closed with an unexplained controlled-substance shortfall. The M30 survey
+          investigation and the M36 high-severity alert were raised automatically; only closing that
+          investigation marks the discrepancy explained — nothing on this screen can.
         </Notice>
       ) : null}
 
       {dispatch.m13DeploymentId === null && dispatch.deployedAtPatientAt !== null ? (
         <Notice tone="warning">
-          The eMAR (M13) deployment acknowledgment has not arrived yet. A return cannot be opened until it
-          does: `comfort_kit_return.m13_deployment_id` is NOT NULL because M13 closes its drawdowns against
-          it, and a return with nothing to close is a count nobody can reconcile.
+          The eMAR (M13) deployment acknowledgment has not arrived yet. A return cannot be opened
+          until it does: `comfort_kit_return.m13_deployment_id` is NOT NULL because M13 closes its
+          drawdowns against it, and a return with nothing to close is a count nobody can reconcile.
         </Notice>
       ) : null}
 
@@ -203,7 +203,9 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         </SummaryGrid>
         {dispatch.specialHandlingNotes ? (
           <div>
-            <span style={mutedStyle}>Special handling notes (D13 — audit-denylisted free text)</span>
+            <span style={mutedStyle}>
+              Special handling notes (D13 — audit-denylisted free text)
+            </span>
             <p style={{ margin: "0.25rem 0 0", fontSize: "0.85rem", color: t.onSurface }}>
               {dispatch.specialHandlingNotes}
             </p>
@@ -222,8 +224,9 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         }
       >
         <span style={mutedStyle}>
-          What physically left the hub. These quantities are the DEA outbound record — every return count is
-          subtracted from them, and they are never edited: a correction is a new reconciliation row.
+          What physically left the hub. These quantities are the DEA outbound record — every return
+          count is subtracted from them, and they are never edited: a correction is a new
+          reconciliation row.
         </span>
         <table style={tableStyle}>
           <thead>
@@ -268,8 +271,8 @@ export function ComfortKitDispatchDetail(): JSX.Element {
 
       <Card title="Chain of custody">
         <span style={mutedStyle}>
-          The dispatch's own custody stamps. The per-lot ledger is the DEA perpetual log, behind its own
-          permission.
+          The dispatch's own custody stamps. The per-lot ledger is the DEA perpetual log, behind its
+          own permission.
         </span>
         <Timeline entries={timeline} />
       </Card>
@@ -302,8 +305,8 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           </button>
         </div>
         <span style={mutedStyle}>
-          Reconciliation is not an action here. The physical count, its witness and the disposal record live
-          on the return record, which is a different authority from dispatching.
+          Reconciliation is not an action here. The physical count, its witness and the disposal
+          record live on the return record, which is a different authority from dispatching.
         </span>
       </Card>
 
@@ -319,9 +322,14 @@ export function ComfortKitDispatchDetail(): JSX.Element {
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
-                const { error: err } = await deployAtPatient(client, dispatchId, dispatch.updatedAt, {
-                  deployedAt: toInstant(when),
-                });
+                const { error: err } = await deployAtPatient(
+                  client,
+                  dispatchId,
+                  dispatch.updatedAt,
+                  {
+                    deployedAt: toInstant(when),
+                  },
+                );
                 setBusy(false);
                 if (err) {
                   setActionError(errorMessage(err, "The deployment could not be recorded."));
@@ -336,8 +344,8 @@ export function ComfortKitDispatchDetail(): JSX.Element {
           }
         >
           <Notice tone="info">
-            This is the event the eMAR builds its bedside deployment from — the emitted payload carries the
-            whole manifest, so M13 never has to read back into this module.
+            This is the event the eMAR builds its bedside deployment from — the emitted payload
+            carries the whole manifest, so M13 never has to read back into this module.
           </Notice>
           <TextField label="Deployed at" value={when} onChange={setWhen} type="datetime-local" />
         </Modal>
@@ -374,9 +382,15 @@ export function ComfortKitDispatchDetail(): JSX.Element {
         >
           <Notice tone="info">
             The return row is created when the OBLIGATION arises, long before anything is physically
-            returned. The due date is the 30-day compliance boundary; reconciliation is its terminal state.
+            returned. The due date is the 30-day compliance boundary; reconciliation is its terminal
+            state.
           </Notice>
-          <TextAreaField label="Return reason" value={returnReason} onChange={setReturnReason} rows={3} />
+          <TextAreaField
+            label="Return reason"
+            value={returnReason}
+            onChange={setReturnReason}
+            rows={3}
+          />
         </Modal>
       ) : null}
     </div>

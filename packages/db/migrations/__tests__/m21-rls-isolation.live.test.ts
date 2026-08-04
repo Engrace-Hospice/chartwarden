@@ -232,7 +232,16 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
            organization_id, patient_id, admission_id, provider_entity_id, location_id, return_required_at,
            return_due_at, state)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now(), now() + interval '30 days', 'requested') RETURNING id`,
-        [dispatchRow.id, dispatchRow.dispatched_at, deployment, org, patient, admission, pe, location],
+        [
+          dispatchRow.id,
+          dispatchRow.dispatched_at,
+          deployment,
+          org,
+          patient,
+          admission,
+          pe,
+          location,
+        ],
       )
     ).rows[0].id as string;
     // The three D8 columns are computed by 0106's trigger from the DISPATCHED line — it fails CLOSED if
@@ -288,8 +297,12 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
   });
 
   it("every M21 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(join(MIGRATIONS_DIR, "0106_supplies_m21_rls_audit_triggers.sql"), "utf8");
-    const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?(?:WITH CHECK \([^;]*\)|USING \([^;]*\));/g) ?? [];
+    const rls = readFileSync(
+      join(MIGRATIONS_DIR, "0106_supplies_m21_rls_audit_triggers.sql"),
+      "utf8",
+    );
+    const policyBlocks =
+      rls.match(/CREATE POLICY[\s\S]*?(?:WITH CHECK \([^;]*\)|USING \([^;]*\));/g) ?? [];
     // 1 org-less read + 1 tenant-item + 3×3 floor-plus-overlay + 6 canonical org policies.
     expect(policyBlocks.length).toBe(17);
     for (const block of policyBlocks) {
@@ -378,7 +391,9 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
       db.query("UPDATE comfort_kit_template SET name='tampered' WHERE id=$1", [FLOOR_TEMPLATE]),
     );
     expect(res.rowCount).toBe(0);
-    const check = await db.query("SELECT name FROM comfort_kit_template WHERE id=$1", [FLOOR_TEMPLATE]);
+    const check = await db.query("SELECT name FROM comfort_kit_template WHERE id=$1", [
+      FLOOR_TEMPLATE,
+    ]);
     expect(check.rows[0].name).toContain("Platform Floor");
   });
 
@@ -427,7 +442,9 @@ describe.skipIf(!DB_URL)("M21 Supplies — RLS cross-tenant denial — LIVE Post
       expect(granted.rows.map((r) => r.table_name)).toEqual([]);
 
       const leaf = leaves.rows[0]?.relname as string;
-      await expect(withOrg(ORG_B, () => db.query(`SELECT 1 FROM ${leaf} LIMIT 1`))).rejects.toThrow();
+      await expect(
+        withOrg(ORG_B, () => db.query(`SELECT 1 FROM ${leaf} LIMIT 1`)),
+      ).rejects.toThrow();
     },
   );
 

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `visit` (M17 §3.3 / §2.2.1 D3). The central scheduling aggregate: one row per scheduled
 // patient visit, carrying the §2.2.1/D3 (M17-F03-reconciled) eight-state lifecycle (proposed → published →
 // en_route → in_visit → completed | no_show | cancelled | rescheduled), the EVV-bracket flag (D9, reuses the
@@ -17,13 +18,22 @@
 // partitioned. Because it is partitioned, every reference TO it (visit_state_history.visit_id, the
 // route_segment from/to visit refs, the reschedule self-refs) carries NO SQL FK — they are plain uuid
 // app-validated. RLS + grants + the M4 write-audit trigger land in M17-T02.
-import { boolean, date, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { evvBracketState, visitPurpose, visitSetting, visitStatus } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const visit = pgTable(
   "visit",

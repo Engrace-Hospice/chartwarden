@@ -1,3 +1,9 @@
+import type {
+  EvvAggregatorSubmissionDto,
+  EvvBracketDto,
+  EvvEventDto,
+  EvvLocationDto,
+} from "@wardenx/types";
 // apps/backend/__tests__/evv-seams.test.ts — M18-T05 (§4.3 the six published reader seams). All six are pure
 // READ-only orchestration over an injected EvvSeamStore; these cover the EvvBracketResolver mapping down to M8's
 // EXISTING `resolveBracket` contract (present → evv_present with authoritative instants; documented → null-safe
@@ -7,12 +13,6 @@
 // rates are vacuously 0, the aggregator success rate vacuously 1), and the timestamp-only portal verification
 // surface — plus the boot wiring (registerEvvSeams replaces the deny-stubs; validateSeams passes; the deny-stubs deny).
 import { afterEach, describe, expect, it } from "vitest";
-import type {
-  EvvAggregatorSubmissionDto,
-  EvvBracketDto,
-  EvvEventDto,
-  EvvLocationDto,
-} from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type EvvSeamSeed,
@@ -129,7 +129,11 @@ function seed(): EvvSeamSeed {
     arrivals: [
       {
         visitId: "vis-present",
-        arrival: { arrivedAt: "2026-03-05T14:01:00.000Z", clinicianFirstName: "Sarah", discipline: "rn" },
+        arrival: {
+          arrivedAt: "2026-03-05T14:01:00.000Z",
+          clinicianFirstName: "Sarah",
+          discipline: "rn",
+        },
       },
     ],
     verificationSummaries: [
@@ -145,7 +149,13 @@ function seed(): EvvSeamSeed {
     complianceWindows: [
       {
         window: WINDOW,
-        counts: { compliant: 8, documentedMissing: 1, unresolvedMissing: 1, notRequired: 0, total: 10 },
+        counts: {
+          compliant: 8,
+          documentedMissing: 1,
+          unresolvedMissing: 1,
+          notRequired: 0,
+          total: 10,
+        },
       },
     ],
     metricWindows: [
@@ -172,7 +182,9 @@ describe("EvvBracketResolver (§4.3, published over M8's resolveBracket contract
   const resolver = () => createEvvBracketResolver(createInMemoryEvvSeamStore(seed()).store);
 
   it("present bracket → evv_present with authoritative check-in/out instants + event ids", async () => {
-    expect(await resolver().resolveBracket({ organizationId: ORG, visitId: "vis-present" })).toEqual({
+    expect(
+      await resolver().resolveBracket({ organizationId: ORG, visitId: "vis-present" }),
+    ).toEqual({
       checkInEventId: "evt-in",
       checkOutEventId: "evt-out",
       startedAt: "2026-03-05T14:01:00.000Z",
@@ -192,8 +204,12 @@ describe("EvvBracketResolver (§4.3, published over M8's resolveBracket contract
   });
 
   it("missing_open and absent → null so M8's evv_missing_reason fallback path owns it", async () => {
-    expect(await resolver().resolveBracket({ organizationId: ORG, visitId: "vis-open" })).toBeNull();
-    expect(await resolver().resolveBracket({ organizationId: ORG, visitId: "vis-none" })).toBeNull();
+    expect(
+      await resolver().resolveBracket({ organizationId: ORG, visitId: "vis-open" }),
+    ).toBeNull();
+    expect(
+      await resolver().resolveBracket({ organizationId: ORG, visitId: "vis-none" }),
+    ).toBeNull();
   });
 });
 
@@ -267,7 +283,9 @@ describe("EvvMetricsProvider (§4.3)", () => {
 
   it("aggregator success rate divides accepted ÷ total, narrowable by state", async () => {
     expect(await provider().getAggregatorSubmissionSuccessRate(ORG, WINDOW)).toBe(9 / 10);
-    expect(await provider().getAggregatorSubmissionSuccessRate(ORG, WINDOW, { stateCode: "TX" })).toBe(4 / 5);
+    expect(
+      await provider().getAggregatorSubmissionSuccessRate(ORG, WINDOW, { stateCode: "TX" }),
+    ).toBe(4 / 5);
   });
 
   it("getDeviceRegistrationCoverage passes the snapshot through", async () => {
@@ -318,21 +336,26 @@ describe("boot wiring (registerEvvSeams)", () => {
     registerEvvSeams({ store: createInMemoryEvvSeamStore(seed()).store });
     expect(() => validateSeams()).not.toThrow();
     expect(
-      (await getSeam("EvvBracketResolver").resolveBracket({ organizationId: ORG, visitId: "vis-present" }))
-        ?.bracketState,
+      (
+        await getSeam("EvvBracketResolver").resolveBracket({
+          organizationId: ORG,
+          visitId: "vis-present",
+        })
+      )?.bracketState,
     ).toBe("evv_present");
     expect(await getSeam("EvvComplianceReader").bracketStateForVisit(ORG, "vis-open")).toBe(
       "unresolved_missing",
     );
-    expect((await getSeam("EvvAggregatorReferenceReader").submissionForVisit(ORG, "vis-doc"))?.status).toBe(
-      "queued",
-    );
-    expect((await getSeam("EvvLocationProvider").lastKnownLocationForClinician(ORG, MEM))?.eventId).toBe(
-      "evt-in",
-    );
+    expect(
+      (await getSeam("EvvAggregatorReferenceReader").submissionForVisit(ORG, "vis-doc"))?.status,
+    ).toBe("queued");
+    expect(
+      (await getSeam("EvvLocationProvider").lastKnownLocationForClinician(ORG, MEM))?.eventId,
+    ).toBe("evt-in");
     expect(await getSeam("EvvMetricsProvider").getComplianceRate(ORG, WINDOW)).toBe(8 / 10);
     expect(
-      (await getSeam("EvvVerificationProvider").arrivalEventForVisit(ORG, "vis-present"))?.clinicianFirstName,
+      (await getSeam("EvvVerificationProvider").arrivalEventForVisit(ORG, "vis-present"))
+        ?.clinicianFirstName,
     ).toBe("Sarah");
   });
 
@@ -350,7 +373,9 @@ describe("boot wiring (registerEvvSeams)", () => {
     expect(() => getSeam("EvvLocationProvider").lastKnownLocationForClinician(ORG, MEM)).toThrow(
       /not implemented/,
     );
-    expect(() => getSeam("EvvMetricsProvider").getComplianceRate(ORG, WINDOW)).toThrow(/not implemented/);
+    expect(() => getSeam("EvvMetricsProvider").getComplianceRate(ORG, WINDOW)).toThrow(
+      /not implemented/,
+    );
     expect(() => getSeam("EvvVerificationProvider").arrivalEventForVisit(ORG, "vis-1")).toThrow(
       /not implemented/,
     );

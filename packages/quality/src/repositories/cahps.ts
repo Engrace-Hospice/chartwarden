@@ -144,7 +144,8 @@ export class CahpsRepository {
       .set(patch)
       .where(and(eq(S.id, id), eq(S.samplingCycleMonth, samplingCycleMonth)))
       .returning();
-    if (!row) throw new Error(`cahps_decedent_sample ${id}@${samplingCycleMonth} not found for update`);
+    if (!row)
+      throw new Error(`cahps_decedent_sample ${id}@${samplingCycleMonth} not found for update`);
     return row;
   }
 

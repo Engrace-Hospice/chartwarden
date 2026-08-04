@@ -10,7 +10,13 @@
 // transport call. Redaction + auditing live in the dispatcher (dispatcher.ts), not here, so this stays a
 // pure passthrough that is trivial to fake in a unit test.
 
-import { STRIPE_NOT_CONFIGURED, type StripeApiRequest, type StripeApiResponse, type StripeCallOptions, type StripeHttpPort } from "./types";
+import {
+  STRIPE_NOT_CONFIGURED,
+  type StripeApiRequest,
+  type StripeApiResponse,
+  type StripeCallOptions,
+  type StripeHttpPort,
+} from "./types";
 
 /** The typed Stripe client the dispatcher calls. */
 export interface StripeClient {
@@ -34,12 +40,18 @@ export class LiveStripeClient implements StripeClient {
 export function failClosedStripeHttpPort(): StripeHttpPort {
   return {
     execute(request: StripeApiRequest): Promise<StripeApiResponse> {
-      return Promise.reject(new Error(`${STRIPE_NOT_CONFIGURED}: no live Stripe transport wired for '${request.operation}'`));
+      return Promise.reject(
+        new Error(
+          `${STRIPE_NOT_CONFIGURED}: no live Stripe transport wired for '${request.operation}'`,
+        ),
+      );
     },
   };
 }
 
 /** Build a {@link StripeClient} over an explicit transport, defaulting to the fail-closed port. */
-export function createStripeClient(http: StripeHttpPort = failClosedStripeHttpPort()): StripeClient {
+export function createStripeClient(
+  http: StripeHttpPort = failClosedStripeHttpPort(),
+): StripeClient {
   return new LiveStripeClient(http);
 }

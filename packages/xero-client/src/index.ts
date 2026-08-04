@@ -23,7 +23,12 @@ export type {
 import type { XeroClient, XeroClientFactory } from "./types";
 
 // Fail-closed sentinel + raw endpoint constants.
-export { XERO_NOT_CONNECTED, XERO_API_BASE_URL, XERO_TRIAL_BALANCE_PATH, XERO_ACCOUNTS_PATH } from "./constants";
+export {
+  XERO_NOT_CONNECTED,
+  XERO_API_BASE_URL,
+  XERO_TRIAL_BALANCE_PATH,
+  XERO_ACCOUNTS_PATH,
+} from "./constants";
 
 // Per-tenant OAuth token-store port + fail-closed default.
 export { NO_TOKEN_STORE } from "./token-store";
@@ -45,10 +50,10 @@ export {
 export { LiveXeroClient } from "./client";
 export type { LiveXeroClientDeps } from "./client";
 
-import { XERO_NOT_CONNECTED } from "./constants";
-import { NO_TOKEN_STORE, type TokenStore } from "./token-store";
-import { NO_XERO_HTTP_PORT, type XeroHttpPort } from "./oauth";
 import { LiveXeroClient } from "./client";
+import { XERO_NOT_CONNECTED } from "./constants";
+import { NO_XERO_HTTP_PORT, type XeroHttpPort } from "./oauth";
+import { NO_TOKEN_STORE, type TokenStore } from "./token-store";
 
 /** Injected ports the factory binds: the raw transport + the per-tenant token store. */
 export interface XeroClientFactoryDeps {
@@ -66,7 +71,10 @@ export interface XeroClientFactoryDeps {
 export function createXeroClientFactory(deps: XeroClientFactoryDeps): XeroClientFactory {
   return {
     async forTenant(input): Promise<XeroClient> {
-      const tokens = await deps.tokenStore.getTokensForTenant(input.organizationId, input.xeroTenantId);
+      const tokens = await deps.tokenStore.getTokensForTenant(
+        input.organizationId,
+        input.xeroTenantId,
+      );
       if (tokens === null) {
         throw new Error(XERO_NOT_CONNECTED);
       }

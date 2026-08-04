@@ -1,3 +1,9 @@
+import {
+  type ArAgingDto,
+  type MetricsBucket,
+  claimStateCodec,
+  repositories,
+} from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/routes/read-service-drizzle.ts — the Drizzle-backed
 // M23ReadRouteService (§4.1 GET surface: claim list/detail/lines/state-history/submissions/acks,
 // validation runs, NOE/NOTR list/detail, eligibility, rule-config, sequestration policy, MAC credentials,
@@ -17,12 +23,6 @@
 // `BillingDb` (the repo handle) is `NodePgDatabase<typeof schema>`, reconstructed in the package — a tx
 // handle is assignable to it, so the repos + the local aggregation queries share the same `tx`.
 import * as schema from "@wardenx/db/schema";
-import {
-  type ArAgingDto,
-  claimStateCodec,
-  type MetricsBucket,
-  repositories,
-} from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
@@ -326,7 +326,11 @@ export function buildDrizzleM23ReadService(
 ): M23ReadRouteService {
   const now = ports.now ?? (() => new Date());
   const read = <T>(actor: M23ReadActor, fn: (tx: BillingDb) => Promise<T>): Promise<T> =>
-    withOrgContext<BillingDb, T>(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
+    withOrgContext<BillingDb, T>(
+      db,
+      { organizationId: actor.organizationId, userId: actor.userId },
+      fn,
+    );
 
   /** Resolve a claim by id under RLS, enforcing the org match (404 otherwise). */
   const loadClaim = async (
@@ -364,7 +368,9 @@ export function buildDrizzleM23ReadService(
     async getClaim(actor, claimId) {
       return read(actor, async (tx) => {
         const row = await loadClaim(tx, actor, claimId);
-        const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(claimId);
+        const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
+          claimId,
+        );
         const hipps = await new repositories.HippsCalculationRepository(tx).findByClaim(claimId);
         const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claimId);
         return {
@@ -463,7 +469,9 @@ export function buildDrizzleM23ReadService(
         if (!run || run.organizationId !== actor.organizationId || run.claimId !== claimId) {
           throw new NotFoundError("validation run");
         }
-        const results = await new repositories.ValidationResultRepository(tx).listForRun(validationRunId);
+        const results = await new repositories.ValidationResultRepository(tx).listForRun(
+          validationRunId,
+        );
         const overrideRepo = new repositories.ValidationOverrideRepository(tx);
         const overrides = await overrideRepo.listByResultIds(results.map((r) => r.id));
         const overrideByResult = new Map(overrides.map((o) => [o.resultId, o]));
@@ -482,7 +490,10 @@ export function buildDrizzleM23ReadService(
             recordedAt: isoReq(r.recordedAt),
           };
         });
-        return { ...mapValidationRun(run), results: mappedResults } satisfies ValidationRunDetailView;
+        return {
+          ...mapValidationRun(run),
+          results: mappedResults,
+        } satisfies ValidationRunDetailView;
       });
     },
 
@@ -572,8 +583,11 @@ export function buildDrizzleM23ReadService(
 
     async getRuleConfig(actor, ruleConfigId) {
       return read(actor, async (tx) => {
-        const row = await new repositories.ValidationRuleConfigRepository(tx).findById(ruleConfigId);
-        if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("rule config");
+        const row = await new repositories.ValidationRuleConfigRepository(tx).findById(
+          ruleConfigId,
+        );
+        if (!row || row.organizationId !== actor.organizationId)
+          throw new NotFoundError("rule config");
         return mapRuleConfig(row);
       });
     },
@@ -584,17 +598,15 @@ export function buildDrizzleM23ReadService(
           providerEntityId,
         );
         // RLS already scopes to the org; the explicit org filter is belt-and-braces on the projection.
-        return rows
-          .filter((r) => r.organizationId === actor.organizationId)
-          .map(mapSequestration);
+        return rows.filter((r) => r.organizationId === actor.organizationId).map(mapSequestration);
       });
     },
 
     async getActiveSequestrationPolicy(actor, providerEntityId) {
       return read(actor, async (tx) => {
-        const row = await new repositories.SequestrationPolicyRepository(tx).findActiveForProviderEntity(
-          providerEntityId,
-        );
+        const row = await new repositories.SequestrationPolicyRepository(
+          tx,
+        ).findActiveForProviderEntity(providerEntityId);
         if (!row || row.organizationId !== actor.organizationId) return null;
         return mapSequestration(row);
       });
@@ -617,9 +629,9 @@ export function buildDrizzleM23ReadService(
 
     async getMacCredential(actor, providerEntityId) {
       return read(actor, async (tx) => {
-        const row = await new repositories.MacSubmitterCredentialRepository(tx).findByProviderEntity(
-          providerEntityId,
-        );
+        const row = await new repositories.MacSubmitterCredentialRepository(
+          tx,
+        ).findByProviderEntity(providerEntityId);
         if (!row || row.organizationId !== actor.organizationId) return null;
         return mapMacCredential(row);
       });
@@ -693,5 +705,9 @@ async function aggregateByState(
     cur.amountCents += r.totalChargeCents;
     acc.set(key, cur);
   }
-  return [...acc.entries()].map(([key, v]) => ({ key, count: v.count, amountCents: v.amountCents }));
+  return [...acc.entries()].map(([key, v]) => ({
+    key,
+    count: v.count,
+    amountCents: v.amountCents,
+  }));
 }

@@ -103,8 +103,14 @@ function parseClaims(body: string): WitnessTokenClaims | null {
     return null;
   }
   if (!Array.isArray(arr) || arr.length !== 6) return null;
-  const [patientId, medicationOrderId, administeringClinicianMembershipId, witnessMembershipId, issuedAtMs, nonce] =
-    arr;
+  const [
+    patientId,
+    medicationOrderId,
+    administeringClinicianMembershipId,
+    witnessMembershipId,
+    issuedAtMs,
+    nonce,
+  ] = arr;
   if (
     typeof patientId !== "string" ||
     typeof medicationOrderId !== "string" ||
@@ -142,7 +148,9 @@ export interface WitnessTokenVerifyInput {
  * — `nowMs` is injected; no clock, no IO. The route still must burn the single-use Valkey entry (a replay
  * passes HMAC/TTL/scope but finds no entry — the route rejects it there, not here).
  */
-export function verifyWitnessAttestationToken(input: WitnessTokenVerifyInput): WitnessTokenVerifyResult {
+export function verifyWitnessAttestationToken(
+  input: WitnessTokenVerifyInput,
+): WitnessTokenVerifyResult {
   const dot = input.token.indexOf(".");
   if (dot <= 0 || dot === input.token.length - 1) {
     return { ok: false, reason: "WITNESS_TOKEN_INVALID" };
@@ -170,7 +178,8 @@ export function verifyWitnessAttestationToken(input: WitnessTokenVerifyInput): W
   if (
     claims.patientId !== input.expectedScope.patientId ||
     claims.medicationOrderId !== input.expectedScope.medicationOrderId ||
-    claims.administeringClinicianMembershipId !== input.expectedScope.administeringClinicianMembershipId
+    claims.administeringClinicianMembershipId !==
+      input.expectedScope.administeringClinicianMembershipId
   ) {
     return { ok: false, reason: "WITNESS_TOKEN_SCOPE_MISMATCH" };
   }
@@ -183,9 +192,10 @@ export function verifyWitnessAttestationToken(input: WitnessTokenVerifyInput): W
  * `AdministrationStateError` (HTTP 401) with the precise rejection code on failure, else returns the
  * verified claims + audit digest. The route still burns the single-use Valkey entry after this returns.
  */
-export function assertWitnessToken(
-  input: WitnessTokenVerifyInput,
-): { readonly claims: WitnessTokenClaims; readonly digest: string } {
+export function assertWitnessToken(input: WitnessTokenVerifyInput): {
+  readonly claims: WitnessTokenClaims;
+  readonly digest: string;
+} {
   const r = verifyWitnessAttestationToken(input);
   if (!r.ok) {
     throw new AdministrationStateError(r.reason, `witness-attestation token rejected: ${r.reason}`);

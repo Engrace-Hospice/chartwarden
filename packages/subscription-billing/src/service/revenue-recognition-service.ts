@@ -15,17 +15,26 @@
 // wraps it with the store read/write + the `m35.revenue.monthly_snapshot_computed` outbox. Integer cents
 // throughout (§2.3 — no float).
 
-import type { BillingCadence, BillingYearMonth, IsoInstant, SubscriptionStatus } from "@wardenx/types";
+import type {
+  BillingCadence,
+  BillingYearMonth,
+  IsoInstant,
+  SubscriptionStatus,
+} from "@wardenx/types";
 import {
-  outboxIntent,
   type OutboxIntent,
   type RevenueContribution,
   type RevenueSnapshotRecord,
   type RevenueStore,
+  outboxIntent,
 } from "./ports";
 
 /** The statuses whose subscription contributes to recognized MRR (still billing). */
-export const MRR_RECOGNIZED_STATUSES: readonly SubscriptionStatus[] = ["active", "past_due", "at_risk"];
+export const MRR_RECOGNIZED_STATUSES: readonly SubscriptionStatus[] = [
+  "active",
+  "past_due",
+  "at_risk",
+];
 
 /** §D18 normalize a subscription's base price to a MONTHLY figure (annual → base / 12, rounded). */
 export function normalizeMonthlyCents(cadence: BillingCadence, basePriceCents: number): number {

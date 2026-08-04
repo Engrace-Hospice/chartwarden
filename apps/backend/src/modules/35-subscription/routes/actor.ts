@@ -47,7 +47,9 @@ export function writeActorOf(request: FastifyRequest): M35WriteActor {
   const membershipId = ctx.attributes?.membershipId;
   if (typeof membershipId !== "string" || membershipId.length === 0) {
     // No active membership on the session → cannot own/author an M35 row (fail-closed, never anonymous).
-    throw new UnauthorizedError("an active membership is required to author subscription-billing content");
+    throw new UnauthorizedError(
+      "an active membership is required to author subscription-billing content",
+    );
   }
   return {
     organizationId: ctx.organizationId,

@@ -415,9 +415,9 @@ describe("M2-T06 identity route inventory", () => {
       });
       expect(res.statusCode).toBe(200);
       const invitations = res.json().invitations as Array<{ email: string; status: string }>;
-      expect(invitations.some((i) => i.email === "roster@example.com" && i.status === "pending")).toBe(
-        true,
-      );
+      expect(
+        invitations.some((i) => i.email === "roster@example.com" && i.status === "pending"),
+      ).toBe(true);
       await app.close();
     });
 
@@ -439,9 +439,9 @@ describe("M2-T06 identity route inventory", () => {
         url: "/api/v1/orgs/org_a/invitations",
         headers: ADMIN,
       });
-      const invId = (roster.json().invitations as Array<{ invitationId: string; email: string }>).find(
-        (i) => i.email === "resend@example.com",
-      )!.invitationId;
+      const invId = (
+        roster.json().invitations as Array<{ invitationId: string; email: string }>
+      ).find((i) => i.email === "resend@example.com")!.invitationId;
 
       const resend = await app.inject({
         method: "POST",
@@ -482,9 +482,9 @@ describe("M2-T06 identity route inventory", () => {
         url: "/api/v1/orgs/org_a/invitations",
         headers: ADMIN,
       });
-      const invId = (roster.json().invitations as Array<{ invitationId: string; email: string }>).find(
-        (i) => i.email === "gone@example.com",
-      )!.invitationId;
+      const invId = (
+        roster.json().invitations as Array<{ invitationId: string; email: string }>
+      ).find((i) => i.email === "gone@example.com")!.invitationId;
       const resend = await app.inject({
         method: "POST",
         url: `/api/v1/orgs/org_a/invitations/${invId}/resend`,

@@ -42,9 +42,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   M27_PERMISSION_KEY_LIST,
+  type ReadingM27AbacResolver,
   buildM27AbacPredicates,
   mountM27Routes,
-  type ReadingM27AbacResolver,
 } from "../src/modules/27-cost-report/index";
 import type {
   BadDebtRecordView,
@@ -333,7 +333,12 @@ function createM27Backend(): {
   }
   function transitionState(costReportId: string, state: CostReportState): CostReportDetailView {
     const row = mustGetCostReport(costReportId);
-    const updated: CostReportDetailView = { ...row, state, version: row.version + 1, updatedAt: NOW };
+    const updated: CostReportDetailView = {
+      ...row,
+      state,
+      version: row.version + 1,
+      updatedAt: NOW,
+    };
     costReports.set(costReportId, updated);
     return updated;
   }
@@ -351,7 +356,14 @@ function createM27Backend(): {
     async getWorksheet(_actor, costReportId, worksheetCode) {
       const row = worksheets.get(`${costReportId}::${worksheetCode}`);
       if (row) return row;
-      return { worksheetId: null, costReportId, worksheetCode, data: null, computedAt: null, version: 0 };
+      return {
+        worksheetId: null,
+        costReportId,
+        worksheetCode,
+        data: null,
+        computedAt: null,
+        version: 0,
+      };
     },
     async listCostCenterMappings(_actor, costReportId) {
       return costCenterMappings.get(costReportId) ?? [];
@@ -375,7 +387,8 @@ function createM27Backend(): {
     },
     async getValidation(_actor, costReportId, validationId) {
       const row = validations.get(validationId);
-      if (!row || row.costReportId !== costReportId) throw new NotFoundError("validation run not found");
+      if (!row || row.costReportId !== costReportId)
+        throw new NotFoundError("validation run not found");
       return row;
     },
     async listEcrSubmissions(_actor, costReportId) {
@@ -383,11 +396,14 @@ function createM27Backend(): {
     },
     async getEcrSubmission(_actor, costReportId, submissionId) {
       const row = ecrSubmissions.get(submissionId);
-      if (!row || row.costReportId !== costReportId) throw new NotFoundError("ecr submission not found");
+      if (!row || row.costReportId !== costReportId)
+        throw new NotFoundError("ecr submission not found");
       return row;
     },
     async listSnapshots(_actor, costReportId) {
-      return [...snapshots.values()].filter((s) => s.costReportId === costReportId).map(toSnapshotSummary);
+      return [...snapshots.values()]
+        .filter((s) => s.costReportId === costReportId)
+        .map(toSnapshotSummary);
     },
     async getSnapshot(_actor, costReportId, snapshotId) {
       const row = snapshots.get(snapshotId);
@@ -441,7 +457,11 @@ function createM27Backend(): {
       return updated;
     },
     async refreshInputs() {
-      return { trialBalanceJobId: "job-tb-1", wageDataJobId: "job-wd-1", statisticsJobId: "job-stats-1" };
+      return {
+        trialBalanceJobId: "job-tb-1",
+        wageDataJobId: "job-wd-1",
+        statisticsJobId: "job-stats-1",
+      };
     },
     async putWorksheet(_actor, costReportId, worksheetCode, args) {
       const key = `${costReportId}::${worksheetCode}`;
@@ -518,7 +538,8 @@ function createM27Backend(): {
         periodLabel: args.periodLabel ?? row.periodLabel,
         debtKind: args.debtKind ?? row.debtKind,
         amountCents: args.amountCents ?? row.amountCents,
-        collectionEffortsDocumented: args.collectionEffortsDocumented ?? row.collectionEffortsDocumented,
+        collectionEffortsDocumented:
+          args.collectionEffortsDocumented ?? row.collectionEffortsDocumented,
         supportingDocumentIds: args.supportingDocumentIds ?? row.supportingDocumentIds,
       };
       badDebt.set(recordId, updated);
@@ -548,7 +569,10 @@ function createM27Backend(): {
         failureReason: null,
         pulledAt: NOW,
       };
-      trialBalanceImports.set(costReportId, [...(trialBalanceImports.get(costReportId) ?? []), row]);
+      trialBalanceImports.set(costReportId, [
+        ...(trialBalanceImports.get(costReportId) ?? []),
+        row,
+      ]);
       return row;
     },
     async triggerWageDataPull() {
@@ -573,7 +597,8 @@ function createM27Backend(): {
     },
     async overrideValidationResult(actor, costReportId, validationId, args) {
       const run = validations.get(validationId);
-      if (!run || run.costReportId !== costReportId) throw new NotFoundError("validation run not found");
+      if (!run || run.costReportId !== costReportId)
+        throw new NotFoundError("validation run not found");
       const override: ValidationOverrideView = {
         overrideId: `override-${validationId}`,
         organizationId: actor.organizationId,
@@ -605,7 +630,8 @@ function createM27Backend(): {
     },
     async recordAcknowledgment(_actor, costReportId, submissionId, args) {
       const row = ecrSubmissions.get(submissionId);
-      if (!row || row.costReportId !== costReportId) throw new NotFoundError("ecr submission not found");
+      if (!row || row.costReportId !== costReportId)
+        throw new NotFoundError("ecr submission not found");
       const updated: EcrSubmissionView = {
         ...row,
         status: args.mcrefAcknowledgmentNumber ? "accepted" : "rejected",
@@ -706,7 +732,11 @@ function createM27Backend(): {
       };
     },
     async loadMembershipProviderScope(ctx, membershipId) {
-      return { membershipId, organizationId: ctx.organizationId, providerEntityIds: [PROVIDER_ENTITY] };
+      return {
+        membershipId,
+        organizationId: ctx.organizationId,
+        providerEntityIds: [PROVIDER_ENTITY],
+      };
     },
     async hasElevatedApproval() {
       return true;
@@ -733,9 +763,20 @@ function makeServer() {
     {
       orgId: ORG,
       userId: "super_1",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M27_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M27_PERMISSION_KEY_LIST],
+        },
+      ],
     },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -743,7 +784,9 @@ function makeServer() {
   // over THIS backend's resolver, plus a permissive `step_up_recent` stub so the approve/submit/reopen/
   // override routes' `requireStepUp` gate has a real PASSING path in this file (see the file banner).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildM27AbacPredicates({ resolver: backend.abacResolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildM27AbacPredicates({ resolver: backend.abacResolver }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
@@ -776,7 +819,11 @@ describe("M27 route smoke — the M1 boundary", () => {
 
   it("403s a permission-gated route for a session holding NO M27 grants", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/cost-reports", headers: NONE_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/cost-reports",
+      headers: NONE_HEADERS,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -813,10 +860,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/cost-reports",
     headers: { ...SUPER_HEADERS, ...IDEMP("k1") },
-    payload: { providerEntityId: PROVIDER_ENTITY, fiscalYearStartDate: "2025-10-01", fiscalYearEndDate: "2026-09-30" },
+    payload: {
+      providerEntityId: PROVIDER_ENTITY,
+      fiscalYearStartDate: "2025-10-01",
+      fiscalYearEndDate: "2026-09-30",
+    },
     expectStatus: 201,
   },
-  { label: "2 GET /cost-reports", method: "GET", url: "/api/v1/cost-reports", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "2 GET /cost-reports",
+    method: "GET",
+    url: "/api/v1/cost-reports",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "3 GET /cost-reports/:id",
     method: "GET",
@@ -889,7 +946,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/cost-reports/${COST_REPORT}/reopen`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k11") },
-    payload: { reason: "MAC requested a revision after the original submission was filed.", reasonCategory: "mac_revision_request" },
+    payload: {
+      reason: "MAC requested a revision after the original submission was filed.",
+      reasonCategory: "mac_revision_request",
+    },
     expectStatus: 200,
   },
 
@@ -931,7 +991,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/cost-reports/${COST_REPORT}/cost-center-mappings/preview`,
     headers: SUPER_HEADERS, // no Idempotency-Key on the no-write preview route
-    payload: { changes: [{ xeroAccountCode: "600", xeroAccountName: "Wages", cmsCostCenterCode: "6100" }] },
+    payload: {
+      changes: [{ xeroAccountCode: "600", xeroAccountName: "Wages", cmsCostCenterCode: "6100" }],
+    },
     expectStatus: 200,
   },
   {
@@ -939,7 +1001,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/cost-reports/${COST_REPORT}/cost-center-mappings/apply`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k17") },
-    payload: { changes: [{ xeroAccountCode: "600", xeroAccountName: "Wages", cmsCostCenterCode: "6100" }] },
+    payload: {
+      changes: [{ xeroAccountCode: "600", xeroAccountName: "Wages", cmsCostCenterCode: "6100" }],
+    },
     expectStatus: 200,
   },
   {
@@ -1076,7 +1140,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/cost-reports/${COST_REPORT}/validations/${VALIDATION_ID}/overrides`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k34") },
-    payload: { validationResultId: VALIDATION_RESULT_ID, reason: "Reviewed supporting documentation and confirmed the amount is correct." },
+    payload: {
+      validationResultId: VALIDATION_RESULT_ID,
+      reason: "Reviewed supporting documentation and confirmed the amount is correct.",
+    },
     expectStatus: 201,
   },
 
@@ -1180,7 +1247,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M27 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

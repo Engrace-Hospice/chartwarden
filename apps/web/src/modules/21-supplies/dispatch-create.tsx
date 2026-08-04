@@ -40,6 +40,19 @@ import {
   listSupplyRequests,
 } from "./supplies-api";
 import {
+  DEFAULT_DEPLOYMENT_SITE,
+  DEFAULT_DISPATCH_SOURCE,
+  DEFAULT_PHARMACY_DISPATCH_MODE,
+  DEPLOYMENT_SITES,
+  DISPATCH_SOURCES,
+  PHARMACY_DISPATCH_MODES,
+  deploymentSiteLabel,
+  humanize,
+  requestKindLabel,
+  shortDate,
+  shortId,
+} from "./supplies-status";
+import {
   Card,
   Field,
   Notice,
@@ -64,19 +77,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import {
-  DEFAULT_DEPLOYMENT_SITE,
-  DEFAULT_DISPATCH_SOURCE,
-  DEFAULT_PHARMACY_DISPATCH_MODE,
-  DEPLOYMENT_SITES,
-  DISPATCH_SOURCES,
-  PHARMACY_DISPATCH_MODES,
-  deploymentSiteLabel,
-  humanize,
-  requestKindLabel,
-  shortDate,
-  shortId,
-} from "./supplies-status";
 
 /** One editable line in the manifest, seeded from a template medication. */
 interface LineDraft extends DispatchLineInput {
@@ -230,10 +230,10 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       />
 
       <Notice tone="warning">
-        This records a controlled-substance movement under DEA 21 CFR §1304. The server verifies your
-        dispatch authority and asks for a second factor before anything is written; the hub shelf is
-        decremented in the same transaction, so a kit that "shipped" off an empty shelf is refused rather
-        than recorded.
+        This records a controlled-substance movement under DEA 21 CFR §1304. The server verifies
+        your dispatch authority and asks for a second factor before anything is written; the hub
+        shelf is decremented in the same transaction, so a kit that "shipped" off an empty shelf is
+        refused rather than recorded.
       </Notice>
 
       {submitError ? <p style={alertStyle}>{submitError}</p> : null}
@@ -241,8 +241,8 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       <Card title="Supply request">
         {requests.length === 0 ? (
           <span style={mutedStyle}>
-            No open comfort-kit request is available. A dispatch is always tied to one — the patient,
-            admission and provider entity come from the request, not from this form.
+            No open comfort-kit request is available. A dispatch is always tied to one — the
+            patient, admission and provider entity come from the request, not from this form.
           </span>
         ) : (
           <>
@@ -342,15 +342,15 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       >
         {lines.length === 0 ? (
           <span style={mutedStyle}>
-            Pick a template — its medications seed the manifest. Quantities default to the recipe's expected
-            amounts and are edited per line to what physically went in the box.
+            Pick a template — its medications seed the manifest. Quantities default to the recipe's
+            expected amounts and are edited per line to what physically went in the box.
           </span>
         ) : (
           <>
             <Notice tone="info">
-              A controlled line REQUIRES a lot number and an expiration date, and the expiration must sit at
-              least 14 days out. Those rules are enforced by the server with their own error codes, so a
-              refusal names the rule instead of a generic validation failure.
+              A controlled line REQUIRES a lot number and an expiration date, and the expiration
+              must sit at least 14 days out. Those rules are enforced by the server with their own
+              error codes, so a refusal names the rule instead of a generic validation failure.
             </Notice>
             <table style={tableStyle}>
               <thead>

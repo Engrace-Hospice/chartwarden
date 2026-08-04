@@ -29,7 +29,7 @@
 // the wrong reason.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq, isNull, isNotNull, or } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 
 import type {
   AiInvocationAbacFacts,
@@ -136,9 +136,7 @@ export function buildDrizzleAiPlatformAbacResolver(
                 optedOutAt: OPT_IN.optedOutAt,
               })
               .from(OPT_IN)
-              .where(
-                and(eq(OPT_IN.organizationId, orgId), eq(OPT_IN.capabilityId, capabilityId)),
-              )
+              .where(and(eq(OPT_IN.organizationId, orgId), eq(OPT_IN.capabilityId, capabilityId)))
               .limit(1);
             if (!row) return null;
             return {

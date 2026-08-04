@@ -21,7 +21,9 @@ export type DoseSpotRetryConfig = typeof DOSESPOT_RETRY_CONFIG;
  * the would-be 4th — the live transport uses `length === maxAttempts - 1` of them and degrades after). Pure:
  * `delay(n) = baseDelayMs * 2^n`.
  */
-export function computeBackoffDelays(config: DoseSpotRetryConfig = DOSESPOT_RETRY_CONFIG): readonly number[] {
+export function computeBackoffDelays(
+  config: DoseSpotRetryConfig = DOSESPOT_RETRY_CONFIG,
+): readonly number[] {
   return Array.from({ length: config.maxAttempts }, (_unused, i) => config.baseDelayMs * 2 ** i);
 }
 

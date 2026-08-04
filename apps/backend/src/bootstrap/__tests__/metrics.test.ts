@@ -4,12 +4,12 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import {
+  type QueueLike,
   buildMetricsRegistry,
   mountMetricsRoute,
   registerBullMQQueueMetrics,
   registerHttpMetrics,
   registerOutboxMetrics,
-  type QueueLike,
 } from "../metrics";
 
 describe("buildMetricsRegistry", () => {
@@ -70,20 +70,36 @@ describe("registerBullMQQueueMetrics", () => {
     const registry = buildMetricsRegistry();
     const queues = [
       fakeQueue("care-plan.gates", { waiting: 3, active: 1, completed: 10, failed: 0, delayed: 0 }),
-      fakeQueue("assessment.license", { waiting: 0, active: 0, completed: 5, failed: 2, delayed: 1 }),
+      fakeQueue("assessment.license", {
+        waiting: 0,
+        active: 0,
+        completed: 5,
+        failed: 2,
+        delayed: 1,
+      }),
     ];
     registerBullMQQueueMetrics(registry, queues);
 
     const text = await registry.metrics();
     expect(text).toContain('wardenx_bullmq_queue_jobs{queue="care-plan.gates",state="waiting"} 3');
     expect(text).toContain('wardenx_bullmq_queue_jobs{queue="care-plan.gates",state="active"} 1');
-    expect(text).toContain('wardenx_bullmq_queue_jobs{queue="assessment.license",state="failed"} 2');
-    expect(text).toContain('wardenx_bullmq_queue_jobs{queue="assessment.license",state="delayed"} 1');
+    expect(text).toContain(
+      'wardenx_bullmq_queue_jobs{queue="assessment.license",state="failed"} 2',
+    );
+    expect(text).toContain(
+      'wardenx_bullmq_queue_jobs{queue="assessment.license",state="delayed"} 1',
+    );
   });
 
   it("reflects an updated count on a LATER scrape (proves collect() re-reads, not a snapshot)", async () => {
     const registry = buildMetricsRegistry();
-    const counts: Record<string, number> = { waiting: 1, active: 0, completed: 0, failed: 0, delayed: 0 };
+    const counts: Record<string, number> = {
+      waiting: 1,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      delayed: 0,
+    };
     const queue: QueueLike = {
       name: "hope.windows",
       getJobCounts: async (...types) => {
@@ -94,9 +110,13 @@ describe("registerBullMQQueueMetrics", () => {
     };
     registerBullMQQueueMetrics(registry, [queue]);
 
-    expect(await registry.metrics()).toContain('wardenx_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 1');
+    expect(await registry.metrics()).toContain(
+      'wardenx_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 1',
+    );
     counts.waiting = 7;
-    expect(await registry.metrics()).toContain('wardenx_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 7');
+    expect(await registry.metrics()).toContain(
+      'wardenx_bullmq_queue_jobs{queue="hope.windows",state="waiting"} 7',
+    );
   });
 });
 
@@ -106,7 +126,15 @@ describe("registerOutboxMetrics", () => {
     const { onTick } = registerOutboxMetrics(registry);
 
     onTick(
-      { delivered: 2, retried: 1, deadLettered: 0, deferred: 3, recordOnly: 0, reclaimed: 0, purged: 0 },
+      {
+        delivered: 2,
+        retried: 1,
+        deadLettered: 0,
+        deferred: 3,
+        recordOnly: 0,
+        reclaimed: 0,
+        purged: 0,
+      },
       150,
     );
 
@@ -122,8 +150,30 @@ describe("registerOutboxMetrics", () => {
   it("accumulates across multiple ticks", async () => {
     const registry = buildMetricsRegistry();
     const { onTick } = registerOutboxMetrics(registry);
-    onTick({ delivered: 1, retried: 0, deadLettered: 0, deferred: 0, recordOnly: 0, reclaimed: 0, purged: 0 }, 10);
-    onTick({ delivered: 4, retried: 0, deadLettered: 0, deferred: 0, recordOnly: 0, reclaimed: 0, purged: 0 }, 10);
+    onTick(
+      {
+        delivered: 1,
+        retried: 0,
+        deadLettered: 0,
+        deferred: 0,
+        recordOnly: 0,
+        reclaimed: 0,
+        purged: 0,
+      },
+      10,
+    );
+    onTick(
+      {
+        delivered: 4,
+        retried: 0,
+        deadLettered: 0,
+        deferred: 0,
+        recordOnly: 0,
+        reclaimed: 0,
+        purged: 0,
+      },
+      10,
+    );
     expect(await registry.metrics()).toContain('wardenx_outbox_events_total{status="delivered"} 5');
   });
 

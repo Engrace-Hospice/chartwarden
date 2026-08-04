@@ -35,7 +35,11 @@ import type { FastifyRequest } from "fastify";
 import { VENDOR_SESSION_CLASSES } from "../abac-predicates";
 import type { PreHandler } from "./actor";
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";
@@ -49,7 +53,8 @@ const bodyField = (request: TargetRequest, key: string): string => {
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
 /** §4.1 — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate (rule 4). */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;
 
 /** The M2-assembled session class. Never a header, body or query field (§8.3.1). */
 function sessionClassOfRequest(request: FastifyRequest): string {

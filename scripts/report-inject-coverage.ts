@@ -82,7 +82,8 @@ function collect(): ModuleCoverage[] {
   const modules = modulesWithRoutesDir();
   const routes = scanRoutes(ROOT);
   const routeCountByModule = new Map<string, number>();
-  for (const r of routes) routeCountByModule.set(r.module, (routeCountByModule.get(r.module) ?? 0) + 1);
+  for (const r of routes)
+    routeCountByModule.set(r.module, (routeCountByModule.get(r.module) ?? 0) + 1);
 
   const files = testFiles();
   const fileContents = new Map<string, string>();
@@ -166,7 +167,9 @@ function renderMarkdown(): string {
   l.push("| Module | Routes | Covered | Suite file(s) |");
   l.push("|---|--:|:--:|---|");
   for (const c of coverage)
-    l.push(`| ${c.module} | ${c.routes} | ${c.covered ? "✅" : "❌"} | ${c.suiteFiles.join(", ") || "—"} |`);
+    l.push(
+      `| ${c.module} | ${c.routes} | ${c.covered ? "✅" : "❌"} | ${c.suiteFiles.join(", ") || "—"} |`,
+    );
   l.push("");
   return l.join("\n");
 }
@@ -183,7 +186,9 @@ function write(): void {
 if (UPDATE) {
   write();
   writeFileSync(join(ROOT, BASELINE), renderBaseline());
-  console.log(`✓ inject-coverage: re-baselined (${totals.covered}/${totals.modules} modules covered)`);
+  console.log(
+    `✓ inject-coverage: re-baselined (${totals.covered}/${totals.modules} modules covered)`,
+  );
   process.exit(0);
 }
 
@@ -211,7 +216,9 @@ if (CHECK) {
     process.exit(1);
   }
   if (violations.length) {
-    console.error(`✗ inject-coverage: ${violations.length} module(s) have NO HTTP-layer smoke suite:`);
+    console.error(
+      `✗ inject-coverage: ${violations.length} module(s) have NO HTTP-layer smoke suite:`,
+    );
     for (const v of violations) console.error(`  - ${v}`);
     console.error(
       "\n  Add a table-driven 401/403/422/2xx apps/backend/__tests__/<module>-routes.test.ts,\n" +
@@ -220,12 +227,16 @@ if (CHECK) {
     process.exit(1);
   }
   if (stale.length) {
-    console.error(`✗ inject-coverage: coverage IMPROVED in ${stale.length} module(s) but the baseline was not tightened:`);
+    console.error(
+      `✗ inject-coverage: coverage IMPROVED in ${stale.length} module(s) but the baseline was not tightened:`,
+    );
     for (const s of stale) console.error(`  - ${s}`);
     console.error("\n  Lock the progress in: bun run inject:coverage --update");
     process.exit(1);
   }
-  console.log(`OK inject-coverage: report fresh, ratchet held (${totals.covered}/${totals.modules} modules covered)`);
+  console.log(
+    `OK inject-coverage: report fresh, ratchet held (${totals.covered}/${totals.modules} modules covered)`,
+  );
   process.exit(0);
 }
 

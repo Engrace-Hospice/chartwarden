@@ -4,7 +4,14 @@
 // The MBI is unlocked from M5 only in-memory at HETS-270 build time and NEVER persisted or projected
 // (D13 / §3.6); no MBI digit appears on any field here.
 import { type Static, Type } from "@sinclair/typebox";
-import { CursorPageQuery, EligibilityOutcomeApi, IsoDateSchema, IsoDateTimeSchema, PageOf, Uuid } from "./common";
+import {
+  CursorPageQuery,
+  EligibilityOutcomeApi,
+  IsoDateSchema,
+  IsoDateTimeSchema,
+  PageOf,
+  Uuid,
+} from "./common";
 
 // ── route #22: force a fresh check ──────────────────────────────────────────────────────────────────────
 export const EligibilityCheckRequest = Type.Object({

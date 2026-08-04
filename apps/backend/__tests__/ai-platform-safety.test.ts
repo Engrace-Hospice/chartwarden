@@ -10,9 +10,9 @@ import { describe, expect, it } from "vitest";
 
 import { AiGovernanceError } from "@wardenx/ai-platform";
 
+import { transitionAiCapability } from "../src/modules/32-ai-platform/governance/service";
 import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";
 import type { AiCapabilityGovernanceRow } from "../src/modules/32-ai-platform/governance/store";
-import { transitionAiCapability } from "../src/modules/32-ai-platform/governance/service";
 import {
   activateAiKillSwitch,
   createAiKillSwitchGate,
@@ -232,7 +232,11 @@ describe("hallucination workflow (R18/R19/R20, W5)", () => {
     const d = deps();
     const result = await executeAiHallucinationFollowUp(
       d,
-      { action: "deprecate_capability", killSwitchReason: "sev2_hallucination", demotesCapability: true },
+      {
+        action: "deprecate_capability",
+        killSwitchReason: "sev2_hallucination",
+        demotesCapability: true,
+      },
       CAP_ID,
     );
     expect(result.killSwitch?.scope).toBe("platform");

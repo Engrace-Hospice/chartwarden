@@ -5,7 +5,7 @@
 // `allPermissionMirrorRows`); this module-local surface re-exports it plus the ordered key list and the
 // step-up subset, so the §4.1/§4.2 routes gate on `requirePermission(key)` / `requireStepUp(key)` without
 // re-declaring the map (the M28/M32 posture — references the auth package directly, no drift).
-import { M29_CONTRIBUTED_PERMISSIONS, type M29ContributedPermissionKey } from "@wardenx/auth";
+import { type M29ContributedPermissionKey, M29_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
 
 export {
   M29_CONTRIBUTED_PERMISSIONS,

@@ -103,12 +103,14 @@ export interface BereavementSeamDeps {
  */
 export function registerBereavementSeams(deps: BereavementSeamDeps = {}): void {
   const store = deps.store ?? createInMemoryBereavementSeamStore().store;
-  const clock: BereavementSeamClock =
-    deps.clock ?? (() => new Date().toISOString() as IsoInstant);
+  const clock: BereavementSeamClock = deps.clock ?? (() => new Date().toISOString() as IsoInstant);
 
   registerSeam("BereavementPlanProvider", createBereavementPlanProvider(store));
   registerSeam("BereavementOutreachProvider", createBereavementOutreachProvider(store));
-  registerSeam("BereavementRiskFactorsProvider", createBereavementRiskFactorsProvider(store, clock));
+  registerSeam(
+    "BereavementRiskFactorsProvider",
+    createBereavementRiskFactorsProvider(store, clock),
+  );
   registerSeam("BereavementAssignmentReader", createBereavementAssignmentReader(store));
   registerSeam("BereavedPortalScopeProvider", createBereavedPortalScopeProvider(store, clock));
   registerSeam("BereavementComplianceProvider", createBereavementComplianceProvider(store));

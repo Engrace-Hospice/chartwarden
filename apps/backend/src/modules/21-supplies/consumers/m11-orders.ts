@@ -28,10 +28,7 @@
 //     the delivery would leave M11's order waiting on a fulfillment that will never arrive.
 //   • death-vs-live-discharge indeterminate → the row still cancels; only the REASON degrades. A wrong
 //     cancellation reason is a reporting nuisance; a missing cancellation is a stranded order.
-import {
-  canTransition,
-  isTerminalSupplyStatus,
-} from "@wardenx/supplies";
+import { canTransition, isTerminalSupplyStatus } from "@wardenx/supplies";
 import type {
   AdmissionId,
   AdmissionStatusValue,

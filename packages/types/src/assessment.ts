@@ -15,8 +15,8 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so
 // the package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ─
-import type { PatientId, AdmissionId, OrgId, ProviderEntityId, DateRange } from "./admission";
-import type { MembershipId, LocationId, IsoInstant } from "./care-plan";
+import type { AdmissionId, DateRange, OrgId, PatientId, ProviderEntityId } from "./admission";
+import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 
 // ── Assessment-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──
 export type ClinicalAssessmentId = string;
@@ -304,4 +304,4 @@ export interface ScaleSeriesProvider {
  * direct cross-module writes at the boundary; all downstream communication is the `m9.*` outbox.
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface AssessmentEventPublisher {}
+export type AssessmentEventPublisher = {};

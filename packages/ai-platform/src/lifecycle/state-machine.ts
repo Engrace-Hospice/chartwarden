@@ -270,8 +270,6 @@ export function aiConsumerPostureFor(
  * clinician against a chart. Kept as its own predicate so a route cannot reach it by accident: the
  * posture function alone would say "unavailable" and the evaluation route would have no way through.
  */
-export function aiEvaluationDatasetInvocationsAllowed(
-  state: AiCapabilityLifecycleState,
-): boolean {
+export function aiEvaluationDatasetInvocationsAllowed(state: AiCapabilityLifecycleState): boolean {
   return state === "EVALUATION" || state === "PILOT";
 }

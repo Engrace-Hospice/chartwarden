@@ -166,7 +166,8 @@ async function deliverInvite(
     ? `${deps.webAppBaseUrl.replace(/\/$/, "")}/invite/${token}`
     : undefined;
   if (deps.emailTransport && inviteUrl) {
-    const orgName = typeof organizationNameAttr === "string" ? organizationNameAttr : "your organization";
+    const orgName =
+      typeof organizationNameAttr === "string" ? organizationNameAttr : "your organization";
     try {
       await deps.emailTransport.send({
         to: email,

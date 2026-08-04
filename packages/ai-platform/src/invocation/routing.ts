@@ -134,7 +134,10 @@ export interface AiRouteResolutionInput {
 }
 
 /** §3.2.4's routable health set. See the header for why `unknown` is not in it. */
-export const AI_ROUTABLE_HEALTH_STATUSES: readonly AiBackendHealthStatus[] = ["healthy", "degraded"];
+export const AI_ROUTABLE_HEALTH_STATUSES: readonly AiBackendHealthStatus[] = [
+  "healthy",
+  "degraded",
+];
 
 /** True when a registry row is in a state a call may be dispatched to. */
 export function aiBackendIsRoutable(row: AiBackendRoutingRow): boolean {
@@ -181,7 +184,11 @@ function toRoute(
     // and a health skip is `vendor_outage_fallback` — `cost_cap_fallback` and `kill_switch_fallback`
     // are stamped by the gates that own them (§3.1: the reason exists to make D7's cap fallback
     // distinguishable from an outage), not derivable from the chain.
-    reason: fromOverride ? "tenant_override" : primarySkipped ? "vendor_outage_fallback" : "default",
+    reason: fromOverride
+      ? "tenant_override"
+      : primarySkipped
+        ? "vendor_outage_fallback"
+        : "default",
     zdrConfirmed: row.zdrStatus === "enabled",
   };
 }
@@ -255,7 +262,9 @@ export function resolveAiRoute(input: AiRouteResolutionInput): AiRouteResolution
   // ── filter 3: modality ───────────────────────────────────────────────────────────────────────────
   const modality = capability.requiredModality;
   const byModality =
-    modality === null ? registered : registered.filter((r) => r.supportedModalities.includes(modality));
+    modality === null
+      ? registered
+      : registered.filter((r) => r.supportedModalities.includes(modality));
   if (byModality.length === 0) {
     return refuse(
       "no_backend_supports_modality",

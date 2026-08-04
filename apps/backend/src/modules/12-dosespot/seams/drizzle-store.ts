@@ -223,7 +223,10 @@ function requestedQuantityOf(raw: string | null): number | null {
  * what `refillRequestsForPrescriber` filters by) — resolved by the caller from a batched source-order read
  * and passed in; a decided row falls back to its decider so a post-decision read still names an owner.
  */
-function toRefillRequestDto(r: RrRow, sourcePrescriberMembershipId: string | null): RefillRequestDto {
+function toRefillRequestDto(
+  r: RrRow,
+  sourcePrescriberMembershipId: string | null,
+): RefillRequestDto {
   return {
     id: r.id,
     organizationId: r.organizationId,
@@ -314,7 +317,9 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
         const lines = await tx
           .select({ acquisitionCostCents: MO.acquisitionCostCents })
           .from(MO)
-          .where(and(eq(MO.admissionId, admissionId), gte(MO.createdAt, start), lt(MO.createdAt, end)));
+          .where(
+            and(eq(MO.admissionId, admissionId), gte(MO.createdAt, start), lt(MO.createdAt, end)),
+          );
         return costBasisOfLines(lines, admissionId, key);
       });
     },

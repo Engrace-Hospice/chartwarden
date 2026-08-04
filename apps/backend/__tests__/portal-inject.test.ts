@@ -94,11 +94,11 @@ import {
 } from "../src/modules/31-portal/abac-predicates";
 import {
   M31_PERMISSION_KEY_LIST,
-  buildPortalAbacResolverFromStore,
-  mountM31Routes,
   type PortalRouteDeps,
   type PortalStore,
   type TelehealthAdapterPort,
+  buildPortalAbacResolverFromStore,
+  mountM31Routes,
 } from "../src/modules/31-portal/index";
 
 // ── the header-auth test shim (the M11 `orders-routes.test.ts` precedent), extended with the portal
@@ -155,9 +155,13 @@ function createFakePortalStore(): {
   const grants = new Map<string, PortalAccessGrantDigest>();
   const visits = new Map<string, TelehealthVisitDigest>();
 
-  const findActiveGrant = (portalAccountId: string, patientId: string): PortalAccessGrantDigest | null =>
+  const findActiveGrant = (
+    portalAccountId: string,
+    patientId: string,
+  ): PortalAccessGrantDigest | null =>
     [...grants.values()].find(
-      (g) => g.portalAccountId === portalAccountId && g.patientId === patientId && g.revokedAt === null,
+      (g) =>
+        g.portalAccountId === portalAccountId && g.patientId === patientId && g.revokedAt === null,
     ) ?? null;
 
   const store: PortalStore = {
@@ -196,7 +200,10 @@ function createFakePortalStore(): {
           if (g.revokedAt !== null) continue;
           byPatient.set(g.patientId, (byPatient.get(g.patientId) ?? 0) + 1);
         }
-        return [...byPatient.entries()].map(([patientId, grantCount]) => ({ patientId, grantCount }));
+        return [...byPatient.entries()].map(([patientId, grantCount]) => ({
+          patientId,
+          grantCount,
+        }));
       },
     },
     engagement: {
@@ -293,8 +300,12 @@ function createFakePortalStore(): {
         ...row,
         lifecycleState: (patch.lifecycleState ?? row.lifecycleState) as TelehealthLifecycleState,
         audioOnlyFallbackActive: patch.audioOnlyFallbackActive ?? row.audioOnlyFallbackActive,
-        visitStartedAt: patch.visitStartedAt ? (patch.visitStartedAt.toISOString() as IsoInstant) : row.visitStartedAt,
-        visitEndedAt: patch.visitEndedAt ? (patch.visitEndedAt.toISOString() as IsoInstant) : row.visitEndedAt,
+        visitStartedAt: patch.visitStartedAt
+          ? (patch.visitStartedAt.toISOString() as IsoInstant)
+          : row.visitStartedAt,
+        visitEndedAt: patch.visitEndedAt
+          ? (patch.visitEndedAt.toISOString() as IsoInstant)
+          : row.visitEndedAt,
         endReason: (patch.endReason ?? row.endReason) as TelehealthEndReason | null,
         totalDurationSec: patch.totalDurationSec ?? row.totalDurationSec,
       };
@@ -346,7 +357,10 @@ const FAKE_TELEHEALTH_ADAPTER: TelehealthAdapterPort = {
 
 // ── server assembly (the M11/M15 `makeServer()` precedent) ─────────────────────────────────────────────
 function makeServer(
-  opts: { readonly medicationOrderRedacted?: boolean; readonly telehealthWebhookSignatureValid?: boolean } = {},
+  opts: {
+    readonly medicationOrderRedacted?: boolean;
+    readonly telehealthWebhookSignatureValid?: boolean;
+  } = {},
 ) {
   const backend = createFakePortalStore();
 
@@ -416,7 +430,10 @@ function makeServer(
       };
     },
   };
-  registerSeam("MedicationOrderProvider", fakeMedicationOrderProvider as unknown as MedicationOrderProvider);
+  registerSeam(
+    "MedicationOrderProvider",
+    fakeMedicationOrderProvider as unknown as MedicationOrderProvider,
+  );
   const fakeMessagingProvider = {
     async syncCareTeamChannel() {
       return { channelId: "channel-1" };
@@ -437,9 +454,35 @@ function makeServer(
   registerSeam("ExternalGriefResourceReader", fakeExternalGriefResourceReader);
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "caregiver_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M31_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "staff_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M31_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "no_perms_user", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "caregiver_user",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M31_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "staff_user",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M31_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "no_perms_user",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -463,7 +506,9 @@ function makeServer(
     },
   };
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildPortalAbacPredicates({ resolver, ports, now: () => new Date(NOW) }))) {
+  for (const [name, predicate] of Object.entries(
+    buildPortalAbacPredicates({ resolver, ports, now: () => new Date(NOW) }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
@@ -528,7 +573,11 @@ describe("M31 route smoke — the M1 boundary", () => {
 
   it("403s a permission-gated route for a portal session holding NO M31 grants", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/portal/sessions/current", headers: NO_PERMS_CAREGIVER });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/portal/sessions/current",
+      headers: NO_PERMS_CAREGIVER,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -568,8 +617,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { patientId: PATIENT },
     expectStatus: 200,
   },
-  { label: "2 GET /portal/sessions/current", method: "GET", url: "/api/v1/portal/sessions/current", headers: CAREGIVER, expectStatus: 200 },
-  { label: "3 POST /portal/sessions/logout", method: "POST", url: "/api/v1/portal/sessions/logout", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "2 GET /portal/sessions/current",
+    method: "GET",
+    url: "/api/v1/portal/sessions/current",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "3 POST /portal/sessions/logout",
+    method: "POST",
+    url: "/api/v1/portal/sessions/logout",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
   {
     label: "4 POST /portal/sessions/step-up",
     method: "POST",
@@ -581,20 +642,104 @@ const ROUTE_CASES: readonly RouteCase[] = [
 
   // 5–23 — the lay-language read surfaces (every one fails CLOSED to an empty 200 view when its upstream
   // seam is a deny-stub, EXCEPT bereavement/resources which 501s on a missing seam — see makeServer()).
-  { label: "5 GET /portal/care-summary", method: "GET", url: "/api/v1/portal/care-summary", headers: CAREGIVER, expectStatus: 200 },
-  { label: "6 GET /portal/care-plan/summary", method: "GET", url: "/api/v1/portal/care-plan/summary", headers: CAREGIVER, expectStatus: 200 },
-  { label: "7 GET /portal/discipline-plans/summary", method: "GET", url: "/api/v1/portal/discipline-plans/summary", headers: CAREGIVER, expectStatus: 200 },
-  { label: "8 GET /portal/visits/upcoming", method: "GET", url: "/api/v1/portal/visits/upcoming", headers: CAREGIVER, expectStatus: 200 },
-  { label: "9 GET /portal/visits/history", method: "GET", url: "/api/v1/portal/visits/history", headers: CAREGIVER, expectStatus: 200 },
-  { label: "10 GET /portal/medications/active", method: "GET", url: "/api/v1/portal/medications/active", headers: CAREGIVER, expectStatus: 200 },
-  { label: "11 GET /portal/administrations/recent", method: "GET", url: "/api/v1/portal/administrations/recent", headers: CAREGIVER, expectStatus: 200 },
-  { label: "12 GET /portal/assessments/trend", method: "GET", url: "/api/v1/portal/assessments/trend", headers: CAREGIVER, expectStatus: 200 },
-  { label: "13 GET /portal/hope/timepoints", method: "GET", url: "/api/v1/portal/hope/timepoints", headers: CAREGIVER, expectStatus: 200 },
-  { label: "14 GET /portal/orders/non-medication", method: "GET", url: "/api/v1/portal/orders/non-medication", headers: CAREGIVER, expectStatus: 200 },
-  { label: "15 GET /portal/supplies/upcoming", method: "GET", url: "/api/v1/portal/supplies/upcoming", headers: CAREGIVER, expectStatus: 200 },
-  { label: "16 GET /portal/triage-entries", method: "GET", url: "/api/v1/portal/triage-entries", headers: CAREGIVER, expectStatus: 200 },
-  { label: "17 GET /portal/triage-entries/me", method: "GET", url: "/api/v1/portal/triage-entries/me", headers: CAREGIVER, expectStatus: 200 },
-  { label: "18 GET /portal/documents", method: "GET", url: "/api/v1/portal/documents", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "5 GET /portal/care-summary",
+    method: "GET",
+    url: "/api/v1/portal/care-summary",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "6 GET /portal/care-plan/summary",
+    method: "GET",
+    url: "/api/v1/portal/care-plan/summary",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "7 GET /portal/discipline-plans/summary",
+    method: "GET",
+    url: "/api/v1/portal/discipline-plans/summary",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "8 GET /portal/visits/upcoming",
+    method: "GET",
+    url: "/api/v1/portal/visits/upcoming",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "9 GET /portal/visits/history",
+    method: "GET",
+    url: "/api/v1/portal/visits/history",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "10 GET /portal/medications/active",
+    method: "GET",
+    url: "/api/v1/portal/medications/active",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "11 GET /portal/administrations/recent",
+    method: "GET",
+    url: "/api/v1/portal/administrations/recent",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "12 GET /portal/assessments/trend",
+    method: "GET",
+    url: "/api/v1/portal/assessments/trend",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "13 GET /portal/hope/timepoints",
+    method: "GET",
+    url: "/api/v1/portal/hope/timepoints",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "14 GET /portal/orders/non-medication",
+    method: "GET",
+    url: "/api/v1/portal/orders/non-medication",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "15 GET /portal/supplies/upcoming",
+    method: "GET",
+    url: "/api/v1/portal/supplies/upcoming",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "16 GET /portal/triage-entries",
+    method: "GET",
+    url: "/api/v1/portal/triage-entries",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "17 GET /portal/triage-entries/me",
+    method: "GET",
+    url: "/api/v1/portal/triage-entries/me",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "18 GET /portal/documents",
+    method: "GET",
+    url: "/api/v1/portal/documents",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
   {
     label: "19 GET /portal/documents/:documentId/download-url",
     method: "GET",
@@ -602,10 +747,34 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: CAREGIVER,
     expectStatus: 200,
   },
-  { label: "20 GET /portal/messages/channel", method: "GET", url: "/api/v1/portal/messages/channel", headers: CAREGIVER, expectStatus: 200 },
-  { label: "21 GET /portal/notification-preferences", method: "GET", url: "/api/v1/portal/notification-preferences", headers: CAREGIVER, expectStatus: 200 },
-  { label: "22 GET /portal/bereavement/program", method: "GET", url: "/api/v1/portal/bereavement/program", headers: CAREGIVER, expectStatus: 200 },
-  { label: "23 GET /portal/bereavement/resources", method: "GET", url: "/api/v1/portal/bereavement/resources", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "20 GET /portal/messages/channel",
+    method: "GET",
+    url: "/api/v1/portal/messages/channel",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "21 GET /portal/notification-preferences",
+    method: "GET",
+    url: "/api/v1/portal/notification-preferences",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "22 GET /portal/bereavement/program",
+    method: "GET",
+    url: "/api/v1/portal/bereavement/program",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
+  {
+    label: "23 GET /portal/bereavement/resources",
+    method: "GET",
+    url: "/api/v1/portal/bereavement/resources",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
 
   // 24–31 — the write surfaces.
   {
@@ -644,10 +813,19 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/portal/amendments/submit",
     headers: { ...CAREGIVER, ...IDEMP("k27") },
-    payload: { targetKind: "patient_demographic", requestedChange: "Correct the date of birth to 1950-01-01." },
+    payload: {
+      targetKind: "patient_demographic",
+      requestedChange: "Correct the date of birth to 1950-01-01.",
+    },
     expectStatus: 202,
   },
-  { label: "28 GET /portal/amendments", method: "GET", url: "/api/v1/portal/amendments", headers: CAREGIVER, expectStatus: 200 },
+  {
+    label: "28 GET /portal/amendments",
+    method: "GET",
+    url: "/api/v1/portal/amendments",
+    headers: CAREGIVER,
+    expectStatus: 200,
+  },
   {
     label: "29 POST /portal/messages/send",
     method: "POST",
@@ -762,7 +940,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     },
     expectStatus: 202,
   },
-  { label: "42 GET /admin/portal-invitations", method: "GET", url: "/api/v1/admin/portal-invitations", headers: STAFF, expectStatus: 200 },
+  {
+    label: "42 GET /admin/portal-invitations",
+    method: "GET",
+    url: "/api/v1/admin/portal-invitations",
+    headers: STAFF,
+    expectStatus: 200,
+  },
   {
     label: "43 POST /admin/portal-invitations/:id/revoke",
     method: "POST",
@@ -776,7 +960,11 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/admin/portal-accounts/${ACCOUNT}/invite-bereaved`,
     headers: { ...STAFF, ...IDEMP("k44") },
-    payload: { bereavedContactId: PATIENT, inviteeDisplayName: "John Doe", inviteeEmail: "john.doe@example.com" },
+    payload: {
+      bereavedContactId: PATIENT,
+      inviteeDisplayName: "John Doe",
+      inviteeEmail: "john.doe@example.com",
+    },
     expectStatus: 202,
   },
   {
@@ -795,7 +983,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: {},
     expectStatus: 200,
   },
-  { label: "47 GET /admin/portal-accounts", method: "GET", url: "/api/v1/admin/portal-accounts", headers: STAFF, expectStatus: 200 },
+  {
+    label: "47 GET /admin/portal-accounts",
+    method: "GET",
+    url: "/api/v1/admin/portal-accounts",
+    headers: STAFF,
+    expectStatus: 200,
+  },
   {
     label: "48 GET /admin/portal-accounts/:id/access-grants",
     method: "GET",
@@ -810,7 +1004,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: STAFF,
     expectStatus: 200,
   },
-  { label: "50 GET /admin/telehealth/visits", method: "GET", url: "/api/v1/admin/telehealth/visits", headers: STAFF, expectStatus: 200 },
+  {
+    label: "50 GET /admin/telehealth/visits",
+    method: "GET",
+    url: "/api/v1/admin/telehealth/visits",
+    headers: STAFF,
+    expectStatus: 200,
+  },
   {
     label: "51 GET /admin/telehealth/visits/:id",
     method: "GET",
@@ -838,7 +1038,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M31 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

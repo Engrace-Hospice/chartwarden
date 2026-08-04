@@ -7,9 +7,9 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { missedDoseKind } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const missedDoses = pgTable(
   "missed_dose",

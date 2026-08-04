@@ -1,13 +1,13 @@
 // @wardenx/idg — §2.6 / §2.7 decision recording, quorum, adjournment emission — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
-  evaluateQuorum,
   decisionMeetsQuorum,
+  evaluateQuorum,
   isActionableDecisionKind,
-  planDecisionRecord,
-  planDecisionEmit,
-  planDecisionSupersede,
   outboxEvents,
+  planDecisionEmit,
+  planDecisionRecord,
+  planDecisionSupersede,
 } from "../src/lifecycle";
 
 const FULL_QUORUM = ["rn_case_manager", "msw", "chaplain", "medical_director"];
@@ -21,7 +21,9 @@ describe("§1.1 / D3 quorum evaluation", () => {
   });
 
   it("resolves the hospice_physician|medical_director either-of slot via either option", () => {
-    expect(evaluateQuorum(["rn_case_manager", "msw", "chaplain", "hospice_physician"]).met).toBe(true);
+    expect(evaluateQuorum(["rn_case_manager", "msw", "chaplain", "hospice_physician"]).met).toBe(
+      true,
+    );
   });
 
   it("reports the missing slots when disciplines are absent", () => {
@@ -31,33 +33,51 @@ describe("§1.1 / D3 quorum evaluation", () => {
   });
 
   it("de-duplicates present disciplines", () => {
-    expect(evaluateQuorum(["rn_case_manager", "rn_case_manager"]).presentDisciplines).toEqual(["rn_case_manager"]);
+    expect(evaluateQuorum(["rn_case_manager", "rn_case_manager"]).presentDisciplines).toEqual([
+      "rn_case_manager",
+    ]);
   });
 });
 
 describe("§2.7 record (genesis)", () => {
   it("records an open quorate decision with no idg.decision_recorded yet", () => {
-    const r = planDecisionRecord({ meetingIsLive: true, patientIncluded: true, presentDisciplines: FULL_QUORUM });
+    const r = planDecisionRecord({
+      meetingIsLive: true,
+      patientIncluded: true,
+      presentDisciplines: FULL_QUORUM,
+    });
     expect(r.status).toBe("open");
     expect(r.wasQuorate).toBe(true);
     expect(outboxEvents(r.effects)).toEqual(["m14.decision.recorded_open"]);
   });
 
   it("records a non-quorate decision but flags the coordinator (low-severity alert)", () => {
-    const r = planDecisionRecord({ meetingIsLive: true, patientIncluded: true, presentDisciplines: ["rn_case_manager"] });
+    const r = planDecisionRecord({
+      meetingIsLive: true,
+      patientIncluded: true,
+      presentDisciplines: ["rn_case_manager"],
+    });
     expect(r.wasQuorate).toBe(false);
     expect(r.effects).toContainEqual({ kind: "alert", alert: "m14.decision.non_quorate" });
   });
 
   it("refuses a write when the meeting is not live (422 MEETING_NOT_LIVE)", () => {
     expect(() =>
-      planDecisionRecord({ meetingIsLive: false, patientIncluded: true, presentDisciplines: FULL_QUORUM }),
+      planDecisionRecord({
+        meetingIsLive: false,
+        patientIncluded: true,
+        presentDisciplines: FULL_QUORUM,
+      }),
     ).toThrowError(expect.objectContaining({ code: "MEETING_NOT_LIVE", statusCode: 422 }));
   });
 
   it("refuses a write against a patient off the caseload (422 INCLUSION_CRITERIA_FAILED)", () => {
     expect(() =>
-      planDecisionRecord({ meetingIsLive: true, patientIncluded: false, presentDisciplines: FULL_QUORUM }),
+      planDecisionRecord({
+        meetingIsLive: true,
+        patientIncluded: false,
+        presentDisciplines: FULL_QUORUM,
+      }),
     ).toThrowError(expect.objectContaining({ code: "INCLUSION_CRITERIA_FAILED", statusCode: 422 }));
   });
 });

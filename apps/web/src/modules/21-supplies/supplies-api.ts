@@ -99,7 +99,9 @@ export type ReturnedLineView = ReturnDetail["lines"][number];
  *  the pinned `state: "reconciled"`, the D8 discrepancy verdict, the per-medication accounting (as
  *  `perMedication`, not `lines`) and the stamp — no dispatch/patient/admission/disposal context. A screen
  *  that needs the rest of the row must follow up with {@link getReturn}. */
-export type ReconcileReturnResult = Ok<operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"]>;
+export type ReconcileReturnResult = Ok<
+  operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"]
+>;
 
 type VendorRoutingRulePage = Ok<operations["getApiV1SuppliesVendorroutingrules"]>;
 /** Row 28 — a D4 routing rule. Also the shape returned by create/update/retire. */
@@ -110,7 +112,9 @@ type ParStockPage = Ok<operations["getApiV1SuppliesParstock"]>;
 export type ParStockView = ParStockPage["data"][number];
 
 /** §8.1 — the whole kit's log, which is the unit an inspector actually asks for. */
-export type PerpetualLogView = Ok<operations["getApiV1SuppliesComfortkitdispatchesByDispatchIdPerpetuallog"]>;
+export type PerpetualLogView = Ok<
+  operations["getApiV1SuppliesComfortkitdispatchesByDispatchIdPerpetuallog"]
+>;
 export type PerpetualLogLineView = PerpetualLogView["lines"][number];
 /** §8.1 — one APPEND-ONLY entry of the DEA 21 CFR §1304 perpetual log. `balanceAfterQuantity` is the
  *  balance AS RECORDED, not one derived at read time: a recomputed balance silently absorbs a missing
@@ -120,39 +124,64 @@ export type PerpetualLogEntry = PerpetualLogLineView["entries"][number];
 // ── request-side shapes (schema-derived) ───────────────────────────────────────────────────────────────
 
 /** D7 / §4.2.1 — the delivery-address snapshot frozen onto the request. */
-export type DeliveryAddressInput = ReqBody<operations["postApiV1SuppliesSupplyrequests"]>["deliveryAddress"];
+export type DeliveryAddressInput = ReqBody<
+  operations["postApiV1SuppliesSupplyrequests"]
+>["deliveryAddress"];
 
 /** One dispatched line on the way IN (§4.2). `lotNumber` / `expirationDate` are optional HERE on purpose:
  *  §3.1.9's CHECK requires them on a controlled line, and the DOMAIN raises the typed refusal
  *  (`M21_LOT_NUMBER_REQUIRED`) rather than the boundary raising a generic 422. */
-export type DispatchLineInput = ReqBody<operations["postApiV1SuppliesComfortkitdispatches"]>["contents"][number];
+export type DispatchLineInput = ReqBody<
+  operations["postApiV1SuppliesComfortkitdispatches"]
+>["contents"][number];
 
 /** One reconciled line on the way IN. `consumedQuantity` is deliberately absent — there is no column to
  *  write it to, and accepting it would let a reconciler believe they had EXPLAINED a shortfall they had
  *  only described (§4.2.2). */
-export type ReconcileLineInput =
-  ReqBody<operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"]>["perMedicationReconciliation"][number];
+export type ReconcileLineInput = ReqBody<
+  operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"]
+>["perMedicationReconciliation"][number];
 
 /** One template medication on the way IN. */
-export type TemplateMedicationInput = ReqBody<operations["postApiV1SuppliesComfortkittemplates"]>["medications"][number];
+export type TemplateMedicationInput = ReqBody<
+  operations["postApiV1SuppliesComfortkittemplates"]
+>["medications"][number];
 
 // ── closed-vocabulary field types (for the shared picklists in supplies-status.ts and the screens) ───────
 
-export type SupplyRequestStatus = NonNullable<ReqQuery<operations["getApiV1SuppliesSupplyrequests"]>>["status"];
-export type SupplyRequestKind = NonNullable<ReqQuery<operations["getApiV1SuppliesSupplyrequests"]>>["kind"];
-export type SupplyItemSkuClass = NonNullable<ReqQuery<operations["getApiV1SuppliesSupplyitems"]>>["skuClass"];
-export type DispatchDeploymentSite = ReqBody<operations["postApiV1SuppliesComfortkitdispatches"]>["deploymentSite"];
-export type DispatchSource = ReqBody<operations["postApiV1SuppliesComfortkitdispatches"]>["dispatchSource"];
-export type PharmacyDispatchMode = ReqBody<operations["postApiV1SuppliesComfortkitdispatches"]>["pharmacyDispatchMode"];
-export type ReturnDisposalMethod =
-  ReqBody<operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"]>["disposalMethod"];
-export type VendorRoutingScopeKind = ReqBody<operations["postApiV1SuppliesVendorroutingrules"]>["scopeKind"];
-export type VendorRoutingFulfillmentMode =
-  ReqBody<operations["postApiV1SuppliesVendorroutingrules"]>["assignedFulfillmentMode"];
-export type DeliveryMethod =
-  ReqBody<operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered"]>["deliveryMethod"];
-export type ReceivedConfirmedActor =
-  ReqBody<operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdConfirmreceived"]>["actor"];
+export type SupplyRequestStatus = NonNullable<
+  ReqQuery<operations["getApiV1SuppliesSupplyrequests"]>
+>["status"];
+export type SupplyRequestKind = NonNullable<
+  ReqQuery<operations["getApiV1SuppliesSupplyrequests"]>
+>["kind"];
+export type SupplyItemSkuClass = NonNullable<
+  ReqQuery<operations["getApiV1SuppliesSupplyitems"]>
+>["skuClass"];
+export type DispatchDeploymentSite = ReqBody<
+  operations["postApiV1SuppliesComfortkitdispatches"]
+>["deploymentSite"];
+export type DispatchSource = ReqBody<
+  operations["postApiV1SuppliesComfortkitdispatches"]
+>["dispatchSource"];
+export type PharmacyDispatchMode = ReqBody<
+  operations["postApiV1SuppliesComfortkitdispatches"]
+>["pharmacyDispatchMode"];
+export type ReturnDisposalMethod = ReqBody<
+  operations["postApiV1SuppliesComfortkitreturnsByReturnIdReconcile"]
+>["disposalMethod"];
+export type VendorRoutingScopeKind = ReqBody<
+  operations["postApiV1SuppliesVendorroutingrules"]
+>["scopeKind"];
+export type VendorRoutingFulfillmentMode = ReqBody<
+  operations["postApiV1SuppliesVendorroutingrules"]
+>["assignedFulfillmentMode"];
+export type DeliveryMethod = ReqBody<
+  operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered"]
+>["deliveryMethod"];
+export type ReceivedConfirmedActor = ReqBody<
+  operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdConfirmreceived"]
+>["actor"];
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 
@@ -187,7 +216,8 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (body?.title) return body.title;
   if (body?.status === 412)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
-  if (body?.status === 428) return "This edit is missing its version stamp. Reload the record and try again.";
+  if (body?.status === 428)
+    return "This edit is missing its version stamp. Reload the record and try again.";
   if (body?.status === 403)
     return "You do not hold the authority this action requires for this record.";
   return fallback;
@@ -278,9 +308,12 @@ export async function getPerpetualLog(
   client: ApiClient,
   dispatchId: string,
 ): Promise<{ log: PerpetualLogView | null; error: unknown }> {
-  const res = await client.GET("/api/v1/supplies/comfort-kit-dispatches/{dispatchId}/perpetual-log", {
-    params: { path: { dispatchId } },
-  });
+  const res = await client.GET(
+    "/api/v1/supplies/comfort-kit-dispatches/{dispatchId}/perpetual-log",
+    {
+      params: { path: { dispatchId } },
+    },
+  );
   if (res.error) return { log: null, error: res.error };
   return { log: res.data, error: null };
 }
@@ -353,11 +386,14 @@ export async function assignVendor(
   updatedAt: string,
   body: ReqBody<operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdAssignvendor"]>,
 ): Promise<{ request: SupplyRequestDetail | null; error: unknown }> {
-  const res = await client.POST("/api/v1/supplies/supply-requests/{supplyRequestId}/assign-vendor", {
-    params: { path: { supplyRequestId } },
-    headers: writeHeaders(updatedAt),
-    body,
-  });
+  const res = await client.POST(
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/assign-vendor",
+    {
+      params: { path: { supplyRequestId } },
+      headers: writeHeaders(updatedAt),
+      body,
+    },
+  );
   if (res.error) return { request: null, error: res.error };
   return { request: res.data, error: null };
 }
@@ -385,11 +421,14 @@ export async function markInTransit(
   updatedAt: string,
   body: ReqBody<operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkintransit"]>,
 ): Promise<{ request: SupplyRequestDetail | null; error: unknown }> {
-  const res = await client.POST("/api/v1/supplies/supply-requests/{supplyRequestId}/mark-in-transit", {
-    params: { path: { supplyRequestId } },
-    headers: writeHeaders(updatedAt),
-    body,
-  });
+  const res = await client.POST(
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-in-transit",
+    {
+      params: { path: { supplyRequestId } },
+      headers: writeHeaders(updatedAt),
+      body,
+    },
+  );
   if (res.error) return { request: null, error: res.error };
   return { request: res.data, error: null };
 }
@@ -402,11 +441,14 @@ export async function markDelivered(
   updatedAt: string,
   body: ReqBody<operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdMarkdelivered"]>,
 ): Promise<{ request: SupplyRequestDetail | null; error: unknown }> {
-  const res = await client.POST("/api/v1/supplies/supply-requests/{supplyRequestId}/mark-delivered", {
-    params: { path: { supplyRequestId } },
-    headers: writeHeaders(updatedAt),
-    body,
-  });
+  const res = await client.POST(
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/mark-delivered",
+    {
+      params: { path: { supplyRequestId } },
+      headers: writeHeaders(updatedAt),
+      body,
+    },
+  );
   if (res.error) return { request: null, error: res.error };
   return { request: res.data, error: null };
 }
@@ -419,11 +461,14 @@ export async function confirmReceived(
   updatedAt: string,
   body: ReqBody<operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdConfirmreceived"]>,
 ): Promise<{ request: SupplyRequestDetail | null; error: unknown }> {
-  const res = await client.POST("/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received", {
-    params: { path: { supplyRequestId } },
-    headers: writeHeaders(updatedAt),
-    body,
-  });
+  const res = await client.POST(
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received",
+    {
+      params: { path: { supplyRequestId } },
+      headers: writeHeaders(updatedAt),
+      body,
+    },
+  );
   if (res.error) return { request: null, error: res.error };
   return { request: res.data, error: null };
 }
@@ -610,11 +655,14 @@ export async function assignRetriever(
   updatedAt: string,
   body: ReqBody<operations["postApiV1SuppliesComfortkitreturnsByReturnIdAssignretriever"]>,
 ): Promise<{ ret: ReturnDetail | null; error: unknown }> {
-  const res = await client.POST("/api/v1/supplies/comfort-kit-returns/{returnId}/assign-retriever", {
-    params: { path: { returnId } },
-    headers: writeHeaders(updatedAt),
-    body,
-  });
+  const res = await client.POST(
+    "/api/v1/supplies/comfort-kit-returns/{returnId}/assign-retriever",
+    {
+      params: { path: { returnId } },
+      headers: writeHeaders(updatedAt),
+      body,
+    },
+  );
   if (res.error) return { ret: null, error: res.error };
   return { ret: res.data, error: null };
 }

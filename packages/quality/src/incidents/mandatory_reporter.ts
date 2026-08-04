@@ -47,7 +47,8 @@ const EXPOSURE_SUBKIND_RULES: Readonly<
   needle_stick: {
     authority: "osha",
     timeliness: "immediate",
-    basis: "OSHA Bloodborne Pathogens Standard, 29 CFR §1910.1030 (post-exposure protocol + sharps-injury log)",
+    basis:
+      "OSHA Bloodborne Pathogens Standard, 29 CFR §1910.1030 (post-exposure protocol + sharps-injury log)",
   },
   phi_breach: {
     authority: "hhs_ocr",
@@ -67,8 +68,13 @@ const EXPOSURE_SUBKIND_RULES: Readonly<
 };
 
 /** Type guard: is `subkind` one of the V-15 mandatory exposure subkinds. */
-function isMandatoryExposureSubkind(subkind: string | undefined): subkind is MandatoryReportExposureSubkind {
-  return subkind !== undefined && (MANDATORY_REPORT_EXPOSURE_SUBKINDS as ReadonlyArray<string>).includes(subkind);
+function isMandatoryExposureSubkind(
+  subkind: string | undefined,
+): subkind is MandatoryReportExposureSubkind {
+  return (
+    subkind !== undefined &&
+    (MANDATORY_REPORT_EXPOSURE_SUBKINDS as ReadonlyArray<string>).includes(subkind)
+  );
 }
 
 /**

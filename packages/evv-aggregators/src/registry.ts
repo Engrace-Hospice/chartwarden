@@ -1,3 +1,4 @@
+import { SandataAdapter } from "./adapters/sandata-adapter";
 // @wardenx/evv-aggregators — the per-state adapter selector (M18-T06, §4.5 D1).
 //
 // The registry resolves the `EvvAggregatorAdapter` per `stateCode` from M40 master-data state configs (the
@@ -10,7 +11,6 @@
 // mandate): it never names a vendor SDK or hits a vendor URL directly.
 import type { EvvAggregatorAdapter } from "./interface";
 import { OpenModelAdapter } from "./open-model";
-import { SandataAdapter } from "./adapters/sandata-adapter";
 
 /** A per-state aggregator config sourced from M40 master data (the §4.5 registry input). `operatingModel`
  * distinguishes a single-vendor mandate state from an open-model state (alt-EVV allowed) and the
@@ -35,7 +35,10 @@ export class StateAggregatorRegistry {
   private readonly byState = new Map<string, EvvAggregatorAdapter>();
   private readonly openNoAggregatorStates = new Set<string>();
 
-  constructor(stateConfigs: readonly StateAggregatorConfig[], opts: StateAggregatorRegistryOptions = {}) {
+  constructor(
+    stateConfigs: readonly StateAggregatorConfig[],
+    opts: StateAggregatorRegistryOptions = {},
+  ) {
     const defaults = opts.defaultAdapters ?? [new SandataAdapter(), new OpenModelAdapter()];
     for (const adapter of [...defaults, ...(opts.extraAdapters ?? [])]) this.register(adapter);
 

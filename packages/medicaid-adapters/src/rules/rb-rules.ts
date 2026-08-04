@@ -64,7 +64,9 @@ export const medicaidRbDayLocCoherence: MedicaidRule = {
       return skip(KEY, "error", "seam_not_bound", "R&B seam unbound; rule deferred.");
     }
     const offending = ctx.rbDays.filter(
-      (d) => (d.status === "billable" || d.status === "billed") && (d.locOfDay === "GIP" || d.locOfDay === "IRC"),
+      (d) =>
+        (d.status === "billable" || d.status === "billed") &&
+        (d.locOfDay === "GIP" || d.locOfDay === "IRC"),
     );
     if (offending.length === 0) {
       return pass(KEY, "error", "All R&B days fall on routine/CHC hospice days.");
@@ -88,7 +90,8 @@ export const medicaidRbContractEffectiveForServiceDate: MedicaidRule = {
   version: 1,
   category: "rb",
   title: "R&B contract effective for service date",
-  description: "Every R&B day in the claim falls within the rb_arrangement's ACTIVE effective window.",
+  description:
+    "Every R&B day in the claim falls within the rb_arrangement's ACTIVE effective window.",
   severity: "error",
   regulatoryRequired: true,
   overrideRoleRequired: "billing_manager",
@@ -107,7 +110,10 @@ export const medicaidRbContractEffectiveForServiceDate: MedicaidRule = {
       KEY,
       "error",
       `${uncovered.length} R&B day(s) fall outside the arrangement's effective window.`,
-      { summary: "Adjust the arrangement effective dates or exclude the uncovered R&B day(s).", fixAction: "edit_rb_arrangement" },
+      {
+        summary: "Adjust the arrangement effective dates or exclude the uncovered R&B day(s).",
+        fixAction: "edit_rb_arrangement",
+      },
       { uncoveredDays: uncovered.length },
     );
   },
