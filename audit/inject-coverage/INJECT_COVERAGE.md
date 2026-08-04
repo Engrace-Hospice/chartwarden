@@ -8,13 +8,13 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 
 | Module | Routes | Covered | Suite file(s) |
 |---|--:|:--:|---|
-| 02-identity | 17 | ✅ | apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/session-step-up.test.ts, apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/identity-routes.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/authz-routes.test.ts |
-| 03-authorization | 17 | ✅ | apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-routes.test.ts |
+| 02-identity | 17 | ✅ | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts, apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts, apps/backend/__tests__/identity-routes.test.ts, apps/backend/__tests__/session-step-up.test.ts |
+| 03-authorization | 17 | ✅ | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/authz-idor.test.ts, apps/backend/__tests__/authz-routes.test.ts, apps/backend/__tests__/authz-validation.test.ts |
 | 04-audit | 4 | ✅ | apps/backend/__tests__/audit-accounting.test.ts, apps/backend/__tests__/audit-routes.test.ts |
 | 05-patient | 14 | ✅ | apps/backend/__tests__/auth.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
-| 06-admission | 47 | ✅ | apps/backend/__tests__/admission-routes.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts |
+| 06-admission | 47 | ✅ | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 19 | ✅ | apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts |
-| 08-encounters | 31 | ✅ | apps/backend/__tests__/encounter-routes.test.ts, apps/backend/__tests__/encounter-authoring.test.ts |
+| 08-encounters | 31 | ✅ | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
 | 09-assessments | 18 | ✅ | apps/backend/__tests__/assessment-routes.test.ts |
 | 10-hope | 20 | ✅ | apps/backend/__tests__/hope-routes.test.ts |
 | 11-orders | 28 | ✅ | apps/backend/__tests__/orders-routes.test.ts |
@@ -28,7 +28,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 19-oncall | 38 | ✅ | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | apps/backend/__tests__/field-safety-inject.test.ts |
 | 21-supplies | 37 | ✅ | apps/backend/__tests__/supplies-inject.test.ts |
-| 22-documents | 35 | ✅ | apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
+| 22-documents | 35 | ✅ | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
 | 23-billing-medicare | 43 | ✅ | apps/backend/__tests__/billing-medicare-inject.test.ts |
 | 24-billing-medicaid | 39 | ✅ | apps/backend/__tests__/billing-medicaid-inject.test.ts |
 | 25-remittance | 31 | ✅ | apps/backend/__tests__/remittance-inject.test.ts |
@@ -42,8 +42,8 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 33-reporting | 42 | ✅ | apps/backend/__tests__/reporting-inject.test.ts |
 | 34-saas-tenant-platform | 48 | ✅ | apps/backend/__tests__/saas-tenant-platform-inject.test.ts |
 | 35-subscription | 54 | ✅ | apps/backend/__tests__/subscription-inject.test.ts |
-| 36-messaging | 22 | ✅ | apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
+| 36-messaging | 22 | ✅ | apps/backend/__tests__/messaging-routes-mount.test.ts, apps/backend/__tests__/messaging-routes.test.ts, apps/backend/__tests__/messaging-webhooks.test.ts |
 | 37-ipu | 45 | ✅ | apps/backend/__tests__/ipu-inject.test.ts |
-| 38-terminology | 8 | ✅ | apps/backend/__tests__/terminology-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts |
+| 38-terminology | 8 | ✅ | apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
 | 39-consent | 27 | ✅ | apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts |
 | 40-mdm | 14 | ✅ | apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |

@@ -181,10 +181,13 @@ describe.skipIf(!DB_URL)("M13 eMAR — RLS cross-tenant denial — LIVE Postgres
 
     const administrationWitness = (
       await db.query(
+        // attestation_token_digest carries a GLOBAL (not org-scoped) unique constraint (migration 0160,
+        // the witness-token-burn anti-replay guard — a real token digest must be unique across every
+        // tenant, not just within one) — so the two seedOrg() calls need distinct literals, like ccn/npi.
         `INSERT INTO administration_witness (organization_id, administration_record_id, witness_membership_id,
            witnesses_scope, attestation_text, attestation_token_digest)
-         VALUES ($1,$2,$3,'administration_only','I witnessed the administration','digest') RETURNING id`,
-        [org, administrationRecord, MEMBERSHIP],
+         VALUES ($1,$2,$3,'administration_only','I witnessed the administration',$4) RETURNING id`,
+        [org, administrationRecord, MEMBERSHIP, `digest-m13-${n}`],
       )
     ).rows[0].id as string;
 

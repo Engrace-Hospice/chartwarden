@@ -62,9 +62,15 @@ function modulesWithRoutesDir(): string[] {
 
 function testFiles(): string[] {
   const dir = join(ROOT, TEST_DIR);
+  // `.sort()` is load-bearing, not cosmetic: readdirSync's order is filesystem-dependent (ext4 on
+  // Linux CI vs APFS locally), and a module covered by multiple suite files renders that list
+  // verbatim into INJECT_COVERAGE.md/.json (renderMarkdown, `suiteFiles.join(", ")`) — an unsorted
+  // list is byte-identical in CONTENT but not in ORDER across environments, so --check's exact
+  // string comparison spuriously fails on whichever environment didn't generate the committed report.
   return readdirSync(dir)
     .filter((f) => f.endsWith(".test.ts"))
-    .map((f) => join(TEST_DIR, f));
+    .map((f) => join(TEST_DIR, f))
+    .sort();
 }
 
 const INJECT_RE = /\.inject\(/;

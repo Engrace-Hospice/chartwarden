@@ -11,14 +11,14 @@
       "routes": 17,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/authz-idor.test.ts",
-        "apps/backend/__tests__/authz-validation.test.ts",
-        "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/audit-accounting.test.ts",
-        "apps/backend/__tests__/identity-routes.test.ts",
-        "apps/backend/__tests__/auth.live.test.ts",
         "apps/backend/__tests__/audit-routes.test.ts",
-        "apps/backend/__tests__/authz-routes.test.ts"
+        "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/authz-idor.test.ts",
+        "apps/backend/__tests__/authz-routes.test.ts",
+        "apps/backend/__tests__/authz-validation.test.ts",
+        "apps/backend/__tests__/identity-routes.test.ts",
+        "apps/backend/__tests__/session-step-up.test.ts"
       ]
     },
     {
@@ -26,10 +26,10 @@
       "routes": 17,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/authz-idor.test.ts",
-        "apps/backend/__tests__/authz-validation.test.ts",
         "apps/backend/__tests__/auth.live.test.ts",
-        "apps/backend/__tests__/authz-routes.test.ts"
+        "apps/backend/__tests__/authz-idor.test.ts",
+        "apps/backend/__tests__/authz-routes.test.ts",
+        "apps/backend/__tests__/authz-validation.test.ts"
       ]
     },
     {
@@ -55,10 +55,10 @@
       "routes": 47,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/admission-routes.test.ts",
-        "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-certification.test.ts",
-        "apps/backend/__tests__/admission-discharge.test.ts"
+        "apps/backend/__tests__/admission-discharge.test.ts",
+        "apps/backend/__tests__/admission-intake.test.ts",
+        "apps/backend/__tests__/admission-routes.test.ts"
       ]
     },
     {
@@ -75,8 +75,8 @@
       "routes": 31,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/encounter-routes.test.ts",
-        "apps/backend/__tests__/encounter-authoring.test.ts"
+        "apps/backend/__tests__/encounter-authoring.test.ts",
+        "apps/backend/__tests__/encounter-routes.test.ts"
       ]
     },
     {
@@ -189,8 +189,8 @@
       "routes": 35,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-doclens.test.ts",
+        "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-workflow-acceptance.test.ts"
       ]
     },
@@ -303,8 +303,8 @@
       "routes": 22,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
+        "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ]
     },
@@ -321,8 +321,8 @@
       "routes": 8,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/terminology-routes.test.ts",
-        "apps/backend/__tests__/terminology-routes-mount.test.ts"
+        "apps/backend/__tests__/terminology-routes-mount.test.ts",
+        "apps/backend/__tests__/terminology-routes.test.ts"
       ]
     },
     {
