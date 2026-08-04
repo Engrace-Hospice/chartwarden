@@ -315,13 +315,17 @@ Migrations follow the **two-phase pattern** for breaking changes (Architecture v
 ssh wardenx-db-01 "sudo -u postgres pgbackrest --stanza=wardenx --type=incr --tag=pre-migration-<sha> backup"
 
 # 3. Run migration against primary
-# Drizzle migrations apply via init container before backend rollout
-# In manual control mode:
-DATABASE_URL=postgres://wardenx_admin:<pass>@wardenx-db-01/wardenx \
-  bun --filter @wardenx/db drizzle:migrate
+# scripts/db/migrate.ts is the real production migration path (TASK-040E, OPS-016) — a
+# checksum-tracked, idempotent runner over packages/db/migrations/*.sql. The per-deploy step
+# uses --strict --schema-only (db:migrate:deploy): apply pending migrations and hard-fail on any
+# checksum drift, without touching the wardenx_app LOGIN/password/BYPASSRLS state (that's a
+# one-time/rotation-only step — see the file header). Requires a superuser/owner connection: the
+# migration files themselves CREATE EXTENSION / CREATE ROLE / own tables.
+DATABASE_ADMIN_URL=postgres://wardenx_admin:<pass>@wardenx-db-01/wardenx \
+  bun run db:migrate:deploy
 
 # 4. Verify migration applied
-psql -h wardenx-db-01 -U postgres -d wardenx -c "SELECT * FROM drizzle.__drizzle_migrations ORDER BY created_at DESC LIMIT 5;"
+psql -h wardenx-db-01 -U postgres -d wardenx -c "SELECT * FROM _wardenx_migration ORDER BY applied_at DESC LIMIT 5;"
 
 # 5. Deploy new backend (with code that dual-writes old + new columns if applicable)
 

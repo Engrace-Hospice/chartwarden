@@ -388,6 +388,36 @@
 - Acceptance: the runbook's migration reference resolves to a real script; CI has a migration-gate
   job.
 - Complexity: M.
+- **Status (2026-08-04): DONE, not yet committed.** `scripts/db/migrate.ts` split into a testable
+  core + thin CLI: `applyMigrations(db, opts)` (schema application, no role/credential logic, no
+  `process.exit` — throws) and `bootstrapAppRole(db, opts)` (the `wardenx_app` LOGIN/password/
+  BYPASSRLS bootstrap), both exported. Kept the honest framing that DDL still needs a superuser/
+  owner connection (migration files themselves `CREATE EXTENSION`/`CREATE ROLE`/own tables — not
+  something a script can downgrade without rewriting 162 historical files); what's genuinely split
+  out is the one thing that touched live credentials on EVERY invocation — `bootstrapAppRole` is
+  now a `--schema-only`-skippable, deliberately one-time/rotation-only step, not implicit on every
+  deploy. New flags: `--strict` (checksum drift on an already-applied file throws instead of only
+  warning — unchanged default for local dev) and `--schema-only` (apply pending migrations only,
+  skip the role/credential bootstrap — the actual per-deploy step). New script alias
+  `db:migrate:deploy` = `migrate.ts --strict --schema-only`. New live test
+  `scripts/__tests__/db-migrate.live.test.ts` (`test:db:migrate:live`) exercises `applyMigrations`
+  directly against a throwaway Postgres — full 162-migration chain applies cleanly, a second run is
+  a true no-op, `--strict` throws on a deliberately corrupted checksum while default mode only
+  warns (all 3 live-verified against a local pg18+pgvector throwaway cluster). New CI job
+  `migration-gate` in `.github/workflows/ci.yml` (own disposable Postgres, same
+  `max_locks_per_transaction=4096` pattern as `rls-live`): runs the live test, then the real CLI
+  end-to-end (`bun run db:migrate`), then corrupts a tracking-table checksum via `psql` and asserts
+  `bun run db:migrate:deploy` exits non-zero (inverted-exit-code shell check, since a GH Actions
+  step succeeding when failure was expected must itself fail the job) — live-verified locally with
+  the same CLI invocations before wiring into the workflow. Fixed the stale
+  `WARDENX_OPS_RUNBOOK_v0.1.md` §4.6 reference (`bun --filter @wardenx/db drizzle:migrate` /
+  `drizzle.__drizzle_migrations` — neither ever existed) to `bun run db:migrate:deploy` /
+  `_wardenx_migration`. Left `WARDENX_SYSTEM_DESIGN_v0.3.md`'s similar `drizzle:migrate` mention
+  alone — it sits inside a larger block of pre-existing aspirational/stale doc content (fake dev
+  ports, `test:e2e`, `drizzle:studio`) outside this task's named evidence and scope. Gate-verified:
+  typecheck, build, `arch:fitness` (all 17 sub-checks), full 6891-test suite (unchanged count — new
+  live test skips cleanly without `WARDENX_TEST_DATABASE_URL`), plus the full live proof above
+  against a local throwaway pg18 cluster.
 
 ### TASK-040F — Dockerfile(s), docker-compose, deploy pipeline skeleton *(infra scaffold, not exercised)*
 
@@ -410,6 +440,72 @@
 - **Do not start without the user's explicit go-ahead on target infra** (which registry/host/cloud) —
   this task produces unexercised scaffolding otherwise, per [[git-workflow-local-only]] discipline
   around anything that reaches outside this repo.
+- **Status (2026-08-04): DONE, not yet committed.** User picked "full scope, push to GHCR" when
+  asked (GHCR needs zero new accounts/secrets — the built-in `GITHUB_TOKEN` is sufficient — so it's
+  a real answer to the infra-target question, not a placeholder).
+  - **`Dockerfile`** (repo root): ONE image serves BOTH the API and worker roles —
+    `bootWardenX(role)` (TASK-040A) is the single composition root, so `index.ts` vs `worker.ts` +
+    `PROCESS_ROLE`/`PORT` vs `WORKER_PORT` env is the only difference; `docker-compose.yml`'s
+    `api`/`worker` services both build this one image and override `command`. `oven/bun:1.3.5-slim`
+    base (verified the tag exists via the Docker Hub API before pinning it — did not guess). Bun
+    runs the backend's TypeScript directly (no compile/bundle step), so it's a two-step build:
+    `COPY --chown=bun:bun . .` (whole monorepo — Bun workspace `@wardenx/*` deps resolve as
+    node_modules SYMLINKS, so the full source tree must be present at `bun install` time, not just
+    `apps/backend`) then `bun install --frozen-lockfile`. Deliberately did NOT do manifest-first
+    layer caching (COPY every workspace `package.json` before the rest) — with 48 packages + 4 apps
+    that COPY list would silently drift as modules are scaffolded; traded cache granularity for a
+    COPY that can't go stale. Runs as the image's non-root `bun` user.
+  - **`.dockerignore`**: mirrors `.gitignore`'s secret-file glob (`.env`/`.env.*` except
+    `.env.example` — same load-bearing pattern that once nearly let a real `.env.bak.<epoch>` into
+    a commit) plus `node_modules/`/`dist/` (regenerable) and the editor/AI-tool dirs sitting
+    untracked in this working tree (`.claude/`, `.agents/`, `.codex/`, `.cursor/`) so they can never
+    reach a build context/image layer.
+  - **`docker-compose.yml`**: `postgres` (`pgvector/pgvector:pg18`, matching `db:up`'s image),
+    `redis` (`valkey/valkey:8-alpine`), `minio` (`minio/minio:latest`, deliberately NO healthcheck —
+    couldn't confirm curl/wget/mc exist in the official minimal image, and a wrong healthcheck
+    command would false-negative-block the whole stack, which is worse than no healthcheck; not a
+    boot-time dependency for api/worker either way since the S3 adapter binds unconditionally on
+    `MINIO_*` and only touches the network per-request), a one-shot `migrate` service (plain
+    `bun run scripts/db/migrate.ts`, not the TASK-040E `--strict --schema-only` deploy variant —
+    this is a fresh environment, not a per-deploy re-run) that `api`/`worker` depend on via
+    `condition: service_completed_successfully` so the stack genuinely waits for real schema before
+    serving traffic. All app env vars are committed local-dev placeholders (not secrets) —
+    `NODE_ENV=development` throughout, so `bootstrap/env.ts`'s production requirement set doesn't
+    apply; only wired the handful of vars this repo's actual local `.env` sets (confirmed by
+    grepping ITS VARIABLE NAMES ONLY, never its values) plus the `MINIO_*` contract so M22's real S3
+    adapter binds instead of the refusing deny-stub.
+  - **Found and fixed a real, independent bug while wiring MinIO**: `.env.example` had documented
+    `S3_ENDPOINT`/`S3_ACCESS_KEY`/`S3_SECRET_KEY`/`S3_REGION`, but
+    `s3ObjectStoreConfigFromEnv` (`apps/backend/src/modules/22-documents/seams/s3-object-store.ts`)
+    actually reads `MINIO_ENDPOINT`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`/`MINIO_REGION` — the
+    documented var names were NEVER READ, so a fresh dev following `.env.example` literally would
+    silently get the refusing object-store deny-stub instead of a live MinIO adapter. Fixed
+    `.env.example` to the real names.
+  - **`.github/workflows/deploy.yml`**: `build` job runs on every push/PR (build-only, never
+    pushes — proves the image builds). `push` job runs ONLY on a manual `workflow_dispatch` with its
+    `push` boolean input explicitly true, tags+pushes to `ghcr.io/<owner>/wardenx` (one image, one
+    tag scheme — same one-image-two-roles reasoning as the Dockerfile). References a `production`
+    GitHub Environment with an explicit comment that NO reviewer/branch-protection rules are
+    configured on it yet — today this is an unprotected manual trigger, not a reviewed release gate;
+    said so rather than implying otherwise.
+  - **Left `WARDENX_SYSTEM_DESIGN_v0.3.md`'s aspirational dev-command block alone** (fake ports,
+    `drizzle:studio`, `test:e2e`) — same scope call as TASK-040E, a wider pre-existing doc-drift
+    problem outside this task's named evidence.
+  - **Live-verified a genuine clean-clone `docker compose up`** under an isolated project name
+    (`-p wardenx-f-test`, torn down after with `down -v --rmi local`, never touched the pre-existing
+    manual `wardenx-postgres`/`wardenx-valkey` dev containers or their ports): `docker compose build`
+    succeeded for all 3 images; `up -d` showed `migrate` apply all 162 migrations and exit 0, then
+    `api`/`worker` both reached Docker's own `(healthy)` status; `curl` against both processes'
+    `/health` and `/ready` returned 200 with **`minio: "ok"`** in the readiness checks (the M22 S3
+    adapter genuinely round-tripped against the compose MinIO, not just "didn't crash") and
+    `/metrics` served real Prometheus output; worker logs showed all 10 modules' BullMQ workers
+    constructed (matching TASK-040C/D's queue counts) plus a real DLQ-promotion alert firing for the
+    same known M33 unbound-port stub TASK-040D already surfaces (expected, not a new finding);
+    `docker stop` on both drained cleanly via SIGTERM (TASK-040A) and exited 0.
+  - Gate-verified: typecheck, build, `arch:fitness` (17/17 — no new routes, so no
+    openapi/coverage/client regen needed this time), full 6891-test suite (unchanged — infra config
+    files, not application code). YAML syntax of both workflow files + the compose file verified
+    parseable.
 
 ### TASK-040G — pgBackRest backup config + restore drill *(infra scaffold, not exercised)*
 

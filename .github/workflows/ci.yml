@@ -130,6 +130,53 @@ jobs:
       - name: ${{ matrix.suite.name }} — cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run ${{ matrix.suite.script }}
 
+  migration-gate:
+    # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
+    # proves it against a disposable database — both the happy path (full chain applies cleanly)
+    # and the failure path (a deliberately corrupted checksum on an already-applied file fails the
+    # pipeline under --strict, not just a warning).
+    name: Production migration path (scripts/db/migrate.ts)
+    runs-on: ubuntu-latest
+    env:
+      WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      # Same pgvector image + raised lock limit as rls-live, and for the same reason: the full
+      # migration chain includes ~47 partitioned parents and blows past the default
+      # max_locks_per_transaction=64.
+      - name: Start Postgres (pgvector image; raised lock limit)
+        run: |
+          docker run -d --name wardenx-ci-pg-migrate \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_migration_gate \
+            -p 5432:5432 pgvector/pgvector:pg16 \
+            -c max_locks_per_transaction=4096
+          for i in $(seq 1 60); do
+            docker exec wardenx-ci-pg-migrate pg_isready -U postgres -d wardenx_migration_gate && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-migrate; exit 1
+      - name: scripts/db/migrate.ts — live proof (full apply, idempotent re-run, --strict drift gate)
+        run: bun run test:db:migrate:live
+
+      - name: Apply against a fresh disposable DB via the real CLI (pre-deploy simulation)
+        run: bun run db:migrate
+      - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
+        run: |
+          docker exec wardenx-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
+            "UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = (SELECT filename FROM _wardenx_migration ORDER BY filename LIMIT 1);"
+          if bun run db:migrate:deploy; then
+            echo "expected --strict to fail on checksum drift, but it exited 0" >&2
+            exit 1
+          fi
+          echo "✓ --strict correctly failed the pipeline on checksum drift"
+
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
     runs-on: ubuntu-latest

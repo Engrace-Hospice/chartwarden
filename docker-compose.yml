@@ -1,0 +1,150 @@
+# docker-compose.yml — local dev/CI stack (TASK-040F, production-readiness audit 2026-08-03,
+# OPS-002/OPS-003).
+#
+# SCAFFOLD, NOT A VALIDATED PRODUCTION TOPOLOGY — see Dockerfile's header for the same caveat. This
+# proves a clean-clone `docker compose up` boots the real API + worker processes against real deps
+# and that /health + /ready respond; it does not claim HA, backups, or a real deploy target (those
+# are TASK-040G and TASK-040F's own deploy-pipeline half, `.github/workflows/deploy.yml`).
+#
+# All app-facing env vars here are LOCAL-ONLY DEV PLACEHOLDERS, not secrets — this file is
+# committed. `NODE_ENV=development` throughout, so `bootstrap/env.ts`'s production requirement set
+# (BETTER_AUTH_SECRET length, the base64 KEKs, INTERNAL_SERVICE_TOKEN, …) does not apply; only the
+# handful of vars this repo's real local `.env` actually sets are wired here (DATABASE_URL,
+# REDIS_URL, BETTER_AUTH_SECRET/URL, TRUSTED_ORIGINS, NODE_ENV, PORT/WORKER_PORT), plus the MINIO_*
+# contract (`s3ObjectStoreConfigFromEnv`, apps/backend/src/modules/22-documents/seams/
+# s3-object-store.ts) so M22's real S3 adapter binds instead of its refusing deny-stub.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: wardenx
+    ports:
+      - "5432:5432"
+    volumes:
+      - wardenx-compose-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wardenx"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  redis:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # No healthcheck: the official image's minimal base has no confirmed curl/wget/mc available to
+  # probe it with, and a wrong healthcheck command would block the whole stack on a false negative
+  # (worse than no healthcheck at all). Not a boot-time dependency for api/worker either way — the
+  # S3 adapter binds unconditionally when MINIO_* is set (s3ObjectStoreConfigFromEnv) and only
+  # touches the network on an actual document read/write, not at process boot.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: wardenx
+      MINIO_ROOT_PASSWORD: wardenx-minio-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - wardenx-compose-minio:/data
+
+  # One-shot: applies the full migration chain + bootstraps the wardenx_app LOGIN role (plain
+  # `db:migrate`, not `db:migrate:deploy` — this is a fresh local/CI environment, not a per-deploy
+  # re-run against an already-migrated prod DB; see TASK-040E). `restart: "no"` + api/worker
+  # depending on `service_completed_successfully` means the stack genuinely waits for schema to
+  # exist before serving traffic, rather than hoping nothing queries the DB before it's migrated.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["bun", "run", "scripts/db/migrate.ts"]
+    environment:
+      DATABASE_ADMIN_URL: postgres://postgres:postgres@postgres:5432/wardenx
+      WARDENX_APP_PASSWORD: wardenx-app-dev-password
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["bun", "run", "apps/backend/src/index.ts"]
+    environment:
+      PROCESS_ROLE: api
+      NODE_ENV: development
+      PORT: "3000"
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: wardenx
+      MINIO_SECRET_KEY: wardenx-minio-secret
+      MINIO_REGION: us-east-1
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
+      TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/health')).ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["bun", "run", "apps/backend/src/worker.ts"]
+    environment:
+      NODE_ENV: development
+      WORKER_PORT: "3001"
+      LOG_LEVEL: info
+      DATABASE_URL: postgres://wardenx_app:wardenx-app-dev-password@postgres:5432/wardenx
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: wardenx
+      MINIO_SECRET_KEY: wardenx-minio-secret
+      MINIO_REGION: us-east-1
+      BETTER_AUTH_URL: http://localhost:3000
+      BETTER_AUTH_SECRET: wardenx-local-compose-dev-secret-not-for-production-use
+      TRUSTED_ORIGINS: http://localhost:3000,http://localhost:5173
+    ports:
+      - "3001:3001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3001/health')).ok ? 0 : 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  wardenx-compose-pgdata:
+  wardenx-compose-minio:

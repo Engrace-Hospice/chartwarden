@@ -1,0 +1,37 @@
+# WardenX — Docker build-context excludes (TASK-040F). Mirrors .gitignore's secret-file glob
+# (never let a real .env/.env.bak.* reach a build context or layer) plus build artifacts (regenerable
+# via `bun install`/`tsc -b`) and content that adds nothing to a running API/worker image.
+
+.git/
+node_modules/
+**/node_modules/
+
+# TypeScript project-reference build output — regenerable, and the image runs Bun over source
+# directly (no compile step for the backend).
+dist/
+**/dist/
+*.tsbuildinfo
+
+# Secrets — anything starting with .env except the committed template. Same load-bearing glob as
+# .gitignore: a bare `.env`/`.env.local` exclusion once missed a real `.env.bak.<epoch>` file that
+# had live secrets sitting in the working tree.
+.env
+.env.*
+!.env.example
+
+# Editor/AI-tool local state — never needed at runtime, and not something a build context should
+# ever bundle into an image layer.
+.vscode/
+.claude/
+.agents/
+.codex/
+.cursor/
+.DS_Store
+
+# Docs/spec corpus and point-in-time audit reports — large, and irrelevant to a running process.
+docs/
+audit/
+
+# Coverage/test output.
+coverage/
+*.log
