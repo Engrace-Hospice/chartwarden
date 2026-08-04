@@ -33,8 +33,13 @@ export const sequestrationPolicy = pgTable(
       .on(t.providerEntityId, t.effectiveFrom)
       .where(sql`effective_to IS NULL`),
     byPe: index("sequestration_policy_by_pe_idx").on(t.providerEntityId, t.effectiveFrom),
-    // app-level guard handles the initial seed (a non-forward-dated baseline row):
-    forwardOnly: sql`CHECK (effective_from > CURRENT_DATE OR effective_to IS NOT NULL)`,
+    // NO `forwardOnly` CHECK (DB-005, dropped in migration 0162): an `effective_from > CURRENT_DATE`
+    // CHECK re-validates on every future write using the CURRENT date, not the date the row was
+    // created — so the CURRENTLY-ACTIVE policy (the normal, expected steady state once a
+    // formerly-future effective_from naturally arrives) becomes unupdatable, and `pg_restore`'s
+    // COPY-time re-validation rejects any such row restored after its start date. Enforced at write
+    // time instead — see `forwardDateSequestrationPolicy` in
+    // apps/backend/src/modules/23-billing-medicare/routes/write-service-drizzle.ts.
   }),
 );
 

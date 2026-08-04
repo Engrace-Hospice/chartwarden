@@ -1,4 +1,5 @@
 import {
+  ageYears,
   cardSurface,
   EmptyState,
   ghostBorder,
@@ -253,15 +254,6 @@ export function PatientEncounters(): JSX.Element {
   );
 }
 
-function ageYears(dob: string): number | null {
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-  return a >= 0 && a < 150 ? a : null;
-}
 function MonoChip({ children }: { children: ReactNode }): JSX.Element {
   return (
     <span

@@ -1110,3 +1110,102 @@
     cleanly — no code impact, flagging only because it's a real environment risk worth remembering for
     future heavy test-suite runs on this machine.
 - TASK-066 (P3): drop time-relative CHECKs, enforce at write time (DB-005); local date-only helper (PARAM-004); react-router bump (PERF-004); confirm/remove behaviorally-suspicious dead tables (ARCH-023).
+  - **Status (2026-08-04): DONE (scoped — see below), merged to main locally.** A P3 grab-bag of four
+    independent findings; each got its own investigation and fix/decision.
+  - **PERF-004 (dependency bump) — DONE.** `react-router-dom` bumped `^6.28.0` → `^7.18.2` across all
+    4 consumers (web/admin/portal + `@wardenx/ui`); `bullmq` version drift fixed (`apps/backend`
+    `^5.34.0` → `^5.81.3`, matching root). Confirmed the 3 originally-flagged moderate vulns
+    (react-router open-redirect/SSR-deserialize, react-router-dom open-redirect XSS) are gone. Verified
+    zero API breakage: our usage (`createBrowserRouter`/`RouterProvider`/`Link`/`Outlet`/`useNavigate`/
+    `useLocation`/`useParams`/`useSearchParams`) is unchanged in v7's `react-router-dom` compat package;
+    `bun run build` clean, all 282 router-dependent smoke tests pass, and the "React Router will begin
+    wrapping... in v7" warnings that appeared in every test run this whole session are now GONE (we're
+    on v7). **Residual, deliberately not chased further**: `bun audit` now flags ONE new HIGH advisory
+    (GHSA-qwww-vcr4-c8h2, "RSC Mode CSRF Bypass") affecting react-router 7.12.0–8.2.x — no fixed
+    version exists below 8.x, and 8.x dropped the separate `react-router-dom` package entirely (folded
+    into `react-router` — `bun info react-router-dom@8.3.0` returns no such version), so clearing this
+    would mean renaming the import across ~170 call sites in 4 packages, a real second migration, not a
+    version bump. Confirmed zero RSC/framework-mode usage anywhere in the repo (no `react-router.config`,
+    no `@react-router/dev`, no server actions) — this app runs pure client-side "library mode", so the
+    advisory's actual attack surface (RSC server actions) doesn't exist in this deployment. Left as a
+    known, low-real-risk residual; the 8.x package migration is its own follow-up task.
+  - **DB-005 (time-relative CHECKs) — DONE, and this one had a real second-order finding.** Both CHECKs
+    (`user_notif_pref_vacation_shape`: `vacation_until > NOW()`; `sequestration_policy_forward_only`:
+    `effective_from > CURRENT_DATE`) re-validate on EVERY future write to the row using the CURRENT
+    time/date, not the value at the time the column was set — so a legitimately-future value at INSERT
+    time fails every later write (even to an unrelated column) once it naturally elapses, and fails
+    `pg_restore`'s COPY-time re-validation on any row restored after that point. New migration
+    `0162_drop_time_relative_checks.sql` drops both (`DROP CONSTRAINT IF EXISTS`, never editing the
+    original migrations). **Investigated whether dropping the DB CHECK would remove the ONLY
+    enforcement of the underlying invariant before touching anything — it would have, for
+    `sequestration_policy`**: traced `forwardDateSequestrationPolicy` (write-service-drizzle.ts) and
+    found NO app-level "must be forward-dated" check anywhere — the route comment claimed "the write
+    service refuses a non-forward-dated effectiveFrom" but the code only ever relied on the DB CHECK.
+    Added the real check (a plain date-string comparison against an injected clock, throwing
+    `SEQUESTRATION_POLICY_NOT_FORWARD_DATED` 422 before any DB access) so dropping the CHECK is not a
+    silent regression. Did the same for messaging's `putPreferences` (`VACATION_UNTIL_NOT_FUTURE` 422)
+    — and, since that route's HTTP-layer test uses an in-memory reference store
+    (`createInMemoryMessagingService`, not the real Drizzle-backed one), mirrored the same validation
+    into the in-memory store too so it stays a behaviorally-accurate reference, not just a structurally
+    similar one. **Testing note worth remembering**: this repo's `*-inject.test.ts` HTTP-wiring smoke
+    suites deliberately use hand-rolled FAKE backends (documented in their own file banners as "not a
+    re-test of write-path business rules") — a naive negative-path test added to those files silently
+    tests the fake, not the real code, and passes/fails for the wrong reason. Caught this only because
+    my first attempt at both negative tests failed with 200/201 instead of 422; traced why, then wrote
+    the billing test as a real focused unit test of `buildDrizzleM23WriteService` directly (a `db` stub
+    that throws on ANY property access proves the reject path never touches the database) instead.
+    4 new tests (write-service-drizzle.test.ts) + 2 new messaging-routes.test.ts cases prove the fix.
+  - **PARAM-004 (date-only helper) — DONE for the frontend half; backend half found to need new
+    infrastructure, not fixed.** The audit named 4 files with a buggy `ageYears(dob)` (`new Date(dob)`
+    parses a bare `YYYY-MM-DD` as a UTC instant; local getters then read it back ONE DAY EARLY in any
+    negative-UTC-offset timezone — every US timezone). Grepping found **11**, not 4 — all byte-for-byte
+    identical copy-pastes. Extracted one shared, fixed implementation
+    (`packages/ui/src/core/dates.ts`: `parseLocalDateOnly`/`ageYears`, parsing date components directly
+    via the LOCAL `Date` constructor, never `new Date(dateString)`) and replaced all 11 duplicates with
+    an import. New test (`dates.test.ts`) pins `process.env.TZ = "America/Los_Angeles"` to reproduce
+    the exact failure mode rather than depending on whatever timezone the test runner happens to run
+    in. **The backend "UTC-today" half (09-assessments, 37-ipu, 16-bereavement, 17-scheduling's
+    ABAC-serviceDate slicing) was investigated and NOT fixed**: every one of these ultimately needs to
+    know the ORG's local timezone to compute a correct "today"/service-date, and `organizations` has NO
+    timezone column at all — the audit's own suggested fix ("org-timezone today server-side") requires
+    new schema (a column + migration + a backfill/default story for every existing org) before any of
+    these 4 call sites could be correctly fixed. Building that is a real, separate feature, not a P3
+    grab-bag item; flagged here rather than either skipped silently or rushed with a wrong hardcoded
+    timezone.
+  - **ARCH-023 (dead-table census) — scoped to the 3 items ARCH-020's own text specifically named**,
+    not the full ~40-table / ~140-export sweep (that census itself is a much larger, separate audit
+    task). Investigated each named item on its own merits rather than assuming the audit's
+    characterization was still accurate:
+    - **`encounter_signature` (M8) — RE-CLASSIFIED, escalated, NOT fixed.** Confirmed zero read/write
+      path (only the destruction/eraser references it, to delete rows that can never exist) — but the
+      M8 module spec ties this table directly to **CoP 418.104(c)** (Condition of Participation:
+      Authentication of clinical record entries), citing 21 CFR Part 11 principles, requiring signature
+      METHOD + session id + fresh-step-up provenance PER signature event. What actually shipped
+      instead — plain `encounters.signedAt`/`cosignedAt` timestamp columns — does not carry that
+      provenance. This is not dead code to clean up; it's a genuine, silent (no `lifecycleNotWired`-style
+      marker anywhere acknowledging it, unlike M39 below) regulatory-compliance GAP that deserves
+      higher priority than P3 hygiene and a real compliance/product decision on whether the timestamp
+      approach is sufficient or the detailed table needs a real write path built. Neither deleting the
+      table nor hastily building that write path under this task was the right call.
+    - **`consent_revocation` (M39) — confirmed intentional, no action needed.** Same zero-read/write
+      pattern, but `consent-store-db.ts`'s `revokeConsent()` (and 5 sibling lifecycle methods) is an
+      explicit, already-documented `lifecycleNotWired("consent revocation")` deny-stub — the "confirm
+      this is intentional" step ARCH-023 asks for is already satisfied by the code itself; this is the
+      SAME honest-deny-stub pattern the architecture doc already credits M39/M28/M36 for elsewhere.
+    - **The org-settings-registry boot gap — DONE, fixed.** `bootOrganizationSettingsRegistry`
+      (packages/db) existed since M1 landed with a comment saying the real write "lands with backend
+      bootstrap... wired then" — nothing ever called it. Traced the actual runtime consequence:
+      migration 0003's collision-guard trigger treats an absent registry row as "unknown key, no
+      opinion" (fails OPEN, never blocked a write) — so the real effect was narrower than it first
+      looked: the `uniqueAcrossTenants` collision guard (W-M1-08) was permanently inert for every
+      module that declared one, not a general settings-write blocker. Added
+      `apps/backend/src/bootstrap/organization-settings-persister.ts`
+      (`buildDbOrganizationSettingsUpserter` + `wireOrganizationSettingsRegistry`), mirroring the
+      existing M1-T10 `outbox_event_catalog` boot-population shape exactly (same idempotent
+      UPSERT-on-primary-key pattern, same fail-soft fire-and-forget boot-hook call site in
+      `apps/backend/src/index.ts`, right below the outbox-catalog wiring it was always meant to sit
+      beside). 3 new tests confirm `breakglass_cosign_required` — the specific key M3's break-glass
+      cosign-policy comment names — is really in the registry now.
+  - Full regression across all four sub-items: build clean, `arch:fitness` green, full suite 7829
+    passing (+14 new tests across dates.test.ts, write-service-drizzle.test.ts, messaging-routes.test.ts,
+    organization-settings-persister.test.ts).

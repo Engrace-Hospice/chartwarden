@@ -620,14 +620,25 @@ export function createDbMessagingRouteService(
             );
           }
         }
-        // The `user_notif_pref_vacation_shape` CHECK pairs the forward target with a future expiry;
-        // with no forward target the expiry must be null.
+        // A forward target pairs with a future expiry; with no forward target the expiry is null.
+        // Enforced HERE, at write time (DB-005) — a `vacationUntil > NOW()` CHECK constraint would
+        // re-validate on every future write to the row using the CURRENT time, not the time the
+        // value was set, so a legitimately-future date at INSERT time fails every subsequent
+        // (even unrelated-column) UPDATE once it naturally elapses, and breaks `pg_restore`'s
+        // COPY-time re-validation on any row restored after its vacation window has passed.
         const vacationForwardToUserId = input.vacationForwardToUserId ?? null;
         const vacationUntil = vacationForwardToUserId
           ? input.vacationUntil
             ? new Date(input.vacationUntil)
             : null
           : null;
+        if (vacationForwardToUserId && (!vacationUntil || vacationUntil.getTime() <= Date.now())) {
+          throw new WardenXError(
+            "VACATION_UNTIL_NOT_FUTURE",
+            "vacationUntil must be set and in the future when vacationForwardToUserId is set",
+            422,
+          );
+        }
         const updatedAt = new Date();
         const rows = (await tx
           .insert(UNP)

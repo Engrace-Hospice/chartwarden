@@ -1,4 +1,5 @@
 import {
+  ageYears,
   cardSurface,
   CountdownChip,
   EmptyState,
@@ -194,15 +195,6 @@ export function PatientOrders(): JSX.Element {
   );
 }
 
-function ageYears(dob: string): number | null {
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-  return a >= 0 && a < 150 ? a : null;
-}
 function MonoChip({ children }: { children: ReactNode }): JSX.Element {
   return <span style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, background: t.surfaceContainer, borderRadius: "9999px", padding: "0.15rem 0.55rem" }}>{children}</span>;
 }

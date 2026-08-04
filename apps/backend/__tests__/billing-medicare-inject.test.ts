@@ -1095,3 +1095,8 @@ describe("M23 route smoke — the /internal seam's system-principal lock", () =>
     await app.close();
   });
 });
+
+// DB-005's forward-only write-time validation lives in buildDrizzleM23WriteService
+// (write-service-drizzle.ts), NOT in this file's hand-rolled fake writeService — this file is a
+// WIRING smoke test over the fake (see the file banner), so it cannot exercise real business-rule
+// enforcement. See write-service-drizzle.test.ts for the actual proof.

@@ -3,6 +3,7 @@ import {
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
+  ageYears,
   cardSurface,
   t,
   useApiClient,
@@ -231,15 +232,6 @@ export function PatientDocuments(): JSX.Element {
   );
 }
 
-function ageYears(dob: string): number | null {
-  const d = new Date(dob);
-  if (Number.isNaN(d.getTime())) return null;
-  const now = new Date();
-  let a = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) a--;
-  return a >= 0 && a < 150 ? a : null;
-}
 const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 function MonoChip({ children }: { children: ReactNode }): JSX.Element {
