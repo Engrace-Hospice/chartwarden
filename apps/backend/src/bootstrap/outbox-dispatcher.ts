@@ -87,6 +87,13 @@ export interface OutboxDispatcherOptions {
     readonly attemptCount: number;
     readonly error: string;
   }) => void;
+  /**
+   * TASK-040C (OPS-005/006) — fired once per completed `tick()` call (both from `start()`'s internal
+   * loop and a direct `.tick()` call), with the full org-summed {@link OutboxTickSummary} plus the
+   * tick's own wall-clock duration — the metrics layer's only hook point, so `bootstrap/metrics.ts`
+   * never needs to poll or re-derive dispatcher state.
+   */
+  readonly onTick?: (summary: OutboxTickSummary, elapsedMs: number) => void;
 }
 
 export interface OutboxDispatcherDeps {
@@ -143,6 +150,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   const clock = opt.clock ?? Date.now;
   const log = opt.log ?? ((m: string) => console.log(m));
   const onDeadLetter = opt.onDeadLetter ?? (() => {});
+  const onTick = opt.onTick ?? (() => {});
 
   // event type → the live bindings for it (a type may fan out to several consumers).
   const routes = new Map<string, OutboxConsumerBinding[]>();
@@ -360,6 +368,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   let inFlight: Promise<unknown> = Promise.resolve();
 
   async function tick(): Promise<OutboxTickSummary> {
+    const startedAt = clock();
     const orgs = await activeOrgs();
     const total: OutboxTickSummary = {
       orgsPolled: orgs.length,
@@ -381,6 +390,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       (total as { reclaimed: number }).reclaimed += s.reclaimed;
       (total as { purged: number }).purged += s.purged;
     }
+    onTick(total, clock() - startedAt);
     return total;
   }
 

@@ -22,7 +22,7 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
-import type { ConnectionOptions, Worker } from "bullmq";
+import { Queue, type ConnectionOptions, type Worker } from "bullmq";
 import Redis, { type RedisOptions } from "ioredis";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
 import {
@@ -53,6 +53,13 @@ import {
   createOutboxDispatcher,
 } from "./bootstrap/outbox-dispatcher";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
+import {
+  buildMetricsRegistry,
+  mountMetricsRoute,
+  registerBullMQQueueMetrics,
+  registerHttpMetrics,
+  registerOutboxMetrics,
+} from "./bootstrap/metrics";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
@@ -1666,6 +1673,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // close over the eventual dispatcher instance rather than needing it to exist yet; undefined
   // (no DATABASE_PLATFORM_URL / dispatcher disabled) reports "ok" — nothing to be unready about.
   let outboxDispatcherRef: OutboxDispatcher | undefined;
+  // TASK-040C (OPS-005/006) — shared by BOTH the readiness probe (below) and the metrics registry's
+  // `wardenx_outbox_pending_depth` gauge, so the "no dispatcher running yet/at all → 0" fallback is
+  // defined exactly once instead of duplicated at each call site.
+  const outboxPendingDepth = () => outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0);
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
   // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
   // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
@@ -1868,7 +1879,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             await redisHealthClient.ping();
           }
         : undefined,
-      outboxPendingDepth: () => outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0),
+      outboxPendingDepth,
       outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
     }),
     // Postgres-backed idempotency. The bootstrap default is an in-memory Map, and nothing ever
@@ -2401,6 +2412,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040B — close the readiness-probe's dedicated Redis connection on shutdown (the per-queue
   // BullMQ connections below close via their own onClose hooks; this one is health-check-only).
   if (redisHealthClient) app.addHook("onClose", () => redisHealthClient.quit());
+  // TASK-040C (OPS-005/006) — Prometheus metrics. HTTP + outbox counters/gauges register for EVERY
+  // role (they're cheap and role-agnostic — an API-only replica's `wardenx_outbox_pending_depth`
+  // correctly reads 0 since no dispatcher runs there); the BullMQ per-queue gauge only registers where
+  // queues are actually constructed, further below, inside the worker-runner block.
+  const metricsRegistry = buildMetricsRegistry();
+  registerHttpMetrics(app, metricsRegistry);
+  const outboxMetrics = registerOutboxMetrics(metricsRegistry, { pendingDepth: outboxPendingDepth });
+  mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
   // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
   // in scope for both rather than duplicated). Log-based always-on (the task's own explicit "log-based
@@ -2809,6 +2828,29 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M10 cron-schedule registration failed");
     }
     app.log.info({ queues: m10Workers.length }, "M10 §4.8 BullMQ HOPE watchdog crons constructed");
+
+    // TASK-040C (OPS-005/006) — the `wardenx_bullmq_queue_jobs` gauge, over one dedicated read-only
+    // `Queue` handle per UNIQUE queue name actually constructed above (derived from the Workers'
+    // `.name`, not a separately-maintained module-by-module catalog list — self-maintaining as new
+    // modules add queues). Read-only: never `.add()`s a job, only `getJobCounts()` on scrape.
+    const allWorkers = [
+      ...m34Workers,
+      ...m33Workers,
+      ...m30Workers,
+      ...m27Workers,
+      ...m23Workers,
+      ...m25Workers,
+      ...m26Workers,
+      ...m7Workers,
+      ...m9Workers,
+      ...m10Workers,
+    ];
+    const metricsQueueNames = [...new Set(allWorkers.map((w) => w.name))];
+    const metricsQueues = metricsQueueNames.map((name) => new Queue(name, { connection: queueConnection }));
+    registerBullMQQueueMetrics(metricsRegistry, metricsQueues);
+    app.addHook("onClose", async () => {
+      await Promise.all(metricsQueues.map((q) => q.close()));
+    });
   }
 
   // ── TASK-006 (OPS-001) — the transactional-outbox DISPATCHER ────────────────────────────────────
@@ -2865,6 +2907,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               error: `${e.eventType}: ${e.error}`,
               occurredAt: new Date().toISOString(),
             }),
+          // TASK-040C — the shared outbox counters/histogram, registered unconditionally above.
+          onTick: outboxMetrics.onTick,
         },
       });
       outboxDispatcher.start();

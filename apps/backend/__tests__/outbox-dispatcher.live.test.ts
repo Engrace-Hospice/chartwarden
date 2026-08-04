@@ -129,20 +129,29 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
 
   it("delivery: a pending event with a registered consumer is delivered and finalized 'dispatched'", async () => {
     const received: DispatchableOutboxEvent[] = [];
+    // TASK-040C (OPS-005/006) — onTick fires once per tick with the org-summed summary + elapsed ms.
+    const ticks: Array<{ summary: unknown; elapsedMs: number }> = [];
     await seed({ id: EV_DELIVER, eventType: "outbox.test.deliver" });
-    const dispatcher = makeDispatcher([
-      {
-        consumerName: "test-deliver-consumer",
-        eventTypes: ["outbox.test.deliver"],
-        handle: async (event) => {
-          received.push(event);
+    const dispatcher = makeDispatcher(
+      [
+        {
+          consumerName: "test-deliver-consumer",
+          eventTypes: ["outbox.test.deliver"],
+          handle: async (event) => {
+            received.push(event);
+          },
         },
-      },
-    ]);
+      ],
+      undefined,
+      { onTick: (summary, elapsedMs) => ticks.push({ summary, elapsedMs }) },
+    );
 
     const summary = await dispatcher.tick();
     expect(summary.orgsPolled).toBe(1);
     expect(summary.delivered).toBe(1);
+    expect(ticks).toHaveLength(1);
+    expect(ticks[0]!.summary).toEqual(summary);
+    expect(ticks[0]!.elapsedMs).toBeGreaterThanOrEqual(0);
 
     // The consumer actually got the row's content (the acceptance's "reaches a registered consumer").
     expect(received).toHaveLength(1);

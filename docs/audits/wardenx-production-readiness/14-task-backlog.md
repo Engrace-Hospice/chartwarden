@@ -272,6 +272,32 @@
 - Acceptance: `/metrics` scrapeable, gauges/counters present for every registered queue + the outbox
   dispatcher.
 - Complexity: M.
+- **Status (2026-08-04): DONE, not yet committed.** `bootstrap/metrics.ts` (new) —
+  `buildMetricsRegistry()` (default Node process metrics), `registerHttpMetrics()` (Fastify
+  `onResponse` hook; `wardenx_http_requests_total` / `wardenx_http_request_duration_seconds`, labeled
+  by the ROUTE PATTERN via `request.routeOptions.url`, never the raw URL — a 404 labels `"unmatched"`,
+  both deliberate cardinality guards), `registerBullMQQueueMetrics()` (`wardenx_bullmq_queue_jobs{queue,
+  state}` via prom-client's lazy `collect()` — read from Redis only when `/metrics` is actually
+  scraped, no background polling interval to manage/leak), `registerOutboxMetrics()`
+  (`wardenx_outbox_events_total{status}` + `wardenx_outbox_tick_duration_seconds` — the latter is the
+  documented "claim latency" proxy, since a truer per-row age metric would need touching every
+  `outbox-dispatcher.ts` finalize call — + `wardenx_outbox_pending_depth`, reusing the exact
+  `outboxDispatcherRef`/`outboxPendingDepth` forward-ref closure TASK-040B already built for the
+  readiness probe), `mountMetricsRoute()`. Added a matching `onTick(summary, elapsedMs)` hook to
+  `OutboxDispatcherOptions` (the same shape as TASK-040D's `onDeadLetter`). Every registration function
+  takes a minimal structural dependency (`QueueLike`, a `pendingDepth` thunk) instead of live
+  BullMQ/Redis — same DI convention as `readiness-probe.ts`/`dlq-alerts.ts` — so the whole module unit-
+  tests without infra (9 new tests, `bootstrap/__tests__/metrics.test.ts`). The BullMQ queue list is
+  DERIVED from every already-constructed `Worker.name` across all 10 live modules (not a separately-
+  maintained catalog import list) — self-maintaining as new modules add queues.
+  Live-verified against real Redis/Postgres: `/metrics` returned 51 real queues × 5 states = 255
+  `wardenx_bullmq_queue_jobs` series (including `care-plan.gates`/`hope.windows`/`hope.sfv`/
+  `assessment.*` — TASK-040D's modules), several pre-existing modules' queues showing REAL accumulated
+  `failed` counts from their known unbound-port gaps (the exact same failures TASK-040D's DLQ alerts
+  already surface, now also graphable), and `wardenx_http_requests_total` correctly reflecting the
+  prior scrape on the next one. Adding `/metrics` bumped `bootstrap`'s openapi-coverage baseline
+  deficit from 6→7 (re-tightened via `openapi:coverage --update` — a Prometheus text-exposition route
+  has no JSON request/response contract to enrich, same posture as `/health`/`/ready`/`/version`).
 
 ### TASK-040D — M7/M9/M10 cron catalog wiring + DLQ alerting
 

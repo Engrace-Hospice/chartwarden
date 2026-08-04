@@ -190128,6 +190128,26 @@
         }
       }
     },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "tags": [
+          "bootstrap"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/ready": {
       "get": {
         "operationId": "getReady",
