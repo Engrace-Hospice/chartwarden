@@ -668,6 +668,180 @@ describe.skipIf(!DB_URL)(
       await handle9.close();
     });
 
+    it("TEST-003: a real HTTP sign-in cookie flows through the REAL authenticate hook (not the x-test-user shim) into a mounted route", async () => {
+      // Every inject-suite in this repo (orders-routes.test.ts and the whole TASK-050A corpus) proves
+      // routing/RBAC/ABAC wiring against a `headerAuth` shim that populates request.context directly
+      // from x-test-user/x-test-org headers — a deliberate, explicit stand-in for the real
+      // session→context binding (createSessionAuthenticate → getIdentitySession → SessionContextResolver),
+      // which until now was NEVER exercised end-to-end over HTTP anywhere in the suite (only via direct,
+      // non-HTTP calls to the resolver's dependencies elsewhere in this file). This test wires the exact
+      // production composition (mountIdentityRoutes, registerIdentityAuth, createSessionAuthenticate,
+      // createSessionContextResolver over createDbSessionContextStore) and drives it with a REAL
+      // Better-Auth session cookie obtained via a real HTTP sign-in — no shim, no stub session.
+      const { createDbClient: mkDb11 } = await import("@wardenx/db");
+      const {
+        getIdentitySession,
+        registerIdentityAuth,
+        createDbSessionContextStore,
+        createDbActorEnrichmentReader,
+        createSessionContextResolver,
+        createDbAdminMembershipReader,
+        registerDbEffectivePermissionResolver,
+        resetAuthorizationContract,
+        resetRbacEngine,
+      } = await import("@wardenx/auth");
+      const { createSessionAuthenticate, buildServer } = await import("../src/bootstrap/index");
+      const { mountIdentityRoutes } = await import("../src/modules/02-identity/index");
+      const { createDbPatientRouteService, registerPatientRoutes } = await import(
+        "../src/modules/05-patient/index"
+      );
+
+      resetAuthorizationContract();
+      resetRbacEngine();
+
+      const handle11 = mkDb11({ connectionString: DB_URL as string });
+      registerDbEffectivePermissionResolver(handle11.db as never);
+
+      // Seed a real user, org, membership, role, and the patient.read grant (superuser — RLS bypassed
+      // for seeding only, mirrors every other seeding block in this file).
+      const email = `sess${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`;
+      const password = `Wx9$${Math.random().toString(36).slice(2)}${Date.now()}Qz!`;
+      await auth.api.signUpEmail({ body: { email, password, name: "Real Session User" } });
+      const userId = (await admin.query('SELECT id FROM "user" WHERE email = $1', [email])).rows[0]
+        .id as string;
+      const org = (
+        await admin.query(
+          "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'SS','SS') RETURNING id",
+          [`ss-${Date.now()}`],
+        )
+      ).rows[0].id as string;
+      const membership = (
+        await admin.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active') RETURNING id",
+          [userId, org],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO permission (key,resource,action,category) VALUES ('patient.read','patient','read','clinical') ON CONFLICT (key) DO NOTHING",
+      );
+      const role = (
+        await admin.query(
+          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,'ss-nurse','Nurse','clinical_staff',true) RETURNING id",
+          [org],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'patient.read')",
+        [org, role],
+      );
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [org, membership, role],
+      );
+      // One patient so the census route has something to prove org-scoping over.
+      await admin.query(
+        "INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status) VALUES ($1,'MRN-SS','Sess','Ion','1990-01-01','M','active')",
+        [org],
+      );
+
+      // The exact production wiring (apps/backend/src/index.ts): a live SessionContextResolver over the
+      // live SessionContextStore/ActorEnrichmentReader, and the real authenticate hook reading the
+      // session snapshot via getIdentitySession (Better Auth), not a header shim.
+      const resolver = createSessionContextResolver(
+        createDbSessionContextStore(
+          handle11.db as never,
+          createDbActorEnrichmentReader(handle11.db as never),
+        ),
+      );
+      const authenticate = createSessionAuthenticate({
+        getSnapshot: (request) => getIdentitySession(auth, request.raw.headers),
+        getResolver: () => resolver,
+      });
+      const app = buildServer({ db: handle11.db as never, authenticate });
+      registerIdentityAuth(app, auth); // mounts /api/auth/* (Better Auth's real HTTP handler)
+      mountIdentityRoutes(app, handle11.db as never, createDbAdminMembershipReader(handle11.db as never));
+      registerPatientRoutes(app, {
+        service: createDbPatientRouteService(asTenantRole(handle11.db) as never),
+      });
+
+      // 1. Real HTTP sign-in (not auth.api.signInEmail — the actual /api/auth/sign-in/email endpoint,
+      //    via registerIdentityAuth's real Better-Auth-handler bridge) → a real Set-Cookie session token.
+      const signIn = await app.inject({
+        method: "POST",
+        url: "/api/auth/sign-in/email",
+        payload: { email, password },
+      });
+      expect(signIn.statusCode).toBe(200);
+      expect(signIn.cookies.length).toBeGreaterThan(0);
+      const cookieHeader = signIn.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+
+      // 2. Before org selection: a pre-org session reaches the authenticate hook (userId populated) but
+      //    has no organizationId yet — /auth/context reports it, and the org-scoped patient route 401s:
+      //    `requirePermission` throws UnauthorizedError (not Forbidden) when `context.organizationId` is
+      //    absent (require-role.ts) — a pre-org session is treated as not-yet-authenticated for
+      //    permission purposes, distinct from "authenticated, org-bound, lacks the grant" (403, proven
+      //    below). The x-test-user shim used everywhere else in this repo cannot express the pre-org
+      //    state at all (it sets userId/organizationId atomically from the same headers).
+      const preOrg = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/context",
+        headers: { cookie: cookieHeader },
+      });
+      expect(preOrg.statusCode).toBe(200);
+      expect(preOrg.json().userId).toBe(userId);
+      expect(preOrg.json().organizationId).toBeNull();
+      const preOrgCensus = await app.inject({
+        method: "GET",
+        url: "/api/v1/patients",
+        headers: { cookie: cookieHeader },
+      });
+      expect(preOrgCensus.statusCode).toBe(401); // no org bound yet → requirePermission's UnauthorizedError
+
+      // 3. select-organization (the real M2 route, real SessionWriter) binds the Better Auth session row
+      //    — the exact write the authenticate hook's getIdentitySession reads back on every subsequent
+      //    request via the SAME cookie (no new session, no re-login).
+      const select = await app.inject({
+        method: "POST",
+        url: "/api/v1/auth/select-organization",
+        headers: { cookie: cookieHeader },
+        payload: { organizationId: org },
+      });
+      expect(select.statusCode).toBe(200);
+      expect(select.json().activeOrganizationId).toBe(org);
+
+      // 4. The SAME cookie now resolves the real, DB-backed org+role+permission chain end-to-end over
+      //    HTTP: /auth/context reports the real membershipId/roles, and the patient census route — real
+      //    RBAC (`requirePermission("patient.read")`) resolved via the LIVE effective-permission store,
+      //    real RLS-scoped Drizzle read — returns exactly this org's one seeded patient.
+      const postOrg = await app.inject({
+        method: "GET",
+        url: "/api/v1/auth/context",
+        headers: { cookie: cookieHeader },
+      });
+      expect(postOrg.statusCode).toBe(200);
+      expect(postOrg.json().organizationId).toBe(org);
+      expect(postOrg.json().membershipId).toBe(membership);
+      expect(postOrg.json().roles).toEqual(["ss-nurse"]);
+
+      const census = await app.inject({
+        method: "GET",
+        url: "/api/v1/patients",
+        headers: { cookie: cookieHeader },
+      });
+      expect(census.statusCode).toBe(200);
+      expect(census.json().items).toHaveLength(1);
+      expect(census.json().items[0].mrn).toBe("MRN-SS");
+
+      // 5. A request with NO cookie at all stays anonymous — org-scoped routes still 403/401, proving
+      //    the real hook does not leak the previous request's resolved context across requests.
+      const anon = await app.inject({ method: "GET", url: "/api/v1/patients" });
+      expect(anon.statusCode).toBe(401);
+
+      resetAuthorizationContract();
+      resetRbacEngine();
+      await handle11.close();
+    });
+
     it("M5 admission: admit inserts a patient (appears in census) and §7.1 MBI dedup hard-blocks (wardenx_app)", async () => {
       const { createDbClient: mkDb10 } = await import("@wardenx/db");
       const { createDbPatientRouteService } = await import("../src/modules/05-patient/index");

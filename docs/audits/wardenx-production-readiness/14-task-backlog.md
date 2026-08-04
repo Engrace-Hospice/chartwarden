@@ -597,6 +597,34 @@
   - **TASK-050B** — TEST-003: a shared conformance spec run against both the in-memory and the
     Drizzle-backed service per module (session→context binding + 412/409/pagination parity), plus
     one real-session→module-route case added to `auth.live.test.ts`.
+    - **Status (2026-08-04): DONE for both stated deliverables, at pilot scope.**
+      - **Real-session→module-route case** — a new `it()` in `auth.live.test.ts` wires the actual
+        production composition (`createSessionAuthenticate` + `getIdentitySession` +
+        `createSessionContextResolver` over `createDbSessionContextStore`, `registerIdentityAuth`
+        mounting Better Auth's real HTTP handler) and drives it with a genuine HTTP sign-in (`POST
+        /api/auth/sign-in/email`) → real `Set-Cookie` → `GET /api/v1/auth/context` +
+        `GET /api/v1/patients` + `POST /api/v1/auth/select-organization`, all with the SAME cookie,
+        no `x-test-user` shim anywhere. Confirms a real hook distinguishes anonymous / authenticated-
+        pre-org / authenticated-org-bound (401/401/200+403-then-200) — a state the header shim can't
+        even express (it sets `userId`+`organizationId` atomically from one header pair). Live-
+        verified: 12/12 tests in the file pass together against a throwaway pg18 cluster.
+      - **Shared conformance spec** — new `care-plan-conformance.live.test.ts`, piloted on M7 Care
+        Plan: one assertion function (`runConformanceSuite`) drives an identical 401→403→409→412
+        HTTP scenario sequence against `createInMemoryCarePlanBackend()` and
+        `createDbCarePlanRouteService()` in turn, asserting byte-identical status codes + error
+        codes (`ONE_ACTIVE_PLAN_PER_ADMISSION` 409 on `bootstrapCarePlan`'s duplicate-plan guard;
+        `STALE_VERSION` 412 on `patchProblem`'s optimistic-concurrency check) from both. 8/8 tests
+        pass (4 per backend). M7 was chosen because both dimensions are real, independently-
+        implemented behaviors on this module today (a `Map` scan vs. a `SELECT` + partial unique
+        index) — unlike Idempotency-Key handling, which is a single M1 platform plugin shared by
+        every route regardless of service backend, so it can't drift between backends by
+        construction and isn't a useful conformance dimension.
+      - **Explicit scope cut, not silently claimed as done**: PAGINATION-cursor parity is NOT
+        covered — M7's list routes hardcode `nextCursor: null` in both backends (no real
+        pagination on this module). M5 Patient census has real cursor pagination proven on the
+        Drizzle side already (`auth.live.test.ts`'s own M5 census case) and is the natural next
+        pilot for that third dimension. Extending this pattern to more modules (M5 for pagination;
+        any other module for its own 409/412 pair) is follow-up work, not started.
   - **TASK-050C** — TEST-004: a jsdom vitest project (web/portal/admin all currently `environment: "node"`, no jsdom/RTL declared anywhere) + a registry-driven smoke-render of every `screens.ts`
     entry across the three SPAs.
   - **TASK-050D** — TEST-005: planted-violation (goes-red) self-tests for the 4 highest-value
