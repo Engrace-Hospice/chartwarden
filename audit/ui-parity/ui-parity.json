@@ -13,44 +13,47 @@
     "integration": 2
   },
   "registeredModules": [
-    "02-identity",
-    "03-authorization",
-    "04-audit",
-    "05-patient",
-    "06-admission",
-    "07-care-plan",
-    "08-encounters",
-    "09-assessments",
-    "10-hope",
-    "11-orders",
-    "12-dosespot",
-    "13-emar",
-    "14-idg",
-    "15-discipline-care-plans",
-    "16-bereavement",
-    "17-scheduling",
-    "18-evv",
-    "19-oncall",
-    "20-field-safety",
-    "21-supplies",
-    "22-documents",
-    "23-billing-medicare",
-    "24-billing-medicaid",
-    "25-remittance",
-    "26-cap",
-    "27-cost-report",
-    "30-quality",
-    "33-reporting",
-    "34-saas",
-    "35-subscription",
-    "36-messaging",
-    "37-ipu",
-    "38-terminology",
-    "39-consent",
-    "40-mdm"
+    "admin/35-subscription-billing",
+    "portal/31-portal",
+    "web/02-identity",
+    "web/03-authorization",
+    "web/04-audit",
+    "web/05-patient",
+    "web/06-admission",
+    "web/07-care-plan",
+    "web/08-encounters",
+    "web/09-assessments",
+    "web/10-hope",
+    "web/11-orders",
+    "web/12-dosespot",
+    "web/13-emar",
+    "web/14-idg",
+    "web/15-discipline-care-plans",
+    "web/16-bereavement",
+    "web/17-scheduling",
+    "web/18-evv",
+    "web/19-oncall",
+    "web/20-field-safety",
+    "web/21-supplies",
+    "web/22-documents",
+    "web/23-billing-medicare",
+    "web/24-billing-medicaid",
+    "web/25-remittance",
+    "web/26-cap",
+    "web/27-cost-report",
+    "web/30-quality",
+    "web/33-reporting",
+    "web/34-saas",
+    "web/35-subscription",
+    "web/36-messaging",
+    "web/37-ipu",
+    "web/38-terminology",
+    "web/39-consent",
+    "web/40-mdm"
   ],
   "screens": [
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.sign-in",
@@ -58,6 +61,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.mfa-challenge",
@@ -65,6 +69,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.forgot-password",
@@ -72,6 +77,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.reset-password",
@@ -79,6 +85,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.step-up",
@@ -86,6 +93,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.organization-select",
@@ -93,6 +101,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.accept-invitation",
@@ -100,6 +109,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.security-passkeys",
@@ -107,6 +117,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "02-identity",
       "moduleId": 2,
       "id": "identity.staff-management",
@@ -114,6 +125,7 @@
       "permission": "member.manage"
     },
     {
+      "app": "web",
       "module": "03-authorization",
       "moduleId": 3,
       "id": "authz.roles-permissions",
@@ -121,6 +133,7 @@
       "permission": "role.read"
     },
     {
+      "app": "web",
       "module": "04-audit",
       "moduleId": 4,
       "id": "audit.log-viewer",
@@ -128,6 +141,7 @@
       "permission": "audit.read"
     },
     {
+      "app": "web",
       "module": "05-patient",
       "moduleId": 5,
       "id": "patient.census",
@@ -135,6 +149,7 @@
       "permission": "patient.read"
     },
     {
+      "app": "web",
       "module": "05-patient",
       "moduleId": 5,
       "id": "search.global",
@@ -142,6 +157,7 @@
       "permission": "patient.read"
     },
     {
+      "app": "web",
       "module": "05-patient",
       "moduleId": 5,
       "id": "patient.chart",
@@ -149,6 +165,7 @@
       "permission": "patient.read"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.referrals",
@@ -156,6 +173,7 @@
       "permission": "referral.read"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.census",
@@ -163,6 +181,7 @@
       "permission": "admission.read"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.compliance",
@@ -170,6 +189,7 @@
       "permission": "compliance.read"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.detail",
@@ -177,6 +197,7 @@
       "permission": "admission.read"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.referral-detail",
@@ -184,6 +205,7 @@
       "permission": "referral.read"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.create",
@@ -191,6 +213,7 @@
       "permission": "admission.create"
     },
     {
+      "app": "web",
       "module": "06-admission",
       "moduleId": 6,
       "id": "admission.patient-election-cert",
@@ -198,6 +221,7 @@
       "permission": "election.read"
     },
     {
+      "app": "web",
       "module": "07-care-plan",
       "moduleId": 7,
       "id": "care-plan.view",
@@ -205,6 +229,7 @@
       "permission": "care_plan.read"
     },
     {
+      "app": "web",
       "module": "07-care-plan",
       "moduleId": 7,
       "id": "care-plan.versions",
@@ -212,6 +237,7 @@
       "permission": "care_plan.read"
     },
     {
+      "app": "web",
       "module": "07-care-plan",
       "moduleId": 7,
       "id": "care-plan.summary",
@@ -219,6 +245,7 @@
       "permission": "care_plan.read_summary"
     },
     {
+      "app": "web",
       "module": "08-encounters",
       "moduleId": 8,
       "id": "encounter.patient-list",
@@ -226,6 +253,7 @@
       "permission": "encounter.read"
     },
     {
+      "app": "web",
       "module": "08-encounters",
       "moduleId": 8,
       "id": "encounter.read",
@@ -233,6 +261,7 @@
       "permission": "encounter.read"
     },
     {
+      "app": "web",
       "module": "08-encounters",
       "moduleId": 8,
       "id": "encounter.cosignature-queue",
@@ -240,6 +269,7 @@
       "permission": "encounter.cosign"
     },
     {
+      "app": "web",
       "module": "08-encounters",
       "moduleId": 8,
       "id": "encounter.my-drafts",
@@ -247,6 +277,7 @@
       "permission": "encounter.author"
     },
     {
+      "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
       "id": "assessment.timeline",
@@ -254,6 +285,7 @@
       "permission": "assessment.read"
     },
     {
+      "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
       "id": "assessment.scale-trend",
@@ -261,6 +293,7 @@
       "permission": "assessment.read_trend"
     },
     {
+      "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
       "id": "assessment.changes",
@@ -268,6 +301,7 @@
       "permission": "assessment.read"
     },
     {
+      "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
       "id": "assessment.summary",
@@ -275,6 +309,7 @@
       "permission": "assessment.read_summary"
     },
     {
+      "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
       "id": "assessment.scale-licenses",
@@ -282,6 +317,7 @@
       "permission": "assessment.license_read"
     },
     {
+      "app": "web",
       "module": "09-assessments",
       "moduleId": 9,
       "id": "assessment.scale-policies",
@@ -289,6 +325,7 @@
       "permission": "assessment.policy_read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.dashboard",
@@ -296,6 +333,7 @@
       "permission": "hope.schedule.read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.patient-timeline",
@@ -303,6 +341,7 @@
       "permission": "hope.timepoint.read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.sfv-worklist",
@@ -310,6 +349,7 @@
       "permission": "hope.sfv.read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.assessment-detail",
@@ -317,6 +357,7 @@
       "permission": "hope.timepoint.read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.submission-worklist",
@@ -324,6 +365,7 @@
       "permission": "hope.submission.read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.submission-detail",
@@ -331,6 +373,7 @@
       "permission": "hope.submission.read"
     },
     {
+      "app": "web",
       "module": "10-hope",
       "moduleId": 10,
       "id": "hope.compliance",
@@ -338,6 +381,7 @@
       "permission": "hope.dashboard.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.sign-inbox",
@@ -345,6 +389,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.patient-list",
@@ -352,6 +397,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.detail",
@@ -359,6 +405,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.verbal-expiring",
@@ -366,6 +413,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.cosign-pending",
@@ -373,6 +421,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.results-review",
@@ -380,6 +429,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "11-orders",
       "moduleId": 11,
       "id": "orders.standing",
@@ -387,6 +437,7 @@
       "permission": "orders.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.patient-medications",
@@ -394,6 +445,7 @@
       "permission": "prescribing.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.medication-detail",
@@ -401,6 +453,7 @@
       "permission": "prescribing.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.sign-inbox",
@@ -408,6 +461,7 @@
       "permission": "prescribing.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.verbal-orders",
@@ -415,6 +469,7 @@
       "permission": "prescribing.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.refill-inbox",
@@ -422,6 +477,7 @@
       "permission": "prescribing.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.refill-detail",
@@ -429,6 +485,7 @@
       "permission": "prescribing.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.reconciliation",
@@ -436,6 +493,7 @@
       "permission": "prescribing.history.read"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.prescriber-roster",
@@ -443,6 +501,7 @@
       "permission": "prescribing.admin.roster"
     },
     {
+      "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
       "id": "prescribing.policy",
@@ -450,6 +509,7 @@
       "permission": "prescribing.admin.policy"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.patient-emar",
@@ -457,6 +517,7 @@
       "permission": "administration.read"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.administration-detail",
@@ -464,6 +525,7 @@
       "permission": "administration.read"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.iv-session",
@@ -471,6 +533,7 @@
       "permission": "administration.read"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.missed-doses",
@@ -478,6 +541,7 @@
       "permission": "administration.read_missed"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.reconciliation-worksheet",
@@ -485,6 +549,7 @@
       "permission": "reconciliation.read"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.comfort-kit",
@@ -492,6 +557,7 @@
       "permission": "comfort_kit.read"
     },
     {
+      "app": "web",
       "module": "13-emar",
       "moduleId": 13,
       "id": "emar.administration-policy",
@@ -499,6 +565,7 @@
       "permission": "administration.admin.policy"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.schedule",
@@ -506,6 +573,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.meeting-detail",
@@ -513,6 +581,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.meeting-live",
@@ -520,6 +589,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.packet",
@@ -527,6 +597,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.patient-history",
@@ -534,6 +605,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.action-items",
@@ -541,6 +613,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "14-idg",
       "moduleId": 14,
       "id": "idg.minutes",
@@ -548,6 +621,7 @@
       "permission": "idg.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.index",
@@ -555,6 +629,7 @@
       "permission": "discipline_plan.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.aide-poc",
@@ -562,6 +637,7 @@
       "permission": "discipline_plan.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.aide-poc.edit",
@@ -569,6 +645,7 @@
       "permission": "discipline_plan.author"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.msw",
@@ -576,6 +653,7 @@
       "permission": "discipline_plan.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.assessment",
@@ -583,6 +661,7 @@
       "permission": "discipline_assessment.author"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.spiritual",
@@ -590,6 +669,7 @@
       "permission": "discipline_plan.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.volunteer",
@@ -597,6 +677,7 @@
       "permission": "discipline_plan.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.summary",
@@ -604,6 +685,7 @@
       "permission": "discipline_plan.read_summary"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.versions",
@@ -611,6 +693,7 @@
       "permission": "discipline_plan.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "discipline-plan.idg-revision",
@@ -618,6 +701,7 @@
       "permission": "discipline_plan.idg_revise"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "volunteer.compliance",
@@ -625,6 +709,7 @@
       "permission": "volunteer_compliance.read"
     },
     {
+      "app": "web",
       "module": "15-discipline-care-plans",
       "moduleId": 15,
       "id": "volunteer.ratio",
@@ -632,6 +717,7 @@
       "permission": "volunteer_compliance.read_ratio"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.caseload",
@@ -639,6 +725,7 @@
       "permission": "bereavement.dashboard.counselor"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.supervisor",
@@ -646,6 +733,7 @@
       "permission": "bereavement.dashboard.supervisor"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.intake",
@@ -653,6 +741,7 @@
       "permission": "bereavement.plan.assign_counselor"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.plan",
@@ -660,6 +749,7 @@
       "permission": "bereavement.plan.read"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.plan.seed",
@@ -667,6 +757,7 @@
       "permission": "bereavement.plan.activate"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.plan.closeout",
@@ -674,6 +765,7 @@
       "permission": "bereavement.plan.read"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.plan.outreach",
@@ -681,6 +773,7 @@
       "permission": "bereavement.outreach.read"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.plan.risk",
@@ -688,6 +781,7 @@
       "permission": "bereavement.risk.read"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.contact",
@@ -695,6 +789,7 @@
       "permission": "bereavement.plan.read"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.contact.screen",
@@ -702,6 +797,7 @@
       "permission": "bereavement.contact.flag_complicated_grief"
     },
     {
+      "app": "web",
       "module": "16-bereavement",
       "moduleId": 16,
       "id": "bereavement.plan.history",
@@ -709,6 +805,7 @@
       "permission": "bereavement.plan.read"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.day",
@@ -716,6 +813,7 @@
       "permission": "visit.read_team"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.week",
@@ -723,6 +821,7 @@
       "permission": "visit.read_team"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.proposals",
@@ -730,6 +829,7 @@
       "permission": "visit.proposal.read"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.recurring",
@@ -737,6 +837,7 @@
       "permission": "recurring_visit.read"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.time-off",
@@ -744,6 +845,7 @@
       "permission": "time_off.read_team"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.visit-detail",
@@ -751,6 +853,7 @@
       "permission": "visit.read"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.my-visits",
@@ -758,6 +861,7 @@
       "permission": "visit.read"
     },
     {
+      "app": "web",
       "module": "17-scheduling",
       "moduleId": 17,
       "id": "scheduling.metrics",
@@ -765,6 +869,7 @@
       "permission": "visit.read_metrics"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.dashboard",
@@ -772,6 +877,7 @@
       "permission": "evv.read_metrics"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.events",
@@ -779,6 +885,7 @@
       "permission": "evv.read"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.event-detail",
@@ -786,6 +893,7 @@
       "permission": "evv.read"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.missing-resolutions",
@@ -793,6 +901,7 @@
       "permission": "evv.missing_resolution.read"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.aggregator-submissions",
@@ -800,6 +909,7 @@
       "permission": "evv.aggregator.read"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.geofence-policy",
@@ -807,6 +917,7 @@
       "permission": "evv.policy.read"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.devices",
@@ -814,6 +925,7 @@
       "permission": "evv.device.read"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.metrics",
@@ -821,6 +933,7 @@
       "permission": "evv.read_metrics"
     },
     {
+      "app": "web",
       "module": "18-evv",
       "moduleId": 18,
       "id": "evv.my-devices",
@@ -828,6 +941,7 @@
       "permission": "evv.device.read"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.queue",
@@ -835,6 +949,7 @@
       "permission": "triage.read"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.intake",
@@ -842,6 +957,7 @@
       "permission": "triage.open"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.call",
@@ -849,6 +965,7 @@
       "permission": "triage.read"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.call.history",
@@ -856,6 +973,7 @@
       "permission": "triage.read"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.call.transcript",
@@ -863,6 +981,7 @@
       "permission": "triage.read_transcript"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.escalations",
@@ -870,6 +989,7 @@
       "permission": "triage.read_escalations"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "oncall.shifts",
@@ -877,6 +997,7 @@
       "permission": "oncall.read_schedule"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "oncall.shift",
@@ -884,6 +1005,7 @@
       "permission": "oncall.read_schedule"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "oncall.me",
@@ -891,6 +1013,7 @@
       "permission": "oncall.read_schedule"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.protocols",
@@ -898,6 +1021,7 @@
       "permission": "triage.read"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.protocol",
@@ -905,6 +1029,7 @@
       "permission": "triage.read"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "oncall.policy",
@@ -912,6 +1037,7 @@
       "permission": "oncall.read_policy"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "oncall.vendors",
@@ -919,6 +1045,7 @@
       "permission": "oncall.read_policy"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.paper_reentry",
@@ -926,6 +1053,7 @@
       "permission": "triage.paper_reentry"
     },
     {
+      "app": "web",
       "module": "19-oncall",
       "moduleId": 19,
       "id": "triage.metrics",
@@ -933,6 +1061,7 @@
       "permission": "triage.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.dashboard",
@@ -940,6 +1069,7 @@
       "permission": "safety.dashboard.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.sos.active",
@@ -947,6 +1077,7 @@
       "permission": "safety.sos.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.sos.detail",
@@ -954,6 +1085,7 @@
       "permission": "safety.sos.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.incidents",
@@ -961,6 +1093,7 @@
       "permission": "safety_incident.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.incident.new",
@@ -968,6 +1101,7 @@
       "permission": "safety_incident.create"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.incident.detail",
@@ -975,6 +1109,7 @@
       "permission": "safety_incident.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.check_ins",
@@ -982,6 +1117,7 @@
       "permission": "safety.dashboard.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.policy",
@@ -989,6 +1125,7 @@
       "permission": "safety_policy.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.subscriptions",
@@ -996,6 +1133,7 @@
       "permission": "safety_supervisor.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.high_risk_areas",
@@ -1003,6 +1141,7 @@
       "permission": "safety.high_risk_area.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.metrics",
@@ -1010,6 +1149,7 @@
       "permission": "safety.dashboard.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.me",
@@ -1017,6 +1157,7 @@
       "permission": "safety.sos.raise"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.me.check_ins",
@@ -1024,6 +1165,7 @@
       "permission": "safety.check_in.read"
     },
     {
+      "app": "web",
       "module": "20-field-safety",
       "moduleId": 20,
       "id": "safety.me.consent",
@@ -1031,6 +1173,7 @@
       "permission": "safety.consent.read_self"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.dashboard",
@@ -1038,6 +1181,7 @@
       "permission": "supplies.request.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.request",
@@ -1045,6 +1189,7 @@
       "permission": "supplies.request.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.dispatch.new",
@@ -1052,6 +1197,7 @@
       "permission": "comfort_kit.dispatch.create"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.dispatch",
@@ -1059,6 +1205,7 @@
       "permission": "comfort_kit.dispatch.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.dispatch.perpetual_log",
@@ -1066,6 +1213,7 @@
       "permission": "comfort_kit.perpetual_log.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.return",
@@ -1073,6 +1221,7 @@
       "permission": "comfort_kit.return.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.par_stock",
@@ -1080,6 +1229,7 @@
       "permission": "par_stock.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.vendor_routing",
@@ -1087,6 +1237,7 @@
       "permission": "vendor_routing.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.comfort_kit_templates",
@@ -1094,6 +1245,7 @@
       "permission": "comfort_kit.template.read"
     },
     {
+      "app": "web",
       "module": "21-supplies",
       "moduleId": 21,
       "id": "supplies.items",
@@ -1101,6 +1253,7 @@
       "permission": "supplies.item.read"
     },
     {
+      "app": "web",
       "module": "22-documents",
       "moduleId": 22,
       "id": "documents.explorer",
@@ -1108,6 +1261,7 @@
       "permission": "documents.read"
     },
     {
+      "app": "web",
       "module": "22-documents",
       "moduleId": 22,
       "id": "documents.patient-list",
@@ -1115,6 +1269,7 @@
       "permission": "documents.read"
     },
     {
+      "app": "web",
       "module": "22-documents",
       "moduleId": 22,
       "id": "documents.version-history",
@@ -1122,6 +1277,7 @@
       "permission": "documents.read_history"
     },
     {
+      "app": "web",
       "module": "22-documents",
       "moduleId": 22,
       "id": "documents.intake-batch",
@@ -1129,6 +1285,7 @@
       "permission": "intake.read"
     },
     {
+      "app": "web",
       "module": "22-documents",
       "moduleId": 22,
       "id": "documents.template-library",
@@ -1136,6 +1293,7 @@
       "permission": "documents.read_templates"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.ar-dashboard",
@@ -1143,6 +1301,7 @@
       "permission": "billing.claim.read_ar_dashboard"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.claims",
@@ -1150,6 +1309,7 @@
       "permission": "billing.claim.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.claim.new",
@@ -1157,6 +1317,7 @@
       "permission": "billing.claim.assemble"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.claim",
@@ -1164,6 +1325,7 @@
       "permission": "billing.claim.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.claim.validation",
@@ -1171,6 +1333,7 @@
       "permission": "billing.validation.read_run"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.claim.submissions",
@@ -1178,6 +1341,7 @@
       "permission": "billing.claim.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.claim.acknowledgments",
@@ -1185,6 +1349,7 @@
       "permission": "billing.claim.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.noe",
@@ -1192,6 +1357,7 @@
       "permission": "billing.noe.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.noe.detail",
@@ -1199,6 +1365,7 @@
       "permission": "billing.noe.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.notr",
@@ -1206,6 +1373,7 @@
       "permission": "billing.notr.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.notr.detail",
@@ -1213,6 +1381,7 @@
       "permission": "billing.notr.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.rule-config",
@@ -1220,6 +1389,7 @@
       "permission": "billing.rule_config.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.eligibility",
@@ -1227,6 +1397,7 @@
       "permission": "billing.eligibility.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.sequestration",
@@ -1234,6 +1405,7 @@
       "permission": "billing.sequestration_policy.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.mac-credentials",
@@ -1241,6 +1413,7 @@
       "permission": "billing.mac_credential.read"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.overrides",
@@ -1248,6 +1421,7 @@
       "permission": "billing.validation.read_override"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.metrics",
@@ -1255,6 +1429,7 @@
       "permission": "billing.claim.read_metrics"
     },
     {
+      "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
       "id": "billing.surveyor-audit",
@@ -1262,6 +1437,7 @@
       "permission": "billing.claim.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.ar-dashboard",
@@ -1269,6 +1445,7 @@
       "permission": "medicaid.claim.read_ar_dashboard"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.claims",
@@ -1276,6 +1453,7 @@
       "permission": "medicaid.claim.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.claim.new",
@@ -1283,6 +1461,7 @@
       "permission": "medicaid.claim.assemble"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.claim",
@@ -1290,6 +1469,7 @@
       "permission": "medicaid.claim.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.claim.validation",
@@ -1297,6 +1477,7 @@
       "permission": "medicaid.validation.read_run"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.claim.submissions",
@@ -1304,6 +1485,7 @@
       "permission": "medicaid.claim.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.claim.acknowledgments",
@@ -1311,6 +1493,7 @@
       "permission": "medicaid.claim.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.validation-worklist",
@@ -1318,6 +1501,7 @@
       "permission": "medicaid.validation.read_run"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.rb-arrangements",
@@ -1325,6 +1509,7 @@
       "permission": "medicaid.rb_arrangement.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.rb-arrangement",
@@ -1332,6 +1517,7 @@
       "permission": "medicaid.rb_arrangement.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.rule-config",
@@ -1339,6 +1525,7 @@
       "permission": "medicaid.rule_config.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.eligibility",
@@ -1346,6 +1533,7 @@
       "permission": "medicaid.eligibility.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.trading-partners",
@@ -1353,6 +1541,7 @@
       "permission": "medicaid.trading_partner.read"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.overrides",
@@ -1360,6 +1549,7 @@
       "permission": "medicaid.validation.read_override"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.metrics",
@@ -1367,6 +1557,7 @@
       "permission": "medicaid.claim.read_metrics"
     },
     {
+      "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
       "id": "medicaid.surveyor-read",
@@ -1374,6 +1565,7 @@
       "permission": "medicaid.claim.read"
     },
     {
+      "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
       "id": "remittance.worklist",
@@ -1381,6 +1573,7 @@
       "permission": "remittance.read"
     },
     {
+      "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
       "id": "remittance.denials",
@@ -1388,6 +1581,7 @@
       "permission": "denial.worklist.read"
     },
     {
+      "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
       "id": "remittance.appeals",
@@ -1395,6 +1589,7 @@
       "permission": "appeal.read"
     },
     {
+      "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
       "id": "remittance.taxonomy",
@@ -1402,6 +1597,7 @@
       "permission": "taxonomy.read"
     },
     {
+      "app": "web",
       "module": "26-cap",
       "moduleId": 26,
       "id": "cap.dashboard",
@@ -1409,6 +1605,7 @@
       "permission": "cap.projection.read"
     },
     {
+      "app": "web",
       "module": "26-cap",
       "moduleId": 26,
       "id": "cap.periods",
@@ -1416,6 +1613,7 @@
       "permission": "cap.period.read"
     },
     {
+      "app": "web",
       "module": "26-cap",
       "moduleId": 26,
       "id": "cap.events",
@@ -1423,6 +1621,7 @@
       "permission": "cap.event.read"
     },
     {
+      "app": "web",
       "module": "26-cap",
       "moduleId": 26,
       "id": "cap.settlement",
@@ -1430,6 +1629,7 @@
       "permission": "cap.settlement.read"
     },
     {
+      "app": "web",
       "module": "26-cap",
       "moduleId": 26,
       "id": "cap.psr",
@@ -1437,6 +1637,7 @@
       "permission": "cap.psr.read"
     },
     {
+      "app": "web",
       "module": "26-cap",
       "moduleId": 26,
       "id": "cap.platform_constants",
@@ -1444,6 +1645,7 @@
       "permission": "cap.platform_constant.read"
     },
     {
+      "app": "web",
       "module": "27-cost-report",
       "moduleId": 27,
       "id": "cost_report.list",
@@ -1451,6 +1653,7 @@
       "permission": "cost_report.read"
     },
     {
+      "app": "web",
       "module": "27-cost-report",
       "moduleId": 27,
       "id": "cost_report.workspace",
@@ -1458,6 +1661,7 @@
       "permission": "cost_report.read"
     },
     {
+      "app": "web",
       "module": "27-cost-report",
       "moduleId": 27,
       "id": "cost_report.validation",
@@ -1465,6 +1669,7 @@
       "permission": "cost_report.read"
     },
     {
+      "app": "web",
       "module": "27-cost-report",
       "moduleId": 27,
       "id": "cost_report.rules",
@@ -1472,6 +1677,7 @@
       "permission": "cost_report.read_rules"
     },
     {
+      "app": "web",
       "module": "27-cost-report",
       "moduleId": 27,
       "id": "cost_report.bad_debt",
@@ -1479,6 +1685,7 @@
       "permission": "cost_report.read"
     },
     {
+      "app": "web",
       "module": "27-cost-report",
       "moduleId": 27,
       "id": "cost_report.snapshots",
@@ -1486,6 +1693,7 @@
       "permission": "cost_report.read_snapshot_detail"
     },
     {
+      "app": "web",
       "module": "30-quality",
       "moduleId": 30,
       "id": "quality.hub",
@@ -1493,6 +1701,7 @@
       "permission": "quality.measure.read"
     },
     {
+      "app": "web",
       "module": "30-quality",
       "moduleId": 30,
       "id": "quality.qapi-incidents",
@@ -1500,6 +1709,7 @@
       "permission": "incident.read"
     },
     {
+      "app": "web",
       "module": "33-reporting",
       "moduleId": 33,
       "id": "reporting.catalog",
@@ -1507,6 +1717,7 @@
       "permission": "report.dashboard.list"
     },
     {
+      "app": "web",
       "module": "33-reporting",
       "moduleId": 33,
       "id": "reporting.dashboard",
@@ -1514,6 +1725,7 @@
       "permission": "report.dashboard.read"
     },
     {
+      "app": "web",
       "module": "33-reporting",
       "moduleId": 33,
       "id": "reporting.role-dashboard",
@@ -1521,6 +1733,7 @@
       "permission": "report.dashboard.read"
     },
     {
+      "app": "web",
       "module": "33-reporting",
       "moduleId": 33,
       "id": "reporting.schedules",
@@ -1528,6 +1741,7 @@
       "permission": "report.schedule.list"
     },
     {
+      "app": "web",
       "module": "33-reporting",
       "moduleId": 33,
       "id": "reporting.admin",
@@ -1535,6 +1749,7 @@
       "permission": "report.admin.mv_list"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.tenants",
@@ -1542,6 +1757,7 @@
       "permission": "tenant.list_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.tenant-overview",
@@ -1549,6 +1765,7 @@
       "permission": "tenant.read_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.support-sessions",
@@ -1556,6 +1773,7 @@
       "permission": "support_session.list_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.dsar-queue",
@@ -1563,6 +1781,7 @@
       "permission": "dsar_export.list_own"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.tenant-export-queue",
@@ -1570,6 +1789,7 @@
       "permission": "tenant_export.list_own"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.onboarding-templates",
@@ -1577,6 +1797,7 @@
       "permission": "onboarding_template.list"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.feature-flags",
@@ -1584,6 +1805,7 @@
       "permission": "feature_flag.read_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.baa-register",
@@ -1591,6 +1813,7 @@
       "permission": "platform_tenant_baa.read_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.signups",
@@ -1598,6 +1821,7 @@
       "permission": "signup_intent.list_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.key-rings",
@@ -1605,6 +1829,7 @@
       "permission": "tenant.read_platform"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.account",
@@ -1612,6 +1837,7 @@
       "permission": "tenant.read_own"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.onboarding",
@@ -1619,6 +1845,7 @@
       "permission": "onboarding.read_own"
     },
     {
+      "app": "web",
       "module": "34-saas",
       "moduleId": 34,
       "id": "saas.support-grants",
@@ -1626,6 +1853,7 @@
       "permission": "support_consent_grant.list_own"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.overview",
@@ -1633,6 +1861,7 @@
       "permission": "subscription.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.plan",
@@ -1640,6 +1869,7 @@
       "permission": "subscription.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.payment-methods",
@@ -1647,6 +1877,7 @@
       "permission": "payment_method.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.invoices",
@@ -1654,6 +1885,7 @@
       "permission": "invoice.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.invoice-detail",
@@ -1661,6 +1893,7 @@
       "permission": "invoice.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.usage",
@@ -1668,6 +1901,7 @@
       "permission": "usage.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.dunning",
@@ -1675,6 +1909,7 @@
       "permission": "subscription.read"
     },
     {
+      "app": "web",
       "module": "35-subscription",
       "moduleId": 35,
       "id": "billing.promos",
@@ -1682,6 +1917,7 @@
       "permission": "subscription.read"
     },
     {
+      "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
       "id": "messaging.staff",
@@ -1689,6 +1925,7 @@
       "permission": "messaging.read"
     },
     {
+      "app": "web",
       "module": "36-messaging",
       "moduleId": 36,
       "id": "messaging.notifications",
@@ -1696,6 +1933,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "37-ipu",
       "moduleId": 37,
       "id": "ipu.units",
@@ -1703,6 +1941,7 @@
       "permission": "m37.unit.read"
     },
     {
+      "app": "web",
       "module": "37-ipu",
       "moduleId": 37,
       "id": "ipu.admissions",
@@ -1710,6 +1949,7 @@
       "permission": "m37.ipu_admission.read"
     },
     {
+      "app": "web",
       "module": "37-ipu",
       "moduleId": 37,
       "id": "ipu.census",
@@ -1717,6 +1957,7 @@
       "permission": "m37.census.read"
     },
     {
+      "app": "web",
       "module": "37-ipu",
       "moduleId": 37,
       "id": "ipu.equipment",
@@ -1724,6 +1965,7 @@
       "permission": "m37.equipment.read"
     },
     {
+      "app": "web",
       "module": "38-terminology",
       "moduleId": 38,
       "id": "terminology.admin",
@@ -1731,6 +1973,7 @@
       "permission": "(none)"
     },
     {
+      "app": "web",
       "module": "39-consent",
       "moduleId": 39,
       "id": "consent.record-manager",
@@ -1738,6 +1981,7 @@
       "permission": "consent.read"
     },
     {
+      "app": "web",
       "module": "39-consent",
       "moduleId": 39,
       "id": "consent.expiration-renewal",
@@ -1745,6 +1989,7 @@
       "permission": "consent.read"
     },
     {
+      "app": "web",
       "module": "39-consent",
       "moduleId": 39,
       "id": "consent.recipients-dpoa",
@@ -1752,11 +1997,228 @@
       "permission": "consent.read"
     },
     {
+      "app": "web",
       "module": "40-mdm",
       "moduleId": 40,
       "id": "mdm.console",
       "path": "/mdm",
       "permission": "(none)"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.plans",
+      "path": "/admin/plans",
+      "permission": "plan.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.plan-edit",
+      "path": "/admin/plans/:id/edit",
+      "permission": "plan.admin.write"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.promos",
+      "path": "/admin/promos",
+      "permission": "promo.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.subscriptions",
+      "path": "/admin/subscriptions",
+      "permission": "subscription.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.subscription-detail",
+      "path": "/admin/subscriptions/:id",
+      "permission": "subscription.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.subscription-pause",
+      "path": "/admin/subscriptions/:id/pause",
+      "permission": "subscription.admin.write"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.subscription-apply-promo",
+      "path": "/admin/subscriptions/:id/apply_promo",
+      "permission": "promo.admin.apply"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.refunds",
+      "path": "/admin/refunds",
+      "permission": "refund.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.refund-new",
+      "path": "/admin/refunds/new",
+      "permission": "refund.request"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.refund-approve",
+      "path": "/admin/refunds/:id/approve",
+      "permission": "refund.approve"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.dunning",
+      "path": "/admin/dunning",
+      "permission": "dunning.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.revenue",
+      "path": "/admin/revenue",
+      "permission": "revenue.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.usage",
+      "path": "/admin/usage/:organizationId",
+      "permission": "usage.admin.read"
+    },
+    {
+      "app": "admin",
+      "module": "35-subscription-billing",
+      "moduleId": 35,
+      "id": "admin.webhooks",
+      "path": "/admin/webhooks/stripe",
+      "permission": "stripe.admin.read"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.sign-in",
+      "path": "/",
+      "permission": "(none)"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.patient-picker",
+      "path": "/patient-picker",
+      "permission": "portal.session.read_own"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.dashboard",
+      "path": "/p/:patientId",
+      "permission": "portal.care_summary.read"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.care-plan",
+      "path": "/p/:patientId/care-plan",
+      "permission": "portal.care_plan.read_summary"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.visits",
+      "path": "/p/:patientId/visits",
+      "permission": "portal.visits.read_upcoming"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.telehealth",
+      "path": "/p/:patientId/visits/:visitId/telehealth",
+      "permission": "telehealth.join_patient_or_caregiver"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.medications",
+      "path": "/p/:patientId/medications",
+      "permission": "portal.medications.read_summary"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.documents",
+      "path": "/p/:patientId/documents",
+      "permission": "portal.documents.read_list"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.messages",
+      "path": "/p/:patientId/messages",
+      "permission": "portal.messages.read_channel"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.amendments",
+      "path": "/p/:patientId/amendments",
+      "permission": "portal.amendment.read_own"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.preferences",
+      "path": "/p/:patientId/preferences",
+      "permission": "portal.preferences.read_own"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.bereavement",
+      "path": "/p/:patientId/bereavement",
+      "permission": "portal.bereavement.read_program"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.account",
+      "path": "/account",
+      "permission": "portal.session.read_own"
     }
   ],
   "failures": []
