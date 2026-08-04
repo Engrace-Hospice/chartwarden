@@ -100,7 +100,9 @@ export const M14_AUDIT_DENYLIST: { readonly [K in M14TableName]: readonly string
   idg_meeting: [],
   idg_recurring_policy: [],
   idg_attendance: ["absence_note"],
-  idg_agenda_item: ["note_text"],
+  // "note_text" was never a real column here (§3.6/§7.6 correction, TASK-063/ARCH-020) — the real
+  // free-text column is `body_text` (same name idg_action_item already carries).
+  idg_agenda_item: ["body_text"],
   idg_decision: [
     "payload->>rationaleText",
     "payload->>noteText",
@@ -115,6 +117,9 @@ export const M14_AUDIT_DENYLIST: { readonly [K in M14TableName]: readonly string
   idg_patient_packet: [
     "cover_summary_layer1",
     "cover_summary_layer2",
+    // The real top-level `discipline_views` jsonb column (distinct from the NESTED `built_snapshot.
+    // discipline_views` key below) was already scrubbed by the migration but missing here (TASK-063/ARCH-020).
+    "discipline_views",
     "built_snapshot->discipline_views",
     "built_snapshot->sinceLastIdg",
   ],

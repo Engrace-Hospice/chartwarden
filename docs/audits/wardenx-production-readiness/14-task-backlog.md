@@ -989,6 +989,78 @@
     clean, `arch:fitness` green (including the rewritten `check-ai-governance` gate), full suite 7810
     passing (+1 new test).
 - TASK-063 (P2): drive per-table audit denylists from one source (ARCH-020).
+  - **Status (2026-08-04): DONE, merged to main locally — but read this before assuming the whole
+    finding is closed.** Deep research first (agent-driven), since the audit's own "no live leak"
+    claim turned out to be wrong in two places. Summary of what actually exists: `M*_AUDIT_DENYLIST`
+    TS constants (21 modules, not 13 — audit's list omitted M10/M21) are/were zero-importer dead code;
+    the mechanism that ACTUALLY protects clinical PHI tables is hand-authored `audit_scrub(...)` SQL
+    inside each migration's `audit_phi_write_<table>()` trigger; a THIRD mechanism
+    (`AUDIT_DENYLIST_CATALOG`, category-based + row-conditional) has exactly one entry and was never
+    wired into any migration; a FOURTH (`audit_denylist_catalog` DB table) is granted, RLS'd,
+    self-audited, and never seeded by anything.
+    - **Built the gate** (`scripts/check-audit-denylist-sync.ts`, `bun run arch:audit-denylist-sync`,
+      wired into `arch:fitness`): for every table in all 21 `M*_AUDIT_DENYLIST` constants, the
+      plain-column entries must appear VERBATIM in that table's migration trigger's `audit_scrub(...)`
+      array, in both directions. Imports the constants directly (TS, no regex fragility) and parses
+      migration SQL via the trigger's `CREATE TRIGGER ... ON <table>` clause for the real table name
+      (the function name suffix can be a Postgres-63-char-truncated abbreviation — e.g.
+      `audit_phi_write_ckit_template_medication()` triggers on `comfort_kit_template_medication` — a
+      naive function-name parse produces false mismatches). Verified live: 190 tables pass; a
+      deliberately-planted fake column failed the gate with a precise message; reverted.
+    - **Fixed 9 confirmed-safe stale-constant mismatches** (zero behavior change — in every case the
+      migration was ALREADY correctly redacting the real column; the TS constant either under-claimed
+      or named a column that never existed on the table): M6 admission/election_statement/
+      level_of_care_period/transfer_event/compliance_window (`election_statement`'s constant said
+      `"narrative"`, a phantom — the table's real free-text column is `state_addendum`, confirmed via
+      schema read); M13 (moved a `caregiver_reported_snapshot` entry from `administration_record`,
+      which has no such column, to `medication_reconciliation_decision`, which does and whose migration
+      already scrubs it); M14 (`idg_agenda_item`'s constant said `"note_text"`, phantom — real column is
+      `body_text`; `idg_patient_packet` was missing the real top-level `discipline_views` column,
+      distinct from the NESTED `built_snapshot.discipline_views` key of almost the same name).
+    - **Found 2 real, live PHI-redaction gaps — deliberately NOT fixed, flagged instead.** Both have a
+      real compliance rationale AND a real, authoritative reason to leave the current (under-redacting)
+      migration behavior alone, so picking a side is a module-owner/compliance call, not something this
+      hygiene task should do unilaterally:
+      - **M7 `care_plan_version.state_snapshot`**: the constant wants it redacted (it's a serialized
+        snapshot of every problem/goal/intervention, including free-text narrative that already gets
+        its own redaction when audited via the `problem`/`goal`/`intervention` tables directly — so
+        leaving it unredacted here duplicates that PHI into a second audit-trail path). But the
+        migration AND the ratified M7 module spec's own §3.5 trigger-install example both agree:
+        redact only `patient_understanding_text`, not `state_snapshot` — and a version table's whole
+        POINT is to record what the sealed state actually was, so fully redacting `state_snapshot`
+        would make `care_plan_version`'s audit trail useless for its own stated purpose. Real tension,
+        not an oversight.
+      - **M29 `lab_observation_value.observation_value`** (42 CFR Part 2 stakes): `AUDIT_DENYLIST_CATALOG`'s
+        one entry says this should be row-conditionally redacted when the parent observation is
+        SUD-class. But the migration's own header comment explicitly documents the CURRENT empty
+        denylist as deliberate and cross-checked ("the v_cols lists mirror `M29_AUDIT_DENYLIST` in
+        `@wardenx/types` VERBATIM") — meaning the migration author evaluated this and chose not to
+        apply the catalog's stricter rule, or never saw it (the catalog's `generateAuditTrigger()`
+        consumer is itself never invoked by any real migration-generation pipeline — confirmed zero
+        `v_denylist` occurrences in any shipped migration). Two authoritative-looking sources
+        disagree; given real Part-2 legal stakes, this needs someone with that specific compliance
+        authority to resolve, not a default I pick under a general hygiene task.
+      - Also flagged (structural, not a specific-table judgment call): **`audit_scrub` cannot redact a
+        nested JSONB path** — only whole top-level columns. 25 constant entries across
+        `administration_record`/`idg_decision`/`idg_patient_packet`/`discipline_care_plan_version`/
+        `discipline_assessment`/`bereavement_risk_score` encode nested-path intent
+        (`data->>fieldName`) that no migration trigger could ever literally satisfy; the gate prints
+        every one on every run (never silently ignored) but cannot fail a check the mechanism
+        structurally cannot pass. Building nested-path-aware redaction (or deciding whole-column
+        fallback is acceptable per table) is a real, separate task — `discipline_assessment`'s own
+        schema comment explicitly rejects the whole-column-fallback shortcut ("a top-level column
+        denylist would miss them"), so it isn't even a uniform fix across tables.
+      - Also flagged: `form_template_version`'s constant claims `payload_schema` should be redacted,
+        but that table is platform-shared (not org-scoped) and uses M1's generic baseline trigger,
+        which has no per-table redaction mechanism at all — and it's genuinely unclear `payload_schema`
+        (a form's serialized TypeBox render schema — field structure, not patient data) is real PHI.
+      - `audit_denylist_catalog` (the DB table): left unseeded/unused as found — building the seeding
+        pipeline the M4 spec originally intended is a separate undertaking from making the two
+        ALREADY-LIVE mechanisms (TS constants, migration triggers) agree with each other, which is what
+        ARCH-020's acceptance criteria actually asked for.
+    - Full regression: build clean, `arch:fitness` green (including the new gate), full suite 7810
+      passing (unchanged — none of the 9 fixed constants have test coverage, confirming they really
+      were dead code as the audit said).
 - TASK-064 (P2): extend UI parity/frame gates to portal + admin (UI-011); set `/admin/staff` permission (UI-012).
 - TASK-065 (P2): fix telehealth webhook to 401 on bad signature (API-008); pass through 4xx framework errors (API-009).
 - TASK-066 (P3): drop time-relative CHECKs, enforce at write time (DB-005); local date-only helper (PARAM-004); react-router bump (PERF-004); confirm/remove behaviorally-suspicious dead tables (ARCH-023).
