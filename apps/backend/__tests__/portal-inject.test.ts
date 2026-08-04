@@ -33,9 +33,10 @@
 // than re-deriving M31's write-path guards, so every 2xx case exists to prove the route is MOUNTED, gated on
 // the right §4.6 permission key + §4.7 ABAC predicate, and returns the documented status code.
 //
-// THREE GENUINE FINDINGS surfaced while grounding this file in the real route source, ALL THREE NOW FIXED
-// at the source (see the dedicated "M31 route smoke — fixed findings" describe block below, which proves
-// each fix rather than just documenting the old bug):
+// FOUR GENUINE FINDINGS surfaced while grounding this file in the real route source (the fourth via
+// TASK-065/API-008, not the original TASK-050A grounding pass), ALL FOUR NOW FIXED at the source (see
+// the dedicated "M31 route smoke — fixed findings" describe block below, which proves each fix rather
+// than just documenting the old bug):
 //
 //   1. `POST /api/v1/portal/sessions/select-patient` — the whole point of this route is to bind the FIRST
 //      patient a portal session is scoped to (§8.1/D2). Its `ABAC_GRANT` guard (routes/guards.ts) read its
@@ -57,6 +58,11 @@
 //      in `write-paths/document-upload.ts`: the magic-byte guard now SKIPS (does not fail) when `magicBytes`
 //      is empty, honoring the two-phase design the function's own comment already promised — a caller that
 //      DOES have real bytes still gets a real check.
+//   4. `POST /api/v1/telehealth/webhooks/{daily-co,twilio-video}` — the handler verified the vendor HMAC
+//      signature but only surfaced the result in the response BODY (`{received: ok}`), always replying
+//      200. A bad signature is real vendor evidence (a wrong shared secret, a stale rotated key) and
+//      dropping it into a 200 masks the misconfiguration from the vendor's own delivery-failure alerting.
+//      Fixed in `telehealth.routes.ts`: a bad signature now replies 401; a valid one still 200s.
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -339,7 +345,9 @@ const FAKE_TELEHEALTH_ADAPTER: TelehealthAdapterPort = {
 };
 
 // ── server assembly (the M11/M15 `makeServer()` precedent) ─────────────────────────────────────────────
-function makeServer(opts: { readonly medicationOrderRedacted?: boolean } = {}) {
+function makeServer(
+  opts: { readonly medicationOrderRedacted?: boolean; readonly telehealthWebhookSignatureValid?: boolean } = {},
+) {
   const backend = createFakePortalStore();
 
   backend.seedAccount({
@@ -462,7 +470,11 @@ function makeServer(opts: { readonly medicationOrderRedacted?: boolean } = {}) {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  const deps: PortalRouteDeps = { store: backend.store, telehealth: FAKE_TELEHEALTH_ADAPTER, now: () => new Date(NOW) };
+  const telehealth: TelehealthAdapterPort =
+    opts.telehealthWebhookSignatureValid === false
+      ? { ...FAKE_TELEHEALTH_ADAPTER, verifyWebhookSignature: () => false }
+      : FAKE_TELEHEALTH_ADAPTER;
+  const deps: PortalRouteDeps = { store: backend.store, telehealth, now: () => new Date(NOW) };
   mountM31Routes(app, deps);
   return { app, backend };
 }
@@ -903,6 +915,32 @@ describe("M31 route smoke — fixed findings", () => {
       payload: { purpose: "other", mimeType: "application/zip", expectedByteSize: 2048 },
     });
     expect(res.statusCode).toBe(415);
+    await app.close();
+  });
+
+  it("fix #4: a telehealth webhook with a bad vendor signature now 401s (was: 200 with received:false, TASK-065/API-008)", async () => {
+    const { app } = makeServer({ telehealthWebhookSignatureValid: false });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/telehealth/webhooks/daily-co",
+      headers: {},
+      payload: { type: "recording.ready" },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ received: false });
+    await app.close();
+  });
+
+  it("fix #4b: a telehealth webhook with a valid vendor signature still 200s (not a rubber stamp)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/telehealth/webhooks/daily-co",
+      headers: {},
+      payload: { type: "recording.ready" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ received: true });
     await app.close();
   });
 });
