@@ -8,6 +8,7 @@
 // `status:"unavailable"` so the cap rules WARN-degrade rather than block claim submission. M26 is the
 // authoritative cap engine; M23 never fabricates a cap figure.
 import type { CapOrgProjectionResult, CapPatientProjectionResult, CapProjectionProvider } from "@wardenx/billing";
+import { fromDecimal, RegulatoryDecimal } from "@wardenx/shared/money";
 import { getSeam } from "../../../bootstrap/index";
 
 /** The minimal M26 `CapProjectionProvider` surface M23 consumes (date-keyed; M23 has the claim service date). */
@@ -41,8 +42,11 @@ const PATIENT_UNAVAILABLE: CapPatientProjectionResult = {
 /** A representative service date inside the cap year (FYxxxx runs Oct–Sep; Sep 30 is its terminal day). */
 const serviceDateForCapYear = (capYear: number): string => `${capYear}-09-30`;
 
+// Decimal-exact (PARAM-003): `allocatedCapStr` is a decimal-string cents figure from the M26 seam; lifting
+// it into decimal.js before the percent multiply avoids a float round-trip on a value that gates claim
+// submission.
 const projectedCents = (allocatedCapStr: string, utilizationPct: number): number =>
-  Math.round((utilizationPct / 100) * Number(allocatedCapStr));
+  fromDecimal(new RegulatoryDecimal(allocatedCapStr).times(utilizationPct).div(100));
 
 /**
  * Build the M23 cap-projection provider over the M1-registry `CapProjectionProvider` seam. `resolve`

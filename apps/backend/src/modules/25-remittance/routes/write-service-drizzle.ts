@@ -204,7 +204,7 @@ export function buildDrizzleM25WriteService(
             organizationId: actor.organizationId,
             aggregateKind: "denial_case",
             aggregateId: id,
-            payload: { ledgerId: id, patientId: id, prAmount: 0 },
+            payload: { ledgerId: id, patientId: id, prAmount: "0.00" },
           }),
       );
     },

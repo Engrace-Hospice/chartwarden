@@ -16,7 +16,10 @@ import type { ModuleEventContribution } from "@wardenx/types";
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
 const str = Type.String();
-const money = Type.Number();
+// Decimal STRING, never a float — matches every `numeric(12,2)` column these payloads carry (and the
+// identical convention already used for the same fields on the HTTP read side, m25-typebox.ts) so a
+// future producer can pass the Drizzle `numeric` row value straight through (PARAM-003).
+const money = Type.String({ description: "Decimal string — never a float" });
 
 export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
   // ── 835 ingestion (the M25-owned pull → parse → post pipeline, §1.1 / §2.2) ────────────────────────

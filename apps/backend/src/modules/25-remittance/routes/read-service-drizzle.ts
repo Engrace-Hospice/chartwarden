@@ -4,6 +4,7 @@
 // anchor timestamp. The taxonomy merge layers the per-tenant overlay on the injected M38 terminology
 // lookup (the composition root binds the real TerminologyProvider; absent ⇒ category 'unmapped' floor).
 import { type DbClient, schema } from "@wardenx/db";
+import { RegulatoryDecimal } from "@wardenx/shared/money";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, desc, eq, gte, lt, or, sql } from "drizzle-orm";
 import { agingBucketLabel, type AgingBucketLabel } from "../domain";
@@ -217,10 +218,13 @@ export function buildDrizzleM25ReadService(
           .where(sql`${DC.state} IN ('open','in_progress','escalated')`)
           .limit(100000);
         const counts = Object.fromEntries(AGING_LABELS.map((l) => [l, 0])) as Record<AgingBucketLabel, number>;
-        let totalDollar = 0;
+        // Decimal-exact accumulation (PARAM-003) — `dollar` is a `numeric(12,2)` string; summing via plain
+        // float `+=` risks penny drift across up to 100k open denials. `totalDollarOpen` is itself declared
+        // a decimal string (never a float) on the response contract.
+        let totalDollar = new RegulatoryDecimal(0);
         for (const row of open) {
           counts[agingBucketLabel(row.bucket)] += 1;
-          totalDollar += Number(row.dollar);
+          totalDollar = totalDollar.plus(row.dollar);
         }
         return { agingBucketCounts: counts, openCount: open.length, totalDollarOpen: totalDollar.toFixed(2) };
       });
