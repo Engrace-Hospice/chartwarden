@@ -13,7 +13,7 @@ export {
   type ResolvedDeathFact,
   externalSourceMetadataFor,
   resolveDeathFact,
-  utcDateOf,
+  localDateOf,
 } from "./death-discharge";
 export {
   type CosignReceiptAction,

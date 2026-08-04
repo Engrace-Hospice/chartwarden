@@ -41,7 +41,7 @@ import {
   scoreAssessment,
   transitionSignificantChange,
 } from "@wardenx/assessments";
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { ScaleDelta, ScaleSeries, ScaleSeriesPoint, ScaleType } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
@@ -98,7 +98,8 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
   return r;
 }
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+// PARAM-004: "today" for a scale-license effective/expiry check is the ORG's operating calendar
+// day (org_timezone), never a naive UTC-instant slice — see @wardenx/db's todayForOrganization.
 const toIso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : new Date(v).toISOString());
 const toNum = (v: string | number | null): number | null => (v === null ? null : Number(v));
 
@@ -237,7 +238,10 @@ export function createDbAssessmentRouteService(
         .where(and(eq(LIC.organizationId, org), eq(LIC.scaleType, args.scaleType)))
         .limit(1);
       const status = lic
-        ? computeScaleLicenseStatus({ effectiveDate: lic.effectiveDate, expiresAt: lic.expiresAt }, today())
+        ? computeScaleLicenseStatus(
+            { effectiveDate: lic.effectiveDate, expiresAt: lic.expiresAt },
+            await todayForOrganization(tx, org),
+          )
         : null;
       require_(
         status === "active",
@@ -494,6 +498,7 @@ export function createDbAssessmentRouteService(
           })
           .from(LIC)
           .where(eq(LIC.organizationId, organizationId));
+        const todayStr = await todayForOrganization(tx, organizationId);
         const licenses: ScaleLicenseView[] = rows.map((l) => ({
           id: l.id,
           scaleType: l.scaleType,
@@ -502,7 +507,7 @@ export function createDbAssessmentRouteService(
           expiresAt: l.expiresAt,
           // scale_license has no `seats` column; the in-memory shape carries it, so it reads null here.
           seats: null,
-          status: computeScaleLicenseStatus({ effectiveDate: l.effectiveDate, expiresAt: l.expiresAt }, today()),
+          status: computeScaleLicenseStatus({ effectiveDate: l.effectiveDate, expiresAt: l.expiresAt }, todayStr),
         }));
         return { licenses };
       });
@@ -653,7 +658,10 @@ export function createDbAssessmentRouteService(
           effectiveDate: row.effectiveDate,
           expiresAt: row.expiresAt,
           seats: args.seats ?? null, // scale_license has no `seats` column — echo the input only
-          status: computeScaleLicenseStatus({ effectiveDate: row.effectiveDate, expiresAt: row.expiresAt }, today()),
+          status: computeScaleLicenseStatus(
+            { effectiveDate: row.effectiveDate, expiresAt: row.expiresAt },
+            await todayForOrganization(t, organizationId),
+          ),
         };
       });
     },
@@ -687,7 +695,10 @@ export function createDbAssessmentRouteService(
           effectiveDate: row.effectiveDate,
           expiresAt: row.expiresAt,
           seats: args.seats ?? null,
-          status: computeScaleLicenseStatus({ effectiveDate: row.effectiveDate, expiresAt: row.expiresAt }, today()),
+          status: computeScaleLicenseStatus(
+            { effectiveDate: row.effectiveDate, expiresAt: row.expiresAt },
+            await todayForOrganization(t, organizationId),
+          ),
         };
       });
     },

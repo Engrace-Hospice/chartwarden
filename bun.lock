@@ -203,6 +203,7 @@
       "name": "@wardenx/db",
       "version": "0.0.0",
       "dependencies": {
+        "@wardenx/shared": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "pg": "^8.13.1",
       },

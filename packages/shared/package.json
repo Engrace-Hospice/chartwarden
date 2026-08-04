@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./money": "./src/money/kernel.ts"
+    "./money": "./src/money/kernel.ts",
+    "./dates": "./src/dates/org-local-date.ts"
   },
   "types": "./src/index.ts",
   "dependencies": {

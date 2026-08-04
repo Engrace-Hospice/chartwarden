@@ -1209,3 +1209,93 @@
   - Full regression across all four sub-items: build clean, `arch:fitness` green, full suite 7829
     passing (+14 new tests across dates.test.ts, write-service-drizzle.test.ts, messaging-routes.test.ts,
     organization-settings-persister.test.ts).
+
+## Follow-up (2026-08-04): resolving the three findings TASK-063/066 deliberately left open
+
+TASK-063 and TASK-066 above each surfaced a finding and explicitly declined to resolve it —
+correctly, at the time: a hygiene/P3 task shouldn't unilaterally pick a side on a real compliance
+tension, and PARAM-004's backend half needed infrastructure that didn't exist yet. This follow-up
+picks two of those three back up and resolves them for real; the third (`encounter_signature`) is
+still open.
+
+- **M7/M29 PHI-redaction disagreement — RESOLVED, both directions.**
+  - **M7 `care_plan_version.state_snapshot`**: resolved in favor of the migration/module-spec side
+    (redact only `patient_understanding_text`) — TASK-063's own analysis already established that
+    fully redacting `state_snapshot` would defeat the version table's purpose, and the PHI it
+    contains is already redacted via its own audit trail when the `problem`/`goal`/`intervention`
+    tables are audited directly. New migration
+    `0163_care_plan_version_state_snapshot_redaction.sql` (`CREATE OR REPLACE FUNCTION` +
+    `CREATE OR REPLACE TRIGGER`, PG14+, never editing the shipped 0029 migration) makes that the
+    ONE denylist, and the TS constant was the one that was wrong — `check-audit-denylist-sync.ts`
+    now compares against BOTH migrations for M7 (parses the later file as authoritative on
+    conflict), and `M7.care_plan_version` is removed from `KNOWN_UNRESOLVED_DISAGREEMENTS`.
+  - **M29 `lab_observation_value.observation_value`**: resolved in favor of the stricter
+    `AUDIT_DENYLIST_CATALOG` side (42 CFR Part 2 stakes) — invoked `generateAuditTrigger()`'s
+    row-conditional denylist code path for the first time in a real migration (it existed,
+    fully built, and had never been called by anything). New migration
+    `0164_lab_observation_value_sud_redaction.sql` is the LITERAL generator output for
+    `{table: "lab_observation_value", denylistCategories: ["sud_value"], retentionClass:
+    "compliance_42cfr_part2"}` — verified byte-identical via a new golden-output test
+    (`packages/audit/__tests__/generated-trigger-migrations.test.ts`) rather than by hand-copying.
+    The gate gained a `CONDITIONAL_REDACTIONS` check verifying the row-conditional markers
+    (`v_denylist`, the `sud_redaction_status` branch, both `audit_scrub` call sites) are present.
+  - Both migrations only ADD `CREATE OR REPLACE TRIGGER` statements alongside the function
+    replacement — the sync gate's table-name parse needed a `CREATE (?:OR REPLACE )?TRIGGER`
+    regex fix to still resolve the owning table when a migration has no bare `CREATE TRIGGER`.
+  - **Could not verify against live Postgres** — Docker Desktop's backend VM was unresponsive for
+    this entire session (likely fallout from TASK-065's disk-full event), so this rests on the
+    golden-output tests + all-green static gates, not a live-RLS trigger run. Re-verify live once
+    Docker recovers.
+  - Merged to `main` locally (branch `followup-m7-m29-redaction`); full suite 7838 passing.
+
+- **PARAM-004 backend half (org-local "today") — RESOLVED.** Built the org-timezone
+  infrastructure TASK-066 identified as missing, reusing the `organization_settings_registry`
+  (M1 §3.15) mechanism wired up in that same task rather than adding a raw schema column:
+  - `packages/db/src/organization-settings/settings-by-m1.ts` registers a new `org_timezone`
+    setting (TypeBox-validated IANA-zone pattern, `DEFAULT_ORGANIZATION_TIMEZONE =
+    "America/New_York"`).
+  - `packages/shared/src/dates/org-local-date.ts` (new, zero dependencies): `localDateInTimeZone`/
+    `orgLocalDateToday`/`isValidTimeZone`, built on `Intl.DateTimeFormat` with `timeZone` + the
+    `en-CA` locale (formats `YYYY-MM-DD` natively) rather than any manual offset arithmetic.
+  - `packages/db/src/organization-settings/org-today.ts` (new): `organizationTimezone`/
+    `todayForOrganization`/`serviceDateForOrganization` — the ONE shared "what calendar date is
+    this for this tenant" read, composing the setting with the pure `@wardenx/shared/dates`
+    helpers, failing closed to the UTC-adjacent `America/New_York` default rather than ever
+    silently falling back to naive UTC slicing.
+  - Fixed all 4 backend call sites the audit + a follow-up grep found:
+    - **09-assessments** — `today()` (license expiry checks) → `todayForOrganization`.
+    - **37-ipu** — inspection log's `lastInspectionDate` → `todayForOrganization`.
+    - **16-bereavement** — `utcDateOf` → renamed `localDateOf(iso, timezone)` (this site derives a
+      calendar date from a SPECIFIC recorded death instant, not "today" — a different function
+      shape than the other three; the consumer stayed a pure decision core, now taking `timezone`
+      as an explicit argument rather than reading anything itself).
+    - **17-scheduling** — the largest site: `visit.service_date` (the persisted column, ~12
+      call sites across create/list/get/edit/start/cancel/reschedule/no-show/reassign) now derives
+      from `organizationTimezone` + `localDateInTimeZone` instead of `isoStr.slice(0, 10)`. The
+      recurring-visit `startDate` field is left computed against literal `"UTC"` — consistent with
+      that row's own `timeZone: "UTC"` policy-placeholder field (§2.2.3), not a fix of the same bug.
+  - **The route-level ABAC target site scheduling-routes.ts's `createGateTarget` was the audit's
+    ORIGINAL cited line** (`scheduledStartedAt.slice(0, 10)` feeding the D8 pre-schedule gate's
+    `serviceDate`) — and it hit a genuine, real architectural constraint: `requireAbac`'s
+    `getTarget` (`packages/auth/src/abac/require-abac.ts`) is synchronous by contract, so it cannot
+    itself do the DB read `organizationTimezone` needs. Fixed WITHOUT touching that shared
+    contract: added `SchedulingRouteService.orgTimezone(orgId)` (real DB read in the Drizzle
+    backend; `"UTC"` in the in-memory reference slice, matching that file's existing UTC-only
+    assumptions) and a new `resolveOrgTimezone` preHandler that runs after the `CREATE` RBAC check
+    and before the four ABAC gates, stashing the result on `request.context.attributes` where
+    `createGateTarget` reads it back synchronously.
+  - New tests: `packages/shared/__tests__/org-local-date.test.ts` (6),
+    `packages/db/__tests__/organization-settings.test.ts` (4, resolves `org_timezone` via the real
+    reader), a new bereavement PARAM-004 test proving `America/Los_Angeles` and `UTC` disagree on
+    the calendar date for the same instant. Full backend scheduling test suite (53 tests across
+    4 files) and `bun run build`/`arch:fitness` both green.
+  - **Not verified against live Postgres** for the same Docker-unresponsive reason as the M7/M29
+    fix above — `m17-scheduling-*.live.test.ts` need a live cluster; re-run those once Docker
+    recovers, particularly to confirm `organization_settings_registry`'s boot-populated defaults
+    resolve correctly under real RLS.
+
+- **`encounter_signature` (CoP 418.104(c)) — still OPEN.** Not attempted in this follow-up; the
+  right next step is the write path itself (signature method + session id + fresh-step-up
+  provenance per signature event, integrated with the existing `signedAt`/`cosignedAt` lifecycle
+  transitions and M3's step-up session tracking), not further investigation — the investigation
+  already happened in TASK-066.

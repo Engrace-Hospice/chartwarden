@@ -213,6 +213,13 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return this.events.splice(0, this.events.length);
   }
 
+  // PARAM-004 follow-up — the in-memory reference slice has no org_timezone setting to read (not
+  // mounted in production; see module header), so it reports the same "UTC" this file's own
+  // `serviceDateOf` already assumes throughout.
+  orgTimezone(_orgId: string): Promise<string> {
+    return Promise.resolve("UTC");
+  }
+
   // ── visits ──────────────────────────────────────────────────────────────────────────────────────────
   listVisits(
     orgId: string,

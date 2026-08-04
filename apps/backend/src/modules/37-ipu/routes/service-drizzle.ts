@@ -4,7 +4,7 @@
 // pure @wardenx/inpatient machines (transitionBedCleaning, planOpenAdmission) and emit `m37.*` through the
 // injected WriteOutboxPort in the SAME unit of work (transactional outbox). `userId` is the M2 session user
 // id (the audit actor); `membershipId` stamps the row's created_by / by_membership_id columns.
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
@@ -1142,10 +1142,16 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
           notes: body.notes ?? null,
           nextInspectionDueDate: body.nextInspectionDueDate,
         });
-        // Roll the equipment's next-due forward + record the last inspection date.
+        // Roll the equipment's next-due forward + record the last inspection date. PARAM-004: "the
+        // date this inspection happened" is the ORG's operating calendar day, not a UTC-instant slice.
         const [row] = await t
           .update(schema.ipuEquipment)
-          .set({ nextInspectionDueDate: body.nextInspectionDueDate, lastInspectionDate: new Date().toISOString().slice(0, 10), updatedAt: new Date(), version: eq_.version + 1 })
+          .set({
+            nextInspectionDueDate: body.nextInspectionDueDate,
+            lastInspectionDate: await todayForOrganization(t, actor.organizationId),
+            updatedAt: new Date(),
+            version: eq_.version + 1,
+          })
           .where(eq(schema.ipuEquipment.id, equipmentId))
           .returning();
         if (!row) throw new ConflictError("inspection update failed");
