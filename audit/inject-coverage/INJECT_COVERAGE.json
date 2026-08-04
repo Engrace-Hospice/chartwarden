@@ -1,9 +1,9 @@
 {
   "totals": {
     "modules": 39,
-    "covered": 23,
+    "covered": 31,
     "routes": 1214,
-    "coveredRoutes": 560
+    "coveredRoutes": 847
   },
   "modules": [
     {
@@ -167,14 +167,18 @@
     {
       "module": "20-field-safety",
       "routes": 30,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/field-safety-inject.test.ts"
+      ]
     },
     {
       "module": "21-supplies",
       "routes": 37,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/supplies-inject.test.ts"
+      ]
     },
     {
       "module": "22-documents",
@@ -189,38 +193,50 @@
     {
       "module": "23-billing-medicare",
       "routes": 43,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/billing-medicare-inject.test.ts"
+      ]
     },
     {
       "module": "24-billing-medicaid",
       "routes": 39,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/billing-medicaid-inject.test.ts"
+      ]
     },
     {
       "module": "25-remittance",
       "routes": 31,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/remittance-inject.test.ts"
+      ]
     },
     {
       "module": "26-cap",
       "routes": 27,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/cap-inject.test.ts"
+      ]
     },
     {
       "module": "27-cost-report",
       "routes": 45,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/cost-report-inject.test.ts"
+      ]
     },
     {
       "module": "28-fhir",
       "routes": 35,
-      "covered": false,
-      "suiteFiles": []
+      "covered": true,
+      "suiteFiles": [
+        "apps/backend/__tests__/fhir-inject.test.ts"
+      ]
     },
     {
       "module": "29-external-interfaces",

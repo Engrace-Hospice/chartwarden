@@ -634,6 +634,34 @@
       permanently 403.
     - Remaining 16 modules + 050B/C/D are follow-up work (multi-session, per the ratchet design —
       each new suite lands as a `--update` that tightens the floor further).
+  - **Status (2026-08-04): 050A batch 2 DONE — 8 more modules covered (31/39, up from 23/39).**
+    M20 Field Safety (30/30 routes, 8 tests), M21 Supplies (37/37, 8 tests), M23 Billing Medicare
+    (43/43, 47 tests), M24 Billing Medicaid (39/39, 42 tests), M25 Remittance (31/31, 35 tests),
+    M26 Cap (27/27, 10 tests), M27 Cost Report (45/45, 48 tests), M28 FHIR Gateway (32 tests,
+    honest non-2xx on Phase-1 deny-stub routes) — 230 new tests, all 14 inject suites (batch 1+2)
+    green together, `arch:fitness` green, full suite 7229 passing (was 6999). Baseline
+    re-tightened to the final 8 modules: `29,30,31,32,33,34,35,37`.
+    - **More real defects surfaced, same TEST-001 mechanism (routes driven through `.inject()` for
+      the first time):**
+      - **M23 (high severity):** the three rule-config mutation routes (`POST
+        /billing/rule-configs/custom`, `PATCH .../{id}`, `DELETE .../{id}`) are **unreachable for
+        every caller, including org_admin** — `RULE_PROTECTED`'s default `getTarget` maps the
+        route's `:id` onto `ruleConfigId`, but `regulatory_required_rule_protected`'s
+        `resolveRuleKey` only ever reads `ruleKey`/`validationResultId`, never `ruleConfigId`, and
+        the resolver has no bridge method — so the predicate fail-closed-denies universally,
+        surfacing as 404 (`notFoundOnDeny: true`). This is the M30 dead-`inOrg` class TEST-001
+        predicted: correct predicate logic, broken wiring, invisible to any pure-function test.
+      - **M26 (security-relevant):** `PATCH /cap/periods/:periodId/reopen` still requires (and
+        accepts) a client-supplied `stepUpAssertionId` — the exact "caller asserts its own
+        re-authentication" pattern the module's own `m26-typebox.ts` header says was deliberately
+        removed from its two other step-up contracts, but a third contract
+        (`ReopenCapPeriodRequest`) was missed and no server code even reads the field.
+      - **A third `*-typebox.ts` self-registration gap** (after M25 — see above): `m26-typebox.ts`
+        also doesn't register its own TypeBox string formats, relying on load order the same way.
+        Worth a repo-wide sweep of every `*-typebox.ts` for this pattern — candidate TASK-052.
+      - **M27:** `cost_report_period_active` guard is exported but composed into zero routes —
+        dead code, not a defect, but worth a cleanup pass.
+    - Remaining 8 modules for 050A + 050B/C/D are the last follow-up work.
 
 ## Lower-priority (P2/P3) tasks
 

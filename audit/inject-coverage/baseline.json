@@ -1,30 +1,6 @@
 {
   "$comment": "RATCHET FLOOR for the inject-suite coverage gate (TASK-050A, TEST-001). Lists modules that currently have NO genuine Fastify .inject() HTTP-layer smoke suite (pure-function permission/ABAC tests do not count). A module listed here is known debt — it may not gain MORE debt (there's only one state, missing) and a module NOT listed here is required to stay covered. When a module gains its suite, remove it here (or run --update) to lock the progress in; a brand-new module with a routes/ dir and no suite fails immediately (implied floor: covered).",
   "modules": {
-    "20-field-safety": {
-      "missing": true
-    },
-    "21-supplies": {
-      "missing": true
-    },
-    "23-billing-medicare": {
-      "missing": true
-    },
-    "24-billing-medicaid": {
-      "missing": true
-    },
-    "25-remittance": {
-      "missing": true
-    },
-    "26-cap": {
-      "missing": true
-    },
-    "27-cost-report": {
-      "missing": true
-    },
-    "28-fhir": {
-      "missing": true
-    },
     "29-external-interfaces": {
       "missing": true
     },

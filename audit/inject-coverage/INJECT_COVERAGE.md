@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 23/39 modules covered (59%) · 560/1214 route defs sit behind a covered module
+**Totals:** 31/39 modules covered (79%) · 847/1214 route defs sit behind a covered module
 
 | Module | Routes | Covered | Suite file(s) |
 |---|--:|:--:|---|
@@ -26,15 +26,15 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 17-scheduling | 29 | ✅ | apps/backend/__tests__/scheduling-inject.test.ts |
 | 18-evv | 25 | ✅ | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 38 | ✅ | apps/backend/__tests__/oncall-inject.test.ts |
-| 20-field-safety | 30 | ❌ | — |
-| 21-supplies | 37 | ❌ | — |
+| 20-field-safety | 30 | ✅ | apps/backend/__tests__/field-safety-inject.test.ts |
+| 21-supplies | 37 | ✅ | apps/backend/__tests__/supplies-inject.test.ts |
 | 22-documents | 35 | ✅ | apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
-| 23-billing-medicare | 43 | ❌ | — |
-| 24-billing-medicaid | 39 | ❌ | — |
-| 25-remittance | 31 | ❌ | — |
-| 26-cap | 27 | ❌ | — |
-| 27-cost-report | 45 | ❌ | — |
-| 28-fhir | 35 | ❌ | — |
+| 23-billing-medicare | 43 | ✅ | apps/backend/__tests__/billing-medicare-inject.test.ts |
+| 24-billing-medicaid | 39 | ✅ | apps/backend/__tests__/billing-medicaid-inject.test.ts |
+| 25-remittance | 31 | ✅ | apps/backend/__tests__/remittance-inject.test.ts |
+| 26-cap | 27 | ✅ | apps/backend/__tests__/cap-inject.test.ts |
+| 27-cost-report | 45 | ✅ | apps/backend/__tests__/cost-report-inject.test.ts |
+| 28-fhir | 35 | ✅ | apps/backend/__tests__/fhir-inject.test.ts |
 | 29-external-interfaces | 33 | ❌ | — |
 | 30-quality | 60 | ❌ | — |
 | 31-portal | 53 | ❌ | — |
