@@ -38,7 +38,9 @@ for (const m of html.matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="([^"]+\.js
 }
 
 if (assetPaths.size === 0) {
-  console.error("No <script>/<link modulepreload> assets found in index.html — nothing to measure.");
+  console.error(
+    "No <script>/<link modulepreload> assets found in index.html — nothing to measure.",
+  );
   process.exit(1);
 }
 
@@ -58,7 +60,9 @@ for (const r of rows) {
   console.log(`  ${(r.bytes / 1024).toFixed(1).padStart(8)} kB  ${r.path}`);
 }
 console.log(`  ${"-".repeat(30)}`);
-console.log(`  ${(total / 1024).toFixed(1).padStart(8)} kB  total (budget ${BUDGET_BYTES / 1024} kB)`);
+console.log(
+  `  ${(total / 1024).toFixed(1).padStart(8)} kB  total (budget ${BUDGET_BYTES / 1024} kB)`,
+);
 
 if (total > BUDGET_BYTES) {
   const msg = `Initial bundle is ${(total / 1024).toFixed(1)} kB, over the ${BUDGET_BYTES / 1024} kB budget.`;

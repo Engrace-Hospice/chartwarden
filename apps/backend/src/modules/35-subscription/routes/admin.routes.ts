@@ -42,8 +42,10 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   const { service } = deps;
 
   // ── plans ──
-  app.get("/api/admin/plans", { preHandler: [P("plan.admin.read"), PLATFORM_SCOPE("plan.admin.read")] }, async () =>
-    service.adminListPlans(),
+  app.get(
+    "/api/admin/plans",
+    { preHandler: [P("plan.admin.read"), PLATFORM_SCOPE("plan.admin.read")] },
+    async () => service.adminListPlans(),
   );
   app.get(
     "/api/admin/plans/:id",
@@ -55,7 +57,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/plans",
-    { preHandler: [P("plan.admin.write"), PLATFORM_SCOPE("plan.admin.write"), STEP_UP("plan.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("plan.admin.write"),
+        PLATFORM_SCOPE("plan.admin.write"),
+        STEP_UP("plan.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(CreatePlanBodySchema, request.body);
@@ -64,7 +73,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.patch(
     "/api/admin/plans/:id",
-    { preHandler: [P("plan.admin.write"), PLATFORM_SCOPE("plan.admin.write"), STEP_UP("plan.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("plan.admin.write"),
+        PLATFORM_SCOPE("plan.admin.write"),
+        STEP_UP("plan.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -73,7 +89,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/plans/:id/activate",
-    { preHandler: [P("plan.admin.write"), PLATFORM_SCOPE("plan.admin.write"), STEP_UP("plan.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("plan.admin.write"),
+        PLATFORM_SCOPE("plan.admin.write"),
+        STEP_UP("plan.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -82,7 +105,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/plans/:id/deprecate",
-    { preHandler: [P("plan.admin.write"), PLATFORM_SCOPE("plan.admin.write"), STEP_UP("plan.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("plan.admin.write"),
+        PLATFORM_SCOPE("plan.admin.write"),
+        STEP_UP("plan.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -91,20 +121,41 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/plans/:id/meters",
-    { preHandler: [P("plan.admin.write"), PLATFORM_SCOPE("plan.admin.write"), STEP_UP("plan.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("plan.admin.write"),
+        PLATFORM_SCOPE("plan.admin.write"),
+        STEP_UP("plan.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return reply.code(201).send(await service.adminAddMeter(actor, id, parse(AddMeterBodySchema, request.body)));
+      return reply
+        .code(201)
+        .send(await service.adminAddMeter(actor, id, parse(AddMeterBodySchema, request.body)));
     },
   );
   app.patch(
     "/api/admin/plans/:id/meters/:meterId",
-    { preHandler: [P("plan.admin.write"), PLATFORM_SCOPE("plan.admin.write"), STEP_UP("plan.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("plan.admin.write"),
+        PLATFORM_SCOPE("plan.admin.write"),
+        STEP_UP("plan.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id, meterId } = parse(PlanMeterParamsSchema, request.params);
-      return service.adminUpdateMeter(actor, id, meterId, parse(UpdateMeterBodySchema, request.body));
+      return service.adminUpdateMeter(
+        actor,
+        id,
+        meterId,
+        parse(UpdateMeterBodySchema, request.body),
+      );
     },
   );
 
@@ -114,7 +165,11 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
     { preHandler: [P("subscription.admin.read"), PLATFORM_SCOPE("subscription.admin.read")] },
     async (request) => {
       const q = parse(AdminSubscriptionListQuerySchema, request.query);
-      return service.adminListSubscriptions({ status: q.status, organizationId: q.organizationId }, q.cursor, q.limit);
+      return service.adminListSubscriptions(
+        { status: q.status, organizationId: q.organizationId },
+        q.cursor,
+        q.limit,
+      );
     },
   );
   app.get(
@@ -127,7 +182,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/subscriptions/:id/pause",
-    { preHandler: [P("subscription.admin.write"), PLATFORM_SCOPE("subscription.admin.write"), STEP_UP("subscription.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.admin.write"),
+        PLATFORM_SCOPE("subscription.admin.write"),
+        STEP_UP("subscription.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -137,7 +199,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/subscriptions/:id/resume",
-    { preHandler: [P("subscription.admin.write"), PLATFORM_SCOPE("subscription.admin.write"), STEP_UP("subscription.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.admin.write"),
+        PLATFORM_SCOPE("subscription.admin.write"),
+        STEP_UP("subscription.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -146,7 +215,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/subscriptions/:id/cancel",
-    { preHandler: [P("subscription.admin.write"), PLATFORM_SCOPE("subscription.admin.write"), STEP_UP("subscription.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("subscription.admin.write"),
+        PLATFORM_SCOPE("subscription.admin.write"),
+        STEP_UP("subscription.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -155,7 +231,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/subscriptions/:id/apply_promo",
-    { preHandler: [P("promo.admin.apply"), PLATFORM_SCOPE("promo.admin.apply"), STEP_UP("promo.admin.apply"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("promo.admin.apply"),
+        PLATFORM_SCOPE("promo.admin.apply"),
+        STEP_UP("promo.admin.apply"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -165,7 +248,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/subscriptions/:id/revoke_promo",
-    { preHandler: [P("promo.admin.revoke"), PLATFORM_SCOPE("promo.admin.revoke"), STEP_UP("promo.admin.revoke"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("promo.admin.revoke"),
+        PLATFORM_SCOPE("promo.admin.revoke"),
+        STEP_UP("promo.admin.revoke"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -185,7 +275,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/dunning/:subscriptionId/skip_stage",
-    { preHandler: [P("dunning.admin.override"), PLATFORM_SCOPE("dunning.admin.override"), STEP_UP("dunning.admin.override"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("dunning.admin.override"),
+        PLATFORM_SCOPE("dunning.admin.override"),
+        STEP_UP("dunning.admin.override"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { subscriptionId } = parse(SubIdParamsSchema, request.params);
@@ -194,7 +291,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/dunning/:subscriptionId/reset",
-    { preHandler: [P("dunning.admin.override"), PLATFORM_SCOPE("dunning.admin.override"), STEP_UP("dunning.admin.override"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("dunning.admin.override"),
+        PLATFORM_SCOPE("dunning.admin.override"),
+        STEP_UP("dunning.admin.override"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { subscriptionId } = parse(SubIdParamsSchema, request.params);
@@ -205,7 +309,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   // ── refunds ──
   app.post(
     "/api/admin/refunds",
-    { preHandler: [P("refund.request"), PLATFORM_SCOPE("refund.request"), STEP_UP("refund.request"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("refund.request"),
+        PLATFORM_SCOPE("refund.request"),
+        STEP_UP("refund.request"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(RequestRefundBodySchema, request.body);
@@ -214,7 +325,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/refunds/:id/approve",
-    { preHandler: [P("refund.approve"), REFUND_APPROVAL("refund.approve"), STEP_UP("refund.approve"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("refund.approve"),
+        REFUND_APPROVAL("refund.approve"),
+        STEP_UP("refund.approve"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -223,7 +341,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/refunds/:id/deny",
-    { preHandler: [P("refund.approve"), REFUND_APPROVAL("refund.approve"), STEP_UP("refund.approve"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("refund.approve"),
+        REFUND_APPROVAL("refund.approve"),
+        STEP_UP("refund.approve"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -231,10 +356,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
       return service.denyRefund(actor, id, body.reason);
     },
   );
-  app.get("/api/admin/refunds", { preHandler: [P("refund.read"), PLATFORM_SCOPE("refund.read")] }, async (request) => {
-    const q = parse(ListQuerySchema, request.query);
-    return service.listRefunds(q.cursor, q.limit);
-  });
+  app.get(
+    "/api/admin/refunds",
+    { preHandler: [P("refund.read"), PLATFORM_SCOPE("refund.read")] },
+    async (request) => {
+      const q = parse(ListQuerySchema, request.query);
+      return service.listRefunds(q.cursor, q.limit);
+    },
+  );
   app.get(
     "/api/admin/refunds/:id",
     { preHandler: [P("refund.read"), PLATFORM_SCOPE("refund.read")] },
@@ -245,8 +374,10 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
 
   // ── promos ──
-  app.get("/api/admin/promos", { preHandler: [P("promo.admin.read"), PLATFORM_SCOPE("promo.admin.read")] }, async () =>
-    service.adminListPromos(),
+  app.get(
+    "/api/admin/promos",
+    { preHandler: [P("promo.admin.read"), PLATFORM_SCOPE("promo.admin.read")] },
+    async () => service.adminListPromos(),
   );
   app.get(
     "/api/admin/promos/:id",
@@ -258,7 +389,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/promos",
-    { preHandler: [P("promo.admin.write"), PLATFORM_SCOPE("promo.admin.write"), STEP_UP("promo.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("promo.admin.write"),
+        PLATFORM_SCOPE("promo.admin.write"),
+        STEP_UP("promo.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(CreatePromoBodySchema, request.body);
@@ -267,7 +405,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.patch(
     "/api/admin/promos/:id",
-    { preHandler: [P("promo.admin.write"), PLATFORM_SCOPE("promo.admin.write"), STEP_UP("promo.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("promo.admin.write"),
+        PLATFORM_SCOPE("promo.admin.write"),
+        STEP_UP("promo.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -276,7 +421,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/promos/:id/deactivate",
-    { preHandler: [P("promo.admin.write"), PLATFORM_SCOPE("promo.admin.write"), STEP_UP("promo.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("promo.admin.write"),
+        PLATFORM_SCOPE("promo.admin.write"),
+        STEP_UP("promo.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -300,7 +452,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/revenue/snapshots/compute",
-    { preHandler: [P("revenue.admin.write"), PLATFORM_SCOPE("revenue.admin.write"), STEP_UP("revenue.admin.write"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("revenue.admin.write"),
+        PLATFORM_SCOPE("revenue.admin.write"),
+        STEP_UP("revenue.admin.write"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => service.recomputeRevenue(writeActorOf(request)),
   );
 
@@ -323,7 +482,14 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
   );
   app.post(
     "/api/admin/webhooks/stripe/replay/:eventId",
-    { preHandler: [P("stripe.admin.replay"), PLATFORM_SCOPE("stripe.admin.replay"), STEP_UP("stripe.admin.replay"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("stripe.admin.replay"),
+        PLATFORM_SCOPE("stripe.admin.replay"),
+        STEP_UP("stripe.admin.replay"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { eventId } = parse(StripeEventParamsSchema, request.params);

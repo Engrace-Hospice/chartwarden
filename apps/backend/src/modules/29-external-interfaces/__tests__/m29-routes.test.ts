@@ -62,9 +62,9 @@ describe("feed onboarding FSM (§2.2)", () => {
     expect(reactivated.status).toBe("active");
     const revoked = await store.revokeFeed(ORG, OP, feed.id, { reason: "partner offboarded" });
     expect(revoked.status).toBe("revoked");
-    await expect(
-      store.updateFeed(ORG, OP, feed.id, { displayName: "x" }),
-    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(store.updateFeed(ORG, OP, feed.id, { displayName: "x" })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
     // revoke is terminal
     await expect(store.revokeFeed(ORG, OP, feed.id, { reason: "again" })).rejects.toBeInstanceOf(
       ConflictError,
@@ -121,9 +121,9 @@ describe("propose-then-review adjudication (§4.1.2 / D5)", () => {
     expect(accepted.proposalStatus).toBe("accepted");
     expect(accepted.decidedByMembershipId).toBe(COMPLIANCE);
     expect(accepted.acceptedAggregateId).toBe("patient-9");
-    await expect(
-      store.acceptProposal(ORG, COMPLIANCE, "p1", {}),
-    ).rejects.toBeInstanceOf(ConflictError);
+    await expect(store.acceptProposal(ORG, COMPLIANCE, "p1", {})).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 
   it("rejects a pending proposal with a ≥40-char rationale and enforces the floor", async () => {
@@ -162,7 +162,19 @@ describe("clinician lab reads (§4.2)", () => {
       patientId: "pat-1",
       loincCode: "2345-7",
       abnormalSummary: "any_critical",
-      values: [{ obxSetId: 1, loincCode: "2345-7", loincDisplayText: "Glucose", valueType: "NM", numericValue: 410, stringValue: null, units: "mg/dL", referenceRange: "70-110", abnormalFlag: "HH" }],
+      values: [
+        {
+          obxSetId: 1,
+          loincCode: "2345-7",
+          loincDisplayText: "Glucose",
+          valueType: "NM",
+          numericValue: 410,
+          stringValue: null,
+          units: "mg/dL",
+          referenceRange: "70-110",
+          abnormalFlag: "HH",
+        },
+      ],
     });
     const page = await store.listObservations(ORG, {});
     expect(page.items).toHaveLength(1);

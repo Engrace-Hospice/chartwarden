@@ -9,7 +9,7 @@
 //
 // CMS-CERT: certified against the form + Ch.43 §4320 (audit/M27_CMS_LINE_GEOMETRY_CERTIFICATION.md).
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** One general-service cost center's statistical-basis column: its recommended basis, total statistic, and the
  *  portion of that statistic applicable to each receiving center (the sum of portions must equal the total). */

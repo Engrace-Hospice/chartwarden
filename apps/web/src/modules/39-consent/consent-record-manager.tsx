@@ -1,10 +1,10 @@
 import {
-  cardSurface,
   EmptyState,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  cardSurface,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -45,7 +45,11 @@ interface PatientSummary {
   status: string;
 }
 
-const cell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
+const cell: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left",
+  verticalAlign: "middle",
+};
 const head: CSSProperties = {
   ...cell,
   fontSize: "0.72rem",
@@ -139,7 +143,10 @@ export function ConsentRecordManager(): JSX.Element {
                 <tr key={r.id} style={row}>
                   <td style={cell}>{humanize(r.typeKey)}</td>
                   <td style={cell}>
-                    <StatusPill tone={toneOf(CONSENT_STATUS_TONE, r.status)} label={humanize(r.status)} />
+                    <StatusPill
+                      tone={toneOf(CONSENT_STATUS_TONE, r.status)}
+                      label={humanize(r.status)}
+                    />
                   </td>
                   <td style={cell}>{humanize(r.grantorKind)}</td>
                   <td style={cell}>{humanize(r.captureMethod)}</td>

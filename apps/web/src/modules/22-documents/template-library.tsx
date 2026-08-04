@@ -1,3 +1,12 @@
+import {
+  EmptyState,
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  PageHeader,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/22-documents — FORM.TemplateLibrary (M22 §5.1, Track B / ADR-0030).
 // Spec: §5.1 "FORM.TemplateLibrary" — browse the platform-floor form templates with version metadata; the
 // per-template overlay editor (§5.1 FORM.TemplateOverlayEditor, D16 loosen-block) + render preview are admin
@@ -7,15 +16,6 @@
 // Reads GET /api/v1/form-templates (cursor-paginated) via the typed client. Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import {
-  EmptyState,
-  KpiCard,
-  KpiStrip,
-  LoadingSpinner,
-  PageHeader,
-  useApiClient,
-  WorkQueueLayout,
-} from "@wardenx/ui";
 import { Mono, ts } from "./lantern";
 
 interface TemplateRow {
@@ -61,7 +61,10 @@ export function TemplateLibrary(): JSX.Element {
         ) : loading && rows.length === 0 ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No templates" description="No form templates are published for this tenant yet." />
+          <EmptyState
+            title="No templates"
+            description="No form templates are published for this tenant yet."
+          />
         ) : (
           <table>
             <thead>

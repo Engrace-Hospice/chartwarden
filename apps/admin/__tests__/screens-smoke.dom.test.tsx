@@ -1,3 +1,4 @@
+import { render, waitFor } from "@testing-library/react";
 // @wardenx/admin — TASK-050C (TEST-004) registry-driven screen smoke render. Auto-discovers every
 // platform-module slice's screens.ts (import.meta.glob, mirroring apps/web's version — not a
 // hand-copied list, so a new slice lands covered automatically), registers them into a real M34
@@ -5,7 +6,6 @@
 // apps/web/src/shell/screens-smoke.dom.test.tsx for the sibling web-app version.
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { createApiClient } from "@wardenx/ui";
-import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { AdminApp } from "../src/app";
 import { createAdminRegistry } from "../src/shell/registry";
@@ -41,10 +41,13 @@ function stubClient() {
     // A 404 (not a 200-with-empty-body) — see apps/web/src/shell/screens-smoke.dom.test.tsx for why:
     // an empty `{}` 200 body is a shape no real endpoint returns and only trips unchecked casts.
     fetch: async () =>
-      new Response(JSON.stringify({ error: { code: "SMOKE_STUB", message: "no backend in test" } }), {
-        status: 404,
-        headers: { "content-type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({ error: { code: "SMOKE_STUB", message: "no backend in test" } }),
+        {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        },
+      ),
   });
 }
 

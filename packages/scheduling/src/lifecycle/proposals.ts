@@ -27,9 +27,9 @@ import type {
   VisitPurpose,
 } from "@wardenx/types";
 import { type FrequencyValue, frequencyCadenceDays, parseFrequency } from "../frequency";
-import { addCalendarDays, calendarDaysBetween } from "./time";
 import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";
+import { addCalendarDays, calendarDaysBetween } from "./time";
 
 /** The §2.2.4 default rolling proposal window (days). One week of look-ahead — the cron may widen it. */
 export const PROPOSE_HORIZON_DAYS = 7;
@@ -184,12 +184,13 @@ export type ProposalEvent =
 export type ProposalTransition = SchedulingTransitionResult<ProposalState, ProposalEvent["type"]>;
 
 /** The legal §2.2.4 transition graph (from → events accepted). Terminal states accept nothing. */
-export const PROPOSAL_GRAPH: Readonly<Record<ProposalState, ReadonlyArray<ProposalEvent["type"]>>> = {
-  pending: ["publish", "dismiss", "stale"],
-  published: [],
-  dismissed: [],
-  stale: [],
-};
+export const PROPOSAL_GRAPH: Readonly<Record<ProposalState, ReadonlyArray<ProposalEvent["type"]>>> =
+  {
+    pending: ["publish", "dismiss", "stale"],
+    published: [],
+    dismissed: [],
+    stale: [],
+  };
 
 /**
  * Apply a §2.2.4 proposal lifecycle event. Throws {@link SchedulingStateError} `ILLEGAL_PROPOSAL_TRANSITION`

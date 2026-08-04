@@ -19,7 +19,10 @@ export const FHIR_API_KEY_FINGERPRINT_CHARS = 8;
 
 /** §2.2 — compute the ops-display fingerprint of an API-key secret (sha256 hex, first 8 chars). */
 export function apiKeyFingerprint(secret: string): string {
-  return createHash("sha256").update(secret, "utf8").digest("hex").slice(0, FHIR_API_KEY_FINGERPRINT_CHARS);
+  return createHash("sha256")
+    .update(secret, "utf8")
+    .digest("hex")
+    .slice(0, FHIR_API_KEY_FINGERPRINT_CHARS);
 }
 
 /**

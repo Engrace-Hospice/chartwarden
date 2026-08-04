@@ -34,9 +34,7 @@ export const badDebtRecord = pgTable(
     periodLabel: varchar("period_label", { length: 20 }).notNull(), // e.g. "2026-03"
     debtKind: m27BadDebtKind("debt_kind").notNull(),
     amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
-    collectionEffortsDocumented: boolean("collection_efforts_documented")
-      .notNull()
-      .default(false),
+    collectionEffortsDocumented: boolean("collection_efforts_documented").notNull().default(false),
     supportingDocumentIds: jsonb("supporting_document_ids")
       .$type<string[]>()
       .notNull()

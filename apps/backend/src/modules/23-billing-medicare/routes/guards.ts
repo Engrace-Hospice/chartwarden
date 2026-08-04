@@ -19,7 +19,7 @@
 // `inOrg` (M3) and `caseload_or_scope` (M5) are RE-USED base predicates owned + registered by their modules.
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import { ForbiddenError } from "@wardenx/types";
-import { type PreHandler } from "./actor";
+import type { PreHandler } from "./actor";
 
 /** A structural request shape carrying the ABAC target sources (params/query/body); GuardRequest is assignable. */
 type TargetRequest = {
@@ -40,7 +40,8 @@ const paramId = (request: TargetRequest, key: string): TargetMap => {
 export const targetClaimId = (request: TargetRequest): TargetMap => paramId(request, "claimId");
 export const targetNoeId = (request: TargetRequest): TargetMap => paramId(request, "noeId");
 export const targetNotrId = (request: TargetRequest): TargetMap => paramId(request, "notrId");
-export const targetRuleConfigId = (request: TargetRequest): TargetMap => paramId(request, "ruleConfigId");
+export const targetRuleConfigId = (request: TargetRequest): TargetMap =>
+  paramId(request, "ruleConfigId");
 
 /** RuleKey from the create-custom-rule body — POST .../rule-configs/custom has no `:id` (nothing exists
  *  yet to target by ruleConfigId), so `regulatory_required_rule_protected` targets the key being created. */
@@ -90,14 +91,20 @@ export const PROVIDER_SCOPE = (
   key: string,
   getTarget: (request: TargetRequest) => TargetMap,
 ): PreHandler =>
-  requireAbac(key, "provider_entity_billing_scope", { getTarget, notFoundOnDeny: true }) as PreHandler;
+  requireAbac(key, "provider_entity_billing_scope", {
+    getTarget,
+    notFoundOnDeny: true,
+  }) as PreHandler;
 
 /** §4.7 `claim_in_billing_manager_caseload` — the claim's patient is in the actor's caseload AND PE in scope. */
 export const CLAIM_CASELOAD = (
   key: string,
   getTarget: (request: TargetRequest) => TargetMap = targetClaimId,
 ): PreHandler =>
-  requireAbac(key, "claim_in_billing_manager_caseload", { getTarget, notFoundOnDeny: true }) as PreHandler;
+  requireAbac(key, "claim_in_billing_manager_caseload", {
+    getTarget,
+    notFoundOnDeny: true,
+  }) as PreHandler;
 
 /** §4.7 `override_role_eligible` — the actor holds the role the failed result's rule demands (typed RoleKey). */
 export const OVERRIDE_ELIGIBLE = (
@@ -111,7 +118,10 @@ export const RULE_PROTECTED = (
   key: string,
   getTarget: (request: TargetRequest) => TargetMap = targetRuleConfigId,
 ): PreHandler =>
-  requireAbac(key, "regulatory_required_rule_protected", { getTarget, notFoundOnDeny: true }) as PreHandler;
+  requireAbac(key, "regulatory_required_rule_protected", {
+    getTarget,
+    notFoundOnDeny: true,
+  }) as PreHandler;
 
 /** §4.7 base `caseload_or_scope` (M5-owned) — reused for the patient-context eligibility reads/checks. */
 export const CASELOAD_OR_SCOPE = (
@@ -126,7 +136,8 @@ export const CASELOAD_OR_SCOPE = (
  * MAC-credential admin; the operation key is the permission key so M3-T07 resolves the per-op freshness
  * policy. Submit additionally re-validates step-up token freshness at dispatch in the write service (D2).
  */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;
 
 /**
  * §4.1 internal-seam gate (routes #39/#40) — these endpoints are SERVICE-TO-SERVICE only (M25/M26/M27 call

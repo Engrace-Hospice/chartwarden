@@ -14,7 +14,7 @@
 import { requirePermission } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
-import { parse, RiskRegisterListQuerySchema } from "./quality-typebox";
+import { RiskRegisterListQuerySchema, parse } from "./quality-typebox";
 import type { M30ReadRouteService } from "./read-service";
 import type { M30WriteRouteService } from "./write-service";
 
@@ -28,15 +28,32 @@ const RISK_READ = P("risk.read");
 const RISK_ADMIN = P("risk.admin");
 
 /** Register the §4.1 risk-register routes (R-95..R-96). */
-export function registerRiskRegisterRoutes(app: FastifyInstance, deps: RiskRegisterRouteDeps): void {
+export function registerRiskRegisterRoutes(
+  app: FastifyInstance,
+  deps: RiskRegisterRouteDeps,
+): void {
   const { readService, writeService } = deps;
 
   // R-95 — the unified risk view (filter by source/severity; cursor-paginated). §4.1.
-  app.get("/api/v1/quality/risk-register", { preHandler: [RISK_READ], config: { auditRead: { none: "org risk register entries — operational risk, no patient data" } } }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(RiskRegisterListQuerySchema, request.query);
-    return readService.listRiskRegister(actor, { source: q.source, severity: q.severity }, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/quality/risk-register",
+    {
+      preHandler: [RISK_READ],
+      config: {
+        auditRead: { none: "org risk register entries — operational risk, no patient data" },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(RiskRegisterListQuerySchema, request.query);
+      return readService.listRiskRegister(
+        actor,
+        { source: q.source, severity: q.severity },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // R-96 — force a `risk_register_view` MV refresh (202 accepted; idempotency-exempt). §4.1.
   app.post(

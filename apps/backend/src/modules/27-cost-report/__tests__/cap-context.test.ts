@@ -29,7 +29,11 @@ describe("resolveCapContext (M27 ← M26 CapAccrualReader)", () => {
   });
 
   it("no cap period for the year (null) → unbound, fail-closed (rules skip)", async () => {
-    const seam: CapAggregateSeam = { async aggregateForCostReport() { return null; } };
+    const seam: CapAggregateSeam = {
+      async aggregateForCostReport() {
+        return null;
+      },
+    };
     const r = await resolveCapContext(() => seam, "org-1", "FY2099");
     expect(r).toEqual({ capContext: null, capProviderBound: false });
   });

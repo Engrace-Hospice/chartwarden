@@ -4,19 +4,16 @@
 // injected. The cases that matter most pin the fail-CLOSED direction the §8 threat model turns on: an
 // unreachable patient is a 403 not a leak, an expired invite is a 410 not a silent re-issue, a tenant
 // overlay may tighten but never loosen the floor, and a bereaved flip refuses when M16 says out-of-window.
-import type {
-  PortalAccessGrantKind,
-  PortalAccountRelationship,
-} from "@wardenx/types";
+import type { PortalAccessGrantKind, PortalAccountRelationship } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
   type FlipCandidateGrant,
-  type PortalInvitation,
-  type SessionReachableGrant,
   INVITATION_TTL_CEILING_MS,
   INVITATION_TTL_FLOOR_MS,
   PORTAL_SESSION_POLICY_FLOOR,
+  type PortalInvitation,
   PortalStateError,
+  type SessionReachableGrant,
   acceptInvitation,
   assertNoOrgSwitch,
   assertSessionLive,
@@ -160,7 +157,10 @@ describe("session expiry / step-up / org-switch (§8.1)", () => {
   });
 
   it("tenant policy may only TIGHTEN (shorten) the windows", () => {
-    const p = resolvePortalSessionPolicy({ idleTimeoutMs: 15 * 60_000, hardTimeoutMs: 100 * 60 * 60_000 });
+    const p = resolvePortalSessionPolicy({
+      idleTimeoutMs: 15 * 60_000,
+      hardTimeoutMs: 100 * 60 * 60_000,
+    });
     expect(p.idleTimeoutMs).toBe(15 * 60_000); // honored (tighter)
     expect(p.hardTimeoutMs).toBe(8 * 60 * 60_000); // clamped to floor (a loosening attempt)
   });
@@ -171,7 +171,11 @@ describe("session expiry / step-up / org-switch (§8.1)", () => {
     expect(evaluateSessionExpiry(session, policy, T0 + 31 * 60_000)).toBe("idle_expired");
     // fresh touch but past the hard cap → hard expiry wins
     expect(
-      evaluateSessionExpiry({ mintedAtMs: T0, lastActiveAtMs: T0 + 8 * 60 * 60_000 }, policy, T0 + 8 * 60 * 60_000),
+      evaluateSessionExpiry(
+        { mintedAtMs: T0, lastActiveAtMs: T0 + 8 * 60 * 60_000 },
+        policy,
+        T0 + 8 * 60 * 60_000,
+      ),
     ).toBe("hard_expired");
   });
 
@@ -262,7 +266,11 @@ describe("invitation state machine (§7.1 / §2.6 / §8.3)", () => {
   it("issues an outstanding invite and accepts it into a scoped grant", () => {
     const inv = invite();
     expect(isInvitationOutstanding(inv, T0)).toBe(true);
-    const res = acceptInvitation(inv, { portalAccountId: "acct-1", floorVersion: FLOOR_VERSION, nowMs: T0 + 60_000 });
+    const res = acceptInvitation(inv, {
+      portalAccountId: "acct-1",
+      floorVersion: FLOOR_VERSION,
+      nowMs: T0 + 60_000,
+    });
     expect(res.replayed).toBe(false);
     expect(res.grantKind).toBe("family_caregiver");
     expect(res.invitation.acceptedByPortalAccountId).toBe("acct-1");
@@ -272,7 +280,11 @@ describe("invitation state machine (§7.1 / §2.6 / §8.3)", () => {
   it("expired invite → 410 (INVITATION_EXPIRED)", () => {
     const inv = invite();
     try {
-      acceptInvitation(inv, { portalAccountId: "acct-1", floorVersion: FLOOR_VERSION, nowMs: T0 + INVITATION_TTL_FLOOR_MS });
+      acceptInvitation(inv, {
+        portalAccountId: "acct-1",
+        floorVersion: FLOOR_VERSION,
+        nowMs: T0 + INVITATION_TTL_FLOOR_MS,
+      });
       throw new Error("should have thrown");
     } catch (e) {
       expect((e as PortalStateError).code).toBe("INVITATION_EXPIRED");
@@ -283,13 +295,21 @@ describe("invitation state machine (§7.1 / §2.6 / §8.3)", () => {
   it("revoked invite → 410 (INVITATION_REVOKED)", () => {
     const inv: PortalInvitation = { ...invite(), revokedAtMs: T0 + 10_000 };
     expect(() =>
-      acceptInvitation(inv, { portalAccountId: "acct-1", floorVersion: FLOOR_VERSION, nowMs: T0 + 20_000 }),
+      acceptInvitation(inv, {
+        portalAccountId: "acct-1",
+        floorVersion: FLOOR_VERSION,
+        nowMs: T0 + 20_000,
+      }),
     ).toThrowError(/revoked/i);
   });
 
   it("§2.6 idempotent replay: same account re-hitting an accepted token returns the existing binding", () => {
     const inv = invite();
-    const first = acceptInvitation(inv, { portalAccountId: "acct-1", floorVersion: FLOOR_VERSION, nowMs: T0 + 60_000 });
+    const first = acceptInvitation(inv, {
+      portalAccountId: "acct-1",
+      floorVersion: FLOOR_VERSION,
+      nowMs: T0 + 60_000,
+    });
     const replay = acceptInvitation(first.invitation, {
       portalAccountId: "acct-1",
       floorVersion: FLOOR_VERSION,
@@ -301,9 +321,17 @@ describe("invitation state machine (§7.1 / §2.6 / §8.3)", () => {
 
   it("a DIFFERENT account against an accepted token is a collision (409 INVITATION_ALREADY_BOUND)", () => {
     const inv = invite();
-    const first = acceptInvitation(inv, { portalAccountId: "acct-1", floorVersion: FLOOR_VERSION, nowMs: T0 + 60_000 });
+    const first = acceptInvitation(inv, {
+      portalAccountId: "acct-1",
+      floorVersion: FLOOR_VERSION,
+      nowMs: T0 + 60_000,
+    });
     try {
-      acceptInvitation(first.invitation, { portalAccountId: "acct-2", floorVersion: FLOOR_VERSION, nowMs: T0 + 120_000 });
+      acceptInvitation(first.invitation, {
+        portalAccountId: "acct-2",
+        floorVersion: FLOOR_VERSION,
+        nowMs: T0 + 120_000,
+      });
       throw new Error("should have thrown");
     } catch (e) {
       expect((e as PortalStateError).code).toBe("INVITATION_ALREADY_BOUND");
@@ -320,7 +348,11 @@ describe("invitation state machine (§7.1 / §2.6 / §8.3)", () => {
       nowMs: T0,
     });
     try {
-      acceptInvitation(inv, { portalAccountId: "acct-1", floorVersion: FLOOR_VERSION, nowMs: T0 + 60_000 });
+      acceptInvitation(inv, {
+        portalAccountId: "acct-1",
+        floorVersion: FLOOR_VERSION,
+        nowMs: T0 + 60_000,
+      });
       throw new Error("should have thrown");
     } catch (e) {
       expect((e as PortalStateError).code).toBe("INVITATION_SCOPE_INVALID");
@@ -395,7 +427,9 @@ describe("bereaved flip planner (§7.5 / D6)", () => {
     try {
       planBereavedFlip({
         decedentPatientId: "pat-A",
-        accountGrants: [{ grantId: "g-1", patientId: "pat-A", grantKind: "family_caregiver", revoked: true }],
+        accountGrants: [
+          { grantId: "g-1", patientId: "pat-A", grantKind: "family_caregiver", revoked: true },
+        ],
         bereavedInWindow: true,
         floorVersion: FLOOR_VERSION,
       });
@@ -413,7 +447,9 @@ describe("bereaved flip planner (§7.5 / D6)", () => {
         { grantId: "c-1", patientId: "pat-A", grantKind: "family_caregiver", revoked: false },
       ],
     });
-    expect(plan.revoke).toEqual([{ grantId: "b-1", revokeCascadeSource: "bereavement_window_expired" }]);
+    expect(plan.revoke).toEqual([
+      { grantId: "b-1", revokeCascadeSource: "bereavement_window_expired" },
+    ]);
     expect(plan.insert).toHaveLength(0);
   });
 });

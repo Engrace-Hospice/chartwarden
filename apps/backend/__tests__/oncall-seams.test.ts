@@ -27,7 +27,12 @@ import type {
   TriageMetricsWindow,
 } from "@wardenx/types";
 import { afterEach, describe, expect, it } from "vitest";
-import { REQUIRED_SEAMS, __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  getSeam,
+  validateSeams,
+} from "../src/bootstrap/index";
 import {
   PORTAL_DISPOSITION_LAY_SUMMARY,
   PORTAL_IN_PROGRESS_LAY_SUMMARY,
@@ -108,9 +113,7 @@ describe("M19 §4.3 — registry wiring", () => {
 
   it("stands throwing deny-stubs for all five when M19 does not register", () => {
     validateSeams();
-    expect(() => getOnCallProvider().currentOnCallActors(ORG, PE, NOW)).toThrow(
-      /OnCallProvider/,
-    );
+    expect(() => getOnCallProvider().currentOnCallActors(ORG, PE, NOW)).toThrow(/OnCallProvider/);
     expect(() => getTriageCallReader().recentCallsForPatient(ORG, PATIENT, NOW)).toThrow(
       /TriageCallReader/,
     );
@@ -398,9 +401,7 @@ describe("coverageGapMinutesOf — §2.4 / §9.7", () => {
   };
 
   it("counts a ProviderEntity with no shift at all as dark for the WHOLE window", () => {
-    expect(
-      coverageGapMinutesOf(oneDay, { providerEntityIds: [PE], windows: [] }),
-    ).toBe(24 * 60);
+    expect(coverageGapMinutesOf(oneDay, { providerEntityIds: [PE], windows: [] })).toBe(24 * 60);
   });
 
   it("sums PER ProviderEntity, so one covered PE cannot mask another's dark night", () => {

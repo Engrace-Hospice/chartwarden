@@ -6,8 +6,18 @@ import type { operations } from "@wardenx/ui";
 // Idempotency-Key). Percent/amount-off + duration are shown per §5.2. Lantern: list + inline create.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { actionButtonStyle, bodyRow, cell, cellRight, Field, inputStyle, OutcomeBanner, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, idempotencyKey } from "./status";
+import {
+  Field,
+  OutcomeBanner,
+  actionButtonStyle,
+  bodyRow,
+  cell,
+  cellRight,
+  inputStyle,
+  tableStyle,
+  theadRow,
+} from "./ui";
 
 type Promo =
   operations["getApiAdminPromos"]["responses"][200]["content"]["application/json"][number];
@@ -20,7 +30,15 @@ export function Promos(): JSX.Element {
   const [outcome, setOutcome] = useState<{ ok: boolean; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ code: "", coupon: "", promotion: "", kind: "percent_off", percent: "", amount: "", duration: "once" });
+  const [form, setForm] = useState({
+    code: "",
+    coupon: "",
+    promotion: "",
+    kind: "percent_off",
+    percent: "",
+    amount: "",
+    duration: "once",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,16 +67,28 @@ export function Promos(): JSX.Element {
         stripePromotionCodeId: form.promotion.trim() || form.code.trim(),
         kind: form.kind as "percent_off" | "amount_off",
         percentOff: form.kind === "percent_off" ? Number(form.percent) || undefined : undefined,
-        fixedOffCents: form.kind === "amount_off" ? Math.round(Number(form.amount) * 100) || undefined : undefined,
+        fixedOffCents:
+          form.kind === "amount_off"
+            ? Math.round(Number(form.amount) * 100) || undefined
+            : undefined,
         duration: form.duration as "once" | "repeating" | "forever",
       },
       headers: { "Idempotency-Key": idempotencyKey() },
     });
-    if (res.error) setOutcome({ ok: false, message: "Could not create the promo (check step-up + fields)." });
+    if (res.error)
+      setOutcome({ ok: false, message: "Could not create the promo (check step-up + fields)." });
     else {
       setOutcome({ ok: true, message: `Promo "${form.code}" created.` });
       setShowCreate(false);
-      setForm({ code: "", coupon: "", promotion: "", kind: "percent_off", percent: "", amount: "", duration: "once" });
+      setForm({
+        code: "",
+        coupon: "",
+        promotion: "",
+        kind: "percent_off",
+        percent: "",
+        amount: "",
+        duration: "once",
+      });
       await load();
     }
     setBusy(false);
@@ -68,8 +98,15 @@ export function Promos(): JSX.Element {
     async (id: string, code: string) => {
       setBusy(true);
       setOutcome(null);
-      const res = await client.POST("/api/admin/promos/{id}/deactivate", { params: { path: { id } }, headers: { "Idempotency-Key": idempotencyKey() } });
-      setOutcome(res.error ? { ok: false, message: "Could not deactivate (check step-up)." } : { ok: true, message: `Promo "${code}" deactivated.` });
+      const res = await client.POST("/api/admin/promos/{id}/deactivate", {
+        params: { path: { id } },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      });
+      setOutcome(
+        res.error
+          ? { ok: false, message: "Could not deactivate (check step-up)." }
+          : { ok: true, message: `Promo "${code}" deactivated.` },
+      );
       if (!res.error) await load();
       setBusy(false);
     },
@@ -79,43 +116,110 @@ export function Promos(): JSX.Element {
   if (loading) return <LoadingSpinner />;
 
   const discount = (p: Promo): string =>
-    p.percentOff != null ? `${p.percentOff}%` : p.fixedOffCents != null ? formatCents(p.fixedOffCents) : "—";
+    p.percentOff != null
+      ? `${p.percentOff}%`
+      : p.fixedOffCents != null
+        ? formatCents(p.fixedOffCents)
+        : "—";
 
   return (
-    <div style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+    >
       <PageHeader
         title="Promo codes"
         breadcrumb="Platform Ops"
-        actions={<button type="button" onClick={() => setShowCreate((s) => !s)} style={actionButtonStyle(true)}>{showCreate ? "Cancel" : "New promo"}</button>}
+        actions={
+          <button
+            type="button"
+            onClick={() => setShowCreate((s) => !s)}
+            style={actionButtonStyle(true)}
+          >
+            {showCreate ? "Cancel" : "New promo"}
+          </button>
+        }
       />
       {outcome ? <OutcomeBanner ok={outcome.ok} message={outcome.message} /> : null}
       {showCreate ? (
-        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "0.75rem", maxWidth: "52rem", alignItems: "end" }}>
-          <Field label="Code"><input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} style={inputStyle} /></Field>
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
+            gap: "0.75rem",
+            maxWidth: "52rem",
+            alignItems: "end",
+          }}
+        >
+          <Field label="Code">
+            <input
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value })}
+              style={inputStyle}
+            />
+          </Field>
           <Field label="Kind">
-            <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })} style={inputStyle}>
+            <select
+              value={form.kind}
+              onChange={(e) => setForm({ ...form, kind: e.target.value })}
+              style={inputStyle}
+            >
               <option value="percent_off">Percent off</option>
               <option value="amount_off">Amount off</option>
             </select>
           </Field>
           {form.kind === "percent_off" ? (
-            <Field label="Percent"><input value={form.percent} inputMode="numeric" onChange={(e) => setForm({ ...form, percent: e.target.value })} style={inputStyle} /></Field>
+            <Field label="Percent">
+              <input
+                value={form.percent}
+                inputMode="numeric"
+                onChange={(e) => setForm({ ...form, percent: e.target.value })}
+                style={inputStyle}
+              />
+            </Field>
           ) : (
-            <Field label="Amount (USD)"><input value={form.amount} inputMode="decimal" onChange={(e) => setForm({ ...form, amount: e.target.value })} style={inputStyle} /></Field>
+            <Field label="Amount (USD)">
+              <input
+                value={form.amount}
+                inputMode="decimal"
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                style={inputStyle}
+              />
+            </Field>
           )}
           <Field label="Duration">
-            <select value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} style={inputStyle}>
+            <select
+              value={form.duration}
+              onChange={(e) => setForm({ ...form, duration: e.target.value })}
+              style={inputStyle}
+            >
               <option value="once">Once</option>
               <option value="repeating">Repeating</option>
               <option value="forever">Forever</option>
             </select>
           </Field>
-          <Field label="Stripe coupon id"><input value={form.coupon} onChange={(e) => setForm({ ...form, coupon: e.target.value })} style={inputStyle} placeholder="defaults to code" /></Field>
-          <button type="button" onClick={() => void create()} disabled={busy || !form.code.trim()} style={actionButtonStyle(true, busy || !form.code.trim())}>Create promo</button>
+          <Field label="Stripe coupon id">
+            <input
+              value={form.coupon}
+              onChange={(e) => setForm({ ...form, coupon: e.target.value })}
+              style={inputStyle}
+              placeholder="defaults to code"
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={() => void create()}
+            disabled={busy || !form.code.trim()}
+            style={actionButtonStyle(true, busy || !form.code.trim())}
+          >
+            Create promo
+          </button>
         </section>
       ) : null}
       {error || promos.length === 0 ? (
-        <EmptyState title={error ?? "No promos"} description={error ? "Retry shortly." : "Create the first promo code."} />
+        <EmptyState
+          title={error ?? "No promos"}
+          description={error ? "Retry shortly." : "Create the first promo code."}
+        />
       ) : (
         <table style={tableStyle}>
           <thead>
@@ -131,14 +235,36 @@ export function Promos(): JSX.Element {
           <tbody>
             {promos.map((p) => (
               <tr key={p.id} style={bodyRow}>
-                <td style={cell}><span style={{ fontWeight: 600 }}>{p.code}</span></td>
-                <td style={cell} className="tabular-nums">{discount(p)}</td>
-                <td style={cell}>{cap(p.duration)}{p.durationInMonths ? ` (${p.durationInMonths}m)` : ""}</td>
-                <td style={cellRight} className="tabular-nums">{p.redemptionCount.toLocaleString()}{p.maxRedemptions ? ` / ${p.maxRedemptions}` : ""}</td>
-                <td style={cell}><StatusPill label={p.isActive ? "Active" : "Inactive"} tone={p.isActive ? "success" : "neutral"} /></td>
+                <td style={cell}>
+                  <span style={{ fontWeight: 600 }}>{p.code}</span>
+                </td>
+                <td style={cell} className="tabular-nums">
+                  {discount(p)}
+                </td>
+                <td style={cell}>
+                  {cap(p.duration)}
+                  {p.durationInMonths ? ` (${p.durationInMonths}m)` : ""}
+                </td>
+                <td style={cellRight} className="tabular-nums">
+                  {p.redemptionCount.toLocaleString()}
+                  {p.maxRedemptions ? ` / ${p.maxRedemptions}` : ""}
+                </td>
+                <td style={cell}>
+                  <StatusPill
+                    label={p.isActive ? "Active" : "Inactive"}
+                    tone={p.isActive ? "success" : "neutral"}
+                  />
+                </td>
                 <td style={cell}>
                   {p.isActive ? (
-                    <button type="button" onClick={() => void deactivate(p.id, p.code)} disabled={busy} style={actionButtonStyle(false, busy)}>Deactivate</button>
+                    <button
+                      type="button"
+                      onClick={() => void deactivate(p.id, p.code)}
+                      disabled={busy}
+                      style={actionButtonStyle(false, busy)}
+                    >
+                      Deactivate
+                    </button>
                   ) : null}
                 </td>
               </tr>

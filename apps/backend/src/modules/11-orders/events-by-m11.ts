@@ -132,7 +132,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m11.order.cosigned",
     moduleOwner: "m11",
-    description: "`cosignOrder` attached the required cosignature (§2.5); M33 reports, M36 closes the queue item.",
+    description:
+      "`cosignOrder` attached the required cosignature (§2.5); M33 reports, M36 closes the queue item.",
     payloadSchema: Type.Object({
       orderId: id,
       cosignatureId: id,
@@ -219,7 +220,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m11.order.completed",
     moduleOwner: "m11",
-    description: "`completeOrder` (manual clinician review or system one-shot auto-complete) finished an active order.",
+    description:
+      "`completeOrder` (manual clinician review or system one-shot auto-complete) finished an active order.",
     payloadSchema: Type.Object({
       orderId: id,
       completedAt: isoInstant,
@@ -406,7 +408,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m11.order.standing_created",
     moduleOwner: "m11",
-    description: "`createTemplate` registered a standing-order template with a spawn cadence (§2.4 D5).",
+    description:
+      "`createTemplate` registered a standing-order template with a spawn cadence (§2.4 D5).",
     payloadSchema: Type.Object({
       standingOrderId: id,
       patientId: id,
@@ -434,7 +437,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m11.order.standing_discontinued",
     moduleOwner: "m11",
-    description: "`discontinueTemplate` ended a standing-order template (active spawned instances continue per §2.6).",
+    description:
+      "`discontinueTemplate` ended a standing-order template (active spawned instances continue per §2.6).",
     payloadSchema: Type.Object({
       standingOrderId: id,
       reason: id,
@@ -446,7 +450,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m11.order.document_requested",
     moduleOwner: "m11",
-    description: "Mirror of `m11.order.signed` for the M22 form/PDF render handshake (§4.4 form rendering handshake).",
+    description:
+      "Mirror of `m11.order.signed` for the M22 form/PDF render handshake (§4.4 form rendering handshake).",
     payloadSchema: Type.Object({
       orderId: id,
       formTemplate: id,

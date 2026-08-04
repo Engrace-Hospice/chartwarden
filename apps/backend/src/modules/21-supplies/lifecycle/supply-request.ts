@@ -25,6 +25,7 @@
 //      value meaning "nobody actually said yes"; firing it early would manufacture a receipt confirmation
 //      that never happened, so the guard checks the elapsed grace rather than trusting the caller.
 import {
+  type SupplyRequestTransition,
   allowedTransitions,
   autoCompletesOnReceipt,
   isReceivedConfirmAutoDue,
@@ -32,7 +33,6 @@ import {
   isVendorAssignmentCoherent,
   isVendorConfirmationOverdue,
   resolveTransition,
-  type SupplyRequestTransition,
 } from "@wardenx/supplies";
 import type {
   DmeRentalCadence,

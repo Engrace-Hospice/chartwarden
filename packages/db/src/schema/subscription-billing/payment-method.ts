@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `payment_method` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Stripe-mirrored
 // metadata only — no PAN, no CVV. `organization_id` is a logical uuid (M35-F04). §3.6 requests a
 // field-exclusion posture on the `card_*`/`ach_*`/`sepa_*` metadata columns (defence-in-depth), applied
@@ -12,7 +13,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { paymentMethodKind } from "../../enums";
 
 export const paymentMethod = pgTable(

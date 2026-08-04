@@ -98,7 +98,10 @@ export function writeActorOf(request: FastifyRequest): M32WriteActor {
  * The AI-Safety-Owner requirement for the platform arm is enforced by the route's ABAC guard, not here:
  * this function decides WHICH org the row names, and authorization decides who may say it.
  */
-export function killSwitchScopeOf(actor: M32WriteActor, scope: "platform" | "tenant"): string | null {
+export function killSwitchScopeOf(
+  actor: M32WriteActor,
+  scope: "platform" | "tenant",
+): string | null {
   return scope === "platform" ? null : actor.organizationId;
 }
 

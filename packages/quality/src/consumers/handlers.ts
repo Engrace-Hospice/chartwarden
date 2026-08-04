@@ -14,18 +14,15 @@
 // gotcha). These handlers are NOT boot-wired to a running subscriber (RULE 3(d)) — they ship pure + the
 // subscription map; the live inbound dispatcher is a later platform phase.
 import type { schema } from "@wardenx/db";
+import type { DecedentDeathSource } from "../cahps/sampler";
+import { type IncidentTriggerEvent, buildIncidentDraftFromEvent } from "../incidents/auto_creator";
 import { MEASURE_CATALOG, type MeasureFamily } from "../measures/registry";
 import {
-  buildMortalityReviewFromDeath,
   type DischargeDeathEvent,
   type MortalityReviewAutoCreateResult,
+  buildMortalityReviewFromDeath,
 } from "../mortality_review/auto_creator";
-import {
-  buildIncidentDraftFromEvent,
-  type IncidentTriggerEvent,
-} from "../incidents/auto_creator";
-import type { DecedentDeathSource } from "../cahps/sampler";
-import { effectsForTopic, type M30SubscriptionEffect } from "./subscription-map";
+import { type M30SubscriptionEffect, effectsForTopic } from "./subscription-map";
 
 // ── effect request shapes (what a handler hands its port) ───────────────────────────────────────────────
 
@@ -93,9 +90,7 @@ export interface M30ConsumerPorts {
  * Deterministic catalog order; deduped. CAHPS-family measures are vendor-survey-derived (not recompute-
  * queue driven) and never appear in a recompute fan-out, but the filter stays family-general.
  */
-export function measureCodesForFamilies(
-  families: readonly MeasureFamily[],
-): readonly string[] {
+export function measureCodesForFamilies(families: readonly MeasureFamily[]): readonly string[] {
   const wanted = new Set<MeasureFamily>(families);
   return MEASURE_CATALOG.filter((entry) => wanted.has(entry.family)).map((entry) => entry.code);
 }
@@ -137,7 +132,10 @@ export async function handleDischargeDeath(
     deathSource: cahpsDeathSourceOf(event),
     triggeringEventId: event.eventIdempotencyKey,
   });
-  return { eventName: "m6.discharge.death", effects: ["mortality_review_draft", "cahps_candidate_add"] };
+  return {
+    eventName: "m6.discharge.death",
+    effects: ["mortality_review_draft", "cahps_candidate_add"],
+  };
 }
 
 /** The minimal `m6.election.signed` payload M30 reads (§4.10). */

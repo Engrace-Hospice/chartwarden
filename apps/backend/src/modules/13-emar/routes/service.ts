@@ -180,26 +180,77 @@ export interface RecordDecisionArgs {
 
 /** The §4.1 route surface the Fastify handlers compose over. */
 export interface EmarRouteService extends EmarAbacResolver {
-  recordAdministration(orgId: string, userId: string, args: RecordAdministrationArgs): Promise<AdministrationView>;
-  mintWitnessToken(orgId: string, userId: string, args: WitnessAttestArgs): Promise<{ token: string; expiresInSeconds: number }>;
-  recordCaregiverAttested(orgId: string, args: RecordCaregiverAttestedArgs): Promise<AdministrationView>;
+  recordAdministration(
+    orgId: string,
+    userId: string,
+    args: RecordAdministrationArgs,
+  ): Promise<AdministrationView>;
+  mintWitnessToken(
+    orgId: string,
+    userId: string,
+    args: WitnessAttestArgs,
+  ): Promise<{ token: string; expiresInSeconds: number }>;
+  recordCaregiverAttested(
+    orgId: string,
+    args: RecordCaregiverAttestedArgs,
+  ): Promise<AdministrationView>;
   acknowledgeCaregiver(orgId: string, userId: string, id: string): Promise<AdministrationView>;
-  disputeCaregiver(orgId: string, userId: string, id: string, reason: string): Promise<AdministrationView>;
-  correctAdministration(orgId: string, userId: string, id: string, reason: string): Promise<AdministrationView>;
-  voidAdministration(orgId: string, userId: string, id: string, reason: string): Promise<AdministrationView>;
+  disputeCaregiver(
+    orgId: string,
+    userId: string,
+    id: string,
+    reason: string,
+  ): Promise<AdministrationView>;
+  correctAdministration(
+    orgId: string,
+    userId: string,
+    id: string,
+    reason: string,
+  ): Promise<AdministrationView>;
+  voidAdministration(
+    orgId: string,
+    userId: string,
+    id: string,
+    reason: string,
+  ): Promise<AdministrationView>;
   getAdministration(orgId: string, id: string): Promise<AdministrationView>;
-  listAdministrations(orgId: string, q: { patient: string; since?: string; until?: string }): Promise<AdministrationView[]>;
+  listAdministrations(
+    orgId: string,
+    q: { patient: string; since?: string; until?: string },
+  ): Promise<AdministrationView[]>;
   getIvSession(orgId: string, sessionId: string): Promise<IvSessionView>;
-  recordRefusal(orgId: string, userId: string, args: RecordRefusalArgs): Promise<AdministrationView>;
-  offlineSync(orgId: string, userId: string, rows: RecordAdministrationArgs[]): Promise<{ synced: number; results: AdministrationView[] }>;
-  listScheduledDoses(orgId: string, q: { patient: string; from?: string; to?: string }): Promise<ScheduledDoseView[]>;
+  recordRefusal(
+    orgId: string,
+    userId: string,
+    args: RecordRefusalArgs,
+  ): Promise<AdministrationView>;
+  offlineSync(
+    orgId: string,
+    userId: string,
+    rows: RecordAdministrationArgs[],
+  ): Promise<{ synced: number; results: AdministrationView[] }>;
+  listScheduledDoses(
+    orgId: string,
+    q: { patient: string; from?: string; to?: string },
+  ): Promise<ScheduledDoseView[]>;
   intentionalHold(orgId: string, userId: string, id: string): Promise<ScheduledDoseView>;
   listMissedDoses(orgId: string, q: { patient: string; since?: string }): Promise<MissedDoseView[]>;
   acknowledgeMissed(orgId: string, userId: string, id: string): Promise<MissedDoseView>;
   listWorksheets(orgId: string, patient: string): Promise<WorksheetView[]>;
   getWorksheet(orgId: string, id: string): Promise<WorksheetView>;
-  recordDecision(orgId: string, userId: string, id: string, args: RecordDecisionArgs): Promise<WorksheetView>;
-  updateDecision(orgId: string, userId: string, id: string, lineId: string, decision: ReconciliationDecisionKind): Promise<WorksheetView>;
+  recordDecision(
+    orgId: string,
+    userId: string,
+    id: string,
+    args: RecordDecisionArgs,
+  ): Promise<WorksheetView>;
+  updateDecision(
+    orgId: string,
+    userId: string,
+    id: string,
+    lineId: string,
+    decision: ReconciliationDecisionKind,
+  ): Promise<WorksheetView>;
   addCaregiverReportedLine(orgId: string, id: string, drugName: string): Promise<WorksheetView>;
   finalizeReconciliation(orgId: string, userId: string, id: string): Promise<WorksheetView>;
   voidWorksheet(orgId: string, userId: string, id: string, reason: string): Promise<WorksheetView>;
@@ -207,7 +258,10 @@ export interface EmarRouteService extends EmarAbacResolver {
   getDeployment(orgId: string, id: string): Promise<DeploymentView>;
   acknowledgeReturn(orgId: string, userId: string, id: string): Promise<DeploymentView>;
   getPolicy(orgId: string): Promise<AdministrationPolicyView>;
-  putPolicy(orgId: string, patch: Partial<AdministrationPolicyView>): Promise<AdministrationPolicyView>;
+  putPolicy(
+    orgId: string,
+    patch: Partial<AdministrationPolicyView>,
+  ): Promise<AdministrationPolicyView>;
   drainEvents(): RecordedEmarEvent[];
 }
 
@@ -353,14 +407,29 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
   const admins = new Map<string, AdminRow>();
   for (const a of seed.administrations ?? []) {
     admins.set(a.id, {
-      id: a.id, organizationId: a.organizationId, patientId: a.patientId, admissionId: a.admissionId,
-      medicationOrderId: a.medicationOrderId, mode: "single_dose",
-      status: a.status ?? (a.actorKind === "caregiver_attested" ? "pending_caregiver_review" : "committed"),
-      actorKind: a.actorKind ?? "clinician", administeredAt: now(), recordedAt: now(),
-      lateEntryTier: "normal", administeringClinicianMembershipId: null, witnessMembershipId: null,
-      encounterId: null, scheduledDoseId: null, comfortKitDeploymentId: null, ivSessionId: null,
-      isControlledSubstance: false, isComfortKitDrawdown: false,
-      requiresRnReview: a.requiresRnReview ?? a.actorKind === "caregiver_attested", supersededById: null,
+      id: a.id,
+      organizationId: a.organizationId,
+      patientId: a.patientId,
+      admissionId: a.admissionId,
+      medicationOrderId: a.medicationOrderId,
+      mode: "single_dose",
+      status:
+        a.status ??
+        (a.actorKind === "caregiver_attested" ? "pending_caregiver_review" : "committed"),
+      actorKind: a.actorKind ?? "clinician",
+      administeredAt: now(),
+      recordedAt: now(),
+      lateEntryTier: "normal",
+      administeringClinicianMembershipId: null,
+      witnessMembershipId: null,
+      encounterId: null,
+      scheduledDoseId: null,
+      comfortKitDeploymentId: null,
+      ivSessionId: null,
+      isControlledSubstance: false,
+      isComfortKitDrawdown: false,
+      requiresRnReview: a.requiresRnReview ?? a.actorKind === "caregiver_attested",
+      supersededById: null,
       barcodeMatchResult: null,
     });
   }
@@ -369,21 +438,41 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
   const patients = new Map<string, EmarPatientSeed>();
   for (const p of seed.patients ?? []) patients.set(p.patientId, p);
   const scheduled = new Map<string, EmarScheduledDoseSeed & { status: ScheduledDoseStatus }>();
-  for (const s of seed.scheduledDoses ?? []) scheduled.set(s.id, { ...s, status: s.status ?? "pending" });
+  for (const s of seed.scheduledDoses ?? [])
+    scheduled.set(s.id, { ...s, status: s.status ?? "pending" });
   const missed = new Map<string, EmarMissedDoseSeed & { acknowledgedAt: string | null }>();
   for (const m of seed.missedDoses ?? []) missed.set(m.id, { ...m, acknowledgedAt: null });
   const worksheets = new Map<string, WorksheetRow>();
   for (const w of seed.worksheets ?? []) {
     worksheets.set(w.id, {
-      id: w.id, organizationId: w.organizationId, patientId: w.patientId, admissionId: w.admissionId,
-      triggerKind: w.triggerKind, status: w.status ?? "in_progress", lineCount: w.lineCount ?? 1,
+      id: w.id,
+      organizationId: w.organizationId,
+      patientId: w.patientId,
+      admissionId: w.admissionId,
+      triggerKind: w.triggerKind,
+      status: w.status ?? "in_progress",
+      lineCount: w.lineCount ?? 1,
       decisions: new Map(),
     });
   }
   const deployments = new Map<string, EmarDeploymentSeed & { disposalStatus: string }>();
-  for (const d of seed.deployments ?? []) deployments.set(d.id, { ...d, disposalStatus: d.disposalStatus ?? "deployed" });
-  const policy: AdministrationPolicyView = { graceWindowMinutes: 30, prnMinimumIntervalMinutes: 60, emarPdfOnCommit: false };
-  const witnessTokens = new Map<string, { patientId: string; medicationOrderId: string; administeringMembershipId: string; witnessMembershipId: string; expiresAt: number }>();
+  for (const d of seed.deployments ?? [])
+    deployments.set(d.id, { ...d, disposalStatus: d.disposalStatus ?? "deployed" });
+  const policy: AdministrationPolicyView = {
+    graceWindowMinutes: 30,
+    prnMinimumIntervalMinutes: 60,
+    emarPdfOnCommit: false,
+  };
+  const witnessTokens = new Map<
+    string,
+    {
+      patientId: string;
+      medicationOrderId: string;
+      administeringMembershipId: string;
+      witnessMembershipId: string;
+      expiresAt: number;
+    }
+  >();
 
   const events: RecordedEmarEvent[] = [];
   const emit = (eventName: string, payload: Record<string, unknown>): void => {
@@ -392,8 +481,13 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
 
   const view = (r: AdminRow): AdministrationView => ({ ...r });
   const wView = (w: WorksheetRow): WorksheetView => ({
-    id: w.id, patientId: w.patientId, admissionId: w.admissionId, triggerKind: w.triggerKind,
-    status: w.status, lineCount: w.lineCount, decisions: [...w.decisions.values()],
+    id: w.id,
+    patientId: w.patientId,
+    admissionId: w.admissionId,
+    triggerKind: w.triggerKind,
+    status: w.status,
+    lineCount: w.lineCount,
+    decisions: [...w.decisions.values()],
   });
 
   const requireAdmin = (orgId: string, id: string): AdminRow => {
@@ -403,17 +497,25 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
   };
   const requireWorksheet = (orgId: string, id: string): WorksheetRow => {
     const w = worksheets.get(id);
-    if (!w || w.organizationId !== orgId) throw new NotFoundError("reconciliation worksheet not found");
+    if (!w || w.organizationId !== orgId)
+      throw new NotFoundError("reconciliation worksheet not found");
     return w;
   };
 
-  async function autoLinkEncounter(orgId: string, patientId: string, administeredAt: string, mode: AdministrationMode): Promise<string | null> {
+  async function autoLinkEncounter(
+    orgId: string,
+    patientId: string,
+    administeredAt: string,
+    mode: AdministrationMode,
+  ): Promise<string | null> {
     // D9 — IV-continuous session events carry a nullable encounter; only single_dose auto-links.
     if (mode !== "single_dose" || !reader) return null;
     const since = new Date(Date.parse(administeredAt) - ENCOUNTER_LINK_TOLERANCE_MS).toISOString();
     const digests = await reader.signedEncountersForPatientSince(orgId, patientId, since);
     const at = Date.parse(administeredAt);
-    const within = digests.filter((d) => Math.abs(Date.parse(d.signedAt) - at) <= ENCOUNTER_LINK_TOLERANCE_MS);
+    const within = digests.filter(
+      (d) => Math.abs(Date.parse(d.signedAt) - at) <= ENCOUNTER_LINK_TOLERANCE_MS,
+    );
     return within.length > 0 ? within[within.length - 1]!.encounterId : null;
   }
 
@@ -423,8 +525,14 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
   function assertAdministerable(medicationOrderId: string): void {
     const o = orders.get(medicationOrderId);
     if (o && o.administerable === false) {
-      const reasons = o.blockedReasons && o.blockedReasons.length > 0 ? o.blockedReasons.join(", ") : "order not active";
-      throw new AdministrationStateError("ADMINISTRATION_BLOCKED", `administration blocked by M12 order state: ${reasons}`);
+      const reasons =
+        o.blockedReasons && o.blockedReasons.length > 0
+          ? o.blockedReasons.join(", ")
+          : "order not active";
+      throw new AdministrationStateError(
+        "ADMINISTRATION_BLOCKED",
+        `administration blocked by M12 order state: ${reasons}`,
+      );
     }
   }
 
@@ -432,32 +540,64 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
   // seeded (the slice's default; the real path always has an M12 projection). `route`/`doseAmount`/`doseUnit`
   // come from the per-mode `data` body (clinician) or the caregiver request body.
   function assertFiveRightsForOrder(
-    medicationOrderId: string, patientId: string,
-    req: { route?: string; doseAmount?: number | null; doseUnit?: string | null }, administeredAt: string,
+    medicationOrderId: string,
+    patientId: string,
+    req: { route?: string; doseAmount?: number | null; doseUnit?: string | null },
+    administeredAt: string,
   ): void {
     const o = orders.get(medicationOrderId);
     if (!o || req.route === undefined) return;
     const orderContext: FiveRightsOrderContext = {
-      patientId: o.patientId, medicationOrderId: o.medicationOrderId, route: o.route,
-      doseAmount: o.doseAmount ?? null, doseUnit: o.doseUnit ?? null,
+      patientId: o.patientId,
+      medicationOrderId: o.medicationOrderId,
+      route: o.route,
+      doseAmount: o.doseAmount ?? null,
+      doseUnit: o.doseUnit ?? null,
     };
     assertFiveRights(
-      { patientId, medicationOrderId, route: req.route, doseAmount: req.doseAmount ?? null, doseUnit: req.doseUnit ?? null, administeredAt },
-      orderContext, now(),
+      {
+        patientId,
+        medicationOrderId,
+        route: req.route,
+        doseAmount: req.doseAmount ?? null,
+        doseUnit: req.doseUnit ?? null,
+        administeredAt,
+      },
+      orderContext,
+      now(),
     );
   }
 
   // §2.9 BCMA — re-derive the canonical barcode `match_result` against the seeded order + patient wristband, and
   // refuse the write on an unsafe result (wrong_patient/wrong_drug/expired). Records nothing in the slice beyond
   // the `barcodeMatchResult` carried on the administration view; returns null when no scan was captured.
-  function evaluateBarcode(medicationOrderId: string, patientId: string, scan: BarcodeScanInput | undefined, administeredAt: string): BarcodeMatchResult | null {
+  function evaluateBarcode(
+    medicationOrderId: string,
+    patientId: string,
+    scan: BarcodeScanInput | undefined,
+    administeredAt: string,
+  ): BarcodeMatchResult | null {
     if (!scan) return null;
     const o = orders.get(medicationOrderId);
-    const orderContext = o ? { orderActive: o.administerable !== false, rxnormRxcui: o.rxnormRxcui ?? null, ndc: o.ndc ?? null } : null;
+    const orderContext = o
+      ? {
+          orderActive: o.administerable !== false,
+          rxnormRxcui: o.rxnormRxcui ?? null,
+          ndc: o.ndc ?? null,
+        }
+      : null;
     const p = patients.get(patientId);
-    const result = evaluateBarcodeScan(scan, orderContext, { wristbandPayloadDigest: p?.wristbandPayloadDigest ?? null }, administeredAt.slice(0, 10));
+    const result = evaluateBarcodeScan(
+      scan,
+      orderContext,
+      { wristbandPayloadDigest: p?.wristbandPayloadDigest ?? null },
+      administeredAt.slice(0, 10),
+    );
     if (barcodeScanBlocks(result))
-      throw new AdministrationStateError("BARCODE_VERIFICATION_FAILED", `barcode verification failed: ${result}`);
+      throw new AdministrationStateError(
+        "BARCODE_VERIFICATION_FAILED",
+        `barcode verification failed: ${result}`,
+      );
     return result;
   }
 
@@ -475,10 +615,17 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         witnessIsBreakGlass: false,
       };
     },
-    async loadCaregiverReviewFacts(orgId, administrationId, actorUserId): Promise<CaregiverReviewAbacFacts | null> {
+    async loadCaregiverReviewFacts(
+      orgId,
+      administrationId,
+      actorUserId,
+    ): Promise<CaregiverReviewAbacFacts | null> {
       const r = admins.get(administrationId);
       if (!r || r.organizationId !== orgId) return null;
-      return { requiresRnReview: r.requiresRnReview, actorIsRnCaseManager: caseManagers[r.patientId] === actorUserId };
+      return {
+        requiresRnReview: r.requiresRnReview,
+        actorIsRnCaseManager: caseManagers[r.patientId] === actorUserId,
+      };
     },
     async loadWorksheetTriggerKind(orgId, worksheetId): Promise<ReconciliationTriggerKind | null> {
       const w = worksheets.get(worksheetId);
@@ -495,7 +642,17 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       if (isControlled) {
         // D7 — controlled administration requires a consumed witness-attestation token.
         const claim = args.witnessToken ? witnessTokens.get(args.witnessToken) : undefined;
-        if (!claim || claim.expiresAt < Date.parse(now())) throw new ValidationError("a controlled-substance administration requires a witness attestation", [{ field: "X-Witness-Attestation", code: "WITNESS_REQUIRED", message: "witness attestation missing or expired" }]);
+        if (!claim || claim.expiresAt < Date.parse(now()))
+          throw new ValidationError(
+            "a controlled-substance administration requires a witness attestation",
+            [
+              {
+                field: "X-Witness-Attestation",
+                code: "WITNESS_REQUIRED",
+                message: "witness attestation missing or expired",
+              },
+            ],
+          );
         witnessMembershipId = claim.witnessMembershipId;
         witnessTokens.delete(args.witnessToken!); // single-use, burned on consume
       }
@@ -503,46 +660,90 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       const id = nextId("adm");
       // The patient/admission are resolved from M12 in prod; the slice derives from the scheduled dose or seed.
       const sched = args.scheduledDoseId ? scheduled.get(args.scheduledDoseId) : undefined;
-      const patientId = sched?.patientId ?? orders.get(args.medicationOrderId)?.patientId ?? findPatient(args);
+      const patientId =
+        sched?.patientId ?? orders.get(args.medicationOrderId)?.patientId ?? findPatient(args);
       // D6 + §5.11 + §2.9 BCMA — the order-context gates run before any state mutation.
       assertAdministerable(args.medicationOrderId);
       assertFiveRightsForOrder(args.medicationOrderId, patientId, args, args.administeredAt);
-      const barcodeMatchResult = evaluateBarcode(args.medicationOrderId, patientId, args.barcodeScan, args.administeredAt);
-      const encounterId = args.encounterId ?? (await autoLinkEncounter(orgId, patientId, args.administeredAt, args.mode));
+      const barcodeMatchResult = evaluateBarcode(
+        args.medicationOrderId,
+        patientId,
+        args.barcodeScan,
+        args.administeredAt,
+      );
+      const encounterId =
+        args.encounterId ??
+        (await autoLinkEncounter(orgId, patientId, args.administeredAt, args.mode));
       const row: AdminRow = {
-        id, organizationId: orgId, patientId, admissionId: "00000000-0000-4000-8000-0000000000bb",
-        medicationOrderId: args.medicationOrderId, mode: args.mode, status: "committed", actorKind: "clinician",
-        administeredAt: args.administeredAt, recordedAt, lateEntryTier,
-        administeringClinicianMembershipId: m?.membershipId ?? userId, witnessMembershipId, encounterId,
-        scheduledDoseId: args.scheduledDoseId ?? null, comfortKitDeploymentId: args.comfortKitDeploymentId ?? null,
-        ivSessionId: null, isControlledSubstance: isControlled, isComfortKitDrawdown, requiresRnReview: false,
-        supersededById: null, barcodeMatchResult,
+        id,
+        organizationId: orgId,
+        patientId,
+        admissionId: "00000000-0000-4000-8000-0000000000bb",
+        medicationOrderId: args.medicationOrderId,
+        mode: args.mode,
+        status: "committed",
+        actorKind: "clinician",
+        administeredAt: args.administeredAt,
+        recordedAt,
+        lateEntryTier,
+        administeringClinicianMembershipId: m?.membershipId ?? userId,
+        witnessMembershipId,
+        encounterId,
+        scheduledDoseId: args.scheduledDoseId ?? null,
+        comfortKitDeploymentId: args.comfortKitDeploymentId ?? null,
+        ivSessionId: null,
+        isControlledSubstance: isControlled,
+        isComfortKitDrawdown,
+        requiresRnReview: false,
+        supersededById: null,
+        barcodeMatchResult,
       };
       admins.set(id, row);
       if (sched) sched.status = "administered";
       emit("m13.administration.recorded", {
-        administrationRecordId: id, patientId, admissionId: row.admissionId, medicationOrderId: args.medicationOrderId,
-        mode: args.mode, administeredAt: args.administeredAt, isControlled, isComfortKitDrawdown,
-        encounterId, scheduledDoseId: row.scheduledDoseId,
+        administrationRecordId: id,
+        patientId,
+        admissionId: row.admissionId,
+        medicationOrderId: args.medicationOrderId,
+        mode: args.mode,
+        administeredAt: args.administeredAt,
+        isControlled,
+        isComfortKitDrawdown,
+        encounterId,
+        scheduledDoseId: row.scheduledDoseId,
       });
       if (isControlled && witnessMembershipId)
-        emit("m13.administration.controlled_witnessed", { administrationRecordId: id, witnessMembershipId, witnessesScope: "administration_only" });
+        emit("m13.administration.controlled_witnessed", {
+          administrationRecordId: id,
+          witnessMembershipId,
+          witnessesScope: "administration_only",
+        });
       if (args.prn)
         emit("m13.prn_administration_recorded", {
-          prnAdministrationId: nextId("prn"), administrationRecordId: id, patientId, medicationOrderId: args.medicationOrderId,
-          administeredAt: args.administeredAt, reassessmentDueAt: new Date(Date.parse(args.administeredAt) + 60 * 60000).toISOString(),
+          prnAdministrationId: nextId("prn"),
+          administrationRecordId: id,
+          patientId,
+          medicationOrderId: args.medicationOrderId,
+          administeredAt: args.administeredAt,
+          reassessmentDueAt: new Date(Date.parse(args.administeredAt) + 60 * 60000).toISOString(),
           recommendedReassessmentScale: "esas_r",
         });
       return view(row);
     },
 
-    async mintWitnessToken(orgId, userId, args): Promise<{ token: string; expiresInSeconds: number }> {
+    async mintWitnessToken(
+      orgId,
+      userId,
+      args,
+    ): Promise<{ token: string; expiresInSeconds: number }> {
       const m = memberships.get(userId);
       const token = `${witnessSecret}.${nextId("wt")}`;
       witnessTokens.set(token, {
-        patientId: args.patientId, medicationOrderId: args.medicationOrderId,
+        patientId: args.patientId,
+        medicationOrderId: args.medicationOrderId,
         administeringMembershipId: args.administeringClinicianMembershipId,
-        witnessMembershipId: m?.membershipId ?? userId, expiresAt: Date.parse(now()) + 60_000,
+        witnessMembershipId: m?.membershipId ?? userId,
+        expiresAt: Date.parse(now()) + 60_000,
       });
       return { token, expiresInSeconds: 60 };
     },
@@ -554,21 +755,44 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       // does NOT apply (a caregiver is one person); encounter_id stays nullable (D9).
       assertAdministerable(args.medicationOrderId);
       assertFiveRightsForOrder(args.medicationOrderId, args.patientId, args, args.administeredAt);
-      const barcodeMatchResult = evaluateBarcode(args.medicationOrderId, args.patientId, args.barcodeScan, args.administeredAt);
+      const barcodeMatchResult = evaluateBarcode(
+        args.medicationOrderId,
+        args.patientId,
+        args.barcodeScan,
+        args.administeredAt,
+      );
       const id = nextId("adm");
       const row: AdminRow = {
-        id, organizationId: orgId, patientId: args.patientId, admissionId: "00000000-0000-4000-8000-0000000000bb",
-        medicationOrderId: args.medicationOrderId, mode: "single_dose", status: "pending_caregiver_review",
-        actorKind: "caregiver_attested", administeredAt: args.administeredAt, recordedAt: now(),
-        lateEntryTier: "normal", administeringClinicianMembershipId: null, witnessMembershipId: null,
-        encounterId: null, scheduledDoseId: null, comfortKitDeploymentId: null, ivSessionId: null,
-        isControlledSubstance: false, isComfortKitDrawdown: false, requiresRnReview: true, supersededById: null,
+        id,
+        organizationId: orgId,
+        patientId: args.patientId,
+        admissionId: "00000000-0000-4000-8000-0000000000bb",
+        medicationOrderId: args.medicationOrderId,
+        mode: "single_dose",
+        status: "pending_caregiver_review",
+        actorKind: "caregiver_attested",
+        administeredAt: args.administeredAt,
+        recordedAt: now(),
+        lateEntryTier: "normal",
+        administeringClinicianMembershipId: null,
+        witnessMembershipId: null,
+        encounterId: null,
+        scheduledDoseId: null,
+        comfortKitDeploymentId: null,
+        ivSessionId: null,
+        isControlledSubstance: false,
+        isComfortKitDrawdown: false,
+        requiresRnReview: true,
+        supersededById: null,
         barcodeMatchResult,
       };
       admins.set(id, row);
       emit("m13.administration.recorded_caregiver_attested", {
-        administrationRecordId: id, patientId: args.patientId, medicationOrderId: args.medicationOrderId,
-        caregiverSessionId: args.caregiverSessionId, requiresRnReview: true,
+        administrationRecordId: id,
+        patientId: args.patientId,
+        medicationOrderId: args.medicationOrderId,
+        caregiverSessionId: args.caregiverSessionId,
+        requiresRnReview: true,
       });
       return view(row);
     },
@@ -577,29 +801,50 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       const r = requireAdmin(orgId, id);
       r.requiresRnReview = false;
       r.status = "committed";
-      emit("m13.caregiver_administration.acknowledged", { administrationRecordId: id, acknowledgedBy: userId });
+      emit("m13.caregiver_administration.acknowledged", {
+        administrationRecordId: id,
+        acknowledgedBy: userId,
+      });
       return view(r);
     },
     async disputeCaregiver(orgId, userId, id, reason): Promise<AdministrationView> {
       const r = requireAdmin(orgId, id);
       r.requiresRnReview = false;
-      emit("m13.caregiver_administration.disputed", { administrationRecordId: id, disputedBy: userId, disputeReason: reason });
+      emit("m13.caregiver_administration.disputed", {
+        administrationRecordId: id,
+        disputedBy: userId,
+        disputeReason: reason,
+      });
       return view(r);
     },
     async correctAdministration(orgId, userId, id, reason): Promise<AdministrationView> {
       const original = requireAdmin(orgId, id);
       const newId = nextId("adm");
-      const corrected: AdminRow = { ...original, id: newId, status: "committed", recordedAt: now(), supersededById: null };
+      const corrected: AdminRow = {
+        ...original,
+        id: newId,
+        status: "committed",
+        recordedAt: now(),
+        supersededById: null,
+      };
       admins.set(newId, corrected);
       original.status = "superseded";
       original.supersededById = newId;
-      emit("m13.administration.corrected", { originalAdministrationId: id, newAdministrationId: newId, reason });
+      emit("m13.administration.corrected", {
+        originalAdministrationId: id,
+        newAdministrationId: newId,
+        reason,
+      });
       return view(corrected);
     },
     async voidAdministration(orgId, userId, id, reason): Promise<AdministrationView> {
       const r = requireAdmin(orgId, id);
       r.status = "voided";
-      emit("m13.administration.voided", { administrationRecordId: id, voidReason: reason, voidedBy: userId });
+      emit("m13.administration.voided", {
+        administrationRecordId: id,
+        voidReason: reason,
+        voidedBy: userId,
+      });
       return view(r);
     },
     async getAdministration(orgId, id): Promise<AdministrationView> {
@@ -613,26 +858,56 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         .map(view);
     },
     async getIvSession(orgId, sessionId): Promise<IvSessionView> {
-      const segs = [...admins.values()].filter((r) => r.organizationId === orgId && r.ivSessionId === sessionId);
+      const segs = [...admins.values()].filter(
+        (r) => r.organizationId === orgId && r.ivSessionId === sessionId,
+      );
       if (segs.length === 0) throw new NotFoundError("iv session not found");
-      return { sessionId, medicationOrderId: segs[0]!.medicationOrderId, segments: segs.map((r) => ({ kind: r.mode, recordedAt: r.recordedAt })) };
+      return {
+        sessionId,
+        medicationOrderId: segs[0]!.medicationOrderId,
+        segments: segs.map((r) => ({ kind: r.mode, recordedAt: r.recordedAt })),
+      };
     },
     async recordRefusal(orgId, userId, args): Promise<AdministrationView> {
       const id = nextId("adm");
       const row: AdminRow = {
-        id, organizationId: orgId, patientId: args.patientId, admissionId: "00000000-0000-4000-8000-0000000000bb",
-        medicationOrderId: args.medicationOrderId, mode: "single_dose", status: "committed", actorKind: "clinician",
-        administeredAt: args.refusedAt, recordedAt: now(), lateEntryTier: "normal",
-        administeringClinicianMembershipId: memberships.get(userId)?.membershipId ?? userId, witnessMembershipId: null,
-        encounterId: null, scheduledDoseId: args.scheduledDoseId ?? null, comfortKitDeploymentId: null, ivSessionId: null,
-        isControlledSubstance: args.medClass === "controlled_substance", isComfortKitDrawdown: false,
-        requiresRnReview: false, supersededById: null, barcodeMatchResult: null,
+        id,
+        organizationId: orgId,
+        patientId: args.patientId,
+        admissionId: "00000000-0000-4000-8000-0000000000bb",
+        medicationOrderId: args.medicationOrderId,
+        mode: "single_dose",
+        status: "committed",
+        actorKind: "clinician",
+        administeredAt: args.refusedAt,
+        recordedAt: now(),
+        lateEntryTier: "normal",
+        administeringClinicianMembershipId: memberships.get(userId)?.membershipId ?? userId,
+        witnessMembershipId: null,
+        encounterId: null,
+        scheduledDoseId: args.scheduledDoseId ?? null,
+        comfortKitDeploymentId: null,
+        ivSessionId: null,
+        isControlledSubstance: args.medClass === "controlled_substance",
+        isComfortKitDrawdown: false,
+        requiresRnReview: false,
+        supersededById: null,
+        barcodeMatchResult: null,
       };
       admins.set(id, row);
-      emit("m13.administration.refused", { administrationRecordId: id, patientId: args.patientId, medicationOrderId: args.medicationOrderId, refusalAt: args.refusedAt });
+      emit("m13.administration.refused", {
+        administrationRecordId: id,
+        patientId: args.patientId,
+        medicationOrderId: args.medicationOrderId,
+        refusalAt: args.refusedAt,
+      });
       return view(row);
     },
-    async offlineSync(orgId, userId, rows): Promise<{ synced: number; results: AdministrationView[] }> {
+    async offlineSync(
+      orgId,
+      userId,
+      rows,
+    ): Promise<{ synced: number; results: AdministrationView[] }> {
       const results: AdministrationView[] = [];
       for (const r of rows) results.push(await this.recordAdministration(orgId, userId, r));
       return { synced: results.length, results };
@@ -642,30 +917,62 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         .filter((s) => s.organizationId === orgId && s.patientId === q.patient)
         .filter((s) => (q.from ? Date.parse(s.dueAt) >= Date.parse(q.from) : true))
         .filter((s) => (q.to ? Date.parse(s.dueAt) <= Date.parse(q.to) : true))
-        .map((s) => ({ id: s.id, patientId: s.patientId, medicationOrderId: s.medicationOrderId, dueAt: s.dueAt, status: s.status }));
+        .map((s) => ({
+          id: s.id,
+          patientId: s.patientId,
+          medicationOrderId: s.medicationOrderId,
+          dueAt: s.dueAt,
+          status: s.status,
+        }));
     },
     async intentionalHold(orgId, userId, id): Promise<ScheduledDoseView> {
       const s = scheduled.get(id);
       if (!s || s.organizationId !== orgId) throw new NotFoundError("scheduled dose not found");
       s.status = "intentionally_held";
-      emit("m13.scheduled_dose.intentionally_held", { scheduledDoseId: id, recordedBy: userId, missedKind: "intentionally_held" });
-      return { id: s.id, patientId: s.patientId, medicationOrderId: s.medicationOrderId, dueAt: s.dueAt, status: s.status };
+      emit("m13.scheduled_dose.intentionally_held", {
+        scheduledDoseId: id,
+        recordedBy: userId,
+        missedKind: "intentionally_held",
+      });
+      return {
+        id: s.id,
+        patientId: s.patientId,
+        medicationOrderId: s.medicationOrderId,
+        dueAt: s.dueAt,
+        status: s.status,
+      };
     },
     async listMissedDoses(orgId, q): Promise<MissedDoseView[]> {
       return [...missed.values()]
         .filter((m) => m.organizationId === orgId && m.patientId === q.patient)
         .filter((m) => (q.since ? Date.parse(m.dueAt) >= Date.parse(q.since) : true))
-        .map((m) => ({ id: m.id, patientId: m.patientId, scheduledDoseId: m.scheduledDoseId, medicationOrderId: m.medicationOrderId, dueAt: m.dueAt, acknowledgedAt: m.acknowledgedAt }));
+        .map((m) => ({
+          id: m.id,
+          patientId: m.patientId,
+          scheduledDoseId: m.scheduledDoseId,
+          medicationOrderId: m.medicationOrderId,
+          dueAt: m.dueAt,
+          acknowledgedAt: m.acknowledgedAt,
+        }));
     },
     async acknowledgeMissed(orgId, userId, id): Promise<MissedDoseView> {
       const m = missed.get(id);
       if (!m || m.organizationId !== orgId) throw new NotFoundError("missed dose not found");
       m.acknowledgedAt = now();
       emit("m13.missed_dose.acknowledged", { missedDoseId: id, acknowledgedBy: userId });
-      return { id: m.id, patientId: m.patientId, scheduledDoseId: m.scheduledDoseId, medicationOrderId: m.medicationOrderId, dueAt: m.dueAt, acknowledgedAt: m.acknowledgedAt };
+      return {
+        id: m.id,
+        patientId: m.patientId,
+        scheduledDoseId: m.scheduledDoseId,
+        medicationOrderId: m.medicationOrderId,
+        dueAt: m.dueAt,
+        acknowledgedAt: m.acknowledgedAt,
+      };
     },
     async listWorksheets(orgId, patient): Promise<WorksheetView[]> {
-      return [...worksheets.values()].filter((w) => w.organizationId === orgId && w.patientId === patient).map(wView);
+      return [...worksheets.values()]
+        .filter((w) => w.organizationId === orgId && w.patientId === patient)
+        .map(wView);
     },
     async getWorksheet(orgId, id): Promise<WorksheetView> {
       return wView(requireWorksheet(orgId, id));
@@ -673,12 +980,27 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     async recordDecision(orgId, userId, id, args): Promise<WorksheetView> {
       const w = requireWorksheet(orgId, id);
       const lineId = `${args.lineKind}:${args.sourceId}`;
-      w.decisions.set(lineId, { lineId, lineKind: args.lineKind, sourceId: args.sourceId, decision: args.decision });
+      w.decisions.set(lineId, {
+        lineId,
+        lineKind: args.lineKind,
+        sourceId: args.sourceId,
+        decision: args.decision,
+      });
       w.status = "in_progress";
       if (args.decision === "carry_forward" || args.decision === "new_order")
-        emit("m13.reconciliation.draft_order_requested", { worksheetId: id, decisionId: lineId, medicationOrderDraftPayload: {}, lineKind: args.lineKind });
+        emit("m13.reconciliation.draft_order_requested", {
+          worksheetId: id,
+          decisionId: lineId,
+          medicationOrderDraftPayload: {},
+          lineKind: args.lineKind,
+        });
       if (args.decision === "discontinue")
-        emit("m13.reconciliation.discontinue_requested", { worksheetId: id, decisionId: lineId, medicationOrderId: args.sourceId, reason: "reconciled_discontinue" });
+        emit("m13.reconciliation.discontinue_requested", {
+          worksheetId: id,
+          decisionId: lineId,
+          medicationOrderId: args.sourceId,
+          reason: "reconciled_discontinue",
+        });
       return wView(w);
     },
     async updateDecision(orgId, userId, id, lineId, decision): Promise<WorksheetView> {
@@ -696,10 +1018,28 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     async finalizeReconciliation(orgId, userId, id): Promise<WorksheetView> {
       const w = requireWorksheet(orgId, id);
       if (w.decisions.size < w.lineCount)
-        throw new ValidationError("reconciliation incomplete", [{ field: "decisions", code: "RECONCILIATION_INCOMPLETE", message: `${w.lineCount - w.decisions.size} line(s) undecided` }]);
+        throw new ValidationError("reconciliation incomplete", [
+          {
+            field: "decisions",
+            code: "RECONCILIATION_INCOMPLETE",
+            message: `${w.lineCount - w.decisions.size} line(s) undecided`,
+          },
+        ]);
       w.status = "finalized";
-      emit("m13.reconciliation.completed", { worksheetId: id, triggerKind: w.triggerKind, patientId: w.patientId, admissionId: w.admissionId, finalizedAt: now(), finalizedBy: userId, lineSummary: {} });
-      emit("m13.reconciliation.document_requested", { worksheetId: id, formTemplate: "reconciliation_worksheet_v1", renderPayload: {} });
+      emit("m13.reconciliation.completed", {
+        worksheetId: id,
+        triggerKind: w.triggerKind,
+        patientId: w.patientId,
+        admissionId: w.admissionId,
+        finalizedAt: now(),
+        finalizedBy: userId,
+        lineSummary: {},
+      });
+      emit("m13.reconciliation.document_requested", {
+        worksheetId: id,
+        formTemplate: "reconciliation_worksheet_v1",
+        renderPayload: {},
+      });
       return wView(w);
     },
     async voidWorksheet(orgId, userId, id, reason): Promise<WorksheetView> {
@@ -709,19 +1049,43 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
       return wView(w);
     },
     async listDeployments(orgId, patient): Promise<DeploymentView[]> {
-      return [...deployments.values()].filter((d) => d.organizationId === orgId && d.patientId === patient).map((d) => ({ id: d.id, patientId: d.patientId, admissionId: d.admissionId, disposalStatus: d.disposalStatus }));
+      return [...deployments.values()]
+        .filter((d) => d.organizationId === orgId && d.patientId === patient)
+        .map((d) => ({
+          id: d.id,
+          patientId: d.patientId,
+          admissionId: d.admissionId,
+          disposalStatus: d.disposalStatus,
+        }));
     },
     async getDeployment(orgId, id): Promise<DeploymentView> {
       const d = deployments.get(id);
-      if (!d || d.organizationId !== orgId) throw new NotFoundError("comfort-kit deployment not found");
-      return { id: d.id, patientId: d.patientId, admissionId: d.admissionId, disposalStatus: d.disposalStatus };
+      if (!d || d.organizationId !== orgId)
+        throw new NotFoundError("comfort-kit deployment not found");
+      return {
+        id: d.id,
+        patientId: d.patientId,
+        admissionId: d.admissionId,
+        disposalStatus: d.disposalStatus,
+      };
     },
     async acknowledgeReturn(orgId, userId, id): Promise<DeploymentView> {
       const d = deployments.get(id);
-      if (!d || d.organizationId !== orgId) throw new NotFoundError("comfort-kit deployment not found");
+      if (!d || d.organizationId !== orgId)
+        throw new NotFoundError("comfort-kit deployment not found");
       d.disposalStatus = "returned";
-      emit("m13.comfort_kit.returned", { deploymentId: id, returnedAt: now(), finalRemainingByMedication: {}, disposalReconciliationStatus: "reconciled" });
-      return { id: d.id, patientId: d.patientId, admissionId: d.admissionId, disposalStatus: d.disposalStatus };
+      emit("m13.comfort_kit.returned", {
+        deploymentId: id,
+        returnedAt: now(),
+        finalRemainingByMedication: {},
+        disposalReconciliationStatus: "reconciled",
+      });
+      return {
+        id: d.id,
+        patientId: d.patientId,
+        admissionId: d.admissionId,
+        disposalStatus: d.disposalStatus,
+      };
     },
     async getPolicy(): Promise<AdministrationPolicyView> {
       return { ...policy };

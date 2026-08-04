@@ -40,7 +40,6 @@
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
 import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
-import { localDateInTimeZone } from "@wardenx/shared/dates";
 import {
   type SchedulingDiscipline,
   type SchedulingSideEffect,
@@ -49,6 +48,7 @@ import {
   transitionTimeOff,
   transitionVisit,
 } from "@wardenx/scheduling";
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
@@ -197,7 +197,13 @@ export function createDbSchedulingBackend(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: orgId, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: orgId,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Resolve a visit/recurring row's siting from the assigned membership (compromise #2). */
@@ -394,13 +400,21 @@ export function createDbSchedulingBackend(
     // pre-schedule ABAC gate runs (`requireAbac`'s `getTarget` is synchronous, so it cannot do this DB
     // read itself; the route stashes the result on `request.context.attributes` in an earlier preHandler).
     async orgTimezone(orgId: string): Promise<string> {
-      return withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) => organizationTimezone(tx, orgId));
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) =>
+        organizationTimezone(tx, orgId),
+      );
     },
 
     // ── visits (reads) ────────────────────────────────────────────────────────────────────────────────
     async listVisits(
       orgId: string,
-      filters: { clinician?: string; patient?: string; from?: string; to?: string; status?: string },
+      filters: {
+        clinician?: string;
+        patient?: string;
+        from?: string;
+        to?: string;
+        status?: string;
+      },
     ): Promise<VisitView[]> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const conds: SQL[] = [];
@@ -600,7 +614,8 @@ export function createDbSchedulingBackend(
             admissionId: v.admissionId as string,
             patientAddressId: v.patientAddressId as string | null,
             externalFacilityId: v.externalFacilityId as string | null,
-            assignedMembershipId: input.newAssignedMembershipId ?? (v.assignedMembershipId as string),
+            assignedMembershipId:
+              input.newAssignedMembershipId ?? (v.assignedMembershipId as string),
             visitPurpose: v.visitPurpose as VisitPurpose,
             visitSetting: v.visitSetting as VisitSetting,
             scheduledStartedAt: input.newScheduledStartedAt,
@@ -632,7 +647,10 @@ export function createDbSchedulingBackend(
           reason: input.reason,
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return { original: toVisitView(row as VisitRow, await organizationTimezone(tx, orgId)), created };
+        return {
+          original: toVisitView(row as VisitRow, await organizationTimezone(tx, orgId)),
+          created,
+        };
       });
     },
 
@@ -753,7 +771,10 @@ export function createDbSchedulingBackend(
         // The proposal must carry a best-fit membership to publish (the scheduler may reassign later); the
         // manual create path is the alternative when there is no suggestion.
         if (!p.suggestedMembershipId) {
-          throw new ValidationError("the proposal has no suggested membership to assign the visit", []);
+          throw new ValidationError(
+            "the proposal has no suggested membership to assign the visit",
+            [],
+          );
         }
         const startedAt = `${p.proposedForDate}T13:00:00.000Z`;
         const visit = await insertAndPublish(
@@ -849,7 +870,10 @@ export function createDbSchedulingBackend(
     ): Promise<RecurringView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
-        const { providerEntityId, locationId } = await resolveSiting(tx, input.assignedMembershipId);
+        const { providerEntityId, locationId } = await resolveSiting(
+          tx,
+          input.assignedMembershipId,
+        );
         const [inserted] = await tx
           .insert(RV)
           .values({
@@ -932,7 +956,11 @@ export function createDbSchedulingBackend(
           // `clinician_availability` carries no time_zone column; reads report UTC (the write path echoes the
           // request tz). Persisting tz lands with the availability-editor screen.
           timeZone: "UTC",
-          slots: rows.map((r) => ({ weekday: r.dayOfWeek, startTime: r.startTime, endTime: r.endTime })),
+          slots: rows.map((r) => ({
+            weekday: r.dayOfWeek,
+            startTime: r.startTime,
+            endTime: r.endTime,
+          })),
         };
       });
     },
@@ -1194,7 +1222,10 @@ export function createDbSchedulingBackend(
     },
 
     // ── SchedulingAbacResolver (§4.7) — cross-module facts fail closed (compromise #3) ───────────────────
-    async resolveDiscipline(_orgId: string, _membershipId: string): Promise<SchedulingDiscipline | null> {
+    async resolveDiscipline(
+      _orgId: string,
+      _membershipId: string,
+    ): Promise<SchedulingDiscipline | null> {
       return null;
     },
     async credentialsActiveForPurpose(): Promise<boolean> {

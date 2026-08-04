@@ -5,7 +5,12 @@
 // `assembleAllocationInputs`. The hospice chain is A (+ A-1…A-4) → B step-down (on the B-1 statistical basis)
 // → C per-diem cost; there is no cap/settlement worksheet (that is M26's domain), so this builder takes no
 // cap resolver.
-import { assembleAllocationInputs, type AllocationInputs, CostReportWorksheetRepository, StatisticDataRepository } from "@wardenx/cost-report";
+import {
+  type AllocationInputs,
+  CostReportWorksheetRepository,
+  StatisticDataRepository,
+  assembleAllocationInputs,
+} from "@wardenx/cost-report";
 import type { DbClient } from "@wardenx/db";
 import type { AllocationInputBuilder } from "./m27-jobs";
 

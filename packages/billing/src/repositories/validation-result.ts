@@ -27,7 +27,10 @@ export class ValidationResultRepository {
     values: readonly schema.NewValidationResult[],
   ): Promise<readonly schema.ValidationResult[]> {
     if (values.length === 0) return [];
-    return this.db.insert(R).values([...values]).returning();
+    return this.db
+      .insert(R)
+      .values([...values])
+      .returning();
   }
 
   /** Append a single per-rule result. Returns the persisted row. */

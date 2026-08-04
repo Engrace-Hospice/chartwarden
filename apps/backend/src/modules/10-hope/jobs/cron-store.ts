@@ -94,6 +94,10 @@ export async function openOrOverdueSfvsForOrg(
  * re-emit with no status change writes no row, only the event re-fires). Mirrors the exact
  * `.update(SFV).set(...)` column handling at hope-route-service-db.ts's `recordSfv` (~line 409).
  */
-export async function updateSfvStatus(tx: DbClient, sfvId: string, status: HopeSfvStatus): Promise<void> {
+export async function updateSfvStatus(
+  tx: DbClient,
+  sfvId: string,
+  status: HopeSfvStatus,
+): Promise<void> {
   await tx.update(SFV).set({ status, updatedAt: new Date() }).where(eq(SFV.id, sfvId));
 }

@@ -27,16 +27,11 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import {
-  deaSchedule,
-  dosespotSendState,
-  medClass,
-  medicationOrderStatus,
-} from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
+import { deaSchedule, dosespotSendState, medClass, medicationOrderStatus } from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const medicationOrders = pgTable(
   "medication_order",

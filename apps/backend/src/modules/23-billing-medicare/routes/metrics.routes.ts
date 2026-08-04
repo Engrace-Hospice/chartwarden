@@ -8,9 +8,9 @@
 // ALWAYS server-side; the read services open one `withOrgContext` tx per call (RLS).
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
+import { MetricsQuerySchema, parse } from "./billing-typebox";
 import { P } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
-import { MetricsQuerySchema, parse } from "./billing-typebox";
 
 export interface MetricsRouteDeps {
   readonly readService: M23ReadRouteService;

@@ -31,7 +31,11 @@ export class ValidationRunRepository {
       .onConflictDoNothing({ target: [R.claimId, R.trigger, R.runInputHash] })
       .returning();
     if (inserted) return inserted;
-    const existing = await this.findByIdempotency(values.claimId, values.trigger, values.runInputHash);
+    const existing = await this.findByIdempotency(
+      values.claimId,
+      values.trigger,
+      values.runInputHash,
+    );
     if (!existing) throw new Error("validation_run append: conflict but no existing row found");
     return existing;
   }
@@ -51,9 +55,7 @@ export class ValidationRunRepository {
     const [row] = await this.db
       .select()
       .from(R)
-      .where(
-        and(eq(R.claimId, claimId), eq(R.trigger, trigger), eq(R.runInputHash, runInputHash)),
-      )
+      .where(and(eq(R.claimId, claimId), eq(R.trigger, trigger), eq(R.runInputHash, runInputHash)))
       .limit(1);
     return row ?? null;
   }

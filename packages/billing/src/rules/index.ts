@@ -13,29 +13,29 @@
 export * from "./types";
 export * from "./_registry";
 
+import { BillingRuleRegistry } from "./_registry";
 // ── the 19 platform-default rules (one file per rule) ──────────────────────────────────────────────────
 import type { Rule } from "./types";
-import { BillingRuleRegistry } from "./_registry";
 
-import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
-import { eligibilityCheckFreshness30d } from "./eligibility-freshness";
-import { electionPeriodActive } from "./election-period-active";
-import { ctiSignedPerPeriod } from "./cti-signed";
-import { f2fAttestedForRecert } from "./f2f-attested";
-import { levelOfCareCoherence } from "./loc-coherence";
-import { hippsCodingCorrect } from "./hipps-coding";
-import { siaCalculationCorrect } from "./sia-calculation";
-import { icd10Sequencing } from "./icd-sequencing";
-import { physicianCredentialsActive } from "./physician-credentials";
-import { noeTimeliness5d } from "./noe-timeliness";
-import { tobAndDatesConsistency } from "./tob-dates-consistency";
-import { duplicateBillingCheck } from "./duplicate-billing";
-import { placeOfServiceConsistency } from "./place-of-service";
 import { aggregateCapProjection } from "./aggregate-cap-projection";
-import { ipuCapProjection } from "./ipu-cap-projection";
 import { bereavementDischargeLegitimacy } from "./bereavement-discharge";
-import { modifierCodesValid } from "./modifier-codes";
+import { ctiSignedPerPeriod } from "./cti-signed";
+import { duplicateBillingCheck } from "./duplicate-billing";
+import { electionPeriodActive } from "./election-period-active";
+import { eligibilityCheckFreshness30d } from "./eligibility-freshness";
 import { evvBracketCoherence } from "./evv-coherence";
+import { f2fAttestedForRecert } from "./f2f-attested";
+import { hippsCodingCorrect } from "./hipps-coding";
+import { icd10Sequencing } from "./icd-sequencing";
+import { ipuCapProjection } from "./ipu-cap-projection";
+import { levelOfCareCoherence } from "./loc-coherence";
+import { modifierCodesValid } from "./modifier-codes";
+import { noeTimeliness5d } from "./noe-timeliness";
+import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
+import { physicianCredentialsActive } from "./physician-credentials";
+import { placeOfServiceConsistency } from "./place-of-service";
+import { siaCalculationCorrect } from "./sia-calculation";
+import { tobAndDatesConsistency } from "./tob-dates-consistency";
 
 export {
   patientEligibilityPartAActive,

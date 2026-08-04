@@ -1,3 +1,4 @@
+import type { HopeRollupPeriod, J2051Severity } from "@wardenx/types";
 // apps/backend/__tests__/hope-org-rollup.test.ts — M10 ORG-LEVEL HopeOrgRollupProvider (#107). The seam is
 // pure reduction over an injected HopeOrgRollupStore; these cover the four HOPE-family rollups + the
 // point-in-time open-SFV count, the correctness-critical PAIN vs NON-PAIN J2051 split (an assessment with a
@@ -6,7 +7,6 @@
 // (registerHopeSeams registers the real impl over the deny-stub when a store is present; without one the
 // deny-stub denies loudly).
 import { afterEach, describe, expect, it } from "vitest";
-import type { HopeRollupPeriod, J2051Severity } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type J2051TriggerRow,
@@ -16,7 +16,10 @@ import {
 } from "../src/modules/10-hope/index";
 
 const ORG = "org-1";
-const PERIOD: HopeRollupPeriod = { from: "2026-04-01T00:00:00.000Z", to: "2026-07-01T00:00:00.000Z" };
+const PERIOD: HopeRollupPeriod = {
+  from: "2026-04-01T00:00:00.000Z",
+  to: "2026-07-01T00:00:00.000Z",
+};
 
 /** A J2051 trigger row with explicit entries + SFV due/completion timing. */
 function trigger(
@@ -27,16 +30,28 @@ function trigger(
 }
 
 const IN_WINDOW = { dueAt: "2026-05-10T00:00:00.000Z", completedAt: "2026-05-09T00:00:00.000Z" };
-const OUT_OF_WINDOW = { dueAt: "2026-05-10T00:00:00.000Z", completedAt: "2026-05-12T00:00:00.000Z" };
+const OUT_OF_WINDOW = {
+  dueAt: "2026-05-10T00:00:00.000Z",
+  completedAt: "2026-05-12T00:00:00.000Z",
+};
 const NO_SFV = { dueAt: null, completedAt: null };
 
 describe("HopeOrgRollupProvider — timepointCompletionRollup", () => {
   it("splits completed windows into on-time (signed ≤ deadline) and late", async () => {
     const { store } = createInMemoryHopeOrgRollupStore({
       completedTimepoints: [
-        { lateDeadlineAt: "2026-05-12T00:00:00.000Z", completingSignedAt: "2026-05-10T00:00:00.000Z" }, // on-time
-        { lateDeadlineAt: "2026-05-12T00:00:00.000Z", completingSignedAt: "2026-05-12T00:00:00.000Z" }, // on-time (== boundary)
-        { lateDeadlineAt: "2026-05-12T00:00:00.000Z", completingSignedAt: "2026-05-13T00:00:00.000Z" }, // late
+        {
+          lateDeadlineAt: "2026-05-12T00:00:00.000Z",
+          completingSignedAt: "2026-05-10T00:00:00.000Z",
+        }, // on-time
+        {
+          lateDeadlineAt: "2026-05-12T00:00:00.000Z",
+          completingSignedAt: "2026-05-12T00:00:00.000Z",
+        }, // on-time (== boundary)
+        {
+          lateDeadlineAt: "2026-05-12T00:00:00.000Z",
+          completingSignedAt: "2026-05-13T00:00:00.000Z",
+        }, // late
         { lateDeadlineAt: "2026-05-12T00:00:00.000Z", completingSignedAt: null }, // late (no evidence)
       ],
     });

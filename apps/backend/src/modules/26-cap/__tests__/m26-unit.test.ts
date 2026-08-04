@@ -2,7 +2,7 @@
 // outbox-event catalog conformance (naming / owner / declared consumers), and the §4.6 permission surface.
 import type { AbacContext, AbacTarget } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
-import { buildM26AbacPredicates, type ReadingM26AbacResolver } from "../abac-predicates";
+import { type ReadingM26AbacResolver, buildM26AbacPredicates } from "../abac-predicates";
 import { M26_OUTBOX_EVENTS } from "../events-by-m26";
 import { M26_PERMISSION_KEY_LIST } from "../permission-keys";
 
@@ -10,8 +10,18 @@ const ctx = (roles: string[] = []): AbacContext =>
   ({ organizationId: "org-1", userId: "u-1", roles, attributes: {} }) as unknown as AbacContext;
 const target = (capPeriodId?: string): AbacTarget => ({ capPeriodId }) as AbacTarget;
 
-function resolver(period: { status: string; methodology: string | null } | null, settlement: string | null): ReadingM26AbacResolver {
-  return { async loadPeriod() { return period; }, async loadSettlementStatus() { return settlement; } };
+function resolver(
+  period: { status: string; methodology: string | null } | null,
+  settlement: string | null,
+): ReadingM26AbacResolver {
+  return {
+    async loadPeriod() {
+      return period;
+    },
+    async loadSettlementStatus() {
+      return settlement;
+    },
+  };
 }
 
 describe("M26 §4.7 ABAC predicates", () => {
@@ -20,30 +30,44 @@ describe("M26 §4.7 ABAC predicates", () => {
       const p = buildM26AbacPredicates({ resolver: resolver({ status, methodology: null }, null) });
       expect(await p.cap_period_open!(ctx(), target("cp-1"))).toBe(true);
     }
-    const p = buildM26AbacPredicates({ resolver: resolver({ status: "settled", methodology: null }, null) });
+    const p = buildM26AbacPredicates({
+      resolver: resolver({ status: "settled", methodology: null }, null),
+    });
     expect(await p.cap_period_open!(ctx(), target("cp-1"))).toBe(false);
     // No target id → deny.
     expect(await p.cap_period_open!(ctx(), target(undefined))).toBe(false);
   });
 
   it("cap_period_in_settlement is the period-state gate (propose creates the first settlement)", async () => {
-    const p = buildM26AbacPredicates({ resolver: resolver({ status: "in_settlement", methodology: "streamlined" }, null) });
+    const p = buildM26AbacPredicates({
+      resolver: resolver({ status: "in_settlement", methodology: "streamlined" }, null),
+    });
     expect(await p.cap_period_in_settlement!(ctx(), target("cp-1"))).toBe(true);
-    const q = buildM26AbacPredicates({ resolver: resolver({ status: "active", methodology: "streamlined" }, null) });
+    const q = buildM26AbacPredicates({
+      resolver: resolver({ status: "active", methodology: "streamlined" }, null),
+    });
     expect(await q.cap_period_in_settlement!(ctx(), target("cp-1"))).toBe(false);
   });
 
   it("cap_period_settled requires status=settled AND a final settlement", async () => {
-    const yes = buildM26AbacPredicates({ resolver: resolver({ status: "settled", methodology: "streamlined" }, "final") });
+    const yes = buildM26AbacPredicates({
+      resolver: resolver({ status: "settled", methodology: "streamlined" }, "final"),
+    });
     expect(await yes.cap_period_settled!(ctx(), target("cp-1"))).toBe(true);
-    const no = buildM26AbacPredicates({ resolver: resolver({ status: "settled", methodology: "streamlined" }, "proposed") });
+    const no = buildM26AbacPredicates({
+      resolver: resolver({ status: "settled", methodology: "streamlined" }, "proposed"),
+    });
     expect(await no.cap_period_settled!(ctx(), target("cp-1"))).toBe(false);
   });
 
   it("cap_period_methodology_unlocked requires methodology null AND status open", async () => {
-    const yes = buildM26AbacPredicates({ resolver: resolver({ status: "open", methodology: null }, null) });
+    const yes = buildM26AbacPredicates({
+      resolver: resolver({ status: "open", methodology: null }, null),
+    });
     expect(await yes.cap_period_methodology_unlocked!(ctx(), target("cp-1"))).toBe(true);
-    const locked = buildM26AbacPredicates({ resolver: resolver({ status: "open", methodology: "streamlined" }, null) });
+    const locked = buildM26AbacPredicates({
+      resolver: resolver({ status: "open", methodology: "streamlined" }, null),
+    });
     expect(await locked.cap_period_methodology_unlocked!(ctx(), target("cp-1"))).toBe(false);
   });
 

@@ -86,7 +86,9 @@ export function buildIqiesRejectionAlert(input: {
 // ── §4.9 severity routing (escalates as the alert state advances) ─────────────────────────────────────
 
 /** §4.9 — the timepoint-window severity floor: climbs as `windowState` advances toward `expired`. */
-export function timepointWindowSeverity(state: HopeTimepointWindowAlert["windowState"]): HopeAlertSeverity {
+export function timepointWindowSeverity(
+  state: HopeTimepointWindowAlert["windowState"],
+): HopeAlertSeverity {
   switch (state) {
     case "opening":
     case "mid_window":

@@ -18,8 +18,15 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, AdmissionId } from "./admission";
-import type { IsoInstant, IdgMeetingId, IdgDecisionId, CarePlanId, MembershipId, LocationId } from "./care-plan";
+import type { AdmissionId, PatientId } from "./admission";
+import type {
+  CarePlanId,
+  IdgDecisionId,
+  IdgMeetingId,
+  IsoInstant,
+  LocationId,
+  MembershipId,
+} from "./care-plan";
 
 // ── M14-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
 export type IdgRecurringPolicyId = string;
@@ -69,10 +76,19 @@ export type IdgDecisionKind =
 export type IdgDecisionStatus = "open" | "emitted" | "superseded";
 
 /** The §1.1 / D8 action-item lifecycle (mirrors `idg_action_item_status`). */
-export type IdgActionItemStatus = "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
+export type IdgActionItemStatus =
+  | "open"
+  | "in_progress"
+  | "completed"
+  | "cancelled"
+  | "auto_closed";
 
 /** Which downstream absorbing artifact closes an action item (mirrors `idg_action_item_linked_kind`, D8). */
-export type IdgActionItemLinkedKind = "care_plan_version" | "order" | "encounter" | "medication_order";
+export type IdgActionItemLinkedKind =
+  | "care_plan_version"
+  | "order"
+  | "encounter"
+  | "medication_order";
 
 /** Minutes immutability state (mirrors `idg_minutes_status`, D10). */
 export type IdgMinutesStatus = "in_progress" | "final";
@@ -185,14 +201,25 @@ export type IdgDecisionRecordedPayload =
       readonly consideredLevel: IdgLevelOfCare;
       readonly rationaleText: string;
     }
-  | { readonly kind: "recertification_consideration"; readonly periodIndex: number; readonly rationaleText: string }
+  | {
+      readonly kind: "recertification_consideration";
+      readonly periodIndex: number;
+      readonly rationaleText: string;
+    }
   | {
       readonly kind: "family_meeting_needed";
       readonly familyMembers: readonly string[];
-      readonly preferredWindow: { readonly startIso: IsoInstant; readonly endIso: IsoInstant } | null;
+      readonly preferredWindow: {
+        readonly startIso: IsoInstant;
+        readonly endIso: IsoInstant;
+      } | null;
       readonly rationaleText: string;
     }
-  | { readonly kind: "bereavement_risk_flag"; readonly riskLevel: "low" | "medium" | "high"; readonly rationaleText: string }
+  | {
+      readonly kind: "bereavement_risk_flag";
+      readonly riskLevel: "low" | "medium" | "high";
+      readonly rationaleText: string;
+    }
   | {
       readonly kind: "referral";
       readonly referralKind: string;
@@ -216,7 +243,10 @@ export type CarePlanMutation =
   | {
       readonly op: "problem_update";
       readonly problemId: string;
-      readonly updates: Partial<{ status: "active" | "resolved" | "inactive"; description: string }>;
+      readonly updates: Partial<{
+        status: "active" | "resolved" | "inactive";
+        description: string;
+      }>;
     }
   | {
       readonly op: "goal_add";
@@ -244,7 +274,11 @@ export type CarePlanMutation =
       readonly frequencyText: string;
       readonly frequencyValue: string;
     }
-  | { readonly op: "intervention_discontinue"; readonly interventionId: string; readonly reason: string };
+  | {
+      readonly op: "intervention_discontinue";
+      readonly interventionId: string;
+      readonly reason: string;
+    };
 
 /** The structured order request M11's `idg-decision-intake` consumer turns into a draft order (§2.6). */
 export type RequestedOrderInput = {
@@ -264,7 +298,12 @@ export type RequestedOrderInput = {
 
 /** The structured medication recommendation M12's consumer turns into a draft medication order (§2.6). */
 export type MedicationRecommendationInput = {
-  readonly recommendationKind: "add" | "discontinue" | "change_dose" | "change_route" | "change_frequency";
+  readonly recommendationKind:
+    | "add"
+    | "discontinue"
+    | "change_dose"
+    | "change_route"
+    | "change_frequency";
   readonly drugLabel: string;
   readonly proposedStrength: string | null;
   readonly proposedRoute: string | null;
@@ -315,7 +354,14 @@ export type DisciplineKey =
 export interface DisciplineViewBlock {
   readonly oneLineSummary: string; // Layer 1 deterministic
   readonly highlightedEntries: ReadonlyArray<{
-    readonly sourceKind: "encounter" | "assessment" | "order" | "medication" | "hope" | "action_item" | "flag";
+    readonly sourceKind:
+      | "encounter"
+      | "assessment"
+      | "order"
+      | "medication"
+      | "hope"
+      | "action_item"
+      | "flag";
     readonly sourceId: string;
     readonly label: string;
     readonly summary: string;
@@ -444,7 +490,10 @@ export interface PacketSnapshot {
     readonly isReviewOverdue: boolean;
   };
   readonly hopeContext: {
-    readonly upcomingTimepoints: ReadonlyArray<{ readonly timepoint: string; readonly dueAt: IsoInstant }>;
+    readonly upcomingTimepoints: ReadonlyArray<{
+      readonly timepoint: string;
+      readonly dueAt: IsoInstant;
+    }>;
     readonly openSfvCount: number;
   } | null;
   readonly capProjection: {
@@ -528,9 +577,15 @@ export type M14AlertPayload =
       readonly meetingId: IdgMeetingId;
       readonly actorMembershipId: MembershipId;
       readonly reason: string;
-      readonly breachingPatients: ReadonlyArray<{ readonly patientId: PatientId; readonly floorAt: IsoInstant }>;
+      readonly breachingPatients: ReadonlyArray<{
+        readonly patientId: PatientId;
+        readonly floorAt: IsoInstant;
+      }>;
       readonly severity: "attention";
-      readonly recipients: { readonly complianceInbox: true; readonly clinicalSupervisorMembershipId: MembershipId };
+      readonly recipients: {
+        readonly complianceInbox: true;
+        readonly clinicalSupervisorMembershipId: MembershipId;
+      };
       readonly bodyTemplate: string;
     };
 

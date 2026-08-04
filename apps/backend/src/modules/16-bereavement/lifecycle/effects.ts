@@ -10,11 +10,11 @@
 import type {
   BereavementAlertPayload,
   BereavementAnniversaryMark,
+  BereavementCloseKind,
   BereavementExternalSourceMetadata,
   BereavementOptOutKind,
   BereavementOptOutSourceKind,
   BereavementPlanClosureReason,
-  BereavementCloseKind,
   IsoInstant,
   M16EventName,
 } from "@wardenx/types";
@@ -61,7 +61,11 @@ export type BereavementSideEffect =
   /** Cancel every future-dated `scheduled` outreach for the plan or for one contact (§2.2 / §2.3). */
   | { readonly kind: "cancel_future_outreach"; readonly scope: "plan" | "contact" }
   /** Regenerate the forward schedule from an instant to the window end (`resumePlan`, `rescindOptOut`). */
-  | { readonly kind: "regenerate_schedule"; readonly fromIso: IsoInstant; readonly scope: "plan" | "contact" }
+  | {
+      readonly kind: "regenerate_schedule";
+      readonly fromIso: IsoInstant;
+      readonly scope: "plan" | "contact";
+    }
   /** Materialize the D4 outreach rows + emit one `outreach_scheduled` per row (`seedRosterAndSchedule`). */
   | { readonly kind: "generate_schedule" }
   /** Insert the §3.3.6 anniversary-reminder rows the §4.9 lookahead cron alerts off. */

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // apps/backend/__tests__/scheduling-inject.test.ts — M17-T07 HTTP-layer smoke coverage (TASK-050A / TEST-001).
 //
 // M17 (Scheduling) had ZERO Fastify `.inject()` coverage before this file: `scheduling-consumers.test.ts` /
@@ -30,15 +31,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
-import { randomUUID } from "node:crypto";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
-  buildSchedulingAbacPredicates,
-  registerSchedulingRoutes,
   SchedulingRouteService,
   type SchedulingSeed,
+  buildSchedulingAbacPredicates,
+  registerSchedulingRoutes,
 } from "../src/modules/17-scheduling/index";
 
 function headerAuth(request: FastifyRequest): void {
@@ -114,7 +114,9 @@ function makeServer() {
   // A fresh predicate registry per server — same rationale as M11's orders-routes.test.ts: the shared registry
   // is single-owner/no-clear, so a fresh one per test isolates each test's seeded facts.
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildSchedulingAbacPredicates({ resolver: backend }))) {
+  for (const [name, predicate] of Object.entries(
+    buildSchedulingAbacPredicates({ resolver: backend }),
+  )) {
     reg.register(name, predicate);
   }
   registerAbacRegistry(reg);
@@ -190,7 +192,12 @@ describe("M17-T07 — §4.2 TypeBox validation", () => {
     const { app } = makeServer();
     // recurring-visit create carries no owned ABAC predicate (unlike POST /visits), so an empty payload
     // reaches `parse()` and fails on TypeBox schema validation, not an ABAC deny.
-    const res = await app.inject({ method: "POST", url: "/api/v1/recurring-visits", headers: SCHED, payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/recurring-visits",
+      headers: SCHED,
+      payload: {},
+    });
     expect(res.statusCode).toBe(422);
     await app.close();
   });
@@ -200,7 +207,12 @@ describe("M17-T07 — routes 1-4: list / get / create / edit a visit", () => {
   it("creates a visit (§4.7 D8 gate passes), lists it, fetches it, and edits it (non-reassigning)", async () => {
     const { app, backend } = makeServer();
 
-    const created = await app.inject({ method: "POST", url: "/api/v1/visits", headers: SCHED, payload: visitBody() });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/visits",
+      headers: SCHED,
+      payload: visitBody(),
+    });
     expect(created.statusCode).toBe(201);
     expect(created.json().status).toBe("published");
     const id = created.json().id as string;
@@ -233,10 +245,18 @@ describe("M17-T07 — route 5: self-attest EVV start", () => {
       method: "POST",
       url: "/api/v1/visits",
       headers: SCHED,
-      payload: visitBody({ scheduledStartedAt: "2026-07-02T11:00:00.000Z", scheduledEndedAt: "2026-07-02T12:00:00.000Z" }),
+      payload: visitBody({
+        scheduledStartedAt: "2026-07-02T11:00:00.000Z",
+        scheduledEndedAt: "2026-07-02T12:00:00.000Z",
+      }),
     });
     const id = created.json().id as string;
-    const started = await app.inject({ method: "POST", url: `/api/v1/visits/${id}/start`, headers: SCHED, payload: {} });
+    const started = await app.inject({
+      method: "POST",
+      url: `/api/v1/visits/${id}/start`,
+      headers: SCHED,
+      payload: {},
+    });
     expect(started.statusCode).toBe(200);
     expect(started.json().status).toBe("en_route");
     await app.close();
@@ -250,14 +270,20 @@ describe("M17-T07 — route 6: cancel", () => {
       method: "POST",
       url: "/api/v1/visits",
       headers: SCHED,
-      payload: visitBody({ scheduledStartedAt: "2026-07-02T13:00:00.000Z", scheduledEndedAt: "2026-07-02T14:00:00.000Z" }),
+      payload: visitBody({
+        scheduledStartedAt: "2026-07-02T13:00:00.000Z",
+        scheduledEndedAt: "2026-07-02T14:00:00.000Z",
+      }),
     });
     const id = created.json().id as string;
     const cancelled = await app.inject({
       method: "POST",
       url: `/api/v1/visits/${id}/cancel`,
       headers: SCHED,
-      payload: { reason: "Patient declined the visit due to a change in condition.", reasonCode: "clinical_status_change" },
+      payload: {
+        reason: "Patient declined the visit due to a change in condition.",
+        reasonCode: "clinical_status_change",
+      },
     });
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json().status).toBe("cancelled");
@@ -272,7 +298,10 @@ describe("M17-T07 — route 7: reschedule", () => {
       method: "POST",
       url: "/api/v1/visits",
       headers: SCHED,
-      payload: visitBody({ scheduledStartedAt: "2026-07-02T15:00:00.000Z", scheduledEndedAt: "2026-07-02T16:00:00.000Z" }),
+      payload: visitBody({
+        scheduledStartedAt: "2026-07-02T15:00:00.000Z",
+        scheduledEndedAt: "2026-07-02T16:00:00.000Z",
+      }),
     });
     const id = created.json().id as string;
     const rescheduled = await app.inject({
@@ -299,7 +328,10 @@ describe("M17-T07 — route 8: no-show", () => {
       method: "POST",
       url: "/api/v1/visits",
       headers: SCHED,
-      payload: visitBody({ scheduledStartedAt: "2026-07-02T17:00:00.000Z", scheduledEndedAt: "2026-07-02T18:00:00.000Z" }),
+      payload: visitBody({
+        scheduledStartedAt: "2026-07-02T17:00:00.000Z",
+        scheduledEndedAt: "2026-07-02T18:00:00.000Z",
+      }),
     });
     const id = created.json().id as string;
     const noShow = await app.inject({
@@ -321,7 +353,10 @@ describe("M17-T07 — route 9: reassign", () => {
       method: "POST",
       url: "/api/v1/visits",
       headers: SCHED,
-      payload: visitBody({ scheduledStartedAt: "2026-07-02T19:00:00.000Z", scheduledEndedAt: "2026-07-02T20:00:00.000Z" }),
+      payload: visitBody({
+        scheduledStartedAt: "2026-07-02T19:00:00.000Z",
+        scheduledEndedAt: "2026-07-02T20:00:00.000Z",
+      }),
     });
     const id = created.json().id as string;
     const reassigned = await app.inject({
@@ -349,9 +384,15 @@ describe("M17-T07 — routes 10-11: proposal inbox + publish", () => {
       status: "pending",
     });
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/visit-proposals", headers: SCHED });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/visit-proposals",
+      headers: SCHED,
+    });
     expect(list.statusCode).toBe(200);
-    expect((list.json() as Array<{ id: string }>).map((p) => p.id)).toContain(PUBLISHABLE_PROPOSAL_ID);
+    expect((list.json() as Array<{ id: string }>).map((p) => p.id)).toContain(
+      PUBLISHABLE_PROPOSAL_ID,
+    );
 
     const published = await app.inject({
       method: "POST",
@@ -404,11 +445,20 @@ describe("M17-T07 — routes 13-15: recurring visit policy", () => {
       timeZone: "America/New_York",
       startDate: "2026-07-06",
     };
-    const created = await app.inject({ method: "POST", url: "/api/v1/recurring-visits", headers: SCHED, payload: recurringBody });
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/recurring-visits",
+      headers: SCHED,
+      payload: recurringBody,
+    });
     expect(created.statusCode).toBe(201);
     const id = created.json().id as string;
 
-    const list = await app.inject({ method: "GET", url: `/api/v1/recurring-visits?patient=${PATIENT}`, headers: SCHED });
+    const list = await app.inject({
+      method: "GET",
+      url: `/api/v1/recurring-visits?patient=${PATIENT}`,
+      headers: SCHED,
+    });
     expect(list.statusCode).toBe(200);
     expect((list.json() as Array<{ id: string }>).map((r) => r.id)).toContain(id);
 
@@ -431,11 +481,18 @@ describe("M17-T07 — routes 16-17: clinician availability", () => {
       method: "PUT",
       url: `/api/v1/availability/${RN_MEMBERSHIP}`,
       headers: SCHED,
-      payload: { timeZone: "America/New_York", slots: [{ weekday: 1, startTime: "08:00", endTime: "16:00" }] },
+      payload: {
+        timeZone: "America/New_York",
+        slots: [{ weekday: 1, startTime: "08:00", endTime: "16:00" }],
+      },
     });
     expect(upserted.statusCode).toBe(200);
 
-    const read = await app.inject({ method: "GET", url: `/api/v1/availability?membership=${RN_MEMBERSHIP}`, headers: SCHED });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/availability?membership=${RN_MEMBERSHIP}`,
+      headers: SCHED,
+    });
     expect(read.statusCode).toBe(200);
     expect(read.json().membershipId).toBe(RN_MEMBERSHIP);
     expect(read.json().slots).toHaveLength(1);
@@ -450,17 +507,31 @@ describe("M17-T07 — routes 18-20: time-off request, list, approve", () => {
       method: "POST",
       url: "/api/v1/time-off",
       headers: SCHED,
-      payload: { membershipId: RN_MEMBERSHIP, kind: "pto", startsAt: "2026-08-15T00:00:00.000Z", endsAt: "2026-08-16T00:00:00.000Z" },
+      payload: {
+        membershipId: RN_MEMBERSHIP,
+        kind: "pto",
+        startsAt: "2026-08-15T00:00:00.000Z",
+        endsAt: "2026-08-16T00:00:00.000Z",
+      },
     });
     expect(requested.statusCode).toBe(201);
     const id = requested.json().id as string;
     expect(requested.json().state).toBe("requested");
 
-    const list = await app.inject({ method: "GET", url: `/api/v1/time-off?membership=${RN_MEMBERSHIP}`, headers: SCHED });
+    const list = await app.inject({
+      method: "GET",
+      url: `/api/v1/time-off?membership=${RN_MEMBERSHIP}`,
+      headers: SCHED,
+    });
     expect(list.statusCode).toBe(200);
     expect((list.json() as Array<{ id: string }>).map((t) => t.id)).toContain(id);
 
-    const approved = await app.inject({ method: "POST", url: `/api/v1/time-off/${id}/approve`, headers: SCHED, payload: {} });
+    const approved = await app.inject({
+      method: "POST",
+      url: `/api/v1/time-off/${id}/approve`,
+      headers: SCHED,
+      payload: {},
+    });
     expect(approved.statusCode).toBe(200);
     expect(approved.json().state).toBe("approved");
     await app.close();
@@ -474,7 +545,12 @@ describe("M17-T07 — route 21: deny time-off", () => {
       method: "POST",
       url: "/api/v1/time-off",
       headers: SCHED,
-      payload: { membershipId: RN_MEMBERSHIP, kind: "sick", startsAt: "2026-08-20T00:00:00.000Z", endsAt: "2026-08-21T00:00:00.000Z" },
+      payload: {
+        membershipId: RN_MEMBERSHIP,
+        kind: "sick",
+        startsAt: "2026-08-20T00:00:00.000Z",
+        endsAt: "2026-08-21T00:00:00.000Z",
+      },
     });
     const id = requested.json().id as string;
     const denied = await app.inject({
@@ -496,10 +572,20 @@ describe("M17-T07 — route 22: cancel own time-off", () => {
       method: "POST",
       url: "/api/v1/time-off",
       headers: SCHED,
-      payload: { membershipId: RN_MEMBERSHIP, kind: "training", startsAt: "2026-08-25T00:00:00.000Z", endsAt: "2026-08-26T00:00:00.000Z" },
+      payload: {
+        membershipId: RN_MEMBERSHIP,
+        kind: "training",
+        startsAt: "2026-08-25T00:00:00.000Z",
+        endsAt: "2026-08-26T00:00:00.000Z",
+      },
     });
     const id = requested.json().id as string;
-    const cancelled = await app.inject({ method: "POST", url: `/api/v1/time-off/${id}/cancel`, headers: SCHED, payload: {} });
+    const cancelled = await app.inject({
+      method: "POST",
+      url: `/api/v1/time-off/${id}/cancel`,
+      headers: SCHED,
+      payload: {},
+    });
     expect(cancelled.statusCode).toBe(200);
     expect(cancelled.json().state).toBe("cancelled");
     await app.close();
@@ -513,11 +599,18 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
       method: "POST",
       url: "/api/v1/visits",
       headers: SCHED,
-      payload: visitBody({ scheduledStartedAt: "2026-07-01T09:00:00.000Z", scheduledEndedAt: "2026-07-01T10:00:00.000Z" }),
+      payload: visitBody({
+        scheduledStartedAt: "2026-07-01T09:00:00.000Z",
+        scheduledEndedAt: "2026-07-01T10:00:00.000Z",
+      }),
     });
     const id = created.json().id as string;
 
-    const day = await app.inject({ method: "GET", url: `/api/v1/day-view?membership=${RN_MEMBERSHIP}&date=2026-07-01`, headers: SCHED });
+    const day = await app.inject({
+      method: "GET",
+      url: `/api/v1/day-view?membership=${RN_MEMBERSHIP}&date=2026-07-01`,
+      headers: SCHED,
+    });
     expect(day.statusCode).toBe(200);
     expect((day.json().visits as Array<{ id: string }>).map((v) => v.id)).toContain(id);
 
@@ -529,11 +622,19 @@ describe("M17-T07 — routes 23-25 & 27: day/week/map views + portal upcoming", 
     expect(week.statusCode).toBe(200);
     expect((week.json().visits as Array<{ id: string }>).map((v) => v.id)).toContain(id);
 
-    const map = await app.inject({ method: "GET", url: `/api/v1/map-view?membership=${RN_MEMBERSHIP}&date=2026-07-01`, headers: SCHED });
+    const map = await app.inject({
+      method: "GET",
+      url: `/api/v1/map-view?membership=${RN_MEMBERSHIP}&date=2026-07-01`,
+      headers: SCHED,
+    });
     expect(map.statusCode).toBe(200);
     expect((map.json().stops as Array<{ id: string }>).map((v) => v.id)).toContain(id);
 
-    const portal = await app.inject({ method: "GET", url: `/api/v1/portal/upcoming?patient=${PATIENT}`, headers: SCHED });
+    const portal = await app.inject({
+      method: "GET",
+      url: `/api/v1/portal/upcoming?patient=${PATIENT}`,
+      headers: SCHED,
+    });
     expect(portal.statusCode).toBe(200);
     expect((portal.json() as Array<{ visitId: string }>).map((v) => v.visitId)).toContain(id);
     await app.close();
@@ -551,7 +652,9 @@ describe("M17-T07 — route 26: on-demand route optimisation", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().degraded).toBe(true);
-    expect(backend.drainEvents().map((e) => e.eventName)).toContain("m17.route_optimization_degraded");
+    expect(backend.drainEvents().map((e) => e.eventName)).toContain(
+      "m17.route_optimization_degraded",
+    );
     await app.close();
   });
 });
@@ -560,7 +663,11 @@ describe("M17-T07 — routes 28-29: dashboard metrics", () => {
   it("reads org-wide visit metrics and per-clinician route-efficiency metrics", async () => {
     const { app } = makeServer();
     const window = "from=2026-06-01T00:00:00.000Z&to=2026-08-01T00:00:00.000Z";
-    const visits = await app.inject({ method: "GET", url: `/api/v1/metrics/visits?${window}`, headers: SCHED });
+    const visits = await app.inject({
+      method: "GET",
+      url: `/api/v1/metrics/visits?${window}`,
+      headers: SCHED,
+    });
     expect(visits.statusCode).toBe(200);
     expect(typeof visits.json().onTimeRate).toBe("number");
 

@@ -9,7 +9,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const doc = JSON.parse(readFileSync(join(process.cwd(), "docs/api/openapi.json"), "utf8")) as {
-  paths: Record<string, Record<string, { parameters?: { name: string; in: string; required?: boolean }[]; responses: Record<string, unknown> }>>;
+  paths: Record<
+    string,
+    Record<
+      string,
+      {
+        parameters?: { name: string; in: string; required?: boolean }[];
+        responses: Record<string, unknown>;
+      }
+    >
+  >;
 };
 
 function headerNames(method: string, path: string): string[] {

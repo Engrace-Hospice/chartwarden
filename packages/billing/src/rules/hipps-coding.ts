@@ -63,7 +63,8 @@ export const hippsCodingCorrect: Rule = {
       "error",
       `HIPPS derivation has ${defects.length} structural defect(s).`,
       {
-        summary: "Re-run the HIPPS calculation; the derived code/segments are internally inconsistent.",
+        summary:
+          "Re-run the HIPPS calculation; the derived code/segments are internally inconsistent.",
         blameTarget: "claim",
         blameTargetId: ctx.claim.claimId,
         fixAction: "recompute_hipps",

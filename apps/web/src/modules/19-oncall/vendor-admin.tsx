@@ -32,7 +32,13 @@ import {
   listVendorBindings,
   patchVendorBinding,
 } from "./oncall-api";
-import { DEFAULT_MINIMIZATION_PROFILE, MINIMIZATION_PROFILES, humanize, shortDate, shortId } from "./oncall-status";
+import {
+  DEFAULT_MINIMIZATION_PROFILE,
+  MINIMIZATION_PROFILES,
+  humanize,
+  shortDate,
+  shortId,
+} from "./oncall-status";
 import {
   Card,
   CheckboxField,
@@ -169,18 +175,18 @@ export function ExternalVendorAdminScreen(): JSX.Element {
       />
 
       <Notice tone="info">
-        No credential appears on this page and none can be entered: vendor secrets live in the platform
-        secret store, and this table has no column for one. What a binding carries is who the vendor is,
-        which adapter serves them, whether a BAA is in force, and which PHI-minimization profile every
-        outbound handoff is filtered through.
+        No credential appears on this page and none can be entered: vendor secrets live in the
+        platform secret store, and this table has no column for one. What a binding carries is who
+        the vendor is, which adapter serves them, whether a BAA is in force, and which
+        PHI-minimization profile every outbound handoff is filtered through.
       </Notice>
 
       {inert > 0 ? (
         <Notice tone="error" live>
-          {inert} binding{inert === 1 ? " has" : "s have"} no loaded adapter. Such a binding is configured
-          and inert — it cannot carry a call. The adapter registry ships empty by design, so on a fresh
-          deployment this is expected until an adapter is installed; what it must never be is a surprise at
-          2 a.m.
+          {inert} binding{inert === 1 ? " has" : "s have"} no loaded adapter. Such a binding is
+          configured and inert — it cannot carry a call. The adapter registry ships empty by design,
+          so on a fresh deployment this is expected until an adapter is installed; what it must
+          never be is a surprise at 2 a.m.
         </Notice>
       ) : null}
 
@@ -233,7 +239,9 @@ export function ExternalVendorAdminScreen(): JSX.Element {
                       <StatusPill label="Not in force" tone="error" />
                     )}
                   </td>
-                  <td style={td}>{b.baaExpiresOn ? shortDate(b.baaExpiresOn) : "no stated expiry"}</td>
+                  <td style={td}>
+                    {b.baaExpiresOn ? shortDate(b.baaExpiresOn) : "no stated expiry"}
+                  </td>
                   <td style={td}>{b.rnCoverageAttested ? "Yes" : "No"}</td>
                   <td style={td}>{humanize(b.minimizationProfile)}</td>
                   <td style={td}>
@@ -257,10 +265,10 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          "No stated expiry" means the BAA carries no end date — it does NOT mean the expiry is unknown.
-          The adapter key and the minimization profile cannot be changed after creation: either would
-          silently re-point live patient data at a different contract, so changing one means binding the
-          vendor again.
+          "No stated expiry" means the BAA carries no end date — it does NOT mean the expiry is
+          unknown. The adapter key and the minimization profile cannot be changed after creation:
+          either would silently re-point live patient data at a different contract, so changing one
+          means binding the vendor again.
         </span>
       </Card>
 
@@ -287,9 +295,9 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           }
         >
           <Notice tone="warning">
-            This write needs a recent step-up, and the BAA is a precondition rather than a note: a binding
-            without one is refused outright, because a binding that exists but cannot carry a call is the
-            worse failure.
+            This write needs a recent step-up, and the BAA is a precondition rather than a note: a
+            binding without one is refused outright, because a binding that exists but cannot carry
+            a call is the worse failure.
           </Notice>
           <TextField
             label="Canonical vendor entity id"
@@ -317,7 +325,11 @@ export function ExternalVendorAdminScreen(): JSX.Element {
             checked={rnAttested}
             onChange={setRnAttested}
           />
-          <CheckboxField label="A BAA is in force (required)" checked={baaInEffect} onChange={setBaaInEffect} />
+          <CheckboxField
+            label="A BAA is in force (required)"
+            checked={baaInEffect}
+            onChange={setBaaInEffect}
+          />
           <TextField
             label="BAA expiry (optional)"
             value={baaExpiresOn}
@@ -344,8 +356,8 @@ export function ExternalVendorAdminScreen(): JSX.Element {
           }
         >
           <Notice tone="info">
-            Only these three fields can change on an existing binding. The adapter key and minimization
-            profile are fixed for the life of the binding.
+            Only these three fields can change on an existing binding. The adapter key and
+            minimization profile are fixed for the life of the binding.
           </Notice>
           <CheckboxField label="A BAA is in force" checked={renewBaa} onChange={setRenewBaa} />
           <CheckboxField

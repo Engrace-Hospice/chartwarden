@@ -58,7 +58,11 @@ export interface RoutingResolutionInput {
 
 export type RoutingResolution =
   | { readonly ok: true; readonly resolved: RoutingRuleResolved }
-  | { readonly ok: false; readonly reason: "no_rule_matched"; readonly resolved: RoutingRuleResolved };
+  | {
+      readonly ok: false;
+      readonly reason: "no_rule_matched";
+      readonly resolved: RoutingRuleResolved;
+    };
 
 function isEffective(rule: RoutingRuleCandidate, at: Date): boolean {
   if (!rule.isActive) return false;
@@ -115,7 +119,8 @@ export function resolveVendorRouting(
     const atLevel = candidates.filter((c) => c.scopeKind === level);
     const matched = atLevel
       .filter(
-        (c) => isEffective(c, input.resolvedAt) && scopeIdMatches(c, input) && classMatches(c, input),
+        (c) =>
+          isEffective(c, input.resolvedAt) && scopeIdMatches(c, input) && classMatches(c, input),
       )
       .sort((a, b) =>
         a.precedencePriority !== b.precedencePriority

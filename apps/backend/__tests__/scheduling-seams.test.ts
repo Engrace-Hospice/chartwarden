@@ -1,3 +1,4 @@
+import type { OnCallRosterEntry, PortalVisitSummary, VisitDto } from "@wardenx/types";
 // apps/backend/__tests__/scheduling-seams.test.ts — M17-T05 (§4.3 the four published reader seams). All four are
 // pure READ-only orchestration over an injected SchedulingSeamStore; these cover the visit reads (encounter
 // context / EVV geofence-on-date / IDG completed-since), the §4.5 D11 caseload-contribution assignment projection
@@ -6,7 +7,6 @@
 // (on-time / no-show / reschedule rates + stability = 1 − reschedule-rate + route efficiency) — plus the boot
 // wiring (registerSchedulingSeams replaces the deny-stubs; validateSeams passes; the deny-stubs deny).
 import { afterEach, describe, expect, it } from "vitest";
-import type { OnCallRosterEntry, PortalVisitSummary, VisitDto } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type SchedulingSeamSeed,
@@ -50,8 +50,18 @@ function visit(over: Partial<VisitDto>): VisitDto {
 
 function seed(): SchedulingSeamSeed {
   const roster: OnCallRosterEntry[] = [
-    { membershipId: MEM, discipline: "rn", fromIso: "2026-03-05T17:00:00.000Z", toIso: "2026-03-06T05:00:00.000Z" },
-    { membershipId: "mem-md", discipline: "physician", fromIso: "2026-03-07T17:00:00.000Z", toIso: "2026-03-08T05:00:00.000Z" },
+    {
+      membershipId: MEM,
+      discipline: "rn",
+      fromIso: "2026-03-05T17:00:00.000Z",
+      toIso: "2026-03-06T05:00:00.000Z",
+    },
+    {
+      membershipId: "mem-md",
+      discipline: "physician",
+      fromIso: "2026-03-07T17:00:00.000Z",
+      toIso: "2026-03-08T05:00:00.000Z",
+    },
   ];
   const portal: PortalVisitSummary = {
     visitId: "vis-portal",
@@ -66,19 +76,43 @@ function seed(): SchedulingSeamSeed {
       // on-time completed (actualStart <= scheduledStart)
       visit({ id: "vis-ontime", status: "completed", actualStartedAt: "2026-03-05T13:58:00.000Z" }),
       // late completed (actualStart after scheduledStart) — counts toward total, not on-time
-      visit({ id: "vis-late", status: "completed", scheduledStartedAt: "2026-03-05T16:00:00.000Z", scheduledEndedAt: "2026-03-05T17:00:00.000Z", serviceDate: "2026-03-05", actualStartedAt: "2026-03-05T16:20:00.000Z" }),
+      visit({
+        id: "vis-late",
+        status: "completed",
+        scheduledStartedAt: "2026-03-05T16:00:00.000Z",
+        scheduledEndedAt: "2026-03-05T17:00:00.000Z",
+        serviceDate: "2026-03-05",
+        actualStartedAt: "2026-03-05T16:20:00.000Z",
+      }),
       // a no-show
-      visit({ id: "vis-noshow", status: "no_show", scheduledStartedAt: "2026-03-05T18:00:00.000Z" }),
+      visit({
+        id: "vis-noshow",
+        status: "no_show",
+        scheduledStartedAt: "2026-03-05T18:00:00.000Z",
+      }),
       // a reschedule
-      visit({ id: "vis-resched", status: "rescheduled", scheduledStartedAt: "2026-03-05T19:00:00.000Z" }),
+      visit({
+        id: "vis-resched",
+        status: "rescheduled",
+        scheduledStartedAt: "2026-03-05T19:00:00.000Z",
+      }),
       // currently in_visit (live-awareness) + active assignment
       visit({ id: "vis-live", status: "in_visit", scheduledStartedAt: "2026-03-05T20:00:00.000Z" }),
       // a proposed visit — excluded from the active caseload contribution + the stability denominator
-      visit({ id: "vis-proposed", status: "proposed", scheduledStartedAt: "2026-03-05T21:00:00.000Z" }),
+      visit({
+        id: "vis-proposed",
+        status: "proposed",
+        scheduledStartedAt: "2026-03-05T21:00:00.000Z",
+      }),
       // a different membership on the same date (proves filtering)
       visit({ id: "vis-other", assignedMembershipId: "mem-other", patientId: "pat-2" }),
       // an MD-discipline visit (proves the on-time discipline filter)
-      visit({ id: "vis-md", status: "completed", assignedDisciplineAtAssignment: "physician", actualStartedAt: "2026-03-05T13:00:00.000Z" }),
+      visit({
+        id: "vis-md",
+        status: "completed",
+        assignedDisciplineAtAssignment: "physician",
+        actualStartedAt: "2026-03-05T13:00:00.000Z",
+      }),
     ],
     onCallRoster: roster,
     portalSummaries: [{ patientId: PAT, summary: portal }],
@@ -104,7 +138,9 @@ describe("VisitReader (§4.3)", () => {
 
   it("visitsScheduledForMembershipOnDate narrows by membership + service date (EVV geofence target)", async () => {
     const out = await reader().visitsScheduledForMembershipOnDate(ORG, MEM, "2026-03-05");
-    expect(out.every((v) => v.assignedMembershipId === MEM && v.serviceDate === "2026-03-05")).toBe(true);
+    expect(out.every((v) => v.assignedMembershipId === MEM && v.serviceDate === "2026-03-05")).toBe(
+      true,
+    );
     expect(out.some((v) => v.id === "vis-other")).toBe(false);
     expect(await reader().visitsScheduledForMembershipOnDate(ORG, MEM, "2026-03-09")).toEqual([]);
   });
@@ -156,7 +192,8 @@ describe("PortalVisitReader (§4.3)", () => {
 });
 
 describe("VisitMetricsProvider (§4.3)", () => {
-  const provider = () => createVisitMetricsProvider(createInMemorySchedulingSeamStore(seed()).store);
+  const provider = () =>
+    createVisitMetricsProvider(createInMemorySchedulingSeamStore(seed()).store);
 
   it("getOnTimeVisitRate = on-time ÷ total scheduled in window", async () => {
     // 8 visits in window; on-time (actualStart <= scheduledStart): vis-ontime, vis-md → 2/8.
@@ -209,7 +246,9 @@ describe("boot wiring (registerSchedulingSeams)", () => {
     registerSchedulingSeams({ store: createInMemorySchedulingSeamStore(seed()).store });
     expect(() => validateSeams()).not.toThrow();
     expect((await getSeam("VisitReader").visitForEncounter(ORG, "vis-live"))?.id).toBe("vis-live");
-    expect((await getSeam("VisitAssignmentReader").currentVisitForClinician(ORG, MEM))?.id).toBe("vis-live");
+    expect((await getSeam("VisitAssignmentReader").currentVisitForClinician(ORG, MEM))?.id).toBe(
+      "vis-live",
+    );
     expect(await getSeam("PortalVisitReader").upcomingForPatient(ORG, PAT, 48)).toHaveLength(1);
     expect(await getSeam("VisitMetricsProvider").getNoShowRate(ORG, WINDOW)).toBe(1 / 8);
   });
@@ -217,8 +256,14 @@ describe("boot wiring (registerSchedulingSeams)", () => {
   it("falls back to fail-closed deny-stubs when M17 does not register", () => {
     validateSeams();
     expect(() => getSeam("VisitReader").visitForEncounter(ORG, "vis-1")).toThrow(/not implemented/);
-    expect(() => getSeam("VisitAssignmentReader").currentVisitForClinician(ORG, MEM)).toThrow(/not implemented/);
-    expect(() => getSeam("PortalVisitReader").upcomingForPatient(ORG, PAT, 48)).toThrow(/not implemented/);
-    expect(() => getSeam("VisitMetricsProvider").getNoShowRate(ORG, WINDOW)).toThrow(/not implemented/);
+    expect(() => getSeam("VisitAssignmentReader").currentVisitForClinician(ORG, MEM)).toThrow(
+      /not implemented/,
+    );
+    expect(() => getSeam("PortalVisitReader").upcomingForPatient(ORG, PAT, 48)).toThrow(
+      /not implemented/,
+    );
+    expect(() => getSeam("VisitMetricsProvider").getNoShowRate(ORG, WINDOW)).toThrow(
+      /not implemented/,
+    );
   });
 });

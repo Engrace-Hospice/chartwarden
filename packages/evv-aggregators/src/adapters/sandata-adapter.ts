@@ -1,3 +1,4 @@
+import { eventPairHash } from "../event-pair-hash";
 // @wardenx/evv-aggregators — the Phase-1 Sandata adapter (M18-T06, §4.5 D1, §7.8/§7.9, §8.5).
 //
 // Sandata covers the plurality of mandate states by population; it ships ENABLED at launch (the other vendor
@@ -14,14 +15,13 @@
 // PHI boundary: `buildSubmissionPayload` constructs the body from typed inputs (no coordinates — EVV aggregators
 // receive timestamps + service metadata, not raw GPS, per §8.3); the caller encrypts it before persist
 // (`payload_cipher`). The adapter never persists or logs PHI.
-import {
-  type AggregatorCredentials,
-  type AggregatorPollResult,
-  type AggregatorSubmitResult,
-  type BuildSubmissionPayloadArgs,
-  type EvvAggregatorAdapter,
+import type {
+  AggregatorCredentials,
+  AggregatorPollResult,
+  AggregatorSubmitResult,
+  BuildSubmissionPayloadArgs,
+  EvvAggregatorAdapter,
 } from "../interface";
-import { eventPairHash } from "../event-pair-hash";
 
 /** The documented Sandata submission body — the MINIMUM field set the vendor mandates (§8.3 PHI-leak
  * resistance: no clinician home address, no patient SSN, no diagnosis codes, no encounter notes). */
@@ -90,7 +90,9 @@ export class SandataAdapter implements EvvAggregatorAdapter {
   readonly states: readonly string[];
   private readonly transport: SandataTransport;
 
-  constructor(opts: { transport?: SandataTransport; states?: readonly string[]; clock?: Clock } = {}) {
+  constructor(
+    opts: { transport?: SandataTransport; states?: readonly string[]; clock?: Clock } = {},
+  ) {
     this.transport = opts.transport ?? createSandataSandboxTransport(opts.clock);
     this.states = opts.states ?? SANDATA_STATES;
   }

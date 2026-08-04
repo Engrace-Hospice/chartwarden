@@ -87,7 +87,9 @@ export function addYears(isoInstant: string, years: number): string {
  * The earliest instant a patient's submitted HOPE assessments may be erased — `youngest.transmittedAt + 10y`,
  * or `null` when nothing was submitted (no retention floor applies). Pure (≥95% covered per §9.1).
  */
-export function earliestErasableInstant(submitted: readonly SubmittedAssessmentRef[]): string | null {
+export function earliestErasableInstant(
+  submitted: readonly SubmittedAssessmentRef[],
+): string | null {
   if (submitted.length === 0) return null;
   const youngest = submitted.reduce((a, b) => (a.transmittedAt > b.transmittedAt ? a : b));
   return addYears(youngest.transmittedAt, 10);
@@ -289,10 +291,7 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
                   .returning({ id: FINDING.id })
               ).length;
         const sfvs = (
-          await tx
-            .delete(SFV)
-            .where(eq(SFV.patientId, patientId))
-            .returning({ id: SFV.id })
+          await tx.delete(SFV).where(eq(SFV.patientId, patientId)).returning({ id: SFV.id })
         ).length;
         // §8.4 step 2: the assessment rows themselves — signed AND superseded — via the parent.
         // Deleted BEFORE the schedules: `hope_assessment.schedule_id` is a real intra-module FK, so a
@@ -307,10 +306,7 @@ export function createDrizzleHopeEraseStore(db: DbClient): HopeEraseStore {
                   .returning({ id: A.id })
               ).length;
         const schedules = (
-          await tx
-            .delete(SCHED)
-            .where(eq(SCHED.patientId, patientId))
-            .returning({ id: SCHED.id })
+          await tx.delete(SCHED).where(eq(SCHED.patientId, patientId)).returning({ id: SCHED.id })
         ).length;
 
         // Row-delete path only — see the factory doc; a partition is never DETACHed/DROPped here.
@@ -329,7 +325,10 @@ export interface HopeEraserDeps {
 }
 
 /** Build M10's `hope_record` DataEraser. `subjectId` is the patient being destroyed (D7/D8). */
-export function createHopeEraser(store: HopeEraseStore, options: HopeEraseOptions = {}): DataEraser {
+export function createHopeEraser(
+  store: HopeEraseStore,
+  options: HopeEraseOptions = {},
+): DataEraser {
   return {
     async erase(scope, subjectId) {
       const { erased } = await eraseHopeRecord(scope.orgId, subjectId, store, options);

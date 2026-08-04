@@ -26,7 +26,10 @@ export const SUBSCRIPTION_TRANSITIONS = {
 export const SUBSCRIPTION_TERMINAL_STATUSES: readonly SubscriptionStatus[] = ["canceled"];
 
 /** True iff `from → to` is a legal §2.2 transition. Self-transitions are not transitions (false). */
-export function canTransitionSubscription(from: SubscriptionStatus, to: SubscriptionStatus): boolean {
+export function canTransitionSubscription(
+  from: SubscriptionStatus,
+  to: SubscriptionStatus,
+): boolean {
   return (SUBSCRIPTION_TRANSITIONS[from] as readonly SubscriptionStatus[]).includes(to);
 }
 

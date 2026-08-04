@@ -4,11 +4,11 @@ import { createPredicateRegistry } from "@wardenx/auth";
 import { describe, expect, it } from "vitest";
 
 import {
+  HL7_OWNER_MODULE_WRITE_PERMISSION,
+  type M29AbacResolver,
+  M29_ABAC_PREDICATES,
   buildM29AbacPredicates,
   denyStubM29AbacResolver,
-  HL7_OWNER_MODULE_WRITE_PERMISSION,
-  M29_ABAC_PREDICATES,
-  type M29AbacResolver,
 } from "../abac-predicates";
 
 const ORG = "org-1";
@@ -28,14 +28,23 @@ const resolver = (over: Partial<M29AbacResolver>): M29AbacResolver => ({
   ...over,
 });
 
-const build = (over: Partial<M29AbacResolver>) => buildM29AbacPredicates({ resolver: resolver(over) });
+const build = (over: Partial<M29AbacResolver>) =>
+  buildM29AbacPredicates({ resolver: resolver(over) });
 
 describe("external_feed_organization_scope", () => {
   it("allows a feed in the actor's org and denies a cross-tenant one", async () => {
-    const inOrg = build({ async feedOrgId() { return ORG; } }).external_feed_organization_scope;
+    const inOrg = build({
+      async feedOrgId() {
+        return ORG;
+      },
+    }).external_feed_organization_scope;
     expect(await inOrg(ctx(), { feedId: "f1" } as AbacTarget)).toBe(true);
 
-    const cross = build({ async feedOrgId() { return "other"; } }).external_feed_organization_scope;
+    const cross = build({
+      async feedOrgId() {
+        return "other";
+      },
+    }).external_feed_organization_scope;
     expect(await cross(ctx(), { feedId: "f1" } as AbacTarget)).toBe(false);
   });
 
@@ -155,17 +164,28 @@ describe("nppes_platform_job_caller", () => {
     const p = build({}).nppes_platform_job_caller;
     expect(await p(ctx(), {} as AbacTarget)).toBe(false);
     expect(
-      await p(ctx({ attributes: { membershipId: "m1", isPlatformOperator: true } }), {} as AbacTarget),
+      await p(
+        ctx({ attributes: { membershipId: "m1", isPlatformOperator: true } }),
+        {} as AbacTarget,
+      ),
     ).toBe(true);
   });
 });
 
 describe("external_feed_baa_satisfied", () => {
   it("mirrors the resolver's BAA verdict and fails closed when unreadable", async () => {
-    const ok = build({ async feedBaaSatisfied() { return true; } }).external_feed_baa_satisfied;
+    const ok = build({
+      async feedBaaSatisfied() {
+        return true;
+      },
+    }).external_feed_baa_satisfied;
     expect(await ok(ctx(), { feedId: "f1" } as AbacTarget)).toBe(true);
 
-    const no = build({ async feedBaaSatisfied() { return false; } }).external_feed_baa_satisfied;
+    const no = build({
+      async feedBaaSatisfied() {
+        return false;
+      },
+    }).external_feed_baa_satisfied;
     expect(await no(ctx(), { feedId: "f1" } as AbacTarget)).toBe(false);
 
     const unreadable = build({}).external_feed_baa_satisfied;

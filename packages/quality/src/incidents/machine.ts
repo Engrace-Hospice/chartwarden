@@ -59,7 +59,11 @@ export class IncidentStateError extends WardenXError {
 }
 
 /** Throw an {@link IncidentStateError} when `condition` is false (guard helper). */
-function require_(condition: boolean, code: M30IncidentErrorCode, message: string): asserts condition {
+function require_(
+  condition: boolean,
+  code: M30IncidentErrorCode,
+  message: string,
+): asserts condition {
   if (!condition) throw new IncidentStateError(code, message);
 }
 
@@ -162,22 +166,26 @@ export type IncidentEvent =
     };
 
 /** The legal §2.2 transition graph (from → events accepted). Guards are checked separately. */
-export const INCIDENT_GRAPH: Readonly<Record<IncidentState, ReadonlyArray<IncidentEvent["type"]>>> = {
-  draft: ["submit"],
-  submitted: ["triage"],
-  triaged: ["beginInvestigation"],
-  under_investigation: ["resolve"],
-  resolved: ["close"],
-  closed_followup_complete: ["reopen"],
-  reopened: ["resume"],
-};
+export const INCIDENT_GRAPH: Readonly<Record<IncidentState, ReadonlyArray<IncidentEvent["type"]>>> =
+  {
+    draft: ["submit"],
+    submitted: ["triage"],
+    triaged: ["beginInvestigation"],
+    under_investigation: ["resolve"],
+    resolved: ["close"],
+    closed_followup_complete: ["reopen"],
+    reopened: ["resume"],
+  };
 
 /**
  * Apply an incident lifecycle event (§2.2). Throws {@link IncidentStateError} `ILLEGAL_INCIDENT_TRANSITION`
  * if the event is not accepted from `from`, or the specific §2.2 guard code on a guard failure. Returns the
  * new state + the ordered §2.4 side-effect list the service runs in the incident's optimistic-locked tx.
  */
-export function transitionIncident(from: IncidentState, event: IncidentEvent): IncidentTransitionResult {
+export function transitionIncident(
+  from: IncidentState,
+  event: IncidentEvent,
+): IncidentTransitionResult {
   if (!INCIDENT_GRAPH[from].includes(event.type)) {
     throw new IncidentStateError(
       "ILLEGAL_INCIDENT_TRANSITION",

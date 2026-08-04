@@ -45,7 +45,9 @@ export function DunningBanner({
       <StatusPill label={cap(stage)} tone={dunningTone(stage)} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.25rem" }}>
         <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>{headline}</span>
-        <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>{detail}</span>
+        <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)" }}>
+          {detail}
+        </span>
       </div>
       <Link
         to="/subscription/payment_methods"

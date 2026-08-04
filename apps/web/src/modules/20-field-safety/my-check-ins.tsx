@@ -151,7 +151,8 @@ export function MyCheckInsScreen(): JSX.Element {
       <EmptyState
         title="Check-in history unavailable"
         description={
-          error ?? "The read did not answer. This is not an empty history — it is an unanswered question."
+          error ??
+          "The read did not answer. This is not an empty history — it is an unanswered question."
         }
       />
     );
@@ -191,9 +192,9 @@ export function MyCheckInsScreen(): JSX.Element {
           ]}
         />
         <span style={mutedStyle}>
-          Read at {dateTime(day.asOf)}, over a window this page asked for explicitly. Everything here is
-          yours — the route is scoped to your own membership on the server and cannot be pointed at a
-          colleague.
+          Read at {dateTime(day.asOf)}, over a window this page asked for explicitly. Everything
+          here is yours — the route is scoped to your own membership on the server and cannot be
+          pointed at a colleague.
         </span>
       </Card>
 
@@ -230,9 +231,7 @@ export function MyCheckInsScreen(): JSX.Element {
                   <td style={td}>
                     <CheckInStatusPill status={r.status} />
                   </td>
-                  <td style={td}>
-                    {r.concernNote ?? <span style={mutedStyle}>—</span>}
-                  </td>
+                  <td style={td}>{r.concernNote ?? <span style={mutedStyle}>—</span>}</td>
                   <td style={td}>
                     {r.visitId ? (
                       <span style={{ fontFamily: t.fontMono }}>{shortId(r.visitId)}</span>
@@ -277,8 +276,8 @@ export function MyCheckInsScreen(): JSX.Element {
                         </button>
                         {graceClosed === r.id ? (
                           <div style={{ ...mutedStyle, color: t.error }}>
-                            The five-minute grace on this one has closed. It stands as posted — which is
-                            the point: a supervisor may already have acted on it.
+                            The five-minute grace on this one has closed. It stands as posted —
+                            which is the point: a supervisor may already have acted on it.
                           </div>
                         ) : null}
                       </>
@@ -290,9 +289,9 @@ export function MyCheckInsScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          A correction never erases what you first said. It creates a new row that supersedes the old one,
-          and both stay readable — because if you posted "I'm OK" and corrected it ten seconds later,
-          somebody may already have read the first.
+          A correction never erases what you first said. It creates a new row that supersedes the
+          old one, and both stay readable — because if you posted "I'm OK" and corrected it ten
+          seconds later, somebody may already have read the first.
         </span>
       </Card>
 
@@ -312,8 +311,8 @@ export function MyCheckInsScreen(): JSX.Element {
           }
         >
           <Notice tone="info">
-            Amendable until <strong>{dateTime(amending.amendableUntil)}</strong> — the server's answer,
-            read just now. This writes a new check-in that supersedes the one from{" "}
+            Amendable until <strong>{dateTime(amending.amendableUntil)}</strong> — the server's
+            answer, read just now. This writes a new check-in that supersedes the one from{" "}
             {dateTime(amending.postedAt)}; the original stays on the record.
           </Notice>
           <SelectField

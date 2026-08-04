@@ -1,3 +1,4 @@
+import type { FastifyReply, FastifyRequest } from "fastify";
 // apps/backend/src/modules/23-billing-medicare/ai-block.test.ts — M23 §D13 AI-BLOCK unit tests (tasks 59–62).
 //
 // The D13 AI block on M23 is ABSOLUTE and proven at four layers; this suite exercises the three that are
@@ -9,14 +10,13 @@
 //   • the AI-governance audit channel separation (advisory display → AI-gov channel, not operational).
 // PURE: no DB, no real Fastify, no network. The guard is unit-tested against a structurally-minimal request.
 import { describe, expect, it } from "vitest";
-import type { FastifyReply, FastifyRequest } from "fastify";
 import {
   ADVISORY_DISPLAY_EVENT_TYPE,
   AiBlockViolationError,
-  type PromptTemplateDescriptor,
-  type PromptTemplateRegistry,
   M23_OWNED_TABLE_EXACT,
   M23_OWNED_TABLE_FAMILIES,
+  type PromptTemplateDescriptor,
+  type PromptTemplateRegistry,
   auditChannelForBillingEvent,
   buildAdvisoryDisplayAuditEvent,
   denyAiAdvisoryReader,
@@ -162,9 +162,7 @@ describe("rejectAiActor — the per-route AI-principal reject guard", () => {
 describe("denyAiAdvisoryReader — non-gating deny-stub (M32 not yet locked)", () => {
   it("returns NO advisories (empty) rather than throwing — never gates the worklist read", async () => {
     const reader = denyAiAdvisoryReader();
-    await expect(
-      reader.advisoriesForResult("org-1", "vr-1"),
-    ).resolves.toEqual([]);
+    await expect(reader.advisoriesForResult("org-1", "vr-1")).resolves.toEqual([]);
   });
 
   it("never throws across arbitrary ids (the advisory surface can never break the read path)", async () => {
@@ -204,7 +202,10 @@ describe("auditChannelForBillingEvent — AI-gov vs operational channel separati
   });
 
   it("buildAdvisoryDisplayAuditEvent pins the AI-governance channel on the audit context (PHI-free)", () => {
-    const evt = buildAdvisoryDisplayAuditEvent({ validationResultId: "vr-9", modelVersion: "claude-x" });
+    const evt = buildAdvisoryDisplayAuditEvent({
+      validationResultId: "vr-9",
+      modelVersion: "claude-x",
+    });
     expect(evt.eventType).toBe(ADVISORY_DISPLAY_EVENT_TYPE);
     expect(evt.auditChannel).toBe("ai_governance");
     expect(evt.context.auditChannel).toBe("ai_governance");

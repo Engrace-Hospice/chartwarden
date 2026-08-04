@@ -9,10 +9,10 @@ import {
   type CaptureInput,
   type CheckoutPairing,
   type DeviceContext,
-  type M18ErrorCode,
-  type VisitContext,
   EvvStateError,
   GEOFENCE_BREACH_REASON_MIN,
+  type M18ErrorCode,
+  type VisitContext,
   correctEvent,
   outboxEvents,
   recordEvent,
@@ -75,7 +75,10 @@ describe("recordEvent — §7.1 normal check-in", () => {
     expect(r.gpsQuality).toBe("high");
     expect(r.geofenceEvaluation.decision).toBe("inside");
     expect(r.geofenceEvaluation.computedDistanceM).toBeLessThan(100);
-    expect(outboxEvents(r.effects)).toEqual(["m18.evv.check_in_recorded", "m18.evv.at_patient_address"]);
+    expect(outboxEvents(r.effects)).toEqual([
+      "m18.evv.check_in_recorded",
+      "m18.evv.at_patient_address",
+    ]);
     expect(r.effects[0]).toEqual({ kind: "audit" });
     expect(r.effects.some((e) => e.kind === "insert_geofence_evaluation")).toBe(true);
   });
@@ -97,7 +100,11 @@ describe("recordEvent — §2.3 capture integrity guards", () => {
 
   it("rejects captured_at after recorded_at (device clock lead)", () => {
     expectCode(
-      () => recordCheckIn({ capturedAt: "2026-03-04T10:05:00.000Z", recordedAt: "2026-03-04T10:02:00.000Z" }),
+      () =>
+        recordCheckIn({
+          capturedAt: "2026-03-04T10:05:00.000Z",
+          recordedAt: "2026-03-04T10:02:00.000Z",
+        }),
       "EVV_CAPTURED_AFTER_RECORDED",
     );
   });
@@ -199,7 +206,8 @@ describe("recordEvent — §7.5 geofence breach (advisory-not-block)", () => {
     const r = recordEvent({
       capture: capture({
         coordinate: farCoord,
-        geofenceBreachReason: "Patient asked to be picked up at the assisted-living lobby across the lot.",
+        geofenceBreachReason:
+          "Patient asked to be picked up at the assisted-living lobby across the lot.",
       }),
       visit: visit(),
       device: device(),
@@ -231,7 +239,9 @@ describe("recordEvent — §7.5 geofence breach (advisory-not-block)", () => {
         }),
       "GEOFENCE_BREACH_REASON_TOO_SHORT",
     );
-    expect("Patient asked to be picked up nearby now.".length).toBeGreaterThanOrEqual(GEOFENCE_BREACH_REASON_MIN);
+    expect("Patient asked to be picked up nearby now.".length).toBeGreaterThanOrEqual(
+      GEOFENCE_BREACH_REASON_MIN,
+    );
   });
 });
 
@@ -251,8 +261,13 @@ describe("recordEvent — §3.2 quality bands", () => {
   });
 
   it("accuracy beyond the policy max but inside ⇒ requires attestation", () => {
-    expectCode(() => recordCheckIn({ accuracyM: 80 }), "EVV_DEGRADED_ACCURACY_ATTESTATION_REQUIRED");
-    expect(recordCheckIn({ accuracyM: 80, degradedAttested: true }).gpsQuality).toBe("degraded_attested");
+    expectCode(
+      () => recordCheckIn({ accuracyM: 80 }),
+      "EVV_DEGRADED_ACCURACY_ATTESTATION_REQUIRED",
+    );
+    expect(recordCheckIn({ accuracyM: 80, degradedAttested: true }).gpsQuality).toBe(
+      "degraded_attested",
+    );
   });
 
   it("§7.6 suspected spoof is recorded + warned (advisory), never blocked", () => {
@@ -305,7 +320,8 @@ describe("correctEvent — §7.7 correction-of-record", () => {
     originalKind: "check_in" as const,
     originalSupersededByEventId: null,
     newKind: "check_in" as const,
-    correctionReason: "Confirmed GPS spoof on developer-mode device; the clinician was elsewhere per family.",
+    correctionReason:
+      "Confirmed GPS spoof on developer-mode device; the clinician was elsewhere per family.",
     stepUpVerified: true,
   };
 
@@ -318,22 +334,37 @@ describe("correctEvent — §7.7 correction-of-record", () => {
       value: base.correctionReason,
     });
     expect(outboxEvents(r.effects)).toEqual(["m18.evv.event_corrected"]);
-    expect(r.effects).toContainEqual({ kind: "open_missing_resolution", resolutionKind: "missing_checkin" });
+    expect(r.effects).toContainEqual({
+      kind: "open_missing_resolution",
+      resolutionKind: "missing_checkin",
+    });
   });
 
   it("requires step-up auth", () => {
-    expectCode(() => correctEvent({ ...base, stepUpVerified: false }), "EVV_CORRECTION_STEP_UP_REQUIRED");
+    expectCode(
+      () => correctEvent({ ...base, stepUpVerified: false }),
+      "EVV_CORRECTION_STEP_UP_REQUIRED",
+    );
   });
 
   it("requires a correction_reason ≥ 60 chars", () => {
-    expectCode(() => correctEvent({ ...base, correctionReason: "too short" }), "EVV_CORRECTION_REASON_TOO_SHORT");
+    expectCode(
+      () => correctEvent({ ...base, correctionReason: "too short" }),
+      "EVV_CORRECTION_REASON_TOO_SHORT",
+    );
   });
 
   it("refuses to correct an already-superseded event", () => {
-    expectCode(() => correctEvent({ ...base, originalSupersededByEventId: "event-2" }), "EVV_EVENT_ALREADY_SUPERSEDED");
+    expectCode(
+      () => correctEvent({ ...base, originalSupersededByEventId: "event-2" }),
+      "EVV_EVENT_ALREADY_SUPERSEDED",
+    );
   });
 
   it("refuses to change the event kind", () => {
-    expectCode(() => correctEvent({ ...base, newKind: "check_out" }), "EVV_CORRECTION_KIND_MISMATCH");
+    expectCode(
+      () => correctEvent({ ...base, newKind: "check_out" }),
+      "EVV_CORRECTION_KIND_MISMATCH",
+    );
   });
 });

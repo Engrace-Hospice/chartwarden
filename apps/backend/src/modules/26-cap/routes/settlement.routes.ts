@@ -25,24 +25,41 @@ const pParam = (request: { params: unknown }, key: string): string =>
 export function registerSettlementRoutes(app: FastifyInstance, deps: SettlementRouteDeps): void {
   const { readService, writeService } = deps;
 
-  app.get("/api/v1/cap/settlements/:periodId", { preHandler: [SETTLEMENT_READ] }, async (request, reply) =>
-    reply.send(await readService.getSettlement(actorOf(request), pParam(request, "periodId"))),
+  app.get(
+    "/api/v1/cap/settlements/:periodId",
+    { preHandler: [SETTLEMENT_READ] },
+    async (request, reply) =>
+      reply.send(await readService.getSettlement(actorOf(request), pParam(request, "periodId"))),
   );
 
   app.post(
     "/api/v1/cap/settlements/:periodId/propose",
     { preHandler: [validateParams(PeriodIdParams), SETTLEMENT_MANAGE, IN_SETTLEMENT, IDEMPOTENT] },
     async (request, reply) =>
-      reply.code(201).send(await writeService.proposeSettlement(writeActorOf(request), pParam(request, "periodId"))),
+      reply
+        .code(201)
+        .send(
+          await writeService.proposeSettlement(writeActorOf(request), pParam(request, "periodId")),
+        ),
   );
 
   app.patch(
     "/api/v1/cap/settlements/:periodId/finalize",
-    { preHandler: [validateParams(PeriodIdParams), SETTLEMENT_MANAGE, IN_SETTLEMENT, STEP_UP("cap.settlement.manage"), IDEMPOTENT] },
+    {
+      preHandler: [
+        validateParams(PeriodIdParams),
+        SETTLEMENT_MANAGE,
+        IN_SETTLEMENT,
+        STEP_UP("cap.settlement.manage"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(FinalizeSettlementRequest, request.body);
-      return reply.send(await writeService.finalizeSettlement(writeActorOf(request), periodId, body));
+      return reply.send(
+        await writeService.finalizeSettlement(writeActorOf(request), periodId, body),
+      );
     },
   );
 }

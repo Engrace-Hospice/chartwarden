@@ -39,14 +39,24 @@ describe("M35 §5.2 admin screen registry (M35A-T04)", () => {
   it("gates every screen on a REAL packages/auth permission key (no typo'd / never-registered key)", () => {
     for (const s of subscriptionAdminScreens.screens) {
       expect(s.requiredPermission, `${s.id} must name a permission key`).toBeDefined();
-      expect(CATALOG_KEYS.has(s.requiredPermission as string), `${s.id} → "${s.requiredPermission}" is not a catalog key`).toBe(true);
+      expect(
+        CATALOG_KEYS.has(s.requiredPermission as string),
+        `${s.id} → "${s.requiredPermission}" is not a catalog key`,
+      ).toBe(true);
     }
   });
 
   it("gates every §5.2 screen on a `billing_admin`-category key (the platform-ops surface)", () => {
-    const billingAdmin = new Set(allPermissionMirrorRows().filter((r) => r.category === "billing_admin").map((r) => r.key));
+    const billingAdmin = new Set(
+      allPermissionMirrorRows()
+        .filter((r) => r.category === "billing_admin")
+        .map((r) => r.key),
+    );
     for (const s of subscriptionAdminScreens.screens) {
-      expect(billingAdmin.has(s.requiredPermission as string), `${s.id} must gate on a billing_admin key`).toBe(true);
+      expect(
+        billingAdmin.has(s.requiredPermission as string),
+        `${s.id} must gate on a billing_admin key`,
+      ).toBe(true);
     }
   });
 

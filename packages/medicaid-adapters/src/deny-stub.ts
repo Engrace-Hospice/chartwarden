@@ -1,11 +1,11 @@
+import type { StateCode } from "./contracts";
+import { MedicaidAdapterError } from "./errors";
 // @wardenx/medicaid-adapters — shared deny-stub factory for non-implemented Phase-1 states (D14). The
 // registry registers WA/ID/CA/NV deny-stubs so its existence proof is testable without committing to a
 // state's wire format until a paying customer lands. Every I/O method throws a structured
 // MedicaidAdapterError(code='ADAPTER_DENY_STUB'); metadata is conservative (all gates closed). The vendor
 // ends with '-deny-stub' so `MedicaidAdapterRegistry.isPhaseOneDenyStub` reports it.
 import type { MedicaidAdapter, MedicaidAdapterMetadata } from "./interface";
-import { MedicaidAdapterError } from "./errors";
-import type { StateCode } from "./contracts";
 
 const DENY_STUB_METADATA: MedicaidAdapterMetadata = {
   acceptsDocumentedMissingEvv: false, // Cures Act §12006 — Phase-1 floor
@@ -41,6 +41,11 @@ export function createDenyStubAdapter(state: StateCode, vendorBase: string): Med
     parseAcknowledgment: async () => deny("parseAcknowledgment"),
     parseRemittance: async () => deny("parseRemittance"),
     rateLookup: async () => deny("rateLookup"),
-    healthy: async () => ({ ok: false, lastChecked: "1970-01-01T00:00:00.000Z", latencyMs: 0, channelStatus: {} }),
+    healthy: async () => ({
+      ok: false,
+      lastChecked: "1970-01-01T00:00:00.000Z",
+      latencyMs: 0,
+      channelStatus: {},
+    }),
   };
 }

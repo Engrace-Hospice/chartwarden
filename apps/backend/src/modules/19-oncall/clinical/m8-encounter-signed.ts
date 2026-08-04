@@ -26,7 +26,11 @@ import type {
   PatientId,
   TriageCallId,
 } from "@wardenx/types";
-import { type TriageCallFacts, type TriageCallTransition, markDocumented } from "../lifecycle/triage-call";
+import {
+  type TriageCallFacts,
+  type TriageCallTransition,
+  markDocumented,
+} from "../lifecycle/triage-call";
 
 /** §4.8 — the subscribed event name, typed off the frozen `M19_SUBSCRIBED_EVENT_NAMES` list rather than
  *  spelled again, so an upstream rename breaks the build instead of orphaning this handler. */
@@ -69,9 +73,8 @@ export type TriageDocumentedPlan =
     }
   | {
       readonly kind: "skip";
-      readonly reason:
-        /** The signed encounter belongs to no triage call — the ordinary case. Most encounters in the
-         *  system are visit documentation and have nothing to do with M19. NOT an error. */
+      readonly reason: /** The signed encounter belongs to no triage call — the ordinary case. Most encounters in the
+       *  system are visit documentation and have nothing to do with M19. NOT an error. */
         | "no_linked_call"
         /** The call is no longer in `documented_pending_encounter` — a re-delivery (already `documented`
          *  or `closed`), or an amended-and-re-signed encounter on a call that has moved on. Idempotency

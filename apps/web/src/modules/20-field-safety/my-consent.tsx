@@ -49,10 +49,10 @@ import {
 } from "./safety-status";
 import {
   Card,
+  Field,
   Modal,
   Notice,
   SummaryGrid,
-  Field,
   TextAreaField,
   TextField,
   columnStyle,
@@ -195,10 +195,10 @@ export function MyConsentScreen(): JSX.Element {
       />
 
       <Notice tone="info" live>
-        These three are <strong>separate</strong>: you can give one and refuse another, and withdraw any of
-        them at any time without affecting the others.{" "}
-        <strong>Refusing all three does not disable your SOS button.</strong> The alert is raised either
-        way — the people responding are simply told your location is unknown.
+        These three are <strong>separate</strong>: you can give one and refuse another, and withdraw
+        any of them at any time without affecting the others.{" "}
+        <strong>Refusing all three does not disable your SOS button.</strong> The alert is raised
+        either way — the people responding are simply told your location is unknown.
       </Notice>
 
       {error ? (
@@ -270,24 +270,30 @@ export function MyConsentScreen(): JSX.Element {
                 </SummaryGrid>
                 {c.status === "expired" ? (
                   <Notice tone="warning">
-                    This lapsed on your agency's rotation schedule — it is <strong>not</strong> the same as
-                    you withdrawing it, and the record keeps the two apart. Give it again if you still
-                    agree.
+                    This lapsed on your agency's rotation schedule — it is <strong>not</strong> the
+                    same as you withdrawing it, and the record keeps the two apart. Give it again if
+                    you still agree.
                   </Notice>
                 ) : null}
                 <details>
                   <summary style={{ ...mutedStyle, cursor: "pointer" }}>
                     What you were shown when you agreed
                   </summary>
-                  <p style={{ margin: `${t.space2} 0 0`, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>
+                  <p
+                    style={{
+                      margin: `${t.space2} 0 0`,
+                      fontSize: "0.85rem",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
                     {c.acknowledgmentTextSnapshot}
                   </p>
                 </details>
                 {purpose === "emergency_contact_call" && c.contactOnFile ? (
                   <span style={mutedStyle}>
-                    Your contact's details are held encrypted and are never shown back — not to you, not to
-                    your supervisors. To change them, give this consent again with the new details; the new
-                    grant replaces the old one.
+                    Your contact's details are held encrypted and are never shown back — not to you,
+                    not to your supervisors. To change them, give this consent again with the new
+                    details; the new grant replaces the old one.
                   </span>
                 ) : null}
               </>
@@ -305,12 +311,12 @@ export function MyConsentScreen(): JSX.Element {
 
       <Card title="Who has looked at my location">
         <span style={mutedStyle}>
-          Every read of your coordinates is logged at raised severity with the reader's name, and once an
-          alert has closed a supervisor must write a reason of at least forty characters before the system
-          will decrypt anything. §8.7 gives you the right to see that list here. M20 publishes no route
-          that returns it to this page yet — the entries are in the audit record, reachable through your
-          compliance officer — so this section names the gap rather than showing an empty list that would
-          read as "nobody has looked".
+          Every read of your coordinates is logged at raised severity with the reader's name, and
+          once an alert has closed a supervisor must write a reason of at least forty characters
+          before the system will decrypt anything. §8.7 gives you the right to see that list here.
+          M20 publishes no route that returns it to this page yet — the entries are in the audit
+          record, reachable through your compliance officer — so this section names the gap rather
+          than showing an empty list that would read as "nobody has looked".
         </span>
       </Card>
 
@@ -364,8 +370,8 @@ export function MyConsentScreen(): JSX.Element {
             </>
           ) : null}
           <Notice tone="info">
-            The words above are stored with your consent exactly as written, so a later question about what
-            you agreed to is answered by what you were actually shown.
+            The words above are stored with your consent exactly as written, so a later question
+            about what you agreed to is answered by what you were actually shown.
           </Notice>
           {modalError ? (
             <Notice tone="error" assertive>

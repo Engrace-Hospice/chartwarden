@@ -38,7 +38,18 @@ import type {
   MembershipId,
   MswRiskFactor,
 } from "@wardenx/types";
-import { type AnyColumn, and, asc, eq, inArray, isNotNull, isNull, lte, ne, sql } from "drizzle-orm";
+import {
+  type AnyColumn,
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  ne,
+  sql,
+} from "drizzle-orm";
 import {
   evaluateInitialClock,
   evaluateSupervisoryCadence,
@@ -116,10 +127,16 @@ export function createDrizzleDisciplinePlanSeamStore(
       if (row.signedAt === null) continue;
       const prior = best.get(row.planId);
       if (prior === undefined || row.sequence > prior.sequence) {
-        best.set(row.planId, { versionId: row.id, signedAt: iso(row.signedAt), sequence: row.sequence });
+        best.set(row.planId, {
+          versionId: row.id,
+          signedAt: iso(row.signedAt),
+          sequence: row.sequence,
+        });
       }
     }
-    return new Map([...best].map(([k, v]) => [k, { versionId: v.versionId, signedAt: v.signedAt }]));
+    return new Map(
+      [...best].map(([k, v]) => [k, { versionId: v.versionId, signedAt: v.signedAt }]),
+    );
   }
 
   const digestOf = (
@@ -319,9 +336,14 @@ export function createDrizzleDisciplinePlanSeamStore(
         // §7.3) — deterministic tokens, never free text.
         const flags: string[] = [];
         const cadence = evaluateSupervisoryCadence(clockRowOf(plan), instant);
-        if (cadence !== null && (cadence.status === "overdue" || cadence.status === "gate_engaged")) {
+        if (
+          cadence !== null &&
+          (cadence.status === "overdue" || cadence.status === "gate_engaged")
+        ) {
           flags.push(
-            cadence.status === "gate_engaged" ? "aide_supervisory_gate_engaged" : "aide_supervisory_overdue",
+            cadence.status === "gate_engaged"
+              ? "aide_supervisory_gate_engaged"
+              : "aide_supervisory_overdue",
           );
         }
         const initial = evaluateInitialClock(
@@ -429,7 +451,9 @@ export function createDrizzleDisciplinePlanSeamStore(
         const rows = await tx
           .select()
           .from(GATE)
-          .where(and(isNotNull(GATE.validUntil), isNull(GATE.revokedAt), lte(GATE.validUntil, horizon)))
+          .where(
+            and(isNotNull(GATE.validUntil), isNull(GATE.revokedAt), lte(GATE.validUntil, horizon)),
+          )
           .orderBy(asc(GATE.validUntil), asc(GATE.id));
         return rows.map(toGateFacts);
       });
@@ -475,7 +499,10 @@ export function createDrizzleDisciplinePlanSeamStore(
             .from(P)
             .where(
               and(
-                ...scopeWalls({ org: P.organizationId, pe: P.providerEntityId, loc: P.locationId }, scope),
+                ...scopeWalls(
+                  { org: P.organizationId, pe: P.providerEntityId, loc: P.locationId },
+                  scope,
+                ),
                 eq(P.kind, "aide_poc"),
                 ne(P.status, "discharged"),
                 isNotNull(P.nextSupervisoryDueAt),
@@ -514,7 +541,10 @@ export function createDrizzleDisciplinePlanSeamStore(
             .from(SV)
             .where(
               and(
-                ...scopeWalls({ org: SV.organizationId, pe: SV.providerEntityId, loc: SV.locationId }, scope),
+                ...scopeWalls(
+                  { org: SV.organizationId, pe: SV.providerEntityId, loc: SV.locationId },
+                  scope,
+                ),
                 isNotNull(SV.signedAt),
                 lte(SV.supervisoryAt, new Date(toMs)),
               ),
@@ -528,19 +558,30 @@ export function createDrizzleDisciplinePlanSeamStore(
             .from(P)
             .where(
               and(
-                ...scopeWalls({ org: P.organizationId, pe: P.providerEntityId, loc: P.locationId }, scope),
+                ...scopeWalls(
+                  { org: P.organizationId, pe: P.providerEntityId, loc: P.locationId },
+                  scope,
+                ),
                 inArray(P.kind, ["msw_plan", "spiritual_plan"]),
                 isNotNull(P.initialAssessmentClockStartedAt),
               ),
             );
           const mswInitialOnTime = tallyInitialClock(clockPlans, "msw_plan", nowIso, inWindow);
-          const chaplainInitialOnTime = tallyInitialClock(clockPlans, "spiritual_plan", nowIso, inWindow);
+          const chaplainInitialOnTime = tallyInitialClock(
+            clockPlans,
+            "spiritual_plan",
+            nowIso,
+            inWindow,
+          );
 
           // 4 — volunteer 418.78 gate compliance: volunteers holding an open assignment overlapping the
           // window, judged by the ONE pure gate derivation (`effectiveStatusFor`) — a volunteer with no
           // gate rows FAILS every blocking kind; absence is never an active gate.
           const assignmentFilters = [
-            ...scopeWalls({ org: VA.organizationId, pe: VA.providerEntityId, loc: VA.locationId }, scope),
+            ...scopeWalls(
+              { org: VA.organizationId, pe: VA.providerEntityId, loc: VA.locationId },
+              scope,
+            ),
             isNull(VA.inactivatedAt),
             lte(VA.startsAt, new Date(toMs)),
             fromMs !== null
@@ -579,7 +620,12 @@ export function createDrizzleDisciplinePlanSeamStore(
             denominator: memberships.length,
           };
 
-          return { supervisoryOnTime, mswInitialOnTime, chaplainInitialOnTime, volunteerGateCompliance };
+          return {
+            supervisoryOnTime,
+            mswInitialOnTime,
+            chaplainInitialOnTime,
+            volunteerGateCompliance,
+          };
         },
       );
     },
@@ -589,7 +635,9 @@ export function createDrizzleDisciplinePlanSeamStore(
         const [row] = await tx
           .select({ minutes: LEDGER.totalVolunteerHourMinutes })
           .from(LEDGER)
-          .where(and(eq(LEDGER.providerEntityId, providerEntityId), eq(LEDGER.fiscalYear, fiscalYear)))
+          .where(
+            and(eq(LEDGER.providerEntityId, providerEntityId), eq(LEDGER.fiscalYear, fiscalYear)),
+          )
           .limit(1);
         return row?.minutes ?? 0;
       });
@@ -613,7 +661,10 @@ function tallySupervisory(
   let denominator = 0;
   const priorDueByPlan = new Map<string, number>();
   for (const visit of visits) {
-    const at = visit.supervisoryAt instanceof Date ? visit.supervisoryAt.getTime() : Date.parse(visit.supervisoryAt);
+    const at =
+      visit.supervisoryAt instanceof Date
+        ? visit.supervisoryAt.getTime()
+        : Date.parse(visit.supervisoryAt);
     const prior = priorDueByPlan.get(visit.planId);
     if (prior !== undefined && inWindow(at)) {
       denominator += 1;
@@ -658,7 +709,9 @@ function tallyInitialClock(
       .filter((d): d is Date => d !== null)
       .map((d) => d.getTime());
     const satisfiedMs =
-      state.satisfied && satisfactionCandidates.length > 0 ? Math.min(...satisfactionCandidates) : null;
+      state.satisfied && satisfactionCandidates.length > 0
+        ? Math.min(...satisfactionCandidates)
+        : null;
     const closeMs = satisfiedMs ?? (state.overdue ? dueMs : null);
     if (closeMs === null || !inWindow(closeMs)) continue;
     denominator += 1;

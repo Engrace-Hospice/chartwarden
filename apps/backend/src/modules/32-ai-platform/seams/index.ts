@@ -126,10 +126,7 @@ export function registerAiPlatformSeams(deps: AiPlatformSeamDeps = {}): void {
     "BereavementRiskNarrativeProvider",
     createBereavementRiskNarrativeProvider(seamDeps),
   );
-  registerSeam(
-    "DenialOutcomePredictionProvider",
-    createDenialOutcomePredictionProvider(seamDeps),
-  );
+  registerSeam("DenialOutcomePredictionProvider", createDenialOutcomePredictionProvider(seamDeps));
   registerSeam("EmbeddingsProvider", createEmbeddingsProvider(seamDeps));
   registerSeam("SemanticSearchProvider", createSemanticSearchProvider(seamDeps));
   registerSeam("CopilotProvider", createCopilotProvider(seamDeps));

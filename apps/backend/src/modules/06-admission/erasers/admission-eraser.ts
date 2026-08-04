@@ -154,10 +154,7 @@ export function createDrizzleAdmissionEraseStore(db: DbClient): AdmissionEraseSt
           admissionIds.length === 0
             ? []
             : (
-                await tx
-                  .select({ id: EP.id })
-                  .from(EP)
-                  .where(inArray(EP.admissionId, admissionIds))
+                await tx.select({ id: EP.id }).from(EP).where(inArray(EP.admissionId, admissionIds))
               ).map((r) => r.id);
 
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
@@ -200,10 +197,7 @@ export function createDrizzleAdmissionEraseStore(db: DbClient): AdmissionEraseSt
           admissionIds.length === 0
             ? 0
             : await del(() =>
-                tx
-                  .delete(EP)
-                  .where(inArray(EP.admissionId, admissionIds))
-                  .returning({ id: EP.id }),
+                tx.delete(EP).where(inArray(EP.admissionId, admissionIds)).returning({ id: EP.id }),
               );
 
         // Admission-keyed satellites (order among these is free — no cross-FKs).
@@ -242,10 +236,7 @@ export function createDrizzleAdmissionEraseStore(db: DbClient): AdmissionEraseSt
           admissionIds.length === 0
             ? 0
             : await del(() =>
-                tx
-                  .delete(CW)
-                  .where(inArray(CW.admissionId, admissionIds))
-                  .returning({ id: CW.id }),
+                tx.delete(CW).where(inArray(CW.admissionId, admissionIds)).returning({ id: CW.id }),
               );
 
         // Referrals last: the patient's own rows, plus any admission-pointed referral whose

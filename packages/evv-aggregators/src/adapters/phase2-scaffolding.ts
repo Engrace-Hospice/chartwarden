@@ -1,3 +1,4 @@
+import { eventPairHash } from "../event-pair-hash";
 // @wardenx/evv-aggregators — Phase-2 vendor scaffolding (M18-T06, §4.5, §8.5).
 //
 // HHAeXchange / Tellus / CareBridge ship as INTERFACE-CONFORMANCE-ONLY scaffolding for Phase 2 (§8.5): each
@@ -7,14 +8,13 @@
 // (their states list is empty), so a state that maps to one of these vendors before its Phase-2 enablement
 // fails registry-build loudly (`No adapter for vendor …`) rather than silently dropping submissions. A new
 // state's go-live replaces the scaffolding with a real implementation behind the SAME interface.
-import {
-  type AggregatorCredentials,
-  type AggregatorPollResult,
-  type AggregatorSubmitResult,
-  type BuildSubmissionPayloadArgs,
-  type EvvAggregatorAdapter,
+import type {
+  AggregatorCredentials,
+  AggregatorPollResult,
+  AggregatorSubmitResult,
+  BuildSubmissionPayloadArgs,
+  EvvAggregatorAdapter,
 } from "../interface";
-import { eventPairHash } from "../event-pair-hash";
 
 abstract class Phase2ScaffoldingAdapter implements EvvAggregatorAdapter {
   abstract readonly vendor: string;
@@ -25,7 +25,11 @@ abstract class Phase2ScaffoldingAdapter implements EvvAggregatorAdapter {
     args: BuildSubmissionPayloadArgs,
   ): Promise<{ body: unknown; idempotencyKey: string }> {
     return {
-      body: { scaffolding: this.vendor, checkInEventId: args.checkInEventId, checkOutEventId: args.checkOutEventId },
+      body: {
+        scaffolding: this.vendor,
+        checkInEventId: args.checkInEventId,
+        checkOutEventId: args.checkOutEventId,
+      },
       idempotencyKey: eventPairHash(args.checkInEventId, args.checkOutEventId),
     };
   }

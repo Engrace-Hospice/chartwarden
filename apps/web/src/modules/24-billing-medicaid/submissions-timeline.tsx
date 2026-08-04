@@ -60,7 +60,9 @@ export function MedicaidSubmissionsTimeline(): JSX.Element {
       params: { path: { id: claimId } },
     });
     if (res.error) {
-      setError("The submission history is unavailable — you may lack billing visibility for this claim.");
+      setError(
+        "The submission history is unavailable — you may lack billing visibility for this claim.",
+      );
       setLoading(false);
       return;
     }
@@ -131,8 +133,12 @@ export function MedicaidSubmissionsTimeline(): JSX.Element {
                     />
                   </td>
                   <td style={tdMono}>{s.errorCode ?? "—"}</td>
-                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{stamp(s.submittedAt)}</td>
-                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>{stamp(s.nextPollAt)}</td>
+                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
+                    {stamp(s.submittedAt)}
+                  </td>
+                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
+                    {stamp(s.nextPollAt)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -141,8 +147,8 @@ export function MedicaidSubmissionsTimeline(): JSX.Element {
       }
       detail={
         <span style={mutedStyle}>
-          Retries are scheduled by the submission worker — a transport failure or timeout re-attempts
-          automatically; a synchronous rejection does not.
+          Retries are scheduled by the submission worker — a transport failure or timeout
+          re-attempts automatically; a synchronous rejection does not.
         </span>
       }
     />

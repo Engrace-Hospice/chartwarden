@@ -75,10 +75,7 @@ export function createDrizzleConsentEraseStore(db: DbClient): ConsentEraseStore 
 
         // Active legal holds whose criteria reference the subject (or one of its records).
         const holds = records.length
-          ? await tx
-              .select({ criteria: HOLD.criteria })
-              .from(HOLD)
-              .where(eq(HOLD.status, "active"))
+          ? await tx.select({ criteria: HOLD.criteria }).from(HOLD).where(eq(HOLD.status, "active"))
           : [];
         const holdTexts = holds.map((h) => JSON.stringify(h.criteria ?? {}));
         const held = (recordId: string): boolean =>
@@ -113,10 +110,7 @@ export function createDrizzleConsentEraseStore(db: DbClient): ConsentEraseStore 
         // Children first — every satellite RESTRICT-FKs the record (delegated_access also FKs the
         // recipient row, so it precedes the recipient delete).
         const delegated = await del(() =>
-          tx
-            .delete(DELEG)
-            .where(inArray(DELEG.consentRecordId, ids))
-            .returning({ id: DELEG.id }),
+          tx.delete(DELEG).where(inArray(DELEG.consentRecordId, ids)).returning({ id: DELEG.id }),
         );
         const docLinks = await del(() =>
           tx

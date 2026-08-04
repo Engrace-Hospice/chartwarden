@@ -50,12 +50,7 @@ export type PortalAccountRelationship =
   | "bereaved_family_member";
 
 /** §2.2.1 / §3.3 `portal_account_status` — the account lifecycle (`bereaved` is the D4 lateral flip). */
-export type PortalAccountStatus =
-  | "invited"
-  | "active"
-  | "suspended"
-  | "revoked"
-  | "bereaved";
+export type PortalAccountStatus = "invited" | "active" | "suspended" | "revoked" | "bereaved";
 
 /** §2.2.2 / §3.3 `portal_access_grant_kind` — the per-patient grant class (D5/D6/D7). */
 export type PortalAccessGrantKind =
@@ -120,10 +115,7 @@ export type PortalDataCategory =
 
 /** The three §3.3 owned tables (the manifest `ownedTables` set for M31). The spec's §2.1 ERD proposes a
  *  wider 15-entity model; the manifest is authoritative (ADR-0005) and owns exactly these three. */
-export type M31TableName =
-  | "portal_account"
-  | "portal_access_grant"
-  | "telehealth_visit";
+export type M31TableName = "portal_account" | "portal_access_grant" | "telehealth_visit";
 
 /**
  * §3.6 per-table audit denylist (the M4 PHI trigger arguments for M31-T02). The listed `*_cipher` /
@@ -134,11 +126,7 @@ export type M31TableName =
 export const M31_AUDIT_DENYLIST: { readonly [K in M31TableName]: readonly string[] } = {
   portal_account: ["display_name_cipher", "email_cipher", "phone_cipher"],
   portal_access_grant: ["scope_set_jsonb", "revoke_reason_cipher"],
-  telehealth_visit: [
-    "vendor_room_id_cipher",
-    "vendor_room_url_cipher",
-    "end_reason_detail_cipher",
-  ],
+  telehealth_visit: ["vendor_room_id_cipher", "vendor_room_url_cipher", "end_reason_detail_cipher"],
 } as const;
 
 // ── §2.2.2 / §4.3 resolved scope set (the platform-floor + tenant-tighten grant scope) ─────────────────
@@ -435,7 +423,10 @@ export interface TelehealthMetricsProvider {
 
 /** Used by M8 to attach the encounter on `m31.telehealth.visit_ended`. */
 export interface TelehealthVisitReader {
-  getById(orgId: OrgId, telehealthVisitId: TelehealthVisitId): Promise<TelehealthVisitDigest | null>;
+  getById(
+    orgId: OrgId,
+    telehealthVisitId: TelehealthVisitId,
+  ): Promise<TelehealthVisitDigest | null>;
   getByM17VisitId(orgId: OrgId, m17VisitId: VisitId): Promise<TelehealthVisitDigest | null>;
 }
 
@@ -447,7 +438,11 @@ export interface PortalSessionMinter {
     patientId: PatientId;
     requestedScopes: string[];
     smartLaunchContext: { iss: string; launchTokenHash: string };
-  }): Promise<{ sessionId: PortalSessionId; activeGrantId: PortalAccessGrantId; resolvedScopes: string[] }>;
+  }): Promise<{
+    sessionId: PortalSessionId;
+    activeGrantId: PortalAccessGrantId;
+    resolvedScopes: string[];
+  }>;
 }
 
 /** Used by M30 §164.528 disclosure-accounting scorecard + M22 amendment-disclosure-tracking. */

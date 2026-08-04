@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `idg_action_item` (M14 §3.3.1 / D8). One row per follow-up task from an IDG decision: the
 // open → in_progress → completed/cancelled/auto_closed lifecycle, the carry-forward counter (overdue items
 // re-surface on the next meeting's cover), and the linked downstream artifact (care_plan_version / order /
@@ -8,13 +9,12 @@
 // app-validated, NOT cross-module FKs. `body_text` is free-text → denylisted in the M4 write-audit trigger
 // (§3.3). RLS + grants + trigger land in the RLS migration (M14-T02).
 import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { idgActionItemLinkedKind, idgActionItemStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
-import { idgMeeting } from "./idg-meetings";
 import { idgDecision } from "./idg-decisions";
+import { idgMeeting } from "./idg-meetings";
 
 export const idgActionItem = pgTable(
   "idg_action_item",

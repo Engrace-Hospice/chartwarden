@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { AI_CAPABILITY_LIFECYCLE_STATES } from "@wardenx/types";
 import {
   AI_LIFECYCLE_INITIAL_STATE,
   AI_LIFECYCLE_TRANSITIONS,
@@ -17,7 +18,6 @@ import {
   aiSev1DemotionTarget,
   canAiLifecycleTransition,
 } from "../src/lifecycle/state-machine";
-import { AI_CAPABILITY_LIFECYCLE_STATES } from "@wardenx/types";
 
 describe("the §2.2 edge set", () => {
   it("registers a new capability into PROPOSED with a null from-state", () => {
@@ -84,8 +84,9 @@ describe("who signs, and on what evidence", () => {
   });
 
   it("requires an evaluation run wherever D10's evidence is the gate", () => {
-    expect(aiLifecycleTransition("EVALUATION", "PILOT", "stage_3_evaluation")?.requiresEvaluationRun)
-      .toBe(true);
+    expect(
+      aiLifecycleTransition("EVALUATION", "PILOT", "stage_3_evaluation")?.requiresEvaluationRun,
+    ).toBe(true);
     expect(aiLifecycleTransition("PILOT", "APPROVED", "stage_4_pilot")?.requiresEvaluationRun).toBe(
       true,
     );

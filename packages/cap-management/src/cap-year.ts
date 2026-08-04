@@ -46,7 +46,10 @@ export function inclusiveDays(startsOn: string, endsOn: string): number {
  * extrapolation denominator (D5). Before the window opens → treated as the first day (avoid div-by-zero);
  * after it closes → 1 (the year is fully elapsed, projection == actual).
  */
-export function elapsedFraction(window: { startsOn: string; endsOn: string }, asOf: string): number {
+export function elapsedFraction(
+  window: { startsOn: string; endsOn: string },
+  asOf: string,
+): number {
   const total = inclusiveDays(window.startsOn, window.endsOn);
   const elapsed = epochDay(asOf) - epochDay(window.startsOn) + 1;
   if (elapsed <= 0) return 1 / total; // pre-start: one day's worth, never 0

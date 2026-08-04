@@ -279,8 +279,7 @@ for (const base of allPaths) {
 
     // Rule 2 — canonical session variable
     const isAuditCapture = /audit_phi_write|INSERT\s+INTO\s+audit_event/i.test(src);
-    const isKeyRingDefiner =
-      /m34_provision_tenant_key_ring|m34_destroy_tenant_key_ring/.test(src);
+    const isKeyRingDefiner = /m34_provision_tenant_key_ring|m34_destroy_tenant_key_ring/.test(src);
     let m: RegExpExecArray | null;
     SESSION_VAR_RE.lastIndex = 0;
     // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.

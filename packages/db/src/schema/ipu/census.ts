@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 post-mortem body-release + daily census (§2.11/§2.13, §3.3): ipu_body_release
 // (D12 coordination with M40 FuneralHome + M22 body-release authorization render) and
 // ipu_census_snapshot (D14 per-(org × unit/remote × date) materialization published via outbox to M23
@@ -6,12 +7,20 @@
 // funeral_home_id/M40, funeral_home_magic_link_session_id/M22, release_document_id/M22,
 // provider_entity_id/M40 are logical uuids; ipu_admission_id is a REAL FK. The unit_xor_remote CHECK on
 // the census snapshot lives in the migration.
-import { index, pgTable, smallint, text, timestamp, uniqueIndex, uuid, date } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  date,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { ipuBodyReleaseState } from "../../enums";
+import { ipuAdmission } from "./admission";
 import { bigintVersion } from "./shared";
 import { inpatientUnit } from "./units";
-import { ipuAdmission } from "./admission";
-import { ipuBodyReleaseState } from "../../enums";
 
 export const ipuBodyRelease = pgTable(
   "ipu_body_release",
@@ -67,7 +76,9 @@ export const ipuCensusSnapshot = pgTable(
     roomTurnoverCount: smallint("room_turnover_count").notNull().default(0),
     restraintIncidentCount: smallint("restraint_incident_count").notNull().default(0),
     fallIncidentCount: smallint("fall_incident_count").notNull().default(0),
-    infectionSurveillanceEventCount: smallint("infection_surveillance_event_count").notNull().default(0),
+    infectionSurveillanceEventCount: smallint("infection_surveillance_event_count")
+      .notNull()
+      .default(0),
     computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigintVersion(),

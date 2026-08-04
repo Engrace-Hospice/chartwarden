@@ -28,8 +28,8 @@ import {
   listTriageCalls,
 } from "./oncall-api";
 import {
-  CALL_STATES,
   CALL_SOURCE_TONE,
+  CALL_STATES,
   dateTime,
   dispositionLabel,
   durationLabel,
@@ -115,9 +115,7 @@ export function TriageQueueScreen(): JSX.Element {
   const sorted = [...calls].sort(boardRank);
   const escalated = calls.filter((c) => c.openEscalationCount > 0).length;
   const awaitingCallback = calls.filter((c) => c.state === "awaiting_callback").length;
-  const pendingEncounter = calls.filter(
-    (c) => c.state === "documented_pending_encounter",
-  ).length;
+  const pendingEncounter = calls.filter((c) => c.state === "documented_pending_encounter").length;
   const unresolved = calls.filter((c) => c.state === "escalated_unresolved").length;
   const redFlagged = calls.filter((c) => c.redFlagAnswerCount > 0).length;
 
@@ -144,16 +142,18 @@ export function TriageQueueScreen(): JSX.Element {
       {unresolved > 0 ? (
         <Notice tone="error" assertive>
           {unresolved} call{unresolved === 1 ? " is" : "s are"} parked in{" "}
-          <strong>escalated — unresolved</strong>: a named human has been paged and has not answered. Until
-          the escalation is acknowledged, §7.2 permits no disposition other than the hand-off.
+          <strong>escalated — unresolved</strong>: a named human has been paged and has not
+          answered. Until the escalation is acknowledged, §7.2 permits no disposition other than the
+          hand-off.
         </Notice>
       ) : null}
 
       {truncated ? (
         <Notice tone="info">
-          More than {QUEUE_PAGE} calls match this filter. The counts below are therefore "at least" — §4.1
-          publishes no aggregate route and §4.1.1 forbids a total count on a PHI list, so a tile counts the
-          page it was given, never the whole tenant. Narrow the filter for an exact figure.
+          More than {QUEUE_PAGE} calls match this filter. The counts below are therefore "at least"
+          — §4.1 publishes no aggregate route and §4.1.1 forbids a total count on a PHI list, so a
+          tile counts the page it was given, never the whole tenant. Narrow the filter for an exact
+          figure.
         </Notice>
       ) : null}
 
@@ -161,17 +161,29 @@ export function TriageQueueScreen(): JSX.Element {
         <CountGrid
           entries={[
             { label: "On the board", value: calls.length },
-            { label: "With an open escalation", value: escalated, tone: escalated > 0 ? "error" : undefined },
-            { label: "Red-flag answers", value: redFlagged, tone: redFlagged > 0 ? "error" : undefined },
+            {
+              label: "With an open escalation",
+              value: escalated,
+              tone: escalated > 0 ? "error" : undefined,
+            },
+            {
+              label: "Red-flag answers",
+              value: redFlagged,
+              tone: redFlagged > 0 ? "error" : undefined,
+            },
             { label: "Awaiting callback", value: awaitingCallback },
             { label: "Awaiting encounter signature", value: pendingEncounter },
-            { label: "Escalated — unresolved", value: unresolved, tone: unresolved > 0 ? "error" : undefined },
+            {
+              label: "Escalated — unresolved",
+              value: unresolved,
+              tone: unresolved > 0 ? "error" : undefined,
+            },
           ]}
         />
         <span style={mutedStyle}>
-          "Documented — pending encounter" stays ON the board deliberately (M19-F06 / ADR-0022): a call
-          stranded by an unreachable M8 encounter seam must remain visible to the supervisor, not drop off
-          because its disposition was picked.
+          "Documented — pending encounter" stays ON the board deliberately (M19-F06 / ADR-0022): a
+          call stranded by an unreachable M8 encounter seam must remain visible to the supervisor,
+          not drop off because its disposition was picked.
         </span>
       </Card>
 
@@ -182,9 +194,9 @@ export function TriageQueueScreen(): JSX.Element {
       <Card title="Calls">
         {sorted.length === 0 ? (
           <span style={mutedStyle}>
-            Nothing is open on this board. A quiet night is the ordinary outcome — this is not an error, and
-            it is not the same as "you cannot see these calls": a call outside your reach is absent, and the
-            server does not distinguish the two.
+            Nothing is open on this board. A quiet night is the ordinary outcome — this is not an
+            error, and it is not the same as "you cannot see these calls": a call outside your reach
+            is absent, and the server does not distinguish the two.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -224,7 +236,10 @@ export function TriageQueueScreen(): JSX.Element {
                   <td style={td}>{c.protocolLabel ?? "—"}</td>
                   <td style={td}>{c.disposition ? dispositionLabel(c.disposition) : "—"}</td>
                   <td style={td}>
-                    <StatusPill label={humanize(c.source)} tone={toneOf(CALL_SOURCE_TONE, c.source)} />
+                    <StatusPill
+                      label={humanize(c.source)}
+                      tone={toneOf(CALL_SOURCE_TONE, c.source)}
+                    />
                   </td>
                   <td style={tdNum}>{c.openEscalationCount}</td>
                   <td style={tdNum}>{c.redFlagAnswerCount}</td>
@@ -241,11 +256,11 @@ export function TriageQueueScreen(): JSX.Element {
 
       <Card title="What this board does not offer">
         <span style={mutedStyle}>
-          §5.1 sketches "ack / take / re-route" row actions. None is built, because §4.1 publishes no
-          assign, claim or re-route route and `triage_call` has no assignee column: the covering SHIFT is
-          the assignment and the server resolves it at open. A row action here would have had to invent a
-          write nobody can audit. Acknowledging an escalation is a real write and lives on the escalation
-          inbox, where the row it acts on is.
+          §5.1 sketches "ack / take / re-route" row actions. None is built, because §4.1 publishes
+          no assign, claim or re-route route and `triage_call` has no assignee column: the covering
+          SHIFT is the assignment and the server resolves it at open. A row action here would have
+          had to invent a write nobody can audit. Acknowledging an escalation is a real write and
+          lives on the escalation inbox, where the row it acts on is.
         </span>
       </Card>
     </div>

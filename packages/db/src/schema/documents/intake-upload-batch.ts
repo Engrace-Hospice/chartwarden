@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `intake_upload_batch` (M22 §3.3 / §2.2.5). The DocLens intake-batch aggregate: one
 // row per uploaded bundle (fax/email/portal/admin/api), driving classify→extract→review→writeback.
 //
@@ -7,11 +8,10 @@
 // `source_metadata` is DENYLISTED in the audit trigger (§3.6 — may carry fax sender info). Cross-
 // references (initial_document_id, child batch ids) are plain uuid app-validated; no SQL FK out.
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { intakeBatchStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const intakeUploadBatches = pgTable(
   "intake_upload_batch",

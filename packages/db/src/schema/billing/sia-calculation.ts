@@ -7,7 +7,16 @@
 // CROSS-MODULE FK POLICY (architecture WINS): only `organization_id` (core) + `claim_id` (intra-M23)
 // get real `.references(...)`. The M8 encounter ids inside `qualifying_visits` are LOGICAL FKs. No
 // MBI is ever stored here (D13, §8.7).
-import { bigint, date, integer, jsonb, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  date,
+  integer,
+  jsonb,
+  pgTable,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
 import type { SiaCalculationQualifyingVisits } from "./types";

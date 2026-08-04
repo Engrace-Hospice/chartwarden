@@ -254,7 +254,10 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: TARGET_PATIENT, reason: "covering nurse, chest pain emergency" },
+        payload: {
+          targetPatientId: TARGET_PATIENT,
+          reason: "covering nurse, chest pain emergency",
+        },
       });
       expect(res.statusCode).toBe(201);
       expect(res.json()).toMatchObject({ status: "active" });
@@ -271,7 +274,10 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: TARGET_PATIENT, reason: "covering nurse, chest pain emergency" },
+        payload: {
+          targetPatientId: TARGET_PATIENT,
+          reason: "covering nurse, chest pain emergency",
+        },
       });
       const eventId = invoke.json().breakGlassId;
       expect(breakGlass.all()).toHaveLength(1);
@@ -311,7 +317,10 @@ describe("M3-T08 authorization route inventory", () => {
         method: "POST",
         url: "/api/v1/breakglass",
         headers: CLINICIAN,
-        payload: { targetPatientId: TARGET_PATIENT, reason: "covering nurse, chest pain emergency" },
+        payload: {
+          targetPatientId: TARGET_PATIENT,
+          reason: "covering nurse, chest pain emergency",
+        },
       });
       const eventId = invoke.json().breakGlassId;
 

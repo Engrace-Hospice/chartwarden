@@ -11,6 +11,7 @@
 // returns `null` when the report does not (yet) exist — no order, non-lab order, no attached observation,
 // or a missing patient — so the route answers 404 without inventing an empty resource.
 
+import type { DiagnosticReport, FhirReference, Observation } from "../../types";
 import type {
   ExternalPhysicianReader,
   FacilityReader,
@@ -18,7 +19,6 @@ import type {
   OrderProvider,
   PatientReader,
 } from "../deps";
-import type { DiagnosticReport, FhirReference, Observation } from "../../types";
 import { projectChildObservations } from "./child-observation-projector";
 import { applySudRedactionToDiagnosticReport } from "./sud-redaction-applier";
 
@@ -72,7 +72,10 @@ export async function projectDiagnosticReport(
 
   // 4/5. Performers — ordering provider (M40) + lab facility (M40); both optional.
   const orderingProvider = order.orderingPhysicianMdmId
-    ? await deps.externalPhysicianReader.findById(input.organizationId, order.orderingPhysicianMdmId)
+    ? await deps.externalPhysicianReader.findById(
+        input.organizationId,
+        order.orderingPhysicianMdmId,
+      )
     : null;
   const performerFacility = order.labDestinationFacilityId
     ? await deps.facilityReader.findById(input.organizationId, order.labDestinationFacilityId)
@@ -96,7 +99,9 @@ export async function projectDiagnosticReport(
       profile: [US_CORE_DIAGNOSTIC_REPORT_LAB_PROFILE],
     },
     status: "final",
-    category: [{ coding: [{ system: "http://terminology.hl7.org/CodeSystem/v2-0074", code: "LAB" }] }],
+    category: [
+      { coding: [{ system: "http://terminology.hl7.org/CodeSystem/v2-0074", code: "LAB" }] },
+    ],
     code: {
       coding: order.data?.observationIdentifier
         ? [
@@ -115,7 +120,9 @@ export async function projectDiagnosticReport(
     },
     issued: observation.attachedAt,
     performer,
-    result: childObservations.map((_, idx) => ({ reference: `Observation/${observation.id}--${idx}` })),
+    result: childObservations.map((_, idx) => ({
+      reference: `Observation/${observation.id}--${idx}`,
+    })),
     contained: childObservations,
   };
 

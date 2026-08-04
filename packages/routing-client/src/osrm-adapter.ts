@@ -1,3 +1,4 @@
+import { type RoutingCache, directionsCacheKey, matrixCacheKey } from "./cache";
 // @wardenx/routing-client — the §4.10 D1 OSRM `RoutingProvider` (M17-T07). The ONLY place the routing
 // endpoint is called (architecture §25.14 adapter mandate; dependency-cruiser §25.15 check #2 forbids any
 // other module from reaching OSRM directly). Route optimisation stays behind `scheduling.route_optimization`
@@ -9,12 +10,11 @@
 import {
   type BreakerSnapshot,
   INITIAL_BREAKER_SNAPSHOT,
-  type RoutingCircuitBreakerConfig,
   ROUTING_CIRCUIT_BREAKER_CONFIG,
+  type RoutingCircuitBreakerConfig,
   applyOutcome,
   evaluateBreaker,
 } from "./circuit-breaker";
-import { type RoutingCache, directionsCacheKey, matrixCacheKey } from "./cache";
 import { RoutingDegradedError } from "./errors";
 import type {
   RoutingCoord,
@@ -27,7 +27,10 @@ const SECONDS_PER_MINUTE = 60;
 const METERS_PER_MILE = 1609.344;
 
 /** A `fetch`-shaped transport (the global `fetch` by default; injected in unit tests — no real network). */
-export type FetchLike = (url: string, init?: { signal?: AbortSignal }) => Promise<{
+export type FetchLike = (
+  url: string,
+  init?: { signal?: AbortSignal },
+) => Promise<{
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
@@ -87,8 +90,12 @@ export class OsrmRoutingProvider implements RoutingProvider {
       `${this.endpoint}/table/v1/driving/${coordPath(coords)}?annotations=duration,distance`,
     );
     const out = {
-      durationsMin: body.durations.map((row) => row.map((s) => (s == null ? null : s / SECONDS_PER_MINUTE))),
-      distancesMi: body.distances.map((row) => row.map((m) => (m == null ? null : m / METERS_PER_MILE))),
+      durationsMin: body.durations.map((row) =>
+        row.map((s) => (s == null ? null : s / SECONDS_PER_MINUTE)),
+      ),
+      distancesMi: body.distances.map((row) =>
+        row.map((m) => (m == null ? null : m / METERS_PER_MILE)),
+      ),
     };
     await this.cache.set(cacheKey, JSON.stringify(out), "EX", 86_400); // 24 h
     return { ...out, cached: false };
@@ -107,7 +114,8 @@ export class OsrmRoutingProvider implements RoutingProvider {
       `${this.endpoint}/route/v1/driving/${coordPath([from, to])}?overview=full&geometries=polyline6`,
     );
     const route = body.routes[0];
-    if (!route) throw this.degraded("directions", true, "OSRM returned no route for the coordinate pair.");
+    if (!route)
+      throw this.degraded("directions", true, "OSRM returned no route for the coordinate pair.");
     const out = {
       polyline: route.geometry,
       driveMinutes: route.duration / SECONDS_PER_MINUTE,
@@ -130,7 +138,11 @@ export class OsrmRoutingProvider implements RoutingProvider {
   private async call<T>(operation: "matrix" | "directions", url: string): Promise<T> {
     const gate = evaluateBreaker(this.breaker, this.now(), this.config);
     if (!gate.allowed) {
-      throw this.degraded(operation, true, "Routing engine is temporarily unavailable (circuit open).");
+      throw this.degraded(
+        operation,
+        true,
+        "Routing engine is temporarily unavailable (circuit open).",
+      );
     }
     try {
       const res = await this.fetchImpl(url, { signal: AbortSignal.timeout(this.config.timeoutMs) });
@@ -145,7 +157,11 @@ export class OsrmRoutingProvider implements RoutingProvider {
     }
   }
 
-  private degraded(operation: "matrix" | "directions", retryable: boolean, message: string): RoutingDegradedError {
+  private degraded(
+    operation: "matrix" | "directions",
+    retryable: boolean,
+    message: string,
+  ): RoutingDegradedError {
     return new RoutingDegradedError("osrm", operation, retryable, message, this.correlationId);
   }
 }

@@ -56,7 +56,13 @@ export function autoMatch(line: MatchLineKeys, candidates: readonly MatchCandida
   if (line.clp07PayerIcn) {
     const hits = candidates.filter((c) => c.payerIcn && c.payerIcn === line.clp07PayerIcn);
     if (hits.length === 1) {
-      return { matched: true, claimId: hits[0]!.claimId, strategy: "payer_icn", confidence: 100, requiresManual: false };
+      return {
+        matched: true,
+        claimId: hits[0]!.claimId,
+        strategy: "payer_icn",
+        confidence: 100,
+        requiresManual: false,
+      };
     }
     if (hits.length > 1) return UNMATCHED; // ambiguous — never auto-bind
   }
@@ -67,7 +73,13 @@ export function autoMatch(line: MatchLineKeys, candidates: readonly MatchCandida
       (c) => c.claimControlNumber && c.claimControlNumber === line.clp01PatientControlNumber,
     );
     if (hits.length === 1) {
-      return { matched: true, claimId: hits[0]!.claimId, strategy: "patient_control", confidence: 100, requiresManual: false };
+      return {
+        matched: true,
+        claimId: hits[0]!.claimId,
+        strategy: "patient_control",
+        confidence: 100,
+        requiresManual: false,
+      };
     }
     if (hits.length > 1) return UNMATCHED;
   }
@@ -82,7 +94,13 @@ export function autoMatch(line: MatchLineKeys, candidates: readonly MatchCandida
         Math.abs(c.totalCharge - line.totalCharge) <= HEURISTIC_CHARGE_TOLERANCE,
     );
     if (hits.length === 1) {
-      return { matched: true, claimId: hits[0]!.claimId, strategy: "heuristic", confidence: 80, requiresManual: true };
+      return {
+        matched: true,
+        claimId: hits[0]!.claimId,
+        strategy: "heuristic",
+        confidence: 80,
+        requiresManual: true,
+      };
     }
   }
 

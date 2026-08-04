@@ -40,7 +40,10 @@ export type EvvSideEffect =
   | { readonly kind: "open_missing_resolution"; readonly resolutionKind: EvvMissingResolutionKind }
   /** §2.4 check-out — auto-close any `open` `missing_checkout` resolution for this visit via
    * `closed_system_checkout_received` (system-driven; no human attestation). Drives the D6 machine in T04. */
-  | { readonly kind: "close_missing_resolution_system"; readonly resolutionKind: EvvMissingResolutionKind }
+  | {
+      readonly kind: "close_missing_resolution_system";
+      readonly resolutionKind: EvvMissingResolutionKind;
+    }
   /** §2.2.4 D6 (T04) — move an `evv_missing_resolution` row to a terminal `closed_*` status (with the
    * optimistic `version` bump, §2.5). The machine emits exactly one of these per close. */
   | { readonly kind: "set_resolution_status"; readonly status: EvvMissingResolutionStatus }

@@ -54,7 +54,10 @@ export function medicalDirectorRouting(
 
 /** The deterministic message M36 delivers verbatim (§4.9). Stable for a given (rule, scale, delta). */
 export function significantChangeBody(
-  input: Pick<SignificantChangeAlertInput, "ruleId" | "scaleType" | "deltaValue" | "thresholdValue">,
+  input: Pick<
+    SignificantChangeAlertInput,
+    "ruleId" | "scaleType" | "deltaValue" | "thresholdValue"
+  >,
   severity: AssessmentAlertSeverity,
 ): string {
   const scale = input.scaleType.toUpperCase();

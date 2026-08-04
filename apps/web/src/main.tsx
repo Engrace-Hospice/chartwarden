@@ -36,17 +36,17 @@ import { supplyScreens } from "./modules/21-supplies";
 import { documentScreens } from "./modules/22-documents";
 import { billingScreens } from "./modules/23-billing-medicare";
 import { medicaidBillingScreens } from "./modules/24-billing-medicaid";
-import { qualityScreens } from "./modules/30-quality";
-import { consentScreens } from "./modules/39-consent";
 import { remittanceScreens } from "./modules/25-remittance";
 import { capScreens } from "./modules/26-cap";
 import { costReportScreens } from "./modules/27-cost-report";
+import { qualityScreens } from "./modules/30-quality";
 import { reportingScreens } from "./modules/33-reporting";
 import { saasScreens } from "./modules/34-saas";
 import { subscriptionScreens } from "./modules/35-subscription";
 import { messagingScreens } from "./modules/36-messaging";
 import { ipuScreens } from "./modules/37-ipu";
 import { terminologyScreens } from "./modules/38-terminology";
+import { consentScreens } from "./modules/39-consent";
 import { mdmScreens } from "./modules/40-mdm";
 import {
   AppShell,

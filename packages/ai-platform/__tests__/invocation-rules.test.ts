@@ -31,7 +31,9 @@ const T0 = "2026-08-15T12:00:00.000Z";
 
 // ── fixtures ───────────────────────────────────────────────────────────────────────────────────────
 
-function backend(overrides: Partial<AiBackendRoutingRow> & { backendKey: string }): AiBackendRoutingRow {
+function backend(
+  overrides: Partial<AiBackendRoutingRow> & { backendKey: string },
+): AiBackendRoutingRow {
   return {
     backendId: `id-${overrides.backendKey}`,
     kind: "cloud",
@@ -91,7 +93,11 @@ describe("resolveAiRoute — the chain, the preference and the health filter", (
 
   it("walks to the next link when the primary is unhealthy, and calls it a vendor outage", () => {
     const resolved = route({
-      backends: registry(backend({ ...CLOUD, lastHealthStatus: "unhealthy" }), CLOUD_FALLBACK, LOCAL),
+      backends: registry(
+        backend({ ...CLOUD, lastHealthStatus: "unhealthy" }),
+        CLOUD_FALLBACK,
+        LOCAL,
+      ),
     });
     expect(resolved.servable?.backendKey).toBe(CLOUD_FALLBACK.backendKey);
     expect(resolved.servable?.decision).toBe("fallback_1");
@@ -121,7 +127,11 @@ describe("resolveAiRoute — the chain, the preference and the health filter", (
   it("W8 — local_only never reaches cloud, even when every local backend is down", () => {
     const resolved = route({
       routingPreference: "local_only",
-      backends: registry(CLOUD, CLOUD_FALLBACK, backend({ ...LOCAL, lastHealthStatus: "unhealthy" })),
+      backends: registry(
+        CLOUD,
+        CLOUD_FALLBACK,
+        backend({ ...LOCAL, lastHealthStatus: "unhealthy" }),
+      ),
     });
     // W8.3 verbatim: the Anthropic backend is not contacted under any circumstance.
     expect(resolved.servable).toBeNull();
@@ -149,7 +159,11 @@ describe("resolveAiRoute — the chain, the preference and the health filter", (
     expect(healthy.servable?.backendKey).toBe(LOCAL.backendKey);
     const localDown = route({
       routingPreference: "prefer_local",
-      backends: registry(CLOUD, CLOUD_FALLBACK, backend({ ...LOCAL, lastHealthStatus: "unhealthy" })),
+      backends: registry(
+        CLOUD,
+        CLOUD_FALLBACK,
+        backend({ ...LOCAL, lastHealthStatus: "unhealthy" }),
+      ),
     });
     expect(localDown.servable?.kind).toBe("cloud");
   });
@@ -191,7 +205,11 @@ describe("resolveAiRoute — the chain, the preference and the health filter", (
 
   it("an override outside the allowed set REFUSES rather than falling back to the default", () => {
     const resolved = route({
-      override: { backendKeyPreference: "local-mistral-7b-instruct", effectiveAt: T0, expiresAt: null },
+      override: {
+        backendKeyPreference: "local-mistral-7b-instruct",
+        effectiveAt: T0,
+        expiresAt: null,
+      },
     });
     // Silently serving the cloud default would do the one thing a `tenant_sovereignty` override exists
     // to prevent.
@@ -253,9 +271,7 @@ describe("resolveAiRoute — the chain, the preference and the health filter", (
     // §3.2.8's CHECK refuses an `anthropic-%` row without `zdr_confirmed`. The value is knowable from
     // the registry without dispatching — which is exactly why a gate-refused call can carry a true one.
     expect(route().ledgerRoute?.zdrConfirmed).toBe(true);
-    expect(
-      route({ routingPreference: "local_only" }).ledgerRoute?.zdrConfirmed,
-    ).toBe(false);
+    expect(route({ routingPreference: "local_only" }).ledgerRoute?.zdrConfirmed).toBe(false);
   });
 });
 
@@ -300,12 +316,12 @@ describe("token cap", () => {
 
   it("W1.7 — the soft-cap alert fires on the accrual that CROSSES, not on every call after it", () => {
     const budget = aiTokenBudgetFor(1_000);
-    expect(
-      aiTokenSoftCapCrossedBy({ spentTokensBefore: 790, accruedTokens: 20, budget }),
-    ).toBe(true);
-    expect(
-      aiTokenSoftCapCrossedBy({ spentTokensBefore: 810, accruedTokens: 20, budget }),
-    ).toBe(false);
+    expect(aiTokenSoftCapCrossedBy({ spentTokensBefore: 790, accruedTokens: 20, budget })).toBe(
+      true,
+    );
+    expect(aiTokenSoftCapCrossedBy({ spentTokensBefore: 810, accruedTokens: 20, budget })).toBe(
+      false,
+    );
     expect(
       aiTokenSoftCapCrossedBy({ spentTokensBefore: 790, accruedTokens: 20, budget: null }),
     ).toBe(false);
@@ -456,7 +472,10 @@ describe("evaluateAiInvocationGates — the §6 order, pinned", () => {
   });
 
   it("an unconfigured budget refuses with the same reason but a different detail", () => {
-    const decision = evaluateAiInvocationGates({ ...passing, tokenCapState: "budget_unconfigured" });
+    const decision = evaluateAiInvocationGates({
+      ...passing,
+      tokenCapState: "budget_unconfigured",
+    });
     expect(decision.dispatch).toBe(false);
     if (!decision.dispatch) {
       expect(decision.unavailable.reason).toBe("token_hard_cap_reached");

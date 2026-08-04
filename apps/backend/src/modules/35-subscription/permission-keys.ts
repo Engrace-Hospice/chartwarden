@@ -12,7 +12,7 @@
 // `contributed.ts` (`satisfies Record<string, PermissionDef>`) and surfaced by `allPermissionMirrorRows()`
 // (the M28 / M31 precedent) — there is no runtime `declare()` call. This file re-exports the map + the
 // ordered key list the route inventory is asserted equal to in test.
-import { M35_CONTRIBUTED_PERMISSIONS, type M35ContributedPermissionKey } from "@wardenx/auth";
+import { type M35ContributedPermissionKey, M35_CONTRIBUTED_PERMISSIONS } from "@wardenx/auth";
 
 export { M35_CONTRIBUTED_PERMISSIONS, type M35ContributedPermissionKey };
 

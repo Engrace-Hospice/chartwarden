@@ -21,15 +21,20 @@ import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import {
+  openHopeSchedulesForOrg,
+  openOrOverdueSfvsForOrg,
+  updateHopeScheduleStatus,
+  updateSfvStatus,
+} from "./cron-store";
+import {
+  type M10QueueName,
   M10_JOB_PARAMS,
   M10_JOB_SCHEDULES,
   M10_QUEUES,
-  type M10QueueName,
+  type PlannedHopeEvent,
   planHopeWindowWatchdog,
   planSfvWatchdog,
-  type PlannedHopeEvent,
 } from "./index";
-import { openHopeSchedulesForOrg, openOrOverdueSfvsForOrg, updateHopeScheduleStatus, updateSfvStatus } from "./cron-store";
 
 /** The system actor id the crons stamp on their per-org `withOrgContext` reads (audit attribution). Chosen
  * to not collide with the other modules' `00000000-0000-0000-0000-0000000000xx` cron system-actor ids
@@ -110,7 +115,10 @@ export function buildM10WorkerDeps(deps: {
 function outboxTargetFor(event: PlannedHopeEvent): { aggregateKind: string; aggregateId: string } {
   switch (event.eventName) {
     case "m10.hope.timepoint_expired":
-      return { aggregateKind: "hope_timepoint_schedule", aggregateId: String(event.payload.scheduleId) };
+      return {
+        aggregateKind: "hope_timepoint_schedule",
+        aggregateId: String(event.payload.scheduleId),
+      };
     case "m10.hope.sfv_overdue":
     case "m10.hope.sfv_missed":
       return { aggregateKind: "symptom_follow_up_visit", aggregateId: String(event.payload.sfvId) };
@@ -125,24 +133,28 @@ export async function runHopeWindowWatchdogCron(deps: M10WorkerDeps): Promise<vo
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: M10_WORKER_SYSTEM_USER_ID }, async (tx) => {
-      const t = tx as unknown as DbClient;
-      const schedules = await openHopeSchedulesForOrg(t, organizationId);
-      const plan = planHopeWindowWatchdog(schedules, now.toISOString());
-      for (const transition of plan.transitions) {
-        if (transition.changed) {
-          await updateHopeScheduleStatus(t, transition.scheduleId, transition.toStatus);
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
+      async (tx) => {
+        const t = tx as unknown as DbClient;
+        const schedules = await openHopeSchedulesForOrg(t, organizationId);
+        const plan = planHopeWindowWatchdog(schedules, now.toISOString());
+        for (const transition of plan.transitions) {
+          if (transition.changed) {
+            await updateHopeScheduleStatus(t, transition.scheduleId, transition.toStatus);
+          }
         }
-      }
-      for (const event of plan.events) {
-        await deps.outbox.publish(t, {
-          eventName: event.eventName,
-          payload: event.payload,
-          organizationId,
-          ...outboxTargetFor(event),
-        });
-      }
-    });
+        for (const event of plan.events) {
+          await deps.outbox.publish(t, {
+            eventName: event.eventName,
+            payload: event.payload,
+            organizationId,
+            ...outboxTargetFor(event),
+          });
+        }
+      },
+    );
   }
 }
 
@@ -154,24 +166,28 @@ export async function runSfvWatchdogCron(deps: M10WorkerDeps): Promise<void> {
   const now = (deps.now ?? (() => new Date()))();
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   for (const { organizationId } of orgs) {
-    await withOrgContext(deps.db, { organizationId, userId: M10_WORKER_SYSTEM_USER_ID }, async (tx) => {
-      const t = tx as unknown as DbClient;
-      const sfvs = await openOrOverdueSfvsForOrg(t, organizationId);
-      const plan = planSfvWatchdog(sfvs, now.toISOString());
-      for (const transition of plan.transitions) {
-        if (transition.changed) {
-          await updateSfvStatus(t, transition.sfvId, transition.toStatus);
+    await withOrgContext(
+      deps.db,
+      { organizationId, userId: M10_WORKER_SYSTEM_USER_ID },
+      async (tx) => {
+        const t = tx as unknown as DbClient;
+        const sfvs = await openOrOverdueSfvsForOrg(t, organizationId);
+        const plan = planSfvWatchdog(sfvs, now.toISOString());
+        for (const transition of plan.transitions) {
+          if (transition.changed) {
+            await updateSfvStatus(t, transition.sfvId, transition.toStatus);
+          }
         }
-      }
-      for (const event of plan.events) {
-        await deps.outbox.publish(t, {
-          eventName: event.eventName,
-          payload: event.payload,
-          organizationId,
-          ...outboxTargetFor(event),
-        });
-      }
-    });
+        for (const event of plan.events) {
+          await deps.outbox.publish(t, {
+            eventName: event.eventName,
+            payload: event.payload,
+            organizationId,
+            ...outboxTargetFor(event),
+          });
+        }
+      },
+    );
   }
 }
 

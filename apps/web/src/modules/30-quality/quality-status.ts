@@ -98,10 +98,7 @@ export const DOMAIN_LABEL: Record<MeasureDomain, string> = {
  * inert rather than throw. It is a runtime guard, no longer a silent absorber of authoring mistakes —
  * a wrong literal is now caught by tsc at the map.
  */
-export function toneOf<K extends string>(
-  map: Record<K, StatusTone>,
-  value?: K | null,
-): StatusTone {
+export function toneOf<K extends string>(map: Record<K, StatusTone>, value?: K | null): StatusTone {
   return (value ? map[value] : undefined) ?? "neutral";
 }
 
@@ -138,5 +135,7 @@ export function readErrorMessage(status: number | undefined, permission: string)
   if (status === 401) return "Session expired — sign in again.";
   if (status === 422) return "The server rejected this request as malformed (422).";
   if (status && status >= 500) return `The server failed to answer (${status}).`;
-  return status ? `Unavailable (HTTP ${status}).` : "Unavailable — the server could not be reached.";
+  return status
+    ? `Unavailable (HTTP ${status}).`
+    : "Unavailable — the server could not be reached.";
 }

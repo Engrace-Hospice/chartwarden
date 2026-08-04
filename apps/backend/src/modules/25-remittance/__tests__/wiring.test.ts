@@ -1,13 +1,13 @@
+import type { DataClass, DataEraser } from "@wardenx/types";
 // M25 — boot-wiring unit tests: the consumer dispatch routing + subscription map, the consumer
 // register-surface (module-only when no registrar), and the eraser registration over the injected hook.
 import { describe, expect, it, vi } from "vitest";
-import type { DataClass, DataEraser } from "@wardenx/types";
 import type { DenialSeedStore } from "../consumers/handlers";
 import {
   type M25ConsumerPorts,
-  dispatchM25UpstreamEvent,
   M25_SUBSCRIPTION_MAP,
   M25_UPSTREAM_SUBSCRIPTIONS,
+  dispatchM25UpstreamEvent,
   registerM25Consumers,
 } from "../consumers/index";
 import { REMITTANCE_DATA_CLASS, registerRemittanceErasers } from "../erasers/remittance-eraser";
@@ -44,7 +44,13 @@ describe("consumer dispatch (§4.4)", () => {
     const r = await dispatchM25UpstreamEvent(
       {
         topic: "m23.claim.rejected",
-        payload: { organizationId: "o1", providerEntityId: "pe1", claimId: "c1", rejectionCodes: ["50"], occurredAt: "2026-06-20T00:00:00Z" },
+        payload: {
+          organizationId: "o1",
+          providerEntityId: "pe1",
+          claimId: "c1",
+          rejectionCodes: ["50"],
+          occurredAt: "2026-06-20T00:00:00Z",
+        },
       },
       ports,
     );
@@ -56,7 +62,10 @@ describe("consumer dispatch (§4.4)", () => {
   it("routes m18.evv.aggregator_rejected → an EVV denial seed", async () => {
     const { ports } = fakePorts();
     const r = await dispatchM25UpstreamEvent(
-      { topic: "m18.evv.aggregator_rejected", payload: { organizationId: "o1", providerEntityId: "pe1", aggregatorSubmissionId: "s1" } },
+      {
+        topic: "m18.evv.aggregator_rejected",
+        payload: { organizationId: "o1", providerEntityId: "pe1", aggregatorSubmissionId: "s1" },
+      },
       ports,
     );
     expect(r.denialOpened?.source).toBe("evv_aggregator_rejection");
@@ -65,7 +74,10 @@ describe("consumer dispatch (§4.4)", () => {
   it("ignores a m22.document.rendered for a non-M25 aggregate", async () => {
     const { ports } = fakePorts();
     const r = await dispatchM25UpstreamEvent(
-      { topic: "m22.document.rendered", payload: { aggregateType: "claim", aggregateId: "x", documentId: "d" } },
+      {
+        topic: "m22.document.rendered",
+        payload: { aggregateType: "claim", aggregateId: "x", documentId: "d" },
+      },
       ports,
     );
     expect(r.handled).toBe(false);
@@ -73,7 +85,9 @@ describe("consumer dispatch (§4.4)", () => {
 
   it("ignores an unsubscribed topic", async () => {
     const { ports } = fakePorts();
-    expect((await dispatchM25UpstreamEvent({ topic: "m99.nope.x", payload: {} }, ports)).handled).toBe(false);
+    expect(
+      (await dispatchM25UpstreamEvent({ topic: "m99.nope.x", payload: {} }, ports)).handled,
+    ).toBe(false);
   });
 });
 

@@ -46,9 +46,7 @@ export const volunteerAssignment = pgTable(
     volunteerMembershipId: uuid("volunteer_membership_id").notNull(), // logical FK → M2 membership
     coordinatorMembershipId: uuid("coordinator_membership_id").notNull(), // logical FK → M2 membership
 
-    activities: jsonb("activities")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    activities: jsonb("activities").notNull().default(sql`'[]'::jsonb`),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     coordinatorAcknowledgedAt: timestamp("coordinator_acknowledged_at", { withTimezone: true }),

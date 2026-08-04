@@ -42,13 +42,8 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
-import { getCarePlanReader } from "./seams/index";
 import { and, asc, desc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
-import type {
-  IdgAbacResolver,
-  MeetingScopeFacts,
-  ReviewFloorBreachFact,
-} from "./abac-predicates";
+import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
 import type {
   ActionItemPatchStatus,
   ActionItemView,
@@ -63,6 +58,7 @@ import type {
   PatientIdgHistoryView,
   RecurringPolicyView,
 } from "./routes/service";
+import { getCarePlanReader } from "./seams/index";
 
 const MTG = schema.idgMeeting;
 const ATT = schema.idgAttendance;
@@ -161,7 +157,13 @@ export function createDbIdgBackend(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: orgId, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: orgId,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Resolve a meeting under the caller's tenant (RLS-scoped) — used to guard child reads with 404 non-leak. */
@@ -180,12 +182,21 @@ export function createDbIdgBackend(
     const rows = await tx
       .select({ discipline: ATT.discipline })
       .from(ATT)
-      .where(and(eq(ATT.idgMeetingId, meetingId), notInArray(ATT.status, ["absent", "excused"] as never)));
+      .where(
+        and(
+          eq(ATT.idgMeetingId, meetingId),
+          notInArray(ATT.status, ["absent", "excused"] as never),
+        ),
+      );
     return rows.map((r) => r.discipline);
   }
   /** §2.3 D9 inclusion: a patient is on the meeting's caseload if it has a packet (authoritative) or a
    * patient-scoped agenda item (the Phase-1 signal before packets materialize). Null patient ⇒ always included. */
-  async function patientIncluded(tx: DbClient, meetingId: string, patientId: string | null): Promise<boolean> {
+  async function patientIncluded(
+    tx: DbClient,
+    meetingId: string,
+    patientId: string | null,
+  ): Promise<boolean> {
     if (patientId == null) return true;
     const [pkt] = await tx
       .select({ id: PKT.id })
@@ -202,7 +213,11 @@ export function createDbIdgBackend(
   }
   /** Ensure a `in_progress` minutes row for the meeting (idempotent); returns its id. */
   async function ensureMinutes(tx: DbClient, orgId: string, meetingId: string): Promise<string> {
-    const [existing] = await tx.select({ id: MIN.id }).from(MIN).where(eq(MIN.idgMeetingId, meetingId)).limit(1);
+    const [existing] = await tx
+      .select({ id: MIN.id })
+      .from(MIN)
+      .where(eq(MIN.idgMeetingId, meetingId))
+      .limit(1);
     if (existing) return existing.id;
     const [row] = await tx
       .insert(MIN)
@@ -273,7 +288,12 @@ export function createDbIdgBackend(
           .select({ id: PKT.id, patientId: PKT.patientId, frozenAt: PKT.frozenAt })
           .from(PKT)
           .where(eq(PKT.idgMeetingId, meetingId));
-        return rows.map((r) => ({ packetId: r.id, meetingId, patientId: r.patientId, frozenAt: iso(r.frozenAt) }));
+        return rows.map((r) => ({
+          packetId: r.id,
+          meetingId,
+          patientId: r.patientId,
+          frozenAt: iso(r.frozenAt),
+        }));
       });
     },
     async getPacket(orgId, meetingId, patientId): Promise<PacketDigestView> {
@@ -304,11 +324,18 @@ export function createDbIdgBackend(
           .where(and(eq(PKT.organizationId, orgId), eq(PKT.patientId, patientId)));
         if (pkts.length === 0) return { meetings: [] };
         // One packet per meeting — the latest build wins (a rebuild inserts a fresh partition row).
-        const pktBy = new Map<string, { reviewedAt: Date | null; frozenAt: Date | null; builtAt: Date }>();
+        const pktBy = new Map<
+          string,
+          { reviewedAt: Date | null; frozenAt: Date | null; builtAt: Date }
+        >();
         for (const p of pkts) {
           const prev = pktBy.get(p.meetingId);
           if (!prev || p.builtAt > prev.builtAt) {
-            pktBy.set(p.meetingId, { reviewedAt: p.reviewedAt, frozenAt: p.frozenAt, builtAt: p.builtAt });
+            pktBy.set(p.meetingId, {
+              reviewedAt: p.reviewedAt,
+              frozenAt: p.frozenAt,
+              builtAt: p.builtAt,
+            });
           }
         }
         const meetingIds = [...pktBy.keys()];
@@ -347,7 +374,8 @@ export function createDbIdgBackend(
           .where(and(eq(ACT.patientId, patientId), inArray(ACT.idgMeetingId, meetingIds)));
         const groupByMeeting = <T extends { meetingId: string }>(rows: T[]): Map<string, T[]> => {
           const m = new Map<string, T[]>();
-          for (const r of rows) (m.get(r.meetingId) ?? m.set(r.meetingId, []).get(r.meetingId)!).push(r);
+          for (const r of rows)
+            (m.get(r.meetingId) ?? m.set(r.meetingId, []).get(r.meetingId)!).push(r);
           return m;
         };
         const decBy = groupByMeeting(decs);
@@ -391,7 +419,10 @@ export function createDbIdgBackend(
           assignee !== undefined ? eq(ACT.assignedToMembershipId, assignee) : undefined,
           q.status !== undefined ? eq(ACT.status, q.status) : undefined,
         ].filter((f): f is NonNullable<typeof f> => f !== undefined);
-        const rows = await tx.select().from(ACT).where(filters.length ? and(...filters) : undefined);
+        const rows = await tx
+          .select()
+          .from(ACT)
+          .where(filters.length ? and(...filters) : undefined);
         return rows.map(toActionItemView);
       });
     },
@@ -400,7 +431,11 @@ export function createDbIdgBackend(
     async getMinutes(orgId, meetingId): Promise<MinutesView> {
       return withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
-        const [r] = await tx.select({ id: MIN.id, status: MIN.status }).from(MIN).where(eq(MIN.idgMeetingId, meetingId)).limit(1);
+        const [r] = await tx
+          .select({ id: MIN.id, status: MIN.status })
+          .from(MIN)
+          .where(eq(MIN.idgMeetingId, meetingId))
+          .limit(1);
         if (!r) throw new NotFoundError("idg_minutes");
         return { id: r.id, meetingId, status: r.status };
       });
@@ -426,7 +461,12 @@ export function createDbIdgBackend(
           meetingsCreated: 0,
           windowEndIso: new Date().toISOString(),
         });
-        return { id: row!.id, locationId: row!.locationId, cadenceDays: row!.cadenceDays, active: row!.active };
+        return {
+          id: row!.id,
+          locationId: row!.locationId,
+          cadenceDays: row!.cadenceDays,
+          active: row!.active,
+        };
       });
     },
     async updateRecurringPolicy(orgId, _userId, id, args): Promise<RecurringPolicyView> {
@@ -435,10 +475,19 @@ export function createDbIdgBackend(
         if (!existing) throw new NotFoundError("idg_recurring_policy");
         const [row] = await tx
           .update(POL)
-          .set({ cadenceDays: args.cadenceDays, active: args.active ?? existing.active, updatedAt: new Date() })
+          .set({
+            cadenceDays: args.cadenceDays,
+            active: args.active ?? existing.active,
+            updatedAt: new Date(),
+          })
           .where(eq(POL.id, id))
           .returning();
-        return { id: row!.id, locationId: row!.locationId, cadenceDays: row!.cadenceDays, active: row!.active };
+        return {
+          id: row!.id,
+          locationId: row!.locationId,
+          cadenceDays: row!.cadenceDays,
+          active: row!.active,
+        };
       });
     },
 
@@ -448,11 +497,21 @@ export function createDbIdgBackend(
         const m = await loadMeeting(tx, id);
         // The route's `per_patient_review_floor_clear` ABAC + override-permission gate is authoritative; the
         // service drives the machine with the resolved facts (clear + authorized) (compromise #5).
-        transitionMeeting(m.status, { type: "CANCEL", reason, reviewFloorClear: true, overrideAuthorized: true });
+        transitionMeeting(m.status, {
+          type: "CANCEL",
+          reason,
+          reviewFloorClear: true,
+          overrideAuthorized: true,
+        });
         const at = new Date();
         await tx
           .update(MTG)
-          .set({ status: "cancelled", cancellationReason: reason, version: m.version + 1, updatedAt: at })
+          .set({
+            status: "cancelled",
+            cancellationReason: reason,
+            version: m.version + 1,
+            updatedAt: at,
+          })
           .where(eq(MTG.id, id));
         await emit(tx, orgId, "m14.meeting.cancelled", "idg_meeting", id, {
           meetingId: id,
@@ -473,7 +532,10 @@ export function createDbIdgBackend(
           overrideAuthorized: true,
         });
         const at = new Date();
-        await tx.update(MTG).set({ status: "rescheduled", version: prior.version + 1, updatedAt: at }).where(eq(MTG.id, id));
+        await tx
+          .update(MTG)
+          .set({ status: "rescheduled", version: prior.version + 1, updatedAt: at })
+          .where(eq(MTG.id, id));
         const [next] = await tx
           .insert(MTG)
           .values({
@@ -504,7 +566,10 @@ export function createDbIdgBackend(
         const n = pkts.length;
         transitionMeeting(m.status, { type: "BUILD_PACKETS", includedPatientCount: n });
         const at = new Date();
-        await tx.update(MTG).set({ status: "packets_building", version: m.version + 1, updatedAt: at }).where(eq(MTG.id, id));
+        await tx
+          .update(MTG)
+          .set({ status: "packets_building", version: m.version + 1, updatedAt: at })
+          .where(eq(MTG.id, id));
         await emit(tx, orgId, "m14.packets.build_started", "idg_meeting", id, {
           meetingId: id,
           includedPatientCount: n,
@@ -517,7 +582,10 @@ export function createDbIdgBackend(
         const m = await loadMeeting(tx, id);
         transitionMeeting(m.status, { type: "START" });
         const at = new Date();
-        await tx.update(MTG).set({ status: "live", actualStart: at, version: m.version + 1, updatedAt: at }).where(eq(MTG.id, id));
+        await tx
+          .update(MTG)
+          .set({ status: "live", actualStart: at, version: m.version + 1, updatedAt: at })
+          .where(eq(MTG.id, id));
         await emit(tx, orgId, "m14.meeting.started", "idg_meeting", id, {
           meetingId: id,
           startedByMembershipId: userId,
@@ -532,14 +600,23 @@ export function createDbIdgBackend(
         // `transitionMeeting` raises STEP_UP_REQUIRED (412) when the fresh step-up is absent (§2.2 D13).
         transitionMeeting(m.status, { type: "ADJOURN", stepUpFresh });
         const at = new Date();
-        await tx.update(MTG).set({ status: "adjourned", actualEnd: at, version: m.version + 1, updatedAt: at }).where(eq(MTG.id, id));
+        await tx
+          .update(MTG)
+          .set({ status: "adjourned", actualEnd: at, version: m.version + 1, updatedAt: at })
+          .where(eq(MTG.id, id));
 
         // The commit point: emit every open decision (actionable + patient-scoped → the cross-module seam),
         // freeze packets, finalize the minutes (§2.7).
-        const openDecisions = await tx.select().from(DEC).where(and(eq(DEC.idgMeetingId, id), eq(DEC.status, "open")));
+        const openDecisions = await tx
+          .select()
+          .from(DEC)
+          .where(and(eq(DEC.idgMeetingId, id), eq(DEC.status, "open")));
         let decisionsEmittedCount = 0;
         for (const d of openDecisions) {
-          await tx.update(DEC).set({ status: "emitted", emittedAt: at, updatedAt: at }).where(eq(DEC.id, d.id));
+          await tx
+            .update(DEC)
+            .set({ status: "emitted", emittedAt: at, updatedAt: at })
+            .where(eq(DEC.id, d.id));
           if (isActionableDecisionKind(d.decisionKind) && d.patientId != null) {
             decisionsEmittedCount += 1;
             await emit(tx, orgId, "idg.decision_recorded", "idg_decision", d.id, {
@@ -566,7 +643,10 @@ export function createDbIdgBackend(
           .set({ status: "final", finalizedByMembershipId: userId, finalizedAt: at, updatedAt: at })
           .where(eq(MIN.id, minutesId));
 
-        const actionItems = await tx.select({ id: ACT.id }).from(ACT).where(eq(ACT.idgMeetingId, id));
+        const actionItems = await tx
+          .select({ id: ACT.id })
+          .from(ACT)
+          .where(eq(ACT.idgMeetingId, id));
         await emit(tx, orgId, "m14.meeting.adjourned", "idg_meeting", id, {
           meetingId: id,
           adjournedByMembershipId: userId,
@@ -593,7 +673,14 @@ export function createDbIdgBackend(
         const status = args.status ?? "present";
         const [row] = await tx
           .insert(ATT)
-          .values({ organizationId: orgId, idgMeetingId: meetingId, membershipId: args.membershipId, discipline: args.discipline, status, checkInAt })
+          .values({
+            organizationId: orgId,
+            idgMeetingId: meetingId,
+            membershipId: args.membershipId,
+            discipline: args.discipline,
+            status,
+            checkInAt,
+          })
           .returning({ id: ATT.id });
         await emit(tx, orgId, "m14.attendance.checked_in", "idg_meeting", meetingId, {
           meetingId,
@@ -603,7 +690,14 @@ export function createDbIdgBackend(
           checkedInAt: checkInAt.toISOString(),
           isTardy: status === "tardy",
         });
-        return { id: row!.id, meetingId, membershipId: args.membershipId, discipline: args.discipline, status, checkedInAt: checkInAt.toISOString() };
+        return {
+          id: row!.id,
+          meetingId,
+          membershipId: args.membershipId,
+          discipline: args.discipline,
+          status,
+          checkedInAt: checkInAt.toISOString(),
+        };
       });
     },
     async updateAttendance(orgId, _userId, id, status): Promise<AttendanceView> {
@@ -611,7 +705,14 @@ export function createDbIdgBackend(
         const [row] = await tx.select().from(ATT).where(eq(ATT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_attendance");
         await tx.update(ATT).set({ status, updatedAt: new Date() }).where(eq(ATT.id, id));
-        return { id: row.id, meetingId: row.idgMeetingId, membershipId: row.membershipId, discipline: row.discipline, status, checkedInAt: iso(row.checkInAt) ?? "" };
+        return {
+          id: row.id,
+          meetingId: row.idgMeetingId,
+          membershipId: row.membershipId,
+          discipline: row.discipline,
+          status,
+          checkedInAt: iso(row.checkInAt) ?? "",
+        };
       });
     },
     async removeAttendance(orgId, _userId, id): Promise<{ id: string; removed: true }> {
@@ -619,7 +720,10 @@ export function createDbIdgBackend(
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select({ id: ATT.id }).from(ATT).where(eq(ATT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_attendance");
-        await tx.update(ATT).set({ status: "excused", updatedAt: new Date() }).where(eq(ATT.id, id));
+        await tx
+          .update(ATT)
+          .set({ status: "excused", updatedAt: new Date() })
+          .where(eq(ATT.id, id));
         return { id, removed: true };
       });
     },
@@ -628,7 +732,10 @@ export function createDbIdgBackend(
     async addAgendaItem(orgId, userId, meetingId, args): Promise<AgendaItemView> {
       return withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
-        const existing = await tx.select({ id: AGD.id }).from(AGD).where(eq(AGD.idgMeetingId, meetingId));
+        const existing = await tx
+          .select({ id: AGD.id })
+          .from(AGD)
+          .where(eq(AGD.idgMeetingId, meetingId));
         const [row] = await tx
           .insert(AGD)
           .values({
@@ -648,7 +755,12 @@ export function createDbIdgBackend(
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(AGD).where(eq(AGD.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_agenda_item");
-        return { id: row.id, meetingId: row.idgMeetingId, kind: row.kind, patientId: row.patientId };
+        return {
+          id: row.id,
+          meetingId: row.idgMeetingId,
+          kind: row.kind,
+          patientId: row.patientId,
+        };
       });
     },
     async removeAgendaItem(orgId, _userId, id): Promise<{ id: string; removed: true }> {
@@ -716,7 +828,8 @@ export function createDbIdgBackend(
       // updates a plan.
       const carePlanId =
         decisionKind === "care_plan_update"
-          ? (prior.carePlanId ?? (await resolveCarePlanIdForDecision(prior.patientId, decisionKind)))
+          ? (prior.carePlanId ??
+            (await resolveCarePlanIdForDecision(prior.patientId, decisionKind)))
           : null;
       return withOrg(orgId, async (tx) => {
         const [updated] = await tx
@@ -753,7 +866,12 @@ export function createDbIdgBackend(
         const at = new Date();
         await tx
           .update(DEC)
-          .set({ status: "superseded", supersededByDecisionId: next!.id, supersededAt: at, updatedAt: at })
+          .set({
+            status: "superseded",
+            supersededByDecisionId: next!.id,
+            supersededAt: at,
+            updatedAt: at,
+          })
           .where(eq(DEC.id, id));
         return toDecisionView({ ...prior, status: "superseded", supersededByDecisionId: next!.id });
       });
@@ -789,7 +907,12 @@ export function createDbIdgBackend(
         return toActionItemView(row!);
       });
     },
-    async updateActionItem(orgId, userId, id, status: ActionItemPatchStatus): Promise<ActionItemView> {
+    async updateActionItem(
+      orgId,
+      userId,
+      id,
+      status: ActionItemPatchStatus,
+    ): Promise<ActionItemView> {
       return withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(ACT).where(eq(ACT.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
@@ -798,7 +921,11 @@ export function createDbIdgBackend(
         const closed = t.to === "completed" || t.to === "cancelled";
         const [updated] = await tx
           .update(ACT)
-          .set({ status: t.to as IdgActionItemStatus, closedAt: closed ? at : row.closedAt, updatedAt: at })
+          .set({
+            status: t.to as IdgActionItemStatus,
+            closedAt: closed ? at : row.closedAt,
+            updatedAt: at,
+          })
           .where(eq(ACT.id, id))
           .returning();
         await emit(tx, orgId, "m14.action_item.status_changed", "idg_action_item", id, {
@@ -813,18 +940,34 @@ export function createDbIdgBackend(
     async removeActionItem(orgId, _userId, id): Promise<{ id: string; removed: true }> {
       // No DELETE grant (compromise #2) → soft-remove by transitioning to `cancelled`.
       return withOrg(orgId, async (tx) => {
-        const [row] = await tx.select({ id: ACT.id, status: ACT.status }).from(ACT).where(eq(ACT.id, id)).limit(1);
+        const [row] = await tx
+          .select({ id: ACT.id, status: ACT.status })
+          .from(ACT)
+          .where(eq(ACT.id, id))
+          .limit(1);
         if (!row) throw new NotFoundError("idg_action_item");
         transitionActionItem(row.status, { type: "cancel" });
-        await tx.update(ACT).set({ status: "cancelled", closedAt: new Date(), updatedAt: new Date() }).where(eq(ACT.id, id));
+        await tx
+          .update(ACT)
+          .set({ status: "cancelled", closedAt: new Date(), updatedAt: new Date() })
+          .where(eq(ACT.id, id));
         return { id, removed: true };
       });
     },
 
     // ── minutes amendment (write) ──────────────────────────────────────────────────────────────────────
-    async submitAmendment(orgId, userId, minutesId, amendmentReason): Promise<{ amendmentId: string; minutesId: string }> {
+    async submitAmendment(
+      orgId,
+      userId,
+      minutesId,
+      amendmentReason,
+    ): Promise<{ amendmentId: string; minutesId: string }> {
       return withOrg(orgId, async (tx) => {
-        const [min] = await tx.select({ id: MIN.id, status: MIN.status }).from(MIN).where(eq(MIN.id, minutesId)).limit(1);
+        const [min] = await tx
+          .select({ id: MIN.id, status: MIN.status })
+          .from(MIN)
+          .where(eq(MIN.id, minutesId))
+          .limit(1);
         if (!min) throw new NotFoundError("idg_minutes");
         // §2.6 D10 — an amendment applies ONLY to `final` minutes; `planMinutesAmendmentRequest` raises
         // MINUTES_NOT_IN_PROGRESS when the minutes are not yet final.

@@ -351,7 +351,9 @@ describe.skipIf(!DB_URL)("M39 Consent — RLS cross-tenant denial — LIVE Postg
       db.query("UPDATE consent_record SET status='active' WHERE id=$1", [a.consentRecord]),
     );
     expect(res.rowCount).toBe(0);
-    const still = await db.query("SELECT status FROM consent_record WHERE id=$1", [a.consentRecord]);
+    const still = await db.query("SELECT status FROM consent_record WHERE id=$1", [
+      a.consentRecord,
+    ]);
     expect(still.rows[0].status).toBe("draft");
   });
 

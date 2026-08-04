@@ -92,7 +92,9 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
   }
 
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       await db.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
     }
   }
@@ -207,8 +209,22 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     );
 
     return {
-      patient, identifier, alias, address, phone, email, payer, caregiver, patientCaregiver,
-      emergencyContact, assignment, commPref, privacyFlags, amendment, matchReview, merge,
+      patient,
+      identifier,
+      alias,
+      address,
+      phone,
+      email,
+      payer,
+      caregiver,
+      patientCaregiver,
+      emergencyContact,
+      assignment,
+      commPref,
+      privacyFlags,
+      amendment,
+      matchReview,
+      merge,
     };
   }
 
@@ -238,7 +254,10 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
   });
 
   it("every M5 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", () => {
-    const rls = readFileSync(join(MIGRATIONS_DIR, "0021_patient_m5_rls_audit_triggers.sql"), "utf8");
+    const rls = readFileSync(
+      join(MIGRATIONS_DIR, "0021_patient_m5_rls_audit_triggers.sql"),
+      "utf8",
+    );
     const blocks = rls.match(/CREATE POLICY[\s\S]*?;/g) ?? [];
     expect(blocks.length).toBeGreaterThan(0);
     for (const b of blocks) {
@@ -272,16 +291,31 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     // everything hanging off it". `patient_identifier` is the MBI/SSN table; the contact tables are
     // how you reach the person. Reaching them via the FK must fail exactly as reaching them by id does.
     const byPatient = await withOrg(ORG_B, async () => ({
-      identifiers: (await db.query("SELECT 1 FROM patient_identifier WHERE patient_id=$1", [a.patient])).rowCount,
-      addresses: (await db.query("SELECT 1 FROM patient_address WHERE patient_id=$1", [a.patient])).rowCount,
-      phones: (await db.query("SELECT 1 FROM patient_phone WHERE patient_id=$1", [a.patient])).rowCount,
-      emails: (await db.query("SELECT 1 FROM patient_email WHERE patient_id=$1", [a.patient])).rowCount,
-      payers: (await db.query("SELECT 1 FROM patient_payer WHERE patient_id=$1", [a.patient])).rowCount,
-      contacts: (await db.query("SELECT 1 FROM emergency_contact WHERE patient_id=$1", [a.patient])).rowCount,
-      assignments: (await db.query("SELECT 1 FROM patient_assignment WHERE patient_id=$1", [a.patient])).rowCount,
+      identifiers: (
+        await db.query("SELECT 1 FROM patient_identifier WHERE patient_id=$1", [a.patient])
+      ).rowCount,
+      addresses: (await db.query("SELECT 1 FROM patient_address WHERE patient_id=$1", [a.patient]))
+        .rowCount,
+      phones: (await db.query("SELECT 1 FROM patient_phone WHERE patient_id=$1", [a.patient]))
+        .rowCount,
+      emails: (await db.query("SELECT 1 FROM patient_email WHERE patient_id=$1", [a.patient]))
+        .rowCount,
+      payers: (await db.query("SELECT 1 FROM patient_payer WHERE patient_id=$1", [a.patient]))
+        .rowCount,
+      contacts: (await db.query("SELECT 1 FROM emergency_contact WHERE patient_id=$1", [a.patient]))
+        .rowCount,
+      assignments: (
+        await db.query("SELECT 1 FROM patient_assignment WHERE patient_id=$1", [a.patient])
+      ).rowCount,
     }));
     expect(byPatient).toEqual({
-      identifiers: 0, addresses: 0, phones: 0, emails: 0, payers: 0, contacts: 0, assignments: 0,
+      identifiers: 0,
+      addresses: 0,
+      phones: 0,
+      emails: 0,
+      payers: 0,
+      contacts: 0,
+      assignments: 0,
     });
   });
 
@@ -289,7 +323,9 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     // Knowing merely THAT a patient carries `part2_sud` is itself the disclosure Part 2 governs —
     // the flag is the sensitive fact, independent of the clinical record behind it.
     const seen = await withOrg(ORG_B, () =>
-      db.query("SELECT flags FROM patient_privacy_flag_snapshot WHERE patient_id = $1", [a.patient]),
+      db.query("SELECT flags FROM patient_privacy_flag_snapshot WHERE patient_id = $1", [
+        a.patient,
+      ]),
     );
     expect(seen.rowCount).toBe(0);
   });
@@ -299,7 +335,10 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     // discloses not one chart but a link between two, and the match candidate carries the incoming
     // demographics verbatim in `candidate_incoming`.
     const review = await withOrg(ORG_B, () =>
-      db.query("SELECT candidate_incoming FROM patient_match_review WHERE candidate_existing_patient_id = $1", [a.patient]),
+      db.query(
+        "SELECT candidate_incoming FROM patient_match_review WHERE candidate_existing_patient_id = $1",
+        [a.patient],
+      ),
     );
     expect(review.rowCount, "org B read another tenant's match candidate").toBe(0);
 
@@ -307,12 +346,16 @@ describe.skipIf(!DB_URL)("M5 Patient — RLS cross-tenant denial — LIVE Postgr
     // chart is the target. Each negative is paired with a positive control — without it, querying a
     // column that matches nothing would pass for both tenants and prove nothing at all.
     const merge = await withOrg(ORG_B, () =>
-      db.query("SELECT merged_field_diff FROM patient_merge WHERE target_patient_id = $1", [a.patient]),
+      db.query("SELECT merged_field_diff FROM patient_merge WHERE target_patient_id = $1", [
+        a.patient,
+      ]),
     );
     expect(merge.rowCount, "org B read another tenant's merge diff").toBe(0);
 
     const ownReview = await withOrg(ORG_A, () =>
-      db.query("SELECT 1 FROM patient_match_review WHERE candidate_existing_patient_id = $1", [a.patient]),
+      db.query("SELECT 1 FROM patient_match_review WHERE candidate_existing_patient_id = $1", [
+        a.patient,
+      ]),
     );
     expect(ownReview.rowCount, "control: org A must see its OWN match review").toBe(1);
     const ownMerge = await withOrg(ORG_A, () =>

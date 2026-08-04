@@ -21,12 +21,12 @@ import type { IsoInstant, OrgId, UsageEventType } from "@wardenx/types";
 import { isValidUsageQuantity } from "../domain/validation";
 import { computeBillingPseudonym } from "../pseudonym/hasher";
 import {
-  outboxIntent,
   type ActivePeriodStore,
   type OutboxIntent,
   type PseudonymKeyProvider,
   type UsageEventInput,
   type UsageEventStore,
+  outboxIntent,
 } from "./ports";
 
 /** `YYYY-MM` (UTC) bucket key for a Date — the active-period + revenue-snapshot calendar key. */
@@ -85,12 +85,21 @@ export class UsageMeteringService {
   }> {
     let acceptedCount = 0;
     let dedupedCount = 0;
-    const rejections: { sourceEventId: string | null; eventType: UsageEventType; reason: string }[] = [];
+    const rejections: {
+      sourceEventId: string | null;
+      eventType: UsageEventType;
+      reason: string;
+    }[] = [];
     for (const ev of events) {
       const r = await this.ingest(ev, now);
       if (r.accepted) acceptedCount += 1;
       else if (r.deduped) dedupedCount += 1;
-      else rejections.push({ sourceEventId: ev.sourceEventId ?? null, eventType: ev.eventType, reason: r.reason ?? "rejected" });
+      else
+        rejections.push({
+          sourceEventId: ev.sourceEventId ?? null,
+          eventType: ev.eventType,
+          reason: r.reason ?? "rejected",
+        });
     }
     return { acceptedCount, dedupedCount, rejectedCount: rejections.length, rejections };
   }
@@ -219,6 +228,9 @@ export function buildUsagePeriodClosedOutbox(input: {
     organizationId: input.organizationId,
     periodStart: input.periodStart.toISOString() as IsoInstant,
     periodEnd: input.periodEnd.toISOString() as IsoInstant,
-    meterTotals: input.meterTotals.map((m) => ({ eventType: m.eventType, totalQuantity: m.totalQuantity })),
+    meterTotals: input.meterTotals.map((m) => ({
+      eventType: m.eventType,
+      totalQuantity: m.totalQuantity,
+    })),
   });
 }

@@ -5,7 +5,14 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
-import { LineIdParams, PeriodIdParams, PsrImportRequest, ResolveVarianceRequest, parse, validateParams } from "./m26-typebox";
+import {
+  LineIdParams,
+  PeriodIdParams,
+  PsrImportRequest,
+  ResolveVarianceRequest,
+  parse,
+  validateParams,
+} from "./m26-typebox";
 import type { M26ReadService } from "./read-service";
 import type { M26WriteService } from "./write-service";
 
@@ -30,7 +37,11 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(PsrImportRequest, request.body);
-      const res = await writeService.importPsr(writeActorOf(request), pParam(request, "periodId"), body);
+      const res = await writeService.importPsr(
+        writeActorOf(request),
+        pParam(request, "periodId"),
+        body,
+      );
       return reply.code(202).send({ ...res, status: "queued" });
     },
   );
@@ -39,8 +50,13 @@ export function registerPsrRoutes(app: FastifyInstance, deps: PsrRouteDeps): voi
     reply.send(await readService.getPsrImport(actorOf(request), pParam(request, "importId"))),
   );
 
-  app.get("/api/v1/cap/psr-imports/:importId/reconciliation", { preHandler: [PSR_READ] }, async (request, reply) =>
-    reply.send(await readService.listPsrReconciliation(actorOf(request), pParam(request, "importId"))),
+  app.get(
+    "/api/v1/cap/psr-imports/:importId/reconciliation",
+    { preHandler: [PSR_READ] },
+    async (request, reply) =>
+      reply.send(
+        await readService.listPsrReconciliation(actorOf(request), pParam(request, "importId")),
+      ),
   );
 
   app.patch(

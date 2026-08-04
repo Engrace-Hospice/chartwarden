@@ -109,7 +109,9 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
     setError(null);
     const [detailRes, dayRes] = await Promise.all([
       client.GET("/api/v1/rb-arrangements/{id}", { params: { path: { id: arrangementId } } }),
-      client.GET("/api/v1/rb-days", { params: { query: { rbArrangementId: arrangementId } } } as never),
+      client.GET("/api/v1/rb-days", {
+        params: { query: { rbArrangementId: arrangementId } },
+      } as never),
     ]);
     if (detailRes.error) {
       setError("Arrangement not found, or you lack scope for this provider entity.");
@@ -164,7 +166,8 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
     [arrangement, reason, client, load],
   );
 
-  if (!arrangementId) return <EmptyState title="No arrangement" description="No arrangement was specified." />;
+  if (!arrangementId)
+    return <EmptyState title="No arrangement" description="No arrangement was specified." />;
   if (loading) return <LoadingSpinner />;
   if (error || !arrangement)
     return <EmptyState title="Unavailable" description={error ?? "No arrangement."} />;
@@ -220,11 +223,17 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
             <Field label="Pass-through" value={pct(arrangement.passThroughPct, false)} />
             <Field label="Agency retention" value={pct(arrangement.retentionPct, false)} />
           </Card>
-          <nav aria-label="Related" style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+          <nav
+            aria-label="Related"
+            style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}
+          >
             <a href="/medicaid/billing/rb-arrangements" style={linkStyle}>
               ← All arrangements
             </a>
-            <a href={`/medicaid/billing/claims?patientId=${arrangement.patientId}`} style={linkStyle}>
+            <a
+              href={`/medicaid/billing/claims?patientId=${arrangement.patientId}`}
+              style={linkStyle}
+            >
               Claims for this patient →
             </a>
           </nav>
@@ -295,7 +304,10 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
                       <td style={tdMono}>{consumed ? shortId(d.medicaidClaimLineId) : "—"}</td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {consumed ? (
-                          <span style={mutedStyle} title="Billed on a claim — replace or void that claim first">
+                          <span
+                            style={mutedStyle}
+                            title="Billed on a claim — replace or void that claim first"
+                          >
                             Billed
                           </span>
                         ) : (
@@ -326,14 +338,20 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
               <Glyph name="alert" size={16} />
-              <strong>{arrangement.nfFacilityNameSnapshot || shortId(arrangement.nfFacilityMdmId)}</strong>
+              <strong>
+                {arrangement.nfFacilityNameSnapshot || shortId(arrangement.nfFacilityMdmId)}
+              </strong>
             </div>
             <span style={mutedStyle}>
               Terminating stops day generation. Days already billed on a claim are unaffected.
             </span>
             <label
               htmlFor="m24-rb-terminate-reason"
-              style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-on-surface-variant)" }}
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: "var(--color-on-surface-variant)",
+              }}
             >
               Reason (≥ {REASON_MIN} characters)
             </label>
@@ -446,7 +464,9 @@ function DayOverrideModal({
 
         {needsReason ? (
           <label style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>Exclusion reason</span>
+            <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>
+              Exclusion reason
+            </span>
             <textarea
               aria-label="Exclusion reason"
               aria-invalid={reasonMissing}

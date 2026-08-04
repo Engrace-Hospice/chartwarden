@@ -44,14 +44,13 @@ export type DocumentLifecycleTransition = DocumentTransitionResult<
 
 /** The legal §2.2.1 status graph (from → events accepted). Guards are checked separately. A document in
  * `legal_hold` can ONLY release back to active — it can never tombstone (D12 legal-hold-immutability). */
-export const DOCUMENT_GRAPH: Readonly<
-  Record<DocumentState, ReadonlyArray<DocumentEvent["type"]>>
-> = {
-  active: ["placeLegalHold", "tombstone"],
-  legal_hold: ["releaseLegalHold"],
-  superseded: ["placeLegalHold", "tombstone"],
-  destroyed_tombstone: [],
-};
+export const DOCUMENT_GRAPH: Readonly<Record<DocumentState, ReadonlyArray<DocumentEvent["type"]>>> =
+  {
+    active: ["placeLegalHold", "tombstone"],
+    legal_hold: ["releaseLegalHold"],
+    superseded: ["placeLegalHold", "tombstone"],
+    destroyed_tombstone: [],
+  };
 
 /**
  * Apply a `document` status-lifecycle event (§2.2.1). Throws {@link DocumentStateError} `ILLEGAL_TRANSITION`
@@ -73,10 +72,7 @@ export function transitionDocument(
       );
     }
     if (event.type === "tombstone" && from === "destroyed_tombstone") {
-      throw new DocumentStateError(
-        "ALREADY_TOMBSTONED",
-        "the document is already tombstoned",
-      );
+      throw new DocumentStateError("ALREADY_TOMBSTONED", "the document is already tombstoned");
     }
     throw new DocumentStateError(
       "ILLEGAL_TRANSITION",
@@ -142,10 +138,7 @@ export function planDestructionForDocument(args: {
   if (args.legalHoldActive || args.status === "legal_hold") {
     return {
       skipped: true,
-      effects: [
-        { kind: "audit" },
-        { kind: "outbox", event: "m22.eraser.legal_hold_skip" },
-      ],
+      effects: [{ kind: "audit" }, { kind: "outbox", event: "m22.eraser.legal_hold_skip" }],
     };
   }
   return null;

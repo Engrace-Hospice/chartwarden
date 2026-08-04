@@ -19,4 +19,8 @@ export {
   createSandataSandboxTransport,
 } from "./adapters/sandata-adapter";
 export { type OpenModelSubmissionBody, OpenModelAdapter } from "./open-model";
-export { CareBridgeAdapter, HhaeXchangeAdapter, TellusAdapter } from "./adapters/phase2-scaffolding";
+export {
+  CareBridgeAdapter,
+  HhaeXchangeAdapter,
+  TellusAdapter,
+} from "./adapters/phase2-scaffolding";

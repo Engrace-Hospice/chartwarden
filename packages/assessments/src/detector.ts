@@ -14,9 +14,9 @@
 // rejected at policy-write time, never silently clamped). The §9.1 canonical case — a tenant cannot set
 // `painad ≥ 3` when the floor is `≥ 4` — is enforced by `resolveSignificantChangeThreshold`.
 
-import type { ScaleType, SignificantChangeRuleId, AssessmentAlertSeverity } from "@wardenx/types";
+import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@wardenx/types";
 import { require_ } from "./errors";
-import { firstEmissionSeverity, RULE_SCALE } from "./significant-change";
+import { RULE_SCALE, firstEmissionSeverity } from "./significant-change";
 
 /** How a rule's numeric `threshold` is compared to the observed value, which fixes the "tighten" direction
  * (D2). `ge`/`le` are absolute single-reading severity rules; `dropGe`/`increaseGe` are windowed deltas. */
@@ -41,7 +41,12 @@ export const SIGNIFICANT_CHANGE_THRESHOLDS: {
 } = {
   pps_drop_20_in_14d: { comparator: "dropGe", platform: 20, floor: 10, windowDays: 14 },
   kps_drop_20_in_14d: { comparator: "dropGe", platform: 20, floor: 10, windowDays: 14 },
-  esas_total_increase_20_in_7d: { comparator: "increaseGe", platform: 20, floor: 10, windowDays: 7 },
+  esas_total_increase_20_in_7d: {
+    comparator: "increaseGe",
+    platform: 20,
+    floor: 10,
+    windowDays: 7,
+  },
   esas_symptom_ge_7: { comparator: "ge", platform: 7, floor: 7 },
   painad_ge_4: { comparator: "ge", platform: 4, floor: 4 },
   braden_le_12: { comparator: "le", platform: 12, floor: 12 },
@@ -66,7 +71,11 @@ export function resolveSignificantChangeThreshold(
   override?: number,
 ): number {
   const t = SIGNIFICANT_CHANGE_THRESHOLDS[ruleId];
-  require_(t !== undefined, "SIGNIFICANT_CHANGE_FLOOR_VIOLATION", `Rule '${ruleId}' has no numeric threshold to override.`);
+  require_(
+    t !== undefined,
+    "SIGNIFICANT_CHANGE_FLOOR_VIOLATION",
+    `Rule '${ruleId}' has no numeric threshold to override.`,
+  );
   if (override === undefined) return t.platform;
   // "More sensitive" is a LOWER trigger for `≥`/delta rules and a HIGHER trigger for `≤` rules.
   const moreSensitiveIsLower = t.comparator !== "le";
@@ -133,7 +142,9 @@ function priorsInWindow(input: DetectorInput, windowDays: number): number[] {
   const cutoff = epochDay(input.capturedAt) - windowDays;
   const at = epochDay(input.capturedAt);
   return (input.priorSeries ?? [])
-    .filter((r) => r.score !== null && epochDay(r.capturedAt) >= cutoff && epochDay(r.capturedAt) <= at)
+    .filter(
+      (r) => r.score !== null && epochDay(r.capturedAt) >= cutoff && epochDay(r.capturedAt) <= at,
+    )
     .map((r) => r.score as number);
 }
 
@@ -156,7 +167,8 @@ export function detectSignificantChanges(input: DetectorInput): SignificantChang
     let fired = false;
     switch (t.comparator) {
       case "ge": {
-        const value = ruleId === "esas_symptom_ge_7" ? input.maxSymptomScore ?? null : input.score;
+        const value =
+          ruleId === "esas_symptom_ge_7" ? (input.maxSymptomScore ?? null) : input.score;
         if (value !== null) {
           delta = value;
           fired = value >= threshold;
@@ -190,7 +202,12 @@ export function detectSignificantChanges(input: DetectorInput): SignificantChang
       }
     }
     if (fired && delta !== null) {
-      findings.push({ ruleId, deltaValue: delta, thresholdValue: threshold, severity: firstEmissionSeverity(ruleId) });
+      findings.push({
+        ruleId,
+        deltaValue: delta,
+        thresholdValue: threshold,
+        severity: firstEmissionSeverity(ruleId),
+      });
     }
   }
   return findings;

@@ -1,31 +1,33 @@
 // @wardenx/dosespot — §2.7 D9 refill-inbox workflow (M12-T04). Pure-domain unit tests.
 import { describe, expect, it } from "vitest";
 import {
+  // SLA
+  DEFAULT_REFILL_SLA_POLICY,
   // machine
   REFILL_REQUEST_GRAPH,
-  planRefillReceipt,
-  buildRefillMintFacts,
-  transitionRefillRequest,
+  REFILL_SLA_CRITICAL_FLOOR_HOURS,
+  REFILL_SLA_WARN_FLOOR_HOURS,
   type RefillRequestEvent,
   // controlled-substance rules
   SCHEDULE_REFILL_MAX,
-  maxRefillsForSchedule,
   assertRefillAuthorizedCount,
-  validateControlledRefillMaxOverride,
-  // SLA
-  DEFAULT_REFILL_SLA_POLICY,
-  REFILL_SLA_WARN_FLOOR_HOURS,
-  REFILL_SLA_CRITICAL_FLOOR_HOURS,
-  validateRefillSlaPolicy,
-  computeHoursPending,
+  buildRefillMintFacts,
   classifyRefillSlaStage,
+  computeHoursPending,
+  maxRefillsForSchedule,
+  planRefillReceipt,
   planRefillSlaAlert,
+  transitionRefillRequest,
+  validateControlledRefillMaxOverride,
+  validateRefillSlaPolicy,
 } from "../src/refill";
 
 const REFILL_ID = "rf-1";
 const SOURCE_ORDER_ID = "mo-src-1";
 
-const approve = (over: Partial<Extract<RefillRequestEvent, { type: "approve" }>> = {}): RefillRequestEvent => ({
+const approve = (
+  over: Partial<Extract<RefillRequestEvent, { type: "approve" }>> = {},
+): RefillRequestEvent => ({
   type: "approve",
   actorInScope: true,
   sourceOrderActive: true,
@@ -90,29 +92,49 @@ describe("§2.7 transitionRefillRequest approve", () => {
   it("blocks a refill of a non-active source order (409)", () => {
     expect(() =>
       transitionRefillRequest("pending", REFILL_ID, approve({ sourceOrderActive: false })),
-    ).toThrowError(expect.objectContaining({ code: "REFILL_SOURCE_ORDER_NOT_ACTIVE", statusCode: 409 }));
+    ).toThrowError(
+      expect.objectContaining({ code: "REFILL_SOURCE_ORDER_NOT_ACTIVE", statusCode: 409 }),
+    );
   });
 
   it("blocks a Schedule II refill (non-refillable, 422)", () => {
     expect(() =>
-      transitionRefillRequest("pending", REFILL_ID, approve({ deaSchedule: "II", refillsAuthorized: 1 })),
-    ).toThrowError(expect.objectContaining({ code: "REFILL_SCHEDULE_II_NON_REFILLABLE", statusCode: 422 }));
+      transitionRefillRequest(
+        "pending",
+        REFILL_ID,
+        approve({ deaSchedule: "II", refillsAuthorized: 1 }),
+      ),
+    ).toThrowError(
+      expect.objectContaining({ code: "REFILL_SCHEDULE_II_NON_REFILLABLE", statusCode: 422 }),
+    );
   });
 
   it("permits a Schedule IV refill within the ≤5 ceiling", () => {
-    const t = transitionRefillRequest("pending", REFILL_ID, approve({ deaSchedule: "IV", refillsAuthorized: 5 }));
+    const t = transitionRefillRequest(
+      "pending",
+      REFILL_ID,
+      approve({ deaSchedule: "IV", refillsAuthorized: 5 }),
+    );
     expect(t.to).toBe("approved");
   });
 
   it("blocks a Schedule IV refill above the ≤5 ceiling (422)", () => {
     expect(() =>
-      transitionRefillRequest("pending", REFILL_ID, approve({ deaSchedule: "IV", refillsAuthorized: 6 })),
+      transitionRefillRequest(
+        "pending",
+        REFILL_ID,
+        approve({ deaSchedule: "IV", refillsAuthorized: 6 }),
+      ),
     ).toThrowError(expect.objectContaining({ code: "REFILL_EXCEEDS_SCHEDULE_MAX" }));
   });
 
   it("honours a tenant tighten-only override below the schedule ceiling", () => {
     expect(() =>
-      transitionRefillRequest("pending", REFILL_ID, approve({ deaSchedule: "IV", refillsAuthorized: 3, tenantMaxOverride: 2 })),
+      transitionRefillRequest(
+        "pending",
+        REFILL_ID,
+        approve({ deaSchedule: "IV", refillsAuthorized: 3, tenantMaxOverride: 2 }),
+      ),
     ).toThrowError(expect.objectContaining({ code: "REFILL_EXCEEDS_SCHEDULE_MAX" }));
   });
 });
@@ -142,7 +164,9 @@ describe("§2.7 transitionRefillRequest deny", () => {
   it("requires a denial reason (422)", () => {
     expect(() =>
       transitionRefillRequest("pending", REFILL_ID, deny({ denialReasonPresent: false })),
-    ).toThrowError(expect.objectContaining({ code: "REFILL_DENIAL_REASON_REQUIRED", statusCode: 422 }));
+    ).toThrowError(
+      expect.objectContaining({ code: "REFILL_DENIAL_REASON_REQUIRED", statusCode: 422 }),
+    );
   });
 
   it("blocks an actor out of inbox scope (403)", () => {
@@ -155,12 +179,12 @@ describe("§2.7 transitionRefillRequest deny", () => {
 // ── §2.7 expire (system actor) ────────────────────────────────────────────────────────────────────────
 describe("§2.7 transitionRefillRequest expire", () => {
   it("expires on a system actor (no new order, no DoseSpot response)", () => {
-    const t = transitionRefillRequest("pending", REFILL_ID, { type: "expire", isSystemActor: true });
+    const t = transitionRefillRequest("pending", REFILL_ID, {
+      type: "expire",
+      isSystemActor: true,
+    });
     expect(t.to).toBe("expired");
-    expect(t.effects).toEqual([
-      { kind: "set_timestamp", field: "expired_at" },
-      { kind: "audit" },
-    ]);
+    expect(t.effects).toEqual([{ kind: "set_timestamp", field: "expired_at" }, { kind: "audit" }]);
   });
 
   it("rejects a human-actor expire (403)", () => {

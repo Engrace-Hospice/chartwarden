@@ -92,7 +92,9 @@ export interface ComfortKitDeploymentPlan {
 function resolveThreshold(line: KitContentLine): number {
   const f = line.replenishmentThresholdFraction;
   const fraction =
-    typeof f === "number" && Number.isFinite(f) && f >= 0 ? f : DEFAULT_REPLENISHMENT_THRESHOLD_FRACTION;
+    typeof f === "number" && Number.isFinite(f) && f >= 0
+      ? f
+      : DEFAULT_REPLENISHMENT_THRESHOLD_FRACTION;
   return Math.min(line.expectedQuantity, line.expectedQuantity * fraction);
 }
 
@@ -102,7 +104,9 @@ function resolveThreshold(line: KitContentLine): number {
  * (`KIT_INSUFFICIENT_QUANTITY`) and any non-positive content quantity (a deployed line must hold something).
  * Pure — the consumer worker (M13-T08) persists the returned rows + emits `deployedSignal` in one transaction.
  */
-export function buildComfortKitDeployment(envelope: ComfortKitDeployedEnvelope): ComfortKitDeploymentPlan {
+export function buildComfortKitDeployment(
+  envelope: ComfortKitDeployedEnvelope,
+): ComfortKitDeploymentPlan {
   if (envelope.contents.length === 0) {
     throw new AdministrationStateError(
       "KIT_INSUFFICIENT_QUANTITY",
@@ -209,7 +213,10 @@ export function evaluateReplenishmentUrgency(
  * below the replenishment threshold, returns the `m13.comfort_kit.replenishment_needed` signal with the
  * computed urgency. Pure — no clock, no IO; the route persists the new remaining + emits the signal.
  */
-export function applyKitDrawdown(state: KitDrawdownState, input: KitDecrementInput): KitDrawdownResult {
+export function applyKitDrawdown(
+  state: KitDrawdownState,
+  input: KitDecrementInput,
+): KitDrawdownResult {
   const wastage = input.wastageAmount ?? 0;
   const drawn = input.administeredAmount + wastage;
   const newRemainingQuantity = state.remainingQuantity - drawn;

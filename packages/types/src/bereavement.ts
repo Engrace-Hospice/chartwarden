@@ -780,8 +780,15 @@ export interface BereavementPlanProvider {
   planById(orgId: string, planId: BereavementPlanId): Promise<BereavementPlanView | null>;
   planByAdmissionId(orgId: string, admissionId: AdmissionId): Promise<BereavementPlanView | null>;
   /** D4 — true while `asOf` sits inside `[death_date, death_date + 13 months)` AND the plan is not closed. */
-  isInBereavementWindow(orgId: string, planId: BereavementPlanId, asOfIso: IsoInstant): Promise<boolean>;
-  contactsForPlan(orgId: string, planId: BereavementPlanId): Promise<readonly BereavedContactView[]>;
+  isInBereavementWindow(
+    orgId: string,
+    planId: BereavementPlanId,
+    asOfIso: IsoInstant,
+  ): Promise<boolean>;
+  contactsForPlan(
+    orgId: string,
+    planId: BereavementPlanId,
+  ): Promise<readonly BereavedContactView[]>;
   summarize(orgId: string, planId: BereavementPlanId): Promise<BereavementPlanSummary | null>;
 }
 
@@ -816,7 +823,10 @@ export interface BereavementRiskFactorsProvider {
 
 /** §4.6 / D13 — the assignment read M36's recipient resolver and M3's `bereavement_window` predicate use. */
 export interface BereavementAssignmentReader {
-  assignmentForPlan(orgId: string, planId: BereavementPlanId): Promise<BereavementAssignment | null>;
+  assignmentForPlan(
+    orgId: string,
+    planId: BereavementPlanId,
+  ): Promise<BereavementAssignment | null>;
   plansForCounselor(
     orgId: string,
     counselorUserId: MembershipId,

@@ -75,7 +75,9 @@ export function paginate<T extends CursorKeyset>(
   if (cursor) {
     const key = decodeCursor(cursor);
     // strict keyset: skip everything at-or-after the cursor row in DESC `(createdAt, id)` order.
-    start = rows.findIndex((r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id));
+    start = rows.findIndex(
+      (r) => r.createdAt < key.createdAt || (r.createdAt === key.createdAt && r.id < key.id),
+    );
     if (start === -1) start = rows.length;
   }
   const slice = rows.slice(start, start + size);

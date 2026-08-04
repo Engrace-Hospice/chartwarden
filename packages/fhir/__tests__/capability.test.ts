@@ -8,12 +8,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type FhirCapabilityCatalog,
   buildCapabilityStatement,
   canonicalizeCapability,
   capabilityChecksum,
   signCapabilitySnapshot,
   verifyCapabilitySnapshot,
-  type FhirCapabilityCatalog,
 } from "../src/capability/statement";
 
 const SIGNING_KEY = "platform-signing-key-under-test";
@@ -24,12 +24,23 @@ const catalog: FhirCapabilityCatalog = {
   publicationDate: "2026-08-01",
   baseUrl: "https://fhir.wardenx.com/fhir/r4",
   resources: [
-    { type: "Patient", interactions: ["read", "search-type"], searchParams: ["_lastUpdated", "identifier"] },
-    { type: "Observation", interactions: ["search-type", "read"], searchParams: ["patient", "code"] },
+    {
+      type: "Patient",
+      interactions: ["read", "search-type"],
+      searchParams: ["_lastUpdated", "identifier"],
+    },
+    {
+      type: "Observation",
+      interactions: ["search-type", "read"],
+      searchParams: ["patient", "code"],
+    },
   ],
   operations: [
     { name: "export", definition: "http://hl7.org/fhir/uv/bulkdata/OperationDefinition/export" },
-    { name: "everything", definition: "http://hl7.org/fhir/OperationDefinition/Patient-everything" },
+    {
+      name: "everything",
+      definition: "http://hl7.org/fhir/OperationDefinition/Patient-everything",
+    },
   ],
 };
 

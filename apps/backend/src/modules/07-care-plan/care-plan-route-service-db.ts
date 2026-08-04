@@ -39,8 +39,8 @@ import {
   checkPatientStatedGoalVerbatim,
 } from "./lifecycle/validation";
 import {
-  CarePlanAlreadyExistsError,
   type CarePlanAbacResolver,
+  CarePlanAlreadyExistsError,
   type CarePlanRouteService,
   type CarePlanViewer,
   type CreateGoalInput,
@@ -169,7 +169,13 @@ export function createDbCarePlanRouteService(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: org,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Resolve a tenant-scoped plan row (RLS-scoped) or raise the non-leaking 404. */
@@ -934,7 +940,10 @@ export function createDbCarePlanAbacResolver(db: DbClient): CarePlanAbacResolver
           .where(eq(CPV.id, versionId))
           .limit(1);
         return row
-          ? { planId: row.carePlanId, requiredSignerSet: row.requiredSignerSet as RequiredSignerSet }
+          ? {
+              planId: row.carePlanId,
+              requiredSignerSet: row.requiredSignerSet as RequiredSignerSet,
+            }
           : null;
       });
     },

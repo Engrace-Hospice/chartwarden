@@ -366,9 +366,21 @@ export const AuditorEnrolledResponseSchema = Type.Object({
 type Conforms<T extends V, V> = T;
 type _Role = Conforms<Static<typeof RoleResponseSchema>, RoleView>;
 type _MembershipRole = Conforms<Static<typeof MembershipRoleResponseSchema>, MembershipRoleView>;
-type _PermissionMirror = Conforms<Static<typeof PermissionMirrorResponseSchema>, PermissionMirrorRow>;
+type _PermissionMirror = Conforms<
+  Static<typeof PermissionMirrorResponseSchema>,
+  PermissionMirrorRow
+>;
 type _BreakGlass = Conforms<Static<typeof BreakGlassResponseSchema>, BreakGlassView>;
-type _BreakGlassStatus = Conforms<Static<typeof BreakGlassResponseSchema>["status"], BreakGlassStatus>;
+type _BreakGlassStatus = Conforms<
+  Static<typeof BreakGlassResponseSchema>["status"],
+  BreakGlassStatus
+>;
 type _Engagement = Conforms<Static<typeof EngagementResponseSchema>, EngagementView>;
-type _EngagementStatus = Conforms<Static<typeof EngagementResponseSchema>["status"], EngagementStatus>;
-type _EngagementSummary = Conforms<Static<typeof EngagementSummaryResponseSchema>, EngagementSummary>;
+type _EngagementStatus = Conforms<
+  Static<typeof EngagementResponseSchema>["status"],
+  EngagementStatus
+>;
+type _EngagementSummary = Conforms<
+  Static<typeof EngagementSummaryResponseSchema>,
+  EngagementSummary
+>;

@@ -68,14 +68,15 @@ for (const f of docSpecs) {
 
 // ---- permission catalog: every valid permission key (shared across all 3 apps) -------------
 const catalog = new Set<string>();
+// Keys are 2- or 3-segment (`assessment.read`, `hope.schedule.read`); capture an optional third segment
+// so 3-segment contributed keys (M10 HOPE, M38 terminology, …) resolve as valid requiredPermissions. The
+// first segment may carry a module-number prefix (`m37.unit.read`), so digits are allowed in each segment.
 for (const f of [
   "packages/auth/src/permissions/catalog.ts",
   "packages/auth/src/permissions/contributed.ts",
 ])
-  // Keys are 2- or 3-segment (`assessment.read`, `hope.schedule.read`); capture an optional third segment
-  // so 3-segment contributed keys (M10 HOPE, M38 terminology, …) resolve as valid requiredPermissions. The
-  // first segment may carry a module-number prefix (`m37.unit.read`), so digits are allowed in each segment.
-  for (const m of read(f).matchAll(/"([a-z0-9_]+\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"/g)) catalog.add(m[1]!);
+  for (const m of read(f).matchAll(/"([a-z0-9_]+\.[a-z0-9_]+(?:\.[a-z0-9_]+)?)"/g))
+    catalog.add(m[1]!);
 
 type Screen = {
   app: string;
@@ -134,7 +135,9 @@ function scanPerModuleApp(app: string, modulesRoot: string, mainTsxPath: string)
     const imported = mainTsx.includes(`modules/${dir}`);
     const registered = !!exportName && mainTsx.includes(`registry.register(${exportName})`);
     if (!imported || !registered)
-      failures.push(`UNREGISTERED SCREENS (${app}): ${rel} exists but is not wired into ${mainTsxPath}`);
+      failures.push(
+        `UNREGISTERED SCREENS (${app}): ${rel} exists but is not wired into ${mainTsxPath}`,
+      );
 
     for (const b of parseScreenBlocks(src)) {
       if (seenId.has(b.id))
@@ -142,7 +145,9 @@ function scanPerModuleApp(app: string, modulesRoot: string, mainTsxPath: string)
       else seenId.set(b.id, dir);
       if (b.path !== "(none)") {
         if (seenPath.has(b.path))
-          failures.push(`DUP SCREEN PATH (${app}): "${b.path}" in ${dir} and ${seenPath.get(b.path)}`);
+          failures.push(
+            `DUP SCREEN PATH (${app}): "${b.path}" in ${dir} and ${seenPath.get(b.path)}`,
+          );
         else seenPath.set(b.path, dir);
       }
       if (b.permission !== "(none)" && !catalog.has(b.permission))
@@ -165,11 +170,14 @@ function scanPortal(manifestPath: string, registryPath: string): void {
   const seenId = new Map<string, boolean>();
   const seenPath = new Map<string, string>();
   for (const b of parseScreenBlocks(manifestSrc)) {
-    if (seenId.has(b.id)) failures.push(`DUP SCREEN ID (portal): "${b.id}" appears twice in the manifest`);
+    if (seenId.has(b.id))
+      failures.push(`DUP SCREEN ID (portal): "${b.id}" appears twice in the manifest`);
     else seenId.set(b.id, true);
     if (b.path !== "(none)") {
       if (seenPath.has(b.path))
-        failures.push(`DUP SCREEN PATH (portal): "${b.path}" in "${b.id}" and "${seenPath.get(b.path)}"`);
+        failures.push(
+          `DUP SCREEN PATH (portal): "${b.path}" in "${b.id}" and "${seenPath.get(b.path)}"`,
+        );
       else seenPath.set(b.path, b.id);
     }
     if (b.permission !== "(none)" && !catalog.has(b.permission))
@@ -200,12 +208,8 @@ function renderMarkdown(): string {
   L.push(
     "> **Generated, advisory report** (`bun run ui:parity`). `docs:ui` proves the screen-spec",
   );
-  L.push(
-    "> corpus is consistent; this shows how much of it is BUILT across all three SPAs",
-  );
-  L.push(
-    "> (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`",
-  );
+  L.push("> corpus is consistent; this shows how much of it is BUILT across all three SPAs");
+  L.push("> (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`");
   L.push("> gate (in `arch:fitness`) keeps it in sync with source.");
   L.push("");
   L.push(

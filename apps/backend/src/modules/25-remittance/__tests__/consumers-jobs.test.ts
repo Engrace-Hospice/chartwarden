@@ -25,7 +25,8 @@ function fakeSeedStore(): DenialSeedStore & { seeds: string[]; backrefs: number 
       return state.backrefs;
     },
     async seedDenial(input) {
-      if (seen.has(input.idempotencyKey)) return { denialCaseId: `existing:${input.idempotencyKey}`, created: false };
+      if (seen.has(input.idempotencyKey))
+        return { denialCaseId: `existing:${input.idempotencyKey}`, created: false };
       seen.add(input.idempotencyKey);
       state.seeds.push(input.idempotencyKey);
       return { denialCaseId: `new:${input.idempotencyKey}`, created: true };
@@ -67,7 +68,14 @@ describe("consumers — denial seeding (§2.4 / §2.6)", () => {
   it("m22.document.rendered backrefs only M25-owned aggregates", async () => {
     const store = fakeSeedStore();
     expect(
-      (await handleDocumentRendered(store, { organizationId: "o1", aggregateType: "appeal_case", aggregateId: "a1", documentId: "d1" })).updated,
+      (
+        await handleDocumentRendered(store, {
+          organizationId: "o1",
+          aggregateType: "appeal_case",
+          aggregateId: "a1",
+          documentId: "d1",
+        })
+      ).updated,
     ).toBe(true);
     const other = await handleDocumentRendered(store, {
       organizationId: "o1",
@@ -109,7 +117,14 @@ describe("crons (§2.4)", () => {
       { id: "a1", tierDeadlineAt: "2026-06-08T00:00:00Z", state: "submitted" }, // 7 days out
       { id: "a2", tierDeadlineAt: "2026-09-01T00:00:00Z", state: "draft" }, // far out → no alert
     ];
-    const res = await runAppealDeadlineWatch({ async watchableAppeals() { return appeals; } }, new Date("2026-06-01T00:00:00Z"));
+    const res = await runAppealDeadlineWatch(
+      {
+        async watchableAppeals() {
+          return appeals;
+        },
+      },
+      new Date("2026-06-01T00:00:00Z"),
+    );
     expect(res.alerts).toHaveLength(1);
     expect(res.alerts[0]).toMatchObject({ appealCaseId: "a1", detail: { daysRemaining: 7 } });
   });

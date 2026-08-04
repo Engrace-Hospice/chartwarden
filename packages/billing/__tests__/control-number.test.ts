@@ -1,3 +1,10 @@
+import {
+  CONTROL_NUMBER_RE,
+  type ControlNumberInput,
+  deriveControlNumber,
+  isValidControlNumber,
+  parseControlNumber,
+} from "@wardenx/billing";
 // @wardenx/billing — M23 deterministic claim_control_number derivation (D4 / §2.6) pure-domain tests.
 //
 // The control number is the idempotency key BOTH internally (the
@@ -8,13 +15,6 @@
 // canonical regex); (3) determinism (identical inputs → identical string); (4) parse round-trips the
 // structural segments. Pure: no DB/Fastify/BullMQ; data is injected.
 import { describe, expect, it } from "vitest";
-import {
-  CONTROL_NUMBER_RE,
-  deriveControlNumber,
-  isValidControlNumber,
-  parseControlNumber,
-  type ControlNumberInput,
-} from "@wardenx/billing";
 
 /** A valid 6-char CCN pool (the regex permits mixed-case alphanumerics). */
 const CCN_POOL = ["381588", "12AB34", "999999", "00000A", "Z1Y2X3", "aaaaaa", "5L7M9N"] as const;
@@ -165,14 +165,22 @@ describe("deriveControlNumber — collision-freedom fuzz (≥10,000 tuples)", ()
   });
 
   it("the attempt index differentiates re-dispatches of the SAME claim", () => {
-    const base = { ccn: "381588", serviceFrom: "2026-01-15", claimId: claimIdForIndex(500) } as const;
+    const base = {
+      ccn: "381588",
+      serviceFrom: "2026-01-15",
+      claimId: claimIdForIndex(500),
+    } as const;
     expect(deriveControlNumber({ ...base, attemptIndex: 0 })).not.toBe(
       deriveControlNumber({ ...base, attemptIndex: 1 }),
     );
   });
 
   it("the CCN namespace differentiates identical claims at different provider entities", () => {
-    const base = { serviceFrom: "2026-01-15", claimId: claimIdForIndex(900), attemptIndex: 0 } as const;
+    const base = {
+      serviceFrom: "2026-01-15",
+      claimId: claimIdForIndex(900),
+      attemptIndex: 0,
+    } as const;
     expect(deriveControlNumber({ ...base, ccn: "381588" })).not.toBe(
       deriveControlNumber({ ...base, ccn: "999999" }),
     );
@@ -220,9 +228,9 @@ describe("deriveControlNumber — malformed-input rejection (throws RangeError)"
   });
 
   it("rejects a claim id whose leading chars are non-hex", () => {
-    expect(() => deriveControlNumber({ ...good, claimId: "ghijkl00-1111-4111-8111-111111111111" })).toThrow(
-      RangeError,
-    );
+    expect(() =>
+      deriveControlNumber({ ...good, claimId: "ghijkl00-1111-4111-8111-111111111111" }),
+    ).toThrow(RangeError);
   });
 });
 
@@ -232,14 +240,19 @@ describe("parseControlNumber — total parse (never throws) + round-trip", () =>
       const ccn = CCN_POOL[i % CCN_POOL.length]!;
       const serviceFrom = SERVICE_FROM_POOL[i % SERVICE_FROM_POOL.length]!;
       const attemptIndex = i % 100;
-      const cn = deriveControlNumber({ ccn, serviceFrom, claimId: claimIdForIndex(i), attemptIndex });
+      const cn = deriveControlNumber({
+        ccn,
+        serviceFrom,
+        claimId: claimIdForIndex(i),
+        attemptIndex,
+      });
       const parsed = parseControlNumber(cn);
       expect(parsed).not.toBeNull();
       expect(parsed!.ccn).toBe(ccn);
       expect(parsed!.yymmdd).toBe(serviceFrom.slice(2).replace(/-/g, ""));
       expect(parsed!.attemptIndex).toBe(attemptIndex);
       // The parsed prefix recovers the original 24-bit value.
-      expect(parseInt(parsed!.claimIdPrefixBase36, 36)).toBe(i);
+      expect(Number.parseInt(parsed!.claimIdPrefixBase36, 36)).toBe(i);
     }
   });
 
@@ -257,7 +270,18 @@ describe("parseControlNumber — total parse (never throws) + round-trip", () =>
 
 describe("isValidControlNumber — format + length predicate", () => {
   it("accepts a freshly derived number", () => {
-    expect(isValidControlNumber(deriveControlNumber({ ...{ ccn: "381588", serviceFrom: "2026-01-15", claimId: claimIdForIndex(3), attemptIndex: 2 } }))).toBe(true);
+    expect(
+      isValidControlNumber(
+        deriveControlNumber({
+          ...{
+            ccn: "381588",
+            serviceFrom: "2026-01-15",
+            claimId: claimIdForIndex(3),
+            attemptIndex: 2,
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 
   it("rejects a malformed string", () => {

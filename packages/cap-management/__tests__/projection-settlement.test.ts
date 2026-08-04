@@ -58,13 +58,21 @@ describe("linear-extrapolation projection (D5)", () => {
 
 describe("methodology (D2 / D10)", () => {
   it("proportional weight is the provider-day share, clamped, with a 1.0 fallback", () => {
-    expect(proportionalWeight({ providerElectionDays: 100, totalElectionDaysAllProviders: 200 })).toBe(0.5);
-    expect(proportionalWeight({ providerElectionDays: 0, totalElectionDaysAllProviders: 200 })).toBe(1);
-    expect(proportionalWeight({ providerElectionDays: 300, totalElectionDaysAllProviders: 200 })).toBe(1);
+    expect(
+      proportionalWeight({ providerElectionDays: 100, totalElectionDaysAllProviders: 200 }),
+    ).toBe(0.5);
+    expect(
+      proportionalWeight({ providerElectionDays: 0, totalElectionDaysAllProviders: 200 }),
+    ).toBe(1);
+    expect(
+      proportionalWeight({ providerElectionDays: 300, totalElectionDaysAllProviders: 200 }),
+    ).toBe(1);
   });
   it("allocated per-beneficiary cap: full under streamlined, prorated under proportional", () => {
     expect(perBeneficiaryAllocatedCap(FY25_CAP, "streamlined", 0.5)).toBe(FY25_CAP);
-    expect(perBeneficiaryAllocatedCap(FY25_CAP, "proportional", 0.5)).toBe(Math.round(FY25_CAP * 0.5));
+    expect(perBeneficiaryAllocatedCap(FY25_CAP, "proportional", 0.5)).toBe(
+      Math.round(FY25_CAP * 0.5),
+    );
   });
   it("agency cap is per-bene cap × head-count (streamlined) or × Σweights (proportional)", () => {
     expect(agencyAllocatedCap(FY25_CAP, "streamlined", [1, 1, 1])).toEqual({
@@ -81,11 +89,23 @@ describe("methodology (D2 / D10)", () => {
 
 describe("inpatient 20% cap (D13)", () => {
   it("computes the GIP+IRC fraction and the band", () => {
-    const safe = computeInpatientProjection({ gipDays: 10, ircDays: 5, totalPatientDays: 100, capYear: "FY2025", asOf: "2025-06-01" });
+    const safe = computeInpatientProjection({
+      gipDays: 10,
+      ircDays: 5,
+      totalPatientDays: 100,
+      capYear: "FY2025",
+      asOf: "2025-06-01",
+    });
     expect(safe.inpatientDaysYtd).toBe(15);
     expect(safe.inpatientPctYtd).toBe(0.15);
     expect(safe.alertBand).toBe("inpatient_safe");
-    const breach = computeInpatientProjection({ gipDays: 15, ircDays: 6, totalPatientDays: 100, capYear: "FY2025", asOf: "2025-06-01" });
+    const breach = computeInpatientProjection({
+      gipDays: 15,
+      ircDays: 6,
+      totalPatientDays: 100,
+      capYear: "FY2025",
+      asOf: "2025-06-01",
+    });
     expect(breach.inpatientPctYtd).toBe(0.21);
     expect(breach.alertBand).toBe("inpatient_breach_20");
   });
@@ -96,7 +116,11 @@ describe("inpatient 20% cap (D13)", () => {
       overageCents: 0, // no differential wired → days-only, never a wrong cents figure
     });
     expect(
-      computeInpatientOverage({ inpatientDays: 25, totalPatientDays: 100, rhcDifferentialCentsPerDay: 50_000 }),
+      computeInpatientOverage({
+        inpatientDays: 25,
+        totalPatientDays: 100,
+        rhcDifferentialCentsPerDay: 50_000,
+      }),
     ).toEqual({ allowedDays: 20, overageDays: 5, overageCents: 250_000 });
   });
 });

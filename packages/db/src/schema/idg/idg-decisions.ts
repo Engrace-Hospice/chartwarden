@@ -11,11 +11,11 @@
 import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { idgDecisionKind, idgDecisionStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
-import { idgMeeting } from "./idg-meetings";
 import { idgAgendaItem } from "./idg-agenda-items";
+import { idgMeeting } from "./idg-meetings";
 
 export const idgDecision = pgTable(
   "idg_decision",

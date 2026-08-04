@@ -3,15 +3,7 @@
 // document required to mark it completed. Real intra-M30 FK to sra_finding. ORG-SCOPED:
 // organization_id NOT NULL (canonical app.org_id RLS). `description_text` may name staff →
 // audit-denylisted (§3.6). evidence_document_id is an M22 back-ref (logical). No PHI.
-import {
-  date,
-  integer,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { date, integer, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { sraFinding } from "./sra-finding";
 

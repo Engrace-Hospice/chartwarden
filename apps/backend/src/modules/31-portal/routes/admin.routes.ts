@@ -16,11 +16,7 @@ import { requireIdempotencyKey } from "./concurrency";
 import { rejectOffsetPagination } from "./concurrency";
 import { ABAC_IN_ORG, P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
-import {
-  InviteBereavedRequest,
-  PortalInvitationIssueRequest,
-  parse,
-} from "./portal-typebox";
+import { InviteBereavedRequest, PortalInvitationIssueRequest, parse } from "./portal-typebox";
 
 const IDEMPOTENT = requireIdempotencyKey();
 const NO_OFFSET = rejectOffsetPagination();
@@ -32,7 +28,13 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   // ── invitations ──────────────────────────────────────────────────────────────────────────────────────
   app.post(
     "/api/v1/admin/portal-invitations",
-    { preHandler: [P("portal.invitation.issue"), ABAC_IN_ORG("portal.invitation.issue"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("portal.invitation.issue"),
+        ABAC_IN_ORG("portal.invitation.issue"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const actor = actorOf(request);
       const body = parse(PortalInvitationIssueRequest, request.body);
@@ -60,7 +62,13 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   );
   app.post(
     "/api/v1/admin/portal-invitations/:id/revoke",
-    { preHandler: [P("portal.invitation.revoke"), ABAC_IN_ORG("portal.invitation.revoke"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("portal.invitation.revoke"),
+        ABAC_IN_ORG("portal.invitation.revoke"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       actorOf(request);
       return { ok: true };
@@ -68,7 +76,13 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   );
   app.post(
     "/api/v1/admin/portal-accounts/:id/invite-bereaved",
-    { preHandler: [P("portal.invitation.invite_bereaved"), ABAC_IN_ORG("portal.invitation.invite_bereaved"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("portal.invitation.invite_bereaved"),
+        ABAC_IN_ORG("portal.invitation.invite_bereaved"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       actorOf(request);
       const body = parse(InviteBereavedRequest, request.body);
@@ -115,7 +129,11 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   app.get(
     "/api/v1/admin/portal-accounts",
     {
-      preHandler: [P("portal.account.read_list"), ABAC_IN_ORG("portal.account.read_list"), NO_OFFSET],
+      preHandler: [
+        P("portal.account.read_list"),
+        ABAC_IN_ORG("portal.account.read_list"),
+        NO_OFFSET,
+      ],
       config: { auditRead: { resourceKind: "portal_account", list: true } },
     },
     async (request) => {
@@ -136,7 +154,11 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   app.get(
     "/api/v1/admin/portal-accounts/:id/access-grants",
     {
-      preHandler: [P("portal.account.read_grants"), ABAC_IN_ORG("portal.account.read_grants"), NO_OFFSET],
+      preHandler: [
+        P("portal.account.read_grants"),
+        ABAC_IN_ORG("portal.account.read_grants"),
+        NO_OFFSET,
+      ],
       config: { auditRead: { resourceKind: "portal_access_grant", resourceIdParam: "id" } },
     },
     async (request) => {
@@ -157,7 +179,11 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   app.get(
     "/api/v1/admin/portal-accounts/:id/audit-views",
     {
-      preHandler: [P("portal.account.read_audit"), ABAC_IN_ORG("portal.account.read_audit"), NO_OFFSET],
+      preHandler: [
+        P("portal.account.read_audit"),
+        ABAC_IN_ORG("portal.account.read_audit"),
+        NO_OFFSET,
+      ],
       config: { auditRead: { resourceKind: "portal_audit_view", list: true } },
     },
     async (request) => {
@@ -216,7 +242,10 @@ export function registerPortalAdminRoutes(app: FastifyInstance, deps: PortalRout
   app.get(
     "/api/v1/auditor/portal-engagement/:engagementId",
     {
-      preHandler: [P("portal.engagement.read_auditor"), ABAC_IN_ORG("portal.engagement.read_auditor")],
+      preHandler: [
+        P("portal.engagement.read_auditor"),
+        ABAC_IN_ORG("portal.engagement.read_auditor"),
+      ],
       config: { auditRead: { resourceKind: "portal_engagement", list: false } },
     },
     async (request) => {

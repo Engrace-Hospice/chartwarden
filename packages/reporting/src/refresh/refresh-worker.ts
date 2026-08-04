@@ -121,12 +121,17 @@ export async function handleMvRefresh(
 ): Promise<MvRefreshResult> {
   const meta = await ports.metadataRead.findByKey(job.mvKey);
   if (meta === null) throw new MvRefreshMetadataMissing(job.mvKey);
-  if (meta.status === "retired") return { outcome: "skipped", mvKey: job.mvKey, reason: "mv_retired" };
+  if (meta.status === "retired")
+    return { outcome: "skipped", mvKey: job.mvKey, reason: "mv_retired" };
 
   // Idempotency (§2.6): a redelivery whose debounce tick is already covered by the last refresh no-ops.
   const requestedAtFloor = new Date(job.requestedAtFloor);
   if (meta.lastRefreshedAt !== null && meta.lastRefreshedAt >= requestedAtFloor) {
-    return { outcome: "already_fresh", mvKey: job.mvKey, refreshedAt: meta.lastRefreshedAt.toISOString() };
+    return {
+      outcome: "already_fresh",
+      mvKey: job.mvKey,
+      refreshedAt: meta.lastRefreshedAt.toISOString(),
+    };
   }
 
   const startedAt = ports.now();
@@ -154,7 +159,10 @@ export async function handleMvRefresh(
       refreshFailureCount: 0, // success resets the consecutive-failure counter (§2.4)
       status: "active",
     });
-    await ports.tileCache.invalidateForMv({ mvKey: meta.mvKey, organizationId: job.organizationId });
+    await ports.tileCache.invalidateForMv({
+      mvKey: meta.mvKey,
+      organizationId: job.organizationId,
+    });
     await ports.outbox.emitRefreshSucceeded({
       mvKey: meta.mvKey,
       organizationId: job.organizationId,

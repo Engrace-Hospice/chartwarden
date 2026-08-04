@@ -39,7 +39,13 @@ export function computeTierDeadline(tier: AppealTier, anchor: Date): Date {
 
 /** The tier that follows `tier` in the Medicare hierarchy, or null at the terminal (federal_court). */
 export function nextTier(tier: AppealTier): AppealTier | null {
-  const order: AppealTier[] = ["redetermination", "reconsideration", "alj", "council", "federal_court"];
+  const order: AppealTier[] = [
+    "redetermination",
+    "reconsideration",
+    "alj",
+    "council",
+    "federal_court",
+  ];
   const i = order.indexOf(tier);
   return i >= 0 && i < order.length - 1 ? order[i + 1]! : null;
 }

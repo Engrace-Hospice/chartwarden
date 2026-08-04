@@ -39,7 +39,9 @@ export interface TelehealthProvider {
   readonly vendor: TelehealthProviderVendor;
 
   /** Idempotent on `telehealthVisitId`; returns the same room metadata on replay. */
-  mintRoom(input: TelehealthMintRoomInput): Promise<{ vendorRoomId: string; vendorRoomUrl: string }>;
+  mintRoom(
+    input: TelehealthMintRoomInput,
+  ): Promise<{ vendorRoomId: string; vendorRoomUrl: string }>;
 
   /** Mint a per-participant short-TTL token; the vendor never sees actual identity. */
   mintParticipantToken(

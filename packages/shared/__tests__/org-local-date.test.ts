@@ -1,7 +1,11 @@
 // PARAM-004 follow-up — org-local-date. Proves the actual bug this fixes: naive UTC-instant
 // slicing reads the WRONG calendar date for a large fraction of every US business day.
 import { describe, expect, it } from "vitest";
-import { isValidTimeZone, localDateInTimeZone, orgLocalDateToday } from "../src/dates/org-local-date";
+import {
+  isValidTimeZone,
+  localDateInTimeZone,
+  orgLocalDateToday,
+} from "../src/dates/org-local-date";
 
 describe("localDateInTimeZone", () => {
   it("reads the correct LOCAL calendar date even when UTC has already rolled to the next day", () => {
@@ -25,7 +29,9 @@ describe("localDateInTimeZone", () => {
 
 describe("orgLocalDateToday", () => {
   it("returns today in the given zone, matching localDateInTimeZone(new Date(), tz)", () => {
-    expect(orgLocalDateToday("America/New_York")).toBe(localDateInTimeZone(new Date(), "America/New_York"));
+    expect(orgLocalDateToday("America/New_York")).toBe(
+      localDateInTimeZone(new Date(), "America/New_York"),
+    );
   });
 });
 

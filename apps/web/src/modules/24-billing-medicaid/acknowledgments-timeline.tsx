@@ -16,15 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { ACK_OUTCOME_TONE, ackKindLabel, humanize, toneOf } from "./medicaid-status";
-import {
-  linkStyle,
-  mutedStyle,
-  rowLine,
-  tableStyle,
-  td,
-  tdMono,
-  th,
-} from "./medicaid-ui";
+import { linkStyle, mutedStyle, rowLine, tableStyle, td, tdMono, th } from "./medicaid-ui";
 
 interface Acknowledgment {
   id: string;
@@ -59,7 +51,9 @@ export function MedicaidAcknowledgmentsTimeline(): JSX.Element {
       params: { path: { id: claimId } },
     });
     if (res.error) {
-      setError("The acknowledgment history is unavailable — you may lack billing visibility for this claim.");
+      setError(
+        "The acknowledgment history is unavailable — you may lack billing visibility for this claim.",
+      );
       setLoading(false);
       return;
     }
@@ -143,8 +137,8 @@ export function MedicaidAcknowledgmentsTimeline(): JSX.Element {
       }
       detail={
         <span style={mutedStyle}>
-          A partial acknowledgment moves the claim onto the validation worklist — start from the rejected
-          line numbers and the payer error codes.
+          A partial acknowledgment moves the claim onto the validation worklist — start from the
+          rejected line numbers and the payer error codes.
         </span>
       }
     />

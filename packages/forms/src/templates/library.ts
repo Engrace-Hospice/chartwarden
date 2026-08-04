@@ -81,7 +81,12 @@ export function validateOverlay(overlay: TenantTemplateOverlay): OverlayValidati
   if (floor === undefined) {
     return {
       ok: false,
-      violations: [{ kind: "unknown_template", detail: `no platform template for key '${overlay.templateKey}'` }],
+      violations: [
+        {
+          kind: "unknown_template",
+          detail: `no platform template for key '${overlay.templateKey}'`,
+        },
+      ],
     };
   }
   const violations: OverlayViolation[] = [];
@@ -188,7 +193,10 @@ export function resolveTemplate(
 ): ResolvedTemplate {
   const floor = findFormTemplate(templateKey);
   if (floor === undefined) {
-    throw new TemplateResolutionError("UNKNOWN_TEMPLATE", `no platform template for key '${templateKey}'`);
+    throw new TemplateResolutionError(
+      "UNKNOWN_TEMPLATE",
+      `no platform template for key '${templateKey}'`,
+    );
   }
 
   const effectiveFieldValues: Record<string, readonly string[]> = {};

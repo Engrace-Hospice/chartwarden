@@ -32,6 +32,18 @@ import {
   recomputeRisk,
 } from "./bereavement-api";
 import {
+  CONFIDENCE_BAND_TONE,
+  DATA_COMPLETENESS_TONE,
+  RISK_FACTOR_KEYS,
+  dateTime,
+  humanize,
+  redactionLabel,
+  riskFactorLabel,
+  scoreLabel,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   CheckboxField,
   Field,
@@ -55,18 +67,6 @@ import {
   th,
   thNum,
 } from "./bereavement-ui";
-import {
-  CONFIDENCE_BAND_TONE,
-  DATA_COMPLETENESS_TONE,
-  RISK_FACTOR_KEYS,
-  dateTime,
-  humanize,
-  redactionLabel,
-  riskFactorLabel,
-  scoreLabel,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 const TIERS = ["low", "moderate", "high", "complicated"];
 
@@ -110,7 +110,12 @@ export function BereavementRiskView(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!plan || !planId)
-    return <EmptyState title="Not found" description="This bereavement plan does not exist, or is not on your caseload." />;
+    return (
+      <EmptyState
+        title="Not found"
+        description="This bereavement plan does not exist, or is not on your caseload."
+      />
+    );
 
   const nameOf = (contactId: string | null) =>
     contactId === null
@@ -171,10 +176,7 @@ export function BereavementRiskView(): JSX.Element {
       </FilterRow>
 
       {latest ? (
-        <Card
-          title="Most recent score"
-          actions={<RiskTierPill tier={latest.tier} />}
-        >
+        <Card title="Most recent score" actions={<RiskTierPill tier={latest.tier} />}>
           <SummaryGrid>
             <Field label="Scope" value={nameOf(latest.contactId)} />
             <Field label="Assessed" value={dateTime(latest.assessedAt)} />
@@ -208,25 +210,26 @@ export function BereavementRiskView(): JSX.Element {
           {latest.tier !== latest.deterministicTier ? (
             <Notice tone="warning">
               A counselor override moved this score off the rubric's own tier (
-              {humanize(latest.deterministicTier)}). The rubric answer is retained above — the ledger row
-              carries both, because an override that erased what the rubric said would leave a surveyor
-              with no way to see it was overridden.
+              {humanize(latest.deterministicTier)}). The rubric answer is retained above — the
+              ledger row carries both, because an override that erased what the rubric said would
+              leave a surveyor with no way to see it was overridden.
             </Notice>
           ) : null}
           {latest.factors ? (
             <FactorTable factors={latest.factors} />
           ) : (
             <span style={mutedStyle}>
-              The factor vector is not disclosed to you on this row. That is a confidentiality gate, not an
-              empty rubric.
+              The factor vector is not disclosed to you on this row. That is a confidentiality gate,
+              not an empty rubric.
             </span>
           )}
         </Card>
       ) : (
         <Card title="Most recent score">
           <span style={mutedStyle}>
-            No risk score has been computed for this plan yet. The rubric runs on the survivors' factors
-            plus what Modules 9 and 15 publish; recomputing it here appends the first ledger row.
+            No risk score has been computed for this plan yet. The rubric runs on the survivors'
+            factors plus what Modules 9 and 15 publish; recomputing it here appends the first ledger
+            row.
           </span>
         </Card>
       )}
@@ -280,8 +283,8 @@ export function BereavementRiskView(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          The ledger is append-only — the database refuses UPDATE on a score row outright. A correction is
-          a new row, never an edit.
+          The ledger is append-only — the database refuses UPDATE on a score row outright. A
+          correction is a new row, never an edit.
         </span>
       </Card>
 
@@ -413,8 +416,8 @@ function RecomputeModal({
       {supplyFactors ? (
         <>
           <Notice tone="info">
-            `Unknown` is a real answer. The scorer adjusts its divisor to the knowable factors and lowers
-            the confidence band accordingly — it never treats unknown as absent.
+            `Unknown` is a real answer. The scorer adjusts its divisor to the knowable factors and
+            lowers the confidence band accordingly — it never treats unknown as absent.
           </Notice>
           {RISK_FACTOR_KEYS.map((k) => (
             <SelectField
@@ -434,8 +437,8 @@ function RecomputeModal({
         </>
       ) : (
         <span style={mutedStyle}>
-          Without supplied observations the rubric reads what Modules 9 and 15 publish. A source that is
-          unreadable yields `unknown`, not `absent`.
+          Without supplied observations the rubric reads what Modules 9 and 15 publish. A source
+          that is unreadable yields `unknown`, not `absent`.
         </span>
       )}
 

@@ -3,18 +3,22 @@
 // legal-hold override), the pure CMS-10-year retention core, and that M10 registers the REAL eraser over the
 // Phase-0 deny-stub so validateErasers() passes at a real boot.
 import { beforeEach, describe, expect, it } from "vitest";
-import { __resetErasersForTest, getEraser, validateErasers } from "../src/bootstrap/erasers/registry";
+import {
+  __resetErasersForTest,
+  getEraser,
+  validateErasers,
+} from "../src/bootstrap/erasers/registry";
 import { buildServer } from "../src/bootstrap/index";
+import { wireModuleErasers, wireModuleSeams } from "../src/index";
 import {
   HopeRetentionBlockedError,
   addYears,
-  createInMemoryHopeEraseStore as makeEraseStore,
   earliestErasableInstant,
   eraseHopeRecord,
   isHopeErasureBlocked,
+  createInMemoryHopeEraseStore as makeEraseStore,
   registerHopeErasers,
 } from "../src/modules/10-hope/index";
-import { wireModuleErasers, wireModuleSeams } from "../src/index";
 
 const NOW = "2026-06-22T00:00:00.000Z";
 
@@ -46,7 +50,13 @@ describe("M10-T08 — hope_record eraser (§8.4, D7/D8)", () => {
 
   it("partition-detach-and-drop path: locks the patient, drops whole partitions, reports the total", async () => {
     const { store, locked } = makeEraseStore({
-      counts: { schedules: 4, sfvs: 2, validationFindings: 1, assessments: 6, partitionsDropped: 2 },
+      counts: {
+        schedules: 4,
+        sfvs: 2,
+        validationFindings: 1,
+        assessments: 6,
+        partitionsDropped: 2,
+      },
     });
     const { erased, counts } = await eraseHopeRecord("org_a", "pat_1", store, { now: () => NOW });
     expect(erased).toBe(13); // 4 + 2 + 1 + 6 (partitionsDropped is bookkeeping, already in assessments)
@@ -57,7 +67,13 @@ describe("M10-T08 — hope_record eraser (§8.4, D7/D8)", () => {
 
   it("mixed-partition row-delete path: assessments row-deleted, no partitions dropped", async () => {
     const { store } = makeEraseStore({
-      counts: { schedules: 1, sfvs: 0, validationFindings: 2, assessments: 3, partitionsDropped: 0 },
+      counts: {
+        schedules: 1,
+        sfvs: 0,
+        validationFindings: 2,
+        assessments: 3,
+        partitionsDropped: 0,
+      },
     });
     const { erased, counts } = await eraseHopeRecord("org_a", "pat_1", store, { now: () => NOW });
     expect(erased).toBe(6);

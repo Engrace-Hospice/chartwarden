@@ -264,9 +264,7 @@ export function buildDrizzleOncallSeamStore(db: DbClient): OncallSeamStore {
                 ? null
                 : Math.max(
                     0,
-                    Math.round(
-                      (dispositionAt.getTime() - new Date(c.openedAt).getTime()) / 60_000,
-                    ),
+                    Math.round((dispositionAt.getTime() - new Date(c.openedAt).getTime()) / 60_000),
                   ),
           };
         });
@@ -433,7 +431,9 @@ export function buildDrizzleOncallSeamStore(db: DbClient): OncallSeamStore {
             onCallShiftId: t.triageCall.onCallShiftId,
           })
           .from(t.triageCall)
-          .where(sql`${t.triageCall.linkedVerbalOrderIds} @> ${JSON.stringify([verbalOrderId])}::jsonb`)
+          .where(
+            sql`${t.triageCall.linkedVerbalOrderIds} @> ${JSON.stringify([verbalOrderId])}::jsonb`,
+          )
           .orderBy(desc(t.triageCall.openedAt))
           .limit(1);
         return row ?? null;
@@ -500,10 +500,7 @@ export function buildDrizzleOncallSeamStore(db: DbClient): OncallSeamStore {
           .select({ tier: t.triageEscalation.tier, count: sql<number>`count(*)::int` })
           .from(t.triageEscalation)
           .where(
-            and(
-              gte(t.triageEscalation.escalatedAt, from),
-              lt(t.triageEscalation.escalatedAt, to),
-            ),
+            and(gte(t.triageEscalation.escalatedAt, from), lt(t.triageEscalation.escalatedAt, to)),
           )
           .groupBy(t.triageEscalation.tier);
         return rows.map((r): EscalationTierTally => ({ tier: r.tier, count: Number(r.count) }));

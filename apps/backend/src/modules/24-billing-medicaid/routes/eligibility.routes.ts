@@ -24,15 +24,35 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
   // 22 — force a fresh state-eligibility round-trip
   app.post(
     "/api/v1/medicaid-eligibility-checks",
-    { preHandler: [P("medicaid.eligibility.check"), ABAC_BODY_PE("medicaid.eligibility.check", "provider_entity_medicaid_billing_scope"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.eligibility.check"),
+        ABAC_BODY_PE("medicaid.eligibility.check", "provider_entity_medicaid_billing_scope"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const body = parse(RefreshEligibilityBody, request.body);
-      return reply.code(202).send(await writeService.refreshEligibility(writeActorOf(request), body));
+      return reply
+        .code(202)
+        .send(await writeService.refreshEligibility(writeActorOf(request), body));
     },
   );
 
   // 23 — per-patient eligibility history
-  app.get("/api/v1/medicaid-eligibility-checks", { preHandler: [P("medicaid.eligibility.read")], config: { auditRead: { resourceKind: "medicaid_eligibility_check", list: true } } }, async (request, reply) =>
-    reply.send(await readService.listEligibilityChecks(actorOf(request), parseQuery(EligibilityListQuery, request.query))),
+  app.get(
+    "/api/v1/medicaid-eligibility-checks",
+    {
+      preHandler: [P("medicaid.eligibility.read")],
+      config: { auditRead: { resourceKind: "medicaid_eligibility_check", list: true } },
+    },
+    async (request, reply) =>
+      reply.send(
+        await readService.listEligibilityChecks(
+          actorOf(request),
+          parseQuery(EligibilityListQuery, request.query),
+        ),
+      ),
   );
 }

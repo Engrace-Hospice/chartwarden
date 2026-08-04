@@ -4,15 +4,7 @@
 // worker. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). provider_entity_id is a
 // logical FK to M40 (plain uuid). No PHI; no audit denylist.
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const measureRecomputeQueue = pgTable(

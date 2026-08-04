@@ -10,10 +10,6 @@
 // the §D13 AI-block. Mutations carry `Idempotency-Key` (§4.1). Org/actor binding is ALWAYS server-side.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
-import { CLAIM_CASELOAD, OVERRIDE_ELIGIBLE, P, STEP_UP } from "./guards";
-import type { M23ReadRouteService } from "./read-service";
-import type { M23WriteRouteService } from "./write-service";
 import {
   ClaimIdParamsSchema,
   OverrideParamsSchema,
@@ -21,6 +17,10 @@ import {
   ValidationRunParamsSchema,
   parse,
 } from "./billing-typebox";
+import { requireIdempotencyKey } from "./concurrency";
+import { CLAIM_CASELOAD, OVERRIDE_ELIGIBLE, P, STEP_UP } from "./guards";
+import type { M23ReadRouteService } from "./read-service";
+import type { M23WriteRouteService } from "./write-service";
 
 export interface ValidationRouteDeps {
   readonly readService: M23ReadRouteService;

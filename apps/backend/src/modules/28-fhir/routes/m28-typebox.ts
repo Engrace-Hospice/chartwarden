@@ -14,12 +14,12 @@
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
+  FHIR_BULK_EXPORT_STATUSES,
+  FHIR_CLIENT_STATUSES,
   FHIR_CLIENT_TIERS,
   FHIR_CLIENT_TYPES,
   FHIR_INBOUND_OWNER_MODULES,
   FHIR_INBOUND_STATUSES,
-  FHIR_BULK_EXPORT_STATUSES,
-  FHIR_CLIENT_STATUSES,
   ValidationError,
 } from "@wardenx/types";
 
@@ -83,11 +83,17 @@ export const ResourceReadParams = Type.Object({
 export const ResourceTypeParams = Type.Object({
   resourceType: Type.String({ minLength: 1, maxLength: 60 }),
 });
-export const PatientEverythingParams = Type.Object({ id: Type.String({ minLength: 1, maxLength: 200 }) });
-export const CodeSystemParams = Type.Object({ system: Type.String({ minLength: 1, maxLength: 200 }) });
+export const PatientEverythingParams = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 200 }),
+});
+export const CodeSystemParams = Type.Object({
+  system: Type.String({ minLength: 1, maxLength: 200 }),
+});
 export const ValueSetParams = Type.Object({ vs: Type.String({ minLength: 1, maxLength: 200 }) });
 export const GroupExportParams = Type.Object({ id: Type.String({ minLength: 1, maxLength: 200 }) });
-export const Phase2ResourceParams = Type.Object({ id: Type.String({ minLength: 1, maxLength: 200 }) });
+export const Phase2ResourceParams = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 200 }),
+});
 
 // ── §4.2 admin bodies — client registry (R24-R30) ────────────────────────────────────────────────────
 
@@ -95,10 +101,10 @@ export const CreateClientBody = Type.Object({
   name: Type.String({ minLength: 3, maxLength: 200 }),
   type: FhirClientTypeSchema,
   jwksUri: Type.Optional(Type.String({ format: "uri", pattern: "^https://" })),
-  allowedScopes: Type.Array(
-    Type.String({ pattern: "^system/[A-Z][A-Za-z]+\\.(read|write)$" }),
-    { minItems: 1, maxItems: 50 },
-  ),
+  allowedScopes: Type.Array(Type.String({ pattern: "^system/[A-Z][A-Za-z]+\\.(read|write)$" }), {
+    minItems: 1,
+    maxItems: 50,
+  }),
   tier: FhirClientTierSchema,
   /** Tighten-only: the service refuses a value that LOOSENS the platform floor for the tier. */
   rateLimitRpsOverride: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
@@ -125,7 +131,10 @@ export const InitiateBulkExportBody = Type.Object({
   requestKind: Lit(["system", "group", "patient"] as const),
   groupId: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   patientIds: Type.Optional(Type.Array(Uuid, { maxItems: 5000 })),
-  resourceTypes: Type.Array(Type.String({ minLength: 1, maxLength: 60 }), { minItems: 1, maxItems: 50 }),
+  resourceTypes: Type.Array(Type.String({ minLength: 1, maxLength: 60 }), {
+    minItems: 1,
+    maxItems: 50,
+  }),
   since: InstantOpt,
 });
 
@@ -173,9 +182,7 @@ export const InboundListQuery = Type.Object({
 export const TokenFormBody = Type.Object({
   grant_type: Type.Literal("client_credentials"),
   scope: Type.String({ minLength: 1, maxLength: 2000 }),
-  client_assertion_type: Type.Literal(
-    "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-  ),
+  client_assertion_type: Type.Literal("urn:ietf:params:oauth:client-assertion-type:jwt-bearer"),
   client_assertion: Type.String({ minLength: 1, maxLength: 8192 }),
 });
 

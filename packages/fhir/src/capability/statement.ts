@@ -69,7 +69,10 @@ export interface FhirCapabilityStatement {
       readonly resource: readonly {
         readonly type: string;
         readonly interaction: readonly { readonly code: FhirResourceInteraction }[];
-        readonly searchParam?: readonly { readonly name: string; readonly type: "token" | "date" | "string" | "reference" }[];
+        readonly searchParam?: readonly {
+          readonly name: string;
+          readonly type: "token" | "date" | "string" | "reference";
+        }[];
       }[];
       readonly operation: readonly { readonly name: string; readonly definition: string }[];
     },
@@ -92,7 +95,9 @@ export function buildCapabilityStatement(catalog: FhirCapabilityCatalog): FhirCa
   const resource = [...catalog.resources]
     .sort((a, b) => a.type.localeCompare(b.type))
     .map((r) => {
-      const interaction = sortedUnique(r.interactions).map((code) => ({ code: code as FhirResourceInteraction }));
+      const interaction = sortedUnique(r.interactions).map((code) => ({
+        code: code as FhirResourceInteraction,
+      }));
       const params = r.searchParams ? sortedUnique(r.searchParams) : [];
       const searchParam = params.map((name) => ({ name, type: inferSearchParamType(name) }));
       return searchParam.length > 0
@@ -111,7 +116,10 @@ export function buildCapabilityStatement(catalog: FhirCapabilityCatalog): FhirCa
     kind: "instance",
     fhirVersion: catalog.fhirVersion,
     format: ["application/fhir+json"],
-    implementation: { description: `WardenX FHIR Gateway (${catalog.releaseTag})`, url: catalog.baseUrl },
+    implementation: {
+      description: `WardenX FHIR Gateway (${catalog.releaseTag})`,
+      url: catalog.baseUrl,
+    },
     rest: [{ mode: "server", resource, operation }],
   };
 }
@@ -152,8 +160,13 @@ export function capabilityChecksum(statement: FhirCapabilityStatement): string {
 
 /** §W-FHIR-09 — the `fhir_capability_snapshot.signature`: HMAC-SHA256 (hex) of the canonical statement
  *  JSON, keyed by the platform signing key. Computed at boot; re-computed by the hourly validator. */
-export function signCapabilitySnapshot(statement: FhirCapabilityStatement, signingKey: string): string {
-  return createHmac("sha256", signingKey).update(canonicalizeCapability(statement), "utf8").digest("hex");
+export function signCapabilitySnapshot(
+  statement: FhirCapabilityStatement,
+  signingKey: string,
+): string {
+  return createHmac("sha256", signingKey)
+    .update(canonicalizeCapability(statement), "utf8")
+    .digest("hex");
 }
 
 /**

@@ -19,7 +19,6 @@
 // throws only when a validation actually RUNS, so boot stays green. NO PHI / NO MBI (D13); the context
 // carries ids + aggregate facts only.
 import { createHash } from "node:crypto";
-import * as schema from "@wardenx/db/schema";
 import {
   type BillingRuleRegistry,
   type ClaimState,
@@ -29,14 +28,15 @@ import {
   repositories,
   summarizeRuleRun,
 } from "@wardenx/billing";
+import type * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import {
-  assertNotAiActor,
   type BillingDb,
   type BillingTx,
   type BillingWriteActor,
   type ClaimStateService,
+  assertNotAiActor,
 } from "./claim-state-service";
 
 /** The materialized validation inputs the service runs the registry against (PHI-free, plain-data). */
@@ -130,7 +130,9 @@ export function buildClaimValidationService(
   const overriddenKeysForClaim = async (tx: BillingTx, claimId: string): Promise<Set<string>> => {
     const priorRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(claimId);
     if (!priorRun) return new Set();
-    const failures = await new repositories.ValidationResultRepository(tx).listFailuresForRun(priorRun.id);
+    const failures = await new repositories.ValidationResultRepository(tx).listFailuresForRun(
+      priorRun.id,
+    );
     if (failures.length === 0) return new Set();
     const overrides = await new repositories.ValidationOverrideRepository(tx).listByResultIds(
       failures.map((f) => f.id),
@@ -156,7 +158,8 @@ export function buildClaimValidationService(
         !overriddenKeys.has(r.ruleKey),
     );
     const allOverridable =
-      blocking.length > 0 && blocking.every((r) => registry.getRule(r.ruleKey)?.overrideRoleRequired);
+      blocking.length > 0 &&
+      blocking.every((r) => registry.getRule(r.ruleKey)?.overrideRoleRequired);
     return allOverridable ? "overrides_required" : "failures_present";
   };
 
@@ -169,7 +172,8 @@ export function buildClaimValidationService(
         async (tx) => {
           const claimRepo = new repositories.ClaimRepository(tx);
           const claim = await claimRepo.findById(input.claimId);
-          if (!claim || claim.organizationId !== actor.organizationId) throw new NotFoundError("claim");
+          if (!claim || claim.organizationId !== actor.organizationId)
+            throw new NotFoundError("claim");
           if (claim.state !== "validating" && claim.state !== "ready") {
             throw new ConflictError(
               `a claim in state '${claim.state}' cannot be validated (assembly must place it in 'validating')`,
@@ -201,9 +205,9 @@ export function buildClaimValidationService(
           const runRepo = new repositories.ValidationRunRepository(tx);
           const existing = await runRepo.findByIdempotency(claim.id, input.trigger, runInputHash);
           if (existing) {
-            const priorFailures = await new repositories.ValidationResultRepository(tx).listFailuresForRun(
-              existing.id,
-            );
+            const priorFailures = await new repositories.ValidationResultRepository(
+              tx,
+            ).listFailuresForRun(existing.id);
             return {
               validationRunId: existing.id,
               claimId: claim.id,

@@ -10,7 +10,16 @@
 // `query_filters_cipher` is DENYLISTED in the M4 write-audit trigger (§3.6 — emit <changed> marker
 // only, never plaintext). All cross-module refs (actor membership, report_view) are plain uuid
 // app-validated. RLS + grants + the (denylisted) M4 write-audit trigger also land in that migration.
-import { boolean, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const reportDrilldownAudit = pgTable(
   "report_drilldown_audit",

@@ -8,7 +8,7 @@
 // NOT done here (the sidecar owns the exhaustive parse); this is the minimal, deterministic projection the
 // cascade + owner-module apply need. The separators are read from MSH-1/MSH-2 so a non-standard encoding
 // still parses (mirrors `parseMshEnvelope`).
-import { parseMshEnvelope, type MshEnvelope } from "../listener/mllp-framing";
+import { type MshEnvelope, parseMshEnvelope } from "../listener/mllp-framing";
 
 /** The HL7 encoding separators read off MSH-1 (field) and MSH-2 (component/repetition/escape/subcomponent). */
 export interface Hl7Separators {

@@ -9,10 +9,10 @@
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { orderSignatureKind, orderSignatureTargetKind } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const orderSignatures = pgTable(
   "order_signature",
@@ -50,7 +50,11 @@ export const orderSignatures = pgTable(
       .on(t.targetKind, t.targetId)
       .where(sql`signature_kind = 'signature'`),
     byTarget: index("order_signature_target_idx").on(t.targetKind, t.targetId),
-    bySigner: index("order_signature_signer_idx").on(t.organizationId, t.signerMembershipId, t.signedAt),
+    bySigner: index("order_signature_signer_idx").on(
+      t.organizationId,
+      t.signerMembershipId,
+      t.signedAt,
+    ),
   }),
 );
 

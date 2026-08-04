@@ -373,7 +373,11 @@ exports.MODULES = [
   {
     id: 9,
     name: "Clinical Assessments Suite",
-    codePaths: ["packages/assessments", "apps/backend/src/modules/09-assessments", "apps/web/src/modules/09-assessments"],
+    codePaths: [
+      "packages/assessments",
+      "apps/backend/src/modules/09-assessments",
+      "apps/web/src/modules/09-assessments",
+    ],
     dependsOn: [1, 38], // +1: M9 registers its §4.7/D7 LatestAssessmentProvider + ScaleSeriesProvider seams via the M1-owned bootstrap registry (M9-T04); +web: Track B in-task screens (ADR-0030), land in M9-T07
     ownedTables: [
       "clinical_assessment",
@@ -386,7 +390,12 @@ exports.MODULES = [
   {
     id: 10,
     name: "HOPE Engine",
-    codePaths: ["packages/hope", "packages/iqies-client", "apps/backend/src/modules/10-hope", "apps/web/src/modules/10-hope"],
+    codePaths: [
+      "packages/hope",
+      "packages/iqies-client",
+      "apps/backend/src/modules/10-hope",
+      "apps/web/src/modules/10-hope",
+    ],
     dependsOn: [1, 9, 36, 38], // +M1: registers HOPE seams into the M1-owned bootstrap registry (M10-T05); +iqies-client ADR-0028; +web: Track B in-task screens (ADR-0030), land in M10-T08
     ownedTables: [
       "hope_timepoint_schedule",
@@ -400,7 +409,11 @@ exports.MODULES = [
   {
     id: 11,
     name: "Orders",
-    codePaths: ["packages/orders", "apps/backend/src/modules/11-orders", "apps/web/src/modules/11-orders"],
+    codePaths: [
+      "packages/orders",
+      "apps/backend/src/modules/11-orders",
+      "apps/web/src/modules/11-orders",
+    ],
     dependsOn: [1, 6, 36, 38, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M11's backend module wires its §2.8/§4.3 owned seams into (M11-T05; M6..M10 seam-task precedent); +packages/orders: §3.1 M11-owned feature pkg (kinds/catalog/seams/alerts), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M11-T08
     ownedTables: [
       "order_record",
@@ -457,11 +470,7 @@ exports.MODULES = [
   {
     id: 14,
     name: "IDG",
-    codePaths: [
-      "packages/idg",
-      "apps/backend/src/modules/14-idg",
-      "apps/web/src/modules/14-idg",
-    ], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
+    codePaths: ["packages/idg", "apps/backend/src/modules/14-idg", "apps/web/src/modules/14-idg"], // +packages/idg: §3.1 M14-owned feature pkg (quorum/schedule/discipline-view policy → lifecycle/packet-builder), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M14-T07
     dependsOn: [1, 7, 8, 36], // +M1: the bootstrap seam registry (registerSeam/getSeam) M14's backend module wires its §4.8 owned seams (IdgPacketProvider/IdgDecisionProvider/IdgScheduleProvider) into (M14-T05; M6..M13 seam-task precedent)
     ownedTables: [
       "idg_meeting",
@@ -586,10 +595,7 @@ exports.MODULES = [
   {
     id: 20,
     name: "Field Safety",
-    codePaths: [
-      "apps/backend/src/modules/20-field-safety",
-      "apps/web/src/modules/20-field-safety",
-    ], // +web: Track B in-task screens (ADR-0030), land in M20-T07. `packages/safety-client` (spec §3.1)
+    codePaths: ["apps/backend/src/modules/20-field-safety", "apps/web/src/modules/20-field-safety"], // +web: Track B in-task screens (ADR-0030), land in M20-T07. `packages/safety-client` (spec §3.1)
     // is NOT adopted — see the .ts manifest for the full read.
     dependsOn: [1, 17, 36], // +M1 (M20-T02): @wardenx/db + tenancy + the bootstrap eraser registry the
     // §3.7 `safety_record` eraser registers into — the same foundation edge M15/M16/M18/M19/M21 carry.
@@ -699,7 +705,11 @@ exports.MODULES = [
   {
     id: 24,
     name: "Billing — Medicaid",
-    codePaths: ["packages/medicaid-adapters", "apps/backend/src/modules/24-billing-medicaid", "apps/web/src/modules/24-billing-medicaid"],
+    codePaths: [
+      "packages/medicaid-adapters",
+      "apps/backend/src/modules/24-billing-medicaid",
+      "apps/web/src/modules/24-billing-medicaid",
+    ],
     dependsOn: [1, 23, 40],
     ownedTables: [
       "medicaid_claim",
@@ -744,7 +754,11 @@ exports.MODULES = [
   {
     id: 26,
     name: "Cap Management",
-    codePaths: ["packages/cap-management", "apps/backend/src/modules/26-cap", "apps/web/src/modules/26-cap"],
+    codePaths: [
+      "packages/cap-management",
+      "apps/backend/src/modules/26-cap",
+      "apps/web/src/modules/26-cap",
+    ],
     dependsOn: [1, 23, 36],
     ownedTables: [
       "cap_beneficiary_accrual",
@@ -990,7 +1004,11 @@ exports.MODULES = [
   {
     id: 37,
     name: "Inpatient Unit (IPU) Management",
-    codePaths: ["apps/backend/src/modules/37-ipu", "packages/inpatient", "apps/web/src/modules/37-ipu"],
+    codePaths: [
+      "apps/backend/src/modules/37-ipu",
+      "packages/inpatient",
+      "apps/web/src/modules/37-ipu",
+    ],
     dependsOn: [1, 2, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 15, 17, 18, 21, 22, 23, 26, 27, 36, 38, 40],
     ownedTables: [
       "gip_admission_criteria",

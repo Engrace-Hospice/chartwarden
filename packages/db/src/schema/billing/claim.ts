@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `claim` (M23 Billing-Medicare §3.3, D4/D14; retention class `compliance`).
 // The Medicare-claim root: one row per hospice claim (TOB 811/812/813/814 + 817/818 replacements).
 // The XState lifecycle (D4) lives in `state`; `claim_control_number` is the deterministic per-D4
@@ -15,8 +16,17 @@
 // `*_membership_id` (core memberships), and all latest_*/replaces/replaced-by pointers are LOGICAL
 // FKs — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). No MBI is ever
 // stored here (D13, §8.7).
-import { bigint, date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  bigint,
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { m23ClaimState, m23ClaimTob, m23MacJurisdiction } from "./types";
 
@@ -77,12 +87,19 @@ export const claim = pgTable(
     orgPe: index("claim_org_pe_idx").on(t.organizationId, t.providerEntityId),
     patient: index("claim_patient_idx").on(t.organizationId, t.patientId, t.serviceFrom),
     state: index("claim_state_idx").on(t.organizationId, t.state, t.serviceFrom),
-    controlNumberUq: uniqueIndex("claim_control_number_uq").on(t.providerEntityId, t.claimControlNumber),
+    controlNumberUq: uniqueIndex("claim_control_number_uq").on(
+      t.providerEntityId,
+      t.claimControlNumber,
+    ),
     // partial unique: at most one non-superseded claim per (PE, patient, exact from-through) for non-replacement TOBs
     uniqueActiveByRange: uniqueIndex("claim_active_by_range_uq")
       .on(t.providerEntityId, t.patientId, t.serviceFrom, t.serviceTo)
-      .where(sql`tob IN ('811','812','813','814') AND state NOT IN ('VOIDED','REPLACED','ACK_REJECTED')`),
-    replacesIdx: index("claim_replaces_idx").on(t.replacesClaimId).where(sql`replaces_claim_id IS NOT NULL`),
+      .where(
+        sql`tob IN ('811','812','813','814') AND state NOT IN ('VOIDED','REPLACED','ACK_REJECTED')`,
+      ),
+    replacesIdx: index("claim_replaces_idx")
+      .on(t.replacesClaimId)
+      .where(sql`replaces_claim_id IS NOT NULL`),
     serviceDatesValid: sql`CHECK (service_to >= service_from)`,
     replacementRequiresPredecessor: sql`CHECK ((tob IN ('817','818')) = (replaces_claim_id IS NOT NULL))`,
     replacementReasonFloor: sql`CHECK (replaces_claim_id IS NULL OR length(replacement_reason) >= 40)`,

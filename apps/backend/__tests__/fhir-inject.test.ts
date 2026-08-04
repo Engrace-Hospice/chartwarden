@@ -50,13 +50,13 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  type FhirGatewayAbacResolver,
+  type FhirGatewayStore,
+  M28_PERMISSION_KEY_LIST,
   buildFhirGatewayAbacPredicates,
   createInMemoryFhirGatewayStore,
   denyStubFhirGatewayAbacResolver,
-  M28_PERMISSION_KEY_LIST,
   mountM28Routes,
-  type FhirGatewayAbacResolver,
-  type FhirGatewayStore,
 } from "../src/modules/28-fhir/index";
 
 // ── header-auth shim (the M11/M14/M19 precedent) ─────────────────────────────────────────────────────
@@ -173,7 +173,11 @@ function makeServer() {
         // `unsupportedScopes()` — but a SESSION's `scopesGranted` is not re-validated against that closed
         // set at bearer-resolution time, so seeding one directly here is the only way to exercise R16's
         // write-scope check at all in Phase 1).
-        scopesGranted: ["system/*.read", "system/Patient.write", "system/MedicationStatement.write"],
+        scopesGranted: [
+          "system/*.read",
+          "system/Patient.write",
+          "system/MedicationStatement.write",
+        ],
       },
       {
         clientId: LIMITED_CLIENT_ID,
@@ -215,7 +219,12 @@ function makeServer() {
   return { app, store };
 }
 
-const SUPER = { "x-test-user": "admin_1", "x-test-org": ORG, "x-test-roles": "org_admin", "x-test-membership": MEMBER_ADMIN };
+const SUPER = {
+  "x-test-user": "admin_1",
+  "x-test-org": ORG,
+  "x-test-roles": "org_admin",
+  "x-test-membership": MEMBER_ADMIN,
+};
 const SUPER_STEPUP = { ...SUPER, "x-step-up": "fresh" };
 const COMPLIANCE = {
   "x-test-user": "compliance_1",
@@ -223,7 +232,12 @@ const COMPLIANCE = {
   "x-test-roles": "compliance_officer",
   "x-test-membership": MEMBER_COMPLIANCE,
 };
-const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "none", "x-test-membership": MEMBER_NOPERM };
+const NOPERM = {
+  "x-test-user": "noperm_1",
+  "x-test-org": ORG,
+  "x-test-roles": "none",
+  "x-test-membership": MEMBER_NOPERM,
+};
 
 const BEARER_FULL = { authorization: "Bearer tok-full" };
 const BEARER_LIMITED = { authorization: "Bearer tok-limited" };
@@ -254,7 +268,13 @@ describe("M28-fhir-inject — auth gating", () => {
       method: "POST",
       url: "/api/v1/fhir/clients",
       headers: NOPERM,
-      payload: { name: "x", type: "api_key", allowedScopes: ["system/Patient.read"], tier: "tier-2", baaContractReference: "baa" },
+      payload: {
+        name: "x",
+        type: "api_key",
+        allowedScopes: ["system/Patient.read"],
+        tier: "tier-2",
+        baaContractReference: "baa",
+      },
     });
     expect(res.statusCode).toBe(403);
     await app.close();
@@ -262,7 +282,12 @@ describe("M28-fhir-inject — auth gating", () => {
 
   it("admin surface: a correctly-permissioned actor with an empty body → 422 VALIDATION_FAILED (route: PUT /api/v1/fhir/config)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "PUT", url: "/api/v1/fhir/config", headers: SUPER, payload: {} });
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/v1/fhir/config",
+      headers: SUPER,
+      payload: {},
+    });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("VALIDATION_FAILED");
     await app.close();
@@ -278,7 +303,11 @@ describe("M28-fhir-inject — auth gating", () => {
 
   it("FHIR-spec bearer surface: a bearer whose granted scopes exclude the resource → 403 FHIR_SCOPE_DENIED (route: GET /fhir/r4/Encounter/:id)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/fhir/r4/Encounter/e1", headers: BEARER_LIMITED });
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/Encounter/e1",
+      headers: BEARER_LIMITED,
+    });
     expect(res.statusCode).toBe(403);
     expect(res.json().issue[0].code).toBe("forbidden");
     await app.close();
@@ -334,23 +363,31 @@ describe("M28-fhir-inject — R3: token mint", () => {
 
 // ── forward-seam + Phase-2 resources — always 404, no bearer required (documented, not a gap) ───────────
 describe("M28-fhir-inject — forward-seam / Phase-2 resources: 404 before any reader, no auth needed", () => {
-  it.each(["Claim", "ClaimResponse", "ExplanationOfBenefit", "ServiceRequest", "QuestionnaireResponse", "Location"])(
-    "GET /fhir/r4/%s/:id → 404 OperationOutcome",
-    async (resource) => {
-      const { app } = makeServer();
-      const res = await app.inject({ method: "GET", url: `/fhir/r4/${resource}/x` });
-      expect(res.statusCode).toBe(404);
-      expect(res.json().resourceType).toBe("OperationOutcome");
-      await app.close();
-    },
-  );
+  it.each([
+    "Claim",
+    "ClaimResponse",
+    "ExplanationOfBenefit",
+    "ServiceRequest",
+    "QuestionnaireResponse",
+    "Location",
+  ])("GET /fhir/r4/%s/:id → 404 OperationOutcome", async (resource) => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: `/fhir/r4/${resource}/x` });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().resourceType).toBe("OperationOutcome");
+    await app.close();
+  });
 });
 
 // ── R4/R5/R6 — resource read / search / $everything ──────────────────────────────────────────────────
 describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () => {
   it("GET /fhir/r4/Patient/:id → 404 not-found (the projection reader seam is a fail-closed deny-stub this wave, per the route's own comment — not a fabricated 500-avoiding pass)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/fhir/r4/Patient/patient-1", headers: BEARER_FULL });
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/Patient/patient-1",
+      headers: BEARER_FULL,
+    });
     expect(res.statusCode).toBe(404);
     expect(res.json().issue[0].code).toBe("not-found");
     await app.close();
@@ -367,7 +404,11 @@ describe("M28-fhir-inject — R4/R5/R6: resource read, search, $everything", () 
 
   it("GET /fhir/r4/Patient/:id/$everything → 200 empty Bundle", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/fhir/r4/Patient/patient-1/$everything", headers: BEARER_FULL });
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/Patient/patient-1/$everything",
+      headers: BEARER_FULL,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().resourceType).toBe("Bundle");
     await app.close();
@@ -379,22 +420,42 @@ describe("M28-fhir-inject — R7-R11: bulk $export lifecycle", () => {
   it("system/patient/group $export all accept (202); poll shows accepted (202); cancel accepts (202)", async () => {
     const { app } = makeServer();
 
-    const systemExport = await app.inject({ method: "POST", url: "/fhir/r4/$export", headers: BEARER_FULL });
+    const systemExport = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/$export",
+      headers: BEARER_FULL,
+    });
     expect(systemExport.statusCode).toBe(202);
     const contentLocation = systemExport.headers["content-location"] as string;
     const jobId = contentLocation.split("/").pop() as string;
 
-    const patientExport = await app.inject({ method: "POST", url: "/fhir/r4/Patient/$export", headers: BEARER_FULL });
+    const patientExport = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/Patient/$export",
+      headers: BEARER_FULL,
+    });
     expect(patientExport.statusCode).toBe(202);
 
-    const groupExport = await app.inject({ method: "POST", url: "/fhir/r4/Group/g1/$export", headers: BEARER_FULL });
+    const groupExport = await app.inject({
+      method: "POST",
+      url: "/fhir/r4/Group/g1/$export",
+      headers: BEARER_FULL,
+    });
     expect(groupExport.statusCode).toBe(202);
 
-    const poll = await app.inject({ method: "GET", url: `/fhir/r4/$export-poll-status/${jobId}`, headers: BEARER_FULL });
+    const poll = await app.inject({
+      method: "GET",
+      url: `/fhir/r4/$export-poll-status/${jobId}`,
+      headers: BEARER_FULL,
+    });
     expect(poll.statusCode).toBe(202);
     expect(poll.json().status).toBe("accepted");
 
-    const cancel = await app.inject({ method: "DELETE", url: `/fhir/r4/$export-poll-status/${jobId}`, headers: BEARER_FULL });
+    const cancel = await app.inject({
+      method: "DELETE",
+      url: `/fhir/r4/$export-poll-status/${jobId}`,
+      headers: BEARER_FULL,
+    });
     expect(cancel.statusCode).toBe(202);
     expect(cancel.json().resourceType).toBe("OperationOutcome");
 
@@ -406,7 +467,11 @@ describe("M28-fhir-inject — R7-R11: bulk $export lifecycle", () => {
 describe("M28-fhir-inject — R12-R15: CodeSystem / ValueSet", () => {
   it("GET /fhir/r4/CodeSystem/:system → 404 not-supported (Phase-1 posture, not a gap)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/fhir/r4/CodeSystem/loinc", headers: BEARER_FULL });
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/CodeSystem/loinc",
+      headers: BEARER_FULL,
+    });
     expect(res.statusCode).toBe(404);
     expect(res.json().issue[0].code).toBe("not-supported");
     await app.close();
@@ -427,7 +492,11 @@ describe("M28-fhir-inject — R12-R15: CodeSystem / ValueSet", () => {
 
   it("GET /fhir/r4/ValueSet/:vs → 404 not-supported (Phase-1 posture, not a gap)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/fhir/r4/ValueSet/some-vs", headers: BEARER_FULL });
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/ValueSet/some-vs",
+      headers: BEARER_FULL,
+    });
     expect(res.statusCode).toBe(404);
     expect(res.json().issue[0].code).toBe("not-supported");
     await app.close();
@@ -435,7 +504,11 @@ describe("M28-fhir-inject — R12-R15: CodeSystem / ValueSet", () => {
 
   it("GET /fhir/r4/ValueSet/:vs/$expand → 200 ValueSet", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/fhir/r4/ValueSet/some-vs/$expand", headers: BEARER_FULL });
+    const res = await app.inject({
+      method: "GET",
+      url: "/fhir/r4/ValueSet/some-vs/$expand",
+      headers: BEARER_FULL,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().resourceType).toBe("ValueSet");
     await app.close();
@@ -534,7 +607,9 @@ describe("M28-fhir-inject — admin: client registry (R23-R30)", () => {
       method: "POST",
       url: `/api/v1/fhir/clients/${clientId}/revoke`,
       headers: SUPER,
-      payload: { rationale: "the partner organization was offboarded at the end of its contract term." },
+      payload: {
+        rationale: "the partner organization was offboarded at the end of its contract term.",
+      },
     });
     expect(revoke.statusCode).toBe(200);
     expect(revoke.json().client.status).toBe("revoked");
@@ -581,7 +656,11 @@ describe("M28-fhir-inject — admin: bulk export jobs (R31-R33)", () => {
     const jobId = create.json().id as string;
     expect(create.json().initiatedByMembershipId).toBe(MEMBER_ADMIN);
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/fhir/bulk-export-jobs", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/fhir/bulk-export-jobs",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().jobs.map((j: { id: string }) => j.id)).toContain(jobId);
 
@@ -619,7 +698,11 @@ describe("M28-fhir-inject — admin: inbound proposal review (R34-R36)", () => {
       payload: { resourceType: "MedicationStatement", status: "active" },
     });
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/fhir/inbound-proposals", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/fhir/inbound-proposals",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().proposals).toHaveLength(2);
 
@@ -640,7 +723,9 @@ describe("M28-fhir-inject — admin: inbound proposal review (R34-R36)", () => {
       method: "POST",
       url: `/api/v1/fhir/inbound-proposals/${medProposal.id}/reject`,
       headers: SUPER,
-      payload: { rationale: "the reconciled medication history already reflects this entry accurately." },
+      payload: {
+        rationale: "the reconciled medication history already reflects this entry accurately.",
+      },
     });
     expect(reject.statusCode).toBe(200);
     expect(reject.json().proposalStatus).toBe("rejected");
@@ -662,7 +747,10 @@ describe("M28-fhir-inject — admin: tenant config (R37-R39)", () => {
       method: "PUT",
       url: "/api/v1/fhir/config",
       headers: SUPER,
-      payload: { tenantFhirHost: "fhir.partner.example.org", identifierUriBase: "https://wardenx.example/fhir" },
+      payload: {
+        tenantFhirHost: "fhir.partner.example.org",
+        identifierUriBase: "https://wardenx.example/fhir",
+      },
     });
     expect(write.statusCode).toBe(200);
     expect(write.json().tenantFhirHost).toBe("fhir.partner.example.org");
@@ -685,9 +773,16 @@ describe("M28-fhir-inject — admin: tenant config (R37-R39)", () => {
       method: "PUT",
       url: "/api/v1/fhir/config",
       headers: SUPER,
-      payload: { tenantFhirHost: "fhir.partner.example.org", identifierUriBase: "https://wardenx.example/fhir" },
+      payload: {
+        tenantFhirHost: "fhir.partner.example.org",
+        identifierUriBase: "https://wardenx.example/fhir",
+      },
     });
-    const rotate = await app.inject({ method: "POST", url: "/api/v1/fhir/config/rotate-cursor-key", headers: SUPER });
+    const rotate = await app.inject({
+      method: "POST",
+      url: "/api/v1/fhir/config/rotate-cursor-key",
+      headers: SUPER,
+    });
     expect(rotate.statusCode).toBe(403);
     await app.close();
   });

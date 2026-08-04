@@ -33,7 +33,7 @@ import type {
   SupplyRequestStatusView,
 } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
-import { EMPTY_SUPPLY_COST_TOTALS, type SupplyCostTotals, type SuppliesSeamStore } from "./store";
+import { EMPTY_SUPPLY_COST_TOTALS, type SuppliesSeamStore, type SupplyCostTotals } from "./store";
 
 type DispatchRow = typeof schema.comfortKitDispatch.$inferSelect;
 type DispatchedContentRow = typeof schema.comfortKitDispatchedContent.$inferSelect;
@@ -114,7 +114,8 @@ function dispatchDetailOf(
     dispatchSource: row.dispatchSource,
     pharmacyDispatchMode: row.pharmacyDispatchMode,
     pharmacyPartnerId: row.pharmacyPartnerId ?? null,
-    dispatchedByMembershipId: row.dispatchedByMembershipId as DispatchDetailView["dispatchedByMembershipId"],
+    dispatchedByMembershipId:
+      row.dispatchedByMembershipId as DispatchDetailView["dispatchedByMembershipId"],
     bolDocumentId: row.bolDocumentId ?? null,
     controlledSubstanceHandlingPolicyDigest: row.controlledSubstanceHandlingPolicyDigest,
     contents,
@@ -168,9 +169,7 @@ export function buildDrizzleSuppliesSeamStore(db: DbClient): SuppliesSeamStore {
     }
     // Third round-trip, not an N+1: the D3 replenishment threshold is a template fact and the dispatched
     // rows only carry the template-line id.
-    const templateMedicationIds = [
-      ...new Set(lines.map((l) => l.comfortKitTemplateMedicationId)),
-    ];
+    const templateMedicationIds = [...new Set(lines.map((l) => l.comfortKitTemplateMedicationId))];
     const thresholds = templateMedicationIds.length
       ? await tx
           .select({
@@ -238,8 +237,8 @@ export function buildDrizzleSuppliesSeamStore(db: DbClient): SuppliesSeamStore {
           orderedAt: isoN(row.orderedAt),
           deliveredAt: isoN(row.deliveredAt),
           receivedConfirmedAt: isoN(row.receivedConfirmedAt),
-          receivedConfirmedActor:
-            (row.receivedConfirmedActor ?? null) as SupplyReceivedConfirmedActor | null,
+          receivedConfirmedActor: (row.receivedConfirmedActor ??
+            null) as SupplyReceivedConfirmedActor | null,
           completedAt: isoN(row.completedAt),
           cancelledAt: isoN(row.cancelledAt),
           createdAt: iso(row.createdAt),

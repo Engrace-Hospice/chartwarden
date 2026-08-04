@@ -50,7 +50,9 @@ function template(
   };
 }
 
-function reader(map: Record<string, { body: string; contentHash: string }>): AiPromptArtifactReader {
+function reader(
+  map: Record<string, { body: string; contentHash: string }>,
+): AiPromptArtifactReader {
   return { read: async (ref) => map[ref] ?? null };
 }
 
@@ -94,7 +96,9 @@ describe("D18 prohibited-zone query", () => {
       artifacts: createUnresolvableAiPromptArtifactReader(),
     });
     expect(await registry.getActivePromptsTargeting("doclens_")).toHaveLength(1);
-    expect(await registry.getActivePromptsTargeting("doclens_extraction_candidate")).toHaveLength(1);
+    expect(await registry.getActivePromptsTargeting("doclens_extraction_candidate")).toHaveLength(
+      1,
+    );
     expect(await registry.getActivePromptsTargeting("patient_")).toHaveLength(0);
   });
 

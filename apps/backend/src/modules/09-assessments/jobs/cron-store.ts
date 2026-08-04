@@ -9,7 +9,11 @@
 import { type DbClient, schema } from "@wardenx/db";
 import type { ScaleLicenseStatus } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
-import type { ReassessmentSnapshot, ScaleLicenseSnapshot, SignificantChangeSnapshot } from "./index";
+import type {
+  ReassessmentSnapshot,
+  ScaleLicenseSnapshot,
+  SignificantChangeSnapshot,
+} from "./index";
 
 const LIC = schema.scaleLicenses;
 const SCE = schema.significantChangeEvents;

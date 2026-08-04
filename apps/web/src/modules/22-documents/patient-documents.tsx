@@ -8,6 +8,7 @@ import {
   t,
   useApiClient,
 } from "@wardenx/ui";
+import { StatusPill as UiStatusPill } from "@wardenx/ui";
 // apps/web/src/modules/22-documents — patient-scoped document list (M22 §5.1, Track B / ADR-0030).
 // Spec: docs/modules/WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md §5.1 "DOC.Explorer" — the per-patient
 // slice reached from the patient chart "Documents" tab. A Patient Workspace (banner + shared module
@@ -19,7 +20,6 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import { StatusPill as UiStatusPill } from "@wardenx/ui";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { Mono, StatusPill, lifecycleTone, ts } from "./lantern";
 
@@ -284,5 +284,13 @@ const selectStyle: CSSProperties = {
   fontSize: "0.85rem",
 };
 const th: CSSProperties = { padding: "0.6rem 0.5rem", fontWeight: 500 };
-const td: CSSProperties = { padding: "0.6rem 0.5rem", fontSize: "0.85rem", color: t.onSurfaceVariant };
-const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.75rem 0 0" };
+const td: CSSProperties = {
+  padding: "0.6rem 0.5rem",
+  fontSize: "0.85rem",
+  color: t.onSurfaceVariant,
+};
+const meta: CSSProperties = {
+  fontSize: "0.78rem",
+  color: t.onSurfaceVariant,
+  margin: "0.75rem 0 0",
+};

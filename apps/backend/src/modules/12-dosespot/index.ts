@@ -17,7 +17,11 @@ import { registerDoseSpotRoutes as _registerM12Routes } from "./routes/dosespot-
  * `outbox`. EPCS stays OFF (D18) — the controlled-substance branch fail-closes at requestSignature. Replaces
  * the in-memory clinical-core scaffold mount for M12.
  */
-export function mountDoseSpotRoutes(app: FastifyInstance, db: DbClient, outbox?: DoseSpotWriteOutboxPort): void {
+export function mountDoseSpotRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: DoseSpotWriteOutboxPort,
+): void {
   const backend = createDbDoseSpotBackend(db, outbox);
   _registerM12Abac({ resolver: backend });
   _registerM12Routes(app, { service: backend });

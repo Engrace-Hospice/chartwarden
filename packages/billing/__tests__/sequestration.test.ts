@@ -1,3 +1,8 @@
+import {
+  DEFAULT_SEQUESTRATION_PERCENT,
+  applySequestration,
+  applySequestrationPolicy,
+} from "@wardenx/billing";
 // @wardenx/billing — M23 sequestration applier (D11, spec §1.1 / §3.3 `sequestration_policy`)
 // pure-domain tests.
 //
@@ -7,11 +12,6 @@
 // and the result records which percentage was applied and from where (so the service can snapshot it for
 // reproducible, forward-only audit math). Pure: no DB/Fastify/BullMQ.
 import { describe, expect, it } from "vitest";
-import {
-  applySequestration,
-  applySequestrationPolicy,
-  DEFAULT_SEQUESTRATION_PERCENT,
-} from "@wardenx/billing";
 
 describe("DEFAULT_SEQUESTRATION_PERCENT — the 2% platform-default constant", () => {
   it("is the CMS-announced 2.0% rate as a decimal string", () => {

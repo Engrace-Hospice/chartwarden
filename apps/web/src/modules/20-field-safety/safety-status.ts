@@ -291,13 +291,15 @@ export const SUBSCRIPTION_SCOPE_KINDS: readonly string[] = [
 /** Which selector each `scope_kind` REQUIRES (§3.3's `m20_sss_scope_integrity`). The form asks for the
  *  named one and only the named one; `role` requires none. Mirrored so the DON is told which field to
  *  fill BEFORE the round trip — never instead of the server's own 422. */
-export const SUBSCRIPTION_SCOPE_SELECTOR: Record<string, "clinician" | "location" | "providerEntity" | null> =
-  {
-    explicit: "clinician",
-    location: "location",
-    provider_entity: "providerEntity",
-    role: null,
-  };
+export const SUBSCRIPTION_SCOPE_SELECTOR: Record<
+  string,
+  "clinician" | "location" | "providerEntity" | null
+> = {
+  explicit: "clinician",
+  location: "location",
+  provider_entity: "providerEntity",
+  role: null,
+};
 
 /** `safety_subscription_model` (D8) — the tenant-wide DEFAULT, distinct from one row's scope kind. */
 export const SUBSCRIPTION_MODELS: readonly string[] = [
@@ -397,7 +399,10 @@ export const POLICY_EDIT_REASON_MIN_CHARS = 30;
 export const COORD_ACCESS_REASON_MIN_CHARS = 40;
 
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — "" is a valid key). */
-export function toneOf(map: Record<string, StatusTone>, key: string | null | undefined): StatusTone {
+export function toneOf(
+  map: Record<string, StatusTone>,
+  key: string | null | undefined,
+): StatusTone {
   return key ? (map[key] ?? "neutral") : "neutral";
 }
 

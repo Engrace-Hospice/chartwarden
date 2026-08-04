@@ -17,7 +17,11 @@
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 import type { PreHandler } from "./actor";
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";

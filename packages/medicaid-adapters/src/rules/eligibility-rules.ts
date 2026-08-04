@@ -57,7 +57,10 @@ export const medicaidEligibilityFreshness30d: MedicaidRule = {
       KEY,
       "warn",
       `Eligibility check is ${ctx.eligibility.ageDays}d old (> ${maxAgeDays}d).`,
-      { summary: "Refresh eligibility to keep the 30-day freshness window.", fixAction: "refresh_eligibility" },
+      {
+        summary: "Refresh eligibility to keep the 30-day freshness window.",
+        fixAction: "refresh_eligibility",
+      },
       { ageDays: ctx.eligibility.ageDays },
     );
   },
@@ -79,7 +82,12 @@ export const medicaidRecipientIdFormat: MedicaidRule = {
   check: (ctx) => {
     const KEY = "medicaid_recipient_id_format";
     if (!ctx.seams.adapterBound || ctx.recipientIdFormatValid === null) {
-      return skip(KEY, "error", "seam_not_bound", "Adapter recipient-ID validation unavailable; deferred.");
+      return skip(
+        KEY,
+        "error",
+        "seam_not_bound",
+        "Adapter recipient-ID validation unavailable; deferred.",
+      );
     }
     if (ctx.recipientIdFormatValid) {
       return pass(KEY, "error", "Recipient ID format is valid for the state.");

@@ -397,7 +397,10 @@ export function assertAnswerValueValid(
   }
   if (question.answerType === "scale_0_10") {
     require_(
-      value.kind === "int" && Number.isInteger(value.value) && value.value >= 0 && value.value <= 10,
+      value.kind === "int" &&
+        Number.isInteger(value.value) &&
+        value.value >= 0 &&
+        value.value <= 10,
       "ANSWER_VALUE_TYPE_MISMATCH",
       "a 0–10 scale answer must be an integer in [0, 10]",
     );

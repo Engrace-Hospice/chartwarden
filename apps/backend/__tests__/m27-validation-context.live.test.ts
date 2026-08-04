@@ -14,12 +14,12 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, type DbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { CapAggregateSeam } from "../src/modules/27-cost-report/routes/cap-context";
 import { buildM27ValidationContext } from "../src/modules/27-cost-report/jobs/validation-context-builder";
+import type { CapAggregateSeam } from "../src/modules/27-cost-report/routes/cap-context";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -29,14 +29,30 @@ const USER = "22222222-2222-2222-2222-222222222222";
 const PROVIDER_ENTITY = "33333333-3333-3333-3333-333333333333";
 
 // An unbound cap (the M26/M23 deny-stub posture) → aggregateForCostReport returns null → cap rules skip.
-const unboundCap: CapAggregateSeam = { async aggregateForCostReport() { return null; } };
+const unboundCap: CapAggregateSeam = {
+  async aggregateForCostReport() {
+    return null;
+  },
+};
 
 // The M23/M25/M12 producers in their deny-stub posture: every method throws → M27 degrades each bind to
 // null/false (the dependent rule SKIPS), exactly as the M1 deny-stub proxy behaves before a producer binds.
 const denyProducers = {
-  patientDays: () => ({ async billedDaysForFiscalYear() { throw new Error("SEAM_NOT_BOUND"); } }),
-  settlement: () => ({ async interimPaymentsForFiscalYear() { throw new Error("SEAM_NOT_BOUND"); } }),
-  drugCost: () => ({ async drugCostForFiscalYear() { throw new Error("SEAM_NOT_BOUND"); } }),
+  patientDays: () => ({
+    async billedDaysForFiscalYear() {
+      throw new Error("SEAM_NOT_BOUND");
+    },
+  }),
+  settlement: () => ({
+    async interimPaymentsForFiscalYear() {
+      throw new Error("SEAM_NOT_BOUND");
+    },
+  }),
+  drugCost: () => ({
+    async drugCostForFiscalYear() {
+      throw new Error("SEAM_NOT_BOUND");
+    },
+  }),
 } as const;
 
 describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B)", () => {
@@ -46,9 +62,12 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
 
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+      if (stripVector)
+        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
       await admin.query(sql);
     }
   }
@@ -86,7 +105,14 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
     await admin.query(
       `INSERT INTO cost_report_worksheet (organization_id, cost_report_id, worksheet_code, data)
        VALUES ($1,$2,'B',$3)`,
-      [ORG, reportId, JSON.stringify({ totalFullyAllocatedCostCents: 5_000_000, tiesToWorksheetAGrandTotal: true })],
+      [
+        ORG,
+        reportId,
+        JSON.stringify({
+          totalFullyAllocatedCostCents: 5_000_000,
+          tiesToWorksheetAGrandTotal: true,
+        }),
+      ],
     );
     // The filing deadline timer: FYE 2026-09-30 + 5 months = 2027-02-28.
     await admin.query(
@@ -106,7 +132,11 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
   it("reads the worksheet totals from the jsonb + composes the typed ValidationContext", async () => {
     const builder = buildM27ValidationContext({
       capResolver: () => unboundCap,
-      providerEntity: () => ({ async resolveProviderEntity() { return { macJurisdiction: "ngs_j6" }; } }),
+      providerEntity: () => ({
+        async resolveProviderEntity() {
+          return { macJurisdiction: "ngs_j6" };
+        },
+      }),
       ...denyProducers,
       now: () => new Date("2026-12-01T00:00:00Z"),
     });
@@ -136,7 +166,11 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
   it("fail-soft MAC: a provider-entity lookup error → `all` (only platform-default rules apply)", async () => {
     const builder = buildM27ValidationContext({
       capResolver: () => unboundCap,
-      providerEntity: () => ({ async resolveProviderEntity() { throw new Error("M40 down"); } }),
+      providerEntity: () => ({
+        async resolveProviderEntity() {
+          throw new Error("M40 down");
+        },
+      }),
       ...denyProducers,
       now: () => new Date("2026-12-01T00:00:00Z"),
     });
@@ -149,10 +183,22 @@ describe.skipIf(!DB_URL)("M27 ValidationContextBuilder — LIVE Postgres (§11.B
   it("binds M23 billed census + M25 interim payments → the gated flags flip and the rules go live", async () => {
     const builder = buildM27ValidationContext({
       capResolver: () => unboundCap,
-      providerEntity: () => ({ async resolveProviderEntity() { return { macJurisdiction: "ngs_j6" }; } }),
+      providerEntity: () => ({
+        async resolveProviderEntity() {
+          return { macJurisdiction: "ngs_j6" };
+        },
+      }),
       // M23 + M25 bound (stub producers returning fixed aggregates); M12 drug cost stays unbound (deny).
-      patientDays: () => ({ async billedDaysForFiscalYear() { return { totalPatientDays: 365 }; } }),
-      settlement: () => ({ async interimPaymentsForFiscalYear() { return { interimPaymentsCents: 4_000_000 }; } }),
+      patientDays: () => ({
+        async billedDaysForFiscalYear() {
+          return { totalPatientDays: 365 };
+        },
+      }),
+      settlement: () => ({
+        async interimPaymentsForFiscalYear() {
+          return { interimPaymentsCents: 4_000_000 };
+        },
+      }),
       drugCost: denyProducers.drugCost,
       now: () => new Date("2026-12-01T00:00:00Z"),
     });

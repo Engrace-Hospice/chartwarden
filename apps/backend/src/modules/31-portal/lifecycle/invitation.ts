@@ -114,12 +114,20 @@ export function acceptInvitation(
     return {
       invitation,
       grantKind,
-      resolvedScope: validateScopeSet(grantKind, input.floorVersion, invitation.proposedScopeOverlay),
+      resolvedScope: validateScopeSet(
+        grantKind,
+        input.floorVersion,
+        invitation.proposedScopeOverlay,
+      ),
       replayed: true,
     };
   }
 
-  requirePortal(invitation.revokedAtMs === null, "INVITATION_REVOKED", "this invitation was revoked");
+  requirePortal(
+    invitation.revokedAtMs === null,
+    "INVITATION_REVOKED",
+    "this invitation was revoked",
+  );
   requirePortal(
     input.nowMs < invitation.expiresAtMs,
     "INVITATION_EXPIRED",
@@ -130,7 +138,11 @@ export function acceptInvitation(
   // SCOPE_SET_LOOSENS_FLOOR if the overlay loosens; re-thrown as the invite-specific code for the §5 screen).
   let resolvedScope: PortalScopeSet;
   try {
-    resolvedScope = validateScopeSet(grantKind, input.floorVersion, invitation.proposedScopeOverlay);
+    resolvedScope = validateScopeSet(
+      grantKind,
+      input.floorVersion,
+      invitation.proposedScopeOverlay,
+    );
   } catch {
     throw new PortalStateError(
       "INVITATION_SCOPE_INVALID",

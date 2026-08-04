@@ -52,7 +52,10 @@ export function mountSchedulingRoutes(
   _registerM17Routes(app, { service: backend });
 }
 
-export { type SchedulingWriteOutboxPort, createDbSchedulingBackend } from "./scheduling-route-service-db";
+export {
+  type SchedulingWriteOutboxPort,
+  createDbSchedulingBackend,
+} from "./scheduling-route-service-db";
 export { M17_OUTBOX_EVENTS } from "./events-by-m17";
 export { M17_ALERT_PAYLOADS } from "./alerts-by-m17";
 export {

@@ -24,8 +24,6 @@ import { requireAbac, requirePermission } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import type { M30ReadRouteService, MortalityListFilter } from "./read-service";
-import type { M30WriteRouteService } from "./write-service";
 import {
   CompleteMortalityReviewBodySchema,
   MortalityListQuerySchema,
@@ -33,6 +31,8 @@ import {
   UpdateMortalityReviewBodySchema,
   parse,
 } from "./quality-typebox";
+import type { M30ReadRouteService, MortalityListFilter } from "./read-service";
+import type { M30WriteRouteService } from "./write-service";
 
 export interface MortalityRouteDeps {
   readonly readService: M30ReadRouteService;
@@ -41,7 +41,8 @@ export interface MortalityRouteDeps {
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 // §4.7 ABAC composed AFTER RBAC; the default target is `request.params` (the `:reviewId`).
-const ABAC = (key: string, predicate: string): PreHandler => requireAbac(key, predicate) as PreHandler;
+const ABAC = (key: string, predicate: string): PreHandler =>
+  requireAbac(key, predicate) as PreHandler;
 
 const MORT_READ = P("mortality.read");
 const MORT_WRITE = P("mortality.write");
@@ -61,7 +62,10 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
   // R-70 — list mortality reviews (cursor-paginated; PHI). §4.1/§4.1.2.
   app.get(
     "/api/v1/quality/mortality",
-    { preHandler: [MORT_READ, READ_INORG], config: { auditRead: { resourceKind: "mortality_review", list: true } } },
+    {
+      preHandler: [MORT_READ, READ_INORG],
+      config: { auditRead: { resourceKind: "mortality_review", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(MortalityListQuerySchema, request.query);
@@ -73,7 +77,10 @@ export function registerMortalityRoutes(app: FastifyInstance, deps: MortalityRou
   // R-71 — review detail (the three review dimensions). §4.1.
   app.get(
     "/api/v1/quality/mortality/:reviewId",
-    { preHandler: [MORT_READ, READ_INORG], config: { auditRead: { resourceKind: "mortality_review", resourceIdParam: "reviewId" } } },
+    {
+      preHandler: [MORT_READ, READ_INORG],
+      config: { auditRead: { resourceKind: "mortality_review", resourceIdParam: "reviewId" } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { reviewId } = parse(ReviewIdParamsSchema, request.params);

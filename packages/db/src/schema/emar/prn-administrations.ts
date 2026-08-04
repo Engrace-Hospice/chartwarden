@@ -7,11 +7,20 @@
 // medication_order, M9 assessment) are plain uuid app-validated, NOT cross-module FKs. RLS + grants + the M4
 // write-audit trigger (triggering_prn_reason / prn_interval_override_reason denylisted, §3.6) land in the RLS migration.
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { prnRequestedByKind } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const prnAdministrations = pgTable(
   "prn_administration",

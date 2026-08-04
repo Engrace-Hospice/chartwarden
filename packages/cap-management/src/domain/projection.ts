@@ -4,8 +4,8 @@
 // the cap-year window). Accrual basis is PAID amount from M25 remittance (D4); outstanding-billed is carried
 // alongside for visibility but never contaminates the canonical paidYtd or the band.
 import { capYearWindow, elapsedFraction } from "../cap-year";
-import { aggregateBand } from "./bands";
 import { ratio, round4, roundCents } from "../money";
+import { aggregateBand } from "./bands";
 import type { AlertBand, Methodology } from "./types";
 
 export interface AggregateProjectionInput {

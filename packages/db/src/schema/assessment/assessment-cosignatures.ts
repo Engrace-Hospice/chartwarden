@@ -6,10 +6,10 @@
 // Actor ref goes to M1 `membership`. RLS + grants + the M4 write-audit trigger (attestation_text
 // denylisted, §8.1) land in the RLS migration.
 import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const assessmentCosignatures = pgTable(
   "assessment_cosignature",

@@ -27,7 +27,6 @@ import {
 } from "./m29-typebox";
 import type { M29Store } from "./store";
 
-
 export interface FeedRouteDeps {
   readonly store: M29Store;
 }
@@ -38,7 +37,12 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
   // GET /feeds — list the org's feeds.
   app.get(
     "/api/admin/external-interfaces/feeds",
-    { preHandler: [P("external_interfaces.feed.read"), ABAC_IN_ORG("external_interfaces.feed.read")] },
+    {
+      preHandler: [
+        P("external_interfaces.feed.read"),
+        ABAC_IN_ORG("external_interfaces.feed.read"),
+      ],
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parseQuery(FeedListQuery, request.query);

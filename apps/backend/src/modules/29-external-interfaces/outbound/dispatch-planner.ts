@@ -1,3 +1,4 @@
+import type { NewHl7MessageOutboundRow } from "@wardenx/db/schema";
 // apps/backend/src/modules/29-external-interfaces/outbound — outbound ORM dispatch planning (M29-T06,
 // §4.12.1, W-XI-07/08). PURE. The pinch-point core: it turns a resolved `m11.order.hl7_orm_requested`
 // request + the D16 M40 BAA decision into either
@@ -14,11 +15,10 @@
 // the result is a pure function of its inputs. The T08 worker mints the ids + clock, resolves the BAA seam,
 // envelope-encrypts the wire into `payload_cipher`, does the insert, and dispatches over MLLP.
 import type { OrmRequestedPayload } from "@wardenx/types";
-import { type Hl7OutboundSourceKind } from "@wardenx/types";
-import type { NewHl7MessageOutboundRow } from "@wardenx/db/schema";
+import type { Hl7OutboundSourceKind } from "@wardenx/types";
 import type { BaaGateDecision, BaaGateRefuseReason } from "../feed/baa-gate";
 import { sha256Hex } from "../listener/mllp-framing";
-import { buildOrmO01, summarizeSegments, type OrmEndpoint } from "./orm-o01";
+import { type OrmEndpoint, buildOrmO01, summarizeSegments } from "./orm-o01";
 import type { OutboundAlert, OutboundAuditRecord } from "./outbound-events";
 
 /** The `source_aggregate_kind` a Phase-1 outbound ORM originates from (an M11 order). */
@@ -29,7 +29,12 @@ export const ORM_SOURCE_KIND: Hl7OutboundSourceKind = "m11.order_record";
  *  materialized here. The ack-* columns and `transmitted_at` are filled later by the ACK-correlation core. */
 export type OutboundRowDraft = Omit<
   NewHl7MessageOutboundRow,
-  "payloadCipher" | "ackPayloadCipher" | "ackPayloadSha256" | "ackStatus" | "ackReceivedAt" | "transmittedAt"
+  | "payloadCipher"
+  | "ackPayloadCipher"
+  | "ackPayloadSha256"
+  | "ackStatus"
+  | "ackReceivedAt"
+  | "transmittedAt"
 >;
 
 export interface OutboundDispatchInput {
@@ -69,7 +74,11 @@ export type OutboundDispatchPlan =
     };
 
 /** The §2.6 permanent dispatch dedup key: `hash(feed_id, source_aggregate_kind, source_aggregate_id)`. */
-export function outboundIdempotencyKey(feedId: string, sourceKind: string, sourceAggregateId: string): string {
+export function outboundIdempotencyKey(
+  feedId: string,
+  sourceKind: string,
+  sourceAggregateId: string,
+): string {
   return sha256Hex(`${feedId}|${sourceKind}|${sourceAggregateId}`);
 }
 

@@ -15,32 +15,29 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  ConflictError,
   type ExternalFeedCredentialKind,
   type ExternalFeedKind,
   type ExternalFeedProtocol,
   type ExternalFeedStatus,
   type Hl7InboundParseStatus,
+  type Hl7InboundProposalKind,
   type Hl7InboundProposalStatus,
   type Hl7OutboundStatus,
   type Hl7ProposalOwnerModule,
   type LabAbnormalFlag,
   type LabAbnormalSummary,
-  ConflictError,
-  type Hl7InboundProposalKind,
   NotFoundError,
   ValidationError,
   WardenXError,
 } from "@wardenx/types";
 
-import {
-  canExternalFeedTransition,
-  externalFeedCoApprovalSatisfied,
-} from "../feed/lifecycle";
+import { canExternalFeedTransition, externalFeedCoApprovalSatisfied } from "../feed/lifecycle";
 import {
   ProposalAlreadyDecidedError,
   ProposalRejectRationaleRequiredError,
-  decideProposal,
   type ProposalSnapshot,
+  decideProposal,
 } from "../proposals/decision";
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -349,7 +346,10 @@ export interface M29Store {
     note?: string,
   ): Promise<ProposalDetail>;
   // messages
-  listInboundMessages(orgId: string, filter: InboundMessageFilter): Promise<Page<InboundMessageView>>;
+  listInboundMessages(
+    orgId: string,
+    filter: InboundMessageFilter,
+  ): Promise<Page<InboundMessageView>>;
   getInboundMessage(orgId: string, messageId: string): Promise<InboundMessageView | null>;
   replayInboundMessage(
     orgId: string,
@@ -373,7 +373,10 @@ export interface M29Store {
   feedHealthAggregate(orgId: string): Promise<FeedHealthAggregate>;
   listenerStatus(orgId: string): Promise<readonly ListenerStatusView[]>;
   // labs
-  listObservations(orgId: string, filter: ObservationListFilter): Promise<Page<LabObservationSummary>>;
+  listObservations(
+    orgId: string,
+    filter: ObservationListFilter,
+  ): Promise<Page<LabObservationSummary>>;
   getObservation(orgId: string, observationId: string): Promise<LabObservationDetail | null>;
   listUnmatchedObservations(
     orgId: string,
@@ -412,10 +415,7 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
   const feeds = new Map<string, MemFeed & { organizationId: string }>();
   const creds = new Map<string, MemCredential & { organizationId: string }>();
   const proposals = new Map<string, MemProposal & { organizationId: string }>();
-  const observations = new Map<
-    string,
-    LabObservationDetail & { organizationId: string }
-  >();
+  const observations = new Map<string, LabObservationDetail & { organizationId: string }>();
 
   const feedDetailOf = (f: MemFeed): FeedDetail => ({ ...f });
 
@@ -429,7 +429,8 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
     proposalId: string,
   ): MemProposal & { organizationId: string } => {
     const p = proposals.get(proposalId);
-    if (!p || p.organizationId !== orgId) throw new NotFoundError("hl7_inbound_proposal", proposalId);
+    if (!p || p.organizationId !== orgId)
+      throw new NotFoundError("hl7_inbound_proposal", proposalId);
     return p;
   };
 
@@ -452,7 +453,9 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
       return decideProposal(snapshotOf(p), command);
     } catch (e) {
       if (e instanceof ProposalAlreadyDecidedError) {
-        throw new ConflictError(`proposal ${p.id} is ${p.proposalStatus} — decided-is-decided (§2.6)`);
+        throw new ConflictError(
+          `proposal ${p.id} is ${p.proposalStatus} — decided-is-decided (§2.6)`,
+        );
       }
       if (e instanceof ProposalRejectRationaleRequiredError) {
         throw new ValidationError("proposal rejection rationale too short", [
@@ -636,9 +639,7 @@ export function createInMemoryM29Store(opts: { now?: () => string } = {}): M29St
     },
     async listCredentials(orgId, feedId) {
       requireFeed(orgId, feedId);
-      return [...creds.values()].filter(
-        (c) => c.organizationId === orgId && c.feedId === feedId,
-      );
+      return [...creds.values()].filter((c) => c.organizationId === orgId && c.feedId === feedId);
     },
     async mintCredential(orgId, _membershipId, feedId, args) {
       requireFeed(orgId, feedId);

@@ -173,7 +173,8 @@ interface VisitRecord {
 }
 
 const serviceDateOf = (iso: string): string => iso.slice(0, 10);
-const caseloadKey = (membershipId: string, patientId: string): string => `${membershipId}|${patientId}`;
+const caseloadKey = (membershipId: string, patientId: string): string =>
+  `${membershipId}|${patientId}`;
 
 /**
  * The in-memory M17 route backend. Org-pinned on every read/write (cross-tenant rows are invisible — the
@@ -265,7 +266,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   editVisit(orgId: string, _userId: string, visitId: string, input: EditVisitInput): VisitView {
     const record = this.requireVisit(orgId, visitId);
-    const reassigned = input.assignedMembershipId !== undefined || input.scheduledStartedAt !== undefined;
+    const reassigned =
+      input.assignedMembershipId !== undefined || input.scheduledStartedAt !== undefined;
     if (input.scheduledStartedAt) record.scheduledStartedAt = input.scheduledStartedAt;
     if (input.scheduledEndedAt) record.scheduledEndedAt = input.scheduledEndedAt;
     if (input.assignedMembershipId) record.assignedMembershipId = input.assignedMembershipId;
@@ -276,7 +278,13 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(record);
   }
 
-  startVisit(orgId: string, _userId: string, visitId: string, evvMissingReason: string | undefined, stepUpSatisfied: boolean): VisitView {
+  startVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    evvMissingReason: string | undefined,
+    stepUpSatisfied: boolean,
+  ): VisitView {
     const record = this.requireVisit(orgId, visitId);
     const transition = transitionVisit(record.status, {
       type: "start",
@@ -293,14 +301,23 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   cancelVisit(orgId: string, _userId: string, visitId: string, reason: string): VisitView {
     const record = this.requireVisit(orgId, visitId);
-    const transition = transitionVisit(record.status, { type: "cancel", reason, cancelledByPresent: true });
+    const transition = transitionVisit(record.status, {
+      type: "cancel",
+      reason,
+      cancelledByPresent: true,
+    });
     record.status = transition.to;
     record.version += 1;
     this.record(transition.effects, record.id);
     return toVisitView(record);
   }
 
-  rescheduleVisit(orgId: string, userId: string, visitId: string, input: RescheduleVisitInput): { original: VisitView; created: VisitView } {
+  rescheduleVisit(
+    orgId: string,
+    userId: string,
+    visitId: string,
+    input: RescheduleVisitInput,
+  ): { original: VisitView; created: VisitView } {
     const record = this.requireVisit(orgId, visitId);
     const transition = transitionVisit(record.status, { type: "reschedule", reason: input.reason });
     const created = this.createVisit(orgId, userId, {
@@ -330,7 +347,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return toVisitView(record);
   }
 
-  reassignVisit(orgId: string, _userId: string, visitId: string, newAssignedMembershipId: string): VisitView {
+  reassignVisit(
+    orgId: string,
+    _userId: string,
+    visitId: string,
+    newAssignedMembershipId: string,
+  ): VisitView {
     const record = this.requireVisit(orgId, visitId);
     record.assignedMembershipId = newAssignedMembershipId;
     this.assertGate(orgId, record); // §4.1 — reassign reruns the gate
@@ -367,7 +389,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return visit;
   }
 
-  dismissProposal(orgId: string, _userId: string, proposalId: string, _reason: string): ProposalView {
+  dismissProposal(
+    orgId: string,
+    _userId: string,
+    proposalId: string,
+    _reason: string,
+  ): ProposalView {
     const proposal = this.proposals.get(proposalId);
     if (!proposal || proposal.organizationId !== orgId) throw new NotFoundError("visit_proposal");
     const updated = { ...proposal, status: "dismissed" as const };
@@ -411,8 +438,18 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return record && record.organizationId === orgId ? stripOrg(record) : null;
   }
 
-  upsertAvailability(orgId: string, _userId: string, membershipId: string, input: UpsertAvailabilityInput): AvailabilityView {
-    const record = { organizationId: orgId, membershipId, timeZone: input.timeZone, slots: input.slots };
+  upsertAvailability(
+    orgId: string,
+    _userId: string,
+    membershipId: string,
+    input: UpsertAvailabilityInput,
+  ): AvailabilityView {
+    const record = {
+      organizationId: orgId,
+      membershipId,
+      timeZone: input.timeZone,
+      slots: input.slots,
+    };
     this.availability.set(membershipId, record);
     return stripOrg(record);
   }
@@ -453,7 +490,12 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return this.transitionTimeOff(orgId, id, "cancelled", null);
   }
 
-  private transitionTimeOff(orgId: string, id: string, state: TimeOffState, eventName: string | null): TimeOffView {
+  private transitionTimeOff(
+    orgId: string,
+    id: string,
+    state: TimeOffState,
+    eventName: string | null,
+  ): TimeOffView {
     const record = this.timeOff.get(id);
     if (!record || record.organizationId !== orgId) throw new NotFoundError("time_off");
     const updated = { ...record, state };
@@ -463,38 +505,93 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   // ── views + optimisation ──────────────────────────────────────────────────────────────────────────────
-  dayView(orgId: string, membershipId: string | undefined, date: string): { date: string; membershipId: string | null; visits: VisitView[] } {
-    const visits = this.listVisits(orgId, { clinician: membershipId }).filter((v) => v.serviceDate === date);
+  dayView(
+    orgId: string,
+    membershipId: string | undefined,
+    date: string,
+  ): { date: string; membershipId: string | null; visits: VisitView[] } {
+    const visits = this.listVisits(orgId, { clinician: membershipId }).filter(
+      (v) => v.serviceDate === date,
+    );
     return { date, membershipId: membershipId ?? null, visits };
   }
 
-  weekView(orgId: string, membershipId: string | undefined, weekStart: string): { weekStart: string; membershipId: string | null; visits: VisitView[] } {
-    const visits = this.listVisits(orgId, { clinician: membershipId }).filter((v) => v.serviceDate >= weekStart);
+  weekView(
+    orgId: string,
+    membershipId: string | undefined,
+    weekStart: string,
+  ): { weekStart: string; membershipId: string | null; visits: VisitView[] } {
+    const visits = this.listVisits(orgId, { clinician: membershipId }).filter(
+      (v) => v.serviceDate >= weekStart,
+    );
     return { weekStart, membershipId: membershipId ?? null, visits };
   }
 
-  mapView(orgId: string, membershipId: string, date: string): { membershipId: string; date: string; stops: VisitView[] } {
+  mapView(
+    orgId: string,
+    membershipId: string,
+    date: string,
+  ): { membershipId: string; date: string; stops: VisitView[] } {
     // §4.1 / D9 — polylines are coords-only; the in-mem slice returns the ordered stops (the route worker is T08).
-    const stops = this.listVisits(orgId, { clinician: membershipId }).filter((v) => v.serviceDate === date);
+    const stops = this.listVisits(orgId, { clinician: membershipId }).filter(
+      (v) => v.serviceDate === date,
+    );
     return { membershipId, date, stops };
   }
 
   /** §7.9 — on-demand optimisation. With the flag OFF (Phase 1) or OSRM unhealthy, returns the degraded result. */
-  async optimizeDay(orgId: string, _userId: string, input: OptimizeDayInput): Promise<{ membershipId: string; serviceDate: string; degraded: boolean; reason?: string; segmentCount: number }> {
+  async optimizeDay(
+    orgId: string,
+    _userId: string,
+    input: OptimizeDayInput,
+  ): Promise<{
+    membershipId: string;
+    serviceDate: string;
+    degraded: boolean;
+    reason?: string;
+    segmentCount: number;
+  }> {
     if (!this.routeOptimizationEnabled || !this.routing) {
       this.events.push({ eventName: "m17.route_optimization_degraded", visitId: null });
-      return { membershipId: input.membershipId, serviceDate: input.serviceDate, degraded: true, reason: "optimization_disabled", segmentCount: 0 };
+      return {
+        membershipId: input.membershipId,
+        serviceDate: input.serviceDate,
+        degraded: true,
+        reason: "optimization_disabled",
+        segmentCount: 0,
+      };
     }
     if (!(await this.routing.healthy())) {
       this.events.push({ eventName: "m17.route_optimization_degraded", visitId: null });
-      return { membershipId: input.membershipId, serviceDate: input.serviceDate, degraded: true, reason: "osrm_unavailable", segmentCount: 0 };
+      return {
+        membershipId: input.membershipId,
+        serviceDate: input.serviceDate,
+        degraded: true,
+        reason: "osrm_unavailable",
+        segmentCount: 0,
+      };
     }
     const stops = this.dayView(orgId, input.membershipId, input.serviceDate).visits;
     this.events.push({ eventName: "m17.route_optimized", visitId: null });
-    return { membershipId: input.membershipId, serviceDate: input.serviceDate, degraded: false, segmentCount: Math.max(0, stops.length - 1) };
+    return {
+      membershipId: input.membershipId,
+      serviceDate: input.serviceDate,
+      degraded: false,
+      segmentCount: Math.max(0, stops.length - 1),
+    };
   }
 
-  portalUpcoming(orgId: string, patientId: string, withinHours: number): Array<{ visitId: string; scheduledStartedAt: string; scheduledEndedAt: string; visitPurposeLabel: string; visitSetting: VisitSetting }> {
+  portalUpcoming(
+    orgId: string,
+    patientId: string,
+    withinHours: number,
+  ): Array<{
+    visitId: string;
+    scheduledStartedAt: string;
+    scheduledEndedAt: string;
+    visitPurposeLabel: string;
+    visitSetting: VisitSetting;
+  }> {
     const cutoff = new Date(Date.parse(this.now()) + withinHours * 3_600_000).toISOString();
     return this.listVisits(orgId, { patient: patientId, status: "published" })
       .filter((v) => v.scheduledStartedAt <= cutoff)
@@ -507,7 +604,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
       }));
   }
 
-  visitMetrics(orgId: string, _window: { from: string; to: string }): { onTimeRate: number; noShowRate: number; rescheduleRate: number } {
+  visitMetrics(
+    orgId: string,
+    _window: { from: string; to: string },
+  ): { onTimeRate: number; noShowRate: number; rescheduleRate: number } {
     const visits = this.listVisits(orgId, {});
     const total = visits.length || 1;
     const noShow = visits.filter((v) => v.status === "no_show").length;
@@ -515,20 +615,36 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
     return { onTimeRate: 1, noShowRate: noShow / total, rescheduleRate: rescheduled / total };
   }
 
-  routeEfficiencyMetrics(_orgId: string, membershipId: string): { membershipId: string; totalProposedMiles: number; overrideRate: number } {
+  routeEfficiencyMetrics(
+    _orgId: string,
+    membershipId: string,
+  ): { membershipId: string; totalProposedMiles: number; overrideRate: number } {
     return { membershipId, totalProposedMiles: 0, overrideRate: 0 };
   }
 
   // ── SchedulingAbacResolver (§4.7) — resolves over the same dataset ────────────────────────────────────
-  async resolveDiscipline(_orgId: string, membershipId: string): Promise<SchedulingDiscipline | null> {
+  async resolveDiscipline(
+    _orgId: string,
+    membershipId: string,
+  ): Promise<SchedulingDiscipline | null> {
     return this.disciplines.get(membershipId) ?? null;
   }
 
-  async credentialsActiveForPurpose(_orgId: string, membershipId: string, _visitPurpose: VisitPurpose, _serviceDate: string): Promise<boolean> {
+  async credentialsActiveForPurpose(
+    _orgId: string,
+    membershipId: string,
+    _visitPurpose: VisitPurpose,
+    _serviceDate: string,
+  ): Promise<boolean> {
     return this.credentialed.has(membershipId);
   }
 
-  async hasApprovedTimeOffOverlap(orgId: string, membershipId: string, startsAt: string, endsAt: string): Promise<boolean> {
+  async hasApprovedTimeOffOverlap(
+    orgId: string,
+    membershipId: string,
+    startsAt: string,
+    endsAt: string,
+  ): Promise<boolean> {
     return [...this.timeOff.values()].some(
       (t) =>
         t.organizationId === orgId &&
@@ -557,7 +673,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   /** Compute the §1.1 D8 pre-schedule gate synchronously over the seeded facts (the publish/edit/reassign gate). */
   private gatePassedSync(orgId: string, record: VisitRecord): boolean {
     const discipline = this.disciplines.get(record.assignedMembershipId);
-    const disciplineOk = discipline != null && VISIT_PURPOSE_DISCIPLINES[record.visitPurpose].includes(discipline);
+    const disciplineOk =
+      discipline != null && VISIT_PURPOSE_DISCIPLINES[record.visitPurpose].includes(discipline);
     const credentialsOk = this.credentialed.has(record.assignedMembershipId);
     const pto = [...this.timeOff.values()].some(
       (t) =>
@@ -567,7 +684,9 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
         t.startsAt < record.scheduledEndedAt &&
         t.endsAt > record.scheduledStartedAt,
     );
-    const poolOrCaseload = this.unassignedPoolOrgs.has(orgId) || this.caseload.has(caseloadKey(record.assignedMembershipId, record.patientId));
+    const poolOrCaseload =
+      this.unassignedPoolOrgs.has(orgId) ||
+      this.caseload.has(caseloadKey(record.assignedMembershipId, record.patientId));
     return disciplineOk && credentialsOk && !pto && poolOrCaseload;
   }
 
@@ -578,7 +697,10 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   private publishRecord(orgId: string, record: VisitRecord, _startedAt: string): void {
-    const transition = transitionVisit(record.status, { type: "publish", gatePassed: this.gatePassedSync(orgId, record) });
+    const transition = transitionVisit(record.status, {
+      type: "publish",
+      gatePassed: this.gatePassedSync(orgId, record),
+    });
     record.status = transition.to;
     record.version += 1;
     this.record(transition.effects, record.id);
@@ -586,7 +708,8 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
 
   private record(effects: ReadonlyArray<{ kind: string; event?: string }>, visitId: string): void {
     for (const effect of effects) {
-      if (effect.kind === "outbox" && effect.event) this.events.push({ eventName: effect.event, visitId });
+      if (effect.kind === "outbox" && effect.event)
+        this.events.push({ eventName: effect.event, visitId });
     }
   }
 }

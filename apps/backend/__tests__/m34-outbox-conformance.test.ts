@@ -1,9 +1,9 @@
+import type { TSchema } from "@sinclair/typebox";
 // #107 — M34 lifecycle outbox binding: the regression guard. With the live transactional-outbox dispatcher
 // bound, a non-conformant publish ROLLS BACK the lifecycle mutation. The runSideEffects gate emits ONLY
 // `m34.tenant.provisioned` (its generic payload conforms exactly); this asserts that conformance AND that the
 // generic payload does NOT satisfy the other lifecycle events' schemas (the reason they stay un-emitted).
 import { Value } from "@sinclair/typebox/value";
-import type { TSchema } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/index";
 

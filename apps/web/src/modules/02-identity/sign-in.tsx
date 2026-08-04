@@ -57,7 +57,10 @@ export function SignIn(): JSX.Element {
           <p style={subStyle}>Welcome back. Sign in to continue.</p>
         </div>
 
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}>
+        <form
+          onSubmit={submit}
+          style={{ display: "flex", flexDirection: "column", gap: "0.875rem" }}
+        >
           <label style={fieldWrap}>
             <span style={labelStyle}>Email</span>
             <input
@@ -108,9 +111,17 @@ const titleStyle: CSSProperties = {
   fontSize: "1.25rem",
   color: t.onSurface,
 };
-const subStyle: CSSProperties = { margin: "0.25rem 0 0", color: t.onSurfaceVariant, fontSize: "0.85rem" };
+const subStyle: CSSProperties = {
+  margin: "0.25rem 0 0",
+  color: t.onSurfaceVariant,
+  fontSize: "0.85rem",
+};
 const fieldWrap: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.35rem" };
-const labelStyle: CSSProperties = { fontSize: "0.78rem", fontWeight: 500, color: t.onSurfaceVariant };
+const labelStyle: CSSProperties = {
+  fontSize: "0.78rem",
+  fontWeight: 500,
+  color: t.onSurfaceVariant,
+};
 const inputStyle: CSSProperties = {
   padding: "0.65rem 0.75rem",
   border: "none",
@@ -130,7 +141,11 @@ const primaryBtn: CSSProperties = {
   cursor: "pointer",
   fontWeight: 600,
 };
-const linksRow: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center" };
+const linksRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+};
 const linkStyle: CSSProperties = { color: t.primary, fontSize: "0.85rem", textDecoration: "none" };
 const linkBtn: CSSProperties = {
   border: "none",

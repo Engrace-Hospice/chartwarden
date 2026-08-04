@@ -122,7 +122,9 @@ export function OverrideAudit(): JSX.Element {
     setDegraded(false);
     const claimsRes = await client.GET("/api/v1/billing/claims", claimsInit(null) as never);
     if (claimsRes.error) {
-      setError("Override audit unavailable — the billing read seam is not bound, or you lack scope.");
+      setError(
+        "Override audit unavailable — the billing read seam is not bound, or you lack scope.",
+      );
       setLoading(false);
       return;
     }
@@ -138,9 +140,9 @@ export function OverrideAudit(): JSX.Element {
           anyDegraded = true;
           return [] as OverrideRow[];
         }
-        const runs = ((runRes.data as unknown as { runs?: ValidationRunView[] })?.runs ?? []).filter(
-          (r) => r.outcome === "overridden",
-        );
+        const runs = (
+          (runRes.data as unknown as { runs?: ValidationRunView[] })?.runs ?? []
+        ).filter((r) => r.outcome === "overridden");
         const perRun = await Promise.all(
           runs.map(async (run) => {
             const detailRes = await client.GET("/api/v1/claims/{id}/validation-runs/{runId}", {
@@ -241,7 +243,11 @@ export function OverrideAudit(): JSX.Element {
           {degraded ? (
             <span
               role="status"
-              style={{ alignSelf: "center", fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}
+              style={{
+                alignSelf: "center",
+                fontSize: "0.8rem",
+                color: "var(--color-on-surface-variant)",
+              }}
             >
               Some claims could not be read — the audit is partial.
             </span>
@@ -270,7 +276,15 @@ export function OverrideAudit(): JSX.Element {
 function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-      <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+      <caption
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+        }}
+      >
         Org-wide validation overrides
       </caption>
       <thead>
@@ -307,7 +321,10 @@ function OverrideTable({ rows }: { rows: OverrideRow[] }): JSX.Element {
             <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.claimControlNumber}</td>
             <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.ruleKey}</td>
             <td style={tdStyle}>
-              <StatusPill label={statusLabel(r.severity)} tone={validationSeverityTone(r.severity)} />
+              <StatusPill
+                label={statusLabel(r.severity)}
+                tone={validationSeverityTone(r.severity)}
+              />
             </td>
             <td style={tdStyle}>{statusLabel(r.overrideRoleApplied)}</td>
             <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.overrideMembershipId}</td>

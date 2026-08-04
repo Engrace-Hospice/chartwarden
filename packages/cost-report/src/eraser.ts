@@ -37,7 +37,9 @@ export class CostReportEraseRefused extends Error {
 
 /** Whether a cost report's lifecycle state makes it submitted survey-evidence (destruction-gated). */
 export function isSurveyEvidenceState(state: string): boolean {
-  return state === "submitted" || state === "accepted" || state === "rejected" || state === "reopened";
+  return (
+    state === "submitted" || state === "accepted" || state === "rejected" || state === "reopened"
+  );
 }
 
 /**

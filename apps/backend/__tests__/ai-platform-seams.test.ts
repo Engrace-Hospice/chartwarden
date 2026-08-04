@@ -1,3 +1,12 @@
+import {
+  type AIPromptRegistry,
+  AI_PROHIBITED_ZONES,
+  type ActivePromptSummary,
+  type NarrativeEnhancementProvider,
+  aiPromptTargetsPrefix,
+  aiTargetPrefixIsProhibited,
+  findAiProhibitedZoneViolations,
+} from "@wardenx/ai-platform";
 // apps/backend/__tests__/ai-platform-seams.test.ts — M32-T06, the §4.2–§4.4 seam boundary.
 //
 // What these prove, in the order the failures would hurt:
@@ -17,16 +26,7 @@
 //     contraband; the inverse reads false and fails OPEN. Asserted on a real pair, both ways.
 //   • a COMPLETED invocation with no §2.5 projector refuses — and the refusal is
 //     `output_validation_failed_after_retry`, not a fabricated payload.
-import type { OrgId, PatientId, IsoInstant } from "@wardenx/types";
-import {
-  AI_PROHIBITED_ZONES,
-  aiPromptTargetsPrefix,
-  aiTargetPrefixIsProhibited,
-  findAiProhibitedZoneViolations,
-  type ActivePromptSummary,
-  type AIPromptRegistry,
-  type NarrativeEnhancementProvider,
-} from "@wardenx/ai-platform";
+import type { IsoInstant, OrgId, PatientId } from "@wardenx/types";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   REQUIRED_SEAMS,
@@ -34,11 +34,7 @@ import {
   getSeam,
   validateSeams,
 } from "../src/bootstrap/seams/registry";
-import type {
-  AiInvocationOutcome,
-  AiInvocationPipeline,
-  AiInvokeRequest,
-} from "../src/modules/32-ai-platform/invocation/service";
+import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";
 import {
   AiBootValidationError,
   createAiBootValidators,
@@ -48,7 +44,11 @@ import {
   createProtocolSuggestionProvider,
   registerAiPlatformSeams,
 } from "../src/modules/32-ai-platform/index";
-import { createInMemoryAiGovernanceStores } from "../src/modules/32-ai-platform/governance/store";
+import type {
+  AiInvocationOutcome,
+  AiInvocationPipeline,
+  AiInvokeRequest,
+} from "../src/modules/32-ai-platform/invocation/service";
 import { createInMemoryAiInvocationStores } from "../src/modules/32-ai-platform/invocation/store";
 import { createInMemoryAiPromptTemplateStore } from "../src/modules/32-ai-platform/prompts/store";
 
@@ -544,9 +544,7 @@ describe("M32-T06 — §4.4 step-6 boot validators", () => {
 
     await expect(
       validators({
-        capabilities: [
-          capability({ defaultBackendKey: "", allowedBackendKeys: [] }),
-        ],
+        capabilities: [capability({ defaultBackendKey: "", allowedBackendKeys: [] })],
         backends: [],
       }).validators.validateAllCapabilitiesHaveBackend(),
     ).rejects.toThrow(/not service-routed/);

@@ -33,7 +33,11 @@ const primaryBtn: CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
 };
-const ghostBtn: CSSProperties = { ...primaryBtn, background: t.surfaceContainer, color: t.onSurface };
+const ghostBtn: CSSProperties = {
+  ...primaryBtn,
+  background: t.surfaceContainer,
+  color: t.onSurface,
+};
 
 export function PortalAccount(): JSX.Element {
   const client = useApiClient();
@@ -85,12 +89,21 @@ export function PortalAccount(): JSX.Element {
         emptyDescription="We couldn't load your account. Please sign in again."
       >
         <PortalCard heading="Your access">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.92rem" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: "0.92rem",
+            }}
+          >
             <span>{ctx ? humanize(ctx.relationship) : ""}</span>
             {ctx ? <StatusPill tone={statusTone(ctx.status)} label={humanize(ctx.status)} /> : null}
           </div>
           <p style={{ margin: "0.5rem 0 0", fontSize: "0.82rem", color: t.onSurfaceVariant }}>
-            {ctx ? `${ctx.scopeSet.length} area${ctx.scopeSet.length === 1 ? "" : "s"} of access granted.` : ""}
+            {ctx
+              ? `${ctx.scopeSet.length} area${ctx.scopeSet.length === 1 ? "" : "s"} of access granted.`
+              : ""}
           </p>
         </PortalCard>
 
@@ -98,7 +111,10 @@ export function PortalAccount(): JSX.Element {
           <p style={{ margin: "0 0 0.75rem", fontSize: "0.85rem", color: t.onSurfaceVariant }}>
             Some changes need a one-time code from your authenticator app.
           </p>
-          <form onSubmit={(e) => void stepUp(e)} style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
+          <form
+            onSubmit={(e) => void stepUp(e)}
+            style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}
+          >
             <input
               inputMode="numeric"
               autoComplete="one-time-code"
@@ -116,7 +132,11 @@ export function PortalAccount(): JSX.Element {
           {stepState ? (
             <p
               role={stepState.tone === "err" ? "alert" : "status"}
-              style={{ margin: "0.6rem 0 0", fontSize: "0.85rem", color: stepState.tone === "err" ? t.error : t.success }}
+              style={{
+                margin: "0.6rem 0 0",
+                fontSize: "0.85rem",
+                color: stepState.tone === "err" ? t.error : t.success,
+              }}
             >
               {stepState.msg}
             </p>

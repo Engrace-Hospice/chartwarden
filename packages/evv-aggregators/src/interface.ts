@@ -41,7 +41,12 @@ export interface BuildSubmissionPayloadArgs {
 export type AggregatorSubmitResult =
   | { result: "accepted"; transactionId: string; acceptedAt: string }
   | { result: "pending_async"; transactionId: string; nextPollAt: string }
-  | { result: "rejected"; rejectionCode: string; rejectionReason: string; transactionId: string | null }
+  | {
+      result: "rejected";
+      rejectionCode: string;
+      rejectionReason: string;
+      transactionId: string | null;
+    }
   | { result: "transport_failure"; nextRetryAt: string };
 
 /** The `poll` call result for adapters whose vendor responds asynchronously. */
@@ -72,7 +77,10 @@ export interface EvvAggregatorAdapter {
   }): Promise<AggregatorSubmitResult>;
 
   /** Poll for adapters whose vendor responds asynchronously. */
-  poll(args: { transactionId: string; credentials: AggregatorCredentials }): Promise<AggregatorPollResult>;
+  poll(args: {
+    transactionId: string;
+    credentials: AggregatorCredentials;
+  }): Promise<AggregatorPollResult>;
 
   /** Health probe for the ops dashboard. */
   healthy(): Promise<boolean>;

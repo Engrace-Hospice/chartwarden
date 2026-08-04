@@ -9,11 +9,16 @@
 // NOTR's ProviderEntity + the §D13 AI-block + `Idempotency-Key` (§4.1). Org/actor binding is server-side.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import {
+  CancelNotrBodySchema,
+  NotrIdParamsSchema,
+  NotrListQuerySchema,
+  parse,
+} from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
 import { P, PROVIDER_SCOPE, STEP_UP, targetNotrId } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
-import { CancelNotrBodySchema, NotrIdParamsSchema, NotrListQuerySchema, parse } from "./billing-typebox";
 
 export interface NotrRouteDeps {
   readonly readService: M23ReadRouteService;
@@ -35,29 +40,40 @@ export function registerNotrRoutes(app: FastifyInstance, deps: NotrRouteDeps): v
   const { readService, writeService } = deps;
 
   // GET /notr-records — list NOTR records (cursor-paginated). §4.1 #28.
-  app.get("/api/v1/notr-records", { preHandler: [READ], config: { auditRead: { resourceKind: "notr_record", list: true } } }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(NotrListQuerySchema, request.query);
-    return readService.listNotrs(
-      actor,
-      {
-        providerEntityId: q.providerEntityId,
-        patientId: q.patientId,
-        admissionId: q.admissionId,
-        triggerKind: q.triggerKind,
-        state: q.state,
-      },
-      q.cursor,
-      q.limit,
-    );
-  });
+  app.get(
+    "/api/v1/notr-records",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "notr_record", list: true } } },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(NotrListQuerySchema, request.query);
+      return readService.listNotrs(
+        actor,
+        {
+          providerEntityId: q.providerEntityId,
+          patientId: q.patientId,
+          admissionId: q.admissionId,
+          triggerKind: q.triggerKind,
+          state: q.state,
+        },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // GET /notr-records/:id — NOTR detail. §4.1 #29.
-  app.get("/api/v1/notr-records/:id", { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "notr_record", resourceIdParam: "id" } } }, async (request) => {
-    const actor = actorOf(request);
-    const { id } = parse(NotrIdParamsSchema, request.params);
-    return readService.getNotr(actor, id);
-  });
+  app.get(
+    "/api/v1/notr-records/:id",
+    {
+      preHandler: [READ, READ_ABAC],
+      config: { auditRead: { resourceKind: "notr_record", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(NotrIdParamsSchema, request.params);
+      return readService.getNotr(actor, id);
+    },
+  );
 
   // POST /notr-records/:id/submit — READY → SUBMITTED (step-up; 202; emits `m23.notr.submit_requested`). #30.
   app.post(

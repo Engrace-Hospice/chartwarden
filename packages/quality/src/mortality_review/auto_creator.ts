@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/quality — M30 §2.6 / D9 / §4.12 / §7.13 mortality-review auto-creation (P2a). PURE.
 //
 // Every patient death auto-creates a `mortality_review` row: M30 subscribes to `m6.discharge.death` and
@@ -20,7 +21,6 @@
 //     DB trigger (a migration-owned column, not a Drizzle column). We surface the PROMOTION DECISION as a
 //     `retention` descriptor so the later trigger/worker phase has the pure determination to mirror.
 import { WardenXError } from "@wardenx/types";
-import type { schema } from "@wardenx/db";
 
 /** Default completion target — 30 days from death (D9). Tenant policy may TIGHTEN (≤ 30), never loosen. */
 export const MORTALITY_DEFAULT_COMPLETION_DAYS = 30;
@@ -114,7 +114,9 @@ function addDays(from: Date, days: number): Date {
  * Throws a `WardenXError` (`MORTALITY_TARGET_EXCEEDS_FLOOR`, 422) if a tenant completion window exceeds the
  * 30-day platform floor (tighten-only, D15-style), or is below 1 day.
  */
-export function buildMortalityReviewFromDeath(event: DischargeDeathEvent): MortalityReviewAutoCreateResult {
+export function buildMortalityReviewFromDeath(
+  event: DischargeDeathEvent,
+): MortalityReviewAutoCreateResult {
   const source: DischargeDeathSource = event.source ?? "internal_clinician_recorded";
   const isExternal = source === "hl7_external";
 

@@ -8,7 +8,14 @@ import { StatusPill, t, useApiClient } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { CSSProperties, FormEvent, JSX } from "react";
 import { day, humanize, readError } from "./portal-format";
-import { PortalCard, PortalLoadState, PortalPage, tableCell, tableHead, tableRow } from "./portal-page";
+import {
+  PortalCard,
+  PortalLoadState,
+  PortalPage,
+  tableCell,
+  tableHead,
+  tableRow,
+} from "./portal-page";
 
 interface Medication {
   medicationOrderId: string;
@@ -142,11 +149,17 @@ export function PortalMedicationList(): JSX.Element {
 
         <PortalCard heading="Record a dose you gave">
           <p style={{ margin: "0 0 0.75rem", fontSize: "0.85rem", color: t.onSurfaceVariant }}>
-            Only the primary caregiver or a healthcare DPOA can record an administration. If the button is
-            declined, your team can help set this up.
+            Only the primary caregiver or a healthcare DPOA can record an administration. If the
+            button is declined, your team can help set this up.
           </p>
           <form onSubmit={(e) => void attest(e)} style={{ display: "grid", gap: "0.6rem" }}>
-            <select value={orderId} onChange={(e) => setOrderId(e.target.value)} required style={field} aria-label="Medication">
+            <select
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              required
+              style={field}
+              aria-label="Medication"
+            >
               <option value="">Select a medication…</option>
               {meds.map((m) => (
                 <option key={m.medicationOrderId} value={m.medicationOrderId}>
@@ -202,7 +215,11 @@ export function PortalMedicationList(): JSX.Element {
             {submitState ? (
               <p
                 role={submitState.tone === "err" ? "alert" : "status"}
-                style={{ margin: 0, fontSize: "0.85rem", color: submitState.tone === "err" ? t.error : t.success }}
+                style={{
+                  margin: 0,
+                  fontSize: "0.85rem",
+                  color: submitState.tone === "err" ? t.error : t.success,
+                }}
               >
                 {submitState.msg}
               </p>
@@ -216,7 +233,9 @@ export function PortalMedicationList(): JSX.Element {
               {log.map((a, i) => (
                 <li key={i}>
                   {day(a.administeredAt)} — {a.drugName ?? "Medication"}
-                  {a.administeredAmount != null ? ` (${a.administeredAmount} ${a.administeredUnit ?? ""})` : ""}
+                  {a.administeredAmount != null
+                    ? ` (${a.administeredAmount} ${a.administeredUnit ?? ""})`
+                    : ""}
                 </li>
               ))}
             </ul>

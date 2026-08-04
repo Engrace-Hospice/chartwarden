@@ -23,14 +23,7 @@ export const reportScheduleRun = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     status: text("status", {
-      enum: [
-        "queued",
-        "running",
-        "rendered_pending",
-        "rendered_complete",
-        "delivered",
-        "failed",
-      ],
+      enum: ["queued", "running", "rendered_pending", "rendered_complete", "delivered", "failed"],
     })
       .notNull()
       .default("queued"),

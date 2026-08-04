@@ -1,17 +1,17 @@
 // @wardenx/hope — recording-boundary guards + discipline rule (§2.3, §4.7, D2/D9/D12) — M10-T03.
 import { describe, expect, it } from "vitest";
 import {
-  assertAdmissionActiveAtTarget,
-  assertRfaMatchesSchedule,
-  assertCaptureAllowed,
-  assertSectionQForDischarge,
-  LATE_COMPLETION_REASON_CODES,
-} from "../src/recording/timepoint-gate";
-import {
   assertAuthorDisciplineAllowed,
   isHopeAuthorDisciplineAllowed,
   isSfvAuthorDisciplineAllowed,
 } from "../src/recording/discipline";
+import {
+  LATE_COMPLETION_REASON_CODES,
+  assertAdmissionActiveAtTarget,
+  assertCaptureAllowed,
+  assertRfaMatchesSchedule,
+  assertSectionQForDischarge,
+} from "../src/recording/timepoint-gate";
 import { windowFor } from "../src/scheduling/window-calculator";
 
 const UTC = "UTC";
@@ -65,7 +65,10 @@ describe("assertCaptureAllowed — D2/D12 soft-window + late-reason gate", () =>
   });
   it("allows a past-deadline capture WITH an admin override (then requires a late reason)", () => {
     expect(
-      assertCaptureAllowed("2026-06-20T12:00:00.000Z", w, { adminOverride: true, lateReasonCode: "pto" }),
+      assertCaptureAllowed("2026-06-20T12:00:00.000Z", w, {
+        adminOverride: true,
+        lateReasonCode: "pto",
+      }),
     ).toEqual({ wasLate: true, lateReasonCode: "pto" });
   });
   it("late capture requires a late reason (400 M10_LATE_REASON_REQUIRED)", () => {

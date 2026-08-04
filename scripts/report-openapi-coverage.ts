@@ -108,7 +108,15 @@ const totals = coverage.reduce(
     gets: acc.gets + c.gets,
     getsNoResponse: acc.getsNoResponse + c.getsNoResponse,
   }),
-  { routes: 0, enriched: 0, deficit: 0, mutating: 0, mutatingNoBody: 0, gets: 0, getsNoResponse: 0 },
+  {
+    routes: 0,
+    enriched: 0,
+    deficit: 0,
+    mutating: 0,
+    mutatingNoBody: 0,
+    gets: 0,
+    getsNoResponse: 0,
+  },
 );
 
 // ---- baseline ---------------------------------------------------------------
@@ -124,7 +132,11 @@ function readBaseline(): Baseline {
   // treat it as an implied floor of 0, same as a module missing from the file entirely.
   const out: Baseline = {};
   for (const [mod, row] of Object.entries(modules))
-    out[mod] = { routes: row.routes, deficit: row.deficit, mutatingNoBody: row.mutatingNoBody ?? 0 };
+    out[mod] = {
+      routes: row.routes,
+      deficit: row.deficit,
+      mutatingNoBody: row.mutatingNoBody ?? 0,
+    };
   return out;
 }
 

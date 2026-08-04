@@ -142,7 +142,11 @@ export function transitionRefillRequest(
         "the source medication order is not active; a refill renews only an active prescription",
       );
       // §1.4 — Schedule II non-refillable + schedule max-refill ceiling (tenant tighten-only).
-      assertRefillAuthorizedCount(event.deaSchedule, event.refillsAuthorized, event.tenantMaxOverride);
+      assertRefillAuthorizedCount(
+        event.deaSchedule,
+        event.refillsAuthorized,
+        event.tenantMaxOverride,
+      );
       return refillResult(from, event.type, "approved", [
         {
           kind: "mint_medication_order",

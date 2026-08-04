@@ -92,8 +92,10 @@ describe("M32-T02 §3.7 AI-provenance erasers", () => {
     await expect(
       getEraser("clinical_record_ai_provenance").erase({ orgId: ORG }, PATIENT),
     ).resolves.toEqual({ erased: 5 });
-    await expect(getEraser("intake_ai_provenance").erase({ orgId: ORG }, PATIENT)).resolves.toEqual({
-      erased: 1,
-    });
+    await expect(getEraser("intake_ai_provenance").erase({ orgId: ORG }, PATIENT)).resolves.toEqual(
+      {
+        erased: 1,
+      },
+    );
   });
 });

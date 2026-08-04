@@ -71,7 +71,10 @@ export function createDrizzleFhirGatewayEraseStore(db: DbClient): FhirGatewayEra
           .update(CONFIG)
           .set({ cursorSigningKeyCipher: EMPTY_BYTEA as never, updatedAt: new Date() })
           .where(
-            and(eq(CONFIG.organizationId, organizationId), sql`length(${CONFIG.cursorSigningKeyCipher}) > 0`),
+            and(
+              eq(CONFIG.organizationId, organizationId),
+              sql`length(${CONFIG.cursorSigningKeyCipher}) > 0`,
+            ),
           )
           .returning({ organizationId: CONFIG.organizationId });
         touched += config.length;
@@ -86,9 +89,7 @@ export function createDrizzleFhirGatewayEraseStore(db: DbClient): FhirGatewayEra
         const creds = await tx
           .update(CRED)
           .set({ secretCipher: null, secretDigestSha256: null })
-          .where(
-            and(eq(CRED.organizationId, organizationId), isNotNull(CRED.secretDigestSha256)),
-          )
+          .where(and(eq(CRED.organizationId, organizationId), isNotNull(CRED.secretDigestSha256)))
           .returning({ id: CRED.id });
         touched += creds.length;
 
@@ -109,7 +110,10 @@ export function createDrizzleFhirGatewayEraseStore(db: DbClient): FhirGatewayEra
           .update(INBOUND)
           .set({ payload: SHRED_PAYLOAD as never })
           .where(
-            and(eq(INBOUND.organizationId, organizationId), ne(INBOUND.payloadSha256, "_destroyed")),
+            and(
+              eq(INBOUND.organizationId, organizationId),
+              ne(INBOUND.payloadSha256, "_destroyed"),
+            ),
           )
           .returning({ id: INBOUND.id });
         touched += inbound.length;

@@ -48,12 +48,11 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
-  buildOncallAbacPredicates,
   type OncallAbacPorts,
   type OncallAbacResolver,
+  buildOncallAbacPredicates,
 } from "../src/modules/19-oncall/abac-predicates";
 import { M19_PERMISSION_KEY_LIST } from "../src/modules/19-oncall/permission-keys";
-import { mountM19Routes } from "../src/modules/19-oncall/routes/mount";
 import type {
   CurrentOnCallView,
   EscalationInboxItem,
@@ -68,6 +67,7 @@ import type {
   TriageProtocolView,
   VendorBindingView,
 } from "../src/modules/19-oncall/routes/index";
+import { mountM19Routes } from "../src/modules/19-oncall/routes/mount";
 
 // ── fixed test ids ───────────────────────────────────────────────────────────────────────────────────
 const ORG = "org_a";
@@ -957,7 +957,12 @@ describe("M19-T07 §4.1 triage-call lifecycle (routes 1, 3-14)", () => {
       method: "POST",
       url: "/api/v1/triage-calls",
       headers: { ...SUPER, ...idemp() },
-      payload: { providerEntityId: PE, inboundChannel: "phone", callerKind: "caregiver", source: "manual" },
+      payload: {
+        providerEntityId: PE,
+        inboundChannel: "phone",
+        callerKind: "caregiver",
+        source: "manual",
+      },
     });
     expect(opened.statusCode).toBe(201);
     const callId = opened.json().triageCallId as string;
@@ -981,7 +986,11 @@ describe("M19-T07 §4.1 triage-call lifecycle (routes 1, 3-14)", () => {
     expect(identified.statusCode).toBe(200);
 
     // 5 — apply protocol (against the seeded platform-floor protocol)
-    const seed = await app.inject({ method: "GET", url: "/api/v1/triage-protocols", headers: SUPER });
+    const seed = await app.inject({
+      method: "GET",
+      url: "/api/v1/triage-protocols",
+      headers: SUPER,
+    });
     const seedProtocolId = seed.json().data[0].id as string;
     const applyReal = await app.inject({
       method: "POST",
@@ -1079,7 +1088,10 @@ describe("M19-T07 §4.1 triage-call lifecycle (routes 1, 3-14)", () => {
       method: "POST",
       url: `/api/v1/triage-calls/${callId}/abandon`,
       headers: { ...SUPER, ...idemp(), ...IFM },
-      payload: { reason: "Caller disconnected before disposition could be confirmed.", callbackAttempts: 1 },
+      payload: {
+        reason: "Caller disconnected before disposition could be confirmed.",
+        callbackAttempts: 1,
+      },
     });
     expect(abandoned.statusCode).toBe(200);
 
@@ -1181,7 +1193,9 @@ describe("M19-T07 §4.1 escalations (routes 17-20)", () => {
       method: "POST",
       url: `/api/v1/escalations/${escalationId}/resolve`,
       headers: { ...SUPER, ...idemp(), ...IFM },
-      payload: { resolution: "Reviewed with the on-call RN; medication guidance given and callback closed." },
+      payload: {
+        resolution: "Reviewed with the on-call RN; medication guidance given and callback closed.",
+      },
     });
     expect(resolved.statusCode).toBe(200);
     expect(resolved.json().state).toBe("resolved");
@@ -1287,7 +1301,11 @@ describe("M19-T07 §4.1 protocol catalog + vendor bindings (routes 29-37)", () =
     const { app, backend } = makeServer();
 
     // 29 — list catalog
-    const list = await app.inject({ method: "GET", url: "/api/v1/triage-protocols", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/triage-protocols",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
 
     // 30 — get one (the seeded platform-floor protocol)
@@ -1328,7 +1346,11 @@ describe("M19-T07 §4.1 protocol catalog + vendor bindings (routes 29-37)", () =
       method: "POST",
       url: `/api/v1/triage-protocols/${protocolId}/questions`,
       headers: { ...SUPER, ...idemp() },
-      payload: { questionOrder: 1, prompt: "Is the patient in acute distress right now?", answerType: "boolean" },
+      payload: {
+        questionOrder: 1,
+        prompt: "Is the patient in acute distress right now?",
+        answerType: "boolean",
+      },
     });
     expect(withQuestion.statusCode).toBe(201);
     const questions = withQuestion.json().questions as ReadonlyArray<{ id: string }>;

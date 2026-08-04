@@ -1,3 +1,4 @@
+import { Value } from "@sinclair/typebox/value";
 /**
  * M35A-T03 — §5.2 backend gap-closure.
  *
@@ -14,12 +15,11 @@ import {
   M35_CONTRIBUTED_PERMISSIONS,
   rolesForPermission,
 } from "@wardenx/auth";
-import { Value } from "@sinclair/typebox/value";
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 import { organizationReaderDenyStub } from "../../../bootstrap/seams/providers";
-import type { M35RouteService } from "../routes/service";
 import { registerAdminRoutes } from "../routes/admin.routes";
+import type { M35RouteService } from "../routes/service";
 import {
   DunningListItemDto,
   DunningListResponseDto,
@@ -70,7 +70,9 @@ describe("M35A-T03 — org display name on the admin DTOs (§5.2)", () => {
   };
 
   it("SubscriptionAdminResponseDto REQUIRES organizationName", () => {
-    expect(Value.Check(SubscriptionAdminResponseDto, { ...base, organizationName: "Acme Hospice" })).toBe(true);
+    expect(
+      Value.Check(SubscriptionAdminResponseDto, { ...base, organizationName: "Acme Hospice" }),
+    ).toBe(true);
     expect(Value.Check(SubscriptionAdminResponseDto, base)).toBe(false); // missing organizationName → rejected
   });
 
@@ -109,7 +111,9 @@ describe("M35A-T03 — org display name on the admin DTOs (§5.2)", () => {
       nextAttemptAt: null,
     };
     expect(Value.Check(DunningListItemDto, item)).toBe(true);
-    expect(Value.Check(DunningListResponseDto, { items: [item], nextCursor: null, hasMore: false })).toBe(true);
+    expect(
+      Value.Check(DunningListResponseDto, { items: [item], nextCursor: null, hasMore: false }),
+    ).toBe(true);
   });
 });
 

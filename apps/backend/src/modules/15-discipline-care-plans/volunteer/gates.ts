@@ -49,10 +49,7 @@ export interface VolunteerGateFacts {
 }
 
 /** Whole days from `now` until `validUntil` (negative once elapsed); null for a non-expiring gate. */
-export function daysUntilExpiry(
-  validUntil: IsoInstant | null,
-  now: IsoInstant,
-): number | null {
+export function daysUntilExpiry(validUntil: IsoInstant | null, now: IsoInstant): number | null {
   if (validUntil === null) return null;
   return Math.floor((Date.parse(validUntil) - Date.parse(now)) / MS_PER_DAY);
 }
@@ -72,7 +69,9 @@ export function deriveGateStatus(gate: VolunteerGateFacts, now: IsoInstant): Vol
   const daysOut = daysUntilExpiry(gate.validUntil, now);
   if (daysOut === null) return "satisfied";
   if (daysOut < 0) return "expired";
-  return daysOut <= VOLUNTEER_GATE_EXPIRY_POLICY.expiringSoonAtDaysOut ? "expiring_soon" : "satisfied";
+  return daysOut <= VOLUNTEER_GATE_EXPIRY_POLICY.expiringSoonAtDaysOut
+    ? "expiring_soon"
+    : "satisfied";
 }
 
 /**

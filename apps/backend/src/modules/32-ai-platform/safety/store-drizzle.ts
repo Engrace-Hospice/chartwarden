@@ -25,11 +25,7 @@
 // org id it does not also pin into the session variable. `ai_evaluation_run` is platform-shared: reads
 // on the tenant handle (`ai_evaluation_run_read` is `USING (true)`), writes under the audited bypass.
 import { type DbClient, schema } from "@wardenx/db";
-import {
-  type PlatformBypassAuditor,
-  withOrgContext,
-  withPlatformContext,
-} from "@wardenx/tenancy";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import type {
   AiEvaluationRunDecision,
   AiEvaluationRunStage,
@@ -223,11 +219,15 @@ export function createDrizzleAiKillSwitchStore(deps: AiSafetyStoreDeps): AiKillS
             activatedAt: new Date(patch.activatedAt),
           })
           .returning();
-        if (!inserted) throw new Error(`ai_kill_switch_state insert returned no row for ${capabilityId}`);
+        if (!inserted)
+          throw new Error(`ai_kill_switch_state insert returned no row for ${capabilityId}`);
         return toKillSwitchRow(inserted);
       };
       return organizationId === null
-        ? asPlatform(`activate platform-wide AI kill switch for capability ${capabilityId} (W3/R7)`, write)
+        ? asPlatform(
+            `activate platform-wide AI kill switch for capability ${capabilityId} (W3/R7)`,
+            write,
+          )
         : withOrgContext(deps.db, ctx(organizationId), write);
     },
 
@@ -356,7 +356,10 @@ export function createDrizzleAiHallucinationReportStore(deps: {
           })
           .where(eq(schema.aiHallucinationReport.id, reportId))
           .returning();
-        if (!row) throw new Error(`ai_hallucination_report ${reportId} not found for org ${organizationId}`);
+        if (!row)
+          throw new Error(
+            `ai_hallucination_report ${reportId} not found for org ${organizationId}`,
+          );
         return toReportRow(row);
       }),
   };

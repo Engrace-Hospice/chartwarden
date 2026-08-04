@@ -16,7 +16,7 @@
 //
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
 import type { RuleDef } from "../types";
-import { passResult, warnResult, skipResult } from "../types";
+import { passResult, skipResult, warnResult } from "../types";
 
 /** The MAC jurisdiction code this profile scopes to (matches `cost_report_validation_rule.mac_jurisdiction_scope`). */
 export const NGS_J6_MAC_SCOPE = "NGS-J6";
@@ -24,7 +24,8 @@ export const NGS_J6_MAC_SCOPE = "NGS-J6";
 const ngsJ6OwnershipAttestation: RuleDef = {
   ruleCode: "mac.ngs_j6.s2_ownership_attestation",
   category: "mac_specific",
-  description: "NGS-J6: Worksheet S-2 ownership/related-party attestation is present (NGS reviews this closely).",
+  description:
+    "NGS-J6: Worksheet S-2 ownership/related-party attestation is present (NGS reviews this closely).",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: NGS_J6_MAC_SCOPE,
@@ -42,7 +43,8 @@ const ngsJ6OwnershipAttestation: RuleDef = {
 const ngsJ6SupportingSchedules: RuleDef = {
   ruleCode: "mac.ngs_j6.supporting_schedules_present",
   category: "supporting_docs",
-  description: "NGS-J6: the supporting schedule attachments NGS requires for hospice cost reports are present.",
+  description:
+    "NGS-J6: the supporting schedule attachments NGS requires for hospice cost reports are present.",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: NGS_J6_MAC_SCOPE,
@@ -60,7 +62,8 @@ const ngsJ6SupportingSchedules: RuleDef = {
 const ngsJ6StatisticalBasis: RuleDef = {
   ruleCode: "mac.ngs_j6.statistical_basis_present",
   category: "statistical_data",
-  description: "NGS-J6: the statistical basis NGS expects for the cost-allocation step-down is present.",
+  description:
+    "NGS-J6: the statistical basis NGS expects for the cost-allocation step-down is present.",
   severity: "warn",
   regulatoryRequired: false,
   macJurisdictionScope: NGS_J6_MAC_SCOPE,
@@ -84,7 +87,10 @@ const ngsJ6CapPositionReviewed: RuleDef = {
   macJurisdictionScope: NGS_J6_MAC_SCOPE,
   evaluate: (ctx) => {
     if (!ctx.seams.capProviderBound || ctx.cap === null) {
-      return skipResult("M26 cap provider not bound — NGS-J6 cap-position review deferred.", "seam_not_bound");
+      return skipResult(
+        "M26 cap provider not bound — NGS-J6 cap-position review deferred.",
+        "seam_not_bound",
+      );
     }
     return passResult("NGS-J6 cap position is available for review.", {
       aggregateCapCents: ctx.cap.aggregateCapCents,

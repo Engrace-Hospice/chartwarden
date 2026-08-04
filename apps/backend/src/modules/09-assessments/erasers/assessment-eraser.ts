@@ -64,7 +64,11 @@ export function createInMemoryAssessmentEraseStore(seed: Partial<AssessmentErase
   store: AssessmentEraseStore;
   locked: string[];
 } {
-  const zero: AssessmentEraseCounts = { cosignatures: 0, significantChangeEvents: 0, assessments: 0 };
+  const zero: AssessmentEraseCounts = {
+    cosignatures: 0,
+    significantChangeEvents: 0,
+    assessments: 0,
+  };
   const counts: AssessmentEraseCounts = { ...zero, ...seed };
   const locked: string[] = [];
   let used = false;

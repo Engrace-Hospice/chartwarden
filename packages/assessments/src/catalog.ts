@@ -4,8 +4,8 @@
 // license-gate (D3) read. Per-scale SCORING/eligibility/thresholds live in `scales/<scale>/` (M9-T03);
 // this catalog is metadata only (pure data, no scoring) so it ships type-clean at T01.
 
-import { SCALE_TYPES, LICENSED_SCALE_TYPES } from "@wardenx/types";
-import type { ScaleType, LicensedScaleType } from "@wardenx/types";
+import { LICENSED_SCALE_TYPES, SCALE_TYPES } from "@wardenx/types";
+import type { LicensedScaleType, ScaleType } from "@wardenx/types";
 
 /** The §5.2 summary/timeline color family a scale belongs to (Performance / Symptoms / Risk / Cognitive). */
 export type ScaleFamily = "performance" | "symptoms" | "risk" | "cognitive";

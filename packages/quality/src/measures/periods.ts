@@ -29,7 +29,10 @@ export function quarterOfMonth(month0: number): 0 | 1 | 2 | 3 {
 }
 
 /** The `{ year, quarter }` (1-based quarter) containing a UTC date. */
-export function quarterContaining(d: Date): { readonly year: number; readonly quarter: 1 | 2 | 3 | 4 } {
+export function quarterContaining(d: Date): {
+  readonly year: number;
+  readonly quarter: 1 | 2 | 3 | 4;
+} {
   const quarter = (quarterOfMonth(d.getUTCMonth()) + 1) as 1 | 2 | 3 | 4;
   return { year: d.getUTCFullYear(), quarter };
 }
@@ -138,7 +141,10 @@ export const MEASURE_FY_BOUNDARY_v2028: MeasureFyBoundary = {
 };
 
 /** Resolve the period rule for a measure code under a given FY boundary (override → default). */
-export function resolvePeriodRule(boundary: MeasureFyBoundary, measureCode: string): MeasurePeriodRule {
+export function resolvePeriodRule(
+  boundary: MeasureFyBoundary,
+  measureCode: string,
+): MeasurePeriodRule {
   return boundary.overrides[measureCode] ?? boundary.defaultRule;
 }
 

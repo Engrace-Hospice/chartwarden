@@ -83,10 +83,14 @@ export type CounselorDashboard = Ok<operations["getApiV1BereavementDashboardCoun
 export type SupervisorDashboard = Ok<operations["getApiV1BereavementDashboardSupervisor"]>;
 
 /** Route 5's answer: the opened plan plus what opening it produced. */
-export type PlanActivation = Ok<operations["postApiV1BereavementPlansByPlanIdSeedrosterandschedule"]>;
+export type PlanActivation = Ok<
+  operations["postApiV1BereavementPlansByPlanIdSeedrosterandschedule"]
+>;
 
 /** Route 27's answer: what the regeneration actually materialized (never a bare 204). */
-export type ScheduleRegeneration = Ok<operations["postApiV1BereavementPlansByPlanIdRegenerateschedule"]>;
+export type ScheduleRegeneration = Ok<
+  operations["postApiV1BereavementPlansByPlanIdRegenerateschedule"]
+>;
 
 /** Routes 21/26/32's answer: the `bereavement_contact_log` row the transition wrote. */
 export type ContactLogRow = Ok<operations["postApiV1BereavementContactsByContactIdLogdirect"]>;
@@ -96,25 +100,40 @@ export type ContactDraft = ReqBody<operations["postApiV1BereavementPlansByPlanId
 
 // ── closed-vocabulary field types (for the shared picklists in bereavement-status.ts and the screens) ────
 
-export type BereavementPlanStatus = NonNullable<ReqQuery<operations["getApiV1BereavementPlans"]>>["status"];
+export type BereavementPlanStatus = NonNullable<
+  ReqQuery<operations["getApiV1BereavementPlans"]>
+>["status"];
 export type BereavementRelationshipCode = ContactDraft["relationshipCode"];
-export type BereavementOutreachKind = NonNullable<ContactDraft["outreachPreferences"]>["allowedKinds"][number];
-export type BereavementPauseKind = ReqBody<operations["postApiV1BereavementPlansByPlanIdPause"]>["pauseKind"];
-export type BereavementCloseEarlyReason =
-  ReqBody<operations["postApiV1BereavementPlansByPlanIdCloseearly"]>["reason"];
-export type BereavementOptOutKind =
-  ReqBody<operations["postApiV1BereavementContactsByContactIdOptout"]>["optOutKind"];
-export type BereavementLogKind = ReqBody<operations["postApiV1BereavementContactsByContactIdLogdirect"]>["kind"];
-export type BereavementLogOutcome =
-  ReqBody<operations["postApiV1BereavementContactsByContactIdLogdirect"]>["outcome"];
-export type BereavementInitiateContactKind =
-  ReqBody<operations["postApiV1BereavementPlansByPlanIdInitiatecontact"]>["kind"];
-export type BereavementOutreachStatus =
-  NonNullable<ReqQuery<operations["getApiV1BereavementPlansByPlanIdOutreach"]>>["status"];
-export type BereavementRiskFactors =
-  NonNullable<ReqBody<operations["postApiV1BereavementPlansByPlanIdRecomputerisk"]>["factors"]>;
-export type BereavementRiskTier =
-  ReqBody<operations["postApiV1BereavementPlansByPlanIdRecomputerisk"]>["overrideTier"];
+export type BereavementOutreachKind = NonNullable<
+  ContactDraft["outreachPreferences"]
+>["allowedKinds"][number];
+export type BereavementPauseKind = ReqBody<
+  operations["postApiV1BereavementPlansByPlanIdPause"]
+>["pauseKind"];
+export type BereavementCloseEarlyReason = ReqBody<
+  operations["postApiV1BereavementPlansByPlanIdCloseearly"]
+>["reason"];
+export type BereavementOptOutKind = ReqBody<
+  operations["postApiV1BereavementContactsByContactIdOptout"]
+>["optOutKind"];
+export type BereavementLogKind = ReqBody<
+  operations["postApiV1BereavementContactsByContactIdLogdirect"]
+>["kind"];
+export type BereavementLogOutcome = ReqBody<
+  operations["postApiV1BereavementContactsByContactIdLogdirect"]
+>["outcome"];
+export type BereavementInitiateContactKind = ReqBody<
+  operations["postApiV1BereavementPlansByPlanIdInitiatecontact"]
+>["kind"];
+export type BereavementOutreachStatus = NonNullable<
+  ReqQuery<operations["getApiV1BereavementPlansByPlanIdOutreach"]>
+>["status"];
+export type BereavementRiskFactors = NonNullable<
+  ReqBody<operations["postApiV1BereavementPlansByPlanIdRecomputerisk"]>["factors"]
+>;
+export type BereavementRiskTier = ReqBody<
+  operations["postApiV1BereavementPlansByPlanIdRecomputerisk"]
+>["overrideTier"];
 
 // ── request helpers ────────────────────────────────────────────────────────────────────────────────────
 
@@ -143,7 +162,8 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (body?.title) return body.title;
   if (body?.status === 412)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
-  if (body?.status === 428) return "This edit is missing its version. Reload the record and try again.";
+  if (body?.status === 428)
+    return "This edit is missing its version. Reload the record and try again.";
   if (body?.status === 403)
     return "You do not have access to this action for this bereavement plan.";
   return fallback;
@@ -584,7 +604,9 @@ export async function startOutreach(
  * kind must NOT carry one. The union is preserved here rather than flattened, so a screen cannot compose
  * a body the DB CHECK pair will reject at the end of a long transaction.
  */
-export type CompleteOutreachBody = ReqBody<operations["postApiV1BereavementOutreachByOutreachIdComplete"]>;
+export type CompleteOutreachBody = ReqBody<
+  operations["postApiV1BereavementOutreachByOutreachIdComplete"]
+>;
 
 export async function completeOutreach(
   client: ApiClient,

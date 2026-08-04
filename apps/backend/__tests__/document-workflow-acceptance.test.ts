@@ -22,52 +22,52 @@ import {
   resetRbacEngine,
 } from "@wardenx/auth";
 import {
+  type DocLensCapabilityPort,
   buildProvenance,
   planCommitIntents,
   runExtractionPipeline,
-  type DocLensCapabilityPort,
 } from "@wardenx/intake-extraction";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
-  // §7.2 W2 render handshake (T04 seam)
-  createDocumentRenderer,
-  createInMemoryDocumentSeamStore,
-  createInMemoryObjectStore,
-  UnknownTemplateError,
-  // W1 DocLens (T08)
-  createDocLensPipelineService,
-  registerDocLensExtractionRoutes,
+  type AmendmentDeniedPayload,
   type DocumentFeatureFlagReader,
-  // §7.5 / §7.12 / §7.13 / §7.15 / §7.16 render variants (T09)
-  planStatementOfDisagreement,
-  planEvvVerificationRender,
-  planEncounterRender,
-  planLabResultsRender,
-  redactSudValue,
-  StatementOfDisagreementError,
+  DocumentStateError,
+  type MergeFacts,
   SUD_REDACTED_PLACEHOLDER,
   SUD_REDACTION_BANNER,
   SUD_RETENTION_CLASS,
-  type AmendmentDeniedPayload,
-  // §4.12 BAA-gated external presign (T07 signed-URL service over T06 BAA gate)
-  createSignedUrlService,
   type SignedUrlObjectResolver,
-  // §2.4 patient-merge redirect + §8.6 retention disposition + W14 lifecycle (T03)
-  resolvePatientRedirect,
+  StatementOfDisagreementError,
+  UnknownTemplateError,
   applyPatientMergeCascade,
-  deriveDispositionDate,
-  isDestructionEligible,
-  resolveInsertRetentionClass,
-  transitionDocument,
-  planDestructionForDocument,
-  DocumentStateError,
-  type MergeFacts,
+  // W1 DocLens (T08)
+  createDocLensPipelineService,
+  // §7.2 W2 render handshake (T04 seam)
+  createDocumentRenderer,
   // W14 eraser (T10)
   createInMemoryDocumentEraseStore,
+  createInMemoryDocumentSeamStore,
+  createInMemoryObjectStore,
+  // §4.12 BAA-gated external presign (T07 signed-URL service over T06 BAA gate)
+  createSignedUrlService,
+  deriveDispositionDate,
   eraseDocumentRecord,
+  isDestructionEligible,
+  planDestructionForDocument,
+  planEncounterRender,
+  planEvvVerificationRender,
+  planLabResultsRender,
+  // §7.5 / §7.12 / §7.13 / §7.15 / §7.16 render variants (T09)
+  planStatementOfDisagreement,
+  redactSudValue,
+  registerDocLensExtractionRoutes,
+  resolveInsertRetentionClass,
+  // §2.4 patient-merge redirect + §8.6 retention disposition + W14 lifecycle (T03)
+  resolvePatientRedirect,
+  transitionDocument,
 } from "../src/modules/22-documents/index";
 
 const ORG = "org_a";
@@ -98,30 +98,49 @@ describe("M22-T11 §7.2 W2 — form render handshake", () => {
 
   it("renders a typed CTI payload → object written under a PHI-free key + a queryable back-ref (W2 AC)", async () => {
     const { renderer, store, liveObjects } = makeRenderer();
-    const { documentId } = await renderer.render(scope, "cti", { aggregateId: "cti-1", patientId: PAT });
+    const { documentId } = await renderer.render(scope, "cti", {
+      aggregateId: "cti-1",
+      patientId: PAT,
+    });
     expect(documentId).toMatch(/^[0-9a-f-]{36}$/);
     // the bytes landed under an opaque, patient-prefixed, PHI-free key (D1/D11) — no free-text title.
     const key = [...liveObjects.keys()][0] as string;
     expect(key.startsWith(`tenant-${ORG}/documents/${PAT}/cti/`)).toBe(true);
     expect(key).not.toContain("Certification");
     // the source module's back-ref resolves to the rendered document (the consumer applies document_id).
-    const back = await store.renderedDocumentForAggregate({ aggregateType: "cti", aggregateId: "cti-1", organizationId: ORG });
+    const back = await store.renderedDocumentForAggregate({
+      aggregateType: "cti",
+      aggregateId: "cti-1",
+      organizationId: ORG,
+    });
     expect(back?.documentId).toBe(documentId);
     expect(back?.renderedAt).toBe(NOW);
   });
 
   it("an addendum re-render is a NEW VERSION, not a new document (W2 addendum AC)", async () => {
     const { renderer, store } = makeRenderer();
-    const v1 = await renderer.render(scope, "encounter", { aggregateId: "enc-1", patientId: "pat-9" });
-    const v2 = await renderer.render(scope, "encounter", { aggregateId: "enc-1", patientId: "pat-9" });
+    const v1 = await renderer.render(scope, "encounter", {
+      aggregateId: "enc-1",
+      patientId: "pat-9",
+    });
+    const v2 = await renderer.render(scope, "encounter", {
+      aggregateId: "enc-1",
+      patientId: "pat-9",
+    });
     expect(v2.documentId).toBe(v1.documentId);
-    const back = await store.renderedDocumentForAggregate({ aggregateType: "encounter", aggregateId: "enc-1", organizationId: ORG });
+    const back = await store.renderedDocumentForAggregate({
+      aggregateType: "encounter",
+      aggregateId: "enc-1",
+      organizationId: ORG,
+    });
     expect(back?.documentId).toBe(v1.documentId);
   });
 
   it("a terminal render failure (unknown template) creates NO document row (W2 failure AC)", async () => {
     const { renderer, liveObjects } = makeRenderer();
-    await expect(renderer.render(scope, "not-a-template", { aggregateId: "x" })).rejects.toThrow(UnknownTemplateError);
+    await expect(renderer.render(scope, "not-a-template", { aggregateId: "x" })).rejects.toThrow(
+      UnknownTemplateError,
+    );
     expect(liveObjects.size).toBe(0);
   });
 });
@@ -143,14 +162,42 @@ const fakeCapability: DocLensCapabilityPort = {
     return {
       status: "ok",
       value: [
-        { fieldPath: "patient.address", value: "12 Oak St", riskLevel: "low", confidence: 0.98, sudDetected: false, sourcePageNumber: 1 },
-        { fieldPath: "medications[0].name", value: "methadone", riskLevel: "high", confidence: 0.88, sudDetected: true, sourcePageNumber: 2 },
-        { fieldPath: "patient.allergy", value: "penicillin (anaphylaxis)", riskLevel: "high", confidence: 0.91, sudDetected: false, sourcePageNumber: 2 },
+        {
+          fieldPath: "patient.address",
+          value: "12 Oak St",
+          riskLevel: "low",
+          confidence: 0.98,
+          sudDetected: false,
+          sourcePageNumber: 1,
+        },
+        {
+          fieldPath: "medications[0].name",
+          value: "methadone",
+          riskLevel: "high",
+          confidence: 0.88,
+          sudDetected: true,
+          sourcePageNumber: 2,
+        },
+        {
+          fieldPath: "patient.allergy",
+          value: "penicillin (anaphylaxis)",
+          riskLevel: "high",
+          confidence: 0.91,
+          sudDetected: false,
+          sourcePageNumber: 2,
+        },
       ],
     };
   },
   async verify(args) {
-    return { status: "ok", value: args.candidates.map((c) => ({ fieldPath: c.fieldPath, verified: true, confidence: 0.95 })) };
+    return {
+      status: "ok",
+      value: args.candidates.map((c) => ({
+        fieldPath: c.fieldPath,
+        verified: true,
+        confidence: 0.95,
+      })),
+    };
   },
 };
 
@@ -165,7 +212,9 @@ describe("M22-T11 §7.1 W1 — DocLens extraction (flag-ON pure pipeline over a 
       batchId: BATCH,
       jobId: JOB,
       pageCount: 3,
-      chartValues: [{ fieldPath: "patient.allergy", value: "penicillin (rash)", targetModule: "m5" }],
+      chartValues: [
+        { fieldPath: "patient.allergy", value: "penicillin (rash)", targetModule: "m5" },
+      ],
     });
     expect(result.status).toBe("ready_for_review");
     if (result.status !== "ready_for_review") return;
@@ -178,7 +227,11 @@ describe("M22-T11 §7.1 W1 — DocLens extraction (flag-ON pure pipeline over a 
 
   it("commits ONLY approved candidates + records provenance back to (job, source-doc, page) — W1 steps 11–12", async () => {
     const run = await runExtractionPipeline(fakeCapability, {
-      organizationId: ORG, batchId: BATCH, jobId: JOB, pageCount: 3, chartValues: [],
+      organizationId: ORG,
+      batchId: BATCH,
+      jobId: JOB,
+      pageCount: 3,
+      chartValues: [],
     });
     if (run.status !== "ready_for_review") throw new Error("expected ready_for_review");
     const chartTargets = [
@@ -189,14 +242,21 @@ describe("M22-T11 §7.1 W1 — DocLens extraction (flag-ON pure pipeline over a 
     const decisions = [
       { fieldPath: "patient.address", decision: "approve" as const },
       { fieldPath: "medications[0].name", decision: "reject" as const }, // rejected → no commit intent
-      { fieldPath: "patient.allergy", decision: "approve_with_edit" as const, editedValue: "penicillin (anaphylaxis, confirmed)" },
+      {
+        fieldPath: "patient.allergy",
+        decision: "approve_with_edit" as const,
+        editedValue: "penicillin (anaphylaxis, confirmed)",
+      },
     ];
     const intents = planCommitIntents(run.review.candidates, chartTargets, decisions);
     expect(intents.map((i) => i.fieldPath).sort()).toEqual(["patient.address", "patient.allergy"]);
     const provenance = buildProvenance(JOB, SRC_DOC, run.review.candidates, decisions, intents);
     expect(provenance).toHaveLength(2);
     expect(provenance.find((p) => p.fieldPath === "patient.address")).toMatchObject({
-      jobId: JOB, sourceDocumentId: SRC_DOC, sourcePageNumber: 1, decision: "approve",
+      jobId: JOB,
+      sourceDocumentId: SRC_DOC,
+      sourcePageNumber: 1,
+      decision: "approve",
     });
   });
 });
@@ -228,7 +288,13 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
 
   function server(flags?: DocumentFeatureFlagReader) {
     const grantStore = createInMemoryEffectivePermissionStore([
-      { orgId: ORG, userId: "rn_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["intake.review"] }] },
+      {
+        orgId: ORG,
+        userId: "rn_1",
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["intake.review"] },
+        ],
+      },
     ]);
     registerEffectivePermissionResolver(grantStore.store);
     registerAbacRegistry();
@@ -242,7 +308,12 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
 
   it("returns 503 EXTRACTION_DISABLED with Retry-After: 0 when the flag is OFF (Phase-1 default)", async () => {
     const app = server();
-    const res = await app.inject({ method: "POST", url: RUN, headers: authed, payload: { jobId: JOB, pageCount: 3 } });
+    const res = await app.inject({
+      method: "POST",
+      url: RUN,
+      headers: authed,
+      payload: { jobId: JOB, pageCount: 3 },
+    });
     expect(res.statusCode).toBe(503);
     expect(res.headers["retry-after"]).toBe("0");
     expect(res.json().error.code).toBe("EXTRACTION_DISABLED");
@@ -250,8 +321,17 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
   });
 
   it("reaches the pipeline (202 ready_for_review) when the flag is injected ON", async () => {
-    const app = server({ async forOrg() { return { "documents.doclens": true }; } });
-    const res = await app.inject({ method: "POST", url: RUN, headers: authed, payload: { jobId: JOB, pageCount: 3 } });
+    const app = server({
+      async forOrg() {
+        return { "documents.doclens": true };
+      },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: RUN,
+      headers: authed,
+      payload: { jobId: JOB, pageCount: 3 },
+    });
     expect(res.statusCode).toBe(202);
     expect(res.json().status).toBe("ready_for_review");
     await app.close();
@@ -259,7 +339,12 @@ describe("M22-T11 §7.1 W1 — DocLens flag gate (default OFF → EXTRACTION_DIS
 
   it("the Authorization Contract still 403s without intake.review BEFORE the flag gate", async () => {
     const app = server();
-    const res = await app.inject({ method: "POST", url: RUN, headers: { ...authed, "x-test-user": "nobody" }, payload: { jobId: JOB, pageCount: 3 } });
+    const res = await app.inject({
+      method: "POST",
+      url: RUN,
+      headers: { ...authed, "x-test-user": "nobody" },
+      payload: { jobId: JOB, pageCount: 3 },
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -274,23 +359,39 @@ describe("M22-T11 §7.5 W5 — statement of disagreement", () => {
       patientId: PAT,
       organizationId: ORG,
       decision: "denied",
-      statementText: "I disagree with the recorded allergy; I have never had a penicillin reaction.",
+      statementText:
+        "I disagree with the recorded allergy; I have never had a penicillin reaction.",
       denialReason: "The chart entry is supported by the admitting H&P.",
       ...over,
     };
   }
 
   it("attaches the SoD as an append-only version with attach_to_disclosures + the amendment tag (W5 AC)", () => {
-    const plan = planStatementOfDisagreement({ payload: denied(), versionId: "v1", currentMaxVersion: 0 });
+    const plan = planStatementOfDisagreement({
+      payload: denied(),
+      versionId: "v1",
+      currentMaxVersion: 0,
+    });
     expect(plan.templateKey).toBe("patient_amendment_statement_of_disagreement");
-    expect(plan.attachEffects).toContainEqual({ kind: "set_field", field: "attach_to_disclosures", value: "true" });
-    expect(plan.attachEffects).toContainEqual({ kind: "outbox", event: "m22.document.statement_of_disagreement_published" });
+    expect(plan.attachEffects).toContainEqual({
+      kind: "set_field",
+      field: "attach_to_disclosures",
+      value: "true",
+    });
+    expect(plan.attachEffects).toContainEqual({
+      kind: "outbox",
+      event: "m22.document.statement_of_disagreement_published",
+    });
     expect(plan.content.statementText).toContain("I disagree");
   });
 
   it("a non-denied amendment yields NO SoD (only a denial attaches a statement)", () => {
     expect(() =>
-      planStatementOfDisagreement({ payload: denied({ decision: "approved" }), versionId: "v1", currentMaxVersion: 0 }),
+      planStatementOfDisagreement({
+        payload: denied({ decision: "approved" }),
+        versionId: "v1",
+        currentMaxVersion: 0,
+      }),
     ).toThrow(StatementOfDisagreementError);
   });
 });
@@ -305,8 +406,22 @@ describe("M22-T11 §7.16 W-M22-23 — SUD redaction (PDF-grep guarantee)", () =>
       orderingPhysician: "Dr. Vega",
       signedAt: NOW,
       resultValues: [
-        { observationId: "o1", loincCode: "2823-3", label: "Potassium", value: "5.2", unit: "mEq/L", isSudClass: false },
-        { observationId: "o2", loincCode: "19357-1", label: "Methadone, urine", value: "positive", unit: null, isSudClass: true },
+        {
+          observationId: "o1",
+          loincCode: "2823-3",
+          label: "Potassium",
+          value: "5.2",
+          unit: "mEq/L",
+          isSudClass: false,
+        },
+        {
+          observationId: "o2",
+          loincCode: "19357-1",
+          label: "Methadone, urine",
+          value: "positive",
+          unit: null,
+          isSudClass: true,
+        },
       ],
     };
   }
@@ -332,7 +447,11 @@ describe("M22-T11 §7.16 W-M22-23 — SUD redaction (PDF-grep guarantee)", () =>
   });
 
   it("the redact helper never reveals the SUD plaintext in the placeholder (defense in depth)", () => {
-    const out = redactSudValue({ value: "positive (methadone)", isSudClass: true, consentPresent: false });
+    const out = redactSudValue({
+      value: "positive (methadone)",
+      isSudClass: true,
+      consentPresent: false,
+    });
     expect(out.redacted).toBe(true);
     expect(out.value).toBe(SUD_REDACTED_PLACEHOLDER);
     expect(out.value).not.toContain("methadone");
@@ -344,24 +463,48 @@ describe("M22-T11 §7.16 W-M22-23 — SUD redaction (PDF-grep guarantee)", () =>
 describe("M22-T11 §7.12/§7.13/§7.15 W12/W13/W-M22-22 — render variants", () => {
   it("W12 EVV: a geo-verified visit renders the map snapshot; an alternate-method visit the exception narrative", () => {
     const geo = planEvvVerificationRender({
-      evvRecordId: "evv1", patientId: PAT, visitId: "v1", aggregatorRefId: "a1", acceptedAt: NOW,
+      evvRecordId: "evv1",
+      patientId: PAT,
+      visitId: "v1",
+      aggregatorRefId: "a1",
+      acceptedAt: NOW,
       geoVerification: { lat: 45.5, lng: -122.6, mapSnapshotRef: "snap1" },
     });
     expect((geo.content.geoSection as { kind: string }).kind).toBe("map_snapshot");
     const alt = planEvvVerificationRender({
-      evvRecordId: "evv2", patientId: PAT, visitId: "v2", aggregatorRefId: "a2", acceptedAt: NOW,
+      evvRecordId: "evv2",
+      patientId: PAT,
+      visitId: "v2",
+      aggregatorRefId: "a2",
+      acceptedAt: NOW,
       alternateMethodReason: "rural area, no GPS signal",
     });
-    expect((alt.content.geoSection as { kind: string; narrative: string }).narrative).toContain("rural area, no GPS signal");
+    expect((alt.content.geoSection as { kind: string; narrative: string }).narrative).toContain(
+      "rural area, no GPS signal",
+    );
   });
 
   it("W13 encounter: the AI-narrative sidebar + capability-disclosure footer appear only with an M32 enhancement", () => {
-    const plain = planEncounterRender({ encounterId: "e1", patientId: PAT, signedAt: NOW, signedByClinician: "Nurse Ada", body: { narrative: "Resting comfortably." } });
+    const plain = planEncounterRender({
+      encounterId: "e1",
+      patientId: PAT,
+      signedAt: NOW,
+      signedByClinician: "Nurse Ada",
+      body: { narrative: "Resting comfortably." },
+    });
     expect((plain.content.aiNarrativeSidebar as { present: boolean }).present).toBe(false);
     expect(plain.content.capabilityDisclosureFooter).toBe(false);
     const enhanced = planEncounterRender({
-      encounterId: "e2", patientId: PAT, signedAt: NOW, signedByClinician: "Nurse Ada", body: { narrative: "Resting comfortably." },
-      aiNarrative: { text: "Suggested summary…", capabilityId: "cap_narr", reviewedByClinician: "Nurse Ada" },
+      encounterId: "e2",
+      patientId: PAT,
+      signedAt: NOW,
+      signedByClinician: "Nurse Ada",
+      body: { narrative: "Resting comfortably." },
+      aiNarrative: {
+        text: "Suggested summary…",
+        capabilityId: "cap_narr",
+        reviewedByClinician: "Nurse Ada",
+      },
     });
     expect((enhanced.content.aiNarrativeSidebar as { present: boolean }).present).toBe(true);
     expect(enhanced.content.capabilityDisclosureFooter).toBe(true);
@@ -370,8 +513,20 @@ describe("M22-T11 §7.12/§7.13/§7.15 W12/W13/W-M22-22 — render variants", ()
   it("W-M22-22 lab: an all-non-SUD result renders full plaintext → clinical_record, no SUD flag", () => {
     const v = planLabResultsRender({
       payload: {
-        orderId: AGG, patientId: PAT, orderingPhysician: "Dr. Vega", signedAt: NOW,
-        resultValues: [{ observationId: "o1", loincCode: "2823-3", label: "Potassium", value: "5.2", unit: "mEq/L", isSudClass: false }],
+        orderId: AGG,
+        patientId: PAT,
+        orderingPhysician: "Dr. Vega",
+        signedAt: NOW,
+        resultValues: [
+          {
+            observationId: "o1",
+            loincCode: "2823-3",
+            label: "Potassium",
+            value: "5.2",
+            unit: "mEq/L",
+            isSudClass: false,
+          },
+        ],
       },
       consentPresent: false,
     });
@@ -402,29 +557,45 @@ describe("M22-T11 §4.12 — external-disclosure presign gates on the M40 BAA st
     return createSignedUrlService({
       storage: {
         async presignDownload({ descriptor }) {
-          return { url: `https://minio.example/${descriptor.bucket}/${descriptor.objectKey}?X-Amz-Expires=${descriptor.ttlSeconds}`, expiresAt: "2026-06-24T00:05:00.000Z" };
+          return {
+            url: `https://minio.example/${descriptor.bucket}/${descriptor.objectKey}?X-Amz-Expires=${descriptor.ttlSeconds}`,
+            expiresAt: "2026-06-24T00:05:00.000Z",
+          };
         },
       },
       resolver: externalResolver,
     });
   }
 
-  const mintArgs = { organizationId: ORG, documentId: DOC, versionId: VERSION, purpose: "disclosure" as const };
+  const mintArgs = {
+    organizationId: ORG,
+    documentId: DOC,
+    versionId: VERSION,
+    purpose: "disclosure" as const,
+  };
 
   it("blocks the external presign (403) when the M40 BAA is missing/inactive", async () => {
-    registerSeam("BaaStatusProvider", { baaStatusByMdmEntity: async () => ({ isActive: false, status: "missing" }) } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => ({ isActive: false, status: "missing" }),
+    } as never);
     await expect(service().mint(mintArgs)).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it("mints the presign once the BAA gate is active (≤300s TTL floor honoured)", async () => {
-    registerSeam("BaaStatusProvider", { baaStatusByMdmEntity: async () => ({ isActive: true, status: "executed" }) } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => ({ isActive: true, status: "executed" }),
+    } as never);
     const out = await service().mint(mintArgs);
     expect(out.url).toContain("X-Amz-Expires=300");
     expect(out.accessKind).toBe("disclosure_export");
   });
 
   it("fail-CLOSES (403) when the M40 seam throws / is a deny-stub", async () => {
-    registerSeam("BaaStatusProvider", { baaStatusByMdmEntity: async () => { throw new Error("SEAM_NOT_IMPLEMENTED"); } } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => {
+        throw new Error("SEAM_NOT_IMPLEMENTED");
+      },
+    } as never);
     await expect(service().mint(mintArgs)).rejects.toMatchObject({ statusCode: 403 });
   });
 });
@@ -441,8 +612,12 @@ describe("M22-T11 §2.4 — patient-merge redirect", () => {
     expect(r.survivingPatientId).toBe("pat-3");
     expect(r.hops).toBe(2);
     const f = facts({ "pat-1": "pat-2" });
-    expect(applyPatientMergeCascade({ current: "pat-1", requested: "pat-2", facts: f })).toBe("pat-2");
-    expect(() => applyPatientMergeCascade({ current: "pat-1", requested: "pat-9", facts: f })).toThrow(DocumentStateError);
+    expect(applyPatientMergeCascade({ current: "pat-1", requested: "pat-2", facts: f })).toBe(
+      "pat-2",
+    );
+    expect(() =>
+      applyPatientMergeCascade({ current: "pat-1", requested: "pat-9", facts: f }),
+    ).toThrow(DocumentStateError);
   });
 });
 
@@ -451,7 +626,13 @@ describe("M22-T11 §2.4 — patient-merge redirect", () => {
 describe("M22-T11 §7.14 W14 — legal-hold-blocks-destruction + the DEK-first eraser", () => {
   it("a legally-held document can NEVER be tombstoned (LEGAL_HOLD_BLOCKS_DESTRUCTION)", () => {
     try {
-      transitionDocument("legal_hold", { type: "tombstone", certificateId: "cert-1", objectKeys: ["k"], bucket: "tenant-org_a", at: NOW });
+      transitionDocument("legal_hold", {
+        type: "tombstone",
+        certificateId: "cert-1",
+        objectKeys: ["k"],
+        bucket: "tenant-org_a",
+        at: NOW,
+      });
       expect.unreachable();
     } catch (e) {
       expect((e as DocumentStateError).code).toBe("LEGAL_HOLD_BLOCKS_DESTRUCTION");
@@ -467,23 +648,50 @@ describe("M22-T11 §7.14 W14 — legal-hold-blocks-destruction + the DEK-first e
       at: NOW,
     });
     expect(t.to).toBe("destroyed_tombstone");
-    expect((t.effects.find((e) => e.kind === "destroy_objects") as { objectKeys: string[] }).objectKeys).toHaveLength(2);
+    expect(
+      (t.effects.find((e) => e.kind === "destroy_objects") as { objectKeys: string[] }).objectKeys,
+    ).toHaveLength(2);
     expect(t.effects.some((e) => e.kind === "shred_dek")).toBe(true);
     expect(t.effects.some((e) => e.kind === "null_active_version")).toBe(true);
     expect(t.effects.some((e) => e.kind === "access_log")).toBe(true); // §164.528 — appended, never deleted
-    const events = t.effects.filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox").map((e) => e.event);
-    expect(events).toEqual(expect.arrayContaining(["m22.document.tombstoned", "m22.eraser.completed"]));
+    const events = t.effects
+      .filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox")
+      .map((e) => e.event);
+    expect(events).toEqual(
+      expect.arrayContaining(["m22.document.tombstoned", "m22.eraser.completed"]),
+    );
   });
 
   it("planDestructionForDocument skips a held doc (m22.eraser.legal_hold_skip) and proceeds (null) for an unheld doc", () => {
-    const skip = planDestructionForDocument({ status: "active", legalHoldActive: true, certificateId: "cert-1", legalHoldEventId: "lh-1", at: NOW });
+    const skip = planDestructionForDocument({
+      status: "active",
+      legalHoldActive: true,
+      certificateId: "cert-1",
+      legalHoldEventId: "lh-1",
+      at: NOW,
+    });
     expect(skip?.skipped).toBe(true);
-    expect(skip!.effects.filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox").map((e) => e.event)).toContain("m22.eraser.legal_hold_skip");
-    expect(planDestructionForDocument({ status: "active", legalHoldActive: false, certificateId: "cert-1", legalHoldEventId: null, at: NOW })).toBeNull();
+    expect(
+      skip!.effects
+        .filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox")
+        .map((e) => e.event),
+    ).toContain("m22.eraser.legal_hold_skip");
+    expect(
+      planDestructionForDocument({
+        status: "active",
+        legalHoldActive: false,
+        certificateId: "cert-1",
+        legalHoldEventId: null,
+        at: NOW,
+      }),
+    ).toBeNull();
   });
 
   it("eraseDocumentRecord is DEK-first: crypto-erases the payloads BEFORE deleting rows; skips held + Part-2 docs", async () => {
-    const skips = { legalHoldDocumentIds: ["held-1", "held-2", "held-3"], part2DocumentIds: ["p2-1"] };
+    const skips = {
+      legalHoldDocumentIds: ["held-1", "held-2", "held-3"],
+      part2DocumentIds: ["p2-1"],
+    };
     const { store, cryptoErased } = createInMemoryDocumentEraseStore(
       { documents: 97, documentVersions: 140, minioObjects: 240 },
       skips,
@@ -504,20 +712,42 @@ describe("M22-T11 §7.14 W14 — legal-hold-blocks-destruction + the DEK-first e
 
 describe("M22-T11 §8.6/D9/D23 — retention disposition", () => {
   it("legal hold overrides retention: an intake_artifact past its 30-day disposition is NOT eligible while held", () => {
-    const held = deriveDispositionDate({ retentionClass: "intake_artifact", dispositionAt: "2020-01-01T00:00:00.000Z", legalHoldActive: true });
+    const held = deriveDispositionDate({
+      retentionClass: "intake_artifact",
+      dispositionAt: "2020-01-01T00:00:00.000Z",
+      legalHoldActive: true,
+    });
     expect(held.heldByLegalHold).toBe(true);
     expect(held.dueAt).toBeNull();
     expect(isDestructionEligible({ verdict: held, now: NOW })).toBe(false);
   });
 
   it("an unheld intake_artifact is eligible only past its disposition date", () => {
-    const v = deriveDispositionDate({ retentionClass: "intake_artifact", dispositionAt: "2026-06-01T00:00:00.000Z", legalHoldActive: false });
+    const v = deriveDispositionDate({
+      retentionClass: "intake_artifact",
+      dispositionAt: "2026-06-01T00:00:00.000Z",
+      legalHoldActive: false,
+    });
     expect(isDestructionEligible({ verdict: v, now: "2026-06-15T00:00:00.000Z" })).toBe(false);
     expect(isDestructionEligible({ verdict: v, now: "2026-08-01T00:00:00.000Z" })).toBe(true);
   });
 
   it("D23 auto-tags compliance_42cfr_part2 for a SUD-class observation; a clean observation stays clinical_record", () => {
-    expect(resolveInsertRetentionClass({ proposed: "clinical_record", labResultSudClass: true, doclensSudClass: false, partTwoOverride: false })).toBe("compliance_42cfr_part2");
-    expect(resolveInsertRetentionClass({ proposed: "clinical_record", labResultSudClass: false, doclensSudClass: false, partTwoOverride: false })).toBe("clinical_record");
+    expect(
+      resolveInsertRetentionClass({
+        proposed: "clinical_record",
+        labResultSudClass: true,
+        doclensSudClass: false,
+        partTwoOverride: false,
+      }),
+    ).toBe("compliance_42cfr_part2");
+    expect(
+      resolveInsertRetentionClass({
+        proposed: "clinical_record",
+        labResultSudClass: false,
+        doclensSudClass: false,
+        partTwoOverride: false,
+      }),
+    ).toBe("clinical_record");
   });
 });

@@ -16,7 +16,7 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, AdmissionId } from "./admission";
+import type { AdmissionId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
 
 // ── M13-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
@@ -109,11 +109,7 @@ export type ReconciliationTriggerKind =
   | "recertification";
 
 /** The §2.8 worksheet lifecycle (mirrors `reconciliation_worksheet_status`). */
-export type ReconciliationWorksheetStatus =
-  | "pending"
-  | "in_progress"
-  | "finalized"
-  | "voided";
+export type ReconciliationWorksheetStatus = "pending" | "in_progress" | "finalized" | "voided";
 
 /** The §2.8 per-line reconciliation decision (mirrors `reconciliation_decision_kind`). */
 export type ReconciliationDecisionKind =
@@ -516,10 +512,7 @@ export interface MedicationAdministrationProvider {
  * (M13-T07).
  */
 export interface ReconciliationProvider {
-  getWorksheet(
-    orgId: string,
-    worksheetId: string,
-  ): Promise<ReconciliationWorksheetDto | null>;
+  getWorksheet(orgId: string, worksheetId: string): Promise<ReconciliationWorksheetDto | null>;
   getWorksheetsForAdmission(
     orgId: string,
     admissionId: string,

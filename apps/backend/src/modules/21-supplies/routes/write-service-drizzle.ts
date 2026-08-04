@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // apps/backend/src/modules/21-supplies/routes/write-service-drizzle.ts — the Drizzle-backed M21 WRITE
 // service (§4.1's POST/PUT/DELETE rows).
 //
@@ -35,9 +36,9 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   COMFORT_KIT_PLATFORM_FLOOR,
+  RETURN_WINDOW_HOURS_DEFAULT,
   ROUTING_RESOLVER_VERSION,
   type RoutingRuleCandidate,
-  RETURN_WINDOW_HOURS_DEFAULT,
   resolveVendorRouting,
   validateSupplyRequestData,
 } from "@wardenx/supplies";
@@ -50,7 +51,6 @@ import type {
   M21EventName,
   RoutingRuleResolved,
 } from "@wardenx/types";
-import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   SupplyStateError,
@@ -107,7 +107,9 @@ const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 
 const sha256 = (value: unknown): string =>
-  createHash("sha256").update(JSON.stringify(value ?? {})).digest("hex");
+  createHash("sha256")
+    .update(JSON.stringify(value ?? {}))
+    .digest("hex");
 
 /** RxNorm → the D3 floor key that line satisfies, or null for a tenant ADDITION. */
 const FLOOR_KEY_BY_RXNORM = new Map(
@@ -190,8 +192,10 @@ export function buildDrizzleM21WriteService(
     deps.dispatcherEligible ?? (async () => false);
   const vendorActive: VendorActiveProbe = deps.vendorActive ?? (async () => false);
 
-  const scoped = <T>(actor: { organizationId: string; userId: string }, fn: (tx: Tx) => Promise<T>) =>
-    withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
+  const scoped = <T>(
+    actor: { organizationId: string; userId: string },
+    fn: (tx: Tx) => Promise<T>,
+  ) => withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
 
   /**
    * §7.2 / §7.3 — refuse a transition whose caller read a different row than the one it is about to write.
@@ -960,9 +964,7 @@ export function buildDrizzleM21WriteService(
           },
           {
             templateMedicationIds: templateMeds.map((m) => m.id),
-            floorTemplateMedicationIds: templateMeds
-              .filter((m) => m.systemLocked)
-              .map((m) => m.id),
+            floorTemplateMedicationIds: templateMeds.filter((m) => m.systemLocked).map((m) => m.id),
             dispatcherControlledEligible: eligible,
             dispatchedAt: at,
             isReplenishment: request.kind === "comfort_kit_replenish",
@@ -1215,9 +1217,7 @@ export function buildDrizzleM21WriteService(
             providerEntityId: dispatch.providerEntityId,
             locationId: dispatch.locationId,
             returnRequiredAt: new Date(requiredAt),
-            returnDueAt: new Date(
-              new Date(requiredAt).getTime() + returnWindowHours * 3_600_000,
-            ),
+            returnDueAt: new Date(new Date(requiredAt).getTime() + returnWindowHours * 3_600_000),
             state: "requested",
             createdAt: at,
             updatedAt: at,
@@ -1460,9 +1460,8 @@ export function buildDrizzleM21WriteService(
             state: reconciliation.transition.to as typeof RETURN.$inferInsert.state,
             reconciledAt: patch.reconciledAt ?? at,
             reconciledByMembershipId: actor.membershipId,
-            disposalMethod:
-              (patch.disposalMethod ??
-                input.disposalMethod) as typeof RETURN.$inferInsert.disposalMethod,
+            disposalMethod: (patch.disposalMethod ??
+              input.disposalMethod) as typeof RETURN.$inferInsert.disposalMethod,
             disposalWitnessMembershipId: input.disposalWitnessMembershipId ?? null,
             disposalMethodJurisdictionPolicyDigest: digest,
             disposalNotes: input.disposalNotes ?? null,
@@ -1479,8 +1478,7 @@ export function buildDrizzleM21WriteService(
         await tx
           .update(DISPATCH)
           .set({
-            dispatchStatus:
-              dispatchTransition.to as typeof DISPATCH.$inferInsert.dispatchStatus,
+            dispatchStatus: dispatchTransition.to as typeof DISPATCH.$inferInsert.dispatchStatus,
             updatedAt: at,
           })
           .where(eq(DISPATCH.id, dispatch.id));

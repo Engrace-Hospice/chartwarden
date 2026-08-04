@@ -123,7 +123,9 @@ describe("collectEnvProblems", () => {
 
   it("flags a too-short cursor signing key", () => {
     const problems = collectEnvProblems({ ...GOOD, CURSOR_SIGNING_KEY: "short" });
-    expect(problems).toEqual([{ key: "CURSOR_SIGNING_KEY", problem: "must be at least 32 characters" }]);
+    expect(problems).toEqual([
+      { key: "CURSOR_SIGNING_KEY", problem: "must be at least 32 characters" },
+    ]);
   });
 
   it("flags a too-short internal service token", () => {

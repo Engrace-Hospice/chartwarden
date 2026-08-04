@@ -13,16 +13,10 @@ import type {
   OrgId,
 } from "@wardenx/types";
 import { NotFoundError, WardenXError } from "@wardenx/types";
+import type { DocumentAbacFacts, DocumentAbacResolver } from "../abac-predicates";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
 import { type CursorPage, paginate } from "./concurrency";
-import type {
-  DocumentAbacFacts,
-  DocumentAbacResolver,
-} from "../abac-predicates";
-import type {
-  SignedUrlObjectFacts,
-  SignedUrlObjectResolver,
-} from "./signed-url-service";
+import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./signed-url-service";
 
 // ── route DTOs (in-memory; the Drizzle adapter projects rows to the SAME shapes) ──────────────────────
 
@@ -89,10 +83,19 @@ export interface ReviewView {
 
 /** The §4.1 route service the handlers compose over. Every method is org-scoped (RLS in prod). */
 export interface DocumentRouteService {
-  uploadDocument(organizationId: OrgId, actorUserId: string, args: UploadDocumentArgs): Promise<DocumentView>;
+  uploadDocument(
+    organizationId: OrgId,
+    actorUserId: string,
+    args: UploadDocumentArgs,
+  ): Promise<DocumentView>;
   uploadVersion(organizationId: OrgId, documentId: string): Promise<VersionView>;
   getDocument(organizationId: OrgId, documentId: string): Promise<DocumentView>;
-  listVersions(organizationId: OrgId, documentId: string, cursor: string | undefined, limit: number | undefined): Promise<CursorPage<VersionView>>;
+  listVersions(
+    organizationId: OrgId,
+    documentId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<VersionView>>;
   getVersion(organizationId: OrgId, documentId: string, versionId: string): Promise<VersionView>;
   listDocuments(
     organizationId: OrgId,
@@ -105,31 +108,113 @@ export interface DocumentRouteService {
     documentId: string,
     patch: { title?: string; patientFacing?: boolean; attachToDisclosures?: boolean },
   ): Promise<DocumentView>;
-  addTag(organizationId: OrgId, documentId: string, tag: { tagKind: string; tagKey: string; tagValue: string | null }): Promise<TagView>;
+  addTag(
+    organizationId: OrgId,
+    documentId: string,
+    tag: { tagKind: string; tagKey: string; tagValue: string | null },
+  ): Promise<TagView>;
   removeTag(organizationId: OrgId, documentId: string, tagId: string): Promise<void>;
-  exportPhiBundle(organizationId: OrgId, args: { patientId: string; purpose: string }): Promise<{ documentBundleId: string }>;
+  exportPhiBundle(
+    organizationId: OrgId,
+    args: { patientId: string; purpose: string },
+  ): Promise<{ documentBundleId: string }>;
   // intake
-  uploadBatch(organizationId: OrgId, args: { patientId: string | null; sourceChannel: string }): Promise<IntakeBatchView>;
+  uploadBatch(
+    organizationId: OrgId,
+    args: { patientId: string | null; sourceChannel: string },
+  ): Promise<IntakeBatchView>;
   getBatch(organizationId: OrgId, batchId: string): Promise<IntakeBatchView>;
-  listClassification(organizationId: OrgId, batchId: string, cursor: string | undefined, limit: number | undefined): Promise<CursorPage<{ id: string; createdAt: string; docType: string }>>;
-  confirmClassification(organizationId: OrgId, batchId: string): Promise<{ batchId: string; status: IntakeBatchStatus }>;
-  listJobs(organizationId: OrgId, batchId: string, cursor: string | undefined, limit: number | undefined): Promise<CursorPage<{ id: string; createdAt: string; status: string }>>;
-  getJob(organizationId: OrgId, jobId: string, cursor: string | undefined, limit: number | undefined): Promise<{ id: string; candidates: CursorPage<{ id: string; createdAt: string; riskLevel: string }> }>;
+  listClassification(
+    organizationId: OrgId,
+    batchId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<{ id: string; createdAt: string; docType: string }>>;
+  confirmClassification(
+    organizationId: OrgId,
+    batchId: string,
+  ): Promise<{ batchId: string; status: IntakeBatchStatus }>;
+  listJobs(
+    organizationId: OrgId,
+    batchId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<{ id: string; createdAt: string; status: string }>>;
+  getJob(
+    organizationId: OrgId,
+    jobId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<{
+    id: string;
+    candidates: CursorPage<{ id: string; createdAt: string; riskLevel: string }>;
+  }>;
   openReview(organizationId: OrgId, batchId: string, actorUserId: string): Promise<ReviewView>;
-  getReview(organizationId: OrgId, reviewId: string, cursor: string | undefined, limit: number | undefined): Promise<{ id: string; status: ExtractionReviewStatus; decisions: CursorPage<{ id: string; createdAt: string }> }>;
-  recordDecision(organizationId: OrgId, reviewId: string, args: { candidateId: string; decision: string }): Promise<{ decisionId: string }>;
-  bulkApprove(organizationId: OrgId, reviewId: string, candidateIds: readonly string[]): Promise<{ bulkApproveBatchId: string; decisionsCreated: number }>;
-  resolveDiscrepancy(organizationId: OrgId, reviewId: string, discrepancyId: string): Promise<{ discrepancyId: string; status: "resolved" }>;
-  completeReview(organizationId: OrgId, reviewId: string): Promise<{ reviewId: string; status: "complete" }>;
-  abandonReview(organizationId: OrgId, reviewId: string): Promise<{ reviewId: string; status: "abandoned" }>;
-  discardBatch(organizationId: OrgId, batchId: string): Promise<{ batchId: string; status: "discarded" }>;
+  getReview(
+    organizationId: OrgId,
+    reviewId: string,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<{
+    id: string;
+    status: ExtractionReviewStatus;
+    decisions: CursorPage<{ id: string; createdAt: string }>;
+  }>;
+  recordDecision(
+    organizationId: OrgId,
+    reviewId: string,
+    args: { candidateId: string; decision: string },
+  ): Promise<{ decisionId: string }>;
+  bulkApprove(
+    organizationId: OrgId,
+    reviewId: string,
+    candidateIds: readonly string[],
+  ): Promise<{ bulkApproveBatchId: string; decisionsCreated: number }>;
+  resolveDiscrepancy(
+    organizationId: OrgId,
+    reviewId: string,
+    discrepancyId: string,
+  ): Promise<{ discrepancyId: string; status: "resolved" }>;
+  completeReview(
+    organizationId: OrgId,
+    reviewId: string,
+  ): Promise<{ reviewId: string; status: "complete" }>;
+  abandonReview(
+    organizationId: OrgId,
+    reviewId: string,
+  ): Promise<{ reviewId: string; status: "abandoned" }>;
+  discardBatch(
+    organizationId: OrgId,
+    batchId: string,
+  ): Promise<{ batchId: string; status: "discarded" }>;
   // templates / overlays / admin
-  listTemplates(organizationId: OrgId, cursor: string | undefined, limit: number | undefined): Promise<CursorPage<{ id: string; key: string; createdAt: string }>>;
-  getTemplate(organizationId: OrgId, key: string): Promise<{ key: string; activeVersionId: string }>;
-  getTemplateVersion(organizationId: OrgId, key: string, versionId: string): Promise<{ key: string; versionId: string }>;
-  publishTemplateVersion(organizationId: OrgId, key: string, args: { versionLabel: string }): Promise<{ key: string; versionId: string }>;
-  listOverlays(organizationId: OrgId): Promise<{ overlays: { templateKey: string; overlayId: string }[] }>;
-  publishOverlay(organizationId: OrgId, templateKey: string, ifVersion: number): Promise<{ overlayId: string; version: number }>;
+  listTemplates(
+    organizationId: OrgId,
+    cursor: string | undefined,
+    limit: number | undefined,
+  ): Promise<CursorPage<{ id: string; key: string; createdAt: string }>>;
+  getTemplate(
+    organizationId: OrgId,
+    key: string,
+  ): Promise<{ key: string; activeVersionId: string }>;
+  getTemplateVersion(
+    organizationId: OrgId,
+    key: string,
+    versionId: string,
+  ): Promise<{ key: string; versionId: string }>;
+  publishTemplateVersion(
+    organizationId: OrgId,
+    key: string,
+    args: { versionLabel: string },
+  ): Promise<{ key: string; versionId: string }>;
+  listOverlays(
+    organizationId: OrgId,
+  ): Promise<{ overlays: { templateKey: string; overlayId: string }[] }>;
+  publishOverlay(
+    organizationId: OrgId,
+    templateKey: string,
+    ifVersion: number,
+  ): Promise<{ overlayId: string; version: number }>;
   getFormFill(organizationId: OrgId, fillId: string): Promise<{ id: string; status: string }>;
   retryRender(organizationId: OrgId, fillId: string): Promise<{ id: string; status: "queued" }>;
 }
@@ -150,7 +235,13 @@ interface DocumentRecord {
   version: number;
   createdAt: string;
   updatedAt: string;
-  versions: { id: string; versionNumber: number; objectKey: string; externalRecipient: ExternalRecipientRef | null; createdAt: string }[];
+  versions: {
+    id: string;
+    versionNumber: number;
+    objectKey: string;
+    externalRecipient: ExternalRecipientRef | null;
+    createdAt: string;
+  }[];
   tags: Map<string, TagView>;
   legalHoldActive: boolean;
 }
@@ -167,7 +258,9 @@ interface BatchRecord {
 
 /** Deterministic, I/O-free seed for the in-memory route service (slice + smoke tests). */
 export interface DocumentRouteSeed {
-  readonly documents?: ReadonlyArray<Partial<DocumentRecord> & { id: string; organizationId: string }>;
+  readonly documents?: ReadonlyArray<
+    Partial<DocumentRecord> & { id: string; organizationId: string }
+  >;
   readonly batches?: ReadonlyArray<Partial<BatchRecord> & { id: string; organizationId: string }>;
 }
 
@@ -228,7 +321,13 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       createdAt: now(),
       updatedAt: now(),
       versions: [
-        { id: uuidFromCounter("d", 1), versionNumber: 1, objectKey: `documents/seed/${d.id}/v1.pdf`, externalRecipient: null, createdAt: now() },
+        {
+          id: uuidFromCounter("d", 1),
+          versionNumber: 1,
+          objectKey: `documents/seed/${d.id}/v1.pdf`,
+          externalRecipient: null,
+          createdAt: now(),
+        },
       ],
       tags: new Map(),
       legalHoldActive: false,
@@ -256,7 +355,13 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     if (!r || r.organizationId !== organizationId) throw new NotFoundError("intake batch");
     return r;
   }
-  function loadReview(organizationId: OrgId, reviewId: string): { batch: BatchRecord; review: { id: string; status: ExtractionReviewStatus; createdAt: string } } {
+  function loadReview(
+    organizationId: OrgId,
+    reviewId: string,
+  ): {
+    batch: BatchRecord;
+    review: { id: string; status: ExtractionReviewStatus; createdAt: string };
+  } {
     const batchId = reviewIndex.get(reviewId);
     const batch = batchId ? batches.get(batchId) : undefined;
     if (!batch || batch.organizationId !== organizationId) throw new NotFoundError("review");
@@ -267,7 +372,9 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
 
   /** Rows already DESC-sorted by `(createdAt, id)` for keyset pagination. */
   const desc = <T extends { createdAt: string; id: string }>(rows: T[]): T[] =>
-    [...rows].sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1));
+    [...rows].sort((a, b) =>
+      a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
+    );
 
   let overlayVersion = 0;
 
@@ -288,7 +395,15 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
         version: 0,
         createdAt: now(),
         updatedAt: now(),
-        versions: [{ id: subId(), versionNumber: 1, objectKey: `documents/${args.patientId ?? "unbound"}/${args.aggregateType}/${id}/v1.pdf`, externalRecipient: null, createdAt: now() }],
+        versions: [
+          {
+            id: subId(),
+            versionNumber: 1,
+            objectKey: `documents/${args.patientId ?? "unbound"}/${args.aggregateType}/${id}/v1.pdf`,
+            externalRecipient: null,
+            createdAt: now(),
+          },
+        ],
         tags: new Map(),
         legalHoldActive: false,
       };
@@ -298,25 +413,57 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     async uploadVersion(organizationId, documentId) {
       const r = loadDoc(organizationId, documentId);
       const versionNumber = r.versions.length + 1;
-      const v = { id: subId(), versionNumber, objectKey: `documents/${r.patientId ?? "unbound"}/${r.aggregateType}/${r.id}/v${versionNumber}.pdf`, externalRecipient: null, createdAt: now() };
+      const v = {
+        id: subId(),
+        versionNumber,
+        objectKey: `documents/${r.patientId ?? "unbound"}/${r.aggregateType}/${r.id}/v${versionNumber}.pdf`,
+        externalRecipient: null,
+        createdAt: now(),
+      };
       r.versions.push(v);
       r.version += 1;
       r.updatedAt = now();
-      return { id: v.id, documentId: r.id, versionNumber, mimeType: "application/pdf", byteSize: 0, uploadedAt: now(), createdAt: now() };
+      return {
+        id: v.id,
+        documentId: r.id,
+        versionNumber,
+        mimeType: "application/pdf",
+        byteSize: 0,
+        uploadedAt: now(),
+        createdAt: now(),
+      };
     },
     async getDocument(organizationId, documentId) {
       return toDocView(loadDoc(organizationId, documentId));
     },
     async listVersions(organizationId, documentId, cursor, limit) {
       const r = loadDoc(organizationId, documentId);
-      const rows = desc(r.versions.map((v) => ({ id: v.id, documentId: r.id, versionNumber: v.versionNumber, mimeType: "application/pdf", byteSize: 0, uploadedAt: v.createdAt, createdAt: v.createdAt })));
+      const rows = desc(
+        r.versions.map((v) => ({
+          id: v.id,
+          documentId: r.id,
+          versionNumber: v.versionNumber,
+          mimeType: "application/pdf",
+          byteSize: 0,
+          uploadedAt: v.createdAt,
+          createdAt: v.createdAt,
+        })),
+      );
       return paginate(rows, cursor, limit);
     },
     async getVersion(organizationId, documentId, versionId) {
       const r = loadDoc(organizationId, documentId);
       const v = r.versions.find((x) => x.id === versionId);
       if (!v) throw new NotFoundError("document version");
-      return { id: v.id, documentId: r.id, versionNumber: v.versionNumber, mimeType: "application/pdf", byteSize: 0, uploadedAt: v.createdAt, createdAt: v.createdAt };
+      return {
+        id: v.id,
+        documentId: r.id,
+        versionNumber: v.versionNumber,
+        mimeType: "application/pdf",
+        byteSize: 0,
+        uploadedAt: v.createdAt,
+        createdAt: v.createdAt,
+      };
     },
     async listDocuments(organizationId, filter, cursor, limit) {
       const rows = desc(
@@ -324,32 +471,55 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
           .filter((r) => r.organizationId === organizationId)
           .filter((r) => (filter.patientId ? r.patientId === filter.patientId : true))
           .filter((r) => (filter.aggregateType ? r.aggregateType === filter.aggregateType : true))
-          .filter((r) => (filter.retentionClass ? r.retentionClass === filter.retentionClass : true))
+          .filter((r) =>
+            filter.retentionClass ? r.retentionClass === filter.retentionClass : true,
+          )
           .map(toDocView),
       );
       return paginate(rows, cursor, limit);
     },
     async patchDocument(organizationId, documentId, patch) {
       const r = loadDoc(organizationId, documentId);
-      if (r.legalHoldActive) throw new WardenXError("LEGAL_HOLD_ACTIVE", "the document is under an active legal hold", 409);
+      if (r.legalHoldActive)
+        throw new WardenXError(
+          "LEGAL_HOLD_ACTIVE",
+          "the document is under an active legal hold",
+          409,
+        );
       if (patch.title !== undefined) r.title = patch.title;
       if (patch.patientFacing !== undefined) r.patientFacing = patch.patientFacing;
-      if (patch.attachToDisclosures !== undefined) r.attachToDisclosures = patch.attachToDisclosures;
+      if (patch.attachToDisclosures !== undefined)
+        r.attachToDisclosures = patch.attachToDisclosures;
       r.version += 1;
       r.updatedAt = now();
       return toDocView(r);
     },
     async addTag(organizationId, documentId, tag) {
       const r = loadDoc(organizationId, documentId);
-      if (r.legalHoldActive) throw new WardenXError("LEGAL_HOLD_ACTIVE", "the document is under an active legal hold", 409);
+      if (r.legalHoldActive)
+        throw new WardenXError(
+          "LEGAL_HOLD_ACTIVE",
+          "the document is under an active legal hold",
+          409,
+        );
       const id = subId();
-      const view: TagView = { id, tagKind: tag.tagKind, tagKey: tag.tagKey, tagValue: tag.tagValue };
+      const view: TagView = {
+        id,
+        tagKind: tag.tagKind,
+        tagKey: tag.tagKey,
+        tagValue: tag.tagValue,
+      };
       r.tags.set(id, view);
       return view;
     },
     async removeTag(organizationId, documentId, tagId) {
       const r = loadDoc(organizationId, documentId);
-      if (r.legalHoldActive) throw new WardenXError("LEGAL_HOLD_ACTIVE", "the document is under an active legal hold", 409);
+      if (r.legalHoldActive)
+        throw new WardenXError(
+          "LEGAL_HOLD_ACTIVE",
+          "the document is under an active legal hold",
+          409,
+        );
       if (!r.tags.delete(tagId)) throw new NotFoundError("tag");
     },
     async exportPhiBundle(organizationId, _args) {
@@ -358,13 +528,37 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
     },
     async uploadBatch(organizationId, args) {
       const id = uuidFromCounter("b", ++created);
-      const rec: BatchRecord = { id, organizationId, patientId: args.patientId, status: "uploaded", pages: 1, createdAt: now(), reviews: new Map() };
+      const rec: BatchRecord = {
+        id,
+        organizationId,
+        patientId: args.patientId,
+        status: "uploaded",
+        pages: 1,
+        createdAt: now(),
+        reviews: new Map(),
+      };
       batches.set(id, rec);
-      return { id: rec.id, organizationId, patientId: rec.patientId, status: rec.status, uploadedAt: rec.createdAt, pages: rec.pages, createdAt: rec.createdAt };
+      return {
+        id: rec.id,
+        organizationId,
+        patientId: rec.patientId,
+        status: rec.status,
+        uploadedAt: rec.createdAt,
+        pages: rec.pages,
+        createdAt: rec.createdAt,
+      };
     },
     async getBatch(organizationId, batchId) {
       const r = loadBatch(organizationId, batchId);
-      return { id: r.id, organizationId: r.organizationId, patientId: r.patientId, status: r.status, uploadedAt: r.createdAt, pages: r.pages, createdAt: r.createdAt };
+      return {
+        id: r.id,
+        organizationId: r.organizationId,
+        patientId: r.patientId,
+        status: r.status,
+        uploadedAt: r.createdAt,
+        pages: r.pages,
+        createdAt: r.createdAt,
+      };
     },
     async listClassification(organizationId, batchId, cursor, limit) {
       loadBatch(organizationId, batchId);
@@ -453,7 +647,11 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       void organizationId;
       // §2.5 optimistic concurrency — the caller's If-Match version must match the current.
       if (ifVersion !== overlayVersion) {
-        throw new WardenXError("VERSION_MISMATCH", "the overlay was modified since you read it", 412);
+        throw new WardenXError(
+          "VERSION_MISMATCH",
+          "the overlay was modified since you read it",
+          412,
+        );
       }
       overlayVersion += 1;
       void templateKey;
@@ -484,7 +682,11 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
   };
 
   const objectResolver: SignedUrlObjectResolver = {
-    async loadObject({ organizationId, documentId, versionId }): Promise<SignedUrlObjectFacts | null> {
+    async loadObject({
+      organizationId,
+      documentId,
+      versionId,
+    }): Promise<SignedUrlObjectFacts | null> {
       const r = docs.get(documentId);
       if (!r || r.organizationId !== organizationId) return null;
       const v = r.versions.find((x) => x.id === versionId);
@@ -494,7 +696,8 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
   };
 
   const inspect: DocumentBackendInspect = {
-    documentCount: (organizationId) => [...docs.values()].filter((r) => r.organizationId === organizationId).length,
+    documentCount: (organizationId) =>
+      [...docs.values()].filter((r) => r.organizationId === organizationId).length,
     legalHoldActive: (documentId) => docs.get(documentId)?.legalHoldActive ?? false,
   };
 

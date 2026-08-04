@@ -169,11 +169,11 @@ export function PaperReentryWorklistScreen(): JSX.Element {
       />
 
       <Notice tone="warning">
-        <strong>This is the one write that back-dates a call.</strong> It exists so that calls taken on
-        paper during an outage enter the record with the time they actually happened — and it is gated by
-        its own permission and a step-up, because the same capability is how a coverage gap would be hidden.
-        Each entry is bounded by the outage window it is filed against; the server refuses an instant
-        outside it.
+        <strong>This is the one write that back-dates a call.</strong> It exists so that calls taken
+        on paper during an outage enter the record with the time they actually happened — and it is
+        gated by its own permission and a step-up, because the same capability is how a coverage gap
+        would be hidden. Each entry is bounded by the outage window it is filed against; the server
+        refuses an instant outside it.
       </Notice>
 
       <Card title="Worklist">
@@ -191,9 +191,9 @@ export function PaperReentryWorklistScreen(): JSX.Element {
         />
         {lapsed > 0 ? (
           <Notice tone="error" live>
-            {lapsed} window{lapsed === 1 ? " has" : "s have"} lapsed. The re-entry path is closed for
-            those: what was on paper stays on paper, and the outage is a documented gap rather than a set
-            of calls that appear days later with a time nobody can corroborate.
+            {lapsed} window{lapsed === 1 ? " has" : "s have"} lapsed. The re-entry path is closed
+            for those: what was on paper stays on paper, and the outage is a documented gap rather
+            than a set of calls that appear days later with a time nobody can corroborate.
           </Notice>
         ) : null}
       </Card>
@@ -201,8 +201,8 @@ export function PaperReentryWorklistScreen(): JSX.Element {
       <Card title="Outage windows">
         {sorted.length === 0 ? (
           <span style={mutedStyle}>
-            Nothing is outstanding. A worklist row is created when an outage window closes — an empty list
-            means no outage has left calls on paper.
+            Nothing is outstanding. A worklist row is created when an outage window closes — an
+            empty list means no outage has left calls on paper.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -228,7 +228,9 @@ export function PaperReentryWorklistScreen(): JSX.Element {
                     </td>
                     <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.providerEntityId)}</td>
                     <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.shiftId)}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(r.assignedToMembershipId)}</td>
+                    <td style={{ ...td, fontFamily: t.fontMono }}>
+                      {shortId(r.assignedToMembershipId)}
+                    </td>
                     <td style={tdNum}>
                       {remaining > 0 ? (
                         durationLabel(remaining)
@@ -295,8 +297,8 @@ export function PaperReentryWorklistScreen(): JSX.Element {
         >
           <Notice tone="warning">
             The original time must fall inside {dateTime(entering.shiftStartsAt)} →{" "}
-            {dateTime(entering.shiftEndsAt)}. The server enforces that bound; the field below is pre-filled
-            with the window's start so nothing is guessed.
+            {dateTime(entering.shiftEndsAt)}. The server enforces that bound; the field below is
+            pre-filled with the window's start so nothing is guessed.
           </Notice>
           <TextField
             label="When the call actually came in"
@@ -316,9 +318,18 @@ export function PaperReentryWorklistScreen(): JSX.Element {
             options={enumOptions(HUMAN_CALLER_KINDS)}
             onChange={setCallerKind}
           />
-          <TextField label="Caller name" value={callerDisplayName} onChange={setCallerDisplayName} />
+          <TextField
+            label="Caller name"
+            value={callerDisplayName}
+            onChange={setCallerDisplayName}
+          />
           <TextField label="Patient id (optional)" value={patientId} onChange={setPatientId} mono />
-          <TextField label="Admission id (optional)" value={admissionId} onChange={setAdmissionId} mono />
+          <TextField
+            label="Admission id (optional)"
+            value={admissionId}
+            onChange={setAdmissionId}
+            mono
+          />
           {!anchorValid ? (
             <p style={alertStyle}>Patient and admission travel together or not at all.</p>
           ) : null}
@@ -329,9 +340,9 @@ export function PaperReentryWorklistScreen(): JSX.Element {
             rows={3}
           />
           <span style={mutedStyle}>
-            The call is filed with a paper origin flag and both times: the original instant and the moment
-            it was typed in. A reviewer sees both, which is the point — the record does not pretend the call
-            was entered live.
+            The call is filed with a paper origin flag and both times: the original instant and the
+            moment it was typed in. A reviewer sees both, which is the point — the record does not
+            pretend the call was entered live.
           </span>
         </Modal>
       ) : null}

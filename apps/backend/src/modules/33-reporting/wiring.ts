@@ -26,10 +26,10 @@ import { sql } from "drizzle-orm";
 
 import type { DbClient } from "@wardenx/db";
 import {
+  MetricsProviderImpl,
   type ReadReplicaSessionPort,
   type ReplicaLagGatePort,
   type ReportingDb,
-  MetricsProviderImpl,
 } from "@wardenx/reporting";
 import { registerPlatformJob } from "@wardenx/tenancy";
 
@@ -157,7 +157,10 @@ function buildLiveReplicaSession(db: DbClient): ReadReplicaSessionPort {
  */
 export function registerReportingMetricsSeam(db: DbClient | undefined): void {
   if (!db) return;
-  registerSeam("MetricsProvider", new MetricsProviderImpl({ replica: buildLiveReplicaSession(db) }));
+  registerSeam(
+    "MetricsProvider",
+    new MetricsProviderImpl({ replica: buildLiveReplicaSession(db) }),
+  );
 }
 
 /**

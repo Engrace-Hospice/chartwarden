@@ -52,8 +52,11 @@ export function evaluateTelehealthBreaker(
 ): { readonly effectiveState: TelehealthBreakerState; readonly allowed: boolean } {
   if (snapshot.state === "open") {
     const openedAt = snapshot.openedAt;
-    const cooled = openedAt != null && ms(nowInstant) - ms(openedAt) >= config.openDurationSeconds * 1000;
-    return cooled ? { effectiveState: "half_open", allowed: true } : { effectiveState: "open", allowed: false };
+    const cooled =
+      openedAt != null && ms(nowInstant) - ms(openedAt) >= config.openDurationSeconds * 1000;
+    return cooled
+      ? { effectiveState: "half_open", allowed: true }
+      : { effectiveState: "open", allowed: false };
   }
   return { effectiveState: snapshot.state, allowed: true };
 }

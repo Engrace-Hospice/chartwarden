@@ -82,7 +82,9 @@ export interface M23ConsumerPorts {
    * Create a `notr_record` DRAFT from an M6 revocation / transfer-out / discharge (task 50) + emit
    * `m23.notr.draft_created` in-tx. Returns the new id, or `null` for an idempotent no-op (already drafted).
    */
-  readonly createNotrDraft: (input: NotrDraftRequest) => Promise<{ readonly notrId: string } | null>;
+  readonly createNotrDraft: (
+    input: NotrDraftRequest,
+  ) => Promise<{ readonly notrId: string } | null>;
   /**
    * Enqueue the §8 `revalidate.consumer` job (task 54) for a changed upstream fact. The worker finds every
    * affected claim in VALIDATING/READY and enqueues a `validation_run` (idempotent on `(eventId, claimId)`).
@@ -329,7 +331,11 @@ export async function handlePatientDeceased(
   const { revalidationJobId } = await ports.enqueueRevalidation({
     organizationId: event.organizationId,
     triggeringEventId: event.eventId,
-    fact: { sourceTopic: "m5.patient.deceased", trigger: RE_VALIDATION_TRIGGER, patientId: event.patientId },
+    fact: {
+      sourceTopic: "m5.patient.deceased",
+      trigger: RE_VALIDATION_TRIGGER,
+      patientId: event.patientId,
+    },
   });
   return {
     eventName: "m5.patient.deceased",

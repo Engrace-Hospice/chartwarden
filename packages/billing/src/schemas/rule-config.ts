@@ -6,7 +6,9 @@
 import { type Static, Type } from "@sinclair/typebox";
 import { IsoDateTimeSchema, OverrideRoleApi, Uuid, ValidationSeverityApi } from "./common";
 
-export const RuleKeyParams = Type.Object({ ruleKey: Type.String({ minLength: 1, maxLength: 128 }) });
+export const RuleKeyParams = Type.Object({
+  ruleKey: Type.String({ minLength: 1, maxLength: 128 }),
+});
 export type RuleKeyParams = Static<typeof RuleKeyParams>;
 
 // ── route #18: the editor list — platform registry snapshot + tenant overlay ────────────────────────────

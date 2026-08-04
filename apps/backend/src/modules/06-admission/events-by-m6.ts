@@ -104,8 +104,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m6.admission.draft_created",
     moduleOwner: "m6",
     description:
-      "A draft admission + draft period 1 was created — either `admission.draft_from_referral` (has a "
-      + "referral) or direct intake / walk-in (TASK-034, no referral).",
+      "A draft admission + draft period 1 was created — either `admission.draft_from_referral` (has a " +
+      "referral) or direct intake / walk-in (TASK-034, no referral).",
     payloadSchema: Type.Object({
       admissionId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),

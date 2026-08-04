@@ -6,7 +6,7 @@
 // dimension members are audit-denylisted (§3.6). Auto-creation idempotency runs through
 // `findByIdempotencyKey` + the per-admission `findByAdmission` (the per-leaf UNIQUEs).
 import { schema } from "@wardenx/db";
-import { and, desc, eq, lt, ne, or, type SQL } from "drizzle-orm";
+import { type SQL, and, desc, eq, lt, ne, or } from "drizzle-orm";
 import type { QualityDb } from "./db";
 
 const M = schema.mortalityReview;
@@ -19,10 +19,7 @@ export interface MortalityCursor {
 
 /** Build the keyset predicate for "strictly older than the cursor" on (death_at, id) desc. */
 function olderThan(cursor: MortalityCursor): SQL | undefined {
-  return or(
-    lt(M.deathAt, cursor.deathAt),
-    and(eq(M.deathAt, cursor.deathAt), lt(M.id, cursor.id)),
-  );
+  return or(lt(M.deathAt, cursor.deathAt), and(eq(M.deathAt, cursor.deathAt), lt(M.id, cursor.id)));
 }
 
 /** Data port for `mortality_review`. */
@@ -48,11 +45,7 @@ export class MortalityReviewRepository {
 
   /** The per-admission review (the per-leaf `uq_mortality_review_per_admission` surface), or `null`. */
   async findByAdmission(admissionId: string): Promise<schema.MortalityReview | null> {
-    const [row] = await this.db
-      .select()
-      .from(M)
-      .where(eq(M.admissionId, admissionId))
-      .limit(1);
+    const [row] = await this.db.select().from(M).where(eq(M.admissionId, admissionId)).limit(1);
     return row ?? null;
   }
 
@@ -162,7 +155,8 @@ export class MortalityReviewRepository {
       .set(patch)
       .where(and(eq(M.id, id), eq(M.deathAt, deathAt)))
       .returning();
-    if (!row) throw new Error(`mortality_review ${id}@${deathAt.toISOString()} not found for update`);
+    if (!row)
+      throw new Error(`mortality_review ${id}@${deathAt.toISOString()} not found for update`);
     return row;
   }
 }

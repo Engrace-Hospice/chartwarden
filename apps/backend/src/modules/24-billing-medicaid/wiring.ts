@@ -8,7 +8,7 @@
 // REQUIRED_SEAMS, then `registerSeam(name, impls.x)` here. The read runs under withOrgContext (RLS-scoped).
 import type { DbClient } from "@wardenx/db";
 import { buildDrizzleM24ReadService } from "./routes/read-service-drizzle";
-import { buildM24SeamImpls, type M24SeamImpls } from "./seam-impls";
+import { type M24SeamImpls, buildM24SeamImpls } from "./seam-impls";
 
 /**
  * Build M24's eight published-seam impls (ready for M1 registration). No-op registration today — no live

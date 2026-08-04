@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M25 Remittance & Denials §3.3 — the four-level X12 5010 835 posting hierarchy:
 //   remittance_advice (envelope, one per 835 transaction)
 //     └─ remittance_line (one per CLP claim-payment segment; auto-matched to an M23 claim)
@@ -29,7 +30,6 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import {
   m25CasGroupCode,
@@ -75,7 +75,10 @@ export const remittanceAdvice = pgTable(
       t.transactionSetControlNumber,
       t.providerEntityId,
     ),
-    byProviderEntity: index("ix_remittance_advice_pe_received").on(t.providerEntityId, t.receivedAt),
+    byProviderEntity: index("ix_remittance_advice_pe_received").on(
+      t.providerEntityId,
+      t.receivedAt,
+    ),
     byPayer: index("ix_remittance_advice_payer").on(t.payerId, t.receivedAt),
     byParseStatus: index("ix_remittance_advice_parse_status")
       .on(t.parseStatus)
@@ -120,9 +123,7 @@ export const remittanceLine = pgTable(
   },
   (t) => ({
     byAdvice: index("ix_remittance_line_advice").on(t.remittanceAdviceId),
-    byClaim: index("ix_remittance_line_claim")
-      .on(t.claimId)
-      .where(sql`claim_id IS NOT NULL`),
+    byClaim: index("ix_remittance_line_claim").on(t.claimId).where(sql`claim_id IS NOT NULL`),
     byPayerIcn: index("ix_remittance_line_payer_icn")
       .on(t.clp07PayerIcn)
       .where(sql`clp07_payer_icn IS NOT NULL`),

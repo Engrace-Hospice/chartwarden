@@ -289,7 +289,9 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       db.query("UPDATE provider_entity SET status='active' WHERE id=$1", [a.providerEntity]),
     );
     expect(res.rowCount).toBe(0);
-    const still = await db.query("SELECT status FROM provider_entity WHERE id=$1", [a.providerEntity]);
+    const still = await db.query("SELECT status FROM provider_entity WHERE id=$1", [
+      a.providerEntity,
+    ]);
     expect(still.rows[0].status).toBe("created");
   });
 

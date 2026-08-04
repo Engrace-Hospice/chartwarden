@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   CAREGIVER_ATTESTED_ACTOR_SENTINEL,
   CAREGIVER_ATTEST_WINDOW_MS,
+  type CaregiverAttestationInput,
   PORTAL_UPLOAD_MAX_BYTES,
   PortalWriteError,
   createInMemoryCaregiverSessionPort,
@@ -20,7 +21,6 @@ import {
   planCaregiverAttestation,
   planDocumentUpload,
   sanitizedRejectionReason,
-  type CaregiverAttestationInput,
 } from "../src/modules/31-portal/write-paths/index";
 
 const NOW = Date.parse("2026-08-02T12:00:00.000Z");
@@ -70,7 +70,12 @@ describe("§7.7 caregiver-attested administration", () => {
   it("tightens the window when the tenant passes a smaller one (never loosens)", () => {
     const tight = 30 * 60 * 1000; // 30 min
     expectCode(
-      () => planCaregiverAttestation(baseAttestation({ administeredAtMs: NOW - 40 * 60 * 1000 }), NOW, tight),
+      () =>
+        planCaregiverAttestation(
+          baseAttestation({ administeredAtMs: NOW - 40 * 60 * 1000 }),
+          NOW,
+          tight,
+        ),
       "DOSE_TIME_OUT_OF_RANGE",
     );
     // A tenant "window" larger than the floor is clamped down to the 2h floor — still rejects at +3h.
@@ -86,7 +91,10 @@ describe("§7.7 caregiver-attested administration", () => {
   });
 
   it("refuses a missing attestation checkbox", () => {
-    expectCode(() => planCaregiverAttestation(baseAttestation({ attestationChecked: false }), NOW), "ATTESTATION_ABSENT");
+    expectCode(
+      () => planCaregiverAttestation(baseAttestation({ attestationChecked: false }), NOW),
+      "ATTESTATION_ABSENT",
+    );
   });
 
   it("refuses a caller who is neither primary caregiver nor DPOA (403)", () => {
@@ -97,7 +105,10 @@ describe("§7.7 caregiver-attested administration", () => {
   });
 
   it("refuses an inactive order (410 Gone)", () => {
-    const err = expectCode(() => planCaregiverAttestation(baseAttestation({ orderActive: false }), NOW), "ORDER_INACTIVE");
+    const err = expectCode(
+      () => planCaregiverAttestation(baseAttestation({ orderActive: false }), NOW),
+      "ORDER_INACTIVE",
+    );
     expect(err.statusCode).toBe(410);
   });
 
@@ -151,7 +162,10 @@ describe("§7.7 caregiver portal-session resolver (closes M13 deny-stub)", () =>
   });
 
   it("fails closed on an unknown session", async () => {
-    expect(await resolver.resolve("org-1", "nope")).toEqual({ bound: false, reason: "SESSION_NOT_FOUND" });
+    expect(await resolver.resolve("org-1", "nope")).toEqual({
+      bound: false,
+      reason: "SESSION_NOT_FOUND",
+    });
   });
 
   it("fails closed on a suspended/revoked account", async () => {
@@ -173,11 +187,16 @@ describe("§7.7 caregiver portal-session resolver (closes M13 deny-stub)", () =>
       bound: false,
       reason: "PATIENT_MISMATCH",
     });
-    expect(await resolver.resolveForPatient("org-1", "sess-ok", "pat-1")).toMatchObject({ bound: true });
+    expect(await resolver.resolveForPatient("org-1", "sess-ok", "pat-1")).toMatchObject({
+      bound: true,
+    });
   });
 
   it("does not leak across tenants", async () => {
-    expect(await resolver.resolve("org-2", "sess-ok")).toEqual({ bound: false, reason: "SESSION_NOT_FOUND" });
+    expect(await resolver.resolve("org-2", "sess-ok")).toEqual({
+      bound: false,
+      reason: "SESSION_NOT_FOUND",
+    });
   });
 });
 
@@ -286,7 +305,9 @@ describe("§7.8 document upload → M22 intake", () => {
   it("matches HEIC by its ftyp box within the first 12 bytes", () => {
     const heic = [0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63];
     expect(magicBytesMatch("image/heic", heic)).toBe(true);
-    expect(magicBytesMatch("image/heic", [0x00, 0x00, 0x00, 0x18, 0x6d, 0x6f, 0x6f, 0x76])).toBe(false);
+    expect(magicBytesMatch("image/heic", [0x00, 0x00, 0x00, 0x18, 0x6d, 0x6f, 0x6f, 0x76])).toBe(
+      false,
+    );
   });
 
   it("refuses uploads while discharged-read-only", () => {

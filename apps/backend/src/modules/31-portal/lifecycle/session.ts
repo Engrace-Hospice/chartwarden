@@ -140,15 +140,16 @@ export function assertSessionLive(
   nowMs: number,
 ): void {
   const expiry = evaluateSessionExpiry(session, policy, nowMs);
-  requirePortal(expiry !== "hard_expired", "SESSION_HARD_EXPIRED", "portal session hard-cap reached");
+  requirePortal(
+    expiry !== "hard_expired",
+    "SESSION_HARD_EXPIRED",
+    "portal session hard-cap reached",
+  );
   requirePortal(expiry !== "idle_expired", "SESSION_IDLE_EXPIRED", "portal session idle-timed-out");
 }
 
 /** Advance `last_active_at` on a live request touch (the route layer persists this, M31-T07). */
-export function touchSession(
-  session: PortalSessionContext,
-  nowMs: number,
-): PortalSessionContext {
+export function touchSession(session: PortalSessionContext, nowMs: number): PortalSessionContext {
   return { ...session, lastActiveAtMs: nowMs };
 }
 

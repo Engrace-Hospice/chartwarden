@@ -27,10 +27,10 @@
 // reconstructed from drizzle-orm's own `NodePgDatabase<typeof schema>` (identical to the M1 `DbClient`,
 // so a `DbClient` / `withOrgContext` tx handle is structurally assignable) without taking the M1 edge.
 import * as schema from "@wardenx/db/schema";
-import { and, eq, lt, or, type SQL } from "drizzle-orm";
+import { WardenXError } from "@wardenx/types";
+import { type SQL, and, eq, lt, or } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
-import { WardenXError } from "@wardenx/types";
 import type { ClaimState, EligibilityOutcome, LevelOfCare, NoticeState } from "../contracts";
 
 /**
@@ -127,14 +127,16 @@ type LevelOfCareDb = (typeof schema.m23ClaimLineLevelOfCare.enumValues)[number];
 type EligibilityOutcomeDb = (typeof schema.m23EligibilityOutcome.enumValues)[number];
 
 /** `claim.state` — UPPERCASE DB ↔ lowercase domain `ClaimState` (case-only). */
-export const claimStateCodec: EnumCodec<ClaimState, ClaimStateDb> = makeCaseCodec<ClaimState, ClaimStateDb>(
-  schema.m23ClaimState.enumValues,
-);
+export const claimStateCodec: EnumCodec<ClaimState, ClaimStateDb> = makeCaseCodec<
+  ClaimState,
+  ClaimStateDb
+>(schema.m23ClaimState.enumValues);
 
 /** `noe_record.state` / `notr_record.state` — UPPERCASE DB ↔ lowercase domain `NoticeState` (case-only). */
-export const noticeStateCodec: EnumCodec<NoticeState, NoeStateDb> = makeCaseCodec<NoticeState, NoeStateDb>(
-  schema.m23NoeState.enumValues,
-);
+export const noticeStateCodec: EnumCodec<NoticeState, NoeStateDb> = makeCaseCodec<
+  NoticeState,
+  NoeStateDb
+>(schema.m23NoeState.enumValues);
 
 /** `claim_line.level_of_care` — DB abbreviation ↔ long-form domain `LevelOfCare` (1:1 semantic). */
 export const levelOfCareCodec: EnumCodec<LevelOfCare, LevelOfCareDb> = makeEnumCodec<
@@ -151,24 +153,22 @@ export const levelOfCareCodec: EnumCodec<LevelOfCare, LevelOfCareDb> = makeEnumC
  * `eligibility_check.outcome` — DB (5 values) ↔ domain `EligibilityOutcome` (4 values), ASYMMETRIC: the DB
  * `mbi_invalid` and `hets_error` both fold to the domain `error`; `unknown_response` ↔ `indeterminate`.
  */
-export const eligibilityOutcomeCodec: EnumCodec<EligibilityOutcome, EligibilityOutcomeDb> = makeBiCodec<
-  EligibilityOutcome,
-  EligibilityOutcomeDb
->(
-  {
-    active_part_a: "active_part_a",
-    inactive_part_a: "inactive_part_a",
-    indeterminate: "unknown_response",
-    error: "hets_error",
-  },
-  {
-    active_part_a: "active_part_a",
-    inactive_part_a: "inactive_part_a",
-    mbi_invalid: "error",
-    unknown_response: "indeterminate",
-    hets_error: "error",
-  },
-);
+export const eligibilityOutcomeCodec: EnumCodec<EligibilityOutcome, EligibilityOutcomeDb> =
+  makeBiCodec<EligibilityOutcome, EligibilityOutcomeDb>(
+    {
+      active_part_a: "active_part_a",
+      inactive_part_a: "inactive_part_a",
+      indeterminate: "unknown_response",
+      error: "hets_error",
+    },
+    {
+      active_part_a: "active_part_a",
+      inactive_part_a: "inactive_part_a",
+      mbi_invalid: "error",
+      unknown_response: "indeterminate",
+      hets_error: "error",
+    },
+  );
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. Keyset cursor pagination — `(created_at DESC, id DESC)`
@@ -189,7 +189,9 @@ export function encodeCursor(keyset: CursorKeyset): string {
 /** Decode an opaque cursor → keyset, or throw 400 VALIDATION_FAILED on a malformed/tampered value. */
 export function decodeCursor(cursor: string): CursorKeyset {
   try {
-    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Partial<CursorKeyset>;
+    const parsed = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    ) as Partial<CursorKeyset>;
     if (typeof parsed.createdAt !== "string" || typeof parsed.id !== "string") {
       throw new Error("missing keyset fields");
     }
@@ -263,7 +265,11 @@ export function buildCursorPage<T>(
  */
 export type VersionedUpdateResult<TRow> =
   | { readonly ok: true; readonly row: TRow }
-  | { readonly ok: false; readonly conflict: "VERSION_CONFLICT"; readonly currentVersion: number | null };
+  | {
+      readonly ok: false;
+      readonly conflict: "VERSION_CONFLICT";
+      readonly currentVersion: number | null;
+    };
 
 /** Success constructor for {@link VersionedUpdateResult}. */
 export function versionOk<TRow>(row: TRow): VersionedUpdateResult<TRow> {

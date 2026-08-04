@@ -12,7 +12,11 @@ import {
   handleMedicarePrimaryAck,
   handleUpstreamChange,
 } from "./handlers";
-import { M24_SUBSCRIPTION_MAP, M24_UPSTREAM_SUBSCRIPTIONS, type M24SubscribedTopic } from "./subscription-map";
+import {
+  type M24SubscribedTopic,
+  M24_SUBSCRIPTION_MAP,
+  M24_UPSTREAM_SUBSCRIPTIONS,
+} from "./subscription-map";
 
 export { M24_SUBSCRIPTION_MAP, M24_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 export type { M24ConsumerStore } from "./handlers";
@@ -67,7 +71,10 @@ export async function dispatchM24UpstreamEvent(
  */
 export function registerM24Consumers(options?: {
   readonly store?: M24ConsumerStore;
-  readonly bind?: (topic: string, handler: (payload: Record<string, unknown>) => Promise<M24ConsumeReport>) => void;
+  readonly bind?: (
+    topic: string,
+    handler: (payload: Record<string, unknown>) => Promise<M24ConsumeReport>,
+  ) => void;
 }): readonly M24SubscribedTopic[] {
   const { store, bind } = options ?? {};
   if (bind && store) {

@@ -22,30 +22,108 @@ const PAYER_MEDICAID_NC = "00000000-0000-0000-0000-0000000000a2";
 
 // Per-patient demographic + relationship detail, applied in last-name order (deterministic).
 const DETAIL = [
-  { gi: "female", pr: "she_her", ms: "widowed", race: ["2106-3"], eth: ["2186-5"], mbi: "1EG4TE5MK73",
-    cg: { first: "Thomas", last: "Brandt", rel: "child", lr: "dpoa_healthcare", phone: "+18285550100" },
-    ec: [{ name: "Thomas Brandt", rel: "Son", phone: "+18285550100", pri: 1 }, { name: "Linda Pearce", rel: "Neighbor", phone: "+18285550101", pri: 2 }],
-    payers: ["medicare"], flags: [] as string[] },
-  { gi: "female", pr: "she_her", ms: "married", race: ["2054-5"], eth: ["2186-5"], mbi: "2CW3RD8KH49",
-    cg: { first: "Miguel", last: "Delgado", rel: "spouse", lr: "next_of_kin", phone: "+18285550110" },
+  {
+    gi: "female",
+    pr: "she_her",
+    ms: "widowed",
+    race: ["2106-3"],
+    eth: ["2186-5"],
+    mbi: "1EG4TE5MK73",
+    cg: {
+      first: "Thomas",
+      last: "Brandt",
+      rel: "child",
+      lr: "dpoa_healthcare",
+      phone: "+18285550100",
+    },
+    ec: [
+      { name: "Thomas Brandt", rel: "Son", phone: "+18285550100", pri: 1 },
+      { name: "Linda Pearce", rel: "Neighbor", phone: "+18285550101", pri: 2 },
+    ],
+    payers: ["medicare"],
+    flags: [] as string[],
+  },
+  {
+    gi: "female",
+    pr: "she_her",
+    ms: "married",
+    race: ["2054-5"],
+    eth: ["2186-5"],
+    mbi: "2CW3RD8KH49",
+    cg: {
+      first: "Miguel",
+      last: "Delgado",
+      rel: "spouse",
+      lr: "next_of_kin",
+      phone: "+18285550110",
+    },
     ec: [{ name: "Miguel Delgado", rel: "Spouse", phone: "+18285550110", pri: 1 }],
-    payers: ["medicare", "medicaid"], flags: [] },
-  { gi: "male", pr: "he_him", ms: "widowed", race: ["2106-3"], eth: ["2186-5"], mbi: "3FT6GH2JL90",
+    payers: ["medicare", "medicaid"],
+    flags: [],
+  },
+  {
+    gi: "male",
+    pr: "he_him",
+    ms: "widowed",
+    race: ["2106-3"],
+    eth: ["2186-5"],
+    mbi: "3FT6GH2JL90",
     cg: { first: "Grace", last: "Fairbanks", rel: "child", lr: "guardian", phone: "+18285550120" },
     ec: [{ name: "Grace Fairbanks", rel: "Daughter", phone: "+18285550120", pri: 1 }],
-    payers: ["medicare"], flags: [] },
-  { gi: "male", pr: "he_him", ms: "married", race: ["2028-9"], eth: ["2186-5"], mbi: "4KM5PN7QR28",
-    cg: { first: "Yuki", last: "Nakamura", rel: "spouse", lr: "dpoa_healthcare", phone: "+18285550130" },
+    payers: ["medicare"],
+    flags: [],
+  },
+  {
+    gi: "male",
+    pr: "he_him",
+    ms: "married",
+    race: ["2028-9"],
+    eth: ["2186-5"],
+    mbi: "4KM5PN7QR28",
+    cg: {
+      first: "Yuki",
+      last: "Nakamura",
+      rel: "spouse",
+      lr: "dpoa_healthcare",
+      phone: "+18285550130",
+    },
     ec: [{ name: "Yuki Nakamura", rel: "Spouse", phone: "+18285550130", pri: 1 }],
-    payers: ["medicare", "medicaid"], flags: [] },
-  { gi: "male", pr: "he_him", ms: "divorced", race: ["2054-5"], eth: ["2135-2"], mbi: "5DA9VE3WX64",
+    payers: ["medicare", "medicaid"],
+    flags: [],
+  },
+  {
+    gi: "male",
+    pr: "he_him",
+    ms: "divorced",
+    race: ["2054-5"],
+    eth: ["2135-2"],
+    mbi: "5DA9VE3WX64",
     cg: { first: "Rosa", last: "Okonkwo", rel: "child", lr: "next_of_kin", phone: "+18285550140" },
     ec: [{ name: "Rosa Okonkwo", rel: "Daughter", phone: "+18285550140", pri: 1 }],
-    payers: ["medicare"], flags: ["sud_part2"] },
-  { gi: "female", pr: "she_her", ms: "widowed", race: ["2106-3"], eth: ["2186-5"], mbi: "6HU2YC8KT57",
-    cg: { first: "Arthur", last: "Whitfield", rel: "child", lr: "dpoa_healthcare", phone: "+18285550150" },
-    ec: [{ name: "Arthur Whitfield", rel: "Son", phone: "+18285550150", pri: 1 }, { name: "Eve Carter", rel: "Friend", phone: "+18285550151", pri: 2 }],
-    payers: ["medicare"], flags: [] },
+    payers: ["medicare"],
+    flags: ["sud_part2"],
+  },
+  {
+    gi: "female",
+    pr: "she_her",
+    ms: "widowed",
+    race: ["2106-3"],
+    eth: ["2186-5"],
+    mbi: "6HU2YC8KT57",
+    cg: {
+      first: "Arthur",
+      last: "Whitfield",
+      rel: "child",
+      lr: "dpoa_healthcare",
+      phone: "+18285550150",
+    },
+    ec: [
+      { name: "Arthur Whitfield", rel: "Son", phone: "+18285550150", pri: 1 },
+      { name: "Eve Carter", rel: "Friend", phone: "+18285550151", pri: 2 },
+    ],
+    payers: ["medicare"],
+    flags: [],
+  },
 ];
 
 // Primary home address per patient (last-name order). Admit doesn't persist primaryAddress, so seed here.
@@ -64,7 +142,9 @@ async function main(): Promise<void> {
   await db.connect();
   await db.query("SET session_replication_role = replica"); // skip audit triggers + RI for the seed
 
-  const orgRes = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [ORG_SLUG]);
+  const orgRes = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
+    ORG_SLUG,
+  ]);
   const org = orgRes.rows[0]?.id;
   if (!org) throw new Error("demo org not found — run db:seed first");
 
@@ -80,7 +160,9 @@ async function main(): Promise<void> {
     [org],
   );
   if (pats.rowCount !== DETAIL.length) {
-    console.log(`note: ${pats.rowCount} patients found, ${DETAIL.length} detail rows — seeding min of both.`);
+    console.log(
+      `note: ${pats.rowCount} patients found, ${DETAIL.length} detail rows — seeding min of both.`,
+    );
   }
   const ids = pats.rows.map((r) => r.id);
 
@@ -94,10 +176,18 @@ async function main(): Promise<void> {
   );
 
   // Idempotent cleanup for the demo patients.
-  for (const t of ["patient_payer", "emergency_contact", "patient_caregiver", "patient_assignment", "patient_address"]) {
+  for (const t of [
+    "patient_payer",
+    "emergency_contact",
+    "patient_caregiver",
+    "patient_assignment",
+    "patient_address",
+  ]) {
     await db.query(`DELETE FROM ${t} WHERE patient_id = ANY($1)`, [ids]);
   }
-  await db.query(`DELETE FROM patient_identifier WHERE patient_id = ANY($1) AND kind = 'mbi'`, [ids]);
+  await db.query(`DELETE FROM patient_identifier WHERE patient_id = ANY($1) AND kind = 'mbi'`, [
+    ids,
+  ]);
   await db.query(`DELETE FROM patient_privacy_flag_snapshot WHERE patient_id = ANY($1)`, [ids]);
   // orphan caregivers from a prior run (not referenced by any patient_caregiver)
   await db.query(
@@ -187,8 +277,10 @@ async function main(): Promise<void> {
   }
 
   await db.end();
-  console.log(`✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
-    `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = casey@wardenx.local.`);
+  console.log(
+    `✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
+      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = casey@wardenx.local.`,
+  );
 }
 
 main().catch((err) => {

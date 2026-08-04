@@ -1,3 +1,4 @@
+import { render, waitFor } from "@testing-library/react";
 // apps/web/src/shell — TASK-050C (TEST-004) registry-driven screen smoke render. Auto-discovers
 // every module's screens.ts the same way apps/web/src/main.tsx composes them (import.meta.glob,
 // not a hand-copied import list — so a module lands covered automatically and this file can't drift
@@ -9,7 +10,6 @@
 // docs/audits/wardenx-production-readiness/11-test-and-quality-report.md TEST-004.
 import type { ScreenRegistryModule } from "@wardenx/types";
 import { createApiClient } from "@wardenx/ui";
-import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app";
 import { createScreenRegistry } from "./screen-registry";
@@ -56,10 +56,13 @@ const FULL_SESSION: Session = {
 // synthetic crash no real deployment can hit. An error status instead exercises the same "can't
 // load right now" path every screen already defends against.
 async function stubFetch(): Promise<Response> {
-  return new Response(JSON.stringify({ error: { code: "SMOKE_STUB", message: "no backend in test" } }), {
-    status: 404,
-    headers: { "content-type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ error: { code: "SMOKE_STUB", message: "no backend in test" } }),
+    {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    },
+  );
 }
 
 beforeEach(() => {

@@ -65,7 +65,11 @@ export interface SnapshotQueryPort {
   build(input: {
     readonly reportViewId: string;
     readonly organizationId: string;
-  }): Promise<{ readonly snapshotQuery: string; readonly viewId: string; readonly viewName: string }>;
+  }): Promise<{
+    readonly snapshotQuery: string;
+    readonly viewId: string;
+    readonly viewName: string;
+  }>;
 }
 
 /** The §4.10 outbox emits the runner makes (render-request to M22; failure to M36). */
@@ -168,7 +172,9 @@ export type ScheduledRunResult =
 /** Raised when the job names a `report_schedule_run` that does not exist (the evaluator must create it first). */
 export class ScheduledRunMissing extends Error {
   constructor(runId: string, scheduledFor: string) {
-    super(`report_schedule_run ${runId}@${scheduledFor} not found — the cron evaluator must create it first`);
+    super(
+      `report_schedule_run ${runId}@${scheduledFor} not found — the cron evaluator must create it first`,
+    );
     this.name = "ScheduledRunMissing";
   }
 }

@@ -1,5 +1,6 @@
 // @wardenx/inpatient — M37-T06 unit tests for the §2.5 D6 IRC 5-day cap enforcer.
 import { describe, expect, it } from "vitest";
+import { IpuStateError } from "../src/errors";
 import {
   IRC_CAP_OVERRIDE_MAX_DAYS,
   computeIrcState,
@@ -9,7 +10,6 @@ import {
   planIrcDailyTick,
   resumedStartingDayCount,
 } from "../src/machines/irc-episode";
-import { IpuStateError } from "../src/errors";
 
 const DAY = 86_400_000;
 const outboxOf = (effs: readonly { kind: string; event?: string }[]) =>
@@ -58,17 +58,23 @@ describe("daily watchdog tick", () => {
   });
 
   it("refuses to tick a closed episode", () => {
-    expect(() => planIrcDailyTick({ consecutiveDayCount: 3, state: "closed" })).toThrow(IpuStateError);
+    expect(() => planIrcDailyTick({ consecutiveDayCount: 3, state: "closed" })).toThrow(
+      IpuStateError,
+    );
   });
 });
 
 describe("resumption look-back (§2.5 — no reset within 30 days)", () => {
   const now = 100 * DAY;
   it("continues the count from a prior episode closed within 30 days", () => {
-    expect(resumedStartingDayCount([{ closedAtMs: now - 10 * DAY, consecutiveDayCount: 3 }], now)).toBe(4);
+    expect(
+      resumedStartingDayCount([{ closedAtMs: now - 10 * DAY, consecutiveDayCount: 3 }], now),
+    ).toBe(4);
   });
   it("resets to day 1 when the prior episode closed beyond 30 days", () => {
-    expect(resumedStartingDayCount([{ closedAtMs: now - 40 * DAY, consecutiveDayCount: 3 }], now)).toBe(1);
+    expect(
+      resumedStartingDayCount([{ closedAtMs: now - 40 * DAY, consecutiveDayCount: 3 }], now),
+    ).toBe(1);
   });
   it("resets to day 1 with no prior episodes", () => {
     expect(resumedStartingDayCount([], now)).toBe(1);
@@ -94,7 +100,9 @@ describe("cap override break-glass (§2.5)", () => {
     expect(outboxOf(r.effects)).toEqual(["m37.irc_episode.cap_override_invoked"]);
   });
   it("requires step-up", () => {
-    expect(() => planCapOverride({ ...ok, stepUpVerified: false })).toThrow(/IRC_CAP_OVERRIDE_STEP_UP_REQUIRED|step-up/);
+    expect(() => planCapOverride({ ...ok, stepUpVerified: false })).toThrow(
+      /IRC_CAP_OVERRIDE_STEP_UP_REQUIRED|step-up/,
+    );
   });
   it("requires a 100-char reason", () => {
     try {

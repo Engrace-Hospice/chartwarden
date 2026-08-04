@@ -276,7 +276,12 @@ export interface EligibilityFilters {
 }
 
 export interface M24ReadService {
-  listClaims(actor: M24ReadActor, filters: ClaimFilters, cursor: string | undefined, limit: number): Promise<CursorPage<ClaimView>>;
+  listClaims(
+    actor: M24ReadActor,
+    filters: ClaimFilters,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<CursorPage<ClaimView>>;
   getClaim(actor: M24ReadActor, claimId: string): Promise<ClaimView | null>;
   listClaimLines(actor: M24ReadActor, claimId: string): Promise<ClaimLineView[]>;
   listSubmissions(actor: M24ReadActor, claimId: string): Promise<SubmissionView[]>;
@@ -287,11 +292,20 @@ export interface M24ReadService {
   /** §5.1 #5 — the org-wide blocked-claim worklist grouped by failing rule. `limit` caps the result scan. */
   validationWorklist(actor: M24ReadActor, limit: number): Promise<ValidationWorklistView>;
   listRuleConfig(actor: M24ReadActor): Promise<RuleConfigView[]>;
-  listEligibilityChecks(actor: M24ReadActor, filters: EligibilityFilters): Promise<EligibilityCheckView[]>;
-  listRbArrangements(actor: M24ReadActor, filters: RbArrangementFilters): Promise<RbArrangementView[]>;
+  listEligibilityChecks(
+    actor: M24ReadActor,
+    filters: EligibilityFilters,
+  ): Promise<EligibilityCheckView[]>;
+  listRbArrangements(
+    actor: M24ReadActor,
+    filters: RbArrangementFilters,
+  ): Promise<RbArrangementView[]>;
   getRbArrangement(actor: M24ReadActor, arrangementId: string): Promise<RbArrangementView | null>;
   listRbDays(actor: M24ReadActor, filters: RbDayFilters): Promise<RbDayView[]>;
-  listTradingPartnerCredentials(actor: M24ReadActor, providerEntityId?: string): Promise<TradingPartnerCredentialView[]>;
+  listTradingPartnerCredentials(
+    actor: M24ReadActor,
+    providerEntityId?: string,
+  ): Promise<TradingPartnerCredentialView[]>;
   arDashboard(actor: M24ReadActor, providerEntityId?: string): Promise<ArDashboardView>;
   arMetrics(actor: M24ReadActor, providerEntityId?: string): Promise<ArMetricsView>;
 }

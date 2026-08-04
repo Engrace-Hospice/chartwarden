@@ -1,11 +1,11 @@
 // @wardenx/inpatient — M37-T07 unit tests for the §2.3 D3 24/7 RN-coverage invariant.
 import { describe, expect, it } from "vitest";
 import {
-  type StaffAssignmentFact,
-  buildCoverageWindows,
-  coveringAssignmentsForHour,
-  isCoveringAssignment,
-} from "../src/domain/rn-coverage/window-builder";
+  effectiveRnCoverageActive,
+  isBreakGlassActive,
+  isBreakGlassExpired,
+  validateBreakGlassEnd,
+} from "../src/domain/rn-coverage/break-glass";
 import {
   RN_ACTIVATION_FORWARD_HOURS,
   hasActivationCoverage,
@@ -14,11 +14,11 @@ import {
   projectCoverageGap,
 } from "../src/domain/rn-coverage/horizon-evaluator";
 import {
-  effectiveRnCoverageActive,
-  isBreakGlassActive,
-  isBreakGlassExpired,
-  validateBreakGlassEnd,
-} from "../src/domain/rn-coverage/break-glass";
+  type StaffAssignmentFact,
+  buildCoverageWindows,
+  coveringAssignmentsForHour,
+  isCoveringAssignment,
+} from "../src/domain/rn-coverage/window-builder";
 import { IpuStateError } from "../src/errors";
 
 const HOUR = 3_600_000;
@@ -60,7 +60,11 @@ describe("coverage grid + gap projection (§2.3)", () => {
   });
 
   it("projects the first forward gap + block-severity current-hour flag", () => {
-    const grid = buildCoverageWindows([rn({ shiftStartMs: T0, shiftEndMs: T0 + 2 * HOUR })], T0, 12);
+    const grid = buildCoverageWindows(
+      [rn({ shiftStartMs: T0, shiftEndMs: T0 + 2 * HOUR })],
+      T0,
+      12,
+    );
     const p = projectCoverageGap(grid, T0, 8);
     expect(p.currentHourUncovered).toBe(false); // now (T0) is covered
     expect(p.rnCoverageActive).toBe(true);
@@ -70,7 +74,11 @@ describe("coverage grid + gap projection (§2.3)", () => {
 
   it("current hour uncovered → rnCoverageActive false (fail-closed on unbuilt hours)", () => {
     expect(isCurrentHourUncovered([], T0)).toBe(true); // no grid = uncovered
-    const grid = buildCoverageWindows([rn({ shiftStartMs: T0 + 5 * HOUR, shiftEndMs: T0 + 9 * HOUR })], T0, 12);
+    const grid = buildCoverageWindows(
+      [rn({ shiftStartMs: T0 + 5 * HOUR, shiftEndMs: T0 + 9 * HOUR })],
+      T0,
+      12,
+    );
     expect(projectCoverageGap(grid, T0, 8).rnCoverageActive).toBe(false);
   });
 
@@ -90,7 +98,11 @@ describe("activation gate (§2.3 — 168h forward)", () => {
     );
     expect(hasActivationCoverage(fullWeek, T0)).toBe(true);
     // A one-hour gap fails the gate.
-    const short = buildCoverageWindows([rn({ shiftStartMs: T0, shiftEndMs: T0 + 167 * HOUR })], T0, RN_ACTIVATION_FORWARD_HOURS);
+    const short = buildCoverageWindows(
+      [rn({ shiftStartMs: T0, shiftEndMs: T0 + 167 * HOUR })],
+      T0,
+      RN_ACTIVATION_FORWARD_HOURS,
+    );
     expect(hasActivationCoverage(short, T0)).toBe(false);
   });
 });
@@ -104,7 +116,9 @@ describe("break-glass override (§2.3)", () => {
   });
 
   it("lets an active override keep coverage active despite an uncovered hour", () => {
-    expect(effectiveRnCoverageActive(true, { invokedAtMs: T0, endedAtMs: null }, T0 + 1 * HOUR)).toBe(true);
+    expect(
+      effectiveRnCoverageActive(true, { invokedAtMs: T0, endedAtMs: null }, T0 + 1 * HOUR),
+    ).toBe(true);
     expect(effectiveRnCoverageActive(true, null, T0)).toBe(false);
     expect(effectiveRnCoverageActive(false, null, T0)).toBe(true); // covered anyway
   });

@@ -69,14 +69,17 @@ if (!FormatRegistry.Has("date-time")) {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
-  M25_PERMISSION_KEY_LIST,
-  buildM25AbacPredicates,
-  mountM25Routes,
   type M25ReadService,
   type M25WriteService,
+  M25_PERMISSION_KEY_LIST,
   type ReadingM25AbacResolver,
+  buildM25AbacPredicates,
+  mountM25Routes,
 } from "../src/modules/25-remittance/index";
-import type { AppealDetail, TaxonomyMergedView } from "../src/modules/25-remittance/routes/read-service";
+import type {
+  AppealDetail,
+  TaxonomyMergedView,
+} from "../src/modules/25-remittance/routes/read-service";
 
 // ── the header-auth shim (the M7/M11/M15 precedent), extended with the extra `request.context.attributes`
 // M25's actor layer + the `/internal/...` seam read: `membershipId` (write attribution, M25WriteActor),
@@ -127,12 +130,64 @@ function createM25Backend(): {
   readonly writeService: M25WriteService;
   readonly abacResolver: ReadingM25AbacResolver;
 } {
-  const advices = new Map<string, { id: string; providerEntityId: string; payerId: string; payerKind: string; paymentMethod: string; totalPaymentAmount: string; parseStatus: string; receivedAt: string }>();
-  const lines = new Map<string, { id: string; remittanceAdviceId: string; claimId: string | null; clp02StatusCode: number; clp03TotalChargeAmount: string; clp04TotalPaymentAmount: string; clp05PatientResponsibilityAmount: string; matchState: string; matchStrategy: string | null; matchConfidence: number | null; receivedAt: string }>();
-  const denials = new Map<string, { id: string; providerEntityId: string; claimId: string | null; carcCode: string; rarcCode: string | null; category: string; source: string; state: string; assigneeMembershipId: string | null; openedAt: string; agingBucketDays: number; agingBucketLabel: "0-7" | "8-15" | "16-30" | "31-60" | "61-90" | "91+"; dollarValue: string; taxonomyStatus: string; version: number }>();
+  const advices = new Map<
+    string,
+    {
+      id: string;
+      providerEntityId: string;
+      payerId: string;
+      payerKind: string;
+      paymentMethod: string;
+      totalPaymentAmount: string;
+      parseStatus: string;
+      receivedAt: string;
+    }
+  >();
+  const lines = new Map<
+    string,
+    {
+      id: string;
+      remittanceAdviceId: string;
+      claimId: string | null;
+      clp02StatusCode: number;
+      clp03TotalChargeAmount: string;
+      clp04TotalPaymentAmount: string;
+      clp05PatientResponsibilityAmount: string;
+      matchState: string;
+      matchStrategy: string | null;
+      matchConfidence: number | null;
+      receivedAt: string;
+    }
+  >();
+  const denials = new Map<
+    string,
+    {
+      id: string;
+      providerEntityId: string;
+      claimId: string | null;
+      carcCode: string;
+      rarcCode: string | null;
+      category: string;
+      source: string;
+      state: string;
+      assigneeMembershipId: string | null;
+      openedAt: string;
+      agingBucketDays: number;
+      agingBucketLabel: "0-7" | "8-15" | "16-30" | "31-60" | "61-90" | "91+";
+      dollarValue: string;
+      taxonomyStatus: string;
+      version: number;
+    }
+  >();
   const appeals = new Map<string, AppealDetail>();
   const taxonomy = new Map<string, TaxonomyMergedView>();
-  const prLedger: Array<{ id: string; patientId: string; prAmount: string; status: string; recordedAt: string }> = [];
+  const prLedger: Array<{
+    id: string;
+    patientId: string;
+    prAmount: string;
+    status: string;
+    recordedAt: string;
+  }> = [];
 
   advices.set(ADVICE, {
     id: ADVICE,
@@ -204,7 +259,13 @@ function createM25Backend(): {
     overlayVersion: null,
   });
 
-  prLedger.push({ id: PR_ROW, patientId: PATIENT, prAmount: "300.00", status: "open", recordedAt: NOW });
+  prLedger.push({
+    id: PR_ROW,
+    patientId: PATIENT,
+    prAmount: "300.00",
+    status: "open",
+    recordedAt: NOW,
+  });
 
   const readService: M25ReadService = {
     async listAdvices(_actor, _filters, _cursor, _limit) {
@@ -220,7 +281,10 @@ function createM25Backend(): {
       return lines.get(id) ?? null;
     },
     async listUnmatched(_actor, _providerEntityId, _cursor, _limit) {
-      return { items: [...lines.values()].filter((l) => l.matchState === "unmatched"), nextCursor: null };
+      return {
+        items: [...lines.values()].filter((l) => l.matchState === "unmatched"),
+        nextCursor: null,
+      };
     },
     async denialWorklist(_actor, _filters, _cursor, _limit) {
       return { items: [...denials.values()], nextCursor: null };
@@ -268,7 +332,12 @@ function createM25Backend(): {
     async manualMatch(_actor, lineId, input) {
       const row = lines.get(lineId);
       if (!row) throw new NotFoundError("remittance line not found");
-      lines.set(lineId, { ...row, claimId: input.proposedClaimId, matchState: "manual_matched", matchStrategy: "manual" });
+      lines.set(lineId, {
+        ...row,
+        claimId: input.proposedClaimId,
+        matchState: "manual_matched",
+        matchStrategy: "manual",
+      });
     },
     async overrideAdjustment(_actor, adjustmentId, _input) {
       void adjustmentId;
@@ -276,7 +345,11 @@ function createM25Backend(): {
     async assignDenial(_actor, id, input, _ifMatch) {
       const row = denials.get(id);
       if (!row) throw new NotFoundError("denial case not found");
-      const updated = { ...row, assigneeMembershipId: input.assigneeMembershipId, version: row.version + 1 };
+      const updated = {
+        ...row,
+        assigneeMembershipId: input.assigneeMembershipId,
+        version: row.version + 1,
+      };
       denials.set(id, updated);
       return { id, version: updated.version };
     },
@@ -416,7 +489,9 @@ function createM25Backend(): {
   const abacResolver: ReadingM25AbacResolver = {
     async loadDenialAssignment(_ctx, denialCaseId) {
       const row = denials.get(denialCaseId);
-      return row ? { assigneeMembershipId: row.assigneeMembershipId, providerEntityId: row.providerEntityId } : null;
+      return row
+        ? { assigneeMembershipId: row.assigneeMembershipId, providerEntityId: row.providerEntityId }
+        : null;
     },
     async loadAppealDeadline(_ctx, appealCaseId) {
       const row = appeals.get(appealCaseId);
@@ -447,8 +522,23 @@ function makeServer() {
   const backend = createM25Backend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "super_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M25_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "super_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M25_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -456,7 +546,9 @@ function makeServer() {
   // built over THIS backend's resolver, plus a permissive `step_up_recent` stub so the step-up-gated routes
   // (adjustment-override / denial.close_with_write_off / appeal.submit) have a real PASSING path here.
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildM25AbacPredicates({ resolver: backend.abacResolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildM25AbacPredicates({ resolver: backend.abacResolver }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
@@ -528,8 +620,20 @@ const LONG_REASON = (label: string) =>
 
 const ROUTE_CASES: readonly RouteCase[] = [
   // 1–8 — the 835 envelope + line surface (remittance.routes.ts).
-  { label: "1 GET /remittance/advices", method: "GET", url: "/api/v1/remittance/advices", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "2 GET /remittance/advices/:id", method: "GET", url: `/api/v1/remittance/advices/${ADVICE}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "1 GET /remittance/advices",
+    method: "GET",
+    url: "/api/v1/remittance/advices",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "2 GET /remittance/advices/:id",
+    method: "GET",
+    url: `/api/v1/remittance/advices/${ADVICE}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "3 POST /remittance/advices/:id/replay",
     method: "POST",
@@ -538,15 +642,36 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: {},
     expectStatus: 202,
   },
-  { label: "4 GET /remittance/lines", method: "GET", url: "/api/v1/remittance/lines", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "5 GET /remittance/lines/:id", method: "GET", url: `/api/v1/remittance/lines/${LINE}`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "6 GET /remittance/unmatched", method: "GET", url: "/api/v1/remittance/unmatched", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "4 GET /remittance/lines",
+    method: "GET",
+    url: "/api/v1/remittance/lines",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "5 GET /remittance/lines/:id",
+    method: "GET",
+    url: `/api/v1/remittance/lines/${LINE}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "6 GET /remittance/unmatched",
+    method: "GET",
+    url: "/api/v1/remittance/unmatched",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "7 POST /remittance/lines/:id/manual-match",
     method: "POST",
     url: `/api/v1/remittance/lines/${LINE}/manual-match`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k7") },
-    payload: { proposedClaimId: CLAIM, reason: "Matched via manual claim-number cross-reference lookup against the payer portal." },
+    payload: {
+      proposedClaimId: CLAIM,
+      reason: "Matched via manual claim-number cross-reference lookup against the payer portal.",
+    },
     expectStatus: 200,
   },
   {
@@ -554,19 +679,39 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/remittance/adjustments/${ADJUSTMENT}/override`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k8") },
-    payload: { newPostAction: "ledger_recorded", reason: LONG_REASON("Re-classifying a flagged adjustment after manual review of the 835 remark codes") },
+    payload: {
+      newPostAction: "ledger_recorded",
+      reason: LONG_REASON(
+        "Re-classifying a flagged adjustment after manual review of the 835 remark codes",
+      ),
+    },
     expectStatus: 200,
   },
 
   // 9–18 — the denial worklist (denials.routes.ts).
-  { label: "9 GET /denials", method: "GET", url: "/api/v1/denials", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "10 GET /denials/:id", method: "GET", url: `/api/v1/denials/${DENIAL}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "9 GET /denials",
+    method: "GET",
+    url: "/api/v1/denials",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "10 GET /denials/:id",
+    method: "GET",
+    url: `/api/v1/denials/${DENIAL}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "11 PATCH /denials/:id/assign",
     method: "PATCH",
     url: `/api/v1/denials/${DENIAL}/assign`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k11"), ...IFM },
-    payload: { assigneeMembershipId: RN_MEMBERSHIP, reason: "Assigning to the billing specialist for CARC 45 review." },
+    payload: {
+      assigneeMembershipId: RN_MEMBERSHIP,
+      reason: "Assigning to the billing specialist for CARC 45 review.",
+    },
     expectStatus: 200,
   },
   {
@@ -590,7 +735,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "PATCH",
     url: `/api/v1/denials/${DENIAL}/resolve`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k14"), ...IFM },
-    payload: { reason: LONG_REASON("Resolved after correcting the coding error and resubmitting the claim") },
+    payload: {
+      reason: LONG_REASON("Resolved after correcting the coding error and resubmitting the claim"),
+    },
     expectStatus: 200,
   },
   {
@@ -606,7 +753,11 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/denials/${DENIAL}/close-write-off`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k16"), ...IFM },
-    payload: { reason: LONG_REASON("Closing with a write-off after exhausting appeal options for this small-dollar denial") },
+    payload: {
+      reason: LONG_REASON(
+        "Closing with a write-off after exhausting appeal options for this small-dollar denial",
+      ),
+    },
     expectStatus: 200,
   },
   {
@@ -614,7 +765,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/denials/${DENIAL}/reopen`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k17"), ...IFM },
-    payload: { reason: LONG_REASON("Reopening after the payer issued a corrected remittance advice") },
+    payload: {
+      reason: LONG_REASON("Reopening after the payer issued a corrected remittance advice"),
+    },
     expectStatus: 200,
   },
   {
@@ -627,8 +780,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 19–26 — the appeal tracker (appeals.routes.ts).
-  { label: "19 GET /appeals", method: "GET", url: "/api/v1/appeals", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "20 GET /appeals/:id", method: "GET", url: `/api/v1/appeals/${APPEAL}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "19 GET /appeals",
+    method: "GET",
+    url: "/api/v1/appeals",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "20 GET /appeals/:id",
+    method: "GET",
+    url: `/api/v1/appeals/${APPEAL}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "21 PATCH /appeals/:id/attach",
     method: "PATCH",
@@ -665,7 +830,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: {
       outcome: "favorable",
       decidedAt: NOW,
-      reason: LONG_REASON("Decided favorable after the MAC's review of the submitted clinical documentation packet"),
+      reason: LONG_REASON(
+        "Decided favorable after the MAC's review of the submitted clinical documentation packet",
+      ),
     },
     expectStatus: 200,
   },
@@ -674,7 +841,9 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/appeals/${APPEAL}/withdraw`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k25"), ...IFM },
-    payload: { reason: LONG_REASON("Withdrawing after the payer voluntarily reprocessed and paid the claim") },
+    payload: {
+      reason: LONG_REASON("Withdrawing after the payer voluntarily reprocessed and paid the claim"),
+    },
     expectStatus: 200,
   },
   {
@@ -687,7 +856,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 27–28 — the denial taxonomy (taxonomy.routes.ts).
-  { label: "27 GET /taxonomy/carc/:code", method: "GET", url: `/api/v1/taxonomy/carc/${CARC}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "27 GET /taxonomy/carc/:code",
+    method: "GET",
+    url: `/api/v1/taxonomy/carc/${CARC}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "28 PATCH /taxonomy/overlays/:carc",
     method: "PATCH",
@@ -709,7 +884,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: SYSTEM_HEADERS,
     expectStatus: 200,
   },
-  { label: "30 GET /internal/denials/metrics", method: "GET", url: "/api/v1/internal/denials/metrics", headers: SYSTEM_HEADERS, expectStatus: 200 },
+  {
+    label: "30 GET /internal/denials/metrics",
+    method: "GET",
+    url: "/api/v1/internal/denials/metrics",
+    headers: SYSTEM_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "31 GET /internal/patient-responsibility",
     method: "GET",
@@ -722,7 +903,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M25 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

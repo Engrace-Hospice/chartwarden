@@ -21,8 +21,8 @@ import type {
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "@wardenx/types";
-import type { ObjectStorePort } from "./store";
 import type { DocumentReaderStore, PortalConsentPort } from "./readers-store";
+import type { ObjectStorePort } from "./store";
 
 /** The §4.5 default cap for portal documents to page in one call (keyset-paged via `sinceCursor`). */
 const DEFAULT_PATIENT_DOC_LIMIT = 50;
@@ -34,7 +34,9 @@ const PORTAL_URL_TTL_SECONDS = 60 * 60;
  * §4.3 RenderedDocumentProvider over the store — resolves the rendered document for one source aggregate.
  * Pure projection; RLS pins the tenant. Used by every source module's `m22-document-backref` consumer.
  */
-export function createRenderedDocumentProvider(store: DocumentReaderStore): RenderedDocumentProvider {
+export function createRenderedDocumentProvider(
+  store: DocumentReaderStore,
+): RenderedDocumentProvider {
   return {
     async getRenderedDocumentForAggregate({ aggregateType, aggregateId, organizationId }) {
       return store.renderedDocumentForAggregate({ aggregateType, aggregateId, organizationId });
@@ -104,14 +106,20 @@ export function createPortalDocumentReader(deps: {
         );
     },
     async mintPortalDownloadUrl({ documentVersionId, portalSessionId, patientId, organizationId }) {
-      const owner = await deps.store.activeVersionForDocument({ documentVersionId, organizationId });
+      const owner = await deps.store.activeVersionForDocument({
+        documentVersionId,
+        organizationId,
+      });
       if (owner === null || owner.patientId !== patientId) {
         return { denied: true, reason: "not_owner" } as const;
       }
       if (!owner.patientFacing) {
         return { denied: true, reason: "not_patient_facing" } as const;
       }
-      if (isSudVersion(documentVersionId) && !deps.consent.isSudPortalDisclosureConsented(patientId)) {
+      if (
+        isSudVersion(documentVersionId) &&
+        !deps.consent.isSudPortalDisclosureConsented(patientId)
+      ) {
         return { denied: true, reason: "sud_consent_absent" } as const;
       }
       // portalSessionId is the audit anchor (M4 `auditRead` purpose='portal'); the presigned URL is never logged.
@@ -147,10 +155,16 @@ export function createIntakeMetricsProvider(store: DocumentReaderStore): IntakeM
  * aggregate. M28 (FHIR Provenance) + M30 (HQRP AI-governance) consume. The rows EXIST even though DocLens is
  * OFF — provenance is written at extraction-commit time. Pure projection; RLS pins the tenant.
  */
-export function createExtractionProvenanceReader(store: DocumentReaderStore): ExtractionProvenanceReader {
+export function createExtractionProvenanceReader(
+  store: DocumentReaderStore,
+): ExtractionProvenanceReader {
   return {
     async provenanceForTargetAggregate({ targetModule, targetAggregateId, organizationId }) {
-      return store.provenanceForTargetAggregate({ targetModule, targetAggregateId, organizationId });
+      return store.provenanceForTargetAggregate({
+        targetModule,
+        targetAggregateId,
+        organizationId,
+      });
     },
   };
 }

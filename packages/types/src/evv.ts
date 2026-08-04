@@ -16,8 +16,8 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, OrgId } from "./admission";
-import type { MembershipId, IsoInstant } from "./care-plan";
+import type { OrgId, PatientId } from "./admission";
+import type { IsoInstant, MembershipId } from "./care-plan";
 // `VisitId` is owned by `encounter.ts` (M8) and referenced as the §2.3 logical FK on every `evv_event` —
 // imported for internal use here, not re-exported (TS2308).
 import type { VisitId } from "./encounter";
@@ -48,7 +48,12 @@ export type EvvEventGpsQuality =
 export type EvvDevicePlatform = "ios" | "android";
 
 /** The §2.2.3 D8 device-registration lifecycle (mirrors `evv_device_status`). */
-export type EvvDeviceStatus = "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+export type EvvDeviceStatus =
+  | "pending_approval"
+  | "approved"
+  | "suspended"
+  | "rejected"
+  | "retired";
 
 /** The §2.2.2 D3 three-layer policy scope (mirrors `evv_geofence_policy_scope`). */
 export type EvvGeofencePolicyScope = "platform" | "tenant" | "patient_address";
@@ -316,7 +321,11 @@ export interface EvvAggregatorReferenceReader {
   aggregatorIdForVisit(
     orgId: OrgId,
     visitId: VisitId,
-  ): Promise<{ aggregatorTransactionId: string; stateCode: string; aggregatorVendor: string } | null>;
+  ): Promise<{
+    aggregatorTransactionId: string;
+    stateCode: string;
+    aggregatorVendor: string;
+  } | null>;
   submissionForVisit(orgId: OrgId, visitId: VisitId): Promise<EvvAggregatorSubmissionDto | null>;
 }
 
@@ -342,7 +351,10 @@ export interface EvvMetricsProvider {
     orgId: OrgId,
     windowIso: { from: IsoInstant; to: IsoInstant },
   ): Promise<{ readonly numerator: number; readonly denominator: number }>;
-  getLateCheckoutRate(orgId: OrgId, windowIso: { from: IsoInstant; to: IsoInstant }): Promise<number>;
+  getLateCheckoutRate(
+    orgId: OrgId,
+    windowIso: { from: IsoInstant; to: IsoInstant },
+  ): Promise<number>;
   getGeofenceDeviationRate(
     orgId: OrgId,
     windowIso: { from: IsoInstant; to: IsoInstant },

@@ -2,16 +2,15 @@
 // for a BullMQ `Worker` (WorkerLike is deliberately minimal for exactly this) — no Redis needed.
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import {
-  type FailedJobLike,
-  attachDlqPromotionAlert,
-  buildDlqPromotionSink,
-} from "../dlq-alerts";
+import { type FailedJobLike, attachDlqPromotionAlert, buildDlqPromotionSink } from "../dlq-alerts";
 
 function fakeWorker() {
   const emitter = new EventEmitter();
   return {
-    worker: { on: (event: "failed", listener: (job: FailedJobLike | undefined, err: Error) => void) => emitter.on(event, listener) },
+    worker: {
+      on: (event: "failed", listener: (job: FailedJobLike | undefined, err: Error) => void) =>
+        emitter.on(event, listener),
+    },
     fail: (job: FailedJobLike | undefined, err: Error) => emitter.emit("failed", job, err),
   };
 }
@@ -86,7 +85,13 @@ describe("buildDlqPromotionSink", () => {
   it("always logs a structured line naming the source, attempts, and error", () => {
     const log = vi.fn();
     const sink = buildDlqPromotionSink({ log });
-    sink({ source: "m7.gates", jobId: "j1", attempts: 3, error: "boom", occurredAt: "2026-08-04T00:00:00Z" });
+    sink({
+      source: "m7.gates",
+      jobId: "j1",
+      attempts: 3,
+      error: "boom",
+      occurredAt: "2026-08-04T00:00:00Z",
+    });
     expect(log).toHaveBeenCalledTimes(1);
     expect(log.mock.calls[0]![0]).toContain("m7.gates");
     expect(log.mock.calls[0]![0]).toContain("boom");

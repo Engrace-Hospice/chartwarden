@@ -90,7 +90,10 @@ export const EXTERNAL_FEED_TRANSITIONS: readonly Hl7StatusTransition<ExternalFee
 ];
 
 /** The terminal statuses — no edge leaves them (§2.2). The row is retained so every message's FK resolves. */
-export const EXTERNAL_FEED_TERMINAL_STATUSES: readonly ExternalFeedStatus[] = ["revoked", "rejected"];
+export const EXTERNAL_FEED_TERMINAL_STATUSES: readonly ExternalFeedStatus[] = [
+  "revoked",
+  "rejected",
+];
 
 /** The (from → to) edge whose write demands the D18 distinct-compliance-co-approver evidence. */
 const COMPLIANCE_CO_APPROVAL_EDGE: {

@@ -19,29 +19,29 @@
 // and this service refuses `submit` when it equals the acting membership. Documented as a deviation.
 import { randomUUID } from "node:crypto";
 import { Value } from "@sinclair/typebox/value";
-import { type DbClient, schema } from "@wardenx/db";
 import {
   BadDebtRepository,
   COST_REPORT_TRANSITIONS,
   ComplianceWindowRepository,
   CostCenterMappingRepository,
-  type CostReportState,
-  type CostReportTransitionEvent,
   CostReportRepository,
   CostReportSnapshotRepository,
+  type CostReportState,
+  type CostReportTransitionEvent,
   CostReportWorksheetRepository,
   DERIVED_WORKSHEET_CODES,
+  type WorksheetCode as DomainWorksheetCode,
   EcrSubmissionRepository,
   ImportsRepository,
   StatisticDataRepository,
   ValidationRepository,
   ValidationRuleRepository,
-  type WorksheetCode as DomainWorksheetCode,
   applyTransition,
   canTransition,
   contentHashSha256,
   resolveWorksheetSchema,
 } from "@wardenx/cost-report";
+import type { DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { M27WriteActor } from "./actor";
@@ -76,8 +76,8 @@ import type {
   PatchCostReportArgs,
   PreviewMappingArgs,
   PutWorksheetArgs,
-  RecordAcknowledgmentArgs,
   RecomputeEnqueuePort,
+  RecordAcknowledgmentArgs,
   RefreshInputsAcceptedView,
   ReopenArgs,
   ResetMappingArgs,
@@ -277,8 +277,9 @@ export function buildDrizzleM27WriteService(
 ): M27WriteRouteService {
   const now = ports.now ?? (() => new Date());
   const ruleSetVersion = ports.ruleSetVersion ?? 1;
-  const recompute: RecomputeEnqueuePort =
-    ports.recompute ?? { enqueue: async () => ({ jobId: randomUUID() }) };
+  const recompute: RecomputeEnqueuePort = ports.recompute ?? {
+    enqueue: async () => ({ jobId: randomUUID() }),
+  };
 
   const inOrgCtx = <T>(actor: M27WriteActor, fn: (tx: WriteTx) => Promise<T>): Promise<T> =>
     withOrgContext<WriteTx, T>(
@@ -304,7 +305,11 @@ export function buildDrizzleM27WriteService(
   /** §D14 server-side step-up gate (override / approve / submit / reopen). Fail-closed. */
   const requireStepUp = (actor: M27WriteActor): void => {
     if (!actor.stepUpRecent) {
-      throw new WardenXError("STEP_UP_REQUIRED", "this action requires a recent step-up re-authentication", 403);
+      throw new WardenXError(
+        "STEP_UP_REQUIRED",
+        "this action requires a recent step-up re-authentication",
+        403,
+      );
     }
   };
 
@@ -369,7 +374,10 @@ export function buildDrizzleM27WriteService(
       actor.organizationId,
       report.id,
     );
-    const window = await new ComplianceWindowRepository(tx).findByReport(actor.organizationId, report.id);
+    const window = await new ComplianceWindowRepository(tx).findByReport(
+      actor.organizationId,
+      report.id,
+    );
     return {
       costReportId: report.id,
       organizationId: report.organizationId,
@@ -412,7 +420,10 @@ export function buildDrizzleM27WriteService(
     actor: M27WriteActor,
     costReportId: string,
   ): Promise<number> => {
-    const run = await new ValidationRepository(tx).findLatestRunForReport(actor.organizationId, costReportId);
+    const run = await new ValidationRepository(tx).findLatestRunForReport(
+      actor.organizationId,
+      costReportId,
+    );
     if (!run || run.status !== "complete") return Number.POSITIVE_INFINITY;
     return Math.max(0, run.failedCount - run.overriddenCount);
   };
@@ -428,7 +439,9 @@ export function buildDrizzleM27WriteService(
           args.fiscalYearEndDate,
         );
         if (existing) {
-          throw new ConflictError("a cost report already exists for this ProviderEntity and fiscal-year-end");
+          throw new ConflictError(
+            "a cost report already exists for this ProviderEntity and fiscal-year-end",
+          );
         }
         const report = await reportRepo.create({
           organizationId: actor.organizationId,
@@ -463,12 +476,18 @@ export function buildDrizzleM27WriteService(
       });
     },
 
-    async patchCostReport(actor, costReportId, args: PatchCostReportArgs): Promise<CostReportDetailView> {
+    async patchCostReport(
+      actor,
+      costReportId,
+      args: PatchCostReportArgs,
+    ): Promise<CostReportDetailView> {
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         // Editable metadata only; state-machine-guarded — edits are only legal pre-lockdown.
         if (report.state !== "draft" && report.state !== "populating") {
-          throw new ConflictError("cost-report metadata can only be edited while draft or populating");
+          throw new ConflictError(
+            "cost-report metadata can only be edited while draft or populating",
+          );
         }
         const updated = await updateReport(tx, report.id, args.expectedVersion, {
           badDebtClaimed: args.badDebtClaimed ?? report.badDebtClaimed,
@@ -486,10 +505,14 @@ export function buildDrizzleM27WriteService(
           costReportId,
           source: "xero",
         });
-        const stats = await recompute.enqueue("statistics-refresh", `stats:${dedupe}`, { costReportId });
+        const stats = await recompute.enqueue("statistics-refresh", `stats:${dedupe}`, {
+          costReportId,
+        });
         let wageJobId: string | null = null;
         if (report.wageSource === "gusto") {
-          const wage = await recompute.enqueue("wage-data-pull", `wage:${dedupe}`, { costReportId });
+          const wage = await recompute.enqueue("wage-data-pull", `wage:${dedupe}`, {
+            costReportId,
+          });
           wageJobId = wage.jobId;
         }
         await emit(tx, {
@@ -528,7 +551,11 @@ export function buildDrizzleM27WriteService(
             payload: { costReportId: populated.id },
           });
         }
-        return { trialBalanceJobId: tb.jobId, wageDataJobId: wageJobId, statisticsJobId: stats.jobId };
+        return {
+          trialBalanceJobId: tb.jobId,
+          wageDataJobId: wageJobId,
+          statisticsJobId: stats.jobId,
+        };
       });
     },
 
@@ -542,12 +569,18 @@ export function buildDrizzleM27WriteService(
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         if (report.state !== "draft" && report.state !== "populating") {
-          throw new ConflictError("worksheets are read-only once the report has left draft/populating");
+          throw new ConflictError(
+            "worksheets are read-only once the report has left draft/populating",
+          );
         }
         // §2.3 per-code TypeBox validation — refuse a payload that does not match the worksheet schema.
         const tschema = resolveWorksheetSchema(worksheetCode as DomainWorksheetCode);
         if (!Value.Check(tschema, args.data)) {
-          throw new WardenXError("VALIDATION_FAILED", `the worksheet ${worksheetCode} payload is invalid`, 422);
+          throw new WardenXError(
+            "VALIDATION_FAILED",
+            `the worksheet ${worksheetCode} payload is invalid`,
+            422,
+          );
         }
         const repo = new CostReportWorksheetRepository(tx);
         const existing = await repo.findByReportAndCode(costReportId, worksheetCode);
@@ -651,7 +684,9 @@ export function buildDrizzleM27WriteService(
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         if (report.state !== "draft" && report.state !== "populating") {
-          throw new ConflictError("cost-center mappings are read-only once the report leaves draft/populating");
+          throw new ConflictError(
+            "cost-center mappings are read-only once the report leaves draft/populating",
+          );
         }
         const fyInt = new Date(`${report.fiscalYearEndDate}T00:00:00.000Z`).getUTCFullYear();
         const repo = new CostCenterMappingRepository(tx);
@@ -695,7 +730,11 @@ export function buildDrizzleM27WriteService(
             mappingSource: source,
           },
         });
-        const rows = await repo.listForProviderFy(actor.organizationId, report.providerEntityId, fyInt);
+        const rows = await repo.listForProviderFy(
+          actor.organizationId,
+          report.providerEntityId,
+          fyInt,
+        );
         return rows.map(mapMapping);
       });
     },
@@ -736,7 +775,9 @@ export function buildDrizzleM27WriteService(
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         if (report.state !== "draft" && report.state !== "populating") {
-          throw new ConflictError("bad-debt records can only be added while the report is draft/populating");
+          throw new ConflictError(
+            "bad-debt records can only be added while the report is draft/populating",
+          );
         }
         const row = await new BadDebtRepository(tx).create({
           organizationId: actor.organizationId,
@@ -774,11 +815,17 @@ export function buildDrizzleM27WriteService(
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         if (report.state !== "draft" && report.state !== "populating") {
-          throw new ConflictError("bad-debt records can only be edited while the report is draft/populating");
+          throw new ConflictError(
+            "bad-debt records can only be edited while the report is draft/populating",
+          );
         }
         const repo = new BadDebtRepository(tx);
         const existing = await repo.findById(recordId);
-        if (!existing || existing.organizationId !== actor.organizationId || existing.costReportId !== costReportId) {
+        if (
+          !existing ||
+          existing.organizationId !== actor.organizationId ||
+          existing.costReportId !== costReportId
+        ) {
           throw new NotFoundError("bad-debt record");
         }
         const row = await repo.update(recordId, {
@@ -799,11 +846,17 @@ export function buildDrizzleM27WriteService(
       return inOrgCtx(actor, async (tx) => {
         const report = await loadReport(tx, actor, costReportId);
         if (report.state !== "draft" && report.state !== "populating") {
-          throw new ConflictError("bad-debt records can only be deleted while the report is draft/populating");
+          throw new ConflictError(
+            "bad-debt records can only be deleted while the report is draft/populating",
+          );
         }
         const repo = new BadDebtRepository(tx);
         const existing = await repo.findById(recordId);
-        if (!existing || existing.organizationId !== actor.organizationId || existing.costReportId !== costReportId) {
+        if (
+          !existing ||
+          existing.organizationId !== actor.organizationId ||
+          existing.costReportId !== costReportId
+        ) {
           throw new NotFoundError("bad-debt record");
         }
         const tomb = await repo.softDelete(recordId, actor.membershipId, now());
@@ -991,7 +1044,11 @@ export function buildDrizzleM27WriteService(
         await loadReport(tx, actor, costReportId);
         const repo = new ValidationRepository(tx);
         const run = await repo.findRunById(validationId);
-        if (!run || run.organizationId !== actor.organizationId || run.costReportId !== costReportId) {
+        if (
+          !run ||
+          run.organizationId !== actor.organizationId ||
+          run.costReportId !== costReportId
+        ) {
           throw new NotFoundError("validation run");
         }
         const result = await repo.findResultById(args.validationResultId);
@@ -1057,7 +1114,9 @@ export function buildDrizzleM27WriteService(
         const report = await loadReport(tx, actor, costReportId);
         const blocking = await unresolvedBlockingFailures(tx, actor, costReportId);
         const updated = await updateReport(tx, report.id, report.version, {
-          state: nextState(report.state, "approve_for_submit", { unresolvedBlockingFailures: blocking }),
+          state: nextState(report.state, "approve_for_submit", {
+            unresolvedBlockingFailures: blocking,
+          }),
         });
         const at = now();
         await emit(tx, {
@@ -1102,7 +1161,10 @@ export function buildDrizzleM27WriteService(
           actor.organizationId,
           costReportId,
         );
-        const statistics = await new StatisticDataRepository(tx).findByReport(actor.organizationId, costReportId);
+        const statistics = await new StatisticDataRepository(tx).findByReport(
+          actor.organizationId,
+          costReportId,
+        );
         const trialBalance = await new ImportsRepository(tx).findLatestCompleteTrialBalance(
           actor.organizationId,
           costReportId,
@@ -1116,7 +1178,9 @@ export function buildDrizzleM27WriteService(
           wageDataImportId: wageData?.id ?? null,
           statistics: statistics?.monthlyBreakdown ?? null,
         };
-        const worksheetSnapshot = Object.fromEntries(worksheets.map((w) => [w.worksheetCode, w.data]));
+        const worksheetSnapshot = Object.fromEntries(
+          worksheets.map((w) => [w.worksheetCode, w.data]),
+        );
         const contentHash = contentHashSha256({
           materialized,
           worksheetSnapshot,
@@ -1128,8 +1192,10 @@ export function buildDrizzleM27WriteService(
           costReportId,
           priorSnapshotId: report.latestSnapshotId ?? null,
           contentHashSha256: contentHash,
-          materializedInputs: materialized as unknown as schema.NewCostReportSnapshot["materializedInputs"],
-          worksheetSnapshot: worksheetSnapshot as unknown as schema.NewCostReportSnapshot["worksheetSnapshot"],
+          materializedInputs:
+            materialized as unknown as schema.NewCostReportSnapshot["materializedInputs"],
+          worksheetSnapshot:
+            worksheetSnapshot as unknown as schema.NewCostReportSnapshot["worksheetSnapshot"],
           reason: "submit",
           createdByMembershipId: actor.membershipId,
         });
@@ -1193,7 +1259,11 @@ export function buildDrizzleM27WriteService(
         const report = await loadReport(tx, actor, costReportId);
         const repo = new EcrSubmissionRepository(tx);
         const submission = await repo.findById(submissionId);
-        if (!submission || submission.organizationId !== actor.organizationId || submission.costReportId !== costReportId) {
+        if (
+          !submission ||
+          submission.organizationId !== actor.organizationId ||
+          submission.costReportId !== costReportId
+        ) {
           throw new NotFoundError("ecr submission");
         }
         const isAccept = typeof args.mcrefAcknowledgmentNumber === "string";
@@ -1214,7 +1284,10 @@ export function buildDrizzleM27WriteService(
           uploadedByMembershipId: actor.membershipId,
           acknowledgedAt: at,
         });
-        const toState = nextState(report.state, isAccept ? "record_acknowledgment" : "record_rejection");
+        const toState = nextState(
+          report.state,
+          isAccept ? "record_acknowledgment" : "record_rejection",
+        );
         await updateReport(tx, report.id, report.version, { state: toState });
         if (isAccept) {
           await emit(tx, {
@@ -1302,10 +1375,7 @@ export function buildDrizzleM27WriteService(
     },
 
     // ── rule library ──
-    async createValidationRule(
-      actor,
-      args: CreateValidationRuleArgs,
-    ): Promise<ValidationRuleView> {
+    async createValidationRule(actor, args: CreateValidationRuleArgs): Promise<ValidationRuleView> {
       return inOrgCtx(actor, async (tx) => {
         const row = await new ValidationRuleRepository(tx).create({
           organizationId: actor.organizationId,

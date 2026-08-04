@@ -7,9 +7,12 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
-import { cascadeClientRevocation, type FhirRevocationCascadePort } from "../routes/revocation-cascade";
-import { createInMemoryFhirGatewayStore, FhirStoreError } from "../routes/store";
 import { registerFhirR4Routes } from "../routes/fhir-r4.routes";
+import {
+  type FhirRevocationCascadePort,
+  cascadeClientRevocation,
+} from "../routes/revocation-cascade";
+import { FhirStoreError, createInMemoryFhirGatewayStore } from "../routes/store";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const ADMIN = "22222222-2222-2222-2222-222222222222";
@@ -33,7 +36,12 @@ describe("W-FHIR-01 — client onboard (propose → co-approve → active)", () 
     expect(client.status).toBe("pending_approval");
     expect(plaintextSecret).toBeTypeOf("string"); // api_key mints a one-time secret
 
-    const approved = await store.approveClient(ORG, client.id, COMPLIANCE, "BAA verified, scopes reviewed.");
+    const approved = await store.approveClient(
+      ORG,
+      client.id,
+      COMPLIANCE,
+      "BAA verified, scopes reviewed.",
+    );
     expect(approved.status).toBe("active");
     expect(approved.approvedAt).not.toBeNull();
   });
@@ -43,9 +51,9 @@ describe("W-FHIR-02 — dual approval refuses self-approval", () => {
   it("refuses when the Compliance approver is the same membership as the proposing Admin", async () => {
     const store = createInMemoryFhirGatewayStore();
     const { client } = await store.createClient(ORG, baseClientArgs);
-    await expect(store.approveClient(ORG, client.id, ADMIN, "self approval attempt here.")).rejects.toBeInstanceOf(
-      FhirStoreError,
-    );
+    await expect(
+      store.approveClient(ORG, client.id, ADMIN, "self approval attempt here."),
+    ).rejects.toBeInstanceOf(FhirStoreError);
     // The client stays pending — a refused approval must not advance the FSM.
     const still = await store.getClient(ORG, client.id);
     expect(still?.status).toBe("pending_approval");
@@ -54,7 +62,12 @@ describe("W-FHIR-02 — dual approval refuses self-approval", () => {
   it("accepts a DISTINCT compliance approver", async () => {
     const store = createInMemoryFhirGatewayStore();
     const { client } = await store.createClient(ORG, baseClientArgs);
-    const approved = await store.approveClient(ORG, client.id, COMPLIANCE, "distinct approver rationale.");
+    const approved = await store.approveClient(
+      ORG,
+      client.id,
+      COMPLIANCE,
+      "distinct approver rationale.",
+    );
     expect(approved.status).toBe("active");
   });
 });
@@ -92,7 +105,12 @@ describe("W-FHIR-12 — revocation cascade", () => {
       ],
       jobs: [{ id: "j1", clientId: "c1", organizationId: ORG, status: "in_progress" }],
     });
-    const { client, cascade } = await store.revokeClient(ORG, "c1", ADMIN, "revoked for cause with sufficient detail here.");
+    const { client, cascade } = await store.revokeClient(
+      ORG,
+      "c1",
+      ADMIN,
+      "revoked for cause with sufficient detail here.",
+    );
     expect(client.status).toBe("revoked");
     expect(cascade.sessionsRevoked).toBe(2);
     expect(cascade.jobsCancelled).toBe(1);
@@ -132,7 +150,13 @@ describe("W-FHIR-07 — forward-seam Claim route 404 BEFORE any reader", () => {
 
   it("the other forward-seam + Phase-2 resources also 404", async () => {
     const app = buildApp();
-    for (const resource of ["ClaimResponse", "ExplanationOfBenefit", "ServiceRequest", "QuestionnaireResponse", "Location"]) {
+    for (const resource of [
+      "ClaimResponse",
+      "ExplanationOfBenefit",
+      "ServiceRequest",
+      "QuestionnaireResponse",
+      "Location",
+    ]) {
       const res = await app.inject({ method: "GET", url: `/fhir/r4/${resource}/x` });
       expect(res.statusCode).toBe(404);
     }

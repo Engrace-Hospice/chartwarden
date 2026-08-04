@@ -29,6 +29,15 @@ import {
   listRiskScores,
 } from "./bereavement-api";
 import {
+  CLOSURE_REASON_TONE,
+  anniversaryMarkLabel,
+  dateTime,
+  humanize,
+  outreachKindLabel,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   Notice,
   columnStyle,
@@ -40,15 +49,6 @@ import {
   td,
   th,
 } from "./bereavement-ui";
-import {
-  CLOSURE_REASON_TONE,
-  anniversaryMarkLabel,
-  dateTime,
-  humanize,
-  outreachKindLabel,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 type Entry = {
   at: string;
@@ -82,7 +82,12 @@ export function BereavementPlanHistory(): JSX.Element {
     }
     setClosureReason(closureRes.closure?.reason ?? null);
     setEntries(
-      buildTimeline(detail.plan, outreach.page?.data ?? [], scores.page?.data ?? [], closureRes.closure),
+      buildTimeline(
+        detail.plan,
+        outreach.page?.data ?? [],
+        scores.page?.data ?? [],
+        closureRes.closure,
+      ),
     );
     setLoading(false);
   }, [client, planId]);
@@ -107,10 +112,10 @@ export function BereavementPlanHistory(): JSX.Element {
       />
 
       <Notice tone="info">
-        Reconstructed from this plan's own rows — the dated fields on the plan and its survivors, the full
-        touchpoint book, the append-only risk ledger, and the closure record. The immutable audit trail
-        carries entries this view cannot reconstruct (a refused read, a break-glass access, the acting
-        principal on a cascade); those live on the audit surface that owns them.
+        Reconstructed from this plan's own rows — the dated fields on the plan and its survivors,
+        the full touchpoint book, the append-only risk ledger, and the closure record. The immutable
+        audit trail carries entries this view cannot reconstruct (a refused read, a break-glass
+        access, the acting principal on a cascade); those live on the audit surface that owns them.
       </Notice>
 
       {closureReason ? (
@@ -161,7 +166,12 @@ function buildTimeline(
   closure: ClosureView | null,
 ): Entry[] {
   const out: Entry[] = [];
-  const push = (at: string | null | undefined, category: Entry["category"], what: string, detail: string) => {
+  const push = (
+    at: string | null | undefined,
+    category: Entry["category"],
+    what: string,
+    detail: string,
+  ) => {
     if (at) out.push({ at, category, what, detail });
   };
 
@@ -171,8 +181,18 @@ function buildTimeline(
       : (plan.contacts.find((c) => c.contactId === contactId)?.displayName ?? shortId(contactId));
 
   // ── plan-level state transitions the plan row dates ──
-  push(plan.assignedCounselorAssignedAt, "Plan", "Counselor assigned", shortId(plan.assignedCounselorUserId));
-  push(plan.assignedVolunteerAssignedAt, "Plan", "Volunteer assigned", shortId(plan.assignedVolunteerUserId));
+  push(
+    plan.assignedCounselorAssignedAt,
+    "Plan",
+    "Counselor assigned",
+    shortId(plan.assignedCounselorUserId),
+  );
+  push(
+    plan.assignedVolunteerAssignedAt,
+    "Plan",
+    "Volunteer assigned",
+    shortId(plan.assignedVolunteerUserId),
+  );
   push(plan.openedAt, "Plan", "Plan opened", "roster seeded and schedule materialized");
   push(plan.pausedAt, "Plan", "Plan paused", humanize(plan.pauseKind));
   push(plan.closedAt, "Plan", "Plan closed", humanize(plan.status));

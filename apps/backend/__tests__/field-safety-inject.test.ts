@@ -67,7 +67,6 @@ import {
   buildFieldSafetyAbacPredicates,
 } from "../src/modules/20-field-safety/abac-predicates";
 import { M20_PERMISSION_KEY_LIST } from "../src/modules/20-field-safety/permission-keys";
-import { mountM20Routes } from "../src/modules/20-field-safety/routes/mount";
 import type {
   ActiveSosView,
   CursorPage,
@@ -83,6 +82,7 @@ import type {
   SafetySubscriptionView,
   SosLocationStreamPage,
 } from "../src/modules/20-field-safety/routes/index";
+import { mountM20Routes } from "../src/modules/20-field-safety/routes/mount";
 
 // ── fixed test ids ───────────────────────────────────────────────────────────────────────────────────
 const ORG = "org_a";
@@ -285,7 +285,9 @@ function createFieldSafetyTestBackend() {
       return checkInView(requireCheckIn(checkInId));
     },
     async getMyDay(actor, _filters): Promise<SafetyMyDayView> {
-      const mine = [...checkIns.values()].filter((r) => r.postedByMembershipId === actor.membershipId);
+      const mine = [...checkIns.values()].filter(
+        (r) => r.postedByMembershipId === actor.membershipId,
+      );
       return { asOf: NOW, obligations: [], recentCheckIns: mine.map(checkInView) };
     },
     async getSosAlert(_actor, sosAlertId) {
@@ -295,15 +297,20 @@ function createFieldSafetyTestBackend() {
       requireSosAlert(sosAlertId);
       return {
         sosAlertId,
-        samples: [{ id: randomUUID(), sampledAt: NOW, latitude: 45.52, longitude: -122.68, accuracyM: 10 }],
+        samples: [
+          { id: randomUUID(), sampledAt: NOW, latitude: 45.52, longitude: -122.68, accuracyM: 10 },
+        ],
         next_cursor: null,
         has_more: false,
-        auditWarningBanner: "Coordinate access is logged; the clinician will see this on her self-service surface.",
+        auditWarningBanner:
+          "Coordinate access is logged; the clinician will see this on her self-service surface.",
       };
     },
     async listActiveSos(_actor): Promise<ActiveSosView> {
       const alerts = [...sosAlerts.values()]
-        .filter((r) => !(SAFETY_SOS_TERMINAL_STATES as readonly string[]).includes(r.lifecycleState))
+        .filter(
+          (r) => !(SAFETY_SOS_TERMINAL_STATES as readonly string[]).includes(r.lifecycleState),
+        )
         .map((r) => ({
           id: r.id,
           postedByMembershipId: r.postedByMembershipId,
@@ -412,7 +419,11 @@ function createFieldSafetyTestBackend() {
       row.cancelStatus = "cancelled_in_window";
       row.cancelAttemptedAt = NOW;
       row.lifecycleState = "cancelled_in_window";
-      return { id: row.id, cancelStatus: "cancelled_in_window", lifecycleState: row.lifecycleState };
+      return {
+        id: row.id,
+        cancelStatus: "cancelled_in_window",
+        lifecycleState: row.lifecycleState,
+      };
     },
     async acknowledgeSos(actor, sosAlertId, input) {
       const row = requireSosAlert(sosAlertId);
@@ -480,7 +491,8 @@ function createFieldSafetyTestBackend() {
       if (input.category !== undefined) row.category = input.category;
       if (input.severity !== undefined) row.severity = input.severity;
       if (input.occurredAt !== undefined) row.occurredAt = input.occurredAt;
-      if (input.locationDescription !== undefined) row.locationDescription = input.locationDescription;
+      if (input.locationDescription !== undefined)
+        row.locationDescription = input.locationDescription;
       if (input.narrative !== undefined) row.narrative = input.narrative;
       if (input.witnesses !== undefined) row.witnesses = input.witnesses;
       if (input.workersCompClaimInitiated !== undefined) {
@@ -542,7 +554,8 @@ function createFieldSafetyTestBackend() {
         escalationMinutes: input.escalationMinutes ?? policy.escalationMinutes,
         sosEquivalentMinutes: input.sosEquivalentMinutes ?? policy.sosEquivalentMinutes,
         sosCancelWindowSeconds: input.sosCancelWindowSeconds ?? policy.sosCancelWindowSeconds,
-        sosCancelRequiresBiometric: input.sosCancelRequiresBiometric ?? policy.sosCancelRequiresBiometric,
+        sosCancelRequiresBiometric:
+          input.sosCancelRequiresBiometric ?? policy.sosCancelRequiresBiometric,
         sosContinuousLocationEnabled:
           input.sosContinuousLocationEnabled ?? policy.sosContinuousLocationEnabled,
         subscriptionModel: input.subscriptionModel ?? policy.subscriptionModel,
@@ -589,7 +602,8 @@ function createFieldSafetyTestBackend() {
       if (input.riskCategory !== undefined) row.riskCategory = input.riskCategory;
       if (input.advisoryMessage !== undefined) row.advisoryMessage = input.advisoryMessage;
       if (input.polygon !== undefined) row.polygon = input.polygon;
-      if (input.policyForVisitsToArea !== undefined) row.policyForVisitsToArea = input.policyForVisitsToArea;
+      if (input.policyForVisitsToArea !== undefined)
+        row.policyForVisitsToArea = input.policyForVisitsToArea;
       if (input.effectiveTo !== undefined) row.effectiveTo = input.effectiveTo;
       return areaView(row);
     },
@@ -714,7 +728,14 @@ function makeServer() {
     {
       orgId: ORG,
       userId: "super_1",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M20_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M20_PERMISSION_KEY_LIST],
+        },
+      ],
     },
     {
       orgId: ORG,
@@ -827,7 +848,9 @@ describe("M20-T06 §4.1 check-ins (rows 1-4)", () => {
       method: "PATCH",
       url: `/api/v1/safety/check-ins/${checkInId}`,
       headers: { ...SUPER, ...idemp() },
-      payload: { amendmentReason: "correcting the status after a follow-up call with the clinician" },
+      payload: {
+        amendmentReason: "correcting the status after a follow-up call with the clinician",
+      },
     });
     expect(amended.statusCode).toBe(200);
 
@@ -851,22 +874,40 @@ describe("M20-T06 §4.1 SOS (rows 5-11)", () => {
     const { app } = makeServer();
 
     // 5 — NO idempotency key on the press (§4.1's own Idempotent column is `no` for this row)
-    const raised1 = await app.inject({ method: "POST", url: "/api/v1/safety/sos", headers: SUPER, payload: {} });
+    const raised1 = await app.inject({
+      method: "POST",
+      url: "/api/v1/safety/sos",
+      headers: SUPER,
+      payload: {},
+    });
     expect(raised1.statusCode).toBe(201);
     const alert1 = raised1.json().id as string;
 
     // 9
-    const detail = await app.inject({ method: "GET", url: `/api/v1/safety/sos/${alert1}`, headers: SUPER });
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/safety/sos/${alert1}`,
+      headers: SUPER,
+    });
     expect(detail.statusCode).toBe(200);
     expect(detail.json().id).toBe(alert1);
 
     // 11
-    const active = await app.inject({ method: "GET", url: "/api/v1/safety/sos/active", headers: SUPER });
+    const active = await app.inject({
+      method: "GET",
+      url: "/api/v1/safety/sos/active",
+      headers: SUPER,
+    });
     expect(active.statusCode).toBe(200);
     expect(Array.isArray(active.json().alerts)).toBe(true);
 
     // 6 — a fresh alert, so the cancel does not disturb the acknowledge/resolve flow below
-    const raised2 = await app.inject({ method: "POST", url: "/api/v1/safety/sos", headers: SUPER, payload: {} });
+    const raised2 = await app.inject({
+      method: "POST",
+      url: "/api/v1/safety/sos",
+      headers: SUPER,
+      payload: {},
+    });
     const alert2 = raised2.json().id as string;
     const cancelled = await app.inject({
       method: "POST",
@@ -877,13 +918,21 @@ describe("M20-T06 §4.1 SOS (rows 5-11)", () => {
     expect(cancelled.statusCode).toBe(200);
 
     // 7 + 8 — a third alert, acknowledged then resolved
-    const raised3 = await app.inject({ method: "POST", url: "/api/v1/safety/sos", headers: SUPER, payload: {} });
+    const raised3 = await app.inject({
+      method: "POST",
+      url: "/api/v1/safety/sos",
+      headers: SUPER,
+      payload: {},
+    });
     const alert3 = raised3.json().id as string;
     const acked = await app.inject({
       method: "POST",
       url: `/api/v1/safety/sos/${alert3}/acknowledge`,
       headers: { ...SUPER, ...idemp(), ...IFM },
-      payload: { actionTaken: "Called the clinician back and confirmed she is safe and continuing her visit." },
+      payload: {
+        actionTaken:
+          "Called the clinician back and confirmed she is safe and continuing her visit.",
+      },
     });
     expect(acked.statusCode).toBe(200);
 
@@ -932,7 +981,11 @@ describe("M20-T06 §4.1 incidents (rows 12-17)", () => {
     const incidentId = created.json().id as string;
 
     // 13 (list)
-    const list = await app.inject({ method: "GET", url: "/api/v1/safety/incidents", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/safety/incidents",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
 
     // 13 (detail)
@@ -1014,7 +1067,11 @@ describe("M20-T06 §4.1 admin: policy, subscriptions, high-risk areas (rows 18-2
     const { app } = makeServer();
 
     // 18
-    const policy = await app.inject({ method: "GET", url: "/api/v1/safety/policy", headers: SUPER });
+    const policy = await app.inject({
+      method: "GET",
+      url: "/api/v1/safety/policy",
+      headers: SUPER,
+    });
     expect(policy.statusCode).toBe(200);
 
     // 19 — step-up
@@ -1022,7 +1079,9 @@ describe("M20-T06 §4.1 admin: policy, subscriptions, high-risk areas (rows 18-2
       method: "PATCH",
       url: "/api/v1/safety/policy",
       headers: { ...SUPER, ...idemp() },
-      payload: { editReason: "Tightening the mid-visit cadence after last month's coverage review." },
+      payload: {
+        editReason: "Tightening the mid-visit cadence after last month's coverage review.",
+      },
     });
     expect(patchedPolicy.statusCode).toBe(200);
 
@@ -1031,7 +1090,11 @@ describe("M20-T06 §4.1 admin: policy, subscriptions, high-risk areas (rows 18-2
       method: "POST",
       url: "/api/v1/safety/supervisor-subscriptions",
       headers: { ...SUPER, ...idemp() },
-      payload: { supervisorMembershipId: SUPER_ID, scopeKind: "role", alertKinds: ["sos", "overdue"] },
+      payload: {
+        supervisorMembershipId: SUPER_ID,
+        scopeKind: "role",
+        alertKinds: ["sos", "overdue"],
+      },
     });
     expect(createdSub.statusCode).toBe(201);
     const subscriptionId = createdSub.json().id as string;
@@ -1090,7 +1153,9 @@ describe("M20-T06 §4.1 admin: policy, subscriptions, high-risk areas (rows 18-2
       payload: { advisoryMessage: "Unlit rural road; buddy visits required after dusk." },
     });
     expect(patchedArea.statusCode).toBe(200);
-    expect(patchedArea.json().advisoryMessage).toBe("Unlit rural road; buddy visits required after dusk.");
+    expect(patchedArea.json().advisoryMessage).toBe(
+      "Unlit rural road; buddy visits required after dusk.",
+    );
 
     await app.close();
   });
@@ -1103,7 +1168,11 @@ describe("M20-T06 §4.1 dashboard + consent (rows 26-29)", () => {
     const { app } = makeServer();
 
     // 26
-    const dashboard = await app.inject({ method: "GET", url: "/api/v1/safety/dashboard", headers: SUPER });
+    const dashboard = await app.inject({
+      method: "GET",
+      url: "/api/v1/safety/dashboard",
+      headers: SUPER,
+    });
     expect(dashboard.statusCode).toBe(200);
     expect(typeof dashboard.json().activeSosCount).toBe("number");
 
@@ -1120,7 +1189,11 @@ describe("M20-T06 §4.1 dashboard + consent (rows 26-29)", () => {
     expect(granted.statusCode).toBe(201);
 
     // 27
-    const surface = await app.inject({ method: "GET", url: "/api/v1/safety/consent", headers: SUPER });
+    const surface = await app.inject({
+      method: "GET",
+      url: "/api/v1/safety/consent",
+      headers: SUPER,
+    });
     expect(surface.statusCode).toBe(200);
     expect(surface.json().consents.length).toBeGreaterThan(0);
 

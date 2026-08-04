@@ -1,12 +1,12 @@
 import {
-  ageYears,
-  cardSurface,
   EmptyState,
-  ghostBorder,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  ageYears,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -149,10 +149,15 @@ export function PatientEncounters(): JSX.Element {
           ) : loading && items.length === 0 ? (
             <LoadingSpinner />
           ) : rows.length === 0 ? (
-            <EmptyState title="No encounters" description="No encounters match the current filter." />
+            <EmptyState
+              title="No encounters"
+              description="No encounters match the current filter."
+            />
           ) : (
             <section style={{ ...cardSurface, padding: "0 1.25rem" }}>
-              <div style={{ ...encounterRow, color: t.muted, borderTop: "none", cursor: "default" }}>
+              <div
+                style={{ ...encounterRow, color: t.muted, borderTop: "none", cursor: "default" }}
+              >
                 <span style={{ flex: 1 }}>Encounter · type</span>
                 <span style={col}>Discipline</span>
                 <span style={col}>Status</span>
@@ -340,4 +345,8 @@ const primaryBtn: CSSProperties = {
   border: "none",
   cursor: "pointer",
 };
-const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.25rem 0 0" };
+const meta: CSSProperties = {
+  fontSize: "0.78rem",
+  color: t.onSurfaceVariant,
+  margin: "0.25rem 0 0",
+};

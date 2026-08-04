@@ -99,7 +99,6 @@ const UNBOUND_BILLING: RawBillingBinds = {
  *  Worksheet A; this set is the documented best-known mapping. */
 const PHARMACY_COST_CENTER_CODES = new Set(["drugs", "pharmacy", "0250"]);
 
-
 const MS_PER_DAY = 86_400_000;
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const bool = (v: unknown): boolean => v === true;
@@ -108,7 +107,10 @@ const bool = (v: unknown): boolean => v === true;
 function rollupCensus(breakdown: unknown): { totalPatientDays: number; hasNegative: boolean } {
   let total = 0;
   let hasNegative = false;
-  const months = (breakdown ?? {}) as Record<string, Record<string, Record<string, { patientDays?: unknown }>>>;
+  const months = (breakdown ?? {}) as Record<
+    string,
+    Record<string, Record<string, { patientDays?: unknown }>>
+  >;
   for (const locs of Object.values(months ?? {})) {
     for (const programs of Object.values(locs ?? {})) {
       for (const cell of Object.values(programs ?? {})) {
@@ -137,9 +139,13 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
   const billing = input.billing ?? UNBOUND_BILLING;
 
   // Worksheet-A pharmacy/drug cost center (GL) the billed drug-cost basis cross-checks against (null = absent).
-  const aCostCenters = Array.isArray(a.costCenters) ? (a.costCenters as Record<string, unknown>[]) : [];
+  const aCostCenters = Array.isArray(a.costCenters)
+    ? (a.costCenters as Record<string, unknown>[])
+    : [];
   const pharmacyCenter = aCostCenters.find(
-    (cc) => typeof cc.code === "string" && PHARMACY_COST_CENTER_CODES.has((cc.code as string).toLowerCase()),
+    (cc) =>
+      typeof cc.code === "string" &&
+      PHARMACY_COST_CENTER_CODES.has((cc.code as string).toLowerCase()),
   );
   const worksheetAPharmacyCents = pharmacyCenter ? num(pharmacyCenter.totalCostCents) : null;
 
@@ -148,7 +154,8 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
   const deadlineMs = input.complianceWindow
     ? new Date(`${input.complianceWindow.currentEffectiveDeadlineDate}T00:00:00Z`).getTime()
     : null;
-  const daysToDeadline = deadlineMs === null ? 0 : Math.round((deadlineMs - input.now.getTime()) / MS_PER_DAY);
+  const daysToDeadline =
+    deadlineMs === null ? 0 : Math.round((deadlineMs - input.now.getTime()) / MS_PER_DAY);
   const closed = !!input.complianceWindow?.closedAt;
 
   return {
@@ -163,8 +170,14 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
     },
     trialBalance: {
       present: !!input.trialBalanceAccounts && input.trialBalanceAccounts.length > 0,
-      totalDebitsCents: (input.trialBalanceAccounts ?? []).reduce((s, x) => s + num(x.debitCents), 0),
-      totalCreditsCents: (input.trialBalanceAccounts ?? []).reduce((s, x) => s + num(x.creditCents), 0),
+      totalDebitsCents: (input.trialBalanceAccounts ?? []).reduce(
+        (s, x) => s + num(x.debitCents),
+        0,
+      ),
+      totalCreditsCents: (input.trialBalanceAccounts ?? []).reduce(
+        (s, x) => s + num(x.creditCents),
+        0,
+      ),
     },
     mapping: {
       mappedAccountCount: input.mappings.filter((m) => !!m.cmsCostCenterCode).length,
@@ -173,7 +186,9 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
     statistics: {
       serviceCensusPatientDays: census.totalPatientDays,
       // M23 PatientDaysProvider: the live billed-and-accepted census when bound; null → the reconcile rule SKIPS.
-      billedCensusPatientDays: billing.patientDaysProviderBound ? billing.billedCensusPatientDays : null,
+      billedCensusPatientDays: billing.patientDaysProviderBound
+        ? billing.billedCensusPatientDays
+        : null,
       totalPatientDays: census.totalPatientDays,
       s3GrandTotalPatientDays: census.totalPatientDays,
       hasNegativeCensusValue: census.hasNegative,
@@ -188,7 +203,9 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
       // when the A-8 basis field is modeled). An absent A-8 trivially has no unsupported adjustments.
       adjustmentsUnsupportedCount: 0,
       // Worksheet B-1 statistical basis present (the §4320 step-down basis the recompute reads).
-      statisticalBasisPresent: has("B-1") && Array.isArray((ws("B-1") as Record<string, unknown>).columns) &&
+      statisticalBasisPresent:
+        has("B-1") &&
+        Array.isArray((ws("B-1") as Record<string, unknown>).columns) &&
         ((ws("B-1") as Record<string, unknown>).columns as unknown[]).length > 0,
       // Worksheet C per-diem cost ties to Worksheet B (§4330 A→B→C tie).
       cTiesToWorksheetB: has("C") ? bool(c.tiesToWorksheetBTotal) : false,
@@ -206,7 +223,9 @@ export function assembleValidationContext(input: RawValidationInputs): Validatio
         collectionEffortsDocumented: x.collectionEffortsDocumented,
         debtKind: x.debtKind,
         amountCents: x.amountCents,
-        supportingDocumentCount: Array.isArray(x.supportingDocumentIds) ? x.supportingDocumentIds.length : 0,
+        supportingDocumentCount: Array.isArray(x.supportingDocumentIds)
+          ? x.supportingDocumentIds.length
+          : 0,
       })),
     },
     supportingDocs: { s2AttachmentsPresent: has("S-2") },

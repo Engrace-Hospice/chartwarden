@@ -14,13 +14,7 @@
 // direction of a fact is a domain decision and belongs next to the rule that depends on it. The ONE
 // exception is the roster read, where the distinction "unreadable" vs "empty" cannot survive as a null: see
 // `readOnCallRoster`.
-import type {
-  IsoInstant,
-  OnCallRosterEntry,
-  OrgId,
-  PatientId,
-  TriageCallId,
-} from "@wardenx/types";
+import type { IsoInstant, OnCallRosterEntry, OrgId, PatientId, TriageCallId } from "@wardenx/types";
 import type { OnCallRosterRead } from "../roster/shift-sync";
 import { getVisitAssignmentReader, getVisitReader } from "../seams/consumed";
 import type {
@@ -32,7 +26,10 @@ import type {
 /** The M19-owned reads a trigger needs that are NOT seams. Drizzle-backed in M19-T07; in-memory in §9. */
 export interface InboundTriggerPorts {
   /** §2.6 / D10 — a `triage_call` already written for this outbox event id. */
-  findCallBySourceEvent(organizationId: OrgId, sourceOutboxEventId: string): Promise<TriageCallId | null>;
+  findCallBySourceEvent(
+    organizationId: OrgId,
+    sourceOutboxEventId: string,
+  ): Promise<TriageCallId | null>;
   /** The coalesce grain (`./inbound-trigger`) — an OPEN call for this patient that a machine opened. */
   findOpenMachineCallForPatient(
     organizationId: OrgId,
@@ -156,10 +153,8 @@ export async function readOnCallRoster(
   asOfIso: IsoInstant,
 ): Promise<OnCallRosterRead> {
   try {
-    const entries: readonly OnCallRosterEntry[] = await getVisitAssignmentReader().tonightsOnCallRoster(
-      organizationId,
-      asOfIso,
-    );
+    const entries: readonly OnCallRosterEntry[] =
+      await getVisitAssignmentReader().tonightsOnCallRoster(organizationId, asOfIso);
     return { kind: "roster", entries };
   } catch (error) {
     return {

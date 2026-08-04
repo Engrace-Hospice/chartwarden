@@ -19,8 +19,8 @@ import {
   CheckInRequest,
   CheckOutRequest,
   ClinicianAttestResolutionRequest,
-  CreatePerAddressOverrideRequest,
   CorrectEventRequest,
+  CreatePerAddressOverrideRequest,
   EditTenantPolicyRequest,
   EventGetQuery,
   EventIdParams,
@@ -55,7 +55,8 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 }
 
 /** The M2 step-up freshness signal (header set by the M2 step-up flow; correction + supervisor-override need it). */
-const stepUpFreshOf = (request: FastifyRequest): boolean => request.headers["x-step-up"] === "fresh";
+const stepUpFreshOf = (request: FastifyRequest): boolean =>
+  request.headers["x-step-up"] === "fresh";
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -156,7 +157,10 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 4 — fetch one event (coords only with ?include=coords + evv.read_coords; the slice returns metadata).
   app.get(
     "/api/v1/evv/events/:eventId",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "evv_visit_event", resourceIdParam: "eventId" } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "evv_visit_event", resourceIdParam: "eventId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { eventId } = parse(EventIdParams, request.params);
@@ -172,7 +176,12 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(EventListQuery, request.query);
-      return service.listEvents(organizationId, { visit: q.visit, clinician: q.clinician, patient: q.patient, kind: q.kind });
+      return service.listEvents(organizationId, {
+        visit: q.visit,
+        clinician: q.clinician,
+        patient: q.patient,
+        kind: q.kind,
+      });
     },
   );
 
@@ -184,19 +193,27 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     service.assertStepUp(stepUpFreshOf(request));
     const e = b.newEvent;
     const { userId } = actorOf(request);
-    return service.recordCapture(organizationId, userId, "visitId" in e && "serviceTypeCode" in e ? "check_in" : "check_out", {
-      visitId: e.visitId,
-      coords: e.coords,
-      accuracyM: e.accuracyM,
-      capturedAt: e.capturedAt,
-      gpsQualityAttested: e.gpsQualityAttested,
-    });
+    return service.recordCapture(
+      organizationId,
+      userId,
+      "visitId" in e && "serviceTypeCode" in e ? "check_in" : "check_out",
+      {
+        visitId: e.visitId,
+        coords: e.coords,
+        accuracyM: e.accuracyM,
+        capturedAt: e.capturedAt,
+        gpsQualityAttested: e.gpsQualityAttested,
+      },
+    );
   });
 
   // 7 — the EVV bracket for a visit (M8's EvvBracketResolver reads this).
   app.get(
     "/api/v1/evv/visits/:visitId/bracket",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "evv_visit_bracket", resourceIdParam: "visitId" } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "evv_visit_bracket", resourceIdParam: "visitId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { visitId } = parse(VisitIdParams, request.params);
@@ -210,7 +227,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     {
       preHandler: [DEVICE_READ],
       config: {
-        auditRead: { none: "Device inventory is clinician/device hardware metadata (platform, model, status) — carries no patient identifiers or clinical content." },
+        auditRead: {
+          none: "Device inventory is clinician/device hardware metadata (platform, model, status) — carries no patient identifiers or clinical content.",
+        },
       },
     },
     async (request) => {
@@ -221,11 +240,22 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   );
 
   // 9 — clinician self-registers a new device (→ pending_approval).
-  app.post("/api/v1/evv/devices/self-register", { preHandler: [DEVICE_REGISTER] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const b = parse(SelfRegisterDeviceRequest, request.body);
-    return reply.code(201).send(service.selfRegisterDevice(organizationId, userId, { platform: b.platform, modelDescription: b.modelDescription }));
-  });
+  app.post(
+    "/api/v1/evv/devices/self-register",
+    { preHandler: [DEVICE_REGISTER] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const b = parse(SelfRegisterDeviceRequest, request.body);
+      return reply
+        .code(201)
+        .send(
+          service.selfRegisterDevice(organizationId, userId, {
+            platform: b.platform,
+            modelDescription: b.modelDescription,
+          }),
+        );
+    },
+  );
 
   // 10 — approve a pending device.
   app.post("/api/v1/evv/devices/:id/approve", { preHandler: [DEVICE_APPROVE] }, async (request) => {
@@ -261,7 +291,10 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 14 — read geofence policy (tenant + per-address overrides).
   app.get(
     "/api/v1/evv/geofence-policy",
-    { preHandler: [POLICY_READ], config: { auditRead: { resourceKind: "evv_geofence_policy", list: true } } },
+    {
+      preHandler: [POLICY_READ],
+      config: { auditRead: { resourceKind: "evv_geofence_policy", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.getGeofencePolicy(organizationId);
@@ -269,25 +302,45 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   );
 
   // 15 — edit tenant tighten-only policy.
-  app.patch("/api/v1/evv/geofence-policy/tenant", { preHandler: [POLICY_EDIT] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const b = parse(EditTenantPolicyRequest, request.body);
-    return service.editTenantPolicy(organizationId, { radiusM: b.radiusM, maxAccuracyM: b.maxAccuracyM });
-  });
+  app.patch(
+    "/api/v1/evv/geofence-policy/tenant",
+    { preHandler: [POLICY_EDIT] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const b = parse(EditTenantPolicyRequest, request.body);
+      return service.editTenantPolicy(organizationId, {
+        radiusM: b.radiusM,
+        maxAccuracyM: b.maxAccuracyM,
+      });
+    },
+  );
 
   // 16 — create / replace a per-address override (reason ≥30 chars).
-  app.post("/api/v1/evv/geofence-policy/per-address", { preHandler: [POLICY_EDIT] }, async (request, reply) => {
-    const { organizationId } = actorOf(request);
-    const b = parse(CreatePerAddressOverrideRequest, request.body);
-    return reply
-      .code(201)
-      .send(service.createPerAddressOverride(organizationId, { patientAddressId: b.patientAddressId, radiusM: b.radiusM, maxAccuracyM: b.maxAccuracyM }));
-  });
+  app.post(
+    "/api/v1/evv/geofence-policy/per-address",
+    { preHandler: [POLICY_EDIT] },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const b = parse(CreatePerAddressOverrideRequest, request.body);
+      return reply
+        .code(201)
+        .send(
+          service.createPerAddressOverride(organizationId, {
+            patientAddressId: b.patientAddressId,
+            radiusM: b.radiusM,
+            maxAccuracyM: b.maxAccuracyM,
+          }),
+        );
+    },
+  );
 
   // 17 — open + recently-closed resolution queue.
   app.get(
     "/api/v1/evv/missing-resolutions",
-    { preHandler: [MR_READ], config: { auditRead: { resourceKind: "evv_missing_resolution", list: true } } },
+    {
+      preHandler: [MR_READ],
+      config: { auditRead: { resourceKind: "evv_missing_resolution", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(MissingResolutionListQuery, request.query);
@@ -296,47 +349,75 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   );
 
   // 18 — assigned clinician self-attests (reason ≥40 chars; D6 ≤24h window).
-  app.post("/api/v1/evv/missing-resolutions/:id/clinician-attest", { preHandler: [MR_ATTEST] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    const b = parse(ClinicianAttestResolutionRequest, request.body);
-    return service.clinicianAttestResolution(organizationId, userId, id, b.reason);
-  });
+  app.post(
+    "/api/v1/evv/missing-resolutions/:id/clinician-attest",
+    { preHandler: [MR_ATTEST] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParams, request.params);
+      const b = parse(ClinicianAttestResolutionRequest, request.body);
+      return service.clinicianAttestResolution(organizationId, userId, id, b.reason);
+    },
+  );
 
   // 19 — supervisor override (step-up; reason ≥60 chars; D6 ≤7d window).
-  app.post("/api/v1/evv/missing-resolutions/:id/supervisor-override", { preHandler: [MR_OVERRIDE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    const b = parse(SupervisorOverrideResolutionRequest, request.body);
-    return service.supervisorOverrideResolution(organizationId, userId, id, b.reason, stepUpFreshOf(request));
-  });
+  app.post(
+    "/api/v1/evv/missing-resolutions/:id/supervisor-override",
+    { preHandler: [MR_OVERRIDE] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParams, request.params);
+      const b = parse(SupervisorOverrideResolutionRequest, request.body);
+      return service.supervisorOverrideResolution(
+        organizationId,
+        userId,
+        id,
+        b.reason,
+        stepUpFreshOf(request),
+      );
+    },
+  );
 
   // 20 — per-state aggregator submission queue + status.
   app.get(
     "/api/v1/evv/aggregator-submissions",
-    { preHandler: [AGG_READ], config: { auditRead: { resourceKind: "evv_aggregator_submission", list: true } } },
+    {
+      preHandler: [AGG_READ],
+      config: { auditRead: { resourceKind: "evv_aggregator_submission", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(AggregatorListQuery, request.query);
-      return service.listAggregatorSubmissions(organizationId, { stateCode: q.stateCode, status: q.status });
+      return service.listAggregatorSubmissions(organizationId, {
+        stateCode: q.stateCode,
+        status: q.status,
+      });
     },
   );
 
   // 21 — operator-initiated resubmit (§7.9; valid from rejected/timeout).
-  app.post("/api/v1/evv/aggregator-submissions/:id/resubmit", { preHandler: [AGG_RESUBMIT] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    parse(ResubmitSubmissionRequest, request.body);
-    return service.resubmitSubmission(organizationId, userId, id);
-  });
+  app.post(
+    "/api/v1/evv/aggregator-submissions/:id/resubmit",
+    { preHandler: [AGG_RESUBMIT] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParams, request.params);
+      parse(ResubmitSubmissionRequest, request.body);
+      return service.resubmitSubmission(organizationId, userId, id);
+    },
+  );
 
   // 22 — operator-initiated cancel (valid from a non-terminal status).
-  app.post("/api/v1/evv/aggregator-submissions/:id/cancel", { preHandler: [AGG_CANCEL] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParams, request.params);
-    parse(CancelSubmissionRequest, request.body);
-    return service.cancelSubmission(organizationId, userId, id);
-  });
+  app.post(
+    "/api/v1/evv/aggregator-submissions/:id/cancel",
+    { preHandler: [AGG_CANCEL] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParams, request.params);
+      parse(CancelSubmissionRequest, request.body);
+      return service.cancelSubmission(organizationId, userId, id);
+    },
+  );
 
   // 23 — EVV metrics (M30/M33 dashboard source).
   app.get(
@@ -344,7 +425,9 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
     {
       preHandler: [READ_METRICS],
       config: {
-        auditRead: { none: "Pure aggregate compliance-rate percentages (org-wide rates only) — zero per-visit or per-patient breakdown." },
+        auditRead: {
+          none: "Pure aggregate compliance-rate percentages (org-wide rates only) — zero per-visit or per-patient breakdown.",
+        },
       },
     },
     async (request) => {
@@ -357,7 +440,10 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 24 — clinician current last-known location (M20 supervisor live-awareness; D10 coordinate-bearing).
   app.get(
     "/api/v1/evv/clinician-current-location",
-    { preHandler: [LOCATION_READ], config: { auditRead: { resourceKind: "evv_clinician_location", list: true } } },
+    {
+      preHandler: [LOCATION_READ],
+      config: { auditRead: { resourceKind: "evv_clinician_location", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(MembershipIdQuery, request.query);
@@ -368,7 +454,10 @@ export function registerEvvRoutes(app: FastifyInstance, deps: EvvRouteDeps): voi
   // 25 — portal arrival surface (timestamp only, no coordinates; portal session class).
   app.get(
     "/api/v1/portal/visits/:visitId/arrival",
-    { preHandler: [PORTAL_ARRIVAL], config: { auditRead: { resourceKind: "evv_visit_arrival", resourceIdParam: "visitId" } } },
+    {
+      preHandler: [PORTAL_ARRIVAL],
+      config: { auditRead: { resourceKind: "evv_visit_arrival", resourceIdParam: "visitId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { visitId } = parse(VisitIdParams, request.params);

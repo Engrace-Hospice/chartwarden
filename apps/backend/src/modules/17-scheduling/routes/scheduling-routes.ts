@@ -64,7 +64,8 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 }
 
 /** The M2 step-up freshness signal (header set by the M2 step-up flow; the self-attest start path needs it). */
-const stepUpFreshOf = (request: FastifyRequest): boolean => request.headers["x-step-up"] === "fresh";
+const stepUpFreshOf = (request: FastifyRequest): boolean =>
+  request.headers["x-step-up"] === "fresh";
 
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -115,7 +116,8 @@ const createGateTarget = (request: GuardRequest): AbacTarget => {
     scheduledEndedAt?: unknown;
   };
   const target: Record<string, unknown> = {};
-  if (typeof body.assignedMembershipId === "string") target.membershipId = body.assignedMembershipId;
+  if (typeof body.assignedMembershipId === "string")
+    target.membershipId = body.assignedMembershipId;
   if (typeof body.visitPurpose === "string") target.visitPurpose = body.visitPurpose;
   if (typeof body.patientId === "string") target.patientId = body.patientId;
   if (typeof body.scheduledStartedAt === "string") {
@@ -146,14 +148,23 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(VisitListQuerySchema, request.query);
-      return service.listVisits(organizationId, { clinician: q.clinician, patient: q.patient, from: q.from, to: q.to, status: q.status });
+      return service.listVisits(organizationId, {
+        clinician: q.clinician,
+        patient: q.patient,
+        from: q.from,
+        to: q.to,
+        status: q.status,
+      });
     },
   );
 
   // 2 — fetch one visit.
   app.get(
     "/api/v1/visits/:visitId",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "visit", resourceIdParam: "visitId" } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "visit", resourceIdParam: "visitId" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { visitId } = parse(VisitIdParamsSchema, request.params);
@@ -164,7 +175,16 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   // 3 — direct manual create (skips the proposal path); runs the D8 pre-schedule gate (four §4.7 predicates).
   app.post(
     "/api/v1/visits",
-    { preHandler: [CREATE, resolveOrgTimezone(service), ABAC_CREDENTIALS, ABAC_DISCIPLINE, ABAC_NOT_ON_PTO, ABAC_POOL] },
+    {
+      preHandler: [
+        CREATE,
+        resolveOrgTimezone(service),
+        ABAC_CREDENTIALS,
+        ABAC_DISCIPLINE,
+        ABAC_NOT_ON_PTO,
+        ABAC_POOL,
+      ],
+    },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(CreateVisitRequest, request.body);
@@ -196,7 +216,13 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     const { organizationId, userId } = actorOf(request);
     const { visitId } = parse(VisitIdParamsSchema, request.params);
     const b = parse(StartVisitRequest, request.body);
-    return service.startVisit(organizationId, userId, visitId, b.evvMissingReason, stepUpFreshOf(request));
+    return service.startVisit(
+      organizationId,
+      userId,
+      visitId,
+      b.evvMissingReason,
+      stepUpFreshOf(request),
+    );
   });
 
   // 6 — cancel a visit (reason ≥ 20 chars).
@@ -208,18 +234,22 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   });
 
   // 7 — reschedule a visit (creates a new visit; original → rescheduled).
-  app.post("/api/v1/visits/:visitId/reschedule", { preHandler: [RESCHEDULE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { visitId } = parse(VisitIdParamsSchema, request.params);
-    const b = parse(RescheduleVisitRequest, request.body);
-    const res = service.rescheduleVisit(organizationId, userId, visitId, {
-      newScheduledStartedAt: b.newScheduledStartedAt,
-      newScheduledEndedAt: b.newScheduledEndedAt,
-      newAssignedMembershipId: b.newAssignedMembershipId,
-      reason: b.reason,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/visits/:visitId/reschedule",
+    { preHandler: [RESCHEDULE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { visitId } = parse(VisitIdParamsSchema, request.params);
+      const b = parse(RescheduleVisitRequest, request.body);
+      const res = service.rescheduleVisit(organizationId, userId, visitId, {
+        newScheduledStartedAt: b.newScheduledStartedAt,
+        newScheduledEndedAt: b.newScheduledEndedAt,
+        newAssignedMembershipId: b.newAssignedMembershipId,
+        reason: b.reason,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 8 — mark no-show (triggers reassign-or-followup workflow).
   app.post("/api/v1/visits/:visitId/no-show", { preHandler: [MARK_NO_SHOW] }, async (request) => {
@@ -240,7 +270,10 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   // 10 — scheduler proposal inbox.
   app.get(
     "/api/v1/visit-proposals",
-    { preHandler: [PROPOSAL_READ], config: { auditRead: { resourceKind: "visit_proposal", list: true } } },
+    {
+      preHandler: [PROPOSAL_READ],
+      config: { auditRead: { resourceKind: "visit_proposal", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ProposalListQuerySchema, request.query);
@@ -249,25 +282,36 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   );
 
   // 11 — publish a proposal as a real visit (runs the gate in-service).
-  app.post("/api/v1/visit-proposals/:proposalId/publish", { preHandler: [CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { proposalId } = parse(ProposalIdParamsSchema, request.params);
-    const res = service.publishProposal(organizationId, userId, proposalId);
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/visit-proposals/:proposalId/publish",
+    { preHandler: [CREATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { proposalId } = parse(ProposalIdParamsSchema, request.params);
+      const res = service.publishProposal(organizationId, userId, proposalId);
+      return reply.code(201).send(res);
+    },
+  );
 
   // 12 — dismiss a proposal (reason).
-  app.post("/api/v1/visit-proposals/:proposalId/dismiss", { preHandler: [PROPOSAL_DISMISS] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { proposalId } = parse(ProposalIdParamsSchema, request.params);
-    const b = parse(DismissProposalRequest, request.body);
-    return service.dismissProposal(organizationId, userId, proposalId, b.reason);
-  });
+  app.post(
+    "/api/v1/visit-proposals/:proposalId/dismiss",
+    { preHandler: [PROPOSAL_DISMISS] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { proposalId } = parse(ProposalIdParamsSchema, request.params);
+      const b = parse(DismissProposalRequest, request.body);
+      return service.dismissProposal(organizationId, userId, proposalId, b.reason);
+    },
+  );
 
   // 13 — list active recurring policies for a patient.
   app.get(
     "/api/v1/recurring-visits",
-    { preHandler: [RECURRING_READ], config: { auditRead: { resourceKind: "recurring_visit", list: true } } },
+    {
+      preHandler: [RECURRING_READ],
+      config: { auditRead: { resourceKind: "recurring_visit", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(RecurringListQuerySchema, request.query);
@@ -276,27 +320,35 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   );
 
   // 14 — create a recurring policy (validates the RRULE subset in the domain).
-  app.post("/api/v1/recurring-visits", { preHandler: [RECURRING_CREATE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const b = parse(CreateRecurringVisitRequest, request.body);
-    const res = service.createRecurring(organizationId, userId, {
-      patientId: b.patientId,
-      admissionId: b.admissionId,
-      assignedMembershipId: b.assignedMembershipId,
-      visitPurpose: b.visitPurpose,
-      visitSetting: b.visitSetting,
-      rrule: b.rrule,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/recurring-visits",
+    { preHandler: [RECURRING_CREATE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const b = parse(CreateRecurringVisitRequest, request.body);
+      const res = service.createRecurring(organizationId, userId, {
+        patientId: b.patientId,
+        admissionId: b.admissionId,
+        assignedMembershipId: b.assignedMembershipId,
+        visitPurpose: b.visitPurpose,
+        visitSetting: b.visitSetting,
+        rrule: b.rrule,
+      });
+      return reply.code(201).send(res);
+    },
+  );
 
   // 15 — discontinue a recurring policy (cascade-cancels future child visits in-service).
-  app.post("/api/v1/recurring-visits/:id/discontinue", { preHandler: [RECURRING_DISCONTINUE] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(IdParamsSchema, request.params);
-    parse(DiscontinueRecurringVisitRequest, request.body);
-    return service.discontinueRecurring(organizationId, userId, id);
-  });
+  app.post(
+    "/api/v1/recurring-visits/:id/discontinue",
+    { preHandler: [RECURRING_DISCONTINUE] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      parse(DiscontinueRecurringVisitRequest, request.body);
+      return service.discontinueRecurring(organizationId, userId, id);
+    },
+  );
 
   // 16 — read a clinician's weekly availability.
   app.get(
@@ -304,7 +356,9 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     {
       preHandler: [AVAIL_READ],
       config: {
-        auditRead: { none: "Clinician weekly availability windows only; no patient identifiers or PHI in the response." },
+        auditRead: {
+          none: "Clinician weekly availability windows only; no patient identifiers or PHI in the response.",
+        },
       },
     },
     async (request) => {
@@ -328,7 +382,9 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     {
       preHandler: [TIME_OFF_READ],
       config: {
-        auditRead: { none: "Clinician PTO/time-off request records only; no patient identifiers or PHI in the response." },
+        auditRead: {
+          none: "Clinician PTO/time-off request records only; no patient identifiers or PHI in the response.",
+        },
       },
     },
     async (request) => {
@@ -403,7 +459,9 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     {
       preHandler: [READ],
       config: {
-        auditRead: { none: "D9 coords-only route polylines; no patient names, ids, or PHI text in the response." },
+        auditRead: {
+          none: "D9 coords-only route polylines; no patient names, ids, or PHI text in the response.",
+        },
       },
     },
     async (request) => {
@@ -417,7 +475,10 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   app.post("/api/v1/optimize-day", { preHandler: [OPTIMIZE] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const b = parse(OptimizeDayRequest, request.body);
-    return service.optimizeDay(organizationId, userId, { membershipId: b.membershipId, serviceDate: b.serviceDate });
+    return service.optimizeDay(organizationId, userId, {
+      membershipId: b.membershipId,
+      serviceDate: b.serviceDate,
+    });
   });
 
   // 27 — portal upcoming visits (portal session class; lay-language; scrubbed).
@@ -437,7 +498,9 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
     {
       preHandler: [READ_METRICS],
       config: {
-        auditRead: { none: "Aggregate visit-count metrics for M30/M33 dashboards; no patient-identifying data in the response." },
+        auditRead: {
+          none: "Aggregate visit-count metrics for M30/M33 dashboards; no patient-identifying data in the response.",
+        },
       },
     },
     async (request) => {

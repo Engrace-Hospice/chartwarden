@@ -1,3 +1,4 @@
+import type { WorksheetCode } from "../contracts";
 // @wardenx/cost-report — M27 ECR record-type model + fixed-field formatting kernel (D11, §1.1 / §1.3).
 // The Electronic Cost Report (ECR) is the CMS-specified, fixed-field-format TEXT file the agency uploads
 // to MCReF; the CMS-1984-14 ECR specification defines record types, a worksheet/line/column addressing
@@ -18,7 +19,6 @@
 // Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`. No PHI — aggregate financial /
 // statistical values only (D18).
 import { type Cents, toDecimal } from "../domain/money";
-import { type WorksheetCode } from "../contracts";
 
 /**
  * The one-byte record-type codes that lead every ECR line. `header` carries the report-level identity
@@ -147,7 +147,8 @@ export function ecrDollarsToCents(text: string): Cents {
     throw new RangeError(`ecrDollarsToCents: malformed dollars value "${text}"`);
   }
   const centsPart = (centsPartRaw + "00").slice(0, 2);
-  const magnitude = parseInt(dollarsPart || "0", 10) * 100 + parseInt(centsPart || "0", 10);
+  const magnitude =
+    Number.parseInt(dollarsPart || "0", 10) * 100 + Number.parseInt(centsPart || "0", 10);
   return negative ? -magnitude : magnitude;
 }
 
@@ -194,8 +195,7 @@ export function formatRecordLine(record: EcrRecord): string {
       );
     case "trailer":
       return (
-        ECR_RECORD_TYPE_BYTES.trailer +
-        padLeft(String(record.recordCount), W.recordCount, "0")
+        ECR_RECORD_TYPE_BYTES.trailer + padLeft(String(record.recordCount), W.recordCount, "0")
       );
     case "data": {
       const valueField =
@@ -243,7 +243,10 @@ export function parseRecordLine(line: string): EcrRecord {
   }
 
   if (typeByte === ECR_RECORD_TYPE_BYTES.trailer) {
-    const recordCount = parseInt(sliceField(line, W.recordType, W.recordCount).trim() || "0", 10);
+    const recordCount = Number.parseInt(
+      sliceField(line, W.recordType, W.recordCount).trim() || "0",
+      10,
+    );
     return { recordKind: "trailer", recordCount };
   }
 
@@ -251,9 +254,9 @@ export function parseRecordLine(line: string): EcrRecord {
   let cursor = W.recordType;
   const worksheetCode = sliceField(line, cursor, W.worksheetCode).trimEnd() as WorksheetCode;
   cursor += W.worksheetCode;
-  const lineNumber = parseInt(sliceField(line, cursor, W.lineNumber).trim() || "0", 10);
+  const lineNumber = Number.parseInt(sliceField(line, cursor, W.lineNumber).trim() || "0", 10);
   cursor += W.lineNumber;
-  const columnNumber = parseInt(sliceField(line, cursor, W.columnNumber).trim() || "0", 10);
+  const columnNumber = Number.parseInt(sliceField(line, cursor, W.columnNumber).trim() || "0", 10);
   cursor += W.columnNumber;
   const valueField = sliceField(line, cursor, W.value);
 

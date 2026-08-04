@@ -21,28 +21,60 @@ const IDEMPOTENT = requireIdempotencyKey();
 const pParam = (request: { params: unknown }, key: string): string =>
   (request.params as Record<string, string>)[key] ?? "";
 
-export function registerTradingPartnerRoutes(app: FastifyInstance, deps: TradingPartnerRouteDeps): void {
+export function registerTradingPartnerRoutes(
+  app: FastifyInstance,
+  deps: TradingPartnerRouteDeps,
+): void {
   const { readService, writeService } = deps;
 
   // 32 — list credentials per PE (secrets masked)
-  app.get("/api/v1/state-medicaid-trading-partner-credentials", { preHandler: [P("medicaid.trading_partner.read")], config: { auditRead: { none: "state trading-partner credential metadata (never the secret) — no patient data" } } }, async (request, reply) =>
-    reply.send(
-      await readService.listTradingPartnerCredentials(actorOf(request), parseQuery(ProviderEntityQuery, request.query).providerEntityId),
-    ),
+  app.get(
+    "/api/v1/state-medicaid-trading-partner-credentials",
+    {
+      preHandler: [P("medicaid.trading_partner.read")],
+      config: {
+        auditRead: {
+          none: "state trading-partner credential metadata (never the secret) — no patient data",
+        },
+      },
+    },
+    async (request, reply) =>
+      reply.send(
+        await readService.listTradingPartnerCredentials(
+          actorOf(request),
+          parseQuery(ProviderEntityQuery, request.query).providerEntityId,
+        ),
+      ),
   );
 
   // 33 — upsert credentials (step-up)
   app.post(
     "/api/v1/state-medicaid-trading-partner-credentials",
-    { preHandler: [P("medicaid.trading_partner.admin"), ABAC_BODY_PE("medicaid.trading_partner.admin", "state_trading_partner_credential_admin"), STEP_UP("medicaid.trading_partner.admin"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.trading_partner.admin"),
+        ABAC_BODY_PE("medicaid.trading_partner.admin", "state_trading_partner_credential_admin"),
+        STEP_UP("medicaid.trading_partner.admin"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) =>
-      reply.code(201).send(await writeService.upsertCredential(writeActorOf(request), parse(UpsertCredentialBody, request.body))),
+      reply
+        .code(201)
+        .send(
+          await writeService.upsertCredential(
+            writeActorOf(request),
+            parse(UpsertCredentialBody, request.body),
+          ),
+        ),
   );
 
   // 34 — round-trip a sandbox test (adapter deferred)
   app.post(
     "/api/v1/state-medicaid-trading-partner-credentials/:id/test",
     { preHandler: [P("medicaid.trading_partner.admin"), AI, IDEMPOTENT] },
-    async (request, reply) => reply.send(await writeService.testCredential(writeActorOf(request), pParam(request, "id"))),
+    async (request, reply) =>
+      reply.send(await writeService.testCredential(writeActorOf(request), pParam(request, "id"))),
   );
 }

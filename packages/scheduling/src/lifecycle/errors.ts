@@ -86,6 +86,10 @@ export class SchedulingStateError extends WardenXError {
 }
 
 /** Throw a {@link SchedulingStateError} when `condition` is false (guard helper). */
-export function require_(condition: boolean, code: M17ErrorCode, message: string): asserts condition {
+export function require_(
+  condition: boolean,
+  code: M17ErrorCode,
+  message: string,
+): asserts condition {
   if (!condition) throw new SchedulingStateError(code, message);
 }

@@ -59,7 +59,9 @@ describe("§2.4 D3 assertPrnInterval (the override path)", () => {
   };
 
   it("a passing interval returns { overridden: false } with no override needed", () => {
-    expect(assertPrnInterval({ ...violation, minimumIntervalMinutes: 10 })).toEqual({ overridden: false });
+    expect(assertPrnInterval({ ...violation, minimumIntervalMinutes: 10 })).toEqual({
+      overridden: false,
+    });
   });
   it("throws PRN_INTERVAL_VIOLATION (422) without an override", () => {
     expect(() => assertPrnInterval(violation)).toThrow(
@@ -69,12 +71,16 @@ describe("§2.4 D3 assertPrnInterval (the override path)", () => {
   it("throws PRN_INTERVAL_OVERRIDE_NOT_PERMITTED (403) when the override lacks the permission", () => {
     expect(() =>
       assertPrnInterval(violation, { hasOverridePermission: false, reason: "x".repeat(50) }),
-    ).toThrow(expect.objectContaining({ code: "PRN_INTERVAL_OVERRIDE_NOT_PERMITTED", statusCode: 403 }));
+    ).toThrow(
+      expect.objectContaining({ code: "PRN_INTERVAL_OVERRIDE_NOT_PERMITTED", statusCode: 403 }),
+    );
   });
   it("throws PRN_INTERVAL_OVERRIDE_REASON_TOO_SHORT (422) when the reason is under 40 chars", () => {
     expect(() =>
       assertPrnInterval(violation, { hasOverridePermission: true, reason: "too short" }),
-    ).toThrow(expect.objectContaining({ code: "PRN_INTERVAL_OVERRIDE_REASON_TOO_SHORT", statusCode: 422 }));
+    ).toThrow(
+      expect.objectContaining({ code: "PRN_INTERVAL_OVERRIDE_REASON_TOO_SHORT", statusCode: 422 }),
+    );
   });
   it("permits the write with { overridden: true } given permission + a ≥40-char reason", () => {
     expect(

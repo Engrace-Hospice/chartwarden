@@ -5,7 +5,7 @@
 // Tenants may TIGHTEN thresholds (lower the trigger) but never loosen — the override is applied by lowering
 // the threshold inputs, never by reordering the bands. The ordering kernel here is the single source of
 // truth for "is band B higher than band A" used by the threshold evaluator.
-import { BAND_THRESHOLDS, type AlertBand } from "./types";
+import { type AlertBand, BAND_THRESHOLDS } from "./types";
 
 /** Monotone rank of each band within its scope family — higher rank = closer to/over breach. */
 const AGGREGATE_RANK: Record<string, number> = {

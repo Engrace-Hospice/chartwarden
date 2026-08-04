@@ -30,6 +30,14 @@ import {
   normalizeSignerSet,
 } from "./discipline-api";
 import {
+  VERSION_STATUS_TONE,
+  dateTime,
+  humanize,
+  kindLabel,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   SummaryGrid,
@@ -44,20 +52,9 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  VERSION_STATUS_TONE,
-  dateTime,
-  humanize,
-  kindLabel,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 
 /** Top-level key diff between two sealed snapshots — added / removed / changed. */
-function diffSnapshots(
-  a: unknown,
-  b: unknown,
-): { key: string; before: string; after: string }[] {
+function diffSnapshots(a: unknown, b: unknown): { key: string; before: string; after: string }[] {
   const left = (a && typeof a === "object" ? a : {}) as Record<string, unknown>;
   const right = (b && typeof b === "object" ? b : {}) as Record<string, unknown>;
   const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
@@ -124,7 +121,8 @@ export function DisciplineVersionHistory(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
-  const diff = selected && compare ? diffSnapshots(compare.stateSnapshot, selected.stateSnapshot) : [];
+  const diff =
+    selected && compare ? diffSnapshots(compare.stateSnapshot, selected.stateSnapshot) : [];
 
   return (
     <div style={columnStyle}>
@@ -204,13 +202,20 @@ export function DisciplineVersionHistory(): JSX.Element {
             <Field label="Finalized" value={dateTime(selected.finalizedAt)} />
             <Field label="Signed" value={dateTime(selected.signedAt)} />
           </SummaryGrid>
-          <h4 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "0.85rem", color: t.onSurface }}>
+          <h4
+            style={{
+              margin: 0,
+              fontFamily: t.fontDisplay,
+              fontSize: "0.85rem",
+              color: t.onSurface,
+            }}
+          >
             Required signer set (frozen at finalize)
           </h4>
           {normalizeSignerSet(selected.requiredSignerSet).length === 0 ? (
             <span style={mutedStyle}>
-              No quorum is recorded on this version — a discharge version is sealed by the system actor
-              and carries none.
+              No quorum is recorded on this version — a discharge version is sealed by the system
+              actor and carries none.
             </span>
           ) : (
             <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
@@ -225,7 +230,14 @@ export function DisciplineVersionHistory(): JSX.Element {
               ))}
             </ul>
           )}
-          <h4 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "0.85rem", color: t.onSurface }}>
+          <h4
+            style={{
+              margin: 0,
+              fontFamily: t.fontDisplay,
+              fontSize: "0.85rem",
+              color: t.onSurface,
+            }}
+          >
             Signatures collected
           </h4>
           {selected.signatures.length === 0 ? (
@@ -253,7 +265,14 @@ export function DisciplineVersionHistory(): JSX.Element {
             </table>
           )}
           <div style={{ display: "flex", alignItems: "center", gap: t.space2 }}>
-            <h4 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "0.85rem", color: t.onSurface }}>
+            <h4
+              style={{
+                margin: 0,
+                fontFamily: t.fontDisplay,
+                fontSize: "0.85rem",
+                color: t.onSurface,
+              }}
+            >
               Sealed plan snapshot
             </h4>
             <DerivedBadge source="the plan at finalize" verb="computed from" />
@@ -278,9 +297,7 @@ export function DisciplineVersionHistory(): JSX.Element {
       {selected && compare ? (
         <Card title={`Diff — v${compare.sequence} → v${selected.sequence}`}>
           {diff.length === 0 ? (
-            <span style={mutedStyle}>
-              The two sealed snapshots are identical at the top level.
-            </span>
+            <span style={mutedStyle}>The two sealed snapshots are identical at the top level.</span>
           ) : (
             <table style={tableStyle}>
               <thead>
@@ -294,8 +311,12 @@ export function DisciplineVersionHistory(): JSX.Element {
                 {diff.map((d) => (
                   <tr key={d.key} style={rowLine}>
                     <td style={{ ...td, fontFamily: t.fontMono }}>{d.key}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>{d.before}</td>
-                    <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>{d.after}</td>
+                    <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
+                      {d.before}
+                    </td>
+                    <td style={{ ...td, fontFamily: t.fontMono, fontSize: "0.75rem" }}>
+                      {d.after}
+                    </td>
                   </tr>
                 ))}
               </tbody>

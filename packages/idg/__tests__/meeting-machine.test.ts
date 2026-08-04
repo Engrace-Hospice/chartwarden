@@ -1,11 +1,11 @@
 // @wardenx/idg — §2.2 IDG meeting lifecycle state machine — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
-  transitionMeeting,
-  planMeetingScheduled,
   MEETING_GRAPH,
-  outboxEvents,
   type MeetingEvent,
+  outboxEvents,
+  planMeetingScheduled,
+  transitionMeeting,
 } from "../src/lifecycle";
 
 const floorClear = { reviewFloorClear: true, overrideAuthorized: false } as const;
@@ -25,9 +25,9 @@ describe("§2.2 transition graph", () => {
     expect(() => transitionMeeting("live", { type: "START" })).toThrowError(
       expect.objectContaining({ code: "ILLEGAL_MEETING_TRANSITION", statusCode: 409 }),
     );
-    expect(() => transitionMeeting("scheduled", { type: "ADJOURN", stepUpFresh: true })).toThrowError(
-      expect.objectContaining({ code: "ILLEGAL_MEETING_TRANSITION" }),
-    );
+    expect(() =>
+      transitionMeeting("scheduled", { type: "ADJOURN", stepUpFresh: true }),
+    ).toThrowError(expect.objectContaining({ code: "ILLEGAL_MEETING_TRANSITION" }));
   });
 });
 
@@ -85,13 +85,21 @@ describe("§2.2 D13 ADJOURN — the commit point", () => {
 
 describe("§2.2 / M14-F01 per-patient review-floor guard on CANCEL / RESCHEDULE", () => {
   it("CANCEL proceeds when the floor is clear", () => {
-    const t = transitionMeeting("scheduled", { type: "CANCEL", reason: "venue change", ...floorClear });
+    const t = transitionMeeting("scheduled", {
+      type: "CANCEL",
+      reason: "venue change",
+      ...floorClear,
+    });
     expect(t.to).toBe("cancelled");
     expect(outboxEvents(t.effects)).toEqual(["m14.meeting.cancelled"]);
   });
 
   it("RESCHEDULE spawns a new meeting when the floor is clear", () => {
-    const t = transitionMeeting("packets_ready", { type: "RESCHEDULE", reason: "quorum lost", ...floorClear });
+    const t = transitionMeeting("packets_ready", {
+      type: "RESCHEDULE",
+      reason: "quorum lost",
+      ...floorClear,
+    });
     expect(t.to).toBe("rescheduled");
     expect(t.effects).toContainEqual({ kind: "spawn_rescheduled_meeting" });
     expect(outboxEvents(t.effects)).toEqual(["m14.meeting.rescheduled"]);
@@ -105,7 +113,9 @@ describe("§2.2 / M14-F01 per-patient review-floor guard on CANCEL / RESCHEDULE"
         reviewFloorClear: false,
         overrideAuthorized: false,
       }),
-    ).toThrowError(expect.objectContaining({ code: "PER_PATIENT_REVIEW_FLOOR_BREACH", statusCode: 422 }));
+    ).toThrowError(
+      expect.objectContaining({ code: "PER_PATIENT_REVIEW_FLOOR_BREACH", statusCode: 422 }),
+    );
   });
 
   it("allows the audited override path and emits review_floor.override_recorded", () => {
@@ -117,13 +127,21 @@ describe("§2.2 / M14-F01 per-patient review-floor guard on CANCEL / RESCHEDULE"
       breachingPatients: [{ patientId: "p1", floorAt: "2026-07-01T00:00:00Z" }],
     });
     expect(t.to).toBe("cancelled");
-    expect(outboxEvents(t.effects)).toEqual(["m14.review_floor.override_recorded", "m14.meeting.cancelled"]);
-    expect(t.effects).toContainEqual({ kind: "alert", alert: "m14.review_floor.override_recorded" });
+    expect(outboxEvents(t.effects)).toEqual([
+      "m14.review_floor.override_recorded",
+      "m14.meeting.cancelled",
+    ]);
+    expect(t.effects).toContainEqual({
+      kind: "alert",
+      alert: "m14.review_floor.override_recorded",
+    });
   });
 
   it("refuses CANCEL/RESCHEDULE without a reason (422)", () => {
     expect(() =>
       transitionMeeting("scheduled", { type: "CANCEL", reason: "   ", ...floorClear }),
-    ).toThrowError(expect.objectContaining({ code: "MEETING_TRANSITION_REASON_REQUIRED", statusCode: 422 }));
+    ).toThrowError(
+      expect.objectContaining({ code: "MEETING_TRANSITION_REASON_REQUIRED", statusCode: 422 }),
+    );
   });
 });

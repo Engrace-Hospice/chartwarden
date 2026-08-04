@@ -4,6 +4,9 @@
 // denial aging (§1.1), and the denial + appeal state machines (§2.2).
 import { describe, expect, it } from "vitest";
 import {
+  type MatchCandidate,
+  type MatchLineKeys,
+  TIER_WINDOW_DAYS,
   agingBucketLabel,
   agingDays,
   autoMatch,
@@ -18,13 +21,10 @@ import {
   effectiveCategory,
   isReopen,
   isWithinDeadline,
-  type MatchCandidate,
-  type MatchLineKeys,
   nextTier,
   outcomeEventKind,
   routeAdjustment,
   shouldSpawnNextTier,
-  TIER_WINDOW_DAYS,
 } from "../index";
 
 describe("aging (§1.1)", () => {
@@ -78,7 +78,9 @@ describe("appeal-tier deadlines (D6 / M25-F04)", () => {
 
   it("later tiers anchor on the prior decision date with their own windows", () => {
     const decided = new Date("2026-01-01T00:00:00Z");
-    expect(computeTierDeadline("reconsideration", decided).toISOString().slice(0, 10)).toBe("2026-06-30");
+    expect(computeTierDeadline("reconsideration", decided).toISOString().slice(0, 10)).toBe(
+      "2026-06-30",
+    );
     expect(computeTierDeadline("council", decided).toISOString().slice(0, 10)).toBe("2026-03-02");
   });
 

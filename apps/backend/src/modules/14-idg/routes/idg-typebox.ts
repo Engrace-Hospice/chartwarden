@@ -309,16 +309,25 @@ export const AmendmentResponseSchema = Type.Object({
 //    (what the route service returns) — a view field added/renamed/retyped breaks `bun run build` rather
 //    than silently drifting from the generated client. ──────────────────────────────────────────────────
 type Conforms<T extends V, V> = T;
-type _MeetingSchedule = Conforms<Static<typeof MeetingScheduleViewSchema>, ServiceMeetingScheduleView>;
+type _MeetingSchedule = Conforms<
+  Static<typeof MeetingScheduleViewSchema>,
+  ServiceMeetingScheduleView
+>;
 type _Meeting = Conforms<Static<typeof MeetingViewSchema>, ServiceMeetingView>;
 type _Packet = Conforms<Static<typeof PacketDigestViewSchema>, ServicePacketDigestView>;
 type _ActionItem = Conforms<Static<typeof ActionItemViewSchema>, ServiceActionItemView>;
 type _Minutes = Conforms<Static<typeof MinutesViewSchema>, ServiceMinutesView>;
-type _RecurringPolicy = Conforms<Static<typeof RecurringPolicyViewSchema>, ServiceRecurringPolicyView>;
+type _RecurringPolicy = Conforms<
+  Static<typeof RecurringPolicyViewSchema>,
+  ServiceRecurringPolicyView
+>;
 type _Attendance = Conforms<Static<typeof AttendanceViewSchema>, ServiceAttendanceView>;
 type _AgendaItem = Conforms<Static<typeof AgendaItemViewSchema>, ServiceAgendaItemView>;
 type _Decision = Conforms<Static<typeof DecisionViewSchema>, ServiceDecisionView>;
-type _Removed = Conforms<Static<typeof RemovedResponseSchema>, { readonly id: string; readonly removed: true }>;
+type _Removed = Conforms<
+  Static<typeof RemovedResponseSchema>,
+  { readonly id: string; readonly removed: true }
+>;
 type _Amendment = Conforms<
   Static<typeof AmendmentResponseSchema>,
   { readonly amendmentId: string; readonly minutesId: string }

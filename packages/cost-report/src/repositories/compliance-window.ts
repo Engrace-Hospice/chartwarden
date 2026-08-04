@@ -67,10 +67,7 @@ export class ComplianceWindowRepository {
     patch: Partial<
       Pick<
         schema.NewCostReportComplianceWindow,
-        | "currentEffectiveDeadlineDate"
-        | "lastAlertTier"
-        | "lastAlertTierEmittedAt"
-        | "closedAt"
+        "currentEffectiveDeadlineDate" | "lastAlertTier" | "lastAlertTierEmittedAt" | "closedAt"
       >
     >,
   ): Promise<schema.CostReportComplianceWindow> {

@@ -110,7 +110,8 @@ export function MedicaidValidationQueue(): JSX.Element {
   }, [load]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !worklist) return <EmptyState title="Unavailable" description={error ?? "No worklist."} />;
+  if (error || !worklist)
+    return <EmptyState title="Unavailable" description={error ?? "No worklist."} />;
 
   const { groups, blockedClaimCount, unattributedClaimCount, truncated } = worklist;
 
@@ -130,13 +131,15 @@ export function MedicaidValidationQueue(): JSX.Element {
       filters={
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
           <span style={mutedStyle}>
-            {blockedClaimCount} blocked claim{blockedClaimCount === 1 ? "" : "s"} (failed validation or
-            partially acknowledged) · {groups.length} rule{groups.length === 1 ? "" : "s"} holding them
+            {blockedClaimCount} blocked claim{blockedClaimCount === 1 ? "" : "s"} (failed validation
+            or partially acknowledged) · {groups.length} rule{groups.length === 1 ? "" : "s"}{" "}
+            holding them
           </span>
           {unattributedClaimCount > 0 ? (
             <span style={mutedStyle}>
-              {unattributedClaimCount} blocked claim{unattributedClaimCount === 1 ? " is" : "s are"} not
-              listed below — no validation run yet, or every failing rule already overridden. Open{" "}
+              {unattributedClaimCount} blocked claim{unattributedClaimCount === 1 ? " is" : "s are"}{" "}
+              not listed below — no validation run yet, or every failing rule already overridden.
+              Open{" "}
               <a href="/medicaid/billing/claims?state=FAILED_VALIDATION" style={linkStyle}>
                 the workbench
               </a>{" "}
@@ -145,8 +148,8 @@ export function MedicaidValidationQueue(): JSX.Element {
           ) : null}
           {truncated ? (
             <span role="status" style={mutedStyle}>
-              This is a partial view — the worklist scan hit its cap, so more blocked claims exist than are
-              grouped here.
+              This is a partial view — the worklist scan hit its cap, so more blocked claims exist
+              than are grouped here.
             </span>
           ) : null}
         </div>
@@ -220,8 +223,8 @@ export function MedicaidValidationQueue(): JSX.Element {
             tone={groups.length === 0 ? "success" : "warning"}
           />
           <span style={mutedStyle}>
-            Select a control number to open that claim's validation worklist, where a failed rule can be
-            overridden with a rationale. Overridden failures drop off this queue.
+            Select a control number to open that claim's validation worklist, where a failed rule
+            can be overridden with a rationale. Overridden failures drop off this queue.
           </span>
         </div>
       }

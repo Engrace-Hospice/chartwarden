@@ -110,7 +110,12 @@ const NAV_SECTIONS: {
   { label: "Coverage / Payers", ready: true, icon: "shield" },
   { label: "Care Team & Assignments", ready: true, icon: "groups" },
   { label: "Privacy Flags", ready: true, icon: "lock" },
-  { label: "Care Plan", ready: false, icon: "carePlan", route: (id) => `/patients/${id}/care-plan` },
+  {
+    label: "Care Plan",
+    ready: false,
+    icon: "carePlan",
+    route: (id) => `/patients/${id}/care-plan`,
+  },
   {
     label: "Encounters / Visits",
     ready: false,
@@ -124,7 +129,12 @@ const NAV_SECTIONS: {
     route: (id) => `/patients/${id}/assessments`,
   },
   { label: "Orders", ready: false, icon: "orders", route: (id) => `/patients/${id}/orders` },
-  { label: "Medications / eMAR", ready: false, icon: "pill", route: (id) => `/patients/${id}/emar` },
+  {
+    label: "Medications / eMAR",
+    ready: false,
+    icon: "pill",
+    route: (id) => `/patients/${id}/emar`,
+  },
   { label: "Documents", ready: false, icon: "folder", route: (id) => `/patients/${id}/documents` },
   {
     label: "Election & Certification",

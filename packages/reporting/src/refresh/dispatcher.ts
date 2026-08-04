@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/reporting · refresh — the three-tier MV-refresh DISPATCHER (M33 §2.5–§2.6 / D2, D15).
 //
 // The single routing brain the three demand-paths (nightly cron, incremental outbox-subscriber, manual
@@ -17,7 +18,6 @@ import type {
   MvRefreshQueuePort,
   ReportRunTriggerKind,
 } from "./ports";
-import type { schema } from "@wardenx/db";
 
 // ── the §2.6 debounce floor + idempotency jobId (pure helpers) ────────────────────────────────────────────
 

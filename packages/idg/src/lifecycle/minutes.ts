@@ -14,7 +14,11 @@ import { require_ } from "./errors";
  * `MINUTES_FINAL` once the minutes are `final` — corrections then require the amendment workflow.
  */
 export function assertMinutesMutable(status: IdgMinutesStatus): asserts status is "in_progress" {
-  require_(status === "in_progress", "MINUTES_FINAL", "final minutes are immutable; use the amendment workflow");
+  require_(
+    status === "in_progress",
+    "MINUTES_FINAL",
+    "final minutes are immutable; use the amendment workflow",
+  );
 }
 
 /**
@@ -23,8 +27,15 @@ export function assertMinutesMutable(status: IdgMinutesStatus): asserts status i
  * second finalize is a no-op the service must not re-emit `m14.minutes.signed` for). Returns the
  * side-effect list: stamp `finalized_at`, audit, and emit `m14.minutes.signed` (M22 render trigger, §4.4).
  */
-export function planMinutesFinalize(from: IdgMinutesStatus): { readonly to: "final"; readonly effects: ReadonlyArray<IdgSideEffect> } {
-  require_(from === "in_progress", "MINUTES_NOT_IN_PROGRESS", "only in-progress minutes may be finalized");
+export function planMinutesFinalize(from: IdgMinutesStatus): {
+  readonly to: "final";
+  readonly effects: ReadonlyArray<IdgSideEffect>;
+} {
+  require_(
+    from === "in_progress",
+    "MINUTES_NOT_IN_PROGRESS",
+    "only in-progress minutes may be finalized",
+  );
   return {
     to: "final",
     effects: [
@@ -42,8 +53,14 @@ export function planMinutesFinalize(from: IdgMinutesStatus): { readonly to: "fin
  * `MINUTES_FINAL` guard would be backwards here, so we assert the minutes ARE final). The original
  * `idg_minutes` row is never touched.
  */
-export function planMinutesAmendmentRequest(minutesStatus: IdgMinutesStatus): ReadonlyArray<IdgSideEffect> {
-  require_(minutesStatus === "final", "MINUTES_NOT_IN_PROGRESS", "amendments apply only to final minutes");
+export function planMinutesAmendmentRequest(
+  minutesStatus: IdgMinutesStatus,
+): ReadonlyArray<IdgSideEffect> {
+  require_(
+    minutesStatus === "final",
+    "MINUTES_NOT_IN_PROGRESS",
+    "amendments apply only to final minutes",
+  );
   return [{ kind: "audit" }, { kind: "notify_compliance" }];
 }
 
@@ -53,8 +70,14 @@ export function planMinutesAmendmentRequest(minutesStatus: IdgMinutesStatus): Re
  * `AMENDMENT_ALREADY_APPROVED` if the row already carries an approval. The original `idg_minutes` row
  * stays unchanged (the trigger refuses content-field UPDATE); the amendment row carries the correction.
  */
-export function planMinutesAmendmentApproval(amendment: { readonly approvedAt: string | null }): ReadonlyArray<IdgSideEffect> {
-  require_(amendment.approvedAt === null, "AMENDMENT_ALREADY_APPROVED", "this amendment has already been approved");
+export function planMinutesAmendmentApproval(amendment: {
+  readonly approvedAt: string | null;
+}): ReadonlyArray<IdgSideEffect> {
+  require_(
+    amendment.approvedAt === null,
+    "AMENDMENT_ALREADY_APPROVED",
+    "this amendment has already been approved",
+  );
   return [
     { kind: "set_timestamp", field: "approved_at" },
     { kind: "audit" },

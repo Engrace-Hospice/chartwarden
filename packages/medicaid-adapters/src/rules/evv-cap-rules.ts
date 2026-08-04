@@ -34,7 +34,11 @@ export const medicaidEvvBracketCoherence: MedicaidRule = {
       KEY,
       "error",
       `${blocking.length} backing encounter(s) have a blocking EVV bracket (Cures Act §12006).`,
-      { summary: "Resolve the missing EVV verification (M18) for the flagged encounter(s).", blameTarget: "encounter", fixAction: "resolve_in_m18" },
+      {
+        summary: "Resolve the missing EVV verification (M18) for the flagged encounter(s).",
+        blameTarget: "encounter",
+        fixAction: "resolve_in_m18",
+      },
       { blockingCount: blocking.length },
     );
   },

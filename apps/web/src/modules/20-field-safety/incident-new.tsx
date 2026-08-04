@@ -137,9 +137,9 @@ export function IncidentNewScreen(): JSX.Element {
 
       {linkedSosAlertId ? (
         <Notice tone="info" live>
-          This form was opened from SOS <strong>{linkedSosAlertId}</strong> and the link is filled in
-          below. Clear it if this incident is about something else — the two records are joined by that
-          field and by nothing implicit.
+          This form was opened from SOS <strong>{linkedSosAlertId}</strong> and the link is filled
+          in below. Clear it if this incident is about something else — the two records are joined
+          by that field and by nothing implicit.
         </Notice>
       ) : null}
 
@@ -159,9 +159,9 @@ export function IncidentNewScreen(): JSX.Element {
           hint="Must not be after the moment you file — the database enforces that, so a mistyped year is refused rather than stored."
         />
         <span style={mutedStyle}>
-          Membership, visit and patient are typed ids because M20 publishes no directory for any of the
-          three. M2, M17 and M5 own them and M20 holds no reader; a picker here would be a second,
-          drifting copy of somebody else's record.
+          Membership, visit and patient are typed ids because M20 publishes no directory for any of
+          the three. M2, M17 and M5 own them and M20 holds no reader; a picker here would be a
+          second, drifting copy of somebody else's record.
         </span>
       </Card>
 
@@ -217,11 +217,11 @@ export function IncidentNewScreen(): JSX.Element {
 
       <Card title="What this form does not ask">
         <span style={mutedStyle}>
-          <strong>Whether this is OSHA-reportable.</strong> That is a supervisor's separate, step-up'd
-          sign-off (D9) made on the incident's own page, and it is deliberately not a box on this form: a
-          filing with a state agency should never rest on the reporting clinician's own classification,
-          and a supervisor filing on her behalf should not be able to pre-answer it either. File the facts;
-          the classification is somebody else's named act.
+          <strong>Whether this is OSHA-reportable.</strong> That is a supervisor's separate,
+          step-up'd sign-off (D9) made on the incident's own page, and it is deliberately not a box
+          on this form: a filing with a state agency should never rest on the reporting clinician's
+          own classification, and a supervisor filing on her behalf should not be able to pre-answer
+          it either. File the facts; the classification is somebody else's named act.
         </span>
       </Card>
 
@@ -245,8 +245,8 @@ export function IncidentNewScreen(): JSX.Element {
         </Link>
       </div>
       <span style={mutedStyle}>
-        This creates a <strong>draft</strong>. Nothing is submitted, nobody is notified, and you can edit
-        every field until you submit it yourself.
+        This creates a <strong>draft</strong>. Nothing is submitted, nobody is notified, and you can
+        edit every field until you submit it yourself.
       </span>
     </div>
   );

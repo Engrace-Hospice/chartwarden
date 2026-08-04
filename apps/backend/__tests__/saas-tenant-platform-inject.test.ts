@@ -57,12 +57,12 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  type TenantPlatformAbacResolver,
+  type TenantPlatformRouteSeed,
   buildTenantPlatformAbacPredicates,
   createInMemoryTenantBackend,
   createInMemoryTenantPlatformBackend,
   mountTenantPlatformRoutes,
-  type TenantPlatformAbacResolver,
-  type TenantPlatformRouteSeed,
 } from "../src/modules/34-saas-tenant-platform/index";
 // `TenantRouteSeed` is only exported from the tenant-routes barrel, not re-exported at the module root
 // (unlike `TenantPlatformRouteSeed`, which the root index re-exports for the platform-ops surface).
@@ -235,9 +235,30 @@ function makeServer() {
   const tenant = createInMemoryTenantBackend(tenantSeed);
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "platform_ops_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: PLATFORM_OPS_PERMISSIONS }] },
-    { orgId: ORG, userId: "org_admin_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ORG_ADMIN_PERMISSIONS }] },
-    { orgId: ORG, userId: "noperm_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "platform_ops_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: PLATFORM_OPS_PERMISSIONS,
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "org_admin_1",
+      grants: [
+        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ORG_ADMIN_PERMISSIONS },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "noperm_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -264,12 +285,22 @@ function makeServer() {
   return { app, platform, tenant };
 }
 
-const PLATFORM_OPS = { "x-test-user": "platform_ops_1", "x-test-org": ORG, "x-test-roles": "platform_ops", "x-test-membership": MEMBER_PLATFORM_OPS };
+const PLATFORM_OPS = {
+  "x-test-user": "platform_ops_1",
+  "x-test-org": ORG,
+  "x-test-roles": "platform_ops",
+  "x-test-membership": MEMBER_PLATFORM_OPS,
+};
 const PLATFORM_OPS_STEPUP = { ...PLATFORM_OPS, "x-step-up": "fresh" };
 // org_admin AND compliance_officer on one persona — a realistic tenant-side admin who is also the
 // compliance officer of record (the `tenant_platform_baa_compliance_officer` + `support_consent_grant`
 // issue-route spec note both name that persona explicitly).
-const ORG_ADMIN = { "x-test-user": "org_admin_1", "x-test-org": ORG, "x-test-roles": "org_admin,compliance_officer", "x-test-membership": MEMBER_ORG_ADMIN };
+const ORG_ADMIN = {
+  "x-test-user": "org_admin_1",
+  "x-test-org": ORG,
+  "x-test-roles": "org_admin,compliance_officer",
+  "x-test-membership": MEMBER_ORG_ADMIN,
+};
 const ORG_ADMIN_STEPUP = { ...ORG_ADMIN, "x-step-up": "fresh" };
 const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "none" };
 
@@ -295,7 +326,11 @@ describe("M34-saas-tenant-platform-inject — auth gating", () => {
 
   it("authenticated actor holding NO permissions → 403 (route: GET /api/v1/platform/tenants, requires tenant.list_platform)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/platform/tenants", headers: NOPERM });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants",
+      headers: NOPERM,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -319,7 +354,11 @@ describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (ten
   it("list, provision, read overview, transition status, offboard, shred, dek-rotate", async () => {
     const { app } = makeServer();
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/platform/tenants", headers: PLATFORM_OPS });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants",
+      headers: PLATFORM_OPS,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.length).toBeGreaterThanOrEqual(2);
 
@@ -338,7 +377,11 @@ describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (ten
     expect(provision.statusCode).toBe(202);
     expect(provision.json().tenantAccountId).toBeTypeOf("string");
 
-    const overview = await app.inject({ method: "GET", url: "/api/v1/platform/tenants/acme", headers: PLATFORM_OPS });
+    const overview = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants/acme",
+      headers: PLATFORM_OPS,
+    });
     expect(overview.statusCode).toBe(200);
     expect(overview.json().orgSlug).toBe("acme");
 
@@ -355,7 +398,10 @@ describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (ten
       method: "POST",
       url: "/api/v1/platform/tenants/acme/offboard",
       headers: PLATFORM_OPS_STEPUP,
-      payload: { transitionReason: "contract terminated at renewal", exportPurpose: "baa_termination" },
+      payload: {
+        transitionReason: "contract terminated at renewal",
+        exportPurpose: "baa_termination",
+      },
     });
     expect(offboard.statusCode).toBe(202);
     expect(offboard.json().status).toBe("offboarding_initiated");
@@ -364,7 +410,10 @@ describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (ten
       method: "POST",
       url: "/api/v1/platform/tenants/destroying-corp/shred",
       headers: PLATFORM_OPS_STEPUP,
-      payload: { transitionReason: "retention window elapsed, cert approved", destructionCertificateId: DESTRUCTION_CERT_ID },
+      payload: {
+        transitionReason: "retention window elapsed, cert approved",
+        destructionCertificateId: DESTRUCTION_CERT_ID,
+      },
     });
     expect(shred.statusCode).toBe(202);
     expect(shred.json().jobId).toBeTypeOf("string");
@@ -387,7 +436,11 @@ describe("M34-saas-tenant-platform-inject — platform → first-admin invitatio
   it("list, issue, revoke", async () => {
     const { app } = makeServer();
 
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/platform/tenant-invitations", headers: PLATFORM_OPS });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-invitations",
+      headers: PLATFORM_OPS,
+    });
     expect(list0.statusCode).toBe(200);
 
     const issue = await app.inject({
@@ -415,7 +468,11 @@ describe("M34-saas-tenant-platform-inject — platform → first-admin invitatio
 describe("M34-saas-tenant-platform-inject — key-ring metadata (§3.5)", () => {
   it("reads the metadata-only key-ring view for a tenant", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/platform/tenants/acme/key-ring", headers: PLATFORM_OPS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenants/acme/key-ring",
+      headers: PLATFORM_OPS,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().currentDekVersion).toBe("v1");
     await app.close();
@@ -427,7 +484,11 @@ describe("M34-saas-tenant-platform-inject — onboarding-template catalog", () =
   it("lists then adds a non-canonical template", async () => {
     const { app } = makeServer();
 
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/platform/onboarding-templates", headers: PLATFORM_OPS });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/onboarding-templates",
+      headers: PLATFORM_OPS,
+    });
     expect(list0.statusCode).toBe(200);
 
     const write = await app.inject({
@@ -466,7 +527,11 @@ describe("M34-saas-tenant-platform-inject — tenant-consented support sessions 
     expect(elevate.statusCode).toBe(201);
     expect(elevate.json().elevationExpiresAt).toBeTypeOf("string");
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/platform/support-sessions", headers: PLATFORM_OPS });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/support-sessions",
+      headers: PLATFORM_OPS,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.map((s: { id: string }) => s.id)).toContain(sessionId);
 
@@ -496,7 +561,11 @@ describe("M34-saas-tenant-platform-inject — platform-ops signup-intent triage 
   it("lists, qualifies one intent, rejects another", async () => {
     const { app } = makeServer();
 
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/platform/signup-intents", headers: PLATFORM_OPS });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/signup-intents",
+      headers: PLATFORM_OPS,
+    });
     expect(list0.statusCode).toBe(200);
 
     const qualify = await app.inject({
@@ -526,7 +595,11 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
   it("lists, creates, and updates a BAA record", async () => {
     const { app } = makeServer();
 
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/platform/baa-register", headers: PLATFORM_OPS });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/baa-register",
+      headers: PLATFORM_OPS,
+    });
     expect(list0.statusCode).toBe(200);
 
     const create = await app.inject({
@@ -565,7 +638,11 @@ describe("M34-saas-tenant-platform-inject — feature-flag admin (§4.7/D13)", (
     expect(upsert.statusCode).toBe(201);
     expect(upsert.json().organizationId).toBeNull();
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/platform/feature-flags", headers: PLATFORM_OPS });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/feature-flags",
+      headers: PLATFORM_OPS,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.map((f: { flagKey: string }) => f.flagKey)).toContain(TEST_FLAG_KEY);
 
@@ -587,7 +664,11 @@ describe("M34-saas-tenant-platform-inject — tenant support-consent grants", ()
   it("lists, issues, and revokes a grant", async () => {
     const { app } = makeServer();
 
-    const list0 = await app.inject({ method: "GET", url: "/api/v1/tenant/support-consent-grants", headers: ORG_ADMIN });
+    const list0 = await app.inject({
+      method: "GET",
+      url: "/api/v1/tenant/support-consent-grants",
+      headers: ORG_ADMIN,
+    });
     expect(list0.statusCode).toBe(200);
 
     const issue = await app.inject({
@@ -629,7 +710,8 @@ describe("M34-saas-tenant-platform-inject — HIPAA §164.524 DSAR export jobs",
         payload: {
           patientId,
           requestSource: "patient",
-          requestorIdentityVerificationEvidence: "government id verified in person by the front-desk RN",
+          requestorIdentityVerificationEvidence:
+            "government id verified in person by the front-desk RN",
         },
       });
       expect(res.statusCode).toBe(201);
@@ -640,7 +722,11 @@ describe("M34-saas-tenant-platform-inject — HIPAA §164.524 DSAR export jobs",
     const jobB = await requestJob(PATIENT_B);
     const jobC = await requestJob(PATIENT_C);
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/tenant/dsar-export-jobs", headers: ORG_ADMIN });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/tenant/dsar-export-jobs",
+      headers: ORG_ADMIN,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.length).toBeGreaterThanOrEqual(3);
 
@@ -674,7 +760,10 @@ describe("M34-saas-tenant-platform-inject — HIPAA §164.524 DSAR export jobs",
       method: "POST",
       url: `/api/v1/tenant/dsar-export-jobs/${jobC}/deny`,
       headers: ORG_ADMIN_STEPUP,
-      payload: { deniedReason: "psychotherapy_notes", narrative: "the requested notes are excluded under §164.524(a)(1)" },
+      payload: {
+        deniedReason: "psychotherapy_notes",
+        narrative: "the requested notes are excluded under §164.524(a)(1)",
+      },
     });
     expect(deny.statusCode).toBe(200);
     expect(deny.json().status).toBe("denied");
@@ -692,12 +781,19 @@ describe("M34-saas-tenant-platform-inject — tenant export jobs", () => {
       method: "POST",
       url: "/api/v1/tenant/tenant-export-jobs",
       headers: ORG_ADMIN_STEPUP,
-      payload: { requestedPurpose: "migration", justification: "migrating to a new practice-management stack" },
+      payload: {
+        requestedPurpose: "migration",
+        justification: "migrating to a new practice-management stack",
+      },
     });
     expect(request.statusCode).toBe(201);
     expect(request.json().status).toBe("requested");
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/tenant/tenant-export-jobs", headers: ORG_ADMIN });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/tenant/tenant-export-jobs",
+      headers: ORG_ADMIN,
+    });
     expect(list.statusCode).toBe(200);
 
     // downloads the seeded, already-`fulfilled` job (the freshly-requested one above is still `requested`
@@ -719,7 +815,11 @@ describe("M34-saas-tenant-platform-inject — tenant onboarding checklist (D3)",
   it("reads own onboarding state, starts + completes one task, blocks another", async () => {
     const { app } = makeServer();
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/tenant/onboarding", headers: ORG_ADMIN });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/tenant/onboarding",
+      headers: ORG_ADMIN,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().items.length).toBeGreaterThanOrEqual(2);
 
@@ -781,7 +881,11 @@ describe("M34-saas-tenant-platform-inject — public self-serve signup surface: 
   it("all three public routes answer 503 SIGNUP_DISABLED (no signupGate injected by mountTenantPlatformRoutes; D14 deny-default)", async () => {
     const { app } = makeServer();
 
-    const create = await app.inject({ method: "POST", url: "/api/v1/public/signup-intents", payload: {} });
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/public/signup-intents",
+      payload: {},
+    });
     expect(create.statusCode).toBe(503);
     expect(create.json().error.code).toBe("SIGNUP_DISABLED");
 

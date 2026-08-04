@@ -32,6 +32,14 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import {
+  GOAL_STATUS_TONE,
+  INTERVENTION_STATUS_TONE,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   Notice,
@@ -51,14 +59,6 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  GOAL_STATUS_TONE,
-  INTERVENTION_STATUS_TONE,
-  humanize,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 
 /** `discipline_goal_source` as the §4.2 `CreateGoalBody` accepts it (the route's union, not the pgEnum —
  *  the route layer is the contract the browser talks to). */
@@ -261,8 +261,8 @@ export function AidePocEditor(): JSX.Element {
           />
         </SummaryGrid>
         <span style={mutedStyle}>
-          The aide and supervising RN bindings are set at bootstrap and moved by an IDG decision; they are
-          not editable from this screen.
+          The aide and supervising RN bindings are set at bootstrap and moved by an IDG decision;
+          they are not editable from this screen.
         </span>
       </Card>
 
@@ -411,8 +411,8 @@ export function AidePocEditor(): JSX.Element {
           hint="Recorded verbatim as the goal's original text, which is immutable — later wording changes are recorded as revisions alongside it."
         />
         <span id="goal-problem-hint" style={mutedStyle}>
-          A discipline goal refines an IPOC problem owned by the interdisciplinary care plan (M7); the
-          problem id comes from that plan.
+          A discipline goal refines an IPOC problem owned by the interdisciplinary care plan (M7);
+          the problem id comes from that plan.
         </span>
       </Card>
 

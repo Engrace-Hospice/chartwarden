@@ -28,7 +28,11 @@ import type {
 } from "@wardenx/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
-import { assertParentElements, isAssessmentEncounterValid, isSupervisoryEncounterValid } from "../consumers/index";
+import {
+  assertParentElements,
+  isAssessmentEncounterValid,
+  isSupervisoryEncounterValid,
+} from "../consumers/index";
 import {
   DisciplinePlanStateError,
   checkAuthoringDiscipline,
@@ -359,7 +363,8 @@ export function buildDrizzleM15WriteService(
           })
           .where(and(eq(V.id, versionId), eq(V.version, version.version)))
           .returning();
-        if (!updated) throw new DisciplinePlanStateError("STALE_VERSION", "the version changed concurrently");
+        if (!updated)
+          throw new DisciplinePlanStateError("STALE_VERSION", "the version changed concurrently");
         return toVersionDetail(updated, []);
       });
     },
@@ -426,7 +431,8 @@ export function buildDrizzleM15WriteService(
           })
           .where(and(eq(V.id, versionId), eq(V.version, version.version)))
           .returning();
-        if (!updated) throw new DisciplinePlanStateError("STALE_VERSION", "the version changed concurrently");
+        if (!updated)
+          throw new DisciplinePlanStateError("STALE_VERSION", "the version changed concurrently");
 
         const signatures = await tx
           .select()
@@ -564,11 +570,14 @@ export function buildDrizzleM15WriteService(
         let status = row.status;
         let revisedText = row.revisedText ?? null;
         if (input.event) {
-          const transition = transitionDisciplineGoal(row.status as never, {
-            type: input.event.type as never,
-            revisedText: input.event.revisedText ?? "",
-            reason: input.event.reason ?? "",
-          } as never);
+          const transition = transitionDisciplineGoal(
+            row.status as never,
+            {
+              type: input.event.type as never,
+              revisedText: input.event.revisedText ?? "",
+              reason: input.event.reason ?? "",
+            } as never,
+          );
           status = transition.to as typeof row.status;
           if (input.event.type === "revise") revisedText = input.event.revisedText ?? revisedText;
         }
@@ -579,7 +588,9 @@ export function buildDrizzleM15WriteService(
             status: status as typeof G.$inferSelect.status,
             revisedText,
             measurableOutcome:
-              input.measurableOutcome === undefined ? row.measurableOutcome : input.measurableOutcome,
+              input.measurableOutcome === undefined
+                ? row.measurableOutcome
+                : input.measurableOutcome,
             targetAt:
               input.targetAt === undefined
                 ? row.targetAt
@@ -596,7 +607,8 @@ export function buildDrizzleM15WriteService(
           })
           .where(and(eq(G.id, goalId), eq(G.version, row.version)))
           .returning();
-        if (!updated) throw new DisciplinePlanStateError("STALE_VERSION", "the goal changed concurrently");
+        if (!updated)
+          throw new DisciplinePlanStateError("STALE_VERSION", "the goal changed concurrently");
         return toGoal(updated);
       });
     },
@@ -657,10 +669,13 @@ export function buildDrizzleM15WriteService(
         let status = row.status;
         let discontinuationReason = row.discontinuationReason ?? null;
         if (input.event) {
-          const transition = transitionDisciplineIntervention(row.status as never, {
-            type: input.event.type as never,
-            reason: input.event.reason ?? "",
-          } as never);
+          const transition = transitionDisciplineIntervention(
+            row.status as never,
+            {
+              type: input.event.type as never,
+              reason: input.event.reason ?? "",
+            } as never,
+          );
           status = transition.to as typeof row.status;
           if (input.event.type === "discontinue") {
             discontinuationReason = input.event.reason ?? discontinuationReason;
@@ -684,7 +699,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(I.id, interventionId), eq(I.version, row.version)))
           .returning();
         if (!updated) {
-          throw new DisciplinePlanStateError("STALE_VERSION", "the intervention changed concurrently");
+          throw new DisciplinePlanStateError(
+            "STALE_VERSION",
+            "the intervention changed concurrently",
+          );
         }
         return toIntervention(updated);
       });
@@ -762,7 +780,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(A.id, assessmentId), eq(A.version, existing.version)))
           .returning();
         if (!updated) {
-          throw new DisciplinePlanStateError("STALE_VERSION", "the assessment changed concurrently");
+          throw new DisciplinePlanStateError(
+            "STALE_VERSION",
+            "the assessment changed concurrently",
+          );
         }
         // §7.2 / §7.3 — a signed INITIAL assessment is what satisfies the D10 5-day clock on the plan.
         if (existing.isInitial && plan.initialAssessmentSignedAt === null) {
@@ -870,22 +891,20 @@ export function buildDrizzleM15WriteService(
               supervisoryAt: input.supervisoryAt as IsoInstant,
             });
 
-      const decision = decideRecordSupervisoryVisit(
-        {
-          planStatus: plan.status,
-          planAideMembershipId: plan.aideMembershipId as MembershipId | null,
-          planSupervisingRnMembershipId: plan.supervisingRnMembershipId as MembershipId | null,
-          aideMembershipId: input.aideMembershipId as MembershipId,
-          supervisingRnMembershipId: input.supervisingRnMembershipId as MembershipId,
-          sourceEncounterId: input.sourceEncounterId,
-          sourceEncounterValid: encounterValid,
-          supervisoryAt: input.supervisoryAt as IsoInstant,
-          attestationMode: input.attestationMode as never,
-          aidePerformanceSatisfactory: input.aidePerformanceSatisfactory,
-          correctiveActions: input.correctiveActions,
-          cadenceDaysOverride: plan.supervisoryCadenceDaysOverride ?? null,
-        },
-      );
+      const decision = decideRecordSupervisoryVisit({
+        planStatus: plan.status,
+        planAideMembershipId: plan.aideMembershipId as MembershipId | null,
+        planSupervisingRnMembershipId: plan.supervisingRnMembershipId as MembershipId | null,
+        aideMembershipId: input.aideMembershipId as MembershipId,
+        supervisingRnMembershipId: input.supervisingRnMembershipId as MembershipId,
+        sourceEncounterId: input.sourceEncounterId,
+        sourceEncounterValid: encounterValid,
+        supervisoryAt: input.supervisoryAt as IsoInstant,
+        attestationMode: input.attestationMode as never,
+        aidePerformanceSatisfactory: input.aidePerformanceSatisfactory,
+        correctiveActions: input.correctiveActions,
+        cadenceDaysOverride: plan.supervisoryCadenceDaysOverride ?? null,
+      });
 
       return withOrgContext(db, scope(actor), async (tx) => {
         const [row] = await tx
@@ -966,7 +985,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(SV.id, visitId), eq(SV.version, row.version)))
           .returning();
         if (!updated) {
-          throw new DisciplinePlanStateError("STALE_VERSION", "the attestation changed concurrently");
+          throw new DisciplinePlanStateError(
+            "STALE_VERSION",
+            "the attestation changed concurrently",
+          );
         }
         return toSupervisoryVisit(updated);
       });
@@ -1031,7 +1053,12 @@ export function buildDrizzleM15WriteService(
     },
 
     // ── 18 — edit / inactivate / reactivate a volunteer assignment ───────────────────────────────────
-    async updateVolunteerAssignment(actor, planId, assignmentId, input: UpdateVolunteerAssignmentInput) {
+    async updateVolunteerAssignment(
+      actor,
+      planId,
+      assignmentId,
+      input: UpdateVolunteerAssignmentInput,
+    ) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
         checkPlanWritable(plan.status);
@@ -1096,7 +1123,10 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(VA.id, assignmentId), eq(VA.version, row.version)))
           .returning();
         if (!updated) {
-          throw new DisciplinePlanStateError("STALE_VERSION", "the assignment changed concurrently");
+          throw new DisciplinePlanStateError(
+            "STALE_VERSION",
+            "the assignment changed concurrently",
+          );
         }
         if (input.inactivate) {
           await emit(tx, {
@@ -1183,7 +1213,8 @@ export function buildDrizzleM15WriteService(
           })
           .where(and(eq(GATE.id, gateId), eq(GATE.version, row.version)))
           .returning();
-        if (!updated) throw new DisciplinePlanStateError("STALE_VERSION", "the gate changed concurrently");
+        if (!updated)
+          throw new DisciplinePlanStateError("STALE_VERSION", "the gate changed concurrently");
         return toGateView(updated);
       });
     },
@@ -1209,7 +1240,8 @@ export function buildDrizzleM15WriteService(
           })
           .where(and(eq(GATE.id, gateId), eq(GATE.version, row.version)))
           .returning();
-        if (!updated) throw new DisciplinePlanStateError("STALE_VERSION", "the gate changed concurrently");
+        if (!updated)
+          throw new DisciplinePlanStateError("STALE_VERSION", "the gate changed concurrently");
 
         // §7.5 — a revocation removes the volunteer's clearance, so their OPEN assignments close with the
         // gate-attributed reason and M17 is told to drop them from the schedule.
@@ -1217,10 +1249,7 @@ export function buildDrizzleM15WriteService(
           .select()
           .from(VA)
           .where(
-            and(
-              eq(VA.volunteerMembershipId, row.volunteerMembershipId),
-              isNull(VA.inactivatedAt),
-            ),
+            and(eq(VA.volunteerMembershipId, row.volunteerMembershipId), isNull(VA.inactivatedAt)),
           );
         if (open.length > 0) {
           const reason = `gate_revoked:${row.gateKind}`;

@@ -20,7 +20,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { Kind, type TSchema } from "@sinclair/typebox";
-import { type RouteEnrichment, ROUTE_ENRICHMENTS } from "./enrichments";
+import { ROUTE_ENRICHMENTS, type RouteEnrichment } from "./enrichments";
 import { type ScannedRoute, routeKey, scanRoutes } from "./scan-routes";
 
 const REPO_ROOT = process.cwd();
@@ -87,9 +87,7 @@ function queryParameters(schema: TSchema | undefined): unknown[] {
 }
 
 /** OpenAPI header parameters from an enrichment's `headers` map (e.g. `Idempotency-Key`, `If-Match`). */
-function headerParameters(
-  headers: RouteEnrichment["headers"] | undefined,
-): unknown[] {
+function headerParameters(headers: RouteEnrichment["headers"] | undefined): unknown[] {
   if (!headers) return [];
   return Object.entries(headers).map(([name, spec]) => ({
     name,

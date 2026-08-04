@@ -45,7 +45,11 @@ export function registerAideSupervisoryRoutes(
     async (request, reply) => {
       const { planId } = parse(PlanParams, request.params);
       const body = parse(CreateSupervisoryVisitBody, request.body);
-      const created = await writeService.createSupervisoryVisit(writeActorOf(request), planId, body);
+      const created = await writeService.createSupervisoryVisit(
+        writeActorOf(request),
+        planId,
+        body,
+      );
       return reply.code(201).send(created);
     },
   );

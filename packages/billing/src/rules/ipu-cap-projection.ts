@@ -35,7 +35,8 @@ export const ipuCapProjection: Rule = {
         "error",
         "Projected inpatient (GIP + IRC) days exceed the inpatient cap for the cap period.",
         {
-          summary: "Review inpatient utilization; the agency is over the 20% inpatient cap projection.",
+          summary:
+            "Review inpatient utilization; the agency is over the 20% inpatient cap projection.",
           blameTarget: "claim",
           blameTargetId: ctx.claim.claimId,
           fixAction: "review_cap",

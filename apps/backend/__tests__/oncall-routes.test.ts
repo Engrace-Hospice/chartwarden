@@ -1,3 +1,18 @@
+import {
+  M19_CONTRIBUTED_PERMISSIONS,
+  PERMISSIONS,
+  allPermissionMirrorRows,
+  createPredicateRegistry,
+} from "@wardenx/auth";
+import {
+  type ExternalTriageVendorAdapter,
+  type TriageVendorBinding,
+  type TriageVendorSourceContext,
+  VendorPhiMinimizationError,
+  assertVendorPayloadMinimized,
+  minimizeForVendor,
+} from "@wardenx/triage-vendors";
+import { M19_AI_CONFIDENCE_FLOOR, M19_SYSTEM_LOCKED_ALERT_TYPES } from "@wardenx/types";
 /**
  * M19-T07 — the §4.1 route layer: permission keys (§4.6), ABAC predicates (§4.7), the §4.9 typed M36
  * alerts, the §8.5 adapter mandate + §7.10 PHI boundary, the §4.8 `m36.notification.delivery_failed`
@@ -9,24 +24,6 @@
  */
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import {
-  M19_CONTRIBUTED_PERMISSIONS,
-  PERMISSIONS,
-  allPermissionMirrorRows,
-  createPredicateRegistry,
-} from "@wardenx/auth";
-import {
-  M19_AI_CONFIDENCE_FLOOR,
-  M19_SYSTEM_LOCKED_ALERT_TYPES,
-} from "@wardenx/types";
-import {
-  VendorPhiMinimizationError,
-  assertVendorPayloadMinimized,
-  minimizeForVendor,
-  type ExternalTriageVendorAdapter,
-  type TriageVendorBinding,
-  type TriageVendorSourceContext,
-} from "@wardenx/triage-vendors";
 import {
   ESCALATION_TIER_ROLES,
   M19_ABAC_PREDICATES,
@@ -41,11 +38,6 @@ import {
   triageDisciplineForRoleKeys,
 } from "../src/modules/19-oncall/abac-predicates";
 import {
-  M19_PERMISSION_KEY_LIST,
-  M19_STEP_UP_PERMISSION_KEYS,
-  M19_VENDOR_SESSION_PERMISSION_KEYS,
-} from "../src/modules/19-oncall/permission-keys";
-import {
   M19_ALERT_RULES,
   alertRuleFor,
   buildCaseOpenedAlert,
@@ -58,14 +50,19 @@ import {
   decideDeliveryFailureTrigger,
 } from "../src/modules/19-oncall/consumers/m36-delivery-failed";
 import {
+  M19_PERMISSION_KEY_LIST,
+  M19_STEP_UP_PERMISSION_KEYS,
+  M19_VENDOR_SESSION_PERMISSION_KEYS,
+} from "../src/modules/19-oncall/permission-keys";
+import {
   InvalidCursorError,
   MissingOutboxPayloadError,
   UnknownTriageEffectError,
   decodeCursor,
   encodeCursor,
   ifMatchVersion,
-  runEffects,
   layDispositionSummary,
+  runEffects,
 } from "../src/modules/19-oncall/routes/index";
 import {
   OpenTriageCallBody,
@@ -384,10 +381,11 @@ describe("M19-T07 §4.7 ABAC predicates", () => {
         resolver: denyStubOncallAbacResolver,
         ports,
       });
-      for (const [name, predicate] of Object.entries(predicates)) registry.register(name, predicate);
-      expect([...registry.names()].filter((n) => M19_ABAC_PREDICATES.includes(n as never)).sort()).toEqual(
-        [...M19_ABAC_PREDICATES].sort(),
-      );
+      for (const [name, predicate] of Object.entries(predicates))
+        registry.register(name, predicate);
+      expect(
+        [...registry.names()].filter((n) => M19_ABAC_PREDICATES.includes(n as never)).sort(),
+      ).toEqual([...M19_ABAC_PREDICATES].sort());
     });
 
     it("a deny-stub resolver still lets the ROLE path answer oncall_eligible", async () => {
@@ -395,9 +393,9 @@ describe("M19-T07 §4.7 ABAC predicates", () => {
         resolver: denyStubOncallAbacResolver,
         ports,
       });
-      await expect(
-        predicates.oncall_eligible?.(context, { providerEntityId: PE }),
-      ).resolves.toBe(true);
+      await expect(predicates.oncall_eligible?.(context, { providerEntityId: PE })).resolves.toBe(
+        true,
+      );
     });
 
     it("an unresolvable CALL denies the per-call predicate whatever the actor's role", async () => {
@@ -459,7 +457,9 @@ describe("M19-T07 §4.9 alert rules", () => {
   });
 
   it("marks system-locked EXACTLY the three the published set pins", () => {
-    const locked = M19_ALERT_RULES.filter((r) => r.systemLocked).map((r) => r.eventType).sort();
+    const locked = M19_ALERT_RULES.filter((r) => r.systemLocked)
+      .map((r) => r.eventType)
+      .sort();
     expect(locked).toEqual([...M19_SYSTEM_LOCKED_ALERT_TYPES].sort());
   });
 
@@ -521,7 +521,13 @@ const SOURCE: TriageVendorSourceContext = {
   caregiverPhoneE164: "+18025554321",
   codeStatusDnr: true,
   allergies: ["penicillin"],
-  currentMedications: ["morphine sulfate ER", "sennosides", "lorazepam", "haloperidol", "oxygen 2L"],
+  currentMedications: [
+    "morphine sulfate ER",
+    "sennosides",
+    "lorazepam",
+    "haloperidol",
+    "oxygen 2L",
+  ],
   primaryDiagnosisLabel: "Lung cancer, stage IV",
   primaryDiagnosisIcd10: "C34.90",
   levelOfCare: "routine_home_care",
@@ -539,7 +545,9 @@ const BINDING: TriageVendorBinding = {
   rnCoverageAttested: true,
 };
 
-function stubAdapter(overrides: Partial<ExternalTriageVendorAdapter> = {}): ExternalTriageVendorAdapter {
+function stubAdapter(
+  overrides: Partial<ExternalTriageVendorAdapter> = {},
+): ExternalTriageVendorAdapter {
   return {
     adapterKey: "tenants/acme-triage",
     supportedProfiles: ["hybrid_phi_min"],
@@ -924,7 +932,13 @@ describe("M19-T07 §2.4 effects runner", () => {
     await expect(
       runEffects(
         null,
-        [{ kind: "set_timestamp", field: "disposition_selected_at" as never, at: "2026-07-31T23:00:00.000Z" }],
+        [
+          {
+            kind: "set_timestamp",
+            field: "disposition_selected_at" as never,
+            at: "2026-07-31T23:00:00.000Z",
+          },
+        ],
         base,
       ),
     ).rejects.toBeInstanceOf(UnknownTriageEffectError);

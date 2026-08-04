@@ -1,3 +1,4 @@
+import { getRequestContext } from "@wardenx/tenancy";
 // apps/backend/src/modules/20-field-safety/seams/providers.ts — M20-T05, the §4.3 seam implementations:
 // pure orchestration over an injected {@link SafetySeamStore}. Each returns the leaf-typed seam interface
 // (`@wardenx/types`) the M1 registry validates and M8 / M17 / M19 / M30 / M32 / M33 / M36 resolve. The
@@ -88,16 +89,15 @@ import type {
   SafetyVisitCheckInStatusDto,
 } from "@wardenx/types";
 import { SAFETY_POLICY_FLOOR, WardenXError } from "@wardenx/types";
-import { getRequestContext } from "@wardenx/tenancy";
 import type { SafetyClinicianSignalCache } from "../consumers/m18-gps-spoof";
 import {
+  lastKnownLocationFrom,
   readCurrentVisitForClinician,
   readLastKnownLocation,
   readOrgShiftLocations,
   readPatientFirstName,
-  lastKnownLocationFrom,
 } from "../consumers/seam-context";
-import { overdueBadgeFor, overdueTierAt, minutesPastExpected } from "../lifecycle/check-in-overdue";
+import { minutesPastExpected, overdueBadgeFor, overdueTierAt } from "../lifecycle/check-in-overdue";
 import { detectCoverageGaps, subscriptionCovers } from "../lifecycle/coverage-gap";
 import { isAfterHours, mergeEffectivePolicy } from "../lifecycle/policy";
 import type {
@@ -158,7 +158,10 @@ export function percentileOf(samples: readonly number[], percentile: number): nu
 
 /** `numerator / denominator`, or 0 when the denominator is 0. Every §4.3 method that uses it also ships
  *  the denominator, so a consumer can never mistake "0 over nothing" for "0 over a hundred". */
-export function rateOf(counts: { readonly numerator: number; readonly denominator: number }): number {
+export function rateOf(counts: {
+  readonly numerator: number;
+  readonly denominator: number;
+}): number {
   return counts.denominator === 0 ? 0 : counts.numerator / counts.denominator;
 }
 
@@ -509,10 +512,7 @@ export function createSafetyMetricsProvider(
   orgOf: SafetySeamOrgResolver = defaultSafetySeamOrgResolver,
   timeZoneOf: SafetySeamTimeZoneResolver = () => null,
 ): SafetyMetricsProvider {
-  const windowed = async <T>(
-    orgId: OrgId,
-    read: () => Promise<T>,
-  ): Promise<T> => {
+  const windowed = async <T>(orgId: OrgId, read: () => Promise<T>): Promise<T> => {
     assertCallerOrg(orgOf, orgId);
     return read();
   };
@@ -720,4 +720,3 @@ export function createSafetyDashboardProvider(
     },
   };
 }
-

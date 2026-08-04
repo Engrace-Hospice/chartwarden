@@ -91,7 +91,10 @@ export type SupplySideEffect =
   /** §2.7 — signed change to `par_stock.current_quantity` (decimal string; negative on a dispatch). */
   | { readonly kind: "adjust_par_stock"; readonly delta: string; readonly nextQuantity: string }
   /** §4.5.2 — ask M22 for the BOL / packing list or the DEA-1304-format return receipt. */
-  | { readonly kind: "request_document"; readonly documentKind: "bill_of_lading" | "return_receipt" };
+  | {
+      readonly kind: "request_document";
+      readonly documentKind: "bill_of_lading" | "return_receipt";
+    };
 
 /** A transition's full result — the new state + its ordered side-effect list. */
 export interface SupplyTransitionResult<S extends string, E extends string> {

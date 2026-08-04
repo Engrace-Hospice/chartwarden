@@ -40,9 +40,15 @@ describe("§W-FHIR-08 sliding-window decision", () => {
   });
 
   it("fails closed on a non-positive or non-integer ceiling", () => {
-    expect(fhirRateLimitDecision({ ceilingRps: 0, priorCountInWindow: 0, nowMs: NOW }).allowed).toBe(false);
-    expect(fhirRateLimitDecision({ ceilingRps: -5, priorCountInWindow: 0, nowMs: NOW }).allowed).toBe(false);
-    expect(fhirRateLimitDecision({ ceilingRps: 1.5, priorCountInWindow: 0, nowMs: NOW }).allowed).toBe(false);
+    expect(
+      fhirRateLimitDecision({ ceilingRps: 0, priorCountInWindow: 0, nowMs: NOW }).allowed,
+    ).toBe(false);
+    expect(
+      fhirRateLimitDecision({ ceilingRps: -5, priorCountInWindow: 0, nowMs: NOW }).allowed,
+    ).toBe(false);
+    expect(
+      fhirRateLimitDecision({ ceilingRps: 1.5, priorCountInWindow: 0, nowMs: NOW }).allowed,
+    ).toBe(false);
   });
 
   it("advertises Retry-After of at least 1 second", () => {

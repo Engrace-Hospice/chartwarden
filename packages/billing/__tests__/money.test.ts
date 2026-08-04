@@ -1,11 +1,3 @@
-// @wardenx/billing — M23 money/rate KERNEL (D6 / D7 / D11 / §2.6) pure-domain tests.
-//
-// Billing math is REGULATORY math — a cent off in a claim line is a real Medicare-payment consequence — so
-// all amounts cross boundaries as INTEGER CENTS and the only fractional arithmetic is internal (decimal.js)
-// with an EXPLICIT HALF-UP rounding mode. The largest-remainder allocator is penny-true: parts sum EXACTLY
-// to the total (zero float drift). The billing-specific primitives (per-diem, line-charge, wage-index,
-// sequestration, ratio) round HALF-UP at whole cents and reject negative/non-finite inputs. Pure: no I/O.
-import { describe, expect, it } from "vitest";
 import {
   allocateProportional,
   applySequestration,
@@ -17,6 +9,14 @@ import {
   sumCents,
   toDecimal,
 } from "@wardenx/billing";
+// @wardenx/billing — M23 money/rate KERNEL (D6 / D7 / D11 / §2.6) pure-domain tests.
+//
+// Billing math is REGULATORY math — a cent off in a claim line is a real Medicare-payment consequence — so
+// all amounts cross boundaries as INTEGER CENTS and the only fractional arithmetic is internal (decimal.js)
+// with an EXPLICIT HALF-UP rounding mode. The largest-remainder allocator is penny-true: parts sum EXACTLY
+// to the total (zero float drift). The billing-specific primitives (per-diem, line-charge, wage-index,
+// sequestration, ratio) round HALF-UP at whole cents and reject negative/non-finite inputs. Pure: no I/O.
+import { describe, expect, it } from "vitest";
 
 describe("allocateProportional — sum-preservation invariant (no penny drift)", () => {
   const vectors: ReadonlyArray<readonly [number, readonly number[]]> = [
@@ -94,7 +94,8 @@ describe("allocateProportional — input validation + empty", () => {
 });
 
 describe("fromDecimal — HALF-UP rounding at whole cents", () => {
-  it("rounds 1.5 → 2 (half away from zero)", () => expect(fromDecimal(toDecimal(3).div(2))).toBe(2));
+  it("rounds 1.5 → 2 (half away from zero)", () =>
+    expect(fromDecimal(toDecimal(3).div(2))).toBe(2));
   it("rounds -1.5 → -2 (half away from zero for negatives)", () =>
     expect(fromDecimal(toDecimal(-3).div(2))).toBe(-2));
   it("rounds 2.5 → 3", () => expect(fromDecimal(toDecimal(5).div(2))).toBe(3));
@@ -150,7 +151,8 @@ describe("lineChargeCents — unitCount × unitRate, HALF-UP at whole cents", ()
 });
 
 describe("applyWageIndexFactor — base rate × factor, HALF-UP at whole cents", () => {
-  it("identity at factor 1.0000", () => expect(applyWageIndexFactor(20_000, "1.0000")).toBe(20_000));
+  it("identity at factor 1.0000", () =>
+    expect(applyWageIndexFactor(20_000, "1.0000")).toBe(20_000));
 
   it("scales by a sub-1 factor", () => {
     // 20000 × 0.9234 = 18468.0 (exact).

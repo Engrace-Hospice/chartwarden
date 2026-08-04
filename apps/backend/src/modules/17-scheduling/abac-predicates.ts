@@ -93,7 +93,12 @@ export function buildSchedulingAbacPredicates(
       const serviceDate = targetStr(target, "serviceDate");
       if (!membershipId || !visitPurpose || !serviceDate) return false; // incomplete target → deny
       if (!isVisitPurpose(visitPurpose)) return false; // unknown purpose → deny
-      return resolver.credentialsActiveForPurpose(context.organizationId, membershipId, visitPurpose, serviceDate);
+      return resolver.credentialsActiveForPurpose(
+        context.organizationId,
+        membershipId,
+        visitPurpose,
+        serviceDate,
+      );
     },
     discipline_matches_visit: async (context, target) => {
       const membershipId = targetStr(target, "membershipId");

@@ -263,7 +263,13 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
           .from(VISIT)
           .where(and(...conds));
         if (visits.length === 0) {
-          return { compliant: 0, documentedMissing: 0, unresolvedMissing: 0, notRequired: 0, total: 0 };
+          return {
+            compliant: 0,
+            documentedMissing: 0,
+            unresolvedMissing: 0,
+            notRequired: 0,
+            total: 0,
+          };
         }
         const ids = visits.map((v) => v.id);
         // Two batched reads over the id set (inArray — never an N+1): the active event pair + the
@@ -313,25 +319,28 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
 
     // ── aggregator reads (EvvAggregatorReferenceReader) ────────────────────────────────────────────────
     async submissionForVisit(visitId) {
-      return withOrgContextFromRequest(db, async (tx): Promise<EvvAggregatorSubmissionDto | null> => {
-        // THE submission is the newest non-cancelled row (the §3.2 Phase-E partial UNIQUE admits one active
-        // per state); when every row was cancelled the newest cancelled one is still the honest M25
-        // denial-back-link answer.
-        const [active] = await tx
-          .select()
-          .from(AGG)
-          .where(and(eq(AGG.visitId, visitId), sql`${AGG.status} <> 'cancelled'`))
-          .orderBy(desc(AGG.createdAt))
-          .limit(1);
-        if (active) return toSubmissionDto(active);
-        const [latest] = await tx
-          .select()
-          .from(AGG)
-          .where(eq(AGG.visitId, visitId))
-          .orderBy(desc(AGG.createdAt))
-          .limit(1);
-        return latest ? toSubmissionDto(latest) : null;
-      });
+      return withOrgContextFromRequest(
+        db,
+        async (tx): Promise<EvvAggregatorSubmissionDto | null> => {
+          // THE submission is the newest non-cancelled row (the §3.2 Phase-E partial UNIQUE admits one active
+          // per state); when every row was cancelled the newest cancelled one is still the honest M25
+          // denial-back-link answer.
+          const [active] = await tx
+            .select()
+            .from(AGG)
+            .where(and(eq(AGG.visitId, visitId), sql`${AGG.status} <> 'cancelled'`))
+            .orderBy(desc(AGG.createdAt))
+            .limit(1);
+          if (active) return toSubmissionDto(active);
+          const [latest] = await tx
+            .select()
+            .from(AGG)
+            .where(eq(AGG.visitId, visitId))
+            .orderBy(desc(AGG.createdAt))
+            .limit(1);
+          return latest ? toSubmissionDto(latest) : null;
+        },
+      );
     },
 
     // ── location reads (EvvLocationProvider — the only coordinate-bearing surface, D10) ────────────────

@@ -65,7 +65,11 @@ export function controlledSubstanceWitnessEligible(
   if (input.witnessIsCaregiver) {
     return { eligible: false, reason: "is_caregiver" };
   }
-  if (!(WITNESS_ELIGIBLE_DISCIPLINES as readonly string[]).includes(disciplineKey(input.witnessDiscipline))) {
+  if (
+    !(WITNESS_ELIGIBLE_DISCIPLINES as readonly string[]).includes(
+      disciplineKey(input.witnessDiscipline),
+    )
+  ) {
     return { eligible: false, reason: "discipline_ineligible" };
   }
   if (!input.witnessMembershipActive || !input.sameTenant) {
@@ -83,7 +87,9 @@ export function controlledSubstanceWitnessEligible(
  * witness is ineligible. On success returns `{ isBreakGlass }` so the route emits the warn audit event for a
  * break-glass witness (§2.6). Used by the administration write gate before the `administration_witness` insert.
  */
-export function assertWitnessEligible(input: WitnessEligibilityInput): { readonly isBreakGlass: boolean } {
+export function assertWitnessEligible(input: WitnessEligibilityInput): {
+  readonly isBreakGlass: boolean;
+} {
   const r = controlledSubstanceWitnessEligible(input);
   if (!r.eligible) {
     throw new AdministrationStateError(

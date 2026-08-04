@@ -378,8 +378,14 @@ type _ReferralAccept = Conforms<
   Static<typeof ReferralAcceptResponseSchema>,
   ServiceMutationResult & { admissionId: string }
 >;
-type _AdmissionDetail = Conforms<Static<typeof AdmissionDetailResponseSchema>, ServiceAdmissionDetail>;
-type _SummaryPage = Conforms<Static<typeof SummaryPageResponseSchema>, ServicePage<ServiceSummaryRow>>;
+type _AdmissionDetail = Conforms<
+  Static<typeof AdmissionDetailResponseSchema>,
+  ServiceAdmissionDetail
+>;
+type _SummaryPage = Conforms<
+  Static<typeof SummaryPageResponseSchema>,
+  ServicePage<ServiceSummaryRow>
+>;
 type _SummaryItems = Conforms<
   Static<typeof SummaryItemsResponseSchema>,
   { readonly items: readonly ServiceSummaryRow[] }
@@ -387,7 +393,10 @@ type _SummaryItems = Conforms<
 // The published election/cert schema keeps `admission` + `complianceWindows` pinned to the service view;
 // `periods` is intentionally loose (see the schema note), so we pin only the flat, non-nested slices.
 type _PatientElectionCertFlat = Conforms<
-  Pick<Static<typeof PatientElectionCertificationResponseSchema>, "admission" | "complianceWindows">,
+  Pick<
+    Static<typeof PatientElectionCertificationResponseSchema>,
+    "admission" | "complianceWindows"
+  >,
   Pick<ServicePatientElectionCert, "admission" | "complianceWindows">
 >;
 

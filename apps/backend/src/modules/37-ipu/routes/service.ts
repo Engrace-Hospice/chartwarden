@@ -188,36 +188,101 @@ export interface IpuRouteService {
   listAdmissions(actor: IpuReadActor): Promise<readonly AdmissionView[]>;
   getAdmission(actor: IpuReadActor, id: string): Promise<AdmissionView | null>;
   openAdmission(actor: IpuWriteActor, body: OpenAdmissionBody): Promise<AdmissionView>;
-  requestBed(actor: IpuWriteActor, admissionId: string, body: RequestBedBody): Promise<AdmissionView>;
+  requestBed(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: RequestBedBody,
+  ): Promise<AdmissionView>;
   assignBed(actor: IpuWriteActor, admissionId: string, body: AssignBedBody): Promise<AdmissionView>;
   discharge(actor: IpuWriteActor, admissionId: string, body: DischargeBody): Promise<AdmissionView>;
   confirm(actor: IpuWriteActor, admissionId: string, body: ConfirmBody): Promise<AdmissionView>;
-  initiateTransfer(actor: IpuWriteActor, admissionId: string, body: InitiateTransferBody): Promise<AdmissionView>;
-  confirmTransfer(actor: IpuWriteActor, admissionId: string, body: ConfirmTransferBody): Promise<AdmissionView>;
-  attestGip(actor: IpuWriteActor, admissionId: string, body: AttestGipBody): Promise<GipCriteriaView>;
-  reassessGip(actor: IpuWriteActor, admissionId: string, body: ReassessGipBody): Promise<GipCriteriaView>;
-  overrideIrcCap(actor: IpuWriteActor, admissionId: string, body: IrcOverrideBody): Promise<IrcEpisodeView>;
+  initiateTransfer(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: InitiateTransferBody,
+  ): Promise<AdmissionView>;
+  confirmTransfer(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: ConfirmTransferBody,
+  ): Promise<AdmissionView>;
+  attestGip(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: AttestGipBody,
+  ): Promise<GipCriteriaView>;
+  reassessGip(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: ReassessGipBody,
+  ): Promise<GipCriteriaView>;
+  overrideIrcCap(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: IrcOverrideBody,
+  ): Promise<IrcEpisodeView>;
   listShifts(actor: IpuReadActor): Promise<readonly ShiftView[]>;
   createShift(actor: IpuWriteActor, body: CreateShiftBody): Promise<ShiftView>;
-  assignStaff(actor: IpuWriteActor, shiftId: string, body: AssignStaffBody): Promise<StaffAssignmentView>;
-  unassignStaff(actor: IpuWriteActor, shiftId: string, body: UnassignStaffBody): Promise<StaffAssignmentView>;
+  assignStaff(
+    actor: IpuWriteActor,
+    shiftId: string,
+    body: AssignStaffBody,
+  ): Promise<StaffAssignmentView>;
+  unassignStaff(
+    actor: IpuWriteActor,
+    shiftId: string,
+    body: UnassignStaffBody,
+  ): Promise<StaffAssignmentView>;
   getRnCoverage(actor: IpuReadActor, unitId: string): Promise<RnCoverageView>;
-  invokeRnBreakGlass(actor: IpuWriteActor, unitId: string): Promise<{ unitId: string; invoked: boolean }>;
+  invokeRnBreakGlass(
+    actor: IpuWriteActor,
+    unitId: string,
+  ): Promise<{ unitId: string; invoked: boolean }>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
-  applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody): Promise<RestraintView>;
-  reassessRestraint(actor: IpuWriteActor, restraintId: string, body: ReassessRestraintBody): Promise<RestraintView>;
+  applyRestraint(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: ApplyRestraintBody,
+  ): Promise<RestraintView>;
+  reassessRestraint(
+    actor: IpuWriteActor,
+    restraintId: string,
+    body: ReassessRestraintBody,
+  ): Promise<RestraintView>;
   releaseRestraint(actor: IpuWriteActor, restraintId: string): Promise<RestraintView>;
   checkInVisitor(actor: IpuWriteActor, body: CheckInVisitorBody): Promise<VisitorView>;
   checkOutVisitor(actor: IpuWriteActor, visitorId: string): Promise<VisitorView>;
-  applyVisitorRestriction(actor: IpuWriteActor, body: ApplyVisitorRestrictionBody): Promise<VisitorRestrictionView>;
-  liftVisitorRestriction(actor: IpuWriteActor, body: LiftVisitorRestrictionBody): Promise<VisitorRestrictionView>;
+  applyVisitorRestriction(
+    actor: IpuWriteActor,
+    body: ApplyVisitorRestrictionBody,
+  ): Promise<VisitorRestrictionView>;
+  liftVisitorRestriction(
+    actor: IpuWriteActor,
+    body: LiftVisitorRestrictionBody,
+  ): Promise<VisitorRestrictionView>;
   logMeal(actor: IpuWriteActor, body: LogMealBody): Promise<MealView>;
   listEquipment(actor: IpuReadActor): Promise<readonly EquipmentView[]>;
   createEquipment(actor: IpuWriteActor, body: CreateEquipmentBody): Promise<EquipmentView>;
-  logMaintenance(actor: IpuWriteActor, equipmentId: string, body: LogMaintenanceBody): Promise<EquipmentView>;
-  logInspection(actor: IpuWriteActor, equipmentId: string, body: LogInspectionBody): Promise<EquipmentView>;
-  assignEquipmentBed(actor: IpuWriteActor, equipmentId: string, body: AssignEquipmentBedBody): Promise<EquipmentView>;
+  logMaintenance(
+    actor: IpuWriteActor,
+    equipmentId: string,
+    body: LogMaintenanceBody,
+  ): Promise<EquipmentView>;
+  logInspection(
+    actor: IpuWriteActor,
+    equipmentId: string,
+    body: LogInspectionBody,
+  ): Promise<EquipmentView>;
+  assignEquipmentBed(
+    actor: IpuWriteActor,
+    equipmentId: string,
+    body: AssignEquipmentBedBody,
+  ): Promise<EquipmentView>;
   getBodyRelease(actor: IpuReadActor, admissionId: string): Promise<BodyReleaseView | null>;
-  advanceBodyRelease(actor: IpuWriteActor, admissionId: string, body: AdvanceBodyReleaseBody): Promise<BodyReleaseView>;
+  advanceBodyRelease(
+    actor: IpuWriteActor,
+    admissionId: string,
+    body: AdvanceBodyReleaseBody,
+  ): Promise<BodyReleaseView>;
 }

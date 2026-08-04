@@ -11,7 +11,10 @@ import type { PatientIdentity, PatientReader } from "@wardenx/types";
 import type { Hl7InboundMatchLevel } from "@wardenx/types";
 
 /** The confident (L1-L3), candidate (L4-L5), and ambiguous match levels, typed off the leaf enum. */
-type ConfidentLevel = Extract<Hl7InboundMatchLevel, "L1_MRN_EXACT" | "L2_EXTERNAL_MRN_EXACT" | "L3_SSN_DOB">;
+type ConfidentLevel = Extract<
+  Hl7InboundMatchLevel,
+  "L1_MRN_EXACT" | "L2_EXTERNAL_MRN_EXACT" | "L3_SSN_DOB"
+>;
 type CandidateLevel = Extract<
   Hl7InboundMatchLevel,
   "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE" | "L5_LOOSE_NAME_DOB_CANDIDATE"
@@ -23,7 +26,12 @@ type AmbiguousLevel = Extract<
 
 /** The discriminated cascade outcome (§4.6). `confidence` mirrors the D6 fixed weights (L4 0.92, L5 0.78). */
 export type MatchOutcome =
-  | { readonly kind: "confident_match"; readonly patientId: string; readonly level: ConfidentLevel; readonly mergeRedirectHops: number }
+  | {
+      readonly kind: "confident_match";
+      readonly patientId: string;
+      readonly level: ConfidentLevel;
+      readonly mergeRedirectHops: number;
+    }
   | {
       readonly kind: "candidate_match";
       readonly patientId: string;
@@ -31,7 +39,11 @@ export type MatchOutcome =
       readonly confidence: number;
       readonly mergeRedirectHops: number;
     }
-  | { readonly kind: "ambiguous"; readonly candidateIds: readonly string[]; readonly level: AmbiguousLevel }
+  | {
+      readonly kind: "ambiguous";
+      readonly candidateIds: readonly string[];
+      readonly level: AmbiguousLevel;
+    }
   | { readonly kind: "no_match" };
 
 /** The parsed PID the cascade matches on (projected by {@link projectAdt}). */
@@ -76,24 +88,39 @@ export async function matchPatient(input: CascadeInput, deps: CascadeDeps): Prom
 
   // ─── Level 1: internal MRN exact ────────────────────────────────────────
   if (input.internalMrnAuthority) {
-    const internalId = pid.identifiers.find((id) => id.assigningAuthority === input.internalMrnAuthority);
+    const internalId = pid.identifiers.find(
+      (id) => id.assigningAuthority === input.internalMrnAuthority,
+    );
     if (internalId?.value) {
       const hit = await withTimeout(
-        deps.patientReader.findByMrn({ organizationId: input.organizationId, mrn: internalId.value }),
+        deps.patientReader.findByMrn({
+          organizationId: input.organizationId,
+          mrn: internalId.value,
+        }),
         timeoutMs,
         "L1_MRN_EXACT",
       );
       const resolved = hit ? await resolveMerge(hit, input.organizationId, deps) : null;
       if (resolved?.patient) {
-        log("hl7.cascade.confident_match", { level: "L1_MRN_EXACT", patientId: resolved.patient.id, hops: resolved.hops });
-        return { kind: "confident_match", patientId: resolved.patient.id, level: "L1_MRN_EXACT", mergeRedirectHops: resolved.hops };
+        log("hl7.cascade.confident_match", {
+          level: "L1_MRN_EXACT",
+          patientId: resolved.patient.id,
+          hops: resolved.hops,
+        });
+        return {
+          kind: "confident_match",
+          patientId: resolved.patient.id,
+          level: "L1_MRN_EXACT",
+          mergeRedirectHops: resolved.hops,
+        };
       }
     }
   }
 
   // ─── Level 2: external-system MRN exact ─────────────────────────────────
   for (const id of pid.identifiers) {
-    if (input.internalMrnAuthority && id.assigningAuthority === input.internalMrnAuthority) continue;
+    if (input.internalMrnAuthority && id.assigningAuthority === input.internalMrnAuthority)
+      continue;
     if (!id.value || !id.assigningAuthority) continue;
     const hit = await withTimeout(
       deps.patientReader.findByExternalMrn({
@@ -106,8 +133,17 @@ export async function matchPatient(input: CascadeInput, deps: CascadeDeps): Prom
     );
     const resolved = hit ? await resolveMerge(hit, input.organizationId, deps) : null;
     if (resolved?.patient) {
-      log("hl7.cascade.confident_match", { level: "L2_EXTERNAL_MRN_EXACT", patientId: resolved.patient.id, hops: resolved.hops });
-      return { kind: "confident_match", patientId: resolved.patient.id, level: "L2_EXTERNAL_MRN_EXACT", mergeRedirectHops: resolved.hops };
+      log("hl7.cascade.confident_match", {
+        level: "L2_EXTERNAL_MRN_EXACT",
+        patientId: resolved.patient.id,
+        hops: resolved.hops,
+      });
+      return {
+        kind: "confident_match",
+        patientId: resolved.patient.id,
+        level: "L2_EXTERNAL_MRN_EXACT",
+        mergeRedirectHops: resolved.hops,
+      };
     }
   }
 
@@ -128,11 +164,23 @@ export async function matchPatient(input: CascadeInput, deps: CascadeDeps): Prom
       if (hits.length === 1) {
         const resolved = await resolveMerge(hits[0]!, input.organizationId, deps);
         if (resolved.patient) {
-          log("hl7.cascade.confident_match", { level: "L3_SSN_DOB", patientId: resolved.patient.id, hops: resolved.hops });
-          return { kind: "confident_match", patientId: resolved.patient.id, level: "L3_SSN_DOB", mergeRedirectHops: resolved.hops };
+          log("hl7.cascade.confident_match", {
+            level: "L3_SSN_DOB",
+            patientId: resolved.patient.id,
+            hops: resolved.hops,
+          });
+          return {
+            kind: "confident_match",
+            patientId: resolved.patient.id,
+            level: "L3_SSN_DOB",
+            mergeRedirectHops: resolved.hops,
+          };
         }
       } else if (hits.length > 1) {
-        log("hl7.cascade.ambiguous_fallthrough", { level: "L3_SSN_DOB", candidateCount: hits.length });
+        log("hl7.cascade.ambiguous_fallthrough", {
+          level: "L3_SSN_DOB",
+          candidateCount: hits.length,
+        });
         return { kind: "ambiguous", candidateIds: hits.map((h) => h.id), level: "L3_SSN_DOB" };
       }
     }
@@ -154,7 +202,11 @@ export async function matchPatient(input: CascadeInput, deps: CascadeDeps): Prom
     if (hits.length === 1) {
       const resolved = await resolveMerge(hits[0]!, input.organizationId, deps);
       if (resolved.patient) {
-        log("hl7.cascade.candidate_match", { level: "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE", patientId: resolved.patient.id, hops: resolved.hops });
+        log("hl7.cascade.candidate_match", {
+          level: "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE",
+          patientId: resolved.patient.id,
+          hops: resolved.hops,
+        });
         return {
           kind: "candidate_match",
           patientId: resolved.patient.id,
@@ -165,7 +217,11 @@ export async function matchPatient(input: CascadeInput, deps: CascadeDeps): Prom
       }
     } else if (hits.length > 1) {
       log("hl7.cascade.ambiguous_l4", { candidateCount: hits.length });
-      return { kind: "ambiguous", candidateIds: hits.map((h) => h.id), level: "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE" };
+      return {
+        kind: "ambiguous",
+        candidateIds: hits.map((h) => h.id),
+        level: "L4_DEMOGRAPHIC_BRIDGE_CANDIDATE",
+      };
     }
   }
 
@@ -184,7 +240,11 @@ export async function matchPatient(input: CascadeInput, deps: CascadeDeps): Prom
     if (hits.length === 1) {
       const resolved = await resolveMerge(hits[0]!, input.organizationId, deps);
       if (resolved.patient) {
-        log("hl7.cascade.candidate_match", { level: "L5_LOOSE_NAME_DOB_CANDIDATE", patientId: resolved.patient.id, hops: resolved.hops });
+        log("hl7.cascade.candidate_match", {
+          level: "L5_LOOSE_NAME_DOB_CANDIDATE",
+          patientId: resolved.patient.id,
+          hops: resolved.hops,
+        });
         return {
           kind: "candidate_match",
           patientId: resolved.patient.id,
@@ -207,7 +267,11 @@ interface MergeResolveResult {
 }
 
 /** Follow `mergedIntoId` to the survivor (≤ {@link MAX_MERGE_HOPS}); dangling/over-long ⇒ null (fail closed). */
-async function resolveMerge(start: PatientIdentity, organizationId: string, deps: CascadeDeps): Promise<MergeResolveResult> {
+async function resolveMerge(
+  start: PatientIdentity,
+  organizationId: string,
+  deps: CascadeDeps,
+): Promise<MergeResolveResult> {
   const log = deps.log ?? (() => {});
   let current: PatientIdentity | null = start;
   let hops = 0;
@@ -215,7 +279,11 @@ async function resolveMerge(start: PatientIdentity, organizationId: string, deps
     hops++;
     const next = await deps.patientReader.findById({ organizationId, id: current.mergedIntoId });
     if (!next) {
-      log("hl7.cascade.merge_dangling", { startPatientId: start.id, dangling: current.mergedIntoId, hops });
+      log("hl7.cascade.merge_dangling", {
+        startPatientId: start.id,
+        dangling: current.mergedIntoId,
+        hops,
+      });
       return { patient: null, hops };
     }
     current = next;

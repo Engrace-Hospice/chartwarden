@@ -101,7 +101,12 @@ export type InvoiceLineKind =
   | "proration";
 
 /** §3.3 `refund_status` — the D16 four-stage refund workflow terminal + interim states. */
-export type RefundStatus = "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+export type RefundStatus =
+  | "requested"
+  | "approved"
+  | "denied"
+  | "executed_success"
+  | "executed_failed";
 
 /** §3.3 `refund_kind` — the shape of a refund against an invoice. */
 export type RefundKind = "full" | "partial" | "credit_only";

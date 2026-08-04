@@ -1,3 +1,4 @@
+import { ValidationError } from "@wardenx/types";
 // apps/backend/__tests__/m24-route-validation.test.ts — M24 (§4.2) request-validation conformance.
 //
 // The M24 routes bind the `m24-typebox` schemas through `parse(...)` at the route boundary, so a malformed
@@ -14,7 +15,6 @@
 //   - `parse` (bodies) deliberately does NOT convert, so a wrong-typed money field is REJECTED rather than
 //     rounded — coercion there would turn a client bug into a silent money bug.
 import { describe, expect, it } from "vitest";
-import { ValidationError } from "@wardenx/types";
 import {
   ApplyOverrideBody,
   AssembleClaimBody,
@@ -102,7 +102,10 @@ describe("M24 §4.2 request validation — bodies", () => {
   });
 
   it("constrains the override body to an eligible role and a ≥40-character rationale", () => {
-    const ok = parse(ApplyOverrideBody, { reason: REASON, overrideRoleClaimed: "compliance_officer" });
+    const ok = parse(ApplyOverrideBody, {
+      reason: REASON,
+      overrideRoleClaimed: "compliance_officer",
+    });
     expect(ok.overrideRoleClaimed).toBe("compliance_officer");
     expectRejected(ApplyOverrideBody, { reason: REASON, overrideRoleClaimed: "biller" });
     expectRejected(ApplyOverrideBody, { reason: "too short", overrideRoleClaimed: "org_admin" });
@@ -117,9 +120,9 @@ describe("M24 §4.2 request validation — bodies", () => {
   });
 
   it("refuses `billed` as a manual rb_day override — that status is system-set by claim assembly", () => {
-    expect(parse(OverrideRbDayBody, { status: "excluded", exclusionReason: "NF discharge" }).status).toBe(
-      "excluded",
-    );
+    expect(
+      parse(OverrideRbDayBody, { status: "excluded", exclusionReason: "NF discharge" }).status,
+    ).toBe("excluded");
     expectRejected(OverrideRbDayBody, { status: "billed" });
   });
 

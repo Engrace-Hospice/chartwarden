@@ -10,9 +10,9 @@ import type { Npi } from "@wardenx/types";
 import { isValidNpi } from "./npi-validate";
 import { RateLimiter } from "./rate-limiter";
 import {
-  classifyNppesResponse,
   type NppesApiResponse,
   type NppesFetchResult,
+  classifyNppesResponse,
 } from "./response-projection";
 
 /** The injected HTTP surface (a subset of the DOM/undici `fetch`). */
@@ -44,7 +44,10 @@ export interface NppesClientConfig {
 
 /** A retryable transport failure (429 / 5xx) — surfaces `status` so backoff can log it. */
 export class RetryableHttpError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message);
     this.name = "RetryableHttpError";
   }
@@ -61,7 +64,11 @@ export class NppesClient {
   private readonly maxRetries: number;
   private readonly rateLimiter: RateLimiter;
   private readonly sleep: (ms: number) => Promise<void>;
-  private readonly log: (level: "info" | "warn", event: string, fields: Record<string, unknown>) => void;
+  private readonly log: (
+    level: "info" | "warn",
+    event: string,
+    fields: Record<string, unknown>,
+  ) => void;
 
   constructor(config: NppesClientConfig) {
     this.fetch = config.fetch;
@@ -101,7 +108,12 @@ export class NppesClient {
         }
         // Deterministic exponential backoff (no jitter — the injected sleeper is faked under test).
         const backoffMs = 500 * 2 ** attempt;
-        this.log("info", "nppes.fetch.retryable_backoff", { npi, attempt, backoffMs, status: err.status });
+        this.log("info", "nppes.fetch.retryable_backoff", {
+          npi,
+          attempt,
+          backoffMs,
+          status: err.status,
+        });
         await this.sleep(backoffMs);
       }
     }

@@ -1,3 +1,4 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Tier-2 layouts (@wardenx/ui), filled with realistic Lantern content so future
 // screens compose on-system by construction. A sample of the foundational + domain patterns.
 import {
@@ -14,14 +15,17 @@ import {
   SchedulingCalendarLayout,
   WorkQueueLayout,
 } from "@wardenx/ui";
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 const meta: Meta = { title: "Lantern/Layouts", parameters: { layout: "fullscreen" } };
 export default meta;
 
 function Frame({ children }: { children: JSX.Element }): JSX.Element {
-  return <div style={{ height: "100vh", background: "var(--color-background)", display: "flex" }}>{children}</div>;
+  return (
+    <div style={{ height: "100vh", background: "var(--color-background)", display: "flex" }}>
+      {children}
+    </div>
+  );
 }
 
 const cell = { padding: "0.5rem 0.75rem", fontSize: "0.8125rem" } as const;
@@ -39,7 +43,11 @@ export const WorkQueue: StoryObj = {
             <KpiCard label="Signed today" value="31" />
           </KpiStrip>
         }
-        filters={<FilterBar><input placeholder="Search…" /></FilterBar>}
+        filters={
+          <FilterBar>
+            <input placeholder="Search…" />
+          </FilterBar>
+        }
         table={
           <table>
             <thead>
@@ -83,8 +91,19 @@ export const MarGrid: StoryObj = {
   render: () => (
     <Frame>
       <MarGridLayout
-        banner={<PatientBanner name="Eleanor Whitfield" mrn="MRN-0042817" dob="1939-03-12" codeStatus="DNR" />}
-        windowControls={<FilterBar actions={<button type="button">Day view</button>}><strong>Day shift · 06/24</strong></FilterBar>}
+        banner={
+          <PatientBanner
+            name="Eleanor Whitfield"
+            mrn="MRN-0042817"
+            dob="1939-03-12"
+            codeStatus="DNR"
+          />
+        }
+        windowControls={
+          <FilterBar actions={<button type="button">Day view</button>}>
+            <strong>Day shift · 06/24</strong>
+          </FilterBar>
+        }
         grid={
           <table>
             <thead>
@@ -130,7 +149,18 @@ export const Scheduling: StoryObj = {
   render: () => (
     <Frame>
       <SchedulingCalendarLayout
-        header={<PageHeader title="Visit Calendar" actions={<><button type="button">Day</button><button type="button">Week</button><button type="button">Map</button></>} />}
+        header={
+          <PageHeader
+            title="Visit Calendar"
+            actions={
+              <>
+                <button type="button">Day</button>
+                <button type="button">Week</button>
+                <button type="button">Map</button>
+              </>
+            }
+          />
+        }
         roster={
           <div style={{ padding: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <strong>Roster</strong>
@@ -140,8 +170,16 @@ export const Scheduling: StoryObj = {
             <GuardChip reason="2 visits unassigned" onFix={() => {}} />
           </div>
         }
-        calendar={<div style={{ padding: "1.5rem", color: "var(--color-on-surface-variant)" }}>Calendar grid (clinicians × time)…</div>}
-        detail={<RightDetailPanel title="09:00 · E. Whitfield"><p>Route + conflicts.</p></RightDetailPanel>}
+        calendar={
+          <div style={{ padding: "1.5rem", color: "var(--color-on-surface-variant)" }}>
+            Calendar grid (clinicians × time)…
+          </div>
+        }
+        detail={
+          <RightDetailPanel title="09:00 · E. Whitfield">
+            <p>Route + conflicts.</p>
+          </RightDetailPanel>
+        }
       />
     </Frame>
   ),
@@ -152,11 +190,33 @@ export const Portal: StoryObj = {
   render: () => (
     <Frame>
       <PortalDashboardLayout
-        summary={<h1 style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>Good afternoon, Sarah</h1>}
-        safety={<strong style={{ color: "var(--color-alert)" }}>Need help now? Call the 24/7 care line: (800) 555-0142</strong>}
+        summary={
+          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 500 }}>
+            Good afternoon, Sarah
+          </h1>
+        }
+        safety={
+          <strong style={{ color: "var(--color-alert)" }}>
+            Need help now? Call the 24/7 care line: (800) 555-0142
+          </strong>
+        }
       >
-        {["Your care team", "Next visit — Thu 10:00 AM", "Messages (1 new)", "Documents to review (2)"].map((c) => (
-          <div key={c} style={{ background: "var(--color-surface-lowest)", borderRadius: "1rem", boxShadow: "var(--shadow-soft)", padding: "1.5rem", fontSize: "1.0625rem" }}>
+        {[
+          "Your care team",
+          "Next visit — Thu 10:00 AM",
+          "Messages (1 new)",
+          "Documents to review (2)",
+        ].map((c) => (
+          <div
+            key={c}
+            style={{
+              background: "var(--color-surface-lowest)",
+              borderRadius: "1rem",
+              boxShadow: "var(--shadow-soft)",
+              padding: "1.5rem",
+              fontSize: "1.0625rem",
+            }}
+          >
             {c}
           </div>
         ))}

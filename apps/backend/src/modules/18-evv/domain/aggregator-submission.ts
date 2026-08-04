@@ -1,3 +1,4 @@
+import type { AggregatorPollResult, AggregatorSubmitResult } from "@wardenx/evv-aggregators";
 // apps/backend/src/modules/18-evv/domain/aggregator-submission.ts — M18-T06 (§2.2.5 D7, §7.8, §7.9).
 //
 // The pure per-state `evv_aggregator_submission` D7 state machine. One row per (state, visit) carries the
@@ -21,8 +22,7 @@
 // block the Medicare claim (only an `unresolved_missing` bracket does). The aggregator handshake is the
 // state-Medicaid EVV substantiation, surfaced to M24/M25 via `EvvAggregatorReferenceReader`.
 import type { EvvAggregatorSubmissionStatus } from "@wardenx/types";
-import type { AggregatorPollResult, AggregatorSubmitResult } from "@wardenx/evv-aggregators";
-import { type EvvSideEffect } from "./effects";
+import type { EvvSideEffect } from "./effects";
 import { EvvStateError, require_ } from "./errors";
 
 /** A §2.2.5 transition event. Per-event facts (operator identity, the adapter's result) are resolved upstream
@@ -77,13 +77,17 @@ export function isAggregatorSubmissionTerminal(status: EvvAggregatorSubmissionSt
 }
 
 /** Whether a status accepts an operator resubmit (D7 — only `rejected` / `timeout`). */
-export function isAggregatorSubmissionResubmittable(status: EvvAggregatorSubmissionStatus): boolean {
+export function isAggregatorSubmissionResubmittable(
+  status: EvvAggregatorSubmissionStatus,
+): boolean {
   return status === "rejected" || status === "timeout";
 }
 
 /** Whether a status accepts an operator cancel (D7 — any non-terminal status). */
 export function isAggregatorSubmissionCancellable(status: EvvAggregatorSubmissionStatus): boolean {
-  return status === "pending" || status === "queued" || status === "submitting" || status === "submitted";
+  return (
+    status === "pending" || status === "queued" || status === "submitting" || status === "submitted"
+  );
 }
 
 /** Effects for entering `accepted` — the §7.8 billing-ready signal M23/M24 read. */
@@ -168,11 +172,21 @@ export function transitionAggregatorSubmission(
 
   switch (event.type) {
     case "queue":
-      return { status: "queued", event: event.type, effects: [{ kind: "audit" }], incrementsAttempt: false };
+      return {
+        status: "queued",
+        event: event.type,
+        effects: [{ kind: "audit" }],
+        incrementsAttempt: false,
+      };
 
     case "dispatch":
       // Entering the in-flight adapter call counts as an attempt (instrumentation per §3.3).
-      return { status: "submitting", event: event.type, effects: [{ kind: "audit" }], incrementsAttempt: true };
+      return {
+        status: "submitting",
+        event: event.type,
+        effects: [{ kind: "audit" }],
+        incrementsAttempt: true,
+      };
 
     case "ack_async":
       return {
@@ -193,7 +207,12 @@ export function transitionAggregatorSubmission(
     }
 
     case "circuit_retry":
-      return { status: "queued", event: event.type, effects: [{ kind: "audit" }], incrementsAttempt: false };
+      return {
+        status: "queued",
+        event: event.type,
+        effects: [{ kind: "audit" }],
+        incrementsAttempt: false,
+      };
 
     case "resubmit":
       require_(
@@ -201,7 +220,12 @@ export function transitionAggregatorSubmission(
         "EVV_AGGREGATOR_NOT_RESUBMITTABLE",
         "An aggregator submission may be resubmitted only from 'rejected' or 'timeout' (D7).",
       );
-      return { status: "queued", event: event.type, effects: [{ kind: "audit" }], incrementsAttempt: true };
+      return {
+        status: "queued",
+        event: event.type,
+        effects: [{ kind: "audit" }],
+        incrementsAttempt: true,
+      };
 
     case "cancel":
       require_(

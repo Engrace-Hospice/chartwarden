@@ -37,8 +37,8 @@ import {
   type M23UpstreamSubscription,
   M23_LIVE_SUBSCRIPTION_TOPICS,
   M23_UPSTREAM_SUBSCRIPTIONS,
-  M40_CANONICAL_UPDATED_TOPIC,
   M26_CAP_PROJECTION_TOPIC,
+  M40_CANONICAL_UPDATED_TOPIC,
 } from "./subscription-map";
 
 /**
@@ -69,7 +69,10 @@ export type M23UpstreamEvent =
   | { readonly topic: "m25.remittance.claim_partial_paid"; readonly payload: RemittancePostedEvent }
   | { readonly topic: "m25.remittance.claim_denied"; readonly payload: RemittancePostedEvent }
   | { readonly topic: "m25.remittance.claim_adjusted"; readonly payload: RemittancePostedEvent }
-  | { readonly topic: typeof M26_CAP_PROJECTION_TOPIC; readonly payload: CapProjectionChangedEvent };
+  | {
+      readonly topic: typeof M26_CAP_PROJECTION_TOPIC;
+      readonly payload: CapProjectionChangedEvent;
+    };
 
 /**
  * Route one delivered upstream event to its pure handler (the dispatcher's single entry point). Returns the

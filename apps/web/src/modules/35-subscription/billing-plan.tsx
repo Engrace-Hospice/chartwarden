@@ -55,7 +55,9 @@ export function BillingPlan(): JSX.Element {
       return;
     }
     setPlans((plansRes.data as unknown as Plan[]) ?? []);
-    setCurrentSlug(subRes.error ? null : ((subRes.data as unknown as { planSlug: string }).planSlug ?? null));
+    setCurrentSlug(
+      subRes.error ? null : ((subRes.data as unknown as { planSlug: string }).planSlug ?? null),
+    );
     setLoading(false);
   }, [client]);
 
@@ -106,7 +108,12 @@ function PlanCard({ plan, isCurrent }: { plan: Plan; isCurrent: boolean }): JSX.
       }}
     >
       <div
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "0.5rem",
+        }}
       >
         <span style={{ fontFamily: "var(--font-display)", fontSize: "1.1rem", fontWeight: 600 }}>
           {plan.name}
@@ -137,7 +144,9 @@ function PlanCard({ plan, isCurrent }: { plan: Plan; isCurrent: boolean }): JSX.
       ) : null}
 
       {plan.meters.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.25rem" }}>
+        <div
+          style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.25rem" }}
+        >
           <span
             style={{
               fontSize: "0.65rem",
@@ -152,11 +161,17 @@ function PlanCard({ plan, isCurrent }: { plan: Plan; isCurrent: boolean }): JSX.
           {plan.meters.map((m) => (
             <div
               key={m.eventType}
-              style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", gap: "0.5rem" }}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: "0.8rem",
+                gap: "0.5rem",
+              }}
             >
               <span>{m.label}</span>
               <span className="tabular-nums" style={{ color: "var(--color-on-surface-variant)" }}>
-                {m.inclusiveQuantity.toLocaleString()} incl · {formatCents(m.overageUnitPriceCents, plan.currencyCode)}/ea
+                {m.inclusiveQuantity.toLocaleString()} incl ·{" "}
+                {formatCents(m.overageUnitPriceCents, plan.currencyCode)}/ea
               </span>
             </div>
           ))}

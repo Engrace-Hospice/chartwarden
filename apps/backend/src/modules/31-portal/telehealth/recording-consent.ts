@@ -1,3 +1,4 @@
+import { requireTelehealth } from "./errors";
 // apps/backend/src/modules/31-portal/telehealth/recording-consent.ts — M31-T05 (§7.4 D9 two-party gate).
 //
 // The D9 recording-consent decision as a PURE evaluator, backing the `state_two_party_recording_consent_present`
@@ -10,7 +11,6 @@
 // need no consent to be recorded. Fails CLOSED — an unknown state is treated as two-party (see state-matrix),
 // and any participant missing consent denies the whole room.
 import { isTwoPartyRecordingState } from "./state-matrix";
-import { requireTelehealth } from "./errors";
 
 /** One participant's recording-consent facts, as resolved from M5 (state) + M39 (consent) by the route layer. */
 export interface RecordingConsentParticipant {
@@ -46,7 +46,11 @@ export function evaluateRecordingConsent(
   );
   const states = [
     ...new Set(
-      blocking.map((p) => (p.stateCode == null || p.stateCode.trim() === "" ? "UNKNOWN" : p.stateCode.trim().toUpperCase())),
+      blocking.map((p) =>
+        p.stateCode == null || p.stateCode.trim() === ""
+          ? "UNKNOWN"
+          : p.stateCode.trim().toUpperCase(),
+      ),
     ),
   ].sort();
   return {

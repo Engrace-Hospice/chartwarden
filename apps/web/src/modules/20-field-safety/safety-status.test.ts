@@ -28,8 +28,8 @@
 //      median over no alerts would read as an achievement.
 import { describe, expect, it } from "vitest";
 import {
-  ACK_ACTION_TAKEN_MIN_CHARS,
   ACKNOWLEDGMENT_OUTCOMES,
+  ACK_ACTION_TAKEN_MIN_CHARS,
   AD_HOC_CHECK_IN_KINDS,
   ALERT_KINDS,
   CHECK_IN_BADGE_TONE,

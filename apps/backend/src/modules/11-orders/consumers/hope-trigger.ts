@@ -7,10 +7,7 @@
 // the M9 consumer, M11 NEVER creates the order — the banner is informative; the clinician's click-through
 // is the gate (§2.7). The consumed event name is a STRING literal only (no M10 schema import): M11 reads
 // M10 solely through the foundation outbox, never via a `dependsOn` edge (§4 boundary rule).
-import {
-  type SuggestionAction,
-  type SuggestionFacts,
-} from "./suggestion-banner";
+import type { SuggestionAction, SuggestionFacts } from "./suggestion-banner";
 
 // ── The J2051 trigger payload M11 consumes (M10 owns the canonical wire shape) ────────────────────────
 
@@ -47,7 +44,8 @@ export function decideHopeSuggestion(
   payload: HopeJ2051TriggerPayload,
   facts: SuggestionFacts,
 ): SuggestionAction {
-  if (!BANNER_SEVERITIES.has(payload.maxSeverity)) return { kind: "skip", reason: "below_threshold" };
+  if (!BANNER_SEVERITIES.has(payload.maxSeverity))
+    return { kind: "skip", reason: "below_threshold" };
   if (facts.orderAlreadyCreated) return { kind: "skip", reason: "order_already_created" };
   if (facts.alreadySuggested) return { kind: "skip", reason: "already_suggested" };
 

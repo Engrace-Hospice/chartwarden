@@ -238,7 +238,8 @@ export async function runEffects(
         const key = (TIMESTAMP_FIELDS as Record<string, keyof EffectPatch | undefined>)[
           effect.field
         ];
-        if (key === undefined) throw new UnknownSafetyEffectError(`set_timestamp('${effect.field}')`);
+        if (key === undefined)
+          throw new UnknownSafetyEffectError(`set_timestamp('${effect.field}')`);
         set(key, new Date(effect.at));
         break;
       }

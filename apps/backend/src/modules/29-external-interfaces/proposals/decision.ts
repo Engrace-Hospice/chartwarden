@@ -11,7 +11,11 @@
 //   • accept applies via the OWNER MODULE (M5 `PatientMutator` / M6 `AdmissionEventApplier`) — the core only
 //     emits `m29.hl7_inbound_proposal.accepted`; those consumers already exist and their deny-stubs close on it.
 import { XI_PROPOSAL_REJECT_RATIONALE_MIN_CHARS } from "@wardenx/types";
-import type { Hl7InboundProposalKind, Hl7InboundProposalStatus, Hl7ProposalOwnerModule } from "@wardenx/types";
+import type {
+  Hl7InboundProposalKind,
+  Hl7InboundProposalStatus,
+  Hl7ProposalOwnerModule,
+} from "@wardenx/types";
 
 /** The reviewable fields the decision core reads (a projection of the current `hl7_inbound_proposal` row). */
 export interface ProposalSnapshot {
@@ -96,8 +100,22 @@ export interface ProposalExpiredPayload {
 }
 
 export type ProposalDecisionResult =
-  | { readonly kind: "accepted"; readonly update: ProposalDecisionUpdate; readonly event: { readonly name: "m29.hl7_inbound_proposal.accepted"; readonly payload: ProposalAcceptedPayload } }
-  | { readonly kind: "rejected"; readonly update: ProposalDecisionUpdate; readonly event: { readonly name: "m29.hl7_inbound_proposal.rejected"; readonly payload: ProposalRejectedPayload } }
+  | {
+      readonly kind: "accepted";
+      readonly update: ProposalDecisionUpdate;
+      readonly event: {
+        readonly name: "m29.hl7_inbound_proposal.accepted";
+        readonly payload: ProposalAcceptedPayload;
+      };
+    }
+  | {
+      readonly kind: "rejected";
+      readonly update: ProposalDecisionUpdate;
+      readonly event: {
+        readonly name: "m29.hl7_inbound_proposal.rejected";
+        readonly payload: ProposalRejectedPayload;
+      };
+    }
   /** Defer punts the proposal to a caseload-RN task (M19 forward-seam, T08); the row stays `pending`, no event. */
   | { readonly kind: "deferred" };
 
@@ -118,7 +136,10 @@ export class ProposalRejectRationaleRequiredError extends Error {
 }
 
 /** Adjudicate a proposal. Throws the typed guards above; otherwise returns the update + outbox descriptor. */
-export function decideProposal(snapshot: ProposalSnapshot, command: ProposalDecisionCommand): ProposalDecisionResult {
+export function decideProposal(
+  snapshot: ProposalSnapshot,
+  command: ProposalDecisionCommand,
+): ProposalDecisionResult {
   if (snapshot.proposalStatus !== "pending") {
     throw new ProposalAlreadyDecidedError();
   }
@@ -126,7 +147,9 @@ export function decideProposal(snapshot: ProposalSnapshot, command: ProposalDeci
   switch (command.kind) {
     case "accept": {
       const acceptedAggregateId = command.acceptedAggregateId ?? null;
-      const decisionRationale = command.decisionRationale?.trim() ? command.decisionRationale.trim() : null;
+      const decisionRationale = command.decisionRationale?.trim()
+        ? command.decisionRationale.trim()
+        : null;
       return {
         kind: "accepted",
         update: {
@@ -194,7 +217,13 @@ export function decideProposal(snapshot: ProposalSnapshot, command: ProposalDeci
 export function expireProposal(
   snapshot: Pick<ProposalSnapshot, "id" | "organizationId" | "proposalStatus">,
   now: Date,
-): { readonly update: ProposalDecisionUpdate; readonly event: { readonly name: "m29.hl7_inbound_proposal.expired"; readonly payload: ProposalExpiredPayload } } | null {
+): {
+  readonly update: ProposalDecisionUpdate;
+  readonly event: {
+    readonly name: "m29.hl7_inbound_proposal.expired";
+    readonly payload: ProposalExpiredPayload;
+  };
+} | null {
   if (snapshot.proposalStatus !== "pending") return null;
   return {
     update: {
@@ -205,7 +234,11 @@ export function expireProposal(
     },
     event: {
       name: "m29.hl7_inbound_proposal.expired",
-      payload: { proposalId: snapshot.id, organizationId: snapshot.organizationId, expiredAt: now.toISOString() },
+      payload: {
+        proposalId: snapshot.id,
+        organizationId: snapshot.organizationId,
+        expiredAt: now.toISOString(),
+      },
     },
   };
 }

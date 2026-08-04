@@ -72,7 +72,10 @@ export function registerEscalationRoutes(app: FastifyInstance, deps: EscalationR
       config: { auditRead: { resourceKind: "triage_escalation", list: true } },
     },
     async (request) =>
-      readService.listEscalations(actorOf(request), parseQuery(ListEscalationsQuery, request.query)),
+      readService.listEscalations(
+        actorOf(request),
+        parseQuery(ListEscalationsQuery, request.query),
+      ),
   );
 
   // 17 — acknowledge. This is the write §7.2 waits on: until it lands, the call may take no disposition

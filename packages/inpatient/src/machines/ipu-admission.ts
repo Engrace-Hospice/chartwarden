@@ -90,10 +90,16 @@ export type IpuAdmissionEvent =
       /** §2.2 — recordDeath is driven by the M6 death consumer (system actor), never a human route. */
       readonly isSystemActor: boolean;
     }
-  | { readonly type: "postCloseSettlement"; readonly isSystemActor: boolean; readonly noOpenChildRows: boolean };
+  | {
+      readonly type: "postCloseSettlement";
+      readonly isSystemActor: boolean;
+      readonly noOpenChildRows: boolean;
+    };
 
 /** The legal §2.2 transition graph (from → events accepted). `closed` is terminal. */
-export const ADMISSION_GRAPH: Readonly<Record<IpuAdmissionState, ReadonlyArray<IpuAdmissionEvent["type"]>>> = {
+export const ADMISSION_GRAPH: Readonly<
+  Record<IpuAdmissionState, ReadonlyArray<IpuAdmissionEvent["type"]>>
+> = {
   pending: ["requestBed"],
   bed_pending: ["assignBed"],
   bed_assigned: ["confirm"],
@@ -319,5 +325,10 @@ export function isAdmissionClosed(state: IpuAdmissionState): boolean {
 
 /** §2.2 — the states in which an admission occupies a live bed (for census + tenant-offboarding gates). */
 export function admissionHoldsBed(state: IpuAdmissionState): boolean {
-  return state === "bed_assigned" || state === "active" || state === "transferring" || state === "deceased";
+  return (
+    state === "bed_assigned" ||
+    state === "active" ||
+    state === "transferring" ||
+    state === "deceased"
+  );
 }

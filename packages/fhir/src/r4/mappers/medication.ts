@@ -6,9 +6,14 @@
 // only ever serialize outbound.
 
 import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
-import type { FhirCodeableConcept, FhirDosage, MedicationRequest, MedicationStatement } from "../types";
-import type { MedicationRequestDomain, MedicationStatementDomain } from "./domain";
+import type {
+  FhirCodeableConcept,
+  FhirDosage,
+  MedicationRequest,
+  MedicationStatement,
+} from "../types";
 import { RXNORM_SYSTEM } from "../uris";
+import type { MedicationRequestDomain, MedicationStatementDomain } from "./domain";
 
 export const US_CORE_MEDICATION_REQUEST_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-medicationrequest";
@@ -37,7 +42,10 @@ export const medicationRequestMapper: FhirMapper<MedicationRequestDomain, Medica
       dosage.push({
         text: row.dosageText ?? undefined,
         route: row.routeCode
-          ? { coding: [{ code: row.routeCode, display: row.routeText ?? undefined }], text: row.routeText ?? undefined }
+          ? {
+              coding: [{ code: row.routeCode, display: row.routeText ?? undefined }],
+              text: row.routeText ?? undefined,
+            }
           : undefined,
       });
     }
@@ -48,32 +56,43 @@ export const medicationRequestMapper: FhirMapper<MedicationRequestDomain, Medica
       meta: { lastUpdated: ctx.asOfDate, profile: [US_CORE_MEDICATION_REQUEST_PROFILE] },
       status: row.status,
       intent: row.intent,
-      medicationCodeableConcept: medicationCodeableConcept(row.rxnormCode, row.rxnormText, row.medicationText),
+      medicationCodeableConcept: medicationCodeableConcept(
+        row.rxnormCode,
+        row.rxnormText,
+        row.medicationText,
+      ),
       subject: { reference: `Patient/${row.patientId}` },
       authoredOn: row.authoredOn ?? undefined,
-      requester: row.requesterMdmId ? { reference: `Practitioner/${row.requesterMdmId}` } : undefined,
+      requester: row.requesterMdmId
+        ? { reference: `Practitioner/${row.requesterMdmId}` }
+        : undefined,
       dosageInstruction: dosage.length ? dosage : undefined,
     };
   },
 };
 
-export const medicationStatementMapper: FhirMapper<MedicationStatementDomain, MedicationStatement> = {
-  version: "4.0.1",
-  profile: US_CORE_MEDICATION_STATEMENT_PROFILE,
-  map(row: MedicationStatementDomain, ctx: MapperContext): MedicationStatement {
-    const hasPeriod = Boolean(row.effectiveStart || row.effectiveEnd);
-    return {
-      resourceType: "MedicationStatement",
-      id: row.id,
-      meta: { lastUpdated: ctx.asOfDate, profile: [US_CORE_MEDICATION_STATEMENT_PROFILE] },
-      status: row.status,
-      medicationCodeableConcept: medicationCodeableConcept(row.rxnormCode, row.rxnormText, row.medicationText),
-      subject: { reference: `Patient/${row.patientId}` },
-      effectivePeriod: hasPeriod
-        ? { start: row.effectiveStart ?? undefined, end: row.effectiveEnd ?? undefined }
-        : undefined,
-      dateAsserted: row.dateAsserted ?? undefined,
-      dosage: row.dosageText ? [{ text: row.dosageText }] : undefined,
-    };
-  },
-};
+export const medicationStatementMapper: FhirMapper<MedicationStatementDomain, MedicationStatement> =
+  {
+    version: "4.0.1",
+    profile: US_CORE_MEDICATION_STATEMENT_PROFILE,
+    map(row: MedicationStatementDomain, ctx: MapperContext): MedicationStatement {
+      const hasPeriod = Boolean(row.effectiveStart || row.effectiveEnd);
+      return {
+        resourceType: "MedicationStatement",
+        id: row.id,
+        meta: { lastUpdated: ctx.asOfDate, profile: [US_CORE_MEDICATION_STATEMENT_PROFILE] },
+        status: row.status,
+        medicationCodeableConcept: medicationCodeableConcept(
+          row.rxnormCode,
+          row.rxnormText,
+          row.medicationText,
+        ),
+        subject: { reference: `Patient/${row.patientId}` },
+        effectivePeriod: hasPeriod
+          ? { start: row.effectiveStart ?? undefined, end: row.effectiveEnd ?? undefined }
+          : undefined,
+        dateAsserted: row.dateAsserted ?? undefined,
+        dosage: row.dosageText ? [{ text: row.dosageText }] : undefined,
+      };
+    },
+  };

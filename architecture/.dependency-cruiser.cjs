@@ -216,10 +216,7 @@ module.exports = {
         "schema dirs. (M33 spec §13.)",
       severity: "error",
       from: {
-        path: anyOf([
-          "packages/reporting",
-          "apps/backend/src/modules/33-reporting",
-        ]),
+        path: anyOf(["packages/reporting", "apps/backend/src/modules/33-reporting"]),
       },
       to: {
         path: anyOf([
@@ -249,10 +246,7 @@ module.exports = {
         "(M23 spec D13 / §8.6.)",
       severity: "error",
       from: {
-        path: anyOf([
-          "packages/billing",
-          "apps/backend/src/modules/23-billing-medicare",
-        ]),
+        path: anyOf(["packages/billing", "apps/backend/src/modules/23-billing-medicare"]),
       },
       to: {
         path: anyOf(["packages/ai-platform"]),
@@ -266,10 +260,7 @@ module.exports = {
         "(M23 spec D13 / §8.6.)",
       severity: "error",
       from: {
-        path: anyOf([
-          "packages/billing",
-          "apps/backend/src/modules/23-billing-medicare",
-        ]),
+        path: anyOf(["packages/billing", "apps/backend/src/modules/23-billing-medicare"]),
       },
       to: {
         dependencyTypes: ["npm"],
@@ -286,10 +277,7 @@ module.exports = {
         "convention; only M29's own logic and the db barrel itself may import them. (M29 spec §8.5.4/§13.2.)",
       severity: "error",
       from: {
-        pathNot: anyOf([
-          "packages/db",
-          "apps/backend/src/modules/29-external-interfaces",
-        ]),
+        pathNot: anyOf(["packages/db", "apps/backend/src/modules/29-external-interfaces"]),
       },
       to: { path: p("packages/db/src/schema/external-interfaces") },
     },

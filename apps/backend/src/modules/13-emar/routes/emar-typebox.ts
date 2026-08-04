@@ -225,14 +225,56 @@ export const DeploymentQuerySchema = Type.Object({
 const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
 
 // §3.2 pgEnum value mirrors (kept in lock-step with `@wardenx/types` / `@wardenx/emar`).
-const ADMINISTRATION_STATUS = lit(["committed", "pending_caregiver_review", "superseded", "voided"] as const);
-const ADMINISTRATION_ACTOR_KIND = lit(["clinician", "caregiver_attested", "system_iv_session_event"] as const);
-const ADMINISTRATION_LATE_ENTRY_TIER = lit(["normal", "late", "significant_late", "administrative_override"] as const);
-const BARCODE_MATCH_RESULT = lit(["match", "wrong_drug", "wrong_patient", "expired", "no_order_active"] as const);
-const SCHEDULED_DOSE_STATUS = lit(["pending", "administered", "missed", "cancelled", "intentionally_held"] as const);
-const RECONCILIATION_DECISION_KIND = lit(["carry_forward", "discontinue", "hold", "new_order", "document_only"] as const);
-const RECONCILIATION_TRIGGER_KIND = lit(["admission", "transfer_in", "discharge", "recertification"] as const);
-const RECONCILIATION_WORKSHEET_STATUS = lit(["pending", "in_progress", "finalized", "voided"] as const);
+const ADMINISTRATION_STATUS = lit([
+  "committed",
+  "pending_caregiver_review",
+  "superseded",
+  "voided",
+] as const);
+const ADMINISTRATION_ACTOR_KIND = lit([
+  "clinician",
+  "caregiver_attested",
+  "system_iv_session_event",
+] as const);
+const ADMINISTRATION_LATE_ENTRY_TIER = lit([
+  "normal",
+  "late",
+  "significant_late",
+  "administrative_override",
+] as const);
+const BARCODE_MATCH_RESULT = lit([
+  "match",
+  "wrong_drug",
+  "wrong_patient",
+  "expired",
+  "no_order_active",
+] as const);
+const SCHEDULED_DOSE_STATUS = lit([
+  "pending",
+  "administered",
+  "missed",
+  "cancelled",
+  "intentionally_held",
+] as const);
+const RECONCILIATION_DECISION_KIND = lit([
+  "carry_forward",
+  "discontinue",
+  "hold",
+  "new_order",
+  "document_only",
+] as const);
+const RECONCILIATION_TRIGGER_KIND = lit([
+  "admission",
+  "transfer_in",
+  "discharge",
+  "recertification",
+] as const);
+const RECONCILIATION_WORKSHEET_STATUS = lit([
+  "pending",
+  "in_progress",
+  "finalized",
+  "voided",
+] as const);
 
 export const AdministrationViewSchema = Type.Object({
   id: Type.String(),
@@ -318,8 +360,14 @@ export const AdministrationPolicyViewSchema = Type.Object({
 // ── compile-time pins: what each schema PUBLISHES (`T`) must be assignable to what the service RETURNS (`V`),
 // so a view field added/renamed/retyped fails the build instead of drifting from the generated client. ────────
 type Conforms<T extends V, V> = T;
-type _AdministrationView = Conforms<Static<typeof AdministrationViewSchema>, ServiceAdministrationView>;
-type _ScheduledDoseView = Conforms<Static<typeof ScheduledDoseViewSchema>, ServiceScheduledDoseView>;
+type _AdministrationView = Conforms<
+  Static<typeof AdministrationViewSchema>,
+  ServiceAdministrationView
+>;
+type _ScheduledDoseView = Conforms<
+  Static<typeof ScheduledDoseViewSchema>,
+  ServiceScheduledDoseView
+>;
 type _MissedDoseView = Conforms<Static<typeof MissedDoseViewSchema>, ServiceMissedDoseView>;
 type _ReconciliationDecisionView = Conforms<
   Static<typeof ReconciliationDecisionViewSchema>,

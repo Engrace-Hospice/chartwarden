@@ -1,4 +1,11 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/26-cap — M26, CAP PERIOD MANAGEMENT (R2, §5.1.3). The current + historical cap periods
 // with status badges (open/active/in_settlement/settled/reopened). Open/close/reopen/lock-methodology are
 // server-authoritative mutations gated on cap.period.manage + step-up (D12); this read surface gates nav
@@ -20,7 +27,14 @@ interface Period {
 }
 
 const cell = { padding: "0.55rem 0.75rem", textAlign: "left" as const };
-const head = { ...cell, fontSize: "0.72rem", textTransform: "uppercase" as const, letterSpacing: "0.04em", color: "var(--color-on-surface-variant)", fontWeight: 600 };
+const head = {
+  ...cell,
+  fontSize: "0.72rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+  fontWeight: 600,
+};
 const row = { borderTop: "1px solid var(--color-surface-container)" };
 
 export function CapPeriods(): JSX.Element {
@@ -53,36 +67,46 @@ export function CapPeriods(): JSX.Element {
     <WorkQueueLayout
       header={<PageHeader title="Cap Periods" breadcrumb="Revenue Cycle — cap-year lifecycle" />}
       table={
-      periods.length === 0 ? (
-        <EmptyState title="No cap periods" description="Open a cap period for the current cap year to begin tracking." />
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-          <thead>
-            <tr>
-              <th style={head}>Cap year</th>
-              <th style={head}>Window</th>
-              <th style={head}>Methodology</th>
-              <th style={head}>Per-beneficiary cap</th>
-              <th style={head}>Grace</th>
-              <th style={head}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {periods.map((p) => (
-              <tr key={p.id} style={row}>
-                <td style={{ ...cell, fontVariantNumeric: "tabular-nums" }}>{p.capYear}</td>
-                <td style={cell}>{shortDate(p.startDate)} – {shortDate(p.endDate)}</td>
-                <td style={cell}>{humanize(p.methodology)}</td>
-                <td style={{ ...cell, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{money(p.aggregateCapAmountCents)}</td>
-                <td style={{ ...cell, textAlign: "right" }}>{p.graceWindowDays}d</td>
-                <td style={cell}>
-                  <StatusPill tone={toneOf(PERIOD_STATUS_TONE, p.status)} label={humanize(p.status)} />
-                </td>
+        periods.length === 0 ? (
+          <EmptyState
+            title="No cap periods"
+            description="Open a cap period for the current cap year to begin tracking."
+          />
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+            <thead>
+              <tr>
+                <th style={head}>Cap year</th>
+                <th style={head}>Window</th>
+                <th style={head}>Methodology</th>
+                <th style={head}>Per-beneficiary cap</th>
+                <th style={head}>Grace</th>
+                <th style={head}>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )
+            </thead>
+            <tbody>
+              {periods.map((p) => (
+                <tr key={p.id} style={row}>
+                  <td style={{ ...cell, fontVariantNumeric: "tabular-nums" }}>{p.capYear}</td>
+                  <td style={cell}>
+                    {shortDate(p.startDate)} – {shortDate(p.endDate)}
+                  </td>
+                  <td style={cell}>{humanize(p.methodology)}</td>
+                  <td style={{ ...cell, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {money(p.aggregateCapAmountCents)}
+                  </td>
+                  <td style={{ ...cell, textAlign: "right" }}>{p.graceWindowDays}d</td>
+                  <td style={cell}>
+                    <StatusPill
+                      tone={toneOf(PERIOD_STATUS_TONE, p.status)}
+                      label={humanize(p.status)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
       }
     />
   );

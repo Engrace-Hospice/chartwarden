@@ -8,7 +8,7 @@
 // diff is a direct field comparison over the M40-syncable projection, not a stored hash.
 import type { NewNppesProviderRow } from "@wardenx/db/schema";
 import type { NppesProviderStatus } from "@wardenx/types";
-import { primaryTaxonomyCode, type NppesIndividualProvider } from "./response-projection";
+import { type NppesIndividualProvider, primaryTaxonomyCode } from "./response-projection";
 import type { NppesProviderSnapshot } from "./sync-events";
 
 /** The minimal view of a cached row the diff reads (the Drizzle adapter maps a row → this). */
@@ -54,9 +54,19 @@ export function decideCacheUpsert(
   if (existing.deactivationReason !== fresh.deactivationReason) changed.push("deactivationReason");
 
   if (changed.length === 0) {
-    return { action: "unchanged", changedFields: [], priorStatus: existing.status, newStatus: fresh.status };
+    return {
+      action: "unchanged",
+      changedFields: [],
+      priorStatus: existing.status,
+      newStatus: fresh.status,
+    };
   }
-  return { action: "updated", changedFields: changed, priorStatus: existing.status, newStatus: fresh.status };
+  return {
+    action: "updated",
+    changedFields: changed,
+    priorStatus: existing.status,
+    newStatus: fresh.status,
+  };
 }
 
 /** The M40-facing snapshot carried on `m29.nppes.provider_synced` (ADR-0011 D1 — never a table read). */
@@ -70,7 +80,10 @@ export function toSnapshot(provider: NppesIndividualProvider): NppesProviderSnap
 }
 
 /** Materialise the full `nppes_provider` insert/update row from a fresh projection (§3.3). */
-export function buildProviderRow(provider: NppesIndividualProvider, fetchedAt: Date): NewNppesProviderRow {
+export function buildProviderRow(
+  provider: NppesIndividualProvider,
+  fetchedAt: Date,
+): NewNppesProviderRow {
   return {
     npi: provider.npi,
     enumerationType: provider.enumerationType,

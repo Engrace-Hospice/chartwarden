@@ -1,21 +1,16 @@
+import { createHash } from "node:crypto";
+import type {
+  CahpsDecedentSampleRow,
+  CahpsResultSummaryInput,
+  CahpsVendorAdapter,
+} from "@wardenx/quality";
 // @wardenx/cahps-vendors — manual adapter (M30 §4.5; tenants without a vendor contract).
 //
 // The manual adapter needs no credentials: it renders a decedent CSV the QAPI Coordinator emails to a
 // vendor of their choice, NEVER pushes (returns `no_push`), and ingests an aggregate the coordinator
 // uploads back as CSV (R-16). Column schemas + CSV helpers live in ./csv_format.
 import { WardenXError } from "@wardenx/types";
-import type {
-  CahpsDecedentSampleRow,
-  CahpsResultSummaryInput,
-  CahpsVendorAdapter,
-} from "@wardenx/quality";
-import {
-  MANUAL_DECEDENT_COLUMNS,
-  MANUAL_RESULT_COLUMNS,
-  parseCsv,
-  renderCsv,
-} from "./csv_format";
-import { createHash } from "node:crypto";
+import { MANUAL_DECEDENT_COLUMNS, MANUAL_RESULT_COLUMNS, parseCsv, renderCsv } from "./csv_format";
 
 function jsonNumberMap(raw: string, field: string): Record<string, number> {
   let parsed: unknown;
@@ -25,12 +20,20 @@ function jsonNumberMap(raw: string, field: string): Record<string, number> {
     throw new WardenXError("VALIDATION_FAILED", `manual result '${field}' is not valid JSON`, 422);
   }
   if (typeof parsed !== "object" || parsed === null) {
-    throw new WardenXError("VALIDATION_FAILED", `manual result '${field}' must be a JSON object`, 422);
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      `manual result '${field}' must be a JSON object`,
+      422,
+    );
   }
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(parsed)) {
     if (typeof v !== "number" || Number.isNaN(v)) {
-      throw new WardenXError("VALIDATION_FAILED", `manual result '${field}.${k}' must be a number`, 422);
+      throw new WardenXError(
+        "VALIDATION_FAILED",
+        `manual result '${field}.${k}' must be a number`,
+        422,
+      );
     }
     out[k] = v;
   }
@@ -40,7 +43,11 @@ function jsonNumberMap(raw: string, field: string): Record<string, number> {
 function intField(value: string, field: string): number {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 0) {
-    throw new WardenXError("VALIDATION_FAILED", `manual result '${field}' must be a non-negative integer`, 422);
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      `manual result '${field}' must be a non-negative integer`,
+      422,
+    );
   }
   return n;
 }
@@ -91,7 +98,11 @@ export class ManualCahpsAdapter implements CahpsVendorAdapter {
     const inputs = records.map<CahpsResultSummaryInput>((r) => {
       for (const col of MANUAL_RESULT_COLUMNS) {
         if (!(col in r)) {
-          throw new WardenXError("VALIDATION_FAILED", `manual result CSV is missing column '${col}'`, 422);
+          throw new WardenXError(
+            "VALIDATION_FAILED",
+            `manual result CSV is missing column '${col}'`,
+            422,
+          );
         }
       }
       const rateRaw = (r.response_rate ?? "").trim();
@@ -100,7 +111,10 @@ export class ManualCahpsAdapter implements CahpsVendorAdapter {
         reportingPeriodStart: r.reporting_period_start ?? "",
         reportingPeriodEnd: r.reporting_period_end ?? "",
         vendorAdapterId: "manual",
-        topBoxPercentages: jsonNumberMap(r.top_box_percentages_json ?? "", "top_box_percentages_json"),
+        topBoxPercentages: jsonNumberMap(
+          r.top_box_percentages_json ?? "",
+          "top_box_percentages_json",
+        ),
         compositeScores: jsonNumberMap(r.composite_scores_json ?? "", "composite_scores_json"),
         responseCount: intField(r.response_count ?? "", "response_count"),
         attemptedSampleCount: intField(r.attempted_sample_count ?? "", "attempted_sample_count"),

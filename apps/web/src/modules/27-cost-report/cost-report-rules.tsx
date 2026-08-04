@@ -13,8 +13,8 @@ import {
 // collection surface (`/cost-report-validation-rules`); read-only — the server is the only authz point.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { SEVERITY_TONE, humanize, toneOf } from "./cost-report-status";
 import { cellStyle, headStyle, rowStyle, tableStyle } from "./cost-report-shared";
+import { SEVERITY_TONE, humanize, toneOf } from "./cost-report-status";
 
 interface RuleRow {
   ruleId: string;
@@ -59,11 +59,22 @@ export function CostReportRules(): JSX.Element {
   }, [rows]);
 
   if (loading) return <LoadingSpinner />;
-  if (error) return <EmptyState title="Unavailable" description="The validation rule library could not be loaded." />;
+  if (error)
+    return (
+      <EmptyState
+        title="Unavailable"
+        description="The validation rule library could not be loaded."
+      />
+    );
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Validation Rules" breadcrumb="Revenue Cycle — pre-submission rule library (§11.B)" />}
+      header={
+        <PageHeader
+          title="Validation Rules"
+          breadcrumb="Revenue Cycle — pre-submission rule library (§11.B)"
+        />
+      }
       kpis={
         <KpiStrip>
           <KpiCard label="Platform defaults" value={String(stats.platform)} />
@@ -92,7 +103,10 @@ export function CostReportRules(): JSX.Element {
                   <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>{r.ruleCode}</td>
                   <td style={cellStyle}>{humanize(r.category)}</td>
                   <td style={cellStyle}>
-                    <StatusPill tone={toneOf(SEVERITY_TONE, r.severity)} label={humanize(r.severity)} />
+                    <StatusPill
+                      tone={toneOf(SEVERITY_TONE, r.severity)}
+                      label={humanize(r.severity)}
+                    />
                   </td>
                   <td style={cellStyle}>{r.macJurisdictionScope}</td>
                   <td style={cellStyle}>{r.organizationId === null ? "Platform" : "Tenant"}</td>

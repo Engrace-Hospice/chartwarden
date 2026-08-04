@@ -6,7 +6,7 @@
 // INTEGER CENTS; no PHI — aggregate GL totals only (D18).
 //
 // PURE DOMAIN: TypeBox only — no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 /** Worksheet A — trial balance of expenses by cost center. Field set is verbatim from spec §4.2. */
 export const WorksheetA = Type.Object({

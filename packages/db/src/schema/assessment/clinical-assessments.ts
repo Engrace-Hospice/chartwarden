@@ -25,11 +25,11 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { scaleType, assessmentStatus, assessmentActingAs } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
+import { assessmentActingAs, assessmentStatus, scaleType } from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const clinicalAssessments = pgTable(
   "clinical_assessment",

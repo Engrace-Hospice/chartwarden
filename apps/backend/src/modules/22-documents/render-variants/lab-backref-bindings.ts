@@ -9,11 +9,8 @@
 // live-wired (no dispatcher binding, no real M29 reader). The event name is a STRING literal and the M29
 // seam is reached OPAQUELY via getSeam, so M22 deps stay `[1, 5]` (no producer import, no edge).
 import { getSeam } from "../../../bootstrap/index";
+import { M22_LAB_RESULTS_CONSUMER, M22_LAB_RESULTS_EVENT } from "./lab-backref-consumer";
 import type { LabResultsRenderPayload } from "./render-variants";
-import {
-  M22_LAB_RESULTS_CONSUMER,
-  M22_LAB_RESULTS_EVENT,
-} from "./lab-backref-consumer";
 
 /** The forward-declared §7.15 binding: the consumed event + the M22 consumer the dispatcher routes to once
  * M29 (Wave H) lands and the live lab-results render worker is wired. */

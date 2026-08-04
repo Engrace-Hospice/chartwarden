@@ -13,8 +13,16 @@ import {
 // worklist). Read-only; the server is the only authz point (ADR-0030).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
+import {
+  ReportPicker,
+  cellStyle,
+  headStyle,
+  numStyle,
+  rowStyle,
+  tableStyle,
+  useReportPicker,
+} from "./cost-report-shared";
 import { RUN_TONE, humanize, shortDate, toneOf } from "./cost-report-status";
-import { ReportPicker, cellStyle, headStyle, numStyle, rowStyle, tableStyle, useReportPicker } from "./cost-report-shared";
 
 interface RunRow {
   validationId: string;
@@ -31,14 +39,22 @@ interface RunRow {
 
 export function CostReportValidation(): JSX.Element {
   const client = useApiClient();
-  const { reports, selectedId, setSelectedId, loading: picking, error: pickErr } = useReportPicker();
+  const {
+    reports,
+    selectedId,
+    setSelectedId,
+    loading: picking,
+    error: pickErr,
+  } = useReportPicker();
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedId) return;
     setLoading(true);
-    const res = await client.GET("/api/v1/cost-reports/{id}/validations", { params: { path: { id: selectedId } } });
+    const res = await client.GET("/api/v1/cost-reports/{id}/validations", {
+      params: { path: { id: selectedId } },
+    });
     const d = res.error ? null : (res.data as unknown as { items?: RunRow[] });
     setRuns(d?.items ?? (res.error ? [] : (res.data as unknown as RunRow[])) ?? []);
     setLoading(false);
@@ -49,8 +65,12 @@ export function CostReportValidation(): JSX.Element {
   }, [load]);
 
   if (picking) return <LoadingSpinner />;
-  if (pickErr) return <EmptyState title="Unavailable" description="Cost reports could not be loaded." />;
-  if (!selectedId) return <EmptyState title="No cost reports" description="Create a cost report to run validation." />;
+  if (pickErr)
+    return <EmptyState title="Unavailable" description="Cost reports could not be loaded." />;
+  if (!selectedId)
+    return (
+      <EmptyState title="No cost reports" description="Create a cost report to run validation." />
+    );
 
   const latest = runs[0];
 
@@ -60,7 +80,9 @@ export function CostReportValidation(): JSX.Element {
         <PageHeader
           title="Validation Worklist"
           breadcrumb="Revenue Cycle — pre-submission rule library (§11.B)"
-          actions={<ReportPicker reports={reports} selectedId={selectedId} onChange={setSelectedId} />}
+          actions={
+            <ReportPicker reports={reports} selectedId={selectedId} onChange={setSelectedId} />
+          }
         />
       }
       kpis={
@@ -74,7 +96,10 @@ export function CostReportValidation(): JSX.Element {
         loading ? (
           <LoadingSpinner />
         ) : runs.length === 0 ? (
-          <EmptyState title="No validation runs" description="Run validation on this cost report to populate the worklist." />
+          <EmptyState
+            title="No validation runs"
+            description="Run validation on this cost report to populate the worklist."
+          />
         ) : (
           <table style={tableStyle}>
             <thead>

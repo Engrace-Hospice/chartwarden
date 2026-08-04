@@ -1,3 +1,4 @@
+import { canonicalJson, contentHashSha256 } from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 snapshot canonicalization + content hash (D10) pure-domain unit tests.
 //
 // canonicalJson must be independent of object key insertion order at EVERY depth (the precondition for
@@ -5,7 +6,6 @@
 // must be deterministic for logically-identical inputs and must change when ANY field changes — the
 // SNAPSHOT_CORRUPTED tamper-detection guarantee (§2.3 / §7.5).
 import { describe, expect, it } from "vitest";
-import { canonicalJson, contentHashSha256 } from "@wardenx/cost-report";
 
 describe("canonicalJson — key-order stability", () => {
   it("shuffled top-level keys produce an identical string", () => {
@@ -28,7 +28,10 @@ describe("canonicalJson — key-order stability", () => {
   });
 
   it("sorts keys inside array elements without reordering the array", () => {
-    const v = [{ b: 1, a: 2 }, { d: 3, c: 4 }];
+    const v = [
+      { b: 1, a: 2 },
+      { d: 3, c: 4 },
+    ];
     expect(canonicalJson(v)).toBe('[{"a":2,"b":1},{"c":4,"d":3}]');
   });
 

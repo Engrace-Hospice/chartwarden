@@ -1,3 +1,12 @@
+import {
+  DEFAULT_VALIDATION_RULES,
+  NGS_J6_MAC_SCOPE,
+  NGS_J6_RULES,
+  type RuleCategory,
+  type ValidationContext,
+  runValidation,
+  suggestRuleFromRejection,
+} from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 pre-submission validation framework pure-domain unit tests
 // (§1.1, architecture §11.B, D9/D16/D20/D21).
 //
@@ -8,15 +17,6 @@
 // and `null` for an unknown (blank) one; and the NGS-J6 additive profile rules carry the NGS-J6 MAC scope.
 // PURE DOMAIN only — no DB, no Fastify, no network. Money is integer cents; no PHI (D18).
 import { describe, expect, it } from "vitest";
-import {
-  type ValidationContext,
-  type RuleCategory,
-  DEFAULT_VALIDATION_RULES,
-  runValidation,
-  suggestRuleFromRejection,
-  NGS_J6_RULES,
-  NGS_J6_MAC_SCOPE,
-} from "@wardenx/cost-report";
 
 const ALL_CATEGORIES: readonly RuleCategory[] = [
   "demographics_ownership",

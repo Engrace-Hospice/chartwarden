@@ -1,3 +1,12 @@
+import { type MshEnvelope, parseMshEnvelope } from "../listener/mllp-framing";
+import {
+  HL7_DEFAULT_SEPARATORS,
+  type Hl7Separators,
+  extractSsnLast4,
+  hl7DateToIso,
+  readSeparators,
+  splitSegments,
+} from "./hl7-adt-projection";
 // apps/backend/src/modules/29-external-interfaces/inbound — ORU^R01 segment projection (M29-T05, §4.6/§2.2).
 // PURE. Turns a raw HL7 v2 ORU frame (the bytes BETWEEN the MLLP `<VT>…<FS><CR>` envelope, framed by T03)
 // into the typed lab result the T05 attach pipeline reads: the OBR order/service header, the N OBX result
@@ -10,15 +19,6 @@
 // terminology gate, the SUD-ingress gate, and the abnormal-flag rollup are the callers' pure cores
 // (`lab-terminology`/`lab-sud-redaction`/`lab-abnormal`); this file is only the wire→struct projection.
 import type { CascadePid } from "./match-cascade";
-import {
-  HL7_DEFAULT_SEPARATORS,
-  type Hl7Separators,
-  extractSsnLast4,
-  hl7DateToIso,
-  readSeparators,
-  splitSegments,
-} from "./hl7-adt-projection";
-import { parseMshEnvelope, type MshEnvelope } from "../listener/mllp-framing";
 
 /** OBR — the observation request header (order/service identity, §4.6). */
 export interface ProjectedObr {

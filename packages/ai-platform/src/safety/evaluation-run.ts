@@ -30,7 +30,7 @@ import type {
   AiLifecycleApprovalKind,
 } from "@wardenx/types";
 
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "../governance/errors";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 
 /** The statuses a run can no longer leave. */
 export const AI_EVALUATION_TERMINAL_STATUSES: readonly AiEvaluationRunStatus[] = [

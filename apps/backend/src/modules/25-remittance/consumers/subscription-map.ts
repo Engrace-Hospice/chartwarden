@@ -24,17 +24,27 @@ export type M25SubscriptionEffect =
  * The §4.4 catalog: upstream outbox topic → the ordered M25 effects it triggers. Frozen so no consumer can
  * mutate it. The handlers read this map; the boot dispatcher forward-declares one binding per key.
  */
-export const M25_SUBSCRIPTION_MAP: Readonly<Record<string, readonly M25SubscriptionEffect[]>> = Object.freeze({
-  "m23.claim.rejected": [
-    { kind: "seed_denial_from_277ca", note: "A 277CA-derived claim rejection seeds a denial worklist row (deduped on claim+UTC-date)." },
-  ],
-  "m18.evv.aggregator_rejected": [
-    { kind: "seed_denial_from_evv", note: "An EVV-aggregator rejection seeds an EVV-back-linked denial (deduped per submission)." },
-  ],
-  "m22.document.rendered": [
-    { kind: "document_back_reference", note: "The rendered appeal-packet / resolution-letter doc id is recorded as the M25 back-ref." },
-  ],
-});
+export const M25_SUBSCRIPTION_MAP: Readonly<Record<string, readonly M25SubscriptionEffect[]>> =
+  Object.freeze({
+    "m23.claim.rejected": [
+      {
+        kind: "seed_denial_from_277ca",
+        note: "A 277CA-derived claim rejection seeds a denial worklist row (deduped on claim+UTC-date).",
+      },
+    ],
+    "m18.evv.aggregator_rejected": [
+      {
+        kind: "seed_denial_from_evv",
+        note: "An EVV-aggregator rejection seeds an EVV-back-linked denial (deduped per submission).",
+      },
+    ],
+    "m22.document.rendered": [
+      {
+        kind: "document_back_reference",
+        note: "The rendered appeal-packet / resolution-letter doc id is recorded as the M25 back-ref.",
+      },
+    ],
+  });
 
 /** The ordered topic list the boot dispatcher forward-declares one consumer binding per (§4.4). */
 export const M25_UPSTREAM_SUBSCRIPTIONS = Object.keys(M25_SUBSCRIPTION_MAP) as readonly string[];

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `usage_event` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143). Append-only, high
 // volume, MONTHLY-PARTITIONED by `recorded_at` (declared `PARTITION BY RANGE (recorded_at)` in migration
 // 0142). PostgreSQL requires the partition key in every unique/primary constraint, so the REAL keys in
@@ -7,8 +8,16 @@
 // trigger is a GENERATED function that hard-codes the parent name, because M1's baseline trigger would
 // stamp `TG_TABLE_NAME` = the dated partition (the M32 `ai_token_ledger` lesson). `organization_id` is a
 // logical uuid (M35-F04); `metadata_redacted` is PHI-free (redactor-checked).
-import { bigint, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  bigint,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { usageEventSourceModule, usageEventType } from "../../enums";
 
 export const usageEvent = pgTable(

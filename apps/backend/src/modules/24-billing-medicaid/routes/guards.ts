@@ -6,9 +6,13 @@
 // composes on submit / replace / void / arrangement activate-terminate / override / credential upsert (the
 // operation key is the permission key so M3 resolves the per-op freshness policy).
 import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
-import { type PreHandler } from "./actor";
+import type { PreHandler } from "./actor";
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";
@@ -67,4 +71,5 @@ export const ABAC_QUERY_PE = (key: string, predicate: string): PreHandler =>
   }) as PreHandler;
 
 /** §D12 step-up gate — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate. */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;

@@ -3,10 +3,10 @@
 // pre-835 denial seed; this mapper exists so the package owns a symmetric typed surface and so a future
 // M25 self-pull of a 277CA roster has a parser. Imports ONLY ./types (the no-circular rule).
 import {
-  degraded835,
   type Parsed277ca,
   type Parsed277caRejection,
   type X12WorkerResult,
+  degraded835,
 } from "./types";
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -33,7 +33,12 @@ function mapRejection(w: unknown): Parsed277caRejection | null {
 /** Map the sidecar's /parse277ca JSON into a typed {@link Parsed277ca}. Fails closed (degraded), no throw. */
 export function mapParsed277ca(wire: unknown): X12WorkerResult<Parsed277ca> {
   if (!isObj(wire)) {
-    return degraded835("X12_277CA_PARSE_FAILED", "sidecar response was not an object", "parse277ca", false);
+    return degraded835(
+      "X12_277CA_PARSE_FAILED",
+      "sidecar response was not an object",
+      "parse277ca",
+      false,
+    );
   }
   const isa = str(wire.interchangeControlNumber);
   const st = str(wire.transactionSetControlNumber);

@@ -46,15 +46,29 @@ export type CascadeNoMatchPayload = CascadeMessageContext;
 
 /** The three terminal cascade-resolved outbox descriptors (T-29.05 §2.5). */
 export type CascadeResolvedEvent =
-  | { readonly name: "m29.hl7_message.cascade_resolved_confident"; readonly payload: CascadeResolvedConfidentPayload }
-  | { readonly name: "m29.hl7_message.cascade_resolved_candidate"; readonly payload: CascadeResolvedCandidatePayload }
-  | { readonly name: "m29.hl7_message.cascade_resolved_no_match"; readonly payload: CascadeNoMatchPayload };
+  | {
+      readonly name: "m29.hl7_message.cascade_resolved_confident";
+      readonly payload: CascadeResolvedConfidentPayload;
+    }
+  | {
+      readonly name: "m29.hl7_message.cascade_resolved_candidate";
+      readonly payload: CascadeResolvedCandidatePayload;
+    }
+  | {
+      readonly name: "m29.hl7_message.cascade_resolved_no_match";
+      readonly payload: CascadeNoMatchPayload;
+    };
 
 /** Project the cascade outcome onto the `hl7_message_inbound` result columns. */
 export function projectCascadeForMessage(outcome: MatchOutcome): CascadeMessageProjection {
   switch (outcome.kind) {
     case "confident_match":
-      return { matchedPatientId: outcome.patientId, matchLevel: outcome.level, matchOutcome: "matched_single", matchConfidence: null };
+      return {
+        matchedPatientId: outcome.patientId,
+        matchLevel: outcome.level,
+        matchOutcome: "matched_single",
+        matchConfidence: null,
+      };
     case "candidate_match":
       return {
         matchedPatientId: outcome.patientId,
@@ -63,19 +77,37 @@ export function projectCascadeForMessage(outcome: MatchOutcome): CascadeMessageP
         matchConfidence: outcome.confidence.toFixed(3),
       };
     case "ambiguous":
-      return { matchedPatientId: null, matchLevel: outcome.level, matchOutcome: "matched_ambiguous", matchConfidence: null };
+      return {
+        matchedPatientId: null,
+        matchLevel: outcome.level,
+        matchOutcome: "matched_ambiguous",
+        matchConfidence: null,
+      };
     case "no_match":
-      return { matchedPatientId: null, matchLevel: "NO_MATCH", matchOutcome: "no_match", matchConfidence: null };
+      return {
+        matchedPatientId: null,
+        matchLevel: "NO_MATCH",
+        matchOutcome: "no_match",
+        matchConfidence: null,
+      };
   }
 }
 
 /** Map the cascade outcome to its `cascade_resolved_*` event descriptor (ambiguous rides the candidate event). */
-export function routeCascadeOutcome(outcome: MatchOutcome, ctx: CascadeMessageContext): CascadeResolvedEvent {
+export function routeCascadeOutcome(
+  outcome: MatchOutcome,
+  ctx: CascadeMessageContext,
+): CascadeResolvedEvent {
   switch (outcome.kind) {
     case "confident_match":
       return {
         name: "m29.hl7_message.cascade_resolved_confident",
-        payload: { ...ctx, matchedPatientId: outcome.patientId, matchLevel: outcome.level, mergeRedirectHops: outcome.mergeRedirectHops },
+        payload: {
+          ...ctx,
+          matchedPatientId: outcome.patientId,
+          matchLevel: outcome.level,
+          mergeRedirectHops: outcome.mergeRedirectHops,
+        },
       };
     case "candidate_match":
       return {

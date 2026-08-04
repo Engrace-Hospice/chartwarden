@@ -9,9 +9,14 @@
 // an unbound consumer gets a fail-closed throw rather than a fabricated quality number), and they RESOLVE
 // once M30 registers the live providers.
 import { beforeEach, describe, expect, it } from "vitest";
-import { REQUIRED_SEAMS, __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/seams/registry";
-import { buildM30PublishedSeams, registerM30PublishedSeams } from "../src/modules/30-quality/index";
+import {
+  REQUIRED_SEAMS,
+  __resetSeamsForTest,
+  getSeam,
+  validateSeams,
+} from "../src/bootstrap/seams/registry";
 import { wireModuleSeams } from "../src/index";
+import { buildM30PublishedSeams, registerM30PublishedSeams } from "../src/modules/30-quality/index";
 
 const M30_SEAMS = [
   "QualityMeasureProvider",

@@ -25,7 +25,16 @@
 // (real money), `local_compute_attribution` for a local model (an internal allocation, not a bill). A
 // single "cost" column would make a local run look like spend on the invoice the tenant reads.
 import { sql } from "drizzle-orm";
-import { check, index, integer, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { aiCapability } from "./ai-capabilities";
 import { aiModelBackend } from "./ai-model-backends";

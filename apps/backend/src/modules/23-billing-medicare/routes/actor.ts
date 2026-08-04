@@ -62,7 +62,8 @@ export function writeActorOf(request: FastifyRequest): M23WriteActor {
     // No active membership on the session → cannot own/author an M23 row (fail-closed, never anonymous).
     throw new UnauthorizedError("an active membership is required to author billing content");
   }
-  const actorKind = typeof ctx.attributes?.actorKind === "string" ? ctx.attributes.actorKind : "user";
+  const actorKind =
+    typeof ctx.attributes?.actorKind === "string" ? ctx.attributes.actorKind : "user";
   return {
     organizationId: ctx.organizationId,
     userId: ctx.userId,

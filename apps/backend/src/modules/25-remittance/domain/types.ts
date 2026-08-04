@@ -10,13 +10,7 @@ export type PostAction = "auto_posted" | "ledger_recorded" | "flagged_review" | 
 export type MatchStrategy = "payer_icn" | "patient_control" | "heuristic" | "manual";
 export type MatchState = "unmatched" | "auto_matched" | "manual_matched" | "reversed" | "posted";
 
-export type DenialState =
-  | "open"
-  | "in_progress"
-  | "escalated"
-  | "appealed"
-  | "resolved"
-  | "closed";
+export type DenialState = "open" | "in_progress" | "escalated" | "appealed" | "resolved" | "closed";
 
 export type AppealTier =
   | "redetermination"
@@ -24,7 +18,13 @@ export type AppealTier =
   | "alj"
   | "council"
   | "federal_court";
-export type AppealState = "draft" | "submitted" | "under_review" | "decided" | "withdrawn" | "closed";
+export type AppealState =
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "decided"
+  | "withdrawn"
+  | "closed";
 export type AppealDecisionOutcome = "favorable" | "partial" | "unfavorable";
 
 /** The six denial-worklist aging buckets (§1.1). */

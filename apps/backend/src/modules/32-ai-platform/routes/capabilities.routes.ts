@@ -122,7 +122,9 @@ export function registerCapabilityRoutes(app: FastifyInstance, deps: CapabilityR
         capabilityId,
         actorMembershipId: actor.membershipId,
       });
-      return reply.code(200).send({ capability: row, permittedNextStates: aiPermittedNextStates(row.lifecycleState) });
+      return reply
+        .code(200)
+        .send({ capability: row, permittedNextStates: aiPermittedNextStates(row.lifecycleState) });
     },
   );
 

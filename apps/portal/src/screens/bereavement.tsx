@@ -91,9 +91,24 @@ export function PortalBereavement(): JSX.Element {
                 <div key={i}>
                   <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>
                     {r.title ?? "Resource"}
-                    {r.kind ? <span style={{ color: t.onSurfaceVariant, fontWeight: 400 }}> · {humanize(r.kind)}</span> : null}
+                    {r.kind ? (
+                      <span style={{ color: t.onSurfaceVariant, fontWeight: 400 }}>
+                        {" "}
+                        · {humanize(r.kind)}
+                      </span>
+                    ) : null}
                   </div>
-                  {r.summary ? <p style={{ margin: "0.2rem 0 0", fontSize: "0.85rem", color: t.onSurfaceVariant }}>{r.summary}</p> : null}
+                  {r.summary ? (
+                    <p
+                      style={{
+                        margin: "0.2rem 0 0",
+                        fontSize: "0.85rem",
+                        color: t.onSurfaceVariant,
+                      }}
+                    >
+                      {r.summary}
+                    </p>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -103,7 +118,8 @@ export function PortalBereavement(): JSX.Element {
         <PortalCard heading="Communication preferences">
           {optedOut ? (
             <p role="status" style={{ margin: 0, fontSize: "0.88rem" }}>
-              You've opted out of bereavement outreach. You can always reach back out to your hospice team.
+              You've opted out of bereavement outreach. You can always reach back out to your
+              hospice team.
             </p>
           ) : (
             <>

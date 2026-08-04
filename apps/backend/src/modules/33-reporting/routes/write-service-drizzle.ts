@@ -28,12 +28,13 @@ import { type CursorPage, paginate } from "./concurrency";
 import {
   type CreateDefinitionArgs,
   type CreateScheduleArgs,
-  type CreateViewArgs,
   type CreateVersionArgs,
+  type CreateViewArgs,
   type CronPort,
   type DefinitionVersionView,
   type DefinitionView,
   type M33WriteRouteService,
+  RecipientNotInOrgError,
   type RecipientReaderPort,
   type ReportSpec,
   type ScheduleRunView,
@@ -44,7 +45,6 @@ import {
   type UpdateViewArgs,
   type ViewView,
   type WriteOutboxPort,
-  RecipientNotInOrgError,
   acceptAllRecipientReader,
   assertBaseActive,
   assertCronCadence,
@@ -211,13 +211,21 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
   };
 
   /** Resolve the row_limit of the view's bound definition version (for §2.3 PDF_ROW_LIMIT_EXCEEDED). */
-  const rowLimitOfView = async (tx: WriteTx, view: schema.ReportView): Promise<number | undefined> => {
-    const version = await new ReportDefinitionRepository(tx).findVersionById(view.definitionVersionId);
+  const rowLimitOfView = async (
+    tx: WriteTx,
+    view: schema.ReportView,
+  ): Promise<number | undefined> => {
+    const version = await new ReportDefinitionRepository(tx).findVersionById(
+      view.definitionVersionId,
+    );
     return version?.spec?.rowLimit;
   };
 
   /** Compute the cron's next two fires (for §2.3 cadence) + the persisted `next_run_at`. */
-  const cronFires = (cronExpression: string, tenantTimezone: string): { first: Date; second: Date } => {
+  const cronFires = (
+    cronExpression: string,
+    tenantTimezone: string,
+  ): { first: Date; second: Date } => {
     const first = deps.cron.nextRunAfter(cronExpression, tenantTimezone, now());
     const second = deps.cron.nextRunAfter(cronExpression, tenantTimezone, first);
     return { first, second };
@@ -420,7 +428,8 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
         }
         const row = await repo.update(id, {
           displayName: args.displayName ?? existing.displayName,
-          pinnedFilters: (args.pinnedFilters ?? existing.pinnedFilters) as unknown as schema.ReportFilter[],
+          pinnedFilters: (args.pinnedFilters ??
+            existing.pinnedFilters) as unknown as schema.ReportFilter[],
           shareScope: args.shareScope ?? existing.shareScope,
           shareRoleKeys: args.shareRoleKeys ? [...args.shareRoleKeys] : existing.shareRoleKeys,
         });
@@ -442,7 +451,10 @@ export function createDrizzleM33WriteBackend(deps: M33WriteDrizzleDeps): {
           shareRoleKeys: args.shareRoleKeys ? [...args.shareRoleKeys] : existing.shareRoleKeys,
         });
         let share: ShareView | null = null;
-        if (args.shareScope === "role" && (args.shareRoleKeys?.length || args.sharedWithMembershipId)) {
+        if (
+          args.shareScope === "role" &&
+          (args.shareRoleKeys?.length || args.sharedWithMembershipId)
+        ) {
           const row = await new ReportShareRepository(tx).create({
             organizationId: actor.organizationId,
             reportViewId: id,

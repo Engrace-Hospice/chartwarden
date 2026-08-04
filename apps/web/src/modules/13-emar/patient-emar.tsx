@@ -1,13 +1,13 @@
 import {
-  ageYears,
-  cardSurface,
   EmptyState,
-  ghostBorder,
   Glyph,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
+  ageYears,
+  cardSurface,
+  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -57,7 +57,13 @@ interface PatientSummary {
 
 const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
 const slotOf = (iso: string): string => iso.slice(11, 16); // HH:MM
-const FIVE_RIGHTS = ["Right patient", "Right drug", "Right dose", "Right route", "Right time"] as const;
+const FIVE_RIGHTS = [
+  "Right patient",
+  "Right drug",
+  "Right dose",
+  "Right route",
+  "Right time",
+] as const;
 
 export function PatientEmar(): JSX.Element {
   const client = useApiClient();
@@ -116,7 +122,10 @@ export function PatientEmar(): JSX.Element {
       chips={
         <>
           <MonoChip>{patient.mrn}</MonoChip>
-          <StatusPill label={stateLabel(patient.status)} tone={ADMIN_STATUS_TONE[patient.status] ?? "neutral"} />
+          <StatusPill
+            label={stateLabel(patient.status)}
+            tone={ADMIN_STATUS_TONE[patient.status] ?? "neutral"}
+          />
         </>
       }
     />
@@ -131,7 +140,15 @@ export function PatientEmar(): JSX.Element {
 
         {/* Center — the MAR grid + recent administrations */}
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-          <h1 style={{ margin: "0 0 1rem", fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1.375rem", color: t.onSurface }}>
+          <h1
+            style={{
+              margin: "0 0 1rem",
+              fontFamily: t.fontDisplay,
+              fontWeight: 500,
+              fontSize: "1.375rem",
+              color: t.onSurface,
+            }}
+          >
             Medication Administration Record
           </h1>
 
@@ -140,7 +157,10 @@ export function PatientEmar(): JSX.Element {
           ) : loading && doses.length === 0 ? (
             <LoadingSpinner />
           ) : grid.meds.length === 0 ? (
-            <EmptyState title="No doses scheduled" description="No scheduled doses in this window." />
+            <EmptyState
+              title="No doses scheduled"
+              description="No scheduled doses in this window."
+            />
           ) : (
             <section style={{ ...cardSurface, padding: "1rem 1.25rem", overflowX: "auto" }}>
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.82rem" }}>
@@ -148,14 +168,23 @@ export function PatientEmar(): JSX.Element {
                   <tr>
                     <th style={{ ...gridHead, textAlign: "left" }}>Medication order</th>
                     {grid.slots.map((s) => (
-                      <th key={s} style={gridHead} className="tabular-nums">{s}</th>
+                      <th key={s} style={gridHead} className="tabular-nums">
+                        {s}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {grid.meds.map((med) => (
                     <tr key={med}>
-                      <td style={{ ...gridCell, textAlign: "left", fontFamily: t.fontMono, color: t.onSurface }}>
+                      <td
+                        style={{
+                          ...gridCell,
+                          textAlign: "left",
+                          fontFamily: t.fontMono,
+                          color: t.onSurface,
+                        }}
+                      >
                         {med.slice(0, 10)}
                       </td>
                       {grid.slots.map((s) => {
@@ -167,9 +196,19 @@ export function PatientEmar(): JSX.Element {
                                 type="button"
                                 onClick={() => setSelectedDoseId(dose.id)}
                                 aria-pressed={dose.id === selectedDoseId}
-                                style={{ border: "none", background: dose.id === selectedDoseId ? t.primaryTint : "transparent", borderRadius: "9999px", padding: "0.1rem", cursor: "pointer" }}
+                                style={{
+                                  border: "none",
+                                  background:
+                                    dose.id === selectedDoseId ? t.primaryTint : "transparent",
+                                  borderRadius: "9999px",
+                                  padding: "0.1rem",
+                                  cursor: "pointer",
+                                }}
                               >
-                                <StatusPill label={stateLabel(dose.status)} tone={DOSE_TONE[dose.status] ?? "neutral"} />
+                                <StatusPill
+                                  label={stateLabel(dose.status)}
+                                  tone={DOSE_TONE[dose.status] ?? "neutral"}
+                                />
                               </button>
                             ) : (
                               <span style={{ color: t.muted }}>—</span>
@@ -196,14 +235,25 @@ export function PatientEmar(): JSX.Element {
                     onClick={() => navigate(`/patients/${patientId}/administrations/${a.id}`)}
                     style={{ ...adminRow, borderTop: i === 0 ? "none" : ghostBorder }}
                   >
-                    <span className="tabular-nums" style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}>
+                    <span
+                      className="tabular-nums"
+                      style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}
+                    >
                       {ts(a.administeredAt)}
                       <span style={dateMeta}> · {stateLabel(a.mode)}</span>
                     </span>
-                    <StatusPill label={stateLabel(a.status)} tone={ADMIN_STATUS_TONE[a.status] ?? "neutral"} />
+                    <StatusPill
+                      label={stateLabel(a.status)}
+                      tone={ADMIN_STATUS_TONE[a.status] ?? "neutral"}
+                    />
                     {a.requiresRnReview ? <StatusPill label="RN review" tone="warning" /> : null}
-                    <StatusPill label={stateLabel(a.lateEntryTier)} tone={lateEntryTone(a.lateEntryTier)} />
-                    {a.isControlledSubstance ? <StatusPill label="Controlled" tone="critical" glyph="alert" /> : null}
+                    <StatusPill
+                      label={stateLabel(a.lateEntryTier)}
+                      tone={lateEntryTone(a.lateEntryTier)}
+                    />
+                    {a.isControlledSubstance ? (
+                      <StatusPill label="Controlled" tone="critical" glyph="alert" />
+                    ) : null}
                     <Glyph name="arrow-right" size={16} />
                   </button>
                 ))}
@@ -220,24 +270,55 @@ export function PatientEmar(): JSX.Element {
               <>
                 <dl style={detailGrid}>
                   <dt style={dt}>Order</dt>
-                  <dd style={{ ...dd, fontFamily: t.fontMono }}>{selectedDose.medicationOrderId.slice(0, 10)}</dd>
+                  <dd style={{ ...dd, fontFamily: t.fontMono }}>
+                    {selectedDose.medicationOrderId.slice(0, 10)}
+                  </dd>
                   <dt style={dt}>Due</dt>
-                  <dd style={{ ...dd }} className="tabular-nums">{ts(selectedDose.dueAt)}</dd>
+                  <dd style={{ ...dd }} className="tabular-nums">
+                    {ts(selectedDose.dueAt)}
+                  </dd>
                   <dt style={dt}>Status</dt>
-                  <dd style={dd}><StatusPill label={stateLabel(selectedDose.status)} tone={DOSE_TONE[selectedDose.status] ?? "neutral"} /></dd>
+                  <dd style={dd}>
+                    <StatusPill
+                      label={stateLabel(selectedDose.status)}
+                      tone={DOSE_TONE[selectedDose.status] ?? "neutral"}
+                    />
+                  </dd>
                 </dl>
-                <span style={{ ...sectionTitle, display: "block", marginTop: "0.875rem" }}>Five rights</span>
-                <ul style={{ listStyle: "none", padding: 0, margin: "0.4rem 0 0", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                <span style={{ ...sectionTitle, display: "block", marginTop: "0.875rem" }}>
+                  Five rights
+                </span>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: "0.4rem 0 0",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.3rem",
+                  }}
+                >
                   {FIVE_RIGHTS.map((r) => (
-                    <li key={r} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.82rem", color: t.onSurfaceVariant }}>
+                    <li
+                      key={r}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        fontSize: "0.82rem",
+                        color: t.onSurfaceVariant,
+                      }}
+                    >
                       <Glyph name="check-circle" size={14} /> {r}
                     </li>
                   ))}
                 </ul>
-                <button type="button" disabled style={recordBtn}>Record administration</button>
+                <button type="button" disabled style={recordBtn}>
+                  Record administration
+                </button>
                 <p style={meta}>
-                  Recording a dose (single-dose / PRN / witness, with the barcode + five-rights ceremony)
-                  arrives with the M13 administration write path.
+                  Recording a dose (single-dose / PRN / witness, with the barcode + five-rights
+                  ceremony) arrives with the M13 administration write path.
                 </p>
               </>
             ) : (
@@ -251,18 +332,95 @@ export function PatientEmar(): JSX.Element {
 }
 
 function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return <span style={{ fontFamily: t.fontMono, fontSize: "0.78rem", color: t.onSurfaceVariant, background: t.surfaceContainer, borderRadius: "9999px", padding: "0.15rem 0.55rem" }}>{children}</span>;
+  return (
+    <span
+      style={{
+        fontFamily: t.fontMono,
+        fontSize: "0.78rem",
+        color: t.onSurfaceVariant,
+        background: t.surfaceContainer,
+        borderRadius: "9999px",
+        padding: "0.15rem 0.55rem",
+      }}
+    >
+      {children}
+    </span>
+  );
 }
 
-const rightRail: CSSProperties = { width: "19rem", flexShrink: 0, overflow: "auto", padding: "1.5rem", background: t.surfaceLow };
-const railTitle: CSSProperties = { margin: "0 0 0.625rem", fontFamily: t.fontDisplay, fontWeight: 500, fontSize: "1rem", color: t.onSurface };
-const sectionTitle: CSSProperties = { fontSize: "0.6875rem", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", color: t.muted, margin: "0 0 0.5rem" };
-const gridHead: CSSProperties = { padding: "0.5rem 0.5rem", textAlign: "center", fontWeight: 600, color: t.onSurfaceVariant, borderBottom: ghostBorder, whiteSpace: "nowrap" };
-const gridCell: CSSProperties = { padding: "0.6rem 0.5rem", textAlign: "center", borderBottom: ghostBorder, whiteSpace: "nowrap" };
-const adminRow: CSSProperties = { display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", padding: "0.7rem 0", border: "none", background: "transparent", cursor: "pointer", color: t.muted, fontSize: "0.82rem" };
+const rightRail: CSSProperties = {
+  width: "19rem",
+  flexShrink: 0,
+  overflow: "auto",
+  padding: "1.5rem",
+  background: t.surfaceLow,
+};
+const railTitle: CSSProperties = {
+  margin: "0 0 0.625rem",
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  fontSize: "1rem",
+  color: t.onSurface,
+};
+const sectionTitle: CSSProperties = {
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: t.muted,
+  margin: "0 0 0.5rem",
+};
+const gridHead: CSSProperties = {
+  padding: "0.5rem 0.5rem",
+  textAlign: "center",
+  fontWeight: 600,
+  color: t.onSurfaceVariant,
+  borderBottom: ghostBorder,
+  whiteSpace: "nowrap",
+};
+const gridCell: CSSProperties = {
+  padding: "0.6rem 0.5rem",
+  textAlign: "center",
+  borderBottom: ghostBorder,
+  whiteSpace: "nowrap",
+};
+const adminRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  width: "100%",
+  padding: "0.7rem 0",
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  color: t.muted,
+  fontSize: "0.82rem",
+};
 const dateMeta: CSSProperties = { color: t.muted };
-const detailGrid: CSSProperties = { display: "grid", gridTemplateColumns: "auto 1fr", alignItems: "center", gap: "0.5rem 1rem", margin: 0, fontSize: "0.8rem" };
+const detailGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  alignItems: "center",
+  gap: "0.5rem 1rem",
+  margin: 0,
+  fontSize: "0.8rem",
+};
 const dt: CSSProperties = { fontWeight: 600, color: t.onSurfaceVariant };
 const dd: CSSProperties = { margin: 0, color: t.onSurface };
-const recordBtn: CSSProperties = { marginTop: "1rem", width: "100%", padding: "0.55rem 1rem", borderRadius: "9999px", background: t.surfaceContainer, color: t.muted, fontSize: "0.8125rem", fontWeight: 600, border: "none", cursor: "not-allowed" };
-const meta: CSSProperties = { fontSize: "0.78rem", color: t.onSurfaceVariant, margin: "0.5rem 0 0" };
+const recordBtn: CSSProperties = {
+  marginTop: "1rem",
+  width: "100%",
+  padding: "0.55rem 1rem",
+  borderRadius: "9999px",
+  background: t.surfaceContainer,
+  color: t.muted,
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  border: "none",
+  cursor: "not-allowed",
+};
+const meta: CSSProperties = {
+  fontSize: "0.78rem",
+  color: t.onSurfaceVariant,
+  margin: "0.5rem 0 0",
+};

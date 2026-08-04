@@ -1,10 +1,10 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `tenant_template_overlay` (M22 §3.3 / §4.5 / D14). The per-tenant branding +
 // state-addendum layered on top of a platform `form_template`. Org-scoped (organization_id NOT
 // NULL); partial-UNIQUE `(organization_id, template_id) WHERE is_active = true` enforces at-most-one
 // active overlay per (org, template). `branding` / `state_addendum` are DENYLISTED in the audit
 // trigger (§3.6 — tenant-confidential). `template_id` carries a SQL FK to `form_template`.
 import { boolean, jsonb, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import { formTemplates } from "./form-template";
 

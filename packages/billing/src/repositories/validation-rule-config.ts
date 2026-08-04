@@ -14,16 +14,16 @@
 // ENUM BOUNDARY: `severity` (error/warn/info) and `override_role_required` (billing_manager/…) are DB-native
 // lowercase enums identical to the domain alphabet, so rows pass through un-mapped. No PHI (D18).
 import * as schema from "@wardenx/db/schema";
-import { and, desc, eq } from "drizzle-orm";
 import { WardenXError } from "@wardenx/types";
+import { and, desc, eq } from "drizzle-orm";
 import {
   type BillingDb,
-  buildCursorPage,
   type CursorPage,
+  type VersionedUpdateResult,
+  buildCursorPage,
   decodeCursor,
   keysetBefore,
   pageSizeOf,
-  type VersionedUpdateResult,
   versionConflict,
   versionOk,
 } from "./db";

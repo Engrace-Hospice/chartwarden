@@ -63,6 +63,10 @@ export class AssessmentStateError extends WardenXError {
 }
 
 /** Throw an {@link AssessmentStateError} when `condition` is false (guard helper). */
-export function require_(condition: boolean, code: M9ErrorCode, message: string): asserts condition {
+export function require_(
+  condition: boolean,
+  code: M9ErrorCode,
+  message: string,
+): asserts condition {
   if (!condition) throw new AssessmentStateError(code, message);
 }

@@ -7,8 +7,15 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 export const cell: CSSProperties = { padding: "0.6rem 0.75rem" };
 export const cellRight: CSSProperties = { ...cell, textAlign: "right" };
 
-export const tableStyle: CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" };
-export const theadRow: CSSProperties = { textAlign: "left", color: "var(--color-on-surface-variant)" };
+export const tableStyle: CSSProperties = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: "0.875rem",
+};
+export const theadRow: CSSProperties = {
+  textAlign: "left",
+  color: "var(--color-on-surface-variant)",
+};
 export const bodyRow: CSSProperties = { borderTop: "1px solid var(--color-outline-variant)" };
 
 export const inputStyle: CSSProperties = {
@@ -46,9 +53,16 @@ export function Kv({ label, children }: { label: string; children: ReactNode }):
 }
 
 /** A form field: label + control. */
-export function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
+export function Field({
+  label,
+  htmlFor,
+  children,
+}: { label: string; htmlFor?: string; children: ReactNode }): JSX.Element {
   return (
-    <label htmlFor={htmlFor} style={{ display: "flex", flexDirection: "column", gap: "0.35rem", fontSize: "0.85rem" }}>
+    <label
+      htmlFor={htmlFor}
+      style={{ display: "flex", flexDirection: "column", gap: "0.35rem", fontSize: "0.85rem" }}
+    >
       <span style={{ fontWeight: 500 }}>{label}</span>
       {children}
     </label>
@@ -65,11 +79,20 @@ export function OutcomeBanner({ ok, message }: { ok: boolean; message: string })
 }
 
 /** A keyset "Load more" affordance shared by the cursor-paged lists. */
-export function LoadMore({ hasMore, loading, onMore }: { hasMore: boolean; loading: boolean; onMore: () => void }): JSX.Element | null {
+export function LoadMore({
+  hasMore,
+  loading,
+  onMore,
+}: { hasMore: boolean; loading: boolean; onMore: () => void }): JSX.Element | null {
   if (!hasMore) return null;
   return (
     <div style={{ padding: "0.75rem", textAlign: "center" }}>
-      <button type="button" onClick={onMore} disabled={loading} style={actionButtonStyle(false, loading)}>
+      <button
+        type="button"
+        onClick={onMore}
+        disabled={loading}
+        style={actionButtonStyle(false, loading)}
+      >
         {loading ? "Loading…" : "Load more"}
       </button>
     </div>

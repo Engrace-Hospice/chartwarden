@@ -93,7 +93,10 @@ export interface PortalAbacResolver {
     patientId: string,
   ): Promise<PortalGrantAbacFacts | null>;
   /** Telehealth visit facts for an id, or null. */
-  loadTelehealthVisit(orgId: string, telehealthVisitId: string): Promise<TelehealthVisitAbacFacts | null>;
+  loadTelehealthVisit(
+    orgId: string,
+    telehealthVisitId: string,
+  ): Promise<TelehealthVisitAbacFacts | null>;
 }
 
 /** A resolver that denies everything — the shape a boot-without-DB path binds (fail-closed, never open). */
@@ -171,7 +174,9 @@ export const seamPortalAbacPorts: PortalAbacPorts = {
   },
   async bereavedWindowOpen(input) {
     try {
-      const provider = getSeam("BereavedPortalScopeProvider") as unknown as BereavedPortalScopeShape;
+      const provider = getSeam(
+        "BereavedPortalScopeProvider",
+      ) as unknown as BereavedPortalScopeShape;
       return await provider.isWindowOpen(input);
     } catch {
       return false;
@@ -238,9 +243,7 @@ export function decideCaregiverPrimaryOrDpoa(input: {
   if (grant.grantKind === "dpoa_healthcare" || grant.grantKind === "patient_self") return true;
   if (grant.grantKind !== "family_caregiver") return false;
   // A family caregiver may attest only when she is the PRIMARY caregiver bound to this account's user.
-  return (
-    input.primaryCaregiverUserId !== null && input.primaryCaregiverUserId === account.userId
-  );
+  return input.primaryCaregiverUserId !== null && input.primaryCaregiverUserId === account.userId;
 }
 
 // ── the registry closures ──────────────────────────────────────────────────────────────────────────────
@@ -257,10 +260,7 @@ export function buildPortalAbacPredicates(
   const now = deps.now ?? (() => new Date());
 
   /** Resolve the visit's patient (never the wire) for the telehealth predicates. */
-  const visitPatient = async (
-    orgId: string,
-    target: AbacTarget,
-  ): Promise<string | null> => {
+  const visitPatient = async (orgId: string, target: AbacTarget): Promise<string | null> => {
     const directPatient = targetStr(target, "patientId");
     if (directPatient !== null) return directPatient;
     const visitId = targetStr(target, "telehealthVisitId", "visitId");
@@ -275,7 +275,9 @@ export function buildPortalAbacPredicates(
       if (!context.organizationId || !isPortalSession(context)) return false;
       const portalAccountId = targetStr(target, "portalAccountId");
       if (portalAccountId === null) return false;
-      const account = await resolver.loadAccount(context.organizationId, portalAccountId).catch(() => null);
+      const account = await resolver
+        .loadAccount(context.organizationId, portalAccountId)
+        .catch(() => null);
       return decidePortalAccountActive(account);
     },
 

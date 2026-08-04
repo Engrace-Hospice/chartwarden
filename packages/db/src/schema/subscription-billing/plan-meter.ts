@@ -1,14 +1,6 @@
 // @wardenx/db — `plan_meter` (M35 §3.3). One row per (plan_id, event_type) metered dimension.
 // PLATFORM-SHARED (no organization_id) — read-all, platform-only write. `plan_id` is a REAL FK to `plan`.
-import {
-  bigint,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { usageEventType } from "../../enums";
 import { plan } from "./plan";
 

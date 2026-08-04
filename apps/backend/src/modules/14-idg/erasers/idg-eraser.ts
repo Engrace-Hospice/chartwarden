@@ -198,7 +198,10 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
           actionRows.length === 0
             ? 0
             : await del(() =>
-                tx.delete(ACT).where(inArray(ACT.id, ids(actionRows))).returning({ id: ACT.id }),
+                tx
+                  .delete(ACT)
+                  .where(inArray(ACT.id, ids(actionRows)))
+                  .returning({ id: ACT.id }),
               );
         if (decisionRows.length > 0) {
           await tx
@@ -210,7 +213,10 @@ export function createDrizzleIdgEraseStore(db: DbClient): IdgEraseStore {
           decisionRows.length === 0
             ? 0
             : await del(() =>
-                tx.delete(DEC).where(inArray(DEC.id, ids(decisionRows))).returning({ id: DEC.id }),
+                tx
+                  .delete(DEC)
+                  .where(inArray(DEC.id, ids(decisionRows)))
+                  .returning({ id: DEC.id }),
               );
         if (agendaRows.length > 0) {
           await tx

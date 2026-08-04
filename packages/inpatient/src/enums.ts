@@ -29,7 +29,12 @@ import type {
   IrcEpisodeState,
 } from "@wardenx/types";
 
-export const IPU_ROOM_KINDS = ["private", "semi_private", "family", "shared_overflow"] as const satisfies readonly IpuRoomKind[];
+export const IPU_ROOM_KINDS = [
+  "private",
+  "semi_private",
+  "family",
+  "shared_overflow",
+] as const satisfies readonly IpuRoomKind[];
 
 export const IPU_BED_CLEANING_STATUSES = [
   "ready",
@@ -40,7 +45,11 @@ export const IPU_BED_CLEANING_STATUSES = [
   "retired",
 ] as const satisfies readonly IpuBedCleaningStatus[];
 
-export const IPU_ADMISSION_KINDS = ["gip", "irc", "arranged"] as const satisfies readonly IpuAdmissionKind[];
+export const IPU_ADMISSION_KINDS = [
+  "gip",
+  "irc",
+  "arranged",
+] as const satisfies readonly IpuAdmissionKind[];
 
 export const IPU_ADMISSION_STATES = [
   "pending",
@@ -105,7 +114,10 @@ export const IPU_RESTRAINT_KINDS = [
   "side_rail_4",
 ] as const satisfies readonly IpuRestraintKind[];
 
-export const IPU_RESTRAINT_EVENT_STATES = ["active", "released"] as const satisfies readonly IpuRestraintEventState[];
+export const IPU_RESTRAINT_EVENT_STATES = [
+  "active",
+  "released",
+] as const satisfies readonly IpuRestraintEventState[];
 
 export const IPU_RESTRAINT_REASSESSMENT_OUTCOMES = [
   "continue",
@@ -144,7 +156,12 @@ export const IPU_VISITOR_RESTRICTION_KINDS = [
   "no_overnight",
 ] as const satisfies readonly IpuVisitorRestrictionKind[];
 
-export const IPU_MEAL_SLOTS = ["breakfast", "lunch", "dinner", "snack"] as const satisfies readonly IpuMealSlot[];
+export const IPU_MEAL_SLOTS = [
+  "breakfast",
+  "lunch",
+  "dinner",
+  "snack",
+] as const satisfies readonly IpuMealSlot[];
 
 export const IPU_EQUIPMENT_TYPES = [
   "hospital_bed",

@@ -1,14 +1,14 @@
 // @wardenx/hope — J2051 trigger (D4) + SFV engine (§2.2.3, D3) — M10-T03.
 import { describe, expect, it } from "vitest";
-import { evaluateJ2051Trigger } from "../src/triggers/j2051";
 import {
-  planSfvCreation,
-  planSfvCompletion,
-  decideSfvWatchdogStatus,
   SFV_DUE_CALENDAR_DAYS,
   SFV_MISSED_AFTER_DAYS,
   type SfvCompletionTarget,
+  decideSfvWatchdogStatus,
+  planSfvCompletion,
+  planSfvCreation,
 } from "../src/sfv/sfv";
+import { evaluateJ2051Trigger } from "../src/triggers/j2051";
 
 const UTC = "UTC";
 
@@ -34,7 +34,10 @@ describe("evaluateJ2051Trigger — server-authoritative per-symptom severity (D4
       ],
     });
     expect(v.maxSeverity).toBe("severe");
-    expect(v.contributingSymptoms.map((s) => s.symptomCode)).toEqual(["pain", "shortness_of_breath"]);
+    expect(v.contributingSymptoms.map((s) => s.symptomCode)).toEqual([
+      "pain",
+      "shortness_of_breath",
+    ]);
   });
 
   it("does NOT fire when all symptoms are below moderate", () => {
@@ -100,13 +103,15 @@ describe("planSfvCompletion — §2.2.3 completion guards", () => {
   });
 
   it("rejects past-due completion without an admin override (409 M10_SFV_PAST_DUE)", () => {
-    expect(() =>
-      planSfvCompletion(open, "rfa04-1", "2026-06-13T10:00:00.000Z"),
-    ).toThrowError(expect.objectContaining({ code: "M10_SFV_PAST_DUE", statusCode: 409 }));
+    expect(() => planSfvCompletion(open, "rfa04-1", "2026-06-13T10:00:00.000Z")).toThrowError(
+      expect.objectContaining({ code: "M10_SFV_PAST_DUE", statusCode: 409 }),
+    );
   });
 
   it("allows a past-due completion WITH an admin override", () => {
-    const plan = planSfvCompletion(open, "rfa04-1", "2026-06-13T10:00:00.000Z", { adminOverride: true });
+    const plan = planSfvCompletion(open, "rfa04-1", "2026-06-13T10:00:00.000Z", {
+      adminOverride: true,
+    });
     expect(plan.sfvId).toBe("sfv-1");
   });
 });
@@ -115,26 +120,51 @@ describe("decideSfvWatchdogStatus — §2.2.3 time-based decay", () => {
   const dueAt = "2026-06-12T23:59:59.999Z";
   it("stays open before due", () => {
     expect(
-      decideSfvWatchdogStatus({ current: "open", dueAt, asOfInstant: "2026-06-12T10:00:00.000Z", timeZone: UTC }),
+      decideSfvWatchdogStatus({
+        current: "open",
+        dueAt,
+        asOfInstant: "2026-06-12T10:00:00.000Z",
+        timeZone: UTC,
+      }),
     ).toBe("open");
   });
   it("open → overdue once due passes", () => {
     expect(
-      decideSfvWatchdogStatus({ current: "open", dueAt, asOfInstant: "2026-06-13T10:00:00.000Z", timeZone: UTC }),
+      decideSfvWatchdogStatus({
+        current: "open",
+        dueAt,
+        asOfInstant: "2026-06-13T10:00:00.000Z",
+        timeZone: UTC,
+      }),
     ).toBe("overdue");
   });
   it("overdue → missed after 7 days past due", () => {
     expect(SFV_MISSED_AFTER_DAYS).toBe(7);
     expect(
-      decideSfvWatchdogStatus({ current: "overdue", dueAt, asOfInstant: "2026-06-20T00:00:00.001Z", timeZone: UTC }),
+      decideSfvWatchdogStatus({
+        current: "overdue",
+        dueAt,
+        asOfInstant: "2026-06-20T00:00:00.001Z",
+        timeZone: UTC,
+      }),
     ).toBe("missed");
   });
   it("terminal states pass through unchanged", () => {
     expect(
-      decideSfvWatchdogStatus({ current: "completed", dueAt, asOfInstant: "2026-07-01T00:00:00.000Z", timeZone: UTC }),
+      decideSfvWatchdogStatus({
+        current: "completed",
+        dueAt,
+        asOfInstant: "2026-07-01T00:00:00.000Z",
+        timeZone: UTC,
+      }),
     ).toBe("completed");
     expect(
-      decideSfvWatchdogStatus({ current: "missed", dueAt, asOfInstant: "2026-07-01T00:00:00.000Z", timeZone: UTC }),
+      decideSfvWatchdogStatus({
+        current: "missed",
+        dueAt,
+        asOfInstant: "2026-07-01T00:00:00.000Z",
+        timeZone: UTC,
+      }),
     ).toBe("missed");
   });
 });

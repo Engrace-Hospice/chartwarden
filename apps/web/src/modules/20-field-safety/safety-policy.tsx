@@ -187,14 +187,19 @@ export function SafetyPolicyScreen(): JSX.Element {
     body.sosContinuousLocationEnabled = streamEnabled;
     body.subscriptionModel = model;
     body.oshaReportableAutoFlagCategories = autoFlag;
-    if (afterHoursStart.trim() !== "") body.afterHoursStartHour = Math.trunc(Number(afterHoursStart));
+    if (afterHoursStart.trim() !== "")
+      body.afterHoursStartHour = Math.trunc(Number(afterHoursStart));
     if (afterHoursEnd.trim() !== "") body.afterHoursEndHour = Math.trunc(Number(afterHoursEnd));
 
     // The policy DTO carries no `version` column of its own — §2.5's optimistic guard on this route reads
     // the header when the caller has one. `null` means "no version to echo", which the route accepts for
     // the policy PATCH (it is not marked If-Match-required), and a concurrent edit is caught by the
     // version-chain rule server-side rather than by a number this screen never saw.
-    const res = await patchPolicy(client, null, body as Record<string, unknown> & { editReason: string });
+    const res = await patchPolicy(
+      client,
+      null,
+      body as Record<string, unknown> & { editReason: string },
+    );
     setSaving(false);
     if (res.error) {
       setModalError(errorMessage(res.error, "The policy was not changed."));
@@ -235,9 +240,7 @@ export function SafetyPolicyScreen(): JSX.Element {
         <td style={td}>{label}</td>
         <td style={tdNum}>{value}</td>
         <td style={td}>{unit}</td>
-        <td style={tdNum}>
-          {band ? `${band[0]}–${band[1]}` : "—"}
-        </td>
+        <td style={tdNum}>{band ? `${band[0]}–${band[1]}` : "—"}</td>
         <td style={td}>
           {unit === "seconds"
             ? secondsLabel(value)
@@ -274,9 +277,9 @@ export function SafetyPolicyScreen(): JSX.Element {
       {historical ? (
         <Notice tone="warning" live>
           <strong>Historical view.</strong> These are the thresholds that were in force at{" "}
-          {dateTime(toInstant(asOf))} — version {policy.versionId}. Editing is disabled here on purpose:
-          saving from a time-travelled view would write today's row with yesterday's numbers. Clear the
-          date to come back to the policy actually in force.
+          {dateTime(toInstant(asOf))} — version {policy.versionId}. Editing is disabled here on
+          purpose: saving from a time-travelled view would write today's row with yesterday's
+          numbers. Clear the date to come back to the policy actually in force.
         </Notice>
       ) : null}
 
@@ -333,8 +336,8 @@ export function SafetyPolicyScreen(): JSX.Element {
           </button>
         </FilterRow>
         <span style={mutedStyle}>
-          §2.2.4's replay arm. A review of a 2026 incident must read the 2026 thresholds — reading today's
-          would turn a policy that tightened into a regression that never happened.
+          §2.2.4's replay arm. A review of a 2026 incident must read the 2026 thresholds — reading
+          today's would turn a policy that tightened into a regression that never happened.
         </span>
       </Card>
 
@@ -367,10 +370,10 @@ export function SafetyPolicyScreen(): JSX.Element {
           <tbody>{OVERDUE_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}</tbody>
         </table>
         <span style={mutedStyle}>
-          The four rungs are an ORDER, not four independent numbers: the database refuses a policy where
-          the reminder fires after the supervisor page, or the escalation after the SOS-equivalent. That
-          invariant is not expressible as a per-field range, which is why the server checks the MERGED
-          result rather than each box as you type it.
+          The four rungs are an ORDER, not four independent numbers: the database refuses a policy
+          where the reminder fires after the supervisor page, or the escalation after the
+          SOS-equivalent. That invariant is not expressible as a per-field range, which is why the
+          server checks the MERGED result rather than each box as you type it.
         </span>
       </Card>
 
@@ -388,8 +391,8 @@ export function SafetyPolicyScreen(): JSX.Element {
           <tbody>{SOS_KNOBS.map(([k, label, unit]) => knobRow(k, label, unit))}</tbody>
         </table>
         <Notice tone="info">
-          <strong>Continuous location is two gates, not one.</strong> The agency switch above is only the
-          first: D6 additionally requires each clinician's own{" "}
+          <strong>Continuous location is two gates, not one.</strong> The agency switch above is
+          only the first: D6 additionally requires each clinician's own{" "}
           <code>continuous_location_during_sos</code> consent before a single sample may be written.
           Turning it on here does not start streaming anybody, and turning it off stops everybody.
         </Notice>
@@ -409,8 +412,8 @@ export function SafetyPolicyScreen(): JSX.Element {
         )}
         <span style={mutedStyle}>
           Auto-flagging <strong>suggests</strong>; it never signs. D9 keeps the classification a
-          supervisor's separate, step-up'd act precisely so an automatic heuristic cannot file with a state
-          agency.
+          supervisor's separate, step-up'd act precisely so an automatic heuristic cannot file with
+          a state agency.
         </span>
       </Card>
 
@@ -434,10 +437,10 @@ export function SafetyPolicyScreen(): JSX.Element {
           }
         >
           <Notice tone="warning" assertive>
-            This is a <strong>step-up</strong> act. It writes a NEW policy version — the current one is
-            kept and stays attached to every alert and incident already stamped with it, so nothing that
-            has already happened is re-judged by today's numbers. A change that loosens a knob past the
-            platform floor is refused with the knob named.
+            This is a <strong>step-up</strong> act. It writes a NEW policy version — the current one
+            is kept and stays attached to every alert and incident already stamped with it, so
+            nothing that has already happened is re-judged by today's numbers. A change that loosens
+            a knob past the platform floor is refused with the knob named.
           </Notice>
           {[...CADENCE_KNOBS, ...OVERDUE_KNOBS, ...SOS_KNOBS].map(([k, label, unit]) => {
             const band = BANDS[k];
@@ -448,7 +451,11 @@ export function SafetyPolicyScreen(): JSX.Element {
                 value={draft[k] ?? ""}
                 onChange={(v) => setDraft((d) => ({ ...d, [k]: v }))}
                 type="number"
-                hint={band ? `Platform band: ${band[0]}–${band[1]}. Leave blank to keep the current value.` : undefined}
+                hint={
+                  band
+                    ? `Platform band: ${band[0]}–${band[1]}. Leave blank to keep the current value.`
+                    : undefined
+                }
               />
             );
           })}

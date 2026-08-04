@@ -39,7 +39,10 @@ export interface LabOrderTransmissionFailedPayload {
 /** The M11-facing outbound outbox events (§4.10). */
 export type OutboundOutboxEvent =
   | { readonly name: "m29.lab_order.transmitted"; readonly payload: LabOrderTransmittedPayload }
-  | { readonly name: "m29.lab_order.transmission_failed"; readonly payload: LabOrderTransmissionFailedPayload };
+  | {
+      readonly name: "m29.lab_order.transmission_failed";
+      readonly payload: LabOrderTransmissionFailedPayload;
+    };
 
 /** An M36 typed-alert intent (§4.9). M29 owns no delivery code — the T08 worker hands this to M36's engine. */
 export interface OutboundAlert {

@@ -1,7 +1,14 @@
 // apps/web/src/modules/37-ipu — M37 IPU admissions worklist (§5). Lists the org's IPU admissions with
 // their level of care + lifecycle state. GET /api/v1/ipu-admissions (RLS-scoped server-side). Lantern:
 // UI components + CSS-var tokens only.
-import { EmptyState, LoadingSpinner, PageHeader, type StatusTone, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  type StatusTone,
+  useApiClient,
+} from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 
@@ -15,7 +22,11 @@ interface Admission {
 }
 
 const tone = (state: string): StatusTone =>
-  state === "active" ? "success" : state === "closed" || state === "discharged" ? "neutral" : "warning";
+  state === "active"
+    ? "success"
+    : state === "closed" || state === "discharged"
+      ? "neutral"
+      : "warning";
 
 export function IpuAdmissions(): JSX.Element {
   const client = useApiClient();
@@ -40,11 +51,16 @@ export function IpuAdmissions(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title="IPU admissions" breadcrumb="General Inpatient (GIP) and Inpatient Respite (IRC) bedside stays" />
+      <PageHeader
+        title="IPU admissions"
+        breadcrumb="General Inpatient (GIP) and Inpatient Respite (IRC) bedside stays"
+      />
       {rows.length === 0 ? (
         <EmptyState title="No admissions" description="No active IPU admissions." />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
+        >
           <thead>
             <tr style={{ textAlign: "left", color: "var(--color-text-muted)" }}>
               <th style={{ padding: "var(--space-2)" }}>Level</th>
@@ -60,8 +76,12 @@ export function IpuAdmissions(): JSX.Element {
                 <td style={{ padding: "var(--space-2)" }}>
                   <StatusPill tone={tone(a.state)} label={a.state.replace(/_/g, " ")} />
                 </td>
-                <td style={{ padding: "var(--space-2)" }}>{a.unitId ? "Own unit" : a.remoteFacilityId ? "Arranged" : "—"}</td>
-                <td style={{ padding: "var(--space-2)" }}>{new Date(a.openedAt).toLocaleDateString()}</td>
+                <td style={{ padding: "var(--space-2)" }}>
+                  {a.unitId ? "Own unit" : a.remoteFacilityId ? "Arranged" : "—"}
+                </td>
+                <td style={{ padding: "var(--space-2)" }}>
+                  {new Date(a.openedAt).toLocaleDateString()}
+                </td>
               </tr>
             ))}
           </tbody>

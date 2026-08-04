@@ -12,7 +12,11 @@ import { requireAbac, requirePermission, requireStepUp } from "@wardenx/auth";
 
 import type { PreHandler } from "./actor";
 
-type TargetRequest = { readonly params?: unknown; readonly body?: unknown; readonly query?: unknown };
+type TargetRequest = {
+  readonly params?: unknown;
+  readonly body?: unknown;
+  readonly query?: unknown;
+};
 
 const param = (request: TargetRequest, key: string): string =>
   (request.params as Record<string, string> | undefined)?.[key] ?? "";
@@ -21,7 +25,8 @@ const param = (request: TargetRequest, key: string): string =>
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
 /** §4.1 R39 — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate. */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;
 
 /**
  * §4.1's baseline cell — `wardenx.organization.member`, which IS M3's intrinsic `inOrg`.

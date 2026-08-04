@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `evv_missing_resolution` (M18 §3.3 / §2.2.4 D6). The missing-EVV resolution state machine
 // (open → closed_clinician_attested | closed_supervisor_override | closed_visit_voided |
 // closed_documented_at_encounter | closed_system_checkout_received). `documented_missing` is allowed and is
@@ -6,7 +7,6 @@
 // is DENYLISTED from audit (§3.6). The visit/encounter/step-up refs are plain uuid logical FKs (M17/M8/M2).
 // RLS + grants + M4 write-audit trigger land in the RLS migration (M18-T02 / 0047).
 import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { evvMissingResolutionKind, evvMissingResolutionStatus } from "../../enums";
 import { organizations } from "../organizations";
 

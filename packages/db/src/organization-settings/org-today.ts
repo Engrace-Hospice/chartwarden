@@ -49,6 +49,7 @@ export async function serviceDateForOrganization(
   instantIso: string,
 ): Promise<string> {
   const ms = Date.parse(instantIso);
-  if (Number.isNaN(ms)) throw new RangeError(`serviceDateForOrganization: malformed instant '${instantIso}'`);
+  if (Number.isNaN(ms))
+    throw new RangeError(`serviceDateForOrganization: malformed instant '${instantIso}'`);
   return localDateInTimeZone(new Date(ms), await organizationTimezone(db, organizationId));
 }

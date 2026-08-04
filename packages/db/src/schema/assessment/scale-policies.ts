@@ -7,8 +7,8 @@
 import { sql } from "drizzle-orm";
 import { boolean, jsonb, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { scaleType } from "../../enums";
-import { organizations } from "../organizations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
 
 export const scalePolicies = pgTable(
   "scale_policy",

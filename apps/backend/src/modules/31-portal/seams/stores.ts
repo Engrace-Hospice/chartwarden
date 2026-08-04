@@ -134,9 +134,18 @@ export interface M31SeamSeed {
     /** the patients this account holds a grant for (drives `accountsForPatient`). */
     readonly patientIds: readonly PatientId[];
   }>;
-  readonly grants?: ReadonlyArray<{ readonly orgId: string; readonly digest: PortalAccessGrantDigest }>;
-  readonly visits?: ReadonlyArray<{ readonly orgId: string; readonly digest: TelehealthVisitDigest }>;
-  readonly disclosures?: ReadonlyArray<{ readonly orgId: string; readonly record: PortalDisclosureRecord }>;
+  readonly grants?: ReadonlyArray<{
+    readonly orgId: string;
+    readonly digest: PortalAccessGrantDigest;
+  }>;
+  readonly visits?: ReadonlyArray<{
+    readonly orgId: string;
+    readonly digest: TelehealthVisitDigest;
+  }>;
+  readonly disclosures?: ReadonlyArray<{
+    readonly orgId: string;
+    readonly record: PortalDisclosureRecord;
+  }>;
 }
 
 function scopeCategoryCount(scope: PortalScopeSet): number {
@@ -212,7 +221,10 @@ export function createInMemoryM31SeamStores(seed: M31SeamSeed = {}): {
           for (const g of grants)
             if (g.orgId === orgId && isActiveGrant(g.digest))
               byPatient.set(g.digest.patientId, (byPatient.get(g.digest.patientId) ?? 0) + 1);
-          return [...byPatient.entries()].map(([patientId, grantCount]) => ({ patientId, grantCount }));
+          return [...byPatient.entries()].map(([patientId, grantCount]) => ({
+            patientId,
+            grantCount,
+          }));
         },
       },
       engagement: {
@@ -237,7 +249,8 @@ export function createInMemoryM31SeamStores(seed: M31SeamSeed = {}): {
           const rows = accounts.filter((a) => a.orgId === orgId).map((a) => a.digest);
           const activePatients = new Set<PatientId>();
           for (const g of grants)
-            if (g.orgId === orgId && isActiveGrant(g.digest)) activePatients.add(g.digest.patientId);
+            if (g.orgId === orgId && isActiveGrant(g.digest))
+              activePatients.add(g.digest.patientId);
           return {
             accountsActive: rows.filter((r) => r.status === "active").length,
             accountsInvited: rows.filter((r) => r.status === "invited").length,

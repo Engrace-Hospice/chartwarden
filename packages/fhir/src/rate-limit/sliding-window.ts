@@ -11,7 +11,7 @@
 // tenant may only TIGHTEN (never raise above the floor), enforced at registration by
 // `fhirRateLimitWithinFloor` (`domain/validation.ts`). So this module takes the already-resolved ceiling;
 // it does not re-derive it from the tier, keeping the tighten-only rule in one place.
-import { type FhirClientTier, FHIR_TIER_RATE_LIMIT_FLOOR_RPS } from "@wardenx/types";
+import { FHIR_TIER_RATE_LIMIT_FLOOR_RPS, type FhirClientTier } from "@wardenx/types";
 
 /** The sliding window is one second wide (D16 ceilings are per-second). */
 export const FHIR_RATE_LIMIT_WINDOW_MS = 1000;

@@ -303,7 +303,7 @@ describe("M3 route-boundary validation (§4.2)", () => {
   });
 
   describe("shape errors that used to pass silently", () => {
-    it("PATCH /roles/:id — `enabled: \"yes\"` → 422 (it was previously ignored as a no-op)", async () => {
+    it('PATCH /roles/:id — `enabled: "yes"` → 422 (it was previously ignored as a no-op)', async () => {
       const { app } = makeServer();
       const res = await app.inject({
         method: "PATCH",

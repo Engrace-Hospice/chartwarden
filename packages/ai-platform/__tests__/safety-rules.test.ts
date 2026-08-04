@@ -83,9 +83,9 @@ describe("kill switch — scope and the disjunction", () => {
 
   it("kills when EITHER the platform row or the tenant row is active", () => {
     expect(aiKillSwitchFor(ORG, [killRow()]).killed).toBe(true);
-    expect(
-      aiKillSwitchFor(ORG, [killRow({ id: "aks-p", organizationId: null })]).killed,
-    ).toBe(true);
+    expect(aiKillSwitchFor(ORG, [killRow({ id: "aks-p", organizationId: null })]).killed).toBe(
+      true,
+    );
     expect(aiKillSwitchFor(ORG, [killRow({ active: false })]).killed).toBe(false);
     expect(aiKillSwitchFor(ORG, []).killed).toBe(false);
   });
@@ -112,9 +112,9 @@ describe("kill switch — scope and the disjunction", () => {
   });
 
   it("ignores another tenant's active row", () => {
-    expect(
-      aiKillSwitchFor(ORG, [killRow({ id: "aks-x", organizationId: OTHER_ORG })]).killed,
-    ).toBe(false);
+    expect(aiKillSwitchFor(ORG, [killRow({ id: "aks-x", organizationId: OTHER_ORG })]).killed).toBe(
+      false,
+    );
   });
 
   it("survives an active row whose reason column is NULL", () => {
@@ -253,14 +253,18 @@ describe("kill switch — D16 demotion", () => {
 
   it("has nothing to demote below APPROVED or past DEPRECATED", () => {
     expect(aiKillSwitchDemotionPlanFor("sev1", "PILOT", "sev1_hallucination").required).toBe(false);
-    expect(aiKillSwitchDemotionPlanFor("sev1", "DEPRECATED", "sev1_hallucination").toState).toBeNull();
+    expect(
+      aiKillSwitchDemotionPlanFor("sev1", "DEPRECATED", "sev1_hallucination").toState,
+    ).toBeNull();
     expect(aiKillSwitchDemotionPlanFor("sev1", "MONITORING", "sev1_hallucination").toState).toBe(
       "DEPRECATED",
     );
   });
 
   it("does not demote on a SEV-2 platform kill", () => {
-    expect(aiKillSwitchDemotionPlanFor("sev2", "APPROVED", "cost_cap_reached").required).toBe(false);
+    expect(aiKillSwitchDemotionPlanFor("sev2", "APPROVED", "cost_cap_reached").required).toBe(
+      false,
+    );
   });
 });
 

@@ -322,7 +322,7 @@ describe.skipIf(!DB_URL)(
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
     });
-    
+
     it("§3.10 every covered policy keys ONLY on the canonical app.org_id variable", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0052_saas_m34_rls.sql"), "utf8");
       for (const { table } of [...COVERED, { table: "tenant_key_ring" }]) {

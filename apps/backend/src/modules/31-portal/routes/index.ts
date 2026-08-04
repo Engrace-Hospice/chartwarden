@@ -11,7 +11,13 @@ export {
   buildPortalAbacResolverFromStore,
   PORTAL_DISCLOSURE_CATEGORIES,
 } from "./store";
-export { type M31Actor, type PreHandler, actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
+export {
+  type M31Actor,
+  type PreHandler,
+  actorOf,
+  portalAccountIdOf,
+  portalPatientIdOf,
+} from "./actor";
 export { requireIdempotencyKey, rejectOffsetPagination } from "./concurrency";
 export {
   ABAC_ACCOUNT,

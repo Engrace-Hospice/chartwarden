@@ -17,8 +17,7 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
-import { M29StoreError, type M29Store } from "./store";
-
+import { type M29Store, M29StoreError } from "./store";
 
 export interface LabRouteDeps {
   readonly store: M29Store;
@@ -30,7 +29,9 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
   // GET /observations — list caseload lab observations (RLS-scoped; wide-scope roles read across the org).
   app.get(
     "/api/clinical/labs/observations",
-    { preHandler: [P("external_interfaces.lab.read"), ABAC_IN_ORG("external_interfaces.lab.read")] },
+    {
+      preHandler: [P("external_interfaces.lab.read"), ABAC_IN_ORG("external_interfaces.lab.read")],
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parseQuery(ObservationListQuery, request.query);
@@ -66,7 +67,12 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
   // GET /observations/:observationId — single observation with its value rows.
   app.get(
     "/api/clinical/labs/observations/:observationId",
-    { preHandler: [P("external_interfaces.lab.read"), ABAC_LAB_CASELOAD("external_interfaces.lab.read")] },
+    {
+      preHandler: [
+        P("external_interfaces.lab.read"),
+        ABAC_LAB_CASELOAD("external_interfaces.lab.read"),
+      ],
+    },
     async (request, reply) => {
       const actor = actorOf(request);
       const { observationId } = request.params as { observationId: string };
@@ -110,7 +116,9 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
     async (request) => {
       writeActorOf(request);
       parse(DiscardObservationBody, request.body);
-      throw new M29StoreError("discard of an unmatched lab result lands with the manual bind — T-29.13");
+      throw new M29StoreError(
+        "discard of an unmatched lab result lands with the manual bind — T-29.13",
+      );
     },
   );
 
@@ -130,10 +138,16 @@ export function registerLabRoutes(app: FastifyInstance, deps: LabRouteDeps): voi
       if (!observation) {
         return reply.code(404).send({ code: "NOT_FOUND", message: "observation not found" });
       }
-      if (observation.abnormalSummary === "all_normal" || observation.abnormalSummary === "no_flags") {
+      if (
+        observation.abnormalSummary === "all_normal" ||
+        observation.abnormalSummary === "no_flags"
+      ) {
         return reply
           .code(409)
-          .send({ code: "CONFLICT", message: "observation carries no abnormal flag to acknowledge" });
+          .send({
+            code: "CONFLICT",
+            message: "observation carries no abnormal flag to acknowledge",
+          });
       }
       // The M36 badge clear is M36's concern (M29 owns no out-of-band delivery); the acknowledgment itself
       // is a read-audited clinical action against the observation.

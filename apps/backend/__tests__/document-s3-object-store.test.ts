@@ -11,8 +11,8 @@
 // Plus: presign shape/TTL/determinism with an injected clock, the ListObjectVersions XML parser on
 // fixtures, and putObject/destroyAllVersions flows over a mocked fetch (no network anywhere).
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
 import type { OrgId, SignedUrlDescriptor } from "@wardenx/types";
+import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PRESIGN_TTL_SECONDS,
   createS3ObjectStore,
@@ -103,9 +103,7 @@ describe("SigV4 core — official AWS test-suite example values", () => {
 
   it("reproduces the PUT-object example (UriEncode of `$`, multi-header sort, real payload hash)", () => {
     const payloadHash = sigV4Sha256Hex("Welcome to Amazon S3.");
-    expect(payloadHash).toBe(
-      "44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072",
-    );
+    expect(payloadHash).toBe("44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072");
     expect(sigV4UriEncode("test$file.text", false)).toBe("test%24file.text");
     const { text } = sigV4CanonicalRequest({
       method: "PUT",
@@ -223,9 +221,9 @@ describe("createS3ObjectStore presign", () => {
     };
     const first = await store.presign({ descriptor, organizationId: orgId });
     const second = await store.presign({ descriptor, organizationId: orgId });
-    expect(first.url.startsWith("http://minio.local:9000/tenant-abc/documents/ab/cd/render-1.pdf?")).toBe(
-      true,
-    );
+    expect(
+      first.url.startsWith("http://minio.local:9000/tenant-abc/documents/ab/cd/render-1.pdf?"),
+    ).toBe(true);
     expect(first.url).toContain("X-Amz-Algorithm=AWS4-HMAC-SHA256");
     expect(first.url).toContain("X-Amz-Expires=300");
     expect(first.url).toContain("X-Amz-SignedHeaders=host");
@@ -344,7 +342,11 @@ describe("parseListObjectVersionsXml", () => {
       { key: "documents/key-1.pdf", versionId: "v2-newer", kind: "version" },
       { key: "documents/key-1.pdf", versionId: "dm-1", kind: "delete-marker" },
       { key: "documents/key-1.pdf", versionId: "v1-older", kind: "version" },
-      { key: "documents/key-1.pdf.rendered-later", versionId: "other-key-version", kind: "version" },
+      {
+        key: "documents/key-1.pdf.rendered-later",
+        versionId: "other-key-version",
+        kind: "version",
+      },
     ]);
   });
 
@@ -555,7 +557,9 @@ describe("createS3ObjectStore destroyAllVersions (mocked fetch)", () => {
       <Version><Key>k.pdf</Key><VersionId>v-1</VersionId></Version>
     </ListVersionsResult>`;
     const partial = mockFetch((call) =>
-      call.method === "GET" ? new Response(xml, { status: 200 }) : new Response(null, { status: 404 }),
+      call.method === "GET"
+        ? new Response(xml, { status: 200 })
+        : new Response(null, { status: 404 }),
     );
     const store2 = createS3ObjectStore(testConfig, { fetchImpl: partial.fetchImpl, now: fixedNow });
     await expect(
@@ -568,7 +572,9 @@ describe("createS3ObjectStore destroyAllVersions (mocked fetch)", () => {
       <Version><Key>k.pdf</Key><VersionId>v-1</VersionId></Version>
     </ListVersionsResult>`;
     const { fetchImpl } = mockFetch((call) =>
-      call.method === "GET" ? new Response(xml, { status: 200 }) : new Response(null, { status: 500 }),
+      call.method === "GET"
+        ? new Response(xml, { status: 200 })
+        : new Response(null, { status: 500 }),
     );
     const store = createS3ObjectStore(testConfig, { fetchImpl, now: fixedNow });
     await expect(

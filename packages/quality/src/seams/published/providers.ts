@@ -15,17 +15,9 @@
 // aggregation grain comes from M40's `ProviderEntityReader` (a CONSUMED seam), so the composition root
 // binds it at P2C. UNBOUND ⇒ no provider entities resolve and the per-PE aggregates collapse to empty
 // (fail-closed: a not-yet-bound PE resolver never fabricates a cross-provider number, D6 / D13).
-import { type DbClient, schema } from "@wardenx/db";
+import type { DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
-import {
-  CopComplianceRepository,
-  IncidentRepository,
-  QapiRepository,
-  QualityMeasureValueRepository,
-  SraRepository,
-} from "../../repositories/index";
-import { listMeasureCatalog as listMeasureCatalogEntries } from "../../measures/registry";
 import type {
   ComplianceStatus,
   Incident,
@@ -40,6 +32,14 @@ import type {
   QapiProjectPhase,
   SraCycle,
 } from "../../contracts";
+import { listMeasureCatalog as listMeasureCatalogEntries } from "../../measures/registry";
+import {
+  CopComplianceRepository,
+  IncidentRepository,
+  QapiRepository,
+  QualityMeasureValueRepository,
+  SraRepository,
+} from "../../repositories/index";
 import type {
   ComplianceStatusProvider,
   IncidentRegisterProvider,
@@ -128,7 +128,9 @@ export class QualityMeasureProviderImpl implements QualityMeasureProvider {
       const repo = new QualityMeasureValueRepository(tx);
       const out: schema.QualityMeasureValue[] = [];
       for (const providerEntityId of entities) {
-        const rows = await repo.listCurrentForProvider(orgId, providerEntityId, { measureCode: measureId });
+        const rows = await repo.listCurrentForProvider(orgId, providerEntityId, {
+          measureCode: measureId,
+        });
         for (const row of rows) {
           if (row.periodEnd >= from && row.periodEnd <= to) out.push(row);
         }
@@ -174,7 +176,12 @@ const INCIDENT_KINDS: readonly IncidentKind[] = [
   "exposure_event",
   "other_safety_event",
 ];
-const INCIDENT_SEVERITIES: readonly IncidentSeverity[] = ["minor", "moderate", "severe", "critical"];
+const INCIDENT_SEVERITIES: readonly IncidentSeverity[] = [
+  "minor",
+  "moderate",
+  "severe",
+  "critical",
+];
 
 /**
  * The live `IncidentRegisterProvider` seam (§4.3) — the incident register M22 (incident reports), M28

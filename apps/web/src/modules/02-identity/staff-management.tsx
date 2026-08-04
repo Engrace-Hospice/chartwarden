@@ -121,7 +121,9 @@ export function StaffManagement(): JSX.Element {
     });
     setBusy(false);
     if (err) {
-      setError("Could not record the invitation. A pending invite may already exist for that email.");
+      setError(
+        "Could not record the invitation. A pending invite may already exist for that email.",
+      );
       return;
     }
     // TASK-030: no vendor email sender is wired yet (M36's transport no-ops in production), so the
@@ -238,156 +240,176 @@ export function StaffManagement(): JSX.Element {
 
   return (
     <>
-    <WorkQueueLayout
-      header={<PageHeader title="Staff Management" />}
-      kpis={
-        <div style={kpiStrip}>
-          <Kpi label="Active staff" value={active} />
-          <Kpi label="Suspended" value={suspended} />
-          <Kpi label="Admins" value={admins} />
-          <Kpi label="Pending invites" value={pendingInvites} />
-          <Kpi label="Locked accounts" value={locked} />
-        </div>
-      }
-      filters={
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <form onSubmit={invite} style={inviteBar}>
-            <input
-              type="email"
-              required
-              placeholder="Invite by email…"
-              aria-label="Invite by email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              style={field}
-            />
-            <button type="submit" disabled={busy || !inviteEmail.trim() || !orgId} style={primaryBtn}>
-              {busy ? "Sending…" : "Invite"}
-            </button>
-            {error ? (
-              <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
-                {error}
-              </span>
-            ) : null}
-          </form>
-          {inviteLink ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0 0.1rem" }}>
-              <code className="wx-data-md" style={inviteLinkField}>
-                {inviteLink}
-              </code>
+      <WorkQueueLayout
+        header={<PageHeader title="Staff Management" />}
+        kpis={
+          <div style={kpiStrip}>
+            <Kpi label="Active staff" value={active} />
+            <Kpi label="Suspended" value={suspended} />
+            <Kpi label="Admins" value={admins} />
+            <Kpi label="Pending invites" value={pendingInvites} />
+            <Kpi label="Locked accounts" value={locked} />
+          </div>
+        }
+        filters={
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <form onSubmit={invite} style={inviteBar}>
+              <input
+                type="email"
+                required
+                placeholder="Invite by email…"
+                aria-label="Invite by email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                style={field}
+              />
               <button
-                type="button"
-                style={linkBtn}
-                onClick={() => void navigator.clipboard.writeText(inviteLink)}
+                type="submit"
+                disabled={busy || !inviteEmail.trim() || !orgId}
+                style={primaryBtn}
               >
-                Copy link
+                {busy ? "Sending…" : "Invite"}
               </button>
-            </div>
-          ) : null}
-        </div>
-      }
-      table={
-        members === null ? (
-          <LoadingSpinner />
-        ) : members.length === 0 ? (
-          <EmptyState
-            title="No staff yet"
-            description="Invite a team member above to get started."
-          />
-        ) : (
-          <>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
-            <thead>
-              <tr
+              {error ? (
+                <span role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
+                  {error}
+                </span>
+              ) : null}
+            </form>
+            {inviteLink ? (
+              <div
                 style={{
-                  textAlign: "left",
-                  color: "var(--color-on-surface-variant)",
-                  borderBottom: "1px solid var(--color-outline-variant)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0 0.1rem",
                 }}
               >
-                <th style={th}>Member</th>
-                <th style={th}>Email</th>
-                <th style={th}>Role</th>
-                <th style={th}>Last login</th>
-                <th style={th}>Locations</th>
-                <th style={th}>Status</th>
-                <th style={th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr
-                  key={m.membershipId}
-                  style={{ borderBottom: "1px solid var(--color-outline-variant)" }}
+                <code className="wx-data-md" style={inviteLinkField}>
+                  {inviteLink}
+                </code>
+                <button
+                  type="button"
+                  style={linkBtn}
+                  onClick={() => void navigator.clipboard.writeText(inviteLink)}
                 >
-                  <td style={td}>
-                    <MemberName member={m} />
-                  </td>
-                  <td style={td}>{m.email ?? "—"}</td>
-                  <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
-                  <td style={{ ...td, ...tabular }}>{formatDate(m.lastLoginAt)}</td>
-                  <td style={{ ...td, ...tabular }}>{m.defaultLocationIds.length}</td>
-                  <td style={td}>
-                    <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
-                  </td>
-                  <td style={td}>
-                    {m.status === "active" ? (
-                      <button
-                        type="button"
-                        onClick={() => setStatus(m, "suspended")}
-                        style={linkBtn}
-                      >
-                        Suspend
-                      </button>
-                    ) : m.status === "suspended" ? (
-                      <button type="button" onClick={() => setStatus(m, "active")} style={linkBtn}>
-                        Reactivate
-                      </button>
-                    ) : null}
-                    {m.status !== "revoked" ? (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmRevoke(m)}
-                        style={{ ...linkBtn, color: "var(--color-error)" }}
-                      >
-                        Remove
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setExpandedRolesFor((cur) => (cur === m.membershipId ? null : m.membershipId))
-                      }
-                      style={linkBtn}
-                    >
-                      {expandedRolesFor === m.membershipId ? "Hide roles" : "Roles"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {members.map((m) =>
-                expandedRolesFor === m.membershipId ? (
-                  <tr key={`${m.membershipId}-roles`}>
-                    <td colSpan={7} style={{ padding: "0 1.5rem 1rem", background: "var(--color-surface)" }}>
-                      <MemberRoleEditor
-                        membershipId={m.membershipId}
-                        memberLabel={m.displayName ?? m.email ?? m.membershipId}
-                      />
-                    </td>
+                  Copy link
+                </button>
+              </div>
+            ) : null}
+          </div>
+        }
+        table={
+          members === null ? (
+            <LoadingSpinner />
+          ) : members.length === 0 ? (
+            <EmptyState
+              title="No staff yet"
+              description="Invite a team member above to get started."
+            />
+          ) : (
+            <>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem" }}>
+                <thead>
+                  <tr
+                    style={{
+                      textAlign: "left",
+                      color: "var(--color-on-surface-variant)",
+                      borderBottom: "1px solid var(--color-outline-variant)",
+                    }}
+                  >
+                    <th style={th}>Member</th>
+                    <th style={th}>Email</th>
+                    <th style={th}>Role</th>
+                    <th style={th}>Last login</th>
+                    <th style={th}>Locations</th>
+                    <th style={th}>Status</th>
+                    <th style={th}>Actions</th>
                   </tr>
-                ) : null,
-              )}
-            </tbody>
-          </table>
-          <PendingInvitations
-            invitations={invitations}
-            onResend={resendInvite}
-            onRescind={setConfirmRescind}
-          />
-          </>
-        )
-      }
-    />
+                </thead>
+                <tbody>
+                  {members.map((m) => (
+                    <tr
+                      key={m.membershipId}
+                      style={{ borderBottom: "1px solid var(--color-outline-variant)" }}
+                    >
+                      <td style={td}>
+                        <MemberName member={m} />
+                      </td>
+                      <td style={td}>{m.email ?? "—"}</td>
+                      <td style={td}>{m.isAdmin ? "Org admin" : "Member"}</td>
+                      <td style={{ ...td, ...tabular }}>{formatDate(m.lastLoginAt)}</td>
+                      <td style={{ ...td, ...tabular }}>{m.defaultLocationIds.length}</td>
+                      <td style={td}>
+                        <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
+                      </td>
+                      <td style={td}>
+                        {m.status === "active" ? (
+                          <button
+                            type="button"
+                            onClick={() => setStatus(m, "suspended")}
+                            style={linkBtn}
+                          >
+                            Suspend
+                          </button>
+                        ) : m.status === "suspended" ? (
+                          <button
+                            type="button"
+                            onClick={() => setStatus(m, "active")}
+                            style={linkBtn}
+                          >
+                            Reactivate
+                          </button>
+                        ) : null}
+                        {m.status !== "revoked" ? (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmRevoke(m)}
+                            style={{ ...linkBtn, color: "var(--color-error)" }}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedRolesFor((cur) =>
+                              cur === m.membershipId ? null : m.membershipId,
+                            )
+                          }
+                          style={linkBtn}
+                        >
+                          {expandedRolesFor === m.membershipId ? "Hide roles" : "Roles"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {members.map((m) =>
+                    expandedRolesFor === m.membershipId ? (
+                      <tr key={`${m.membershipId}-roles`}>
+                        <td
+                          colSpan={7}
+                          style={{ padding: "0 1.5rem 1rem", background: "var(--color-surface)" }}
+                        >
+                          <MemberRoleEditor
+                            membershipId={m.membershipId}
+                            memberLabel={m.displayName ?? m.email ?? m.membershipId}
+                          />
+                        </td>
+                      </tr>
+                    ) : null,
+                  )}
+                </tbody>
+              </table>
+              <PendingInvitations
+                invitations={invitations}
+                onResend={resendInvite}
+                onRescind={setConfirmRescind}
+              />
+            </>
+          )
+        }
+      />
       <ConfirmDialog
         open={confirmRevoke !== null}
         title="Remove member?"
@@ -443,7 +465,10 @@ function PendingInvitations({
         </thead>
         <tbody>
           {relevant.map((inv) => (
-            <tr key={inv.invitationId} style={{ borderBottom: "1px solid var(--color-outline-variant)" }}>
+            <tr
+              key={inv.invitationId}
+              style={{ borderBottom: "1px solid var(--color-outline-variant)" }}
+            >
               <td style={td}>{inv.email}</td>
               <td style={td}>
                 <StatusPill label={cap(inv.status)} tone={INVITE_STATUS_TONE[inv.status]} />

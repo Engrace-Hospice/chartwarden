@@ -1,3 +1,6 @@
+import * as billing from "@wardenx/billing";
+import { BillingRuleRegistry, fail } from "@wardenx/billing";
+import type { Rule } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/override-service.test.ts — the §10 task-29 / §4.5 /
 // §4.7 validation-OVERRIDE service tests (D5 / D13 / D14). The override is the human compliance act that lets
 // a claim proceed past a FAILING validation result; the service enforces four fail-closed gates in order:
@@ -6,12 +9,9 @@
 // work. `@wardenx/billing` is PARTIAL-mocked for the in-memory repos; the FROZEN rule registry carries the
 // `regulatoryRequired` / `overrideRoleRequired` metadata the role gate keys on.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as billing from "@wardenx/billing";
-import { BillingRuleRegistry, fail } from "@wardenx/billing";
-import type { Rule } from "@wardenx/billing";
+import type { BillingWriteActor, WriteOutboxPort } from "../services/claim-state-service";
 import { buildOverrideService } from "../services/override-service";
 import type { OverrideAuditPort, OverrideServicePorts } from "../services/override-service";
-import type { BillingWriteActor, WriteOutboxPort } from "../services/claim-state-service";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
@@ -44,7 +44,11 @@ function actor(overrides: Partial<BillingWriteActor> = {}): BillingWriteActor {
 }
 
 /** A rule carrying only the override-relevant metadata (check body is irrelevant to the override path). */
-function rule(key: string, regulatoryRequired: boolean, overrideRoleRequired?: Rule["overrideRoleRequired"]): Rule {
+function rule(
+  key: string,
+  regulatoryRequired: boolean,
+  overrideRoleRequired?: Rule["overrideRoleRequired"],
+): Rule {
   return {
     key,
     version: 1,
@@ -72,10 +76,20 @@ function registry(): BillingRuleRegistry {
 /** Seed the claim → run → FAILING result chain the override targets. */
 function seedFailingResult(resultId: string, ruleKey: string): void {
   if (!store.claims.has("claim-1")) {
-    store.claims.set("claim-1", { id: "claim-1", organizationId: ORG, state: "validating", version: 0 });
+    store.claims.set("claim-1", {
+      id: "claim-1",
+      organizationId: ORG,
+      state: "validating",
+      version: 0,
+    });
   }
   if (!store.runs.has("run-1")) {
-    store.runs.set("run-1", { id: "run-1", organizationId: ORG, claimId: "claim-1", trigger: "pre_submission" });
+    store.runs.set("run-1", {
+      id: "run-1",
+      organizationId: ORG,
+      claimId: "claim-1",
+      trigger: "pre_submission",
+    });
   }
   store.results.set(resultId, {
     id: resultId,
@@ -165,7 +179,10 @@ describe("gate 3 — role-eligibility (§4.7)", () => {
     seedFailingResult("res-1", "ovr.plain");
     const { ports, auditCalls } = makePorts();
     const svc = buildOverrideService(makeFakeDb() as never, registry(), ports);
-    const view = await svc.overrideValidationResult(actor({ roles: ["billing_manager"] }), input("res-1"));
+    const view = await svc.overrideValidationResult(
+      actor({ roles: ["billing_manager"] }),
+      input("res-1"),
+    );
     expect(view.overrideRoleApplied).toBe("billing_manager");
     expect(view.m4AuditEventId).toBe("audit-evt-1");
     expect(store.overrides.size).toBe(1);
@@ -178,7 +195,10 @@ describe("a regulatory rule WITH an override path is overridable per-instance by
     seedFailingResult("res-1", "ovr.reg.overridable");
     const { ports, emitted, auditCalls } = makePorts();
     const svc = buildOverrideService(makeFakeDb() as never, registry(), ports);
-    const view = await svc.overrideValidationResult(actor({ roles: ["compliance_officer"] }), input("res-1"));
+    const view = await svc.overrideValidationResult(
+      actor({ roles: ["compliance_officer"] }),
+      input("res-1"),
+    );
     expect(view.overrideRoleApplied).toBe("compliance_officer");
     expect(view.ruleKey).toBe("ovr.reg.overridable");
     expect(auditCalls).toHaveLength(1);
@@ -190,7 +210,10 @@ describe("a regulatory rule WITH an override path is overridable per-instance by
     seedFailingResult("res-1", "ovr.reg.overridable");
     const { ports } = makePorts();
     const svc = buildOverrideService(makeFakeDb() as never, registry(), ports);
-    const view = await svc.overrideValidationResult(actor({ roles: ["org_admin"] }), input("res-1"));
+    const view = await svc.overrideValidationResult(
+      actor({ roles: ["org_admin"] }),
+      input("res-1"),
+    );
     expect(view.overrideRoleApplied).toBe("org_admin");
   });
 });
@@ -201,7 +224,10 @@ describe("a regulatory rule with NO override path can never be overridden (§2.2
     const { ports } = makePorts();
     const svc = buildOverrideService(makeFakeDb() as never, registry(), ports);
     await expect(
-      svc.overrideValidationResult(actor({ roles: ["org_admin", "compliance_officer"] }), input("res-1")),
+      svc.overrideValidationResult(
+        actor({ roles: ["org_admin", "compliance_officer"] }),
+        input("res-1"),
+      ),
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
     expect(store.overrides.size).toBe(0);
   });
@@ -209,8 +235,18 @@ describe("a regulatory rule with NO override path can never be overridden (§2.2
 
 describe("integrity", () => {
   it("rejects overriding a non-failing (e.g. already-passed) result", async () => {
-    store.claims.set("claim-1", { id: "claim-1", organizationId: ORG, state: "validating", version: 0 });
-    store.runs.set("run-1", { id: "run-1", organizationId: ORG, claimId: "claim-1", trigger: "pre_submission" });
+    store.claims.set("claim-1", {
+      id: "claim-1",
+      organizationId: ORG,
+      state: "validating",
+      version: 0,
+    });
+    store.runs.set("run-1", {
+      id: "run-1",
+      organizationId: ORG,
+      claimId: "claim-1",
+      trigger: "pre_submission",
+    });
     store.results.set("res-pass", {
       id: "res-pass",
       organizationId: ORG,
@@ -221,9 +257,7 @@ describe("integrity", () => {
     });
     const { ports } = makePorts();
     const svc = buildOverrideService(makeFakeDb() as never, registry(), ports);
-    await expect(
-      svc.overrideValidationResult(actor(), input("res-pass")),
-    ).rejects.toBeTruthy();
+    await expect(svc.overrideValidationResult(actor(), input("res-pass"))).rejects.toBeTruthy();
     expect(store.overrides.size).toBe(0);
   });
 

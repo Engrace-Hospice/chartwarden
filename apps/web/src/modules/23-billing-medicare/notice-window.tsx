@@ -1,5 +1,6 @@
 import {
   CountdownChip,
+  DetailPageLayout,
   EmptyState,
   FilterBar,
   KpiCard,
@@ -9,7 +10,6 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
-  DetailPageLayout,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/23-billing-medicare — shared NOE / NOTR filing-window surface (R2, §5.1 #11–14,
@@ -102,7 +102,13 @@ interface ListPage<T> {
 }
 
 // Terminal notice states have left the filing window — they don't contribute to window posture.
-const TERMINAL_STATES = new Set(["ack_accepted", "accepted", "cancelled", "ack_rejected", "rejected"]);
+const TERMINAL_STATES = new Set([
+  "ack_accepted",
+  "accepted",
+  "cancelled",
+  "ack_rejected",
+  "rejected",
+]);
 
 function recordId(rec: NoticeRecord): string {
   return rec.id ?? rec.noeRecordId ?? rec.notrRecordId ?? "";
@@ -239,10 +245,7 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
       }
       detail={
         selected ? (
-          <RightDetailPanel
-            title={`${config.acronym} preview`}
-            onClose={() => setSelected(null)}
-          >
+          <RightDetailPanel title={`${config.acronym} preview`} onClose={() => setSelected(null)}>
             <NoticePreview record={selected} config={config} onChanged={() => void load()} />
           </RightDetailPanel>
         ) : undefined
@@ -372,7 +375,9 @@ function NoticePreview({
       <Field label="Record" value={id || "—"} mono />
       <Field
         label="State"
-        value={<StatusPill label={statusLabel(record.state)} tone={noeNotrStateTone(record.state)} />}
+        value={
+          <StatusPill label={statusLabel(record.state)} tone={noeNotrStateTone(record.state)} />
+        }
       />
       {record.windowTargetAt && isActive(record) ? (
         <Field
@@ -396,7 +401,10 @@ function NoticePreview({
       ) : null}
       {record.effectiveDate ? <Field label="Effective date" value={record.effectiveDate} /> : null}
       <NoticeActions record={record} config={config} onChanged={onChanged} compact />
-      <a href={`${config.routeBase}/${id}`} style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}>
+      <a
+        href={`${config.routeBase}/${id}`}
+        style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}
+      >
         Open detail →
       </a>
     </div>
@@ -420,9 +428,12 @@ export function NoticeWindowDetail({
     setLoading(true);
     setError(null);
     // Detail path + the id are config/route-chosen at runtime → the typed GET collapses to `never`; cast it.
-    const { data, error: err } = (await client.GET(config.detailPath as never, {
-      params: { path: { id } },
-    } as never)) as { data?: unknown; error?: unknown; response?: Response };
+    const { data, error: err } = (await client.GET(
+      config.detailPath as never,
+      {
+        params: { path: { id } },
+      } as never,
+    )) as { data?: unknown; error?: unknown; response?: Response };
     if (err) {
       setError(
         `${config.acronym} record unavailable — the billing read seam is not bound, or you lack scope.`,
@@ -496,8 +507,12 @@ export function NoticeWindowDetail({
         {record.providerEntityId ? (
           <Field label="Provider entity" value={record.providerEntityId} mono />
         ) : null}
-        {record.effectiveDate ? <Field label="Effective date" value={record.effectiveDate} /> : null}
-        {record.admissionDate ? <Field label="Admission date" value={record.admissionDate} /> : null}
+        {record.effectiveDate ? (
+          <Field label="Effective date" value={record.effectiveDate} />
+        ) : null}
+        {record.admissionDate ? (
+          <Field label="Admission date" value={record.admissionDate} />
+        ) : null}
         {record.windowTargetAt ? (
           <Field label="Window target" value={record.windowTargetAt} />
         ) : null}
@@ -574,7 +589,14 @@ function NoticeActions({
   const canCancel = !TERMINAL_STATES.has(record.state) && record.state !== "draft";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: compact ? "0.25rem" : "0.5rem" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
+        marginTop: compact ? "0.25rem" : "0.5rem",
+      }}
+    >
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <button
           type="button"

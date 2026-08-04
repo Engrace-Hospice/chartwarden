@@ -6,6 +6,7 @@ import {
   StepperWorkflowLayout,
   useApiClient,
 } from "@wardenx/ui";
+import type { GateItem } from "@wardenx/ui";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID ASSEMBLY WIZARD (R2, §5.1 #4). The stepped
 // draft-creation flow: patient + service range → claim kind (combined / hospice-only / R&B-only) → MCO
 // routing preview (from the patient's latest eligibility check) → COB confirmation when a Medicare primary
@@ -15,7 +16,6 @@ import {
 // bound yet) and is surfaced as a precise inline message, not a crash. Lantern: StepperWorkflowLayout +
 // GateStepper (§6.5), CSS-var tokens only.
 import { useCallback, useMemo, useState } from "react";
-import type { GateItem } from "@wardenx/ui";
 import type { JSX } from "react";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, kindLabel, shortId, toneOf } from "./medicaid-status";
 import {
@@ -123,7 +123,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     };
     if (needsRb) body.rbArrangementId = rbArrangementId;
     if (cobAsserted) body.medicareClaimId = medicareClaimId;
-    const { data, error: err, response } = (await client.POST("/api/v1/medicaid-claims", {
+    const {
+      data,
+      error: err,
+      response,
+    } = (await client.POST("/api/v1/medicaid-claims", {
       body,
     } as never)) as { data?: unknown; error?: unknown; response?: Response };
     setBusy(false);
@@ -150,7 +154,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
     return (
       <StepperWorkflowLayout
         header={<PageHeader title="Assemble Medicaid Claim" breadcrumb="Billing — Medicaid" />}
-        steps={<GateStepper items={gates} surfaceBlockersFirst={false} ariaLabel="Assembly steps" />}
+        steps={
+          <GateStepper items={gates} surfaceBlockersFirst={false} ariaLabel="Assembly steps" />
+        }
       >
         <Card title="Draft assembled">
           <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -177,8 +183,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       context={
         <Card title="How assembly works">
           <span style={mutedStyle}>
-            Everything previewed here is advisory. At assemble the server re-derives eligibility, the R&amp;B
-            day set, and the COB chain from the record of truth, then runs the validation registry.
+            Everything previewed here is advisory. At assemble the server re-derives eligibility,
+            the R&amp;B day set, and the COB chain from the record of truth, then runs the
+            validation registry.
           </span>
         </Card>
       }
@@ -223,15 +230,24 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         <Card title="Patient and service range">
           <TextField label="Patient id" value={patientId} onChange={setPatientId} />
           <TextField label="Admission id" value={admissionId} onChange={setAdmissionId} />
-          <TextField label="Provider entity id" value={providerEntityId} onChange={setProviderEntityId} />
+          <TextField
+            label="Provider entity id"
+            value={providerEntityId}
+            onChange={setProviderEntityId}
+          />
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-            <TextField label="Service from" value={serviceFrom} onChange={setServiceFrom} type="date" />
+            <TextField
+              label="Service from"
+              value={serviceFrom}
+              onChange={setServiceFrom}
+              type="date"
+            />
             <TextField label="Service to" value={serviceTo} onChange={setServiceTo} type="date" />
           </div>
           {!step1Valid ? (
             <span style={mutedStyle}>
-              Enter the patient, admission, and provider-entity identifiers plus a service range that starts
-              on or before it ends.
+              Enter the patient, admission, and provider-entity identifiers plus a service range
+              that starts on or before it ends.
             </span>
           ) : null}
         </Card>
@@ -284,14 +300,17 @@ export function MedicaidAssemblyWizard(): JSX.Element {
               <Field label="Service state" value={eligibility.serviceState} />
               <Field
                 label="Routes to"
-                value={eligibility.mcoId ? `MCO ${shortId(eligibility.mcoId)}` : "Fee-for-service MMIS"}
+                value={
+                  eligibility.mcoId ? `MCO ${shortId(eligibility.mcoId)}` : "Fee-for-service MMIS"
+                }
               />
               <Field label="Checked" value={eligibility.checkedAt.slice(0, 10)} />
             </>
           ) : (
             <span style={mutedStyle}>
-              No eligibility check on file for this patient. Assembly will still proceed — the validation
-              registry flags a missing or stale check as a finding on the resulting claim.
+              No eligibility check on file for this patient. Assembly will still proceed — the
+              validation registry flags a missing or stale check as a finding on the resulting
+              claim.
             </span>
           )}
         </Card>
@@ -300,15 +319,21 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       {step === 3 ? (
         <Card title="Coordination of benefits">
           <span style={mutedStyle}>
-            If this patient is dual-eligible, link the Medicare (M23) claim that adjudicated first. Leave it
-            blank for a Medicaid-primary claim.
+            If this patient is dual-eligible, link the Medicare (M23) claim that adjudicated first.
+            Leave it blank for a Medicaid-primary claim.
           </span>
-          <TextField label="Medicare claim id (optional)" value={medicareClaimId} onChange={setMedicareClaimId} />
+          <TextField
+            label="Medicare claim id (optional)"
+            value={medicareClaimId}
+            onChange={setMedicareClaimId}
+          />
           <Field label="Claim kind" value={kindLabel(kind)} />
           <Field label="Service range" value={`${serviceFrom} → ${serviceTo}`} />
           <Field
             label="Routing"
-            value={eligibility?.mcoId ? `MCO ${shortId(eligibility.mcoId)}` : "Fee-for-service MMIS"}
+            value={
+              eligibility?.mcoId ? `MCO ${shortId(eligibility.mcoId)}` : "Fee-for-service MMIS"
+            }
           />
           {cobAsserted && !step4Valid ? (
             <span style={alertStyle}>The Medicare claim id must be a valid identifier.</span>
@@ -343,7 +368,8 @@ function TextField({
 function assembleErrorMessage(status: number | undefined): string {
   if (status === 409) return "A claim already covers this patient and service range.";
   if (status === 422) return "The service range or R&B arrangement is not valid for this patient.";
-  if (status === 401 || status === 403) return "You lack permission to assemble claims for this entity.";
+  if (status === 401 || status === 403)
+    return "You lack permission to assemble claims for this entity.";
   if (status === 503)
     return "Claim assembly is unavailable — the upstream clinical readers are not bound in this environment.";
   return "The claim could not be assembled.";

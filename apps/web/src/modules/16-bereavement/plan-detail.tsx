@@ -34,6 +34,25 @@ import {
   resumePlan,
 } from "./bereavement-api";
 import {
+  CONTACT_STATUS_TONE,
+  DEFAULT_EARLY_CLOSE_REASON,
+  DEFAULT_PAUSE_KIND,
+  EARLY_CLOSE_REASONS,
+  OUTREACH_KINDS,
+  PAUSE_KINDS,
+  PLAN_STATUS_TONE,
+  RELATIONSHIP_CODES,
+  anniversaryCountdown,
+  dateTime,
+  firstContactGateLabel,
+  humanize,
+  outreachKindLabel,
+  redactionLabel,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   Field,
   Modal,
@@ -56,25 +75,6 @@ import {
   td,
   th,
 } from "./bereavement-ui";
-import {
-  CONTACT_STATUS_TONE,
-  DEFAULT_EARLY_CLOSE_REASON,
-  DEFAULT_PAUSE_KIND,
-  EARLY_CLOSE_REASONS,
-  OUTREACH_KINDS,
-  PAUSE_KINDS,
-  PLAN_STATUS_TONE,
-  RELATIONSHIP_CODES,
-  anniversaryCountdown,
-  dateTime,
-  firstContactGateLabel,
-  humanize,
-  outreachKindLabel,
-  redactionLabel,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 type Ceremony = "add-contact" | "pause" | "close" | "cosign" | "first-contact" | null;
 
@@ -109,7 +109,12 @@ export function BereavementPlanDetail(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!plan || !planId)
-    return <EmptyState title="Not found" description="This bereavement plan does not exist, or is not on your caseload." />;
+    return (
+      <EmptyState
+        title="Not found"
+        description="This bereavement plan does not exist, or is not on your caseload."
+      />
+    );
 
   const countdown = anniversaryCountdown(plan.deathDate);
   const redaction = redactionLabel(plan.redactedCategories);
@@ -165,8 +170,8 @@ export function BereavementPlanDetail(): JSX.Element {
 
       {plan.legalHoldId ? (
         <Notice tone="warning">
-          A legal hold ({shortId(plan.legalHoldId)}) is in force on this plan. The 13-month window does not
-          close it while the hold stands.
+          A legal hold ({shortId(plan.legalHoldId)}) is in force on this plan. The 13-month window
+          does not close it while the hold stands.
         </Notice>
       ) : null}
 
@@ -174,7 +179,9 @@ export function BereavementPlanDetail(): JSX.Element {
 
       <Card
         title="Plan"
-        actions={<StatusPill label={humanize(plan.status)} tone={toneOf(PLAN_STATUS_TONE, plan.status)} />}
+        actions={
+          <StatusPill label={humanize(plan.status)} tone={toneOf(PLAN_STATUS_TONE, plan.status)} />
+        }
       >
         <SummaryGrid>
           <Field label="Patient (decedent)" value={shortId(plan.patientId)} mono />
@@ -192,9 +199,9 @@ export function BereavementPlanDetail(): JSX.Element {
         </SummaryGrid>
         {plan.pausedAt ? (
           <Notice tone="warning">
-            Paused {dateTime(plan.pausedAt)} ({humanize(plan.pauseKind)}). Resuming regenerates the schedule
-            FROM NOW — a touchpoint whose due date passed during the pause is not resurrected as a
-            backdated obligation.
+            Paused {dateTime(plan.pausedAt)} ({humanize(plan.pauseKind)}). Resuming regenerates the
+            schedule FROM NOW — a touchpoint whose due date passed during the pause is not
+            resurrected as a backdated obligation.
           </Notice>
         ) : null}
         {plan.closedAt ? (
@@ -210,14 +217,26 @@ export function BereavementPlanDetail(): JSX.Element {
       {plan.externalSource ? (
         <Card title="External source (HL7 ADT)">
           <SummaryGrid>
-            <Field label="Source facility" value={String(plan.externalSource.sourceFacilityName ?? "—")} />
-            <Field label="Source message" value={String(plan.externalSource.sourceMessageId ?? "—")} />
+            <Field
+              label="Source facility"
+              value={String(plan.externalSource.sourceFacilityName ?? "—")}
+            />
+            <Field
+              label="Source message"
+              value={String(plan.externalSource.sourceMessageId ?? "—")}
+            />
             <Field
               label="Acknowledged"
               value={dateTime(String(plan.externalSource.ackReceivedAt ?? "") || null)}
             />
-            <Field label="Cosign status" value={humanize(String(plan.externalSource.cosignStatus ?? ""))} />
-            <Field label="Cosigned" value={dateTime(String(plan.externalSource.cosignedAt ?? "") || null)} />
+            <Field
+              label="Cosign status"
+              value={humanize(String(plan.externalSource.cosignStatus ?? ""))}
+            />
+            <Field
+              label="Cosigned"
+              value={dateTime(String(plan.externalSource.cosignedAt ?? "") || null)}
+            />
           </SummaryGrid>
         </Card>
       ) : null}
@@ -225,16 +244,27 @@ export function BereavementPlanDetail(): JSX.Element {
       <Card
         title="Actions"
         actions={
-          <span style={mutedStyle}>Every action carries the plan version read above (`If-Match`).</span>
+          <span style={mutedStyle}>
+            Every action carries the plan version read above (`If-Match`).
+          </span>
         }
       >
         <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
           {plan.firstContactAllowed ? (
-            <button type="button" style={primaryButtonStyle} onClick={() => setCeremony("first-contact")}>
+            <button
+              type="button"
+              style={primaryButtonStyle}
+              onClick={() => setCeremony("first-contact")}
+            >
               Counselor first contact
             </button>
           ) : (
-            <button type="button" style={disabledButtonStyle} disabled title={firstContactGateLabel(plan.firstContactGateReason)}>
+            <button
+              type="button"
+              style={disabledButtonStyle}
+              disabled
+              title={firstContactGateLabel(plan.firstContactGateReason)}
+            >
               Counselor first contact (gated)
             </button>
           )}
@@ -284,8 +314,8 @@ export function BereavementPlanDetail(): JSX.Element {
       >
         {plan.contacts.length === 0 ? (
           <span style={mutedStyle}>
-            No survivors are on the roster yet. Seed the roster from the patient's caregivers to open the
-            program.
+            No survivors are on the roster yet. Seed the roster from the patient's caregivers to
+            open the program.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -306,7 +336,10 @@ export function BereavementPlanDetail(): JSX.Element {
                   <td style={td}>{c.displayName}</td>
                   <td style={td}>{humanize(c.relationshipCode)}</td>
                   <td style={td}>
-                    <StatusPill label={humanize(c.status)} tone={toneOf(CONTACT_STATUS_TONE, c.status)} />
+                    <StatusPill
+                      label={humanize(c.status)}
+                      tone={toneOf(CONTACT_STATUS_TONE, c.status)}
+                    />
                     {c.optedOutAt ? (
                       <div style={mutedStyle}>
                         opted out {shortDate(c.optedOutAt)}
@@ -484,9 +517,9 @@ function AddContactModal({
         onChange={(v) => setDraft({ ...draft, consentRecordId: v || undefined })}
       />
       <Notice tone="info">
-        The contact lands in `proposed`. Confirming it — on the contact's own screen — is where the M39
-        bereavement-outreach consent verdict is resolved server-side, and it fails CLOSED: an unconsented
-        condolence call to a grieving family is the harm the rule exists to prevent.
+        The contact lands in `proposed`. Confirming it — on the contact's own screen — is where the
+        M39 bereavement-outreach consent verdict is resolved server-side, and it fails CLOSED: an
+        unconsented condolence call to a grieving family is the harm the rule exists to prevent.
       </Notice>
       {error ? <p style={alertStyle}>{error}</p> : null}
     </Modal>
@@ -600,8 +633,8 @@ function CloseModal({
       }
     >
       <Notice tone="warning">
-        An early close cuts a regulatory 13-month obligation short. It requires step-up authentication, a
-        documented narrative, and a clinical-supervisor cosign before it is final.
+        An early close cuts a regulatory 13-month obligation short. It requires step-up
+        authentication, a documented narrative, and a clinical-supervisor cosign before it is final.
       </Notice>
       <SelectField
         label="Reason"
@@ -706,7 +739,12 @@ function FirstContactModal({
       title="Counselor first contact"
       onClose={onClose}
       footer={
-        <button type="button" style={primaryButtonStyle} disabled={busy || !contactId} onClick={submit}>
+        <button
+          type="button"
+          style={primaryButtonStyle}
+          disabled={busy || !contactId}
+          onClick={submit}
+        >
           {busy ? "Opening…" : "Open first contact"}
         </button>
       }

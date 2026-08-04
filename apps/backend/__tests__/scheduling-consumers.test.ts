@@ -35,7 +35,10 @@ describe("planVisitCompletionFromEncounter (§4.4 M8 bidirectional)", () => {
   });
 
   it("skips no_visit_link for an ad-hoc/retroactive encounter (NULL visit_id; M8 D2 reconciliation)", () => {
-    const plan = planVisitCompletionFromEncounter({ ...SIGNED, visitId: undefined }, { state: "in_visit" });
+    const plan = planVisitCompletionFromEncounter(
+      { ...SIGNED, visitId: undefined },
+      { state: "in_visit" },
+    );
     expect(plan).toEqual({ kind: "skip", reason: "no_visit_link" });
   });
 

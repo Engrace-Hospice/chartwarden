@@ -1,4 +1,11 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, WorkQueueLayout, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  WorkQueueLayout,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/26-cap — M26, the THRESHOLD EVENT QUEUE (R2, §5.1.4). The reviewer-oriented queue of
 // band transitions (90/95/100 aggregate · 18/20 inpatient) for billing managers + compliance officers.
 // Acknowledge is a server-authoritative mutation gated on cap.event.acknowledge; this read surface gates nav
@@ -19,7 +26,14 @@ interface EventRow {
 }
 
 const cell = { padding: "0.55rem 0.75rem", textAlign: "left" as const };
-const head = { ...cell, fontSize: "0.72rem", textTransform: "uppercase" as const, letterSpacing: "0.04em", color: "var(--color-on-surface-variant)", fontWeight: 600 };
+const head = {
+  ...cell,
+  fontSize: "0.72rem",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.04em",
+  color: "var(--color-on-surface-variant)",
+  fontWeight: 600,
+};
 const row = { borderTop: "1px solid var(--color-surface-container)" };
 
 export function CapEvents(): JSX.Element {
@@ -31,7 +45,9 @@ export function CapEvents(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const res = await client.GET("/api/v1/cap/threshold-events", { params: { query: { unacknowledgedOnly: "true" } } } as never);
+    const res = await client.GET("/api/v1/cap/threshold-events", {
+      params: { query: { unacknowledgedOnly: "true" } },
+    } as never);
     if (res.error) {
       setError("Threshold events are unavailable — you may lack cap visibility.");
       setLoading(false);
@@ -48,40 +64,51 @@ export function CapEvents(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
-  const state = (e: EventRow): string => (e.resolvedAt ? "Resolved" : e.acknowledgedAt ? "Acknowledged" : "Unacknowledged");
+  const state = (e: EventRow): string =>
+    e.resolvedAt ? "Resolved" : e.acknowledgedAt ? "Acknowledged" : "Unacknowledged";
 
   return (
     <WorkQueueLayout
-      header={<PageHeader title="Threshold Events" breadcrumb="Revenue Cycle — cap band transitions" />}
+      header={
+        <PageHeader title="Threshold Events" breadcrumb="Revenue Cycle — cap band transitions" />
+      }
       table={
-      events.length === 0 ? (
-        <EmptyState title="No open events" description="No unacknowledged cap-band transitions. The cap is within band." />
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-          <thead>
-            <tr>
-              <th style={head}>Scope</th>
-              <th style={head}>Patient</th>
-              <th style={head}>Transition</th>
-              <th style={head}>Raised</th>
-              <th style={head}>State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {events.map((e) => (
-              <tr key={e.id} style={row}>
-                <td style={cell}>{humanize(e.scope)}</td>
-                <td style={{ ...cell, fontVariantNumeric: "tabular-nums" }}>{e.patientId?.slice(0, 8) ?? "—"}</td>
-                <td style={cell}>
-                  <StatusPill tone={toneOf(BAND_TONE, e.currentBand)} label={`${humanize(e.priorBand)} → ${humanize(e.currentBand)}`} />
-                </td>
-                <td style={cell}>{shortDate(e.raisedAt)}</td>
-                <td style={cell}>{state(e)}</td>
+        events.length === 0 ? (
+          <EmptyState
+            title="No open events"
+            description="No unacknowledged cap-band transitions. The cap is within band."
+          />
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+            <thead>
+              <tr>
+                <th style={head}>Scope</th>
+                <th style={head}>Patient</th>
+                <th style={head}>Transition</th>
+                <th style={head}>Raised</th>
+                <th style={head}>State</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )
+            </thead>
+            <tbody>
+              {events.map((e) => (
+                <tr key={e.id} style={row}>
+                  <td style={cell}>{humanize(e.scope)}</td>
+                  <td style={{ ...cell, fontVariantNumeric: "tabular-nums" }}>
+                    {e.patientId?.slice(0, 8) ?? "—"}
+                  </td>
+                  <td style={cell}>
+                    <StatusPill
+                      tone={toneOf(BAND_TONE, e.currentBand)}
+                      label={`${humanize(e.priorBand)} → ${humanize(e.currentBand)}`}
+                    />
+                  </td>
+                  <td style={cell}>{shortDate(e.raisedAt)}</td>
+                  <td style={cell}>{state(e)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
       }
     />
   );

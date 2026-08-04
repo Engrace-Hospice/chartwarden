@@ -8,8 +8,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applySudRedactionToDiagnosticReport,
-  projectDiagnosticReport,
   type DiagnosticReportProjectorDeps,
   type ExternalPhysicianReader,
   type FacilityReader,
@@ -18,6 +16,8 @@ import {
   type LabOrderRow,
   type OrderProvider,
   type PatientReader,
+  applySudRedactionToDiagnosticReport,
+  projectDiagnosticReport,
 } from "../src";
 
 function orderProvider(order: LabOrderRow | null): OrderProvider {
@@ -32,7 +32,11 @@ function orderProvider(order: LabOrderRow | null): OrderProvider {
 }
 
 function labReader(obs: LabObservationRow | null): LabObservationReader {
-  return { async loadById() { return obs; } };
+  return {
+    async loadById() {
+      return obs;
+    },
+  };
 }
 
 const patientReader: PatientReader = {
@@ -56,8 +60,16 @@ const patientReader: PatientReader = {
   },
 };
 
-const physicianReader: ExternalPhysicianReader = { async findById() { return { id: "mdm-9" }; } };
-const facilityReader: FacilityReader = { async findById() { return { id: "fac-2" }; } };
+const physicianReader: ExternalPhysicianReader = {
+  async findById() {
+    return { id: "mdm-9" };
+  },
+};
+const facilityReader: FacilityReader = {
+  async findById() {
+    return { id: "fac-2" };
+  },
+};
 
 const cbcOrder: LabOrderRow = {
   id: "order-1",
@@ -74,13 +86,46 @@ const cbcObs: LabObservationRow = {
   id: "obs-1",
   attachedAt: "2026-07-02T08:00:00Z",
   values: [
-    { loincCode: "6690-2", loincText: "WBC", numericValue: 7.2, unit: "10*3/uL", stringValue: null, criticalFlag: null, abnormalFlag: null, referenceRange: "4.0-11.0", sudRedactionStatus: "not_applicable" },
-    { loincCode: "718-7", loincText: "Hemoglobin", numericValue: 13.5, unit: "g/dL", stringValue: null, criticalFlag: null, abnormalFlag: null, referenceRange: "12.0-16.0", sudRedactionStatus: "not_applicable" },
-    { loincCode: "4544-3", loincText: "Hematocrit", numericValue: 40, unit: "%", stringValue: null, criticalFlag: "HH", abnormalFlag: null, referenceRange: "36-46", sudRedactionStatus: "not_applicable" },
+    {
+      loincCode: "6690-2",
+      loincText: "WBC",
+      numericValue: 7.2,
+      unit: "10*3/uL",
+      stringValue: null,
+      criticalFlag: null,
+      abnormalFlag: null,
+      referenceRange: "4.0-11.0",
+      sudRedactionStatus: "not_applicable",
+    },
+    {
+      loincCode: "718-7",
+      loincText: "Hemoglobin",
+      numericValue: 13.5,
+      unit: "g/dL",
+      stringValue: null,
+      criticalFlag: null,
+      abnormalFlag: null,
+      referenceRange: "12.0-16.0",
+      sudRedactionStatus: "not_applicable",
+    },
+    {
+      loincCode: "4544-3",
+      loincText: "Hematocrit",
+      numericValue: 40,
+      unit: "%",
+      stringValue: null,
+      criticalFlag: "HH",
+      abnormalFlag: null,
+      referenceRange: "36-46",
+      sudRedactionStatus: "not_applicable",
+    },
   ],
 };
 
-function deps(order: LabOrderRow | null, obs: LabObservationRow | null): DiagnosticReportProjectorDeps {
+function deps(
+  order: LabOrderRow | null,
+  obs: LabObservationRow | null,
+): DiagnosticReportProjectorDeps {
   return {
     orderProvider: orderProvider(order),
     labObservationReader: labReader(obs),
@@ -112,9 +157,7 @@ describe("projectDiagnosticReport — non-SUD (W-FHIR-13)", () => {
       { reference: "Practitioner/mdm-9" },
       { reference: "Organization/fac-2" },
     ]);
-    expect(report.meta?.security ?? []).not.toContainEqual(
-      expect.objectContaining({ code: "R" }),
-    );
+    expect(report.meta?.security ?? []).not.toContainEqual(expect.objectContaining({ code: "R" }));
     // critical flag surfaces as an interpretation
     expect(report.contained?.[2].interpretation?.[0].coding?.[0].code).toBe("HH");
   });
@@ -127,9 +170,14 @@ describe("projectDiagnosticReport — non-SUD (W-FHIR-13)", () => {
 
   it("returns null when no order / non-lab order / no observation attached", async () => {
     expect(await projectDiagnosticReport(deps(null, cbcObs), input)).toBeNull();
-    expect(await projectDiagnosticReport(deps({ ...cbcOrder, kind: "imaging" }, cbcObs), input)).toBeNull();
     expect(
-      await projectDiagnosticReport(deps({ ...cbcOrder, lastLabObservationAttachedId: null }, cbcObs), input),
+      await projectDiagnosticReport(deps({ ...cbcOrder, kind: "imaging" }, cbcObs), input),
+    ).toBeNull();
+    expect(
+      await projectDiagnosticReport(
+        deps({ ...cbcOrder, lastLabObservationAttachedId: null }, cbcObs),
+        input,
+      ),
     ).toBeNull();
   });
 });
@@ -139,11 +187,35 @@ describe("projectDiagnosticReport — SUD-class (W-FHIR-15, D20)", () => {
     id: "obs-2",
     attachedAt: "2026-07-02T08:00:00Z",
     values: [
-      { loincCode: "6690-2", loincText: "WBC", numericValue: 7.2, unit: "10*3/uL", stringValue: null, criticalFlag: null, abnormalFlag: null, referenceRange: "4.0-11.0", sudRedactionStatus: "not_applicable" },
-      { loincCode: "19295-5", loincText: "Methadone screen", numericValue: null, unit: null, stringValue: "positive", criticalFlag: null, abnormalFlag: "A", referenceRange: null, sudRedactionStatus: "redacted_consent_absent" },
+      {
+        loincCode: "6690-2",
+        loincText: "WBC",
+        numericValue: 7.2,
+        unit: "10*3/uL",
+        stringValue: null,
+        criticalFlag: null,
+        abnormalFlag: null,
+        referenceRange: "4.0-11.0",
+        sudRedactionStatus: "not_applicable",
+      },
+      {
+        loincCode: "19295-5",
+        loincText: "Methadone screen",
+        numericValue: null,
+        unit: null,
+        stringValue: "positive",
+        criticalFlag: null,
+        abnormalFlag: "A",
+        referenceRange: null,
+        sudRedactionStatus: "redacted_consent_absent",
+      },
     ],
   };
-  const sudOrder: LabOrderRow = { ...cbcOrder, id: "order-2", lastLabObservationAttachedId: "obs-2" };
+  const sudOrder: LabOrderRow = {
+    ...cbcOrder,
+    id: "order-2",
+    lastLabObservationAttachedId: "obs-2",
+  };
 
   it("whole-report redacts, clears conclusion, adds R label", async () => {
     const report = (await projectDiagnosticReport(deps(sudOrder, sudObs), {
@@ -160,7 +232,10 @@ describe("projectDiagnosticReport — SUD-class (W-FHIR-15, D20)", () => {
   });
 
   it("no SUD value/LOINC survives anywhere in the response (grep test)", async () => {
-    const report = await projectDiagnosticReport(deps(sudOrder, sudObs), { ...input, orderId: "order-2" });
+    const report = await projectDiagnosticReport(deps(sudOrder, sudObs), {
+      ...input,
+      orderId: "order-2",
+    });
     const wire = JSON.stringify(report);
     expect(wire).not.toContain("19295-5"); // methadone LOINC
     expect(wire).not.toContain("Methadone");
@@ -172,7 +247,14 @@ describe("projectDiagnosticReport — SUD-class (W-FHIR-15, D20)", () => {
 
 describe("applySudRedactionToDiagnosticReport", () => {
   it("returns the report unchanged when no SUD child is present", () => {
-    const clean = { resourceType: "DiagnosticReport" as const, id: "x", status: "final" as const, code: {}, subject: {}, contained: [] };
+    const clean = {
+      resourceType: "DiagnosticReport" as const,
+      id: "x",
+      status: "final" as const,
+      code: {},
+      subject: {},
+      contained: [],
+    };
     expect(applySudRedactionToDiagnosticReport(clean)).toBe(clean);
   });
 });

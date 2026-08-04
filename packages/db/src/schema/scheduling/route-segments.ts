@@ -7,10 +7,10 @@
 // refs are plain uuid (parent `visit` is partitioned → no SQL FK, D14). Not partitioned (bounded by visit,
 // D14). RLS + grants + the M4 write-audit trigger land in M17-T02.
 import { date, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const routeSegment = pgTable(
   "route_segment",

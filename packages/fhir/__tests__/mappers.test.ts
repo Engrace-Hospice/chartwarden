@@ -8,23 +8,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type CarePlanDomain,
+  type ConditionDomain,
+  type EncounterDomain,
+  type GoalDomain,
+  ICD10CM_SYSTEM,
+  type MedicationRequestDomain,
+  type MedicationStatementDomain,
+  type PatientRow,
+  RXNORM_SYSTEM,
   carePlanMapper,
   conditionMapper,
   encounterMapper,
   goalMapper,
   medicationRequestMapper,
   medicationStatementMapper,
-  patientMapper,
-  ICD10CM_SYSTEM,
-  RXNORM_SYSTEM,
   mrnSystemUri,
-  type CarePlanDomain,
-  type ConditionDomain,
-  type EncounterDomain,
-  type GoalDomain,
-  type MedicationRequestDomain,
-  type MedicationStatementDomain,
-  type PatientRow,
+  patientMapper,
 } from "../src";
 import type { MapperContext } from "../src";
 
@@ -60,7 +60,9 @@ describe("patientMapper", () => {
     const p = patientMapper.map(row, ctx);
     expect(p.resourceType).toBe("Patient");
     expect(p.id).toBe("pat-1");
-    expect(p.meta?.profile).toEqual(["http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient"]);
+    expect(p.meta?.profile).toEqual([
+      "http://hl7.org/fhir/us/core/StructureDefinition/us-core-patient",
+    ]);
     expect(p.identifier?.[0]).toEqual({ use: "usual", system: mrnSystemUri(ctx), value: "MRN-42" });
     expect(mrnSystemUri(ctx)).toBe("https://engrace.fhir.wardenx.com/sid/mrn");
     expect(p.name?.[0]).toEqual({ use: "official", family: "Lovelace", given: ["Ada", "Byron"] });
@@ -72,7 +74,9 @@ describe("patientMapper", () => {
   });
 
   it("is deterministic (byte-identical on re-projection)", () => {
-    expect(JSON.stringify(patientMapper.map(row, ctx))).toBe(JSON.stringify(patientMapper.map(row, ctx)));
+    expect(JSON.stringify(patientMapper.map(row, ctx))).toBe(
+      JSON.stringify(patientMapper.map(row, ctx)),
+    );
   });
 
   it("omits identifier when there is no MRN, and defaults gender to unknown", () => {
@@ -195,7 +199,13 @@ describe("medication mappers", () => {
 
   it("MedicationRequest falls back to free text when RxNorm is absent", () => {
     const mr = medicationRequestMapper.map(
-      { id: "mr-2", patientId: "pat-1", status: "active", intent: "order", medicationText: "compounded cream" },
+      {
+        id: "mr-2",
+        patientId: "pat-1",
+        status: "active",
+        intent: "order",
+        medicationText: "compounded cream",
+      },
       ctx,
     );
     expect(mr.medicationCodeableConcept).toEqual({ text: "compounded cream" });

@@ -9,16 +9,19 @@ import type { FastifyInstance } from "fastify";
 import { registerAdminRoutes } from "./admin.routes";
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
+import type { M24RouteServices } from "./index";
 import { registerRbRoutes } from "./rb.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerTradingPartnerRoutes } from "./trading-partner.routes";
-import type { M24RouteServices } from "./index";
 
 export { registerClaimsRoutes, type ClaimsRouteDeps } from "./claims.routes";
 export { registerRuleConfigRoutes, type RuleConfigRouteDeps } from "./rule-config.routes";
 export { registerEligibilityRoutes, type EligibilityRouteDeps } from "./eligibility.routes";
 export { registerRbRoutes, type RbRouteDeps } from "./rb.routes";
-export { registerTradingPartnerRoutes, type TradingPartnerRouteDeps } from "./trading-partner.routes";
+export {
+  registerTradingPartnerRoutes,
+  type TradingPartnerRouteDeps,
+} from "./trading-partner.routes";
 export { registerAdminRoutes, type AdminRouteDeps } from "./admin.routes";
 
 /** Mount every M24 §4.1 route plugin over the Drizzle-backed (or in-memory) read + write services. */

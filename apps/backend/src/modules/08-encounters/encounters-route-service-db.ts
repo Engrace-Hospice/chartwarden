@@ -25,11 +25,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { type LocalDate, NotFoundError, STEP_UP_POLICY, type StepUpFactor } from "@wardenx/types";
 import { and, desc, eq, gte, inArray } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
-import {
-  planF2fDualWrite,
-  planMileageCapture,
-  planVitalsCapture,
-} from "./authoring/index";
+import { planF2fDualWrite, planMileageCapture, planVitalsCapture } from "./authoring/index";
 import { transitionCosignature } from "./cosignature/index";
 import type { CosignatureState } from "./cosignature/index";
 import { transitionAddendum } from "./lifecycle/addendum";
@@ -117,7 +113,11 @@ async function resolveSignatureProvenance(
     { orgId: organizationId },
     sessionId,
   );
-  if (!isStepUpRecent(state, STEP_UP_POLICY, Date.now()) || !state?.lastStepUpAt || !state.lastStepUpFactor) {
+  if (
+    !isStepUpRecent(state, STEP_UP_POLICY, Date.now()) ||
+    !state?.lastStepUpAt ||
+    !state.lastStepUpFactor
+  ) {
     return { stepUpFresh: false, method: "passkey", stepUpAuthAt: new Date(0) };
   }
   return {
@@ -137,7 +137,8 @@ const VOCAB_VERSION_SENTINEL = "00000000-0000-4000-8000-0000000000d8";
 
 /** §2.5 D4 override / §2.7 D9 EVV-missing reasons the thin route interface does not capture (sentinels
  * meeting the DB CHECK minimums; a real reason threads through when the route body carries it). */
-const SIGNIFICANT_LATE_REASON = "significant late entry engaged via override (reason pending route capture)";
+const SIGNIFICANT_LATE_REASON =
+  "significant late entry engaged via override (reason pending route capture)";
 const ADMINISTRATIVE_LATE_REASON =
   "administrative late-entry override applied by director authority; the documented justification is pending capture by a future revision of the encounter override route (>=100 chars requirement placeholder text)";
 const EVV_MISSING_REASON = "EVV bracket missing; documented gap (reason pending route capture)";
@@ -239,13 +240,12 @@ export function createDbEncounterRouteService(
   outbox: EncounterWriteOutboxPort = NOOP_OUTBOX,
 ): EncounterRouteService {
   /** Load one org-scoped encounter row → the shared projection, or `null` when absent/cross-tenant. */
-  async function loadRow(organizationId: string, encounterId: string): Promise<EncounterRow | null> {
+  async function loadRow(
+    organizationId: string,
+    encounterId: string,
+  ): Promise<EncounterRow | null> {
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      const [r] = await tx
-        .select(encounterCols)
-        .from(ENC)
-        .where(eq(ENC.id, encounterId))
-        .limit(1);
+      const [r] = await tx.select(encounterCols).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
       return (r as EncounterRow | undefined) ?? null;
     });
   }
@@ -259,7 +259,13 @@ export function createDbEncounterRouteService(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: org,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Load a tenant-scoped encounter row FOR the write path (RLS-scoped) or raise the non-leaking 404. */
@@ -270,15 +276,8 @@ export function createDbEncounterRouteService(
   }
 
   /** Load an encounter's live cosignature request (the D3 workflow row) or the non-leaking 404. */
-  async function loadCosign(
-    t: DbClient,
-    encounterId: string,
-  ): Promise<typeof COSIGN.$inferSelect> {
-    const [row] = await t
-      .select()
-      .from(COSIGN)
-      .where(eq(COSIGN.encounterId, encounterId))
-      .limit(1);
+  async function loadCosign(t: DbClient, encounterId: string): Promise<typeof COSIGN.$inferSelect> {
+    const [row] = await t.select().from(COSIGN).where(eq(COSIGN.encounterId, encounterId)).limit(1);
     if (!row) throw new NotFoundError("cosignature_request");
     return row;
   }
@@ -430,7 +429,11 @@ export function createDbEncounterRouteService(
     // ── Cosignature-request read (status derived from the D3 workflow row) ────────────────────────────
     async getCosignature(organizationId, encounterId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [enc] = await tx.select({ id: ENC.id }).from(ENC).where(eq(ENC.id, encounterId)).limit(1);
+        const [enc] = await tx
+          .select({ id: ENC.id })
+          .from(ENC)
+          .where(eq(ENC.id, encounterId))
+          .limit(1);
         if (!enc) throw new NotFoundError("encounter"); // mirror the in-memory `load` (404 before status)
         const [cr] = await tx
           .select({ status: COSIGN.status })
@@ -738,8 +741,9 @@ export function createDbEncounterRouteService(
           const plan = planF2fDualWrite({
             status: r.status,
             encounterId: r.id,
-            faceToFaceEncounterId: (r.faceToFaceEncounterId ??
-              null) as Parameters<typeof planF2fDualWrite>[0]["faceToFaceEncounterId"],
+            faceToFaceEncounterId: (r.faceToFaceEncounterId ?? null) as Parameters<
+              typeof planF2fDualWrite
+            >[0]["faceToFaceEncounterId"],
             discipline: r.discipline,
             gatePassed: true,
             stepUpFresh: provenance.stepUpFresh,
@@ -849,9 +853,17 @@ export function createDbEncounterRouteService(
             "m8.encounter.cosignature_routed",
             "cosignature_request",
             cr.id,
-            { encounterId, routedToMembershipId: signedByMembershipId, signedAt: now.toISOString() },
+            {
+              encounterId,
+              routedToMembershipId: signedByMembershipId,
+              signedAt: now.toISOString(),
+            },
           );
-          return { status: "cosign_pending", signedAt: now.toISOString(), cosignatureRequestId: cr.id };
+          return {
+            status: "cosign_pending",
+            signedAt: now.toISOString(),
+            cosignatureRequestId: cr.id,
+          };
         }
         return { status: "signed", signedAt: now.toISOString(), cosignatureRequestId: null };
       });

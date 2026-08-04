@@ -37,6 +37,8 @@ export interface CredentialRotationPlan {
  * exactly one, but the plan retires ALL active rows so a prior mint-without-retire bug self-heals to the
  * single-active invariant on the next rotation rather than silently leaving two live keys.
  */
-export function planCredentialRotation(current: readonly CredentialRotationRow[]): CredentialRotationPlan {
+export function planCredentialRotation(
+  current: readonly CredentialRotationRow[],
+): CredentialRotationPlan {
   return { retireIds: current.filter((r) => r.status === "active").map((r) => r.id) };
 }

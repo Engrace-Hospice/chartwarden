@@ -55,7 +55,7 @@ export function requireIdempotencyKey(): PreHandler {
 export function ifMatchVersion(request: FastifyRequest): number {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
-  const n = typeof value === "string" ? Number(value.replace(/"/g, "")) : NaN;
+  const n = typeof value === "string" ? Number(value.replace(/"/g, "")) : Number.NaN;
   if (!Number.isInteger(n) || n < 0) throw new IfMatchRequiredError();
   return n;
 }
@@ -81,7 +81,9 @@ export function encodeCursor(keyset: CursorKeyset): string {
 export function decodeCursor(raw: string | undefined): CursorKeyset | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as Partial<CursorKeyset>;
+    const parsed = JSON.parse(
+      Buffer.from(raw, "base64url").toString("utf8"),
+    ) as Partial<CursorKeyset>;
     if (typeof parsed.createdAt === "string" && typeof parsed.id === "string") {
       return { createdAt: parsed.createdAt, id: parsed.id };
     }
@@ -93,7 +95,7 @@ export function decodeCursor(raw: string | undefined): CursorKeyset | null {
 
 /** Clamp a page-size query param to [1, 100] with a default of 50. */
 export function clampLimit(raw: unknown): number {
-  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
   if (!Number.isFinite(n)) return 50;
   return Math.min(100, Math.max(1, Math.floor(n)));
 }

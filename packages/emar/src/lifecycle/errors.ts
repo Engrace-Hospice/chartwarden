@@ -84,6 +84,10 @@ export class AdministrationStateError extends WardenXError {
 }
 
 /** Throw an {@link AdministrationStateError} when `condition` is false (guard helper). */
-export function require_(condition: boolean, code: M13ErrorCode, message: string): asserts condition {
+export function require_(
+  condition: boolean,
+  code: M13ErrorCode,
+  message: string,
+): asserts condition {
   if (!condition) throw new AdministrationStateError(code, message);
 }

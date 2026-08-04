@@ -31,16 +31,7 @@
 // assigned_vendor_id + pharmacy_partner_id (M40), document_id (M22) and every `*_membership_id` (M2) are
 // LOGICAL uuid, validated at the write boundary.
 import { sql } from "drizzle-orm";
-import {
-  bigint,
-  check,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { supplyDeliveryMethod, supplyRequestKind, supplyRequestStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -126,11 +117,7 @@ export const supplyRequest = pgTable(
       t.status,
       t.createdAt,
     ),
-    patientIdx: index("supply_request_patient_idx").on(
-      t.organizationId,
-      t.patientId,
-      t.createdAt,
-    ),
+    patientIdx: index("supply_request_patient_idx").on(t.organizationId, t.patientId, t.createdAt),
     admissionIdx: index("supply_request_admission_idx").on(
       t.organizationId,
       t.admissionId,
@@ -147,9 +134,7 @@ export const supplyRequest = pgTable(
       .where(sql`assigned_vendor_id IS NOT NULL`),
     inFlightIdx: index("supply_request_in_flight_idx")
       .on(t.organizationId, t.locationId, t.createdAt)
-      .where(
-        sql`status IN ('requested','vendor_assigned','ordered','in_transit','delivered')`,
-      ),
+      .where(sql`status IN ('requested','vendor_assigned','ordered','in_transit','delivered')`),
 
     // DEVIATION FROM §3.1.7 (documented, narrow): the spec's provenance CHECK additionally requires
     // `source_order_id IS NOT NULL` on every non-replenish kind, which makes §4.8's

@@ -32,7 +32,14 @@ export const esasrScorer: ScaleScorer<EsasrData> = {
   interpret(d) {
     const total = esasrTotal(d);
     const severe = ESASR_ITEMS.filter(([, get]) => get(d) >= 7).map(([label]) => label);
-    const band = total === 0 ? "no symptom burden" : total <= 30 ? "mild burden" : total <= 60 ? "moderate burden" : "high burden";
+    const band =
+      total === 0
+        ? "no symptom burden"
+        : total <= 30
+          ? "mild burden"
+          : total <= 60
+            ? "moderate burden"
+            : "high burden";
     const severeNote = severe.length > 0 ? `; severe (≥7): ${severe.join(", ")}` : "";
     return `ESAS-r total ${total}/90 — ${band}${severeNote}`;
   },

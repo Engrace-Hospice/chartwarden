@@ -3,15 +3,7 @@
 // with IDG-review and containment lifecycle. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id
 // RLS). provider_entity_id is a logical FK to M40. No PHI (aggregate cluster, no patient_id); no
 // eraser, no audit denylist.
-import {
-  integer,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const m30OutbreakStatus = pgEnum("m30_outbreak_status", [

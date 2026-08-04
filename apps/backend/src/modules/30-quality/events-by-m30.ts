@@ -186,7 +186,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m30.sra.cycle_opened",
     moduleOwner: "m30",
-    description: "A new annual SRA cycle was opened (R-41); M33 reflects the cycle in the security dashboard.",
+    description:
+      "A new annual SRA cycle was opened (R-41); M33 reflects the cycle in the security dashboard.",
     payloadSchema: Type.Object({
       orgId: id,
       cycleId: id,
@@ -199,7 +200,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m30.sra.finding_added",
     moduleOwner: "m30",
-    description: "A new SRA finding was added (R-43); M33 reflects the finding count / risk-band breakdown.",
+    description:
+      "A new SRA finding was added (R-43); M33 reflects the finding count / risk-band breakdown.",
     payloadSchema: Type.Object({
       orgId: id,
       cycleId: id,
@@ -243,7 +245,8 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m30.mortality.review_completed",
     moduleOwner: "m30",
-    description: "A reviewer completed a mortality review (R-73); M33 reflects the three-dimension outcome.",
+    description:
+      "A reviewer completed a mortality review (R-73); M33 reflects the three-dimension outcome.",
     payloadSchema: Type.Object({
       orgId: id,
       reviewId: id,

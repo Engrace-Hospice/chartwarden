@@ -42,6 +42,8 @@ describe("buildPrimaryProviderEntityResolver", () => {
       code: "PROVIDER_ENTITY_UNRESOLVED",
       statusCode: 503,
     });
-    await expect(resolver.primaryProviderEntityId(tx, "org-1")).rejects.toBeInstanceOf(WardenXError);
+    await expect(resolver.primaryProviderEntityId(tx, "org-1")).rejects.toBeInstanceOf(
+      WardenXError,
+    );
   });
 });

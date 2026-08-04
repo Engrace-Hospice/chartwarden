@@ -115,7 +115,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m9.assessment.summary_requested",
     moduleOwner: "m9",
-    description: "M22 / portal asked for the printable assessment summary; M9 emits the domain payload.",
+    description:
+      "M22 / portal asked for the printable assessment summary; M9 emits the domain payload.",
     payloadSchema: Type.Object({
       patientId: Type.String({ minLength: 1 }),
       asOfDate: Type.String({ minLength: 1 }),
@@ -129,7 +130,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m9.scale.license_pending_renewal",
     moduleOwner: "m9",
-    description: "Daily license-status scan: a proprietary-scale license entered the 30-day renewal window.",
+    description:
+      "Daily license-status scan: a proprietary-scale license entered the 30-day renewal window.",
     payloadSchema: Type.Object({
       scaleType,
       expiresAt: Type.String({ minLength: 1 }),
@@ -140,7 +142,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m9.scale.license_lapsed",
     moduleOwner: "m9",
-    description: "Daily license-status scan: a proprietary-scale license expired; form-gating now blocks recording.",
+    description:
+      "Daily license-status scan: a proprietary-scale license expired; form-gating now blocks recording.",
     payloadSchema: Type.Object({
       scaleType,
       expiredAt: Type.String({ minLength: 1 }),
@@ -151,7 +154,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m9.scale.policy_changed",
     moduleOwner: "m9",
-    description: "A tenant updated scale_policy (enable/disable or tightened thresholds); reporting reconciles.",
+    description:
+      "A tenant updated scale_policy (enable/disable or tightened thresholds); reporting reconciles.",
     payloadSchema: Type.Object({
       scaleType,
       changedFields: Type.Array(Type.String({ minLength: 1 })),

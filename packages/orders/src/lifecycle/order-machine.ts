@@ -15,7 +15,12 @@
 // complete, cosign attached, deadline reached, actor authority) is resolved upstream and passed in. The
 // discipline / signer / cosign predicates live in their own modules (./discipline-can-order,
 // ./signer-eligible, ./cosign-rules) and are composed by the service alongside this machine.
-import type { OrderKind, OrderStatus, M11EventName, OrderDiscontinuationReason } from "@wardenx/types";
+import type {
+  M11EventName,
+  OrderDiscontinuationReason,
+  OrderKind,
+  OrderStatus,
+} from "@wardenx/types";
 import { KIND_CATALOG } from "../catalog";
 import { type OrderSideEffect, type OrderTransitionResult, result } from "./effects";
 import { OrderStateError, require_ } from "./errors";
@@ -111,7 +116,10 @@ export function planDraftCreation(): ReadonlyArray<OrderSideEffect> {
 }
 
 /** The always-emitted sign effects + the kind-specific downstream `m11.*` events (§4.4 routing). */
-function signEffects(kind: OrderKind, extra: ReadonlyArray<OrderSideEffect>): ReadonlyArray<OrderSideEffect> {
+function signEffects(
+  kind: OrderKind,
+  extra: ReadonlyArray<OrderSideEffect>,
+): ReadonlyArray<OrderSideEffect> {
   const downstream: ReadonlyArray<OrderSideEffect> = KIND_CATALOG[kind].downstreamSignedEvents.map(
     (event: M11EventName) => ({ kind: "outbox", event }) as const,
   );
@@ -162,7 +170,11 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
     }
 
     case "discardDraft": {
-      require_(event.actorMayDiscard, "DISCARD_NOT_PERMITTED", "only the drafter or a supervisor may discard a draft");
+      require_(
+        event.actorMayDiscard,
+        "DISCARD_NOT_PERMITTED",
+        "only the drafter or a supervisor may discard a draft",
+      );
       require_(
         !event.hasExternalReferences,
         "ORDER_HAS_EXTERNAL_REFERENCES",
@@ -175,16 +187,23 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
     case "sign": {
       if (from === "pending_signature") {
         // §2.2 cosign overlay — the `sign` event is blocked until `cosign_status='attached'`.
-        require_(event.cosignAttached, "COSIGN_PENDING", "this order requires a cosignature before it can be signed");
+        require_(
+          event.cosignAttached,
+          "COSIGN_PENDING",
+          "this order requires a cosignature before it can be signed",
+        );
         const extra: OrderSideEffect[] = event.onBehalf
           ? [{ kind: "outbox", event: "m11.order.signed_on_behalf" }]
           : [];
         return result(from, event.type, "active", signEffects(event.kind, extra));
       }
       // from verbal_pending — the named practitioner signs in time (no on-behalf, §2.2); records timeliness.
-      return result(from, event.type, "active", signEffects(event.kind, [
-        { kind: "outbox", event: "m11.order.verbal_signed_in_time" },
-      ]));
+      return result(
+        from,
+        event.type,
+        "active",
+        signEffects(event.kind, [{ kind: "outbox", event: "m11.order.verbal_signed_in_time" }]),
+      );
     }
 
     case "recordVerbal": {
@@ -193,8 +212,16 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
         "VERBAL_NOT_ALLOWED_FOR_KIND",
         `'${event.kind}' requires a written, signed order ab initio and cannot be recorded as verbal (§2.3)`,
       );
-      require_(event.recorderEligible, "VERBAL_RECORDER_NOT_ELIGIBLE", "the recording actor is not authorized to record verbal orders");
-      require_(event.attestationRecorded, "VERBAL_ATTESTATION_REQUIRED", "a verbal-communication attestation is required");
+      require_(
+        event.recorderEligible,
+        "VERBAL_RECORDER_NOT_ELIGIBLE",
+        "the recording actor is not authorized to record verbal orders",
+      );
+      require_(
+        event.attestationRecorded,
+        "VERBAL_ATTESTATION_REQUIRED",
+        "a verbal-communication attestation is required",
+      );
       return result(from, event.type, "verbal_pending", [
         { kind: "write_verbal_order" },
         { kind: "write_signature", signature: "verbal_attestation" },
@@ -204,7 +231,11 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
     }
 
     case "withdraw": {
-      require_(event.actorMayWithdraw, "WITHDRAW_NOT_PERMITTED", "only the drafter, supervisor, or signer may withdraw");
+      require_(
+        event.actorMayWithdraw,
+        "WITHDRAW_NOT_PERMITTED",
+        "only the drafter, supervisor, or signer may withdraw",
+      );
       return result(from, event.type, "discontinued", [
         { kind: "write_discontinuation", reason: "clinical_judgement" },
         { kind: "bump_version" },
@@ -214,8 +245,16 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
     }
 
     case "expire": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "only the verbal-timer worker may expire a verbal order");
-      require_(event.deadlineReached, "VERBAL_DEADLINE_NOT_REACHED", "the verbal-order signature deadline has not been reached");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "only the verbal-timer worker may expire a verbal order",
+      );
+      require_(
+        event.deadlineReached,
+        "VERBAL_DEADLINE_NOT_REACHED",
+        "the verbal-order signature deadline has not been reached",
+      );
       return result(from, event.type, "expired_unsigned", [
         { kind: "set_timestamp", field: "expired_at" },
         { kind: "audit" },
@@ -224,7 +263,11 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
     }
 
     case "complete": {
-      require_(event.criterionMet, "COMPLETION_CRITERION_NOT_MET", "the kind-specific completion criterion is not met");
+      require_(
+        event.criterionMet,
+        "COMPLETION_CRITERION_NOT_MET",
+        "the kind-specific completion criterion is not met",
+      );
       return result(from, event.type, "completed", [
         { kind: "set_timestamp", field: "completed_at" },
         { kind: "audit" },
@@ -240,7 +283,8 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
         { kind: "audit" },
         { kind: "outbox", event: "m11.order.discontinued" },
       ];
-      const supplyKind = event.kind === "dme" || event.kind === "supply" || event.kind === "comfort_kit";
+      const supplyKind =
+        event.kind === "dme" || event.kind === "supply" || event.kind === "comfort_kit";
       if (supplyKind && event.fulfillmentInFlight) {
         effects.push({ kind: "outbox", event: "m11.order.supply_cancellation_requested" });
       }
@@ -248,7 +292,11 @@ export function transitionOrder(from: OrderState, event: OrderEvent): OrderTrans
     }
 
     case "cascadeDiscontinue": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the discharge-cascade is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the discharge-cascade is a system-actor operation",
+      );
       return result(from, event.type, "discontinued", [
         { kind: "write_discontinuation", reason: event.reason },
         { kind: "bump_version" },

@@ -22,8 +22,8 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
-  type SchedulingWriteOutboxPort,
   M17_OUTBOX_EVENTS,
+  type SchedulingWriteOutboxPort,
   createDbSchedulingBackend,
 } from "../src/modules/17-scheduling/index";
 
@@ -64,7 +64,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -87,7 +89,12 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
   }
   /** Seed an APPROVED time_off window for `member` directly (bypassing the approve flow) — disjoint windows
    * only (the D7 approved-overlap EXCLUDE). */
-  async function seedApprovedPto(org: string, member: string, startMs: number, endMs: number): Promise<string> {
+  async function seedApprovedPto(
+    org: string,
+    member: string,
+    startMs: number,
+    endMs: number,
+  ): Promise<string> {
     return (
       await admin.query(
         `INSERT INTO time_off (organization_id, membership_id, starts_at, ends_at, kind, approval_state)
@@ -97,7 +104,10 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     ).rows[0].id as string;
   }
 
-  async function newVisit(org: string, member: string): Promise<{ id: string; start: string; end: string }> {
+  async function newVisit(
+    org: string,
+    member: string,
+  ): Promise<{ id: string; start: string; end: string }> {
     const w = nextWindow();
     const v = await svc.createVisit(org, member, {
       patientId: PATIENT,
@@ -128,7 +138,12 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M17W-${org.slice(0, 4)}`, `M17W ${org.slice(0, 4)}`, `NPI-M17W-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M17W-${org.slice(0, 4)}`,
+            `M17W ${org.slice(0, 4)}`,
+            `NPI-M17W-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       const location = (
@@ -140,7 +155,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       ).rows[0].id as string;
       const mk = async (): Promise<string> => {
         const user = (
-          await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${userN++}@x.test`])
+          await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+            `m17w-${userN++}@x.test`,
+          ])
         ).rows[0].id as string;
         // The membership carries the visit's siting defaults (compromise #2: resolveSiting reads these).
         return (
@@ -154,7 +171,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       seeded[org] = { pe, location, member: await mk(), member2: await mk() };
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M17_OUTBOX_EVENTS]));
     const outbox: SchedulingWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m17" }),
@@ -177,7 +196,10 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     expect(evts).toContain("m17.visit.assigned");
     expect(evts).toContain("m17.visit.published");
     // The genesis + publish history rows landed.
-    const { rows } = await admin.query("SELECT to_state FROM visit_state_history WHERE visit_id=$1", [v.id]);
+    const { rows } = await admin.query(
+      "SELECT to_state FROM visit_state_history WHERE visit_id=$1",
+      [v.id],
+    );
     expect(rows.map((r) => r.to_state).sort()).toEqual(["proposed", "published"]);
   });
 
@@ -194,7 +216,12 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
   it("cancelVisit → cancelled; emits unassigned + cancelled", async () => {
     const { member } = seeded[ORG_A];
     const v = await newVisit(ORG_A, member);
-    const cancelled = await svc.cancelVisit(ORG_A, member, v.id, "patient admitted to inpatient unit");
+    const cancelled = await svc.cancelVisit(
+      ORG_A,
+      member,
+      v.id,
+      "patient admitted to inpatient unit",
+    );
     expect(cancelled.status).toBe("cancelled");
     const evts = await eventsFor(v.id);
     expect(evts).toContain("m17.visit.unassigned");
@@ -319,12 +346,22 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       startsAt: new Date(Date.now() + 40 * DAY).toISOString(),
       endsAt: new Date(Date.now() + 41 * DAY).toISOString(),
     });
-    const den = await svc.denyTimeOff(ORG_A, member, req2.id, "coverage cannot be arranged for that week");
+    const den = await svc.denyTimeOff(
+      ORG_A,
+      member,
+      req2.id,
+      "coverage cannot be arranged for that week",
+    );
     expect(den.state).toBe("denied");
     expect(await eventsFor(req2.id)).toContain("m17.time_off.denied");
 
     // cancel a pre-start approved window (50d, disjoint from the 30d approved one).
-    const appId = await seedApprovedPto(ORG_A, member, Date.now() + 50 * DAY, Date.now() + 51 * DAY);
+    const appId = await seedApprovedPto(
+      ORG_A,
+      member,
+      Date.now() + 50 * DAY,
+      Date.now() + 51 * DAY,
+    );
     const cancelled = await svc.cancelTimeOff(ORG_A, member, appId);
     expect(cancelled.state).toBe("cancelled");
   });
@@ -344,7 +381,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     const { member } = seeded[ORG_A];
     const v = await newVisit(ORG_A, member);
     await expect(svc.getVisit(ORG_B, v.id)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(svc.cancelVisit(ORG_B, seeded[ORG_B].member, v.id, "cross-tenant cancel attempt blocked")).rejects.toMatchObject({
+    await expect(
+      svc.cancelVisit(ORG_B, seeded[ORG_B].member, v.id, "cross-tenant cancel attempt blocked"),
+    ).rejects.toMatchObject({
       statusCode: 404,
     });
   });

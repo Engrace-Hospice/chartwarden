@@ -45,9 +45,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   M24_PERMISSION_KEY_LIST,
+  type ReadingM24AbacResolver,
   buildM24AbacPredicates,
   mountM24Routes,
-  type ReadingM24AbacResolver,
 } from "../src/modules/24-billing-medicaid/index";
 import type {
   AcknowledgmentView,
@@ -106,7 +106,8 @@ const CUSTOM_RULE_KEY = "custom_test_rule";
 /** medicaid_eligibility_active carries `overrideRoleRequired: "billing_manager"` — the one platform-default
  * rule this file needs a name for (the §4.8 `medicaid_override_role_eligible` predicate's real dispatch). */
 const OVERRIDE_ELIGIBLE_RULE_KEY = "medicaid_eligibility_active";
-const REASON = "This is a documented business justification that exceeds the forty-character CHECK floor.";
+const REASON =
+  "This is a documented business justification that exceeds the forty-character CHECK floor.";
 
 // ── the in-memory M24 backend (this file's own — M24 ships no route-facing `createInMemory*Backend`) ─────
 function createM24Backend(): {
@@ -354,7 +355,10 @@ function createM24Backend(): {
     async getRbArrangement(_actor, arrangementId) {
       const row = arrangements.get(arrangementId);
       if (!row) return null;
-      return { ...row, days: [...rbDays.values()].filter((d) => d.rbArrangementId === arrangementId) };
+      return {
+        ...row,
+        days: [...rbDays.values()].filter((d) => d.rbArrangementId === arrangementId),
+      };
     },
     async listRbDays() {
       return [...rbDays.values()];
@@ -400,7 +404,12 @@ function createM24Backend(): {
     async updateDraftClaim(_actor, claimId, input) {
       const row = claims.get(claimId);
       if (!row) throw new NotFoundError("claim not found");
-      const updated: ClaimView = { ...row, mcoId: input.mcoId ?? row.mcoId, version: row.version + 1, updatedAt: NOW };
+      const updated: ClaimView = {
+        ...row,
+        mcoId: input.mcoId ?? row.mcoId,
+        version: row.version + 1,
+        updatedAt: NOW,
+      };
       claims.set(claimId, updated);
       return updated;
     },
@@ -426,7 +435,12 @@ function createM24Backend(): {
     async submitClaim(_actor, claimId) {
       const row = claims.get(claimId);
       if (!row) throw new NotFoundError("claim not found");
-      const updated: ClaimView = { ...row, state: "SUBMITTED", version: row.version + 1, updatedAt: NOW };
+      const updated: ClaimView = {
+        ...row,
+        state: "SUBMITTED",
+        version: row.version + 1,
+        updatedAt: NOW,
+      };
       claims.set(claimId, updated);
       return updated;
     },
@@ -434,7 +448,15 @@ function createM24Backend(): {
       const row = claims.get(claimId);
       if (!row) throw new NotFoundError("claim not found");
       const id = newId("claim-replace");
-      const replacement: ClaimView = { ...row, id, tob: "817", state: "DRAFT", version: 1, createdAt: NOW, updatedAt: NOW };
+      const replacement: ClaimView = {
+        ...row,
+        id,
+        tob: "817",
+        state: "DRAFT",
+        version: 1,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
       claims.set(id, replacement);
       return replacement;
     },
@@ -442,14 +464,27 @@ function createM24Backend(): {
       const row = claims.get(claimId);
       if (!row) throw new NotFoundError("claim not found");
       const id = newId("claim-void");
-      const voided: ClaimView = { ...row, id, tob: "818", state: "VOIDED", version: 1, createdAt: NOW, updatedAt: NOW };
+      const voided: ClaimView = {
+        ...row,
+        id,
+        tob: "818",
+        state: "VOIDED",
+        version: 1,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
       claims.set(id, voided);
       return voided;
     },
     async abandonClaim(_actor, claimId) {
       const row = claims.get(claimId);
       if (!row) throw new NotFoundError("claim not found");
-      const updated: ClaimView = { ...row, state: "ABANDONED", version: row.version + 1, updatedAt: NOW };
+      const updated: ClaimView = {
+        ...row,
+        state: "ABANDONED",
+        version: row.version + 1,
+        updatedAt: NOW,
+      };
       claims.set(claimId, updated);
       return updated;
     },
@@ -630,14 +665,34 @@ const SUPER_HEADERS = {
   "x-test-roles": "billing_manager,org_admin,compliance_officer,medical_director",
   "x-test-pe": PE,
 };
-const NONE_HEADERS = { "x-test-user": "none_1", "x-test-org": ORG, "x-test-roles": "", "x-test-pe": PE };
+const NONE_HEADERS = {
+  "x-test-user": "none_1",
+  "x-test-org": ORG,
+  "x-test-roles": "",
+  "x-test-pe": PE,
+};
 
 function makeServer() {
   const backend = createM24Backend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "super_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M24_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "super_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M24_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -646,7 +701,9 @@ function makeServer() {
   // override/activate/terminate/credential-admin/platform-admin routes' `requireStepUp` gate has a real
   // PASSING path in this file (see the file banner).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildM24AbacPredicates({ resolver: backend.abacResolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildM24AbacPredicates({ resolver: backend.abacResolver }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
@@ -679,7 +736,11 @@ describe("M24 route smoke — the M1 boundary", () => {
 
   it("403s a permission-gated route for a session holding NO M24 grants", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/medicaid-claims", headers: NONE_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/medicaid-claims",
+      headers: NONE_HEADERS,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -717,11 +778,30 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/medicaid-claims",
     headers: { ...SUPER_HEADERS, ...IDEMP("k1") },
-    payload: { patientId: PATIENT, admissionId: ADMISSION, providerEntityId: PE, serviceFrom: "2026-07-01", serviceTo: "2026-07-31", kind: "combined_hospice_rb" },
+    payload: {
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      providerEntityId: PE,
+      serviceFrom: "2026-07-01",
+      serviceTo: "2026-07-31",
+      kind: "combined_hospice_rb",
+    },
     expectStatus: 201,
   },
-  { label: "2 GET /medicaid-claims (list)", method: "GET", url: "/api/v1/medicaid-claims", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "3 GET /medicaid-claims/:id", method: "GET", url: `/api/v1/medicaid-claims/${CLAIM}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "2 GET /medicaid-claims (list)",
+    method: "GET",
+    url: "/api/v1/medicaid-claims",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "3 GET /medicaid-claims/:id",
+    method: "GET",
+    url: `/api/v1/medicaid-claims/${CLAIM}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "4 PATCH /medicaid-claims/:id",
     method: "PATCH",
@@ -777,11 +857,41 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: {},
     expectStatus: 200,
   },
-  { label: "11 GET /medicaid-claims/:id/lines", method: "GET", url: `/api/v1/medicaid-claims/${CLAIM}/lines`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "12 GET /medicaid-claims/:id/submissions", method: "GET", url: `/api/v1/medicaid-claims/${CLAIM}/submissions`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "13 GET /medicaid-claims/:id/acknowledgments", method: "GET", url: `/api/v1/medicaid-claims/${CLAIM}/acknowledgments`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "14 GET /medicaid-validation-runs/:id", method: "GET", url: `/api/v1/medicaid-validation-runs/${RUN}`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "15 GET /medicaid-claims/:id/validation-runs", method: "GET", url: `/api/v1/medicaid-claims/${CLAIM}/validation-runs`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "11 GET /medicaid-claims/:id/lines",
+    method: "GET",
+    url: `/api/v1/medicaid-claims/${CLAIM}/lines`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "12 GET /medicaid-claims/:id/submissions",
+    method: "GET",
+    url: `/api/v1/medicaid-claims/${CLAIM}/submissions`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "13 GET /medicaid-claims/:id/acknowledgments",
+    method: "GET",
+    url: `/api/v1/medicaid-claims/${CLAIM}/acknowledgments`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "14 GET /medicaid-validation-runs/:id",
+    method: "GET",
+    url: `/api/v1/medicaid-validation-runs/${RUN}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "15 GET /medicaid-claims/:id/validation-runs",
+    method: "GET",
+    url: `/api/v1/medicaid-claims/${CLAIM}/validation-runs`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "16 POST /medicaid-validation-results/:id/override",
     method: "POST",
@@ -790,13 +900,43 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { reason: REASON, overrideRoleClaimed: "billing_manager" },
     expectStatus: 201,
   },
-  { label: "17 GET /medicaid-validation-overrides", method: "GET", url: "/api/v1/medicaid-validation-overrides", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "35 GET /medicaid-ar-dashboard", method: "GET", url: "/api/v1/medicaid-ar-dashboard", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "36 GET /medicaid-ar-dashboard/metrics", method: "GET", url: "/api/v1/medicaid-ar-dashboard/metrics", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "39 GET /medicaid-validation-worklist", method: "GET", url: "/api/v1/medicaid-validation-worklist", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "17 GET /medicaid-validation-overrides",
+    method: "GET",
+    url: "/api/v1/medicaid-validation-overrides",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "35 GET /medicaid-ar-dashboard",
+    method: "GET",
+    url: "/api/v1/medicaid-ar-dashboard",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "36 GET /medicaid-ar-dashboard/metrics",
+    method: "GET",
+    url: "/api/v1/medicaid-ar-dashboard/metrics",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "39 GET /medicaid-validation-worklist",
+    method: "GET",
+    url: "/api/v1/medicaid-validation-worklist",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── rule-config.routes.ts (routes 18-21) ──────────────────────────────────────────────────────────────
-  { label: "18 GET /medicaid-rule-config", method: "GET", url: "/api/v1/medicaid-rule-config", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "18 GET /medicaid-rule-config",
+    method: "GET",
+    url: "/api/v1/medicaid-rule-config",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "19 PATCH /medicaid-rule-config/:ruleKey",
     method: "PATCH",
@@ -810,7 +950,11 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/medicaid-rule-config/custom",
     headers: { ...SUPER_HEADERS, ...IDEMP("k20") },
-    payload: { ruleKey: "custom_rule_created_1", customPredicateDsl: { op: "always_pass" }, customSeverity: "warn" },
+    payload: {
+      ruleKey: "custom_rule_created_1",
+      customPredicateDsl: { op: "always_pass" },
+      customSeverity: "warn",
+    },
     expectStatus: 201,
   },
   {
@@ -827,10 +971,21 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/medicaid-eligibility-checks",
     headers: { ...SUPER_HEADERS, ...IDEMP("k22") },
-    payload: { patientId: PATIENT, patientPayerId: PAYER, asOfServiceDate: "2026-07-01", providerEntityId: PE },
+    payload: {
+      patientId: PATIENT,
+      patientPayerId: PAYER,
+      asOfServiceDate: "2026-07-01",
+      providerEntityId: PE,
+    },
     expectStatus: 202,
   },
-  { label: "23 GET /medicaid-eligibility-checks", method: "GET", url: "/api/v1/medicaid-eligibility-checks", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "23 GET /medicaid-eligibility-checks",
+    method: "GET",
+    url: "/api/v1/medicaid-eligibility-checks",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── rb.routes.ts (routes 24-31) ───────────────────────────────────────────────────────────────────────
   {
@@ -851,8 +1006,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
     },
     expectStatus: 201,
   },
-  { label: "25 GET /rb-arrangements", method: "GET", url: "/api/v1/rb-arrangements", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "26 GET /rb-arrangements/:id", method: "GET", url: `/api/v1/rb-arrangements/${ARR}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "25 GET /rb-arrangements",
+    method: "GET",
+    url: "/api/v1/rb-arrangements",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "26 GET /rb-arrangements/:id",
+    method: "GET",
+    url: `/api/v1/rb-arrangements/${ARR}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "27 PATCH /rb-arrangements/:id",
     method: "PATCH",
@@ -877,7 +1044,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { reason: REASON },
     expectStatus: 200,
   },
-  { label: "30 GET /rb-days", method: "GET", url: "/api/v1/rb-days", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "30 GET /rb-days",
+    method: "GET",
+    url: "/api/v1/rb-days",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "31 PATCH /rb-days/:id",
     method: "PATCH",
@@ -888,13 +1061,25 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── trading-partner.routes.ts (routes 32-34) ──────────────────────────────────────────────────────────
-  { label: "32 GET /state-medicaid-trading-partner-credentials", method: "GET", url: "/api/v1/state-medicaid-trading-partner-credentials", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "32 GET /state-medicaid-trading-partner-credentials",
+    method: "GET",
+    url: "/api/v1/state-medicaid-trading-partner-credentials",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "33 POST /state-medicaid-trading-partner-credentials",
     method: "POST",
     url: "/api/v1/state-medicaid-trading-partner-credentials",
     headers: { ...SUPER_HEADERS, ...IDEMP("k33") },
-    payload: { providerEntityId: PE, serviceState: "OR", channel: "direct_mmis", tradingPartnerId: "TP-SMOKE-1", activeFrom: "2026-01-01" },
+    payload: {
+      providerEntityId: PE,
+      serviceState: "OR",
+      channel: "direct_mmis",
+      tradingPartnerId: "TP-SMOKE-1",
+      activeFrom: "2026-01-01",
+    },
     expectStatus: 201,
   },
   {
@@ -912,7 +1097,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/admin/platform-medicaid-rules",
     headers: { ...SUPER_HEADERS, ...IDEMP("k37") },
-    payload: { ruleKey: "platform_test_rule", title: "Test Rule", category: "eligibility", severity: "warn" },
+    payload: {
+      ruleKey: "platform_test_rule",
+      title: "Test Rule",
+      category: "eligibility",
+      severity: "warn",
+    },
     expectStatus: 202,
   },
   {
@@ -928,7 +1118,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M24 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

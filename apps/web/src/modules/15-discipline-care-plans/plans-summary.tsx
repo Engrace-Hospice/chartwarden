@@ -22,6 +22,15 @@ import {
   listPlans,
 } from "./discipline-api";
 import {
+  GOAL_STATUS_TONE,
+  INTERVENTION_STATUS_TONE,
+  humanize,
+  kindLabel,
+  kindRegulation,
+  shortDate,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Notice,
   alertStyle,
@@ -34,15 +43,6 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  GOAL_STATUS_TONE,
-  INTERVENTION_STATUS_TONE,
-  humanize,
-  kindLabel,
-  kindRegulation,
-  shortDate,
-  toneOf,
-} from "./discipline-status";
 
 export function DisciplinePlansSummary(): JSX.Element {
   const client = useApiClient();
@@ -121,7 +121,11 @@ export function DisciplinePlansSummary(): JSX.Element {
         />
       ) : (
         summaries.map((s) => (
-          <Card key={s.planId} title={kindLabel(s.kind)} actions={<span style={mutedStyle}>{kindRegulation(s.kind)}</span>}>
+          <Card
+            key={s.planId}
+            title={kindLabel(s.kind)}
+            actions={<span style={mutedStyle}>{kindRegulation(s.kind)}</span>}
+          >
             <span style={mutedStyle}>Plan status: {humanize(s.status)}</span>
 
             {s.kind === "spiritual_plan" && s.spiritualCareDeclined ? (
@@ -130,7 +134,14 @@ export function DisciplinePlansSummary(): JSX.Element {
               </Notice>
             ) : null}
 
-            <h4 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "0.85rem", color: t.onSurface }}>
+            <h4
+              style={{
+                margin: 0,
+                fontFamily: t.fontDisplay,
+                fontSize: "0.85rem",
+                color: t.onSurface,
+              }}
+            >
               Goals
             </h4>
             {s.goals.length === 0 ? (
@@ -161,7 +172,14 @@ export function DisciplinePlansSummary(): JSX.Element {
               </table>
             )}
 
-            <h4 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "0.85rem", color: t.onSurface }}>
+            <h4
+              style={{
+                margin: 0,
+                fontFamily: t.fontDisplay,
+                fontSize: "0.85rem",
+                color: t.onSurface,
+              }}
+            >
               Interventions
             </h4>
             {s.interventions.length === 0 ? (

@@ -13,9 +13,9 @@ import { and, desc, eq } from "drizzle-orm";
 import type { ClaimState } from "../contracts";
 import {
   type BillingDb,
+  type CursorPage,
   buildCursorPage,
   claimStateCodec,
-  type CursorPage,
   decodeCursor,
   keysetBefore,
   pageSizeOf,
@@ -34,7 +34,10 @@ export interface ClaimStateHistoryRecord
 }
 
 /** Insert input: the Drizzle insert shape with `fromState`/`toState` as the lowercase domain `ClaimState`. */
-export type NewClaimStateHistoryInput = Omit<schema.NewClaimStateHistory, "fromState" | "toState"> & {
+export type NewClaimStateHistoryInput = Omit<
+  schema.NewClaimStateHistory,
+  "fromState" | "toState"
+> & {
   readonly fromState?: ClaimState | null;
   readonly toState: ClaimState;
 };

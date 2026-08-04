@@ -1,10 +1,10 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `extraction_discrepancy` (M22 §3.3). A cross-source or chart-existing disagreement
 // surfaced during extraction review. Org-scoped; the CHECK enforces the two legal shapes (cross-
 // source needs candidate_b + no chart value; chart-existing needs a chart value + target module +
 // no candidate_b). `chart_existing_value` / `resolution_value` are DENYLISTED (§3.6 — PHI).
 // `intake_upload_batch_id` carries a SQL FK; candidate ids are plain uuid (candidates are partitioned).
 import { check, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import {
   chartTargetModule,
   extractionDiscrepancyKind,

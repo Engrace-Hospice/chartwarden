@@ -17,9 +17,9 @@
 // no M22-produced event and no edge.
 import type { DocumentRetentionClass } from "@wardenx/types";
 import {
-  planLabResultsRender,
   type LabResultsRenderPayload,
   type RenderVariantResult,
+  planLabResultsRender,
 } from "./render-variants";
 
 /** The §7.15 lab-results render-request event M22 consumes (STRING literal — no producer import). M11 emits

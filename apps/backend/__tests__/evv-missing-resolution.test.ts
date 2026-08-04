@@ -7,13 +7,13 @@
 // DB, no clock — the windows + identity facts are injected as resolved data.
 import { describe, expect, it } from "vitest";
 import {
+  CLINICIAN_ATTEST_REASON_MIN,
+  DOCUMENTED_MISSING_REASON_MIN,
   type EvvMissingResolutionEvent,
   type EvvMissingResolutionLifecycleState,
   type EvvSideEffect,
-  type M18ErrorCode,
-  CLINICIAN_ATTEST_REASON_MIN,
-  DOCUMENTED_MISSING_REASON_MIN,
   EvvStateError,
+  type M18ErrorCode,
   SELF_ATTEST_WINDOW_HOURS,
   SUPERVISOR_OVERRIDE_REASON_MIN,
   SUPERVISOR_OVERRIDE_WINDOW_DAYS,
@@ -38,16 +38,21 @@ function expectCode(fn: () => unknown, code: M18ErrorCode): void {
 const kinds = (effects: readonly EvvSideEffect[]): string[] => effects.map((e) => e.kind);
 const reasonOf = (effects: readonly EvvSideEffect[]): string | undefined =>
   effects
-    .filter((e): e is Extract<EvvSideEffect, { kind: "capture_reason" }> => e.kind === "capture_reason")
+    .filter(
+      (e): e is Extract<EvvSideEffect, { kind: "capture_reason" }> => e.kind === "capture_reason",
+    )
     .find((e) => e.field === "resolution_reason")?.value;
 
-const ATTEST_REASON = "Visit completed 11:15 AM; forgot to tap checkout before driving to the next visit.";
+const ATTEST_REASON =
+  "Visit completed 11:15 AM; forgot to tap checkout before driving to the next visit.";
 const OVERRIDE_REASON =
   "RN Mike's phone battery died mid-visit per his report; completion at 14:30 confirmed by family and M8 sign.";
 
 // ── §7.3 clinician self-attest ───────────────────────────────────────────────────────────────────
 describe("transitionMissingResolution — §7.3 clinician self-attest", () => {
-  const attest = (over: Partial<Extract<EvvMissingResolutionEvent, { type: "clinician_attest" }>> = {}) =>
+  const attest = (
+    over: Partial<Extract<EvvMissingResolutionEvent, { type: "clinician_attest" }>> = {},
+  ) =>
     transitionMissingResolution("open", {
       type: "clinician_attest",
       callerIsAssignedClinician: true,
@@ -71,19 +76,30 @@ describe("transitionMissingResolution — §7.3 clinician self-attest", () => {
   });
 
   it("rejects a non-assigned clinician", () => {
-    expectCode(() => attest({ callerIsAssignedClinician: false }), "EVV_RESOLUTION_NOT_ASSIGNED_CLINICIAN");
+    expectCode(
+      () => attest({ callerIsAssignedClinician: false }),
+      "EVV_RESOLUTION_NOT_ASSIGNED_CLINICIAN",
+    );
   });
 
   it("rejects a self-attest past the 24h window (→ supervisor override)", () => {
-    expectCode(() => attest({ hoursSinceCheckIn: SELF_ATTEST_WINDOW_HOURS + 0.1 }), "EVV_SELF_ATTEST_WINDOW_EXPIRED");
+    expectCode(
+      () => attest({ hoursSinceCheckIn: SELF_ATTEST_WINDOW_HOURS + 0.1 }),
+      "EVV_SELF_ATTEST_WINDOW_EXPIRED",
+    );
   });
 
   it("allows a self-attest exactly at the 24h boundary", () => {
-    expect(attest({ hoursSinceCheckIn: SELF_ATTEST_WINDOW_HOURS }).status).toBe("closed_clinician_attested");
+    expect(attest({ hoursSinceCheckIn: SELF_ATTEST_WINDOW_HOURS }).status).toBe(
+      "closed_clinician_attested",
+    );
   });
 
   it("rejects a reason below the 40-char floor", () => {
-    expectCode(() => attest({ reason: "x".repeat(CLINICIAN_ATTEST_REASON_MIN - 1) }), "EVV_RESOLUTION_REASON_TOO_SHORT");
+    expectCode(
+      () => attest({ reason: "x".repeat(CLINICIAN_ATTEST_REASON_MIN - 1) }),
+      "EVV_RESOLUTION_REASON_TOO_SHORT",
+    );
   });
 });
 
@@ -109,7 +125,10 @@ describe("transitionMissingResolution — §7.4 supervisor override", () => {
   });
 
   it("requires fresh step-up auth", () => {
-    expectCode(() => override({ stepUpVerified: false }), "EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED");
+    expectCode(
+      () => override({ stepUpVerified: false }),
+      "EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED",
+    );
   });
 
   it("rejects an override past the 7d window", () => {
@@ -167,7 +186,8 @@ describe("transitionMissingResolution — §2.4 visit-voided", () => {
 
 // ── §7.10 documented-at-encounter (M8 boundary) ────────────────────────────────────────────────────
 describe("transitionMissingResolution — §7.10 documented-at-encounter", () => {
-  const ENC_REASON = "Phone battery died at 9:50 AM at patient home; visit 10:02–11:18 confirmed by family.";
+  const ENC_REASON =
+    "Phone battery died at 9:50 AM at patient home; visit 10:02–11:18 confirmed by family.";
 
   it("closes open → closed_documented_at_encounter with the signing clinician + encounter reason", () => {
     const r = transitionMissingResolution("open", {
@@ -219,7 +239,11 @@ describe("transitionMissingResolution — §2.4 system-checkout-received", () =>
 
   it("rejects a human actor on the auto-close path", () => {
     expectCode(
-      () => transitionMissingResolution("open", { type: "system_checkout_received", isSystemActor: false }),
+      () =>
+        transitionMissingResolution("open", {
+          type: "system_checkout_received",
+          isSystemActor: false,
+        }),
       "EVV_RESOLUTION_SYSTEM_ACTOR_REQUIRED",
     );
   });
@@ -264,7 +288,9 @@ describe("ADR-0008 — EVV is never a Medicare claim gate", () => {
 
   it("classifies open as unresolved_missing and closed as documented_missing", () => {
     expect(missingResolutionDisposition("open")).toBe("unresolved_missing");
-    expect(missingResolutionDisposition("closed_documented_at_encounter")).toBe("documented_missing");
+    expect(missingResolutionDisposition("closed_documented_at_encounter")).toBe(
+      "documented_missing",
+    );
     expect(missingResolutionDisposition("closed_clinician_attested")).toBe("documented_missing");
   });
 

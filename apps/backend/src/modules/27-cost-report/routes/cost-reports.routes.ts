@@ -14,15 +14,6 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import {
-  APPROVER_FOR_PROVIDER,
-  EDITOR_FOR_PROVIDER,
-  EDITOR_FOR_PROVIDER_CREATE,
-  P,
-  STEP_UP,
-} from "./guards";
-import type { M27ReadRouteService } from "./read-service";
-import type { M27WriteRouteService } from "./write-service";
-import {
   ApproveForSubmitBodySchema,
   CostReportIdParamsSchema,
   CostReportListQuerySchema,
@@ -33,6 +24,15 @@ import {
   SubmitPastDeadlineBodySchema,
   parse,
 } from "./cost-report-typebox";
+import {
+  APPROVER_FOR_PROVIDER,
+  EDITOR_FOR_PROVIDER,
+  EDITOR_FOR_PROVIDER_CREATE,
+  P,
+  STEP_UP,
+} from "./guards";
+import type { M27ReadRouteService } from "./read-service";
+import type { M27WriteRouteService } from "./write-service";
 
 export interface CostReportRouteDeps {
   readonly readService: M27ReadRouteService;
@@ -159,7 +159,9 @@ export function registerCostReportRoutes(app: FastifyInstance, deps: CostReportR
       const actor = writeActorOf(request);
       const { id } = parse(CostReportIdParamsSchema, request.params);
       const body = parse(ApproveForSubmitBodySchema, request.body);
-      const res = await writeService.approveForSubmit(actor, id, { validationId: body.validationId });
+      const res = await writeService.approveForSubmit(actor, id, {
+        validationId: body.validationId,
+      });
       return reply.code(200).send(res);
     },
   );

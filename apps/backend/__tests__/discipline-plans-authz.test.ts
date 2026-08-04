@@ -333,14 +333,24 @@ describe("M15-T06 §7.8/§7.9 disclosure gate", () => {
 describe("M15-T06 §4.6.1 cursor pagination", () => {
   it("emits the spec's `{data, next_cursor, has_more}` envelope and round-trips the cursor", () => {
     const rows = [{ id: "a" }, { id: "b" }, { id: "c" }];
-    const page = toCursorPage(rows, 2, (r) => ({ a: r.id, id: r.id }), (r) => r.id);
+    const page = toCursorPage(
+      rows,
+      2,
+      (r) => ({ a: r.id, id: r.id }),
+      (r) => r.id,
+    );
     expect(page.data).toEqual(["a", "b"]);
     expect(page.has_more).toBe(true);
     expect(decodeCursor(page.next_cursor ?? undefined)).toEqual({ a: "b", id: "b" });
   });
 
   it("closes the page when the row set fits", () => {
-    const page = toCursorPage([{ id: "a" }], 2, (r) => ({ a: r.id, id: r.id }), (r) => r.id);
+    const page = toCursorPage(
+      [{ id: "a" }],
+      2,
+      (r) => ({ a: r.id, id: r.id }),
+      (r) => r.id,
+    );
     expect([page.has_more, page.next_cursor]).toEqual([false, null]);
   });
 

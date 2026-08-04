@@ -1,8 +1,8 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `promo_code_application` (M35 §3.3). TENANT-SCOPED, RLS on app.org_id (0143).
 // `organization_id` + `applied_by_membership_id` are logical uuids (M35-F04); `subscription_id` and
 // `promo_code_id` are REAL FKs.
 import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { promoCode } from "./promo-code";
 import { subscriptionRow } from "./subscription";
 

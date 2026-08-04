@@ -135,7 +135,8 @@ function dayBucket(at: Date): string {
  */
 export const M23_IDEMPOTENCY_KEYS = {
   /** `(claimId, attemptIndex)`. */
-  claimSubmit: (claimId: string, attemptIndex: number): string => `claim-submit:${claimId}:${attemptIndex}`,
+  claimSubmit: (claimId: string, attemptIndex: number): string =>
+    `claim-submit:${claimId}:${attemptIndex}`,
   /** `(claimId, attemptIndex)`. */
   claimSubmitRetry: (claimId: string, attemptIndex: number): string =>
     `claim-submit-retry:${claimId}:${attemptIndex}`,
@@ -147,11 +148,15 @@ export const M23_IDEMPOTENCY_KEYS = {
   eligibilityRefresh: (patientId: string, asOfServiceDate: string): string =>
     `elig:${patientId}:${asOfServiceDate}`,
   /** `(claimId, validationRunId)`. */
-  validationRun: (claimId: string, validationRunId: string): string => `val:${claimId}:${validationRunId}`,
+  validationRun: (claimId: string, validationRunId: string): string =>
+    `val:${claimId}:${validationRunId}`,
   /** `(eventId, targetClaimId)` — the §4.8 consumer idempotency tuple. */
-  revalidateConsumer: (eventId: string, targetClaimId: string): string => `reval:${eventId}:${targetClaimId}`,
+  revalidateConsumer: (eventId: string, targetClaimId: string): string =>
+    `reval:${eventId}:${targetClaimId}`,
   /** `(macJurisdiction, scanDay)`. */
-  ackPull999: (macJurisdiction: string, at: Date): string => `ack999:${macJurisdiction}:${dayBucket(at)}`,
+  ackPull999: (macJurisdiction: string, at: Date): string =>
+    `ack999:${macJurisdiction}:${dayBucket(at)}`,
   /** `(macJurisdiction, scanDay)`. */
-  ackPull277ca: (macJurisdiction: string, at: Date): string => `ack277ca:${macJurisdiction}:${dayBucket(at)}`,
+  ackPull277ca: (macJurisdiction: string, at: Date): string =>
+    `ack277ca:${macJurisdiction}:${dayBucket(at)}`,
 } as const;

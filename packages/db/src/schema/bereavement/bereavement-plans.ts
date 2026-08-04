@@ -32,11 +32,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import {
-  bereavementPlanPauseKind,
-  bereavementPlanStatus,
-  bereavementRiskTier,
-} from "../../enums";
+import { bereavementPlanPauseKind, bereavementPlanStatus, bereavementRiskTier } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -66,9 +62,13 @@ export const bereavementPlan = pgTable(
     // Assignment (§7.2). Both are M2 membership ids; `discipline_can_provide_bereavement` (D5) and, for the
     // volunteer, M15's `volunteer_gates_satisfied` are checked at assignment time by the service layer.
     assignedCounselorUserId: uuid("assigned_counselor_user_id"),
-    assignedCounselorAssignedAt: timestamp("assigned_counselor_assigned_at", { withTimezone: true }),
+    assignedCounselorAssignedAt: timestamp("assigned_counselor_assigned_at", {
+      withTimezone: true,
+    }),
     assignedVolunteerUserId: uuid("assigned_volunteer_user_id"),
-    assignedVolunteerAssignedAt: timestamp("assigned_volunteer_assigned_at", { withTimezone: true }),
+    assignedVolunteerAssignedAt: timestamp("assigned_volunteer_assigned_at", {
+      withTimezone: true,
+    }),
 
     openedAt: timestamp("opened_at", { withTimezone: true }),
     pausedAt: timestamp("paused_at", { withTimezone: true }),

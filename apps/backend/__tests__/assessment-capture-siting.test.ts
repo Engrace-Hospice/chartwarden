@@ -1,3 +1,4 @@
+import type { AdmissionSummary } from "@wardenx/types";
 // apps/backend/__tests__/assessment-capture-siting.test.ts — the §3.3 capture-siting resolver M9's
 // record/correct paths denormalize `provider_entity_id` through (capture-siting.ts). The resolution
 // chain under test: the published M6 `AdmissionStatusReader` seam answers the capture's admission
@@ -6,7 +7,6 @@
 // resolve to the UNSITED sentinel — never a fabricated siting, never a propagated error (recording
 // must not be blocked by the denormalization).
 import { afterEach, describe, expect, it } from "vitest";
-import type { AdmissionSummary } from "@wardenx/types";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import {
   UNSITED_CAPTURE,

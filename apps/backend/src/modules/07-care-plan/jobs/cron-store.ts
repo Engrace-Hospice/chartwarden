@@ -48,7 +48,10 @@ export async function markInitialWarningEmitted(
   planIds: readonly string[],
 ): Promise<void> {
   if (planIds.length === 0) return;
-  await tx.update(CP).set({ initialWarningEmitted: true }).where(inArray(CP.id, [...planIds]));
+  await tx
+    .update(CP)
+    .set({ initialWarningEmitted: true })
+    .where(inArray(CP.id, [...planIds]));
 }
 
 /**

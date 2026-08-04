@@ -84,7 +84,8 @@ export function registerBullMQQueueMetrics(registry: Registry, queues: readonly 
       await Promise.all(
         queues.map(async (queue) => {
           const counts = await queue.getJobCounts(...JOB_COUNT_STATES);
-          for (const state of JOB_COUNT_STATES) this.set({ queue: queue.name, state }, counts[state] ?? 0);
+          for (const state of JOB_COUNT_STATES)
+            this.set({ queue: queue.name, state }, counts[state] ?? 0);
         }),
       );
     },
@@ -128,7 +129,10 @@ export interface OutboxMetricsHooks {
  * every finalize call in `outbox-dispatcher.ts`, so this is a deliberate, documented approximation),
  * and a lazy pending-depth gauge reusing the same `pendingDepth()` the TASK-040B readiness probe reads.
  */
-export function registerOutboxMetrics(registry: Registry, deps: OutboxMetricsDeps = {}): OutboxMetricsHooks {
+export function registerOutboxMetrics(
+  registry: Registry,
+  deps: OutboxMetricsDeps = {},
+): OutboxMetricsHooks {
   const eventsTotal = new Counter({
     name: "wardenx_outbox_events_total",
     help: "Outbox events processed by the dispatcher, by outcome",

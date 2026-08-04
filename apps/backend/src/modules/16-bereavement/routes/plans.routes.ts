@@ -152,7 +152,11 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
   app.post(
     "/api/v1/bereavement/plans/:planId/pause",
     {
-      preHandler: [P("bereavement.plan.pause"), ABAC_WINDOW_PLAN("bereavement.plan.pause"), IDEMPOTENT],
+      preHandler: [
+        P("bereavement.plan.pause"),
+        ABAC_WINDOW_PLAN("bereavement.plan.pause"),
+        IDEMPOTENT,
+      ],
     },
     async (request) => {
       const { planId } = parse(PlanParams, request.params);
@@ -247,7 +251,11 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
   app.get(
     "/api/v1/bereavement/plans/:planId/outreach",
     {
-      preHandler: [P("bereavement.outreach.read"), ABAC_WINDOW_PLAN("bereavement.outreach.read"), NO_OFFSET],
+      preHandler: [
+        P("bereavement.outreach.read"),
+        ABAC_WINDOW_PLAN("bereavement.outreach.read"),
+        NO_OFFSET,
+      ],
       config: { auditRead: PLAN_READ },
     },
     async (request) => {
@@ -305,7 +313,11 @@ export function registerBereavementPlanRoutes(app: FastifyInstance, deps: PlanRo
   app.get(
     "/api/v1/bereavement/plans/:planId/risk-scores",
     {
-      preHandler: [P("bereavement.risk.read"), ABAC_WINDOW_PLAN("bereavement.risk.read"), NO_OFFSET],
+      preHandler: [
+        P("bereavement.risk.read"),
+        ABAC_WINDOW_PLAN("bereavement.risk.read"),
+        NO_OFFSET,
+      ],
       config: { auditRead: PLAN_READ },
     },
     async (request) => {

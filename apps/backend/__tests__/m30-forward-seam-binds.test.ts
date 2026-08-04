@@ -1,3 +1,4 @@
+import { bindQualityConsumedSeams } from "@wardenx/quality";
 // apps/backend/__tests__/m30-forward-seam-binds.test.ts — M30's M23/M27 forward-seam binds (§4.4).
 //
 // `QUALITY_FORWARD_SEAM_DENY_STUBS` stubbed `billing` (M23) and `costReport` (M27) as ABSENT producers
@@ -9,14 +10,13 @@
 // CMS publishes. And the degrade must be per METHOD, so a half-registered producer only suppresses the
 // measures that actually needed the missing read.
 import { beforeEach, describe, expect, it } from "vitest";
-import { bindQualityConsumedSeams } from "@wardenx/quality";
 import { __resetSeamsForTest, registerSeam, validateSeams } from "../src/bootstrap/seams/registry";
+import { wireModuleSeams } from "../src/index";
 import {
   buildM30BillingConsumer,
   buildM30CostReportConsumer,
   buildM30LiveForwardSeams,
 } from "../src/modules/30-quality/index";
-import { wireModuleSeams } from "../src/index";
 
 const ORG = "org-1";
 const PERIOD = { from: "2026-01-01", to: "2026-12-31" };

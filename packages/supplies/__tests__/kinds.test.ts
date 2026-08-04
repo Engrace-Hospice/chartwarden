@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { SupplyRequestKind } from "@wardenx/types";
+import { describe, expect, it } from "vitest";
 
 import {
   SUPPLY_REQUEST_DATA_SCHEMAS,
@@ -176,7 +176,9 @@ describe("kind='comfort_kit_deploy' cross-field rules", () => {
   });
 
   it("refuses an empty and an over-long content list", () => {
-    expect(validateSupplyRequestData("comfort_kit_deploy", { ...home, contents: [] }).ok).toBe(false);
+    expect(validateSupplyRequestData("comfort_kit_deploy", { ...home, contents: [] }).ok).toBe(
+      false,
+    );
     expect(
       validateSupplyRequestData("comfort_kit_deploy", {
         ...home,

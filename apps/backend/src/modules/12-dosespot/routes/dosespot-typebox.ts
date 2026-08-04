@@ -185,7 +185,9 @@ export const OrderParamsSchema = Type.Object({ id: Type.String({ format: "uuid" 
 export const RefillParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
 export const HistoryRecordParamsSchema = Type.Object({ id: Type.String({ format: "uuid" }) });
 export const PatientParamsSchema = Type.Object({ patientId: Type.String({ format: "uuid" }) });
-export const MembershipParamsSchema = Type.Object({ membershipId: Type.String({ format: "uuid" }) });
+export const MembershipParamsSchema = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+});
 
 export const MedicationOrderListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),

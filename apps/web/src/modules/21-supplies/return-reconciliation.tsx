@@ -40,6 +40,23 @@ import {
   reconcileReturn,
 } from "./supplies-api";
 import {
+  DEFAULT_DISPOSAL_METHOD,
+  DISCREPANCY_THRESHOLD_PCT,
+  DISPOSAL_METHODS,
+  OPEN_RETURN_STATES,
+  RETURN_STATE_TONE,
+  WITNESS_REQUIRED_DISPOSAL_METHOD,
+  crossesDiscrepancyThreshold,
+  dateTime,
+  dueLabel,
+  fractionAsPct,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+  unaccountedPreview,
+} from "./supplies-status";
+import {
   Card,
   Field,
   Modal,
@@ -66,23 +83,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import {
-  DEFAULT_DISPOSAL_METHOD,
-  DISCREPANCY_THRESHOLD_PCT,
-  DISPOSAL_METHODS,
-  OPEN_RETURN_STATES,
-  RETURN_STATE_TONE,
-  WITNESS_REQUIRED_DISPOSAL_METHOD,
-  crossesDiscrepancyThreshold,
-  dateTime,
-  dueLabel,
-  fractionAsPct,
-  humanize,
-  shortDate,
-  shortId,
-  toneOf,
-  unaccountedPreview,
-} from "./supplies-status";
 
 type Ceremony = "assign-retriever" | "unreturnable" | null;
 
@@ -137,7 +137,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
     const { dispatch, error: dErr } = await getDispatch(client, r.dispatchId);
     if (dErr || !dispatch) {
       setManifestError(
-        errorMessage(dErr, "The dispatch manifest could not be read, so no count can be entered here."),
+        errorMessage(
+          dErr,
+          "The dispatch manifest could not be read, so no count can be entered here.",
+        ),
       );
       setContents([]);
       setCounts([]);
@@ -182,9 +185,15 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
     setCounts((prev) => prev.map((c, i) => (i === index ? { ...c, ...p } : c)));
 
   const previews = counts.map((c) =>
-    unaccountedPreview(c.dispatchedQuantity, c.quantityReturned || "0", c.quantityDisposedAtHome || "0"),
+    unaccountedPreview(
+      c.dispatchedQuantity,
+      c.quantityReturned || "0",
+      c.quantityDisposedAtHome || "0",
+    ),
   );
-  const flagged = counts.map((c, i) => crossesDiscrepancyThreshold(c.isControlledSubstance, previews[i] ?? null));
+  const flagged = counts.map((c, i) =>
+    crossesDiscrepancyThreshold(c.isControlledSubstance, previews[i] ?? null),
+  );
   const anyFlagged = flagged.some(Boolean);
 
   const open = OPEN_RETURN_STATES.includes(ret.state);
@@ -208,7 +217,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
     { label: "Return required", at: dateTime(ret.returnRequiredAt) },
     ret.retrievingAt ? { label: "Retrieval started", at: dateTime(ret.retrievingAt) } : null,
     ret.retrievedAt ? { label: "Retrieved from the patient", at: dateTime(ret.retrievedAt) } : null,
-    ret.returnedToHubAt ? { label: "Returned to the hub", at: dateTime(ret.returnedToHubAt) } : null,
+    ret.returnedToHubAt
+      ? { label: "Returned to the hub", at: dateTime(ret.returnedToHubAt) }
+      : null,
     ret.reconciledAt
       ? {
           label: "Reconciled",
@@ -256,7 +267,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             <Link to={`/supplies/dispatches/${ret.dispatchId}`} style={ghostButtonStyle}>
               Dispatch
             </Link>
-            <Link to={`/supplies/dispatches/${ret.dispatchId}/perpetual-log`} style={ghostButtonStyle}>
+            <Link
+              to={`/supplies/dispatches/${ret.dispatchId}/perpetual-log`}
+              style={ghostButtonStyle}
+            >
               Perpetual log
             </Link>
           </div>
@@ -266,22 +280,24 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
       {/* §5.6's non-dismissible banner: this fires on the RECORDED result, not the preview. */}
       {ret.discrepancyDetected ? (
         <Notice tone="error" assertive>
-          This reconciliation closed with a controlled-substance discrepancy. An M30 survey investigation has
-          been opened and an M36 high-severity alert published. Nothing on this screen marks it explained —
-          only closing that investigation does.
+          This reconciliation closed with a controlled-substance discrepancy. An M30 survey
+          investigation has been opened and an M36 high-severity alert published. Nothing on this
+          screen marks it explained — only closing that investigation does.
         </Notice>
       ) : null}
 
       {ret.state === "unreturnable" ? (
         <Notice tone="error">
-          This kit was written off as unreturnable under the 90-day assumption of loss, on an attested reason
-          from a named person. It is a survey-reportable disposition, not a retrieval still in progress.
+          This kit was written off as unreturnable under the 90-day assumption of loss, on an
+          attested reason from a named person. It is a survey-reportable disposition, not a
+          retrieval still in progress.
         </Notice>
       ) : null}
 
       {ret.daysOverdue > 0 && open ? (
         <Notice tone="warning">
-          This return is {ret.daysOverdue} day{ret.daysOverdue === 1 ? "" : "s"} past its 30-day boundary.
+          This return is {ret.daysOverdue} day{ret.daysOverdue === 1 ? "" : "s"} past its 30-day
+          boundary.
         </Notice>
       ) : null}
 
@@ -290,7 +306,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
 
       <Card
         title="Return"
-        actions={<StatusPill label={humanize(ret.state)} tone={toneOf(RETURN_STATE_TONE, ret.state)} />}
+        actions={
+          <StatusPill label={humanize(ret.state)} tone={toneOf(RETURN_STATE_TONE, ret.state)} />
+        }
       >
         <SummaryGrid>
           <Field label="Patient" value={shortId(ret.patientId)} mono />
@@ -298,7 +316,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           <Field label="Dispatch" value={shortId(ret.dispatchId)} mono />
           <Field label="M13 deployment" value={shortId(ret.m13DeploymentId)} mono />
           <Field label="Required at" value={dateTime(ret.returnRequiredAt)} />
-          <Field label="Due" value={`${shortDate(ret.returnDueAt)} · ${dueLabel(ret.returnDueAt)}`} />
+          <Field
+            label="Due"
+            value={`${shortDate(ret.returnDueAt)} · ${dueLabel(ret.returnDueAt)}`}
+          />
           <Field label="Retriever" value={shortId(ret.assignedRetrievingMembershipId)} mono />
           <Field label="Reconciled by" value={shortId(ret.reconciledByMembershipId)} mono />
           <Field label="Disposal witness" value={shortId(ret.disposalWitnessMembershipId)} mono />
@@ -307,8 +328,8 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           <Field label="Version stamp" value={dateTime(ret.updatedAt)} />
         </SummaryGrid>
         <span style={mutedStyle}>
-          The reason this return was opened is captured on the transition, not republished on the read
-          surface — the M4 audit record owns it.
+          The reason this return was opened is captured on the transition, not republished on the
+          read surface — the M4 audit record owns it.
         </span>
         {ret.disposalNotes ? (
           <div>
@@ -347,10 +368,10 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
         <Card title="Recorded accounting">
           <span style={mutedStyle}>
             As stored. The unaccounted quantity and its share were computed by the database from
-            dispatched − returned − disposed-at-home, and the flag is the server's, not a reconciler's.
-            `discrepancy_pct` is stored as a FRACTION (the trigger compares against 0.05) and is converted
-            to a percentage here — printing the raw 0.05 under a "%" heading would understate a
-            controlled-substance shortfall a hundredfold.
+            dispatched − returned − disposed-at-home, and the flag is the server's, not a
+            reconciler's. `discrepancy_pct` is stored as a FRACTION (the trigger compares against
+            0.05) and is converted to a percentage here — printing the raw 0.05 under a "%" heading
+            would understate a controlled-substance shortfall a hundredfold.
           </span>
           <table style={tableStyle}>
             <thead>
@@ -401,20 +422,23 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           title="Reconciliation worksheet"
           actions={
             anyFlagged ? (
-              <StatusPill label={`≥${DISCREPANCY_THRESHOLD_PCT}% on a controlled line`} tone="error" />
+              <StatusPill
+                label={`≥${DISCREPANCY_THRESHOLD_PCT}% on a controlled line`}
+                tone="error"
+              />
             ) : undefined
           }
         >
           <Notice tone="info">
-            Enter what physically came back and what was destroyed at the bedside under witness. Quantity
-            disposed at home is ACCOUNTED FOR, not missing — leaving it at zero when a family destroyed the
-            remaining morphine turns a legal disposal into a diversion alert.
+            Enter what physically came back and what was destroyed at the bedside under witness.
+            Quantity disposed at home is ACCOUNTED FOR, not missing — leaving it at zero when a
+            family destroyed the remaining morphine turns a legal disposal into a diversion alert.
           </Notice>
           {anyFlagged ? (
             <Notice tone="warning" live>
-              A controlled line is at or above {DISCREPANCY_THRESHOLD_PCT}% unaccounted. Each flagged line
-              needs an explanation before this can be submitted. The figures below are a preview — the
-              database computes and stores the authoritative discrepancy.
+              A controlled line is at or above {DISCREPANCY_THRESHOLD_PCT}% unaccounted. Each
+              flagged line needs an explanation before this can be submitted. The figures below are
+              a preview — the database computes and stores the authoritative discrepancy.
             </Notice>
           ) : null}
           <table style={tableStyle}>
@@ -501,9 +525,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           {witnessRequired ? (
             <>
               <Notice tone="warning">
-                At-home witnessed destruction requires a second person, and the schema refuses a witness who
-                is also the reconciler or the retriever — one person attesting to their own count is not a
-                witness.
+                At-home witnessed destruction requires a second person, and the schema refuses a
+                witness who is also the reconciler or the retriever — one person attesting to their
+                own count is not a witness.
               </Notice>
               <TextField
                 label="Disposal witness membership id"
@@ -569,8 +593,8 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           </button>
         </div>
         <span style={mutedStyle}>
-          Writing off a kit that held a CII solution is a different authority from counting one that came
-          back, which is why it is a separate action rather than an option inside reconcile.
+          Writing off a kit that held a CII solution is a different authority from counting one that
+          came back, which is why it is a separate action rather than an option inside reconcile.
         </span>
       </Card>
 
@@ -583,7 +607,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
               type="button"
               disabled={busy || retrieverMembershipId.trim() === ""}
               style={
-                busy || retrieverMembershipId.trim() === "" ? disabledButtonStyle : primaryButtonStyle
+                busy || retrieverMembershipId.trim() === ""
+                  ? disabledButtonStyle
+                  : primaryButtonStyle
               }
               onClick={async () => {
                 setBusy(true);
@@ -605,8 +631,8 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           }
         >
           <Notice tone="info">
-            The separation-of-duties check compares this person against the disposal witness, so the two
-            cannot be the same membership.
+            The separation-of-duties check compares this person against the disposal witness, so the
+            two cannot be the same membership.
           </Notice>
           <TextField
             label="Retrieving membership id"
@@ -625,7 +651,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
             <button
               type="button"
               disabled={busy || unreturnableReason.trim() === ""}
-              style={busy || unreturnableReason.trim() === "" ? disabledButtonStyle : primaryButtonStyle}
+              style={
+                busy || unreturnableReason.trim() === "" ? disabledButtonStyle : primaryButtonStyle
+              }
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -646,9 +674,9 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
           }
         >
           <Notice tone="error">
-            This is the 90-day assumption of loss. It records, under your name, that a controlled substance
-            did not come back — a survey-reportable disposition, and one the server asks for a second factor
-            before writing.
+            This is the 90-day assumption of loss. It records, under your name, that a controlled
+            substance did not come back — a survey-reportable disposition, and one the server asks
+            for a second factor before writing.
           </Notice>
           <TextAreaField
             label="Attested reason"

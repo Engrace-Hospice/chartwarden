@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/21-supplies/routes/read-service-drizzle.ts — the Drizzle-backed M21 READ service
 // (§4.1's GET rows).
 //
@@ -17,13 +18,9 @@
 // in order and PostgreSQL prunes; the DETAIL reads are id-only and fan out, which is the right trade for a
 // single row (a caller with an id has no window, and inventing one would 404 last month's kit).
 import { parStockSeverity } from "@wardenx/supplies";
-import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
-import type {
-  ComfortKitDispatchedContentPayload,
-  DeaPerpetualLogEntry,
-} from "@wardenx/types";
+import type { ComfortKitDispatchedContentPayload, DeaPerpetualLogEntry } from "@wardenx/types";
 import { and, asc, desc, eq, gt, gte, ilike, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { M21ReadActor } from "./actor";
 import {
@@ -379,9 +376,8 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
             null) as SupplyRequestDetail["deliveredByMembershipId"],
           deliveryEvidenceDocumentId: row.deliveryEvidenceDocumentId ?? null,
           receivedConfirmedAt: isoN(row.receivedConfirmedAt),
-          receivedConfirmedActor:
-            (row.receivedConfirmedActor ??
-              null) as SupplyRequestDetail["receivedConfirmedActor"],
+          receivedConfirmedActor: (row.receivedConfirmedActor ??
+            null) as SupplyRequestDetail["receivedConfirmedActor"],
           completedAt: isoN(row.completedAt),
           cancelledAt: isoN(row.cancelledAt),
           cancellationPendingAt: isoN(row.cancellationPendingAt),
@@ -616,10 +612,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
               cursor
                 ? or(
                     lt(DISPATCH.dispatchedAt, new Date(cursor.a)),
-                    and(
-                      eq(DISPATCH.dispatchedAt, new Date(cursor.a)),
-                      lt(DISPATCH.id, cursor.id),
-                    ),
+                    and(eq(DISPATCH.dispatchedAt, new Date(cursor.a)), lt(DISPATCH.id, cursor.id)),
                   )
                 : undefined,
             ),
@@ -778,12 +771,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           )
           .orderBy(asc(RULE.scopeKind), asc(RULE.precedencePriority), asc(RULE.id))
           .limit(limit + 1);
-        return toCursorPage(
-          rows,
-          limit,
-          (r) => ({ a: r.scopeKind, id: r.id }),
-          routingRuleViewOf,
-        );
+        return toCursorPage(rows, limit, (r) => ({ a: r.scopeKind, id: r.id }), routingRuleViewOf);
       });
     },
 
@@ -811,9 +799,7 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           .where(
             and(
               filters.locationId ? eq(PAR.locationId, filters.locationId) : undefined,
-              filters.belowThresholdOnly
-                ? lte(PAR.currentQuantity, PAR.reorderPoint)
-                : undefined,
+              filters.belowThresholdOnly ? lte(PAR.currentQuantity, PAR.reorderPoint) : undefined,
               eq(PAR.isActive, true),
             ),
           )

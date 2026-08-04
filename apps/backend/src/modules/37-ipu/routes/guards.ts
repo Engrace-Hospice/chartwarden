@@ -23,4 +23,5 @@ import type { PreHandler } from "./actor";
 export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 
 /** §D14 step-up gate on the break-glass / attest / unit-deactivate mutations. */
-export const STEP_UP = (operationKey: string): PreHandler => requireStepUp(operationKey) as PreHandler;
+export const STEP_UP = (operationKey: string): PreHandler =>
+  requireStepUp(operationKey) as PreHandler;

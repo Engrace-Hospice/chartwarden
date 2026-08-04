@@ -199,11 +199,23 @@ export function HighRiskAreasScreen(): JSX.Element {
     }
     setEditing(null);
     await load();
-  }, [advisoryMessage, areaPolicy, client, editing, effectiveFrom, effectiveTo, load, riskCategory, ringText]);
+  }, [
+    advisoryMessage,
+    areaPolicy,
+    client,
+    editing,
+    effectiveFrom,
+    effectiveTo,
+    load,
+    riskCategory,
+    ringText,
+  ]);
 
   const retire = useCallback(
     async (area: SafetyHighRiskAreaView) => {
-      const res = await patchHighRiskArea(client, area.id, { effectiveTo: new Date().toISOString() });
+      const res = await patchHighRiskArea(client, area.id, {
+        effectiveTo: new Date().toISOString(),
+      });
       if (res.error) {
         setError(errorMessage(res.error, "The area was not retired."));
         return;
@@ -218,9 +230,7 @@ export function HighRiskAreasScreen(): JSX.Element {
     return <EmptyState title="High-risk areas unavailable" description={error} />;
 
   const now = Date.now();
-  const inForce = rows.filter(
-    (r) => !r.effectiveTo || Date.parse(r.effectiveTo) > now,
-  ).length;
+  const inForce = rows.filter((r) => !r.effectiveTo || Date.parse(r.effectiveTo) > now).length;
   const mandating = rows.filter(
     (r) => r.policyForVisitsToArea === "requires_pre_visit_check_in",
   ).length;
@@ -244,9 +254,10 @@ export function HighRiskAreasScreen(): JSX.Element {
       />
 
       <Notice tone="info" live>
-        <strong>Every area here is advisory (D12).</strong> None blocks a visit, none reroutes one, and
-        none can. "Requires a buddy visit" is a flag M20 raises for scheduling to act on — M20 itself never
-        stops a clinician going. What an area DOES do is put a message in front of her before she knocks.
+        <strong>Every area here is advisory (D12).</strong> None blocks a visit, none reroutes one,
+        and none can. "Requires a buddy visit" is a flag M20 raises for scheduling to act on — M20
+        itself never stops a clinician going. What an area DOES do is put a message in front of her
+        before she knocks.
       </Notice>
 
       <Card title="Registry">
@@ -267,16 +278,16 @@ export function HighRiskAreasScreen(): JSX.Element {
         </FilterRow>
         <span style={mutedStyle}>
           The list defaults to what is in force, because the pre-visit advisory must never surface a
-          polygon retired last winter. Retired areas are kept — an incident review has to be able to ask
-          what advisory was in force on the day.
+          polygon retired last winter. Retired areas are kept — an incident review has to be able to
+          ask what advisory was in force on the day.
         </span>
       </Card>
 
       <Card title="Areas">
         {rows.length === 0 ? (
           <span style={mutedStyle}>
-            No areas are registered. That is a normal starting state, not a failure — a tenant that has
-            never had an incident in a particular place has nothing to flag.
+            No areas are registered. That is a normal starting state, not a failure — a tenant that
+            has never had an incident in a particular place has nothing to flag.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -340,12 +351,13 @@ export function HighRiskAreasScreen(): JSX.Element {
 
       <Card title="Why there is no map here">
         <span style={mutedStyle}>
-          A basemap means tile requests, and a tile request sends this viewport to a third party. On a page
-          whose subject is where an agency's clinicians are exposed to harm, that disclosure would be made
-          by merely opening the screen — the same failure the coordinate boundary on the SOS page exists to
-          prevent, and with no agreement covering it. Rings are therefore entered and read as coordinates.
-          Storage does not need a map either: M20-F07 struck PostGIS from Phase 1, so the polygon is JSON
-          rings and membership is an even-odd ray-cast in application code.
+          A basemap means tile requests, and a tile request sends this viewport to a third party. On
+          a page whose subject is where an agency's clinicians are exposed to harm, that disclosure
+          would be made by merely opening the screen — the same failure the coordinate boundary on
+          the SOS page exists to prevent, and with no agreement covering it. Rings are therefore
+          entered and read as coordinates. Storage does not need a map either: M20-F07 struck
+          PostGIS from Phase 1, so the polygon is JSON rings and membership is an even-odd ray-cast
+          in application code.
         </span>
       </Card>
 
@@ -357,7 +369,9 @@ export function HighRiskAreasScreen(): JSX.Element {
             <button
               type="button"
               onClick={() => void save()}
-              disabled={saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0}
+              disabled={
+                saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
+              }
               style={
                 saving || advisoryMessage.trim().length === 0 || ringText.trim().length === 0
                   ? disabledButtonStyle
@@ -395,8 +409,8 @@ export function HighRiskAreasScreen(): JSX.Element {
           />
           {areaPolicy === "requires_buddy_visit" ? (
             <Notice tone="warning">
-              This raises a flag for scheduling. It does not pair anybody, and it does not stop a solo
-              visit — M20 emits, M17 routes, and neither blocks.
+              This raises a flag for scheduling. It does not pair anybody, and it does not stop a
+              solo visit — M20 emits, M17 routes, and neither blocks.
             </Notice>
           ) : null}
           {editing === "new" ? (

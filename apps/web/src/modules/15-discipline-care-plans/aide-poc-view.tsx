@@ -20,6 +20,15 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import {
+  CADENCE_STATUS_TONE,
+  attestationModeLabel,
+  dateTime,
+  dueLabel,
+  humanize,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   Modal,
@@ -37,15 +46,6 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  CADENCE_STATUS_TONE,
-  attestationModeLabel,
-  dateTime,
-  dueLabel,
-  humanize,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 import { DisciplinePlanWorkspace } from "./plan-workspace";
 
 const MODE_OPTIONS = [
@@ -153,7 +153,13 @@ function SupervisoryVisitModal({
         onChange={setMode}
       />
       <label
-        style={{ display: "flex", alignItems: "center", gap: t.space2, fontSize: "0.82rem", color: t.onSurface }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: t.space2,
+          fontSize: "0.82rem",
+          color: t.onSurface,
+        }}
       >
         <input
           type="checkbox"

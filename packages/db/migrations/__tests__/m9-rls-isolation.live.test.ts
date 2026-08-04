@@ -55,229 +55,232 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "scale_policy", key: "scalePolicy" },
 ];
 
-describe.skipIf(!DB_URL)("M9 Clinical Assessments — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
-  let db: Client;
-  let a: SeedIds;
-  let b: SeedIds;
+describe.skipIf(!DB_URL)(
+  "M9 Clinical Assessments — RLS cross-tenant denial — LIVE Postgres (§3.5)",
+  () => {
+    let db: Client;
+    let a: SeedIds;
+    let b: SeedIds;
 
-  async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
-    await db.query("SET ROLE wardenx_app");
-    await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
-    try {
-      return await fn();
-    } finally {
-      await db.query("RESET ROLE");
-    }
-  }
-
-  async function resetSchema() {
-    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
-    await db.query("CREATE SCHEMA public");
-    for (const r of ROLES) {
-      await db.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-      );
-    }
-  }
-
-  async function applyMigrations() {
-    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    const files = readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-    for (const f of files) {
-      let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector) {
-        sql = sql.replace(
-          /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
-          "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
-        );
-        sql = sql.replace(/\bvector\(\d+\)/g, "text");
-        sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");
+    async function withOrg<T>(org: string, fn: () => Promise<T>): Promise<T> {
+      await db.query("SET ROLE wardenx_app");
+      await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
+      try {
+        return await fn();
+      } finally {
+        await db.query("RESET ROLE");
       }
-      await db.query(sql);
     }
-  }
 
-  /** Seed one full M9 assessment chain for `org` as superuser (RLS + grants bypassed). */
-  async function seedOrg(org: string, n: number): Promise<SeedIds> {
-    const membership = (
-      await db.query(
-        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
-        [USER, org],
-      )
-    ).rows[0].id as string;
+    async function resetSchema() {
+      await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await db.query("CREATE SCHEMA public");
+      for (const r of ROLES) {
+        await db.query(
+          `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
+            `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
+        );
+      }
+    }
 
-    const providerEntity = (
-      await db.query(
-        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+    async function applyMigrations() {
+      const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+      const files = readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith(".sql"))
+        .sort();
+      for (const f of files) {
+        let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+        if (stripVector) {
+          sql = sql.replace(
+            /^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm,
+            "-- (vector extension stripped: WARDENX_TEST_NO_PGVECTOR set)",
+          );
+          sql = sql.replace(/\bvector\(\d+\)/g, "text");
+          sql = sql.replace(/^.*USING hnsw \(.*$/gm, "-- (hnsw index stripped: no pgvector)");
+        }
+        await db.query(sql);
+      }
+    }
+
+    /** Seed one full M9 assessment chain for `org` as superuser (RLS + grants bypassed). */
+    async function seedOrg(org: string, n: number): Promise<SeedIds> {
+      const membership = (
+        await db.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [USER, org],
+        )
+      ).rows[0].id as string;
+
+      const providerEntity = (
+        await db.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-        [org, `CCN-M9${n}`, `M9 Provider ${n}`, `NPI-M9${n}`],
-      )
-    ).rows[0].id as string;
+          [org, `CCN-M9${n}`, `M9 Provider ${n}`, `NPI-M9${n}`],
+        )
+      ).rows[0].id as string;
 
-    const location = (
-      await db.query(
-        `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+      const location = (
+        await db.query(
+          `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
          VALUES ($1,$2,'1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
-        [providerEntity, `Loc-M9${n}`],
-      )
-    ).rows[0].id as string;
+          [providerEntity, `Loc-M9${n}`],
+        )
+      ).rows[0].id as string;
 
-    const clinicalAssessment = (
-      await db.query(
-        `INSERT INTO clinical_assessment (organization_id, provider_entity_id, location_id, patient_id,
+      const clinicalAssessment = (
+        await db.query(
+          `INSERT INTO clinical_assessment (organization_id, provider_entity_id, location_id, patient_id,
            admission_id, scale_type, scale_version, data, score, score_interpretation, captured_at,
            captured_by_membership_id, captured_by_discipline)
          VALUES ($1,$2,$3,$4,$5,'pps','1.0','{"notes":"seed"}'::jsonb, 60, 'PPS 60%', now(), $6, 'RN')
          RETURNING id`,
-        [org, providerEntity, location, PATIENT, ADMISSION, membership],
-      )
-    ).rows[0].id as string;
+          [org, providerEntity, location, PATIENT, ADMISSION, membership],
+        )
+      ).rows[0].id as string;
 
-    const assessmentCosignature = (
-      await db.query(
-        `INSERT INTO assessment_cosignature (organization_id, provider_entity_id, location_id,
+      const assessmentCosignature = (
+        await db.query(
+          `INSERT INTO assessment_cosignature (organization_id, provider_entity_id, location_id,
            clinical_assessment_id, cosigner_membership_id, cosigner_role, attestation_text)
          VALUES ($1,$2,$3,$4,$5,'physician','I attest') RETURNING id`,
-        [org, providerEntity, location, clinicalAssessment, membership],
-      )
-    ).rows[0].id as string;
+          [org, providerEntity, location, clinicalAssessment, membership],
+        )
+      ).rows[0].id as string;
 
-    const significantChangeEvent = (
-      await db.query(
-        `INSERT INTO significant_change_event (organization_id, provider_entity_id, location_id,
+      const significantChangeEvent = (
+        await db.query(
+          `INSERT INTO significant_change_event (organization_id, provider_entity_id, location_id,
            clinical_assessment_id, rule_id, delta_value, threshold_value, status)
          VALUES ($1,$2,$3,$4,'pps_drop_20_in_14d', 20, 20, 'open') RETURNING id`,
-        [org, providerEntity, location, clinicalAssessment],
-      )
-    ).rows[0].id as string;
+          [org, providerEntity, location, clinicalAssessment],
+        )
+      ).rows[0].id as string;
 
-    const scaleLicense = (
-      await db.query(
-        `INSERT INTO scale_license (organization_id, scale_type, license_holder, license_number,
+      const scaleLicense = (
+        await db.query(
+          `INSERT INTO scale_license (organization_id, scale_type, license_holder, license_number,
            effective_date, expires_at, status, recorded_by_membership_id)
          VALUES ($1,'pps','Palliative Perf Scale','LIC-1', now()::date, now()::date + 365, 'active', $2)
          RETURNING id`,
-        [org, membership],
-      )
-    ).rows[0].id as string;
+          [org, membership],
+        )
+      ).rows[0].id as string;
 
-    const scalePolicy = (
-      await db.query(
-        `INSERT INTO scale_policy (organization_id, scale_type, enabled, updated_by_membership_id)
+      const scalePolicy = (
+        await db.query(
+          `INSERT INTO scale_policy (organization_id, scale_type, enabled, updated_by_membership_id)
          VALUES ($1,'pps', true, $2) RETURNING id`,
-        [org, membership],
-      )
-    ).rows[0].id as string;
+          [org, membership],
+        )
+      ).rows[0].id as string;
 
-    return {
-      membership,
-      providerEntity,
-      location,
-      clinicalAssessment,
-      assessmentCosignature,
-      significantChangeEvent,
-      scaleLicense,
-      scalePolicy,
-    };
-  }
-
-  beforeAll(async () => {
-    db = new Client({ connectionString: DB_URL });
-    await db.connect();
-    await resetSchema();
-    await applyMigrations();
-    await db.query(
-      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
-      [ORG_A, ORG_B],
-    );
-    await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m9-actor@x.test')`, [USER]);
-    a = await seedOrg(ORG_A, 1);
-    b = await seedOrg(ORG_B, 2);
-  }, 120_000);
-
-  afterAll(async () => {
-    if (db) await db.end();
-  });
-
-  // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
-  // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
-  // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable.
-  it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
-    const { rows } = await db.query<{ rolbypassrls: boolean }>(
-      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
-    );
-    expect(rows).toHaveLength(1);
-    expect(rows[0].rolbypassrls).toBe(false);
-  });
-
-  it("every M9 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0033_assessment_m9_rls_audit_triggers.sql"),
-      "utf8",
-    );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
-    );
-    expect(policyBlocks.length).toBe(COVERED.length); // 5 org-scoped M9 tables, each with a direct `_org` policy
-    for (const block of policyBlocks) {
-      const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((m) => m[1]);
-      expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
-      expect(block).not.toMatch(/pg_has_role/i);
-      expect(block).not.toMatch(/IS NULL/i);
+      return {
+        membership,
+        providerEntity,
+        location,
+        clinicalAssessment,
+        assessmentCosignature,
+        significantChangeEvent,
+        scaleLicense,
+        scalePolicy,
+      };
     }
-  });
 
-  it.each(COVERED)(
-    "$table: org A sees its row, org B cannot (cross-tenant denial)",
-    async ({ table, key }) => {
-      const id = a[key];
-      const seenByA = await withOrg(ORG_A, () =>
-        db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
+    beforeAll(async () => {
+      db = new Client({ connectionString: DB_URL });
+      await db.connect();
+      await resetSchema();
+      await applyMigrations();
+      await db.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
+        [ORG_A, ORG_B],
       );
-      expect(seenByA.rows[0].n).toBe(1); // isolation is not "deny everything"
-      const seenByB = await withOrg(ORG_B, () =>
-        db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
-      );
-      expect(seenByB.rows[0].n).toBe(0);
-    },
-  );
+      await db.query(`INSERT INTO "user" (id,email) VALUES ($1,'m9-actor@x.test')`, [USER]);
+      a = await seedOrg(ORG_A, 1);
+      b = await seedOrg(ORG_B, 2);
+    }, 120_000);
 
-  it("a WITH CHECK refuses a clinical_assessment forged into another tenant", async () => {
-    // clinical_assessment is the scored clinical record — a cross-tenant write would let one tenant
-    // manufacture (or, via a returning read, disclose) another org's patient assessments.
-    await expect(
-      withOrg(ORG_B, () =>
-        db.query(
-          `INSERT INTO clinical_assessment (organization_id, provider_entity_id, location_id, patient_id,
+    afterAll(async () => {
+      if (db) await db.end();
+    });
+
+    // GUARD FOR EVERY CASE BELOW. RLS is not enforced for a role holding BYPASSRLS, so if the runtime
+    // role ever gains it, every isolation assertion in this file passes VACUOUSLY and CI stays green.
+    // scripts/db/migrate.ts grants exactly that behind WARDENX_DEV_BYPASSRLS=1, so this is reachable.
+    it("wardenx_app is NOBYPASSRLS — otherwise every case below passes vacuously", async () => {
+      const { rows } = await db.query<{ rolbypassrls: boolean }>(
+        "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'wardenx_app'",
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].rolbypassrls).toBe(false);
+    });
+
+    it("every M9 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
+      const rls = readFileSync(
+        join(MIGRATIONS_DIR, "0033_assessment_m9_rls_audit_triggers.sql"),
+        "utf8",
+      );
+      const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+        (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
+      );
+      expect(policyBlocks.length).toBe(COVERED.length); // 5 org-scoped M9 tables, each with a direct `_org` policy
+      for (const block of policyBlocks) {
+        const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((m) => m[1]);
+        expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
+        expect(block).not.toMatch(/pg_has_role/i);
+        expect(block).not.toMatch(/IS NULL/i);
+      }
+    });
+
+    it.each(COVERED)(
+      "$table: org A sees its row, org B cannot (cross-tenant denial)",
+      async ({ table, key }) => {
+        const id = a[key];
+        const seenByA = await withOrg(ORG_A, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
+        );
+        expect(seenByA.rows[0].n).toBe(1); // isolation is not "deny everything"
+        const seenByB = await withOrg(ORG_B, () =>
+          db.query(`SELECT count(*)::int AS n FROM ${table} WHERE id=$1`, [id]),
+        );
+        expect(seenByB.rows[0].n).toBe(0);
+      },
+    );
+
+    it("a WITH CHECK refuses a clinical_assessment forged into another tenant", async () => {
+      // clinical_assessment is the scored clinical record — a cross-tenant write would let one tenant
+      // manufacture (or, via a returning read, disclose) another org's patient assessments.
+      await expect(
+        withOrg(ORG_B, () =>
+          db.query(
+            `INSERT INTO clinical_assessment (organization_id, provider_entity_id, location_id, patient_id,
              admission_id, scale_type, scale_version, data, captured_at, captured_by_membership_id,
              captured_by_discipline)
            VALUES ($1,$2,$3,$4,$5,'pps','1.0','{"notes":"forged"}'::jsonb, now(), $6, 'RN')`,
-          [ORG_A, a.providerEntity, a.location, PATIENT, ADMISSION, a.membership],
+            [ORG_A, a.providerEntity, a.location, PATIENT, ADMISSION, a.membership],
+          ),
         ),
-      ),
-    ).rejects.toThrow();
-  });
+      ).rejects.toThrow();
+    });
 
-  it("org B cannot UPDATE org A's significant_change_event (the USING clause covers writes too)", async () => {
-    const res = await withOrg(ORG_B, () =>
-      db.query("UPDATE significant_change_event SET status='escalated' WHERE id=$1", [
+    it("org B cannot UPDATE org A's significant_change_event (the USING clause covers writes too)", async () => {
+      const res = await withOrg(ORG_B, () =>
+        db.query("UPDATE significant_change_event SET status='escalated' WHERE id=$1", [
+          a.significantChangeEvent,
+        ]),
+      );
+      expect(res.rowCount).toBe(0);
+      const still = await db.query("SELECT status FROM significant_change_event WHERE id=$1", [
         a.significantChangeEvent,
-      ]),
-    );
-    expect(res.rowCount).toBe(0);
-    const still = await db.query("SELECT status FROM significant_change_event WHERE id=$1", [
-      a.significantChangeEvent,
-    ]);
-    expect(still.rows[0].status).toBe("open");
-  });
+      ]);
+      expect(still.rows[0].status).toBe("open");
+    });
 
-  it("the M4 write-audit trigger fired for the clinical_assessment writes (§3.4)", async () => {
-    const r = await db.query(
-      "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind = 'clinical_assessment'",
-    );
-    expect(r.rows[0].n).toBeGreaterThan(0);
-  });
-});
+    it("the M4 write-audit trigger fired for the clinical_assessment writes (§3.4)", async () => {
+      const r = await db.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind = 'clinical_assessment'",
+      );
+      expect(r.rows[0].n).toBeGreaterThan(0);
+    });
+  },
+);

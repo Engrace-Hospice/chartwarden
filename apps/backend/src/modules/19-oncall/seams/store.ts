@@ -105,9 +105,7 @@ export interface OncallSeamStore {
   /** Every `active` shift covering `asOfIso` across the org — M36's channel re-sync read. */
   activeShiftsAt(asOfIso: IsoInstant): Promise<readonly OnCallShiftDto[]>;
   /** The user id behind a membership, for the `OnCallActor` membership arm. Missing ⇒ absent from the map. */
-  userIdsForMemberships(
-    membershipIds: readonly string[],
-  ): Promise<ReadonlyMap<string, string>>;
+  userIdsForMemberships(membershipIds: readonly string[]): Promise<ReadonlyMap<string, string>>;
 
   // ── TriageCallReader ───────────────────────────────────────────────────────────────────────────────
   callFeaturesForPatientSince(

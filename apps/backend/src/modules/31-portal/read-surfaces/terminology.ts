@@ -17,11 +17,7 @@ import { getSeam } from "../../../bootstrap/index";
 /** The M31-side structural projection of M38's `TerminologyProvider` — the one arm the portal calls. The
  *  rich contract lives in @wardenx/terminology; M31 reads it opaquely so it stays off a `@wardenx/*` edge. */
 export interface PortalTerminologyPort {
-  lookup(
-    system: string,
-    code: string,
-    asOf?: Date,
-  ): Promise<{ readonly display?: string } | null>;
+  lookup(system: string, code: string, asOf?: Date): Promise<{ readonly display?: string } | null>;
 }
 
 /**

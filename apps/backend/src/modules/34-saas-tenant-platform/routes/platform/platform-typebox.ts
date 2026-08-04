@@ -466,7 +466,10 @@ type _TenantSummary = Conforms<Static<typeof TenantSummaryViewSchema>, ServiceTe
 type _TenantOverview = Conforms<Static<typeof TenantOverviewViewSchema>, ServiceTenantOverview>;
 type _KeyRing = Conforms<Static<typeof KeyRingMetadataViewSchema>, ServiceKeyRingMetadataView>;
 type _Invitation = Conforms<Static<typeof TenantInvitationViewSchema>, ServiceTenantInvitationView>;
-type _Template = Conforms<Static<typeof OnboardingTemplateViewSchema>, ServiceOnboardingTemplateView>;
+type _Template = Conforms<
+  Static<typeof OnboardingTemplateViewSchema>,
+  ServiceOnboardingTemplateView
+>;
 type _Session = Conforms<Static<typeof SupportSessionViewSchema>, ServiceSupportSessionView>;
 type _SessionEvent = Conforms<
   Static<typeof SupportSessionEventViewSchema>,

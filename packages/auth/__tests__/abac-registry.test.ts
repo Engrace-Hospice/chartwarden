@@ -13,8 +13,8 @@ import { ForbiddenError } from "@wardenx/types";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   type AbacContext,
-  type GuardRequest,
   DEVICE_ATTESTATION_ATTRIBUTE,
+  type GuardRequest,
   createPredicateRegistry,
   deviceAttestationValid,
   locationScope,
@@ -100,9 +100,12 @@ describe("createPredicateRegistry — register + resolve", () => {
   describe("registerIdempotent — same-source reboot is silent, cross-module collision throws", () => {
     it("re-registering the identical predicate function under its own name is a no-op", () => {
       const registry = createPredicateRegistry({});
-      const buildPredicate = () => async (_ctx: AbacContext, target: AbacTarget) => target.id === "x";
+      const buildPredicate = () => async (_ctx: AbacContext, target: AbacTarget) =>
+        target.id === "x";
       registry.registerIdempotent("m8.cosigner_role_match", buildPredicate());
-      expect(() => registry.registerIdempotent("m8.cosigner_role_match", buildPredicate())).not.toThrow();
+      expect(() =>
+        registry.registerIdempotent("m8.cosigner_role_match", buildPredicate()),
+      ).not.toThrow();
       expect(registry.has("m8.cosigner_role_match")).toBe(true);
     });
 

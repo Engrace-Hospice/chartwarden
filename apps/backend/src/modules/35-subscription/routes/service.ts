@@ -34,7 +34,12 @@ export type DunningStage =
   | "day_60_cancel"
   | "resolved";
 export type InvoiceStatus = "draft" | "open" | "paid" | "void" | "uncollectible";
-export type RefundStatus = "requested" | "approved" | "denied" | "executed_success" | "executed_failed";
+export type RefundStatus =
+  | "requested"
+  | "approved"
+  | "denied"
+  | "executed_success"
+  | "executed_failed";
 export type RefundKind = "full" | "partial" | "credit_only";
 export type PlanTier = "starter" | "professional" | "enterprise";
 export type BillingCadence = "monthly" | "annual";
@@ -382,38 +387,87 @@ export interface M35RouteService {
   applyPromoTenant(actor: M35WriteActor, promoCode: string): Promise<PromoApplicationView>;
   listPaymentMethods(actor: M35ReadActor): Promise<PaymentMethodView[]>;
   createSetupIntent(actor: M35WriteActor): Promise<SetupIntentView>;
-  attachPaymentMethod(actor: M35WriteActor, args: AttachPaymentMethodArgs): Promise<PaymentMethodView>;
-  setDefaultPaymentMethod(actor: M35WriteActor, paymentMethodId: string): Promise<PaymentMethodView>;
+  attachPaymentMethod(
+    actor: M35WriteActor,
+    args: AttachPaymentMethodArgs,
+  ): Promise<PaymentMethodView>;
+  setDefaultPaymentMethod(
+    actor: M35WriteActor,
+    paymentMethodId: string,
+  ): Promise<PaymentMethodView>;
   detachPaymentMethod(actor: M35WriteActor, paymentMethodId: string): Promise<AckView>;
-  listInvoices(actor: M35ReadActor, cursor?: string, limit?: number): Promise<CursorPage<InvoiceListItemView>>;
+  listInvoices(
+    actor: M35ReadActor,
+    cursor?: string,
+    limit?: number,
+  ): Promise<CursorPage<InvoiceListItemView>>;
   getInvoice(actor: M35ReadActor, invoiceId: string): Promise<InvoiceDetailView>;
   getInvoiceHostedUrl(actor: M35ReadActor, invoiceId: string): Promise<RedirectUrlView>;
   getInvoicePdfUrl(actor: M35ReadActor, invoiceId: string): Promise<RedirectUrlView>;
   getUsageCurrent(actor: M35ReadActor): Promise<UsageCurrentView>;
-  getUsageHistory(actor: M35ReadActor, cursor?: string, limit?: number): Promise<CursorPage<UsagePeriodView>>;
+  getUsageHistory(
+    actor: M35ReadActor,
+    cursor?: string,
+    limit?: number,
+  ): Promise<CursorPage<UsagePeriodView>>;
   getBillingStatus(actor: M35ReadActor): Promise<BillingStatusView>;
 
   // ── platform-ops plans (§4.2) ──
   adminListPlans(): Promise<PlanAdminView[]>;
   adminGetPlan(planId: string): Promise<PlanAdminView>;
   adminCreatePlan(actor: M35WriteActor, args: CreatePlanArgs): Promise<PlanAdminView>;
-  adminUpdatePlan(actor: M35WriteActor, planId: string, args: UpdatePlanArgs): Promise<PlanAdminView>;
+  adminUpdatePlan(
+    actor: M35WriteActor,
+    planId: string,
+    args: UpdatePlanArgs,
+  ): Promise<PlanAdminView>;
   adminActivatePlan(actor: M35WriteActor, planId: string): Promise<PlanAdminView>;
   adminDeprecatePlan(actor: M35WriteActor, planId: string): Promise<PlanAdminView>;
   adminAddMeter(actor: M35WriteActor, planId: string, args: AddMeterArgs): Promise<MeterAdminView>;
-  adminUpdateMeter(actor: M35WriteActor, planId: string, meterId: string, args: UpdateMeterArgs): Promise<MeterAdminView>;
+  adminUpdateMeter(
+    actor: M35WriteActor,
+    planId: string,
+    meterId: string,
+    args: UpdateMeterArgs,
+  ): Promise<MeterAdminView>;
 
   // ── platform-ops subscriptions (§4.2) ──
-  adminListSubscriptions(filters: AdminSubscriptionListFilters, cursor?: string, limit?: number): Promise<CursorPage<SubscriptionAdminView>>;
+  adminListSubscriptions(
+    filters: AdminSubscriptionListFilters,
+    cursor?: string,
+    limit?: number,
+  ): Promise<CursorPage<SubscriptionAdminView>>;
   adminGetSubscription(subscriptionId: string): Promise<SubscriptionAdminView>;
-  adminPauseSubscription(actor: M35WriteActor, subscriptionId: string, pausedUntil: string | null): Promise<SubscriptionAdminView>;
-  adminResumeSubscription(actor: M35WriteActor, subscriptionId: string): Promise<SubscriptionAdminView>;
-  adminCancelSubscription(actor: M35WriteActor, subscriptionId: string): Promise<SubscriptionAdminView>;
-  adminApplyPromo(actor: M35WriteActor, subscriptionId: string, promoCode: string): Promise<PromoApplicationView>;
-  adminRevokePromo(actor: M35WriteActor, subscriptionId: string, applicationId: string): Promise<AckView>;
+  adminPauseSubscription(
+    actor: M35WriteActor,
+    subscriptionId: string,
+    pausedUntil: string | null,
+  ): Promise<SubscriptionAdminView>;
+  adminResumeSubscription(
+    actor: M35WriteActor,
+    subscriptionId: string,
+  ): Promise<SubscriptionAdminView>;
+  adminCancelSubscription(
+    actor: M35WriteActor,
+    subscriptionId: string,
+  ): Promise<SubscriptionAdminView>;
+  adminApplyPromo(
+    actor: M35WriteActor,
+    subscriptionId: string,
+    promoCode: string,
+  ): Promise<PromoApplicationView>;
+  adminRevokePromo(
+    actor: M35WriteActor,
+    subscriptionId: string,
+    applicationId: string,
+  ): Promise<AckView>;
 
   // ── platform-ops dunning (§4.2) ──
-  adminListDunning(filters: DunningListFilters, cursor?: string, limit?: number): Promise<CursorPage<DunningListItemView>>;
+  adminListDunning(
+    filters: DunningListFilters,
+    cursor?: string,
+    limit?: number,
+  ): Promise<CursorPage<DunningListItemView>>;
   adminSkipDunningStage(actor: M35WriteActor, subscriptionId: string): Promise<DunningView>;
   adminResetDunning(actor: M35WriteActor, subscriptionId: string): Promise<DunningView>;
 
@@ -428,7 +482,11 @@ export interface M35RouteService {
   adminListPromos(): Promise<PromoView[]>;
   adminGetPromo(promoId: string): Promise<PromoView>;
   adminCreatePromo(actor: M35WriteActor, args: CreatePromoArgs): Promise<PromoView>;
-  adminUpdatePromo(actor: M35WriteActor, promoId: string, args: UpdatePromoArgs): Promise<PromoView>;
+  adminUpdatePromo(
+    actor: M35WriteActor,
+    promoId: string,
+    args: UpdatePromoArgs,
+  ): Promise<PromoView>;
   adminDeactivatePromo(actor: M35WriteActor, promoId: string): Promise<PromoView>;
 
   // ── platform-ops revenue (§4.2) ──

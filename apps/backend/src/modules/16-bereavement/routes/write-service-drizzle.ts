@@ -71,9 +71,17 @@ import { getVolunteerComplianceProvider } from "../seams/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
 import { type EffectPatch, runEffects } from "./effects-runner";
 import type {
+  BereavedContactRowView,
+  BereavementClosureView,
+  BereavementOutreachRowView,
+  BereavementPlanDetail,
+  BereavementRiskScoreView,
+  M16ReadService,
+} from "./read-service";
+import type {
+  AlertPort,
   AssignCounselorInput,
   AssignVolunteerInput,
-  AlertPort,
   BereavementContactLogView,
   CancelOutreachInput,
   CloseEarlyInput,
@@ -102,14 +110,6 @@ import type {
   UpdateContactInput,
   WriteOutboxPort,
 } from "./write-service";
-import type {
-  BereavedContactRowView,
-  BereavementClosureView,
-  BereavementOutreachRowView,
-  BereavementPlanDetail,
-  BereavementRiskScoreView,
-  M16ReadService,
-} from "./read-service";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
 
@@ -476,7 +476,10 @@ export function buildDrizzleM16WriteService(
   }
 
   /** The plan detail every plan-shaped mutation answers with (re-read so the caller sees the new version). */
-  async function planDetail(actor: M16MutatingActor, planId: string): Promise<BereavementPlanDetail> {
+  async function planDetail(
+    actor: M16MutatingActor,
+    planId: string,
+  ): Promise<BereavementPlanDetail> {
     const detail = await readService.getPlan(actor, planId);
     if (detail === null) throw new NotFoundError("bereavement plan not found");
     return detail;
@@ -530,7 +533,9 @@ export function buildDrizzleM16WriteService(
         organizationId: actor.organizationId,
         admissionId: plan.admissionId as never,
         patientId: plan.patientId as never,
-        deathAt: (plan.deathTime ? iso(plan.deathTime) : `${localDate(plan.deathDate)}T00:00:00.000Z`) as IsoInstant,
+        deathAt: (plan.deathTime
+          ? iso(plan.deathTime)
+          : `${localDate(plan.deathDate)}T00:00:00.000Z`) as IsoInstant,
         roster: {
           activeContactCount: rosterCount,
           relationshipCode: contact?.relationshipCode ?? null,
@@ -553,7 +558,7 @@ export function buildDrizzleM16WriteService(
           ? {}
           : { overrideTier: input.overrideTier as BereavementRiskTier }),
         ...(input.overrideReason === undefined ? {} : { amendmentReason: input.overrideReason }),
-        priorTier: (contact?.currentRiskTier ?? plan.currentRiskTier) ?? null,
+        priorTier: contact?.currentRiskTier ?? plan.currentRiskTier ?? null,
       },
     );
 
@@ -610,7 +615,7 @@ export function buildDrizzleM16WriteService(
           risk_tier_escalated: {
             planId: plan.id,
             contactId: contact?.id ?? null,
-            fromTier: (contact?.currentRiskTier ?? plan.currentRiskTier) ?? null,
+            fromTier: contact?.currentRiskTier ?? plan.currentRiskTier ?? null,
             toTier: row.ruleTier,
           },
         },
@@ -718,7 +723,9 @@ export function buildDrizzleM16WriteService(
           throw new BereavementStateError(
             "VOLUNTEER_GATES_UNMET",
             `the volunteer's 42 CFR 418.78 gates are not satisfied${
-              status === null ? " (the compliance seam could not be read)" : `: ${status.failingGates.join(", ")}`
+              status === null
+                ? " (the compliance seam could not be read)"
+                : `: ${status.failingGates.join(", ")}`
             }`,
           );
         }
@@ -785,9 +792,7 @@ export function buildDrizzleM16WriteService(
 
         // §2.2 guard — the initial deterministic score must exist before the cadence can be generated.
         const initialScore =
-          existing.length > 0
-            ? await appendScore(tx, actor, plan, null, {}, "initial")
-            : null;
+          existing.length > 0 ? await appendScore(tx, actor, plan, null, {}, "initial") : null;
         const tier = initialScore?.tier ?? "low";
         const marks = anniversaryMarksForTier(tier);
 
@@ -1020,7 +1025,11 @@ export function buildDrizzleM16WriteService(
             preferredLanguageIso639: input.preferredLanguageIso639 ?? "en",
             consentRecordId: input.consentRecordId ?? null,
             ...(input.outreachPreferences
-              ? { outreachPreferencesJsonb: { allowed_kinds: input.outreachPreferences.allowedKinds } }
+              ? {
+                  outreachPreferencesJsonb: {
+                    allowed_kinds: input.outreachPreferences.allowedKinds,
+                  },
+                }
               : {}),
           })
           .returning();

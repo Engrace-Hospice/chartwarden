@@ -220,9 +220,9 @@ describe("M16-T05 — registration into the M1 seam registry (§4.6 / D13)", () 
     expect(() => getBereavementAssignmentReader().assignmentForPlan(ORG, PLAN)).toThrow(
       /not implemented/,
     );
-    expect(() => getBereavedPortalScopeProvider().scopeForPortalAccount(ORG, PORTAL_ACCOUNT)).toThrow(
-      /not implemented/,
-    );
+    expect(() =>
+      getBereavedPortalScopeProvider().scopeForPortalAccount(ORG, PORTAL_ACCOUNT),
+    ).toThrow(/not implemented/);
     expect(() => getBereavementComplianceProvider().copOutreachCounts({ orgId: ORG })).toThrow(
       /not implemented/,
     );
@@ -254,9 +254,9 @@ describe("BereavementPlanProvider — the D4 window has ONE implementation (§4.
   it("answers the window inside, and closes it on the 396th day (half-open)", async () => {
     const { store } = createInMemoryBereavementSeamStore({ plans: [plan()] });
     const provider = createBereavementPlanProvider(store);
-    await expect(
-      provider.isInBereavementWindow(ORG, PLAN, daysAfterDeath(395)),
-    ).resolves.toBe(true);
+    await expect(provider.isInBereavementWindow(ORG, PLAN, daysAfterDeath(395))).resolves.toBe(
+      true,
+    );
     await expect(
       provider.isInBereavementWindow(ORG, PLAN, daysAfterDeath(BEREAVEMENT_WINDOW_DAYS)),
     ).resolves.toBe(false);
@@ -301,9 +301,7 @@ describe("BereavementPlanProvider — the D4 window has ONE implementation (§4.
           contactsOptedOutCount: 1,
         },
       ],
-      closures: [
-        { planId: PLAN, reason: "thirteen_month_completion", closureDocumentId: "doc-1" },
-      ],
+      closures: [{ planId: PLAN, reason: "thirteen_month_completion", closureDocumentId: "doc-1" }],
     });
     const provider = createBereavementPlanProvider(store);
     const summary = await provider.summarize(ORG, PLAN);
@@ -348,11 +346,15 @@ describe("BereavementOutreachProvider — filters + CoP counts (§4.6)", () => {
     const { store } = createInMemoryBereavementSeamStore({ plans: [plan()], outreach: rows });
     const provider = createBereavementOutreachProvider(store);
     await expect(provider.listForPlan(ORG, PLAN, {})).resolves.toHaveLength(3);
-    await expect(provider.listForPlan(ORG, PLAN, { contactId: CONTACT_B })).resolves.toHaveLength(1);
+    await expect(provider.listForPlan(ORG, PLAN, { contactId: CONTACT_B })).resolves.toHaveLength(
+      1,
+    );
     await expect(
       provider.listForPlan(ORG, PLAN, { status: ["missed", "completed"] }),
     ).resolves.toHaveLength(2);
-    await expect(provider.listForPlan(ORG, PLAN, { kind: ["phone_call"] })).resolves.toHaveLength(1);
+    await expect(provider.listForPlan(ORG, PLAN, { kind: ["phone_call"] })).resolves.toHaveLength(
+      1,
+    );
     await expect(
       provider.listForPlan(ORG, PLAN, {
         dueFromIso: daysAfterDeath(60),
@@ -384,9 +386,15 @@ describe("BereavementOutreachProvider — filters + CoP counts (§4.6)", () => {
   it("reports every outreach status, so a status with no rows is a real 0", async () => {
     const { store } = createInMemoryBereavementSeamStore();
     const counts = await createBereavementOutreachProvider(store).countByStatus({ orgId: ORG });
-    expect(Object.keys(counts).sort()).toEqual(
-      ["cancelled", "completed", "declined", "in_progress", "missed", "no_response", "scheduled"],
-    );
+    expect(Object.keys(counts).sort()).toEqual([
+      "cancelled",
+      "completed",
+      "declined",
+      "in_progress",
+      "missed",
+      "no_response",
+      "scheduled",
+    ]);
     expect(counts.completed).toBe(0);
   });
 });
@@ -477,9 +485,9 @@ describe("BereavementRiskFactorsProvider — the read + the ONE write (§4.6, D3
   it("REFUSES to augment a contact with no deterministic score rather than inventing a base row", async () => {
     const { store } = createInMemoryBereavementSeamStore();
     const provider = createBereavementRiskFactorsProvider(store, clock);
-    await expect(
-      provider.registerAugmentation(ORG, CONTACT, augmentation()),
-    ).rejects.toMatchObject({ code: "RISK_SCORE_NOT_FOUND", statusCode: 404 });
+    await expect(provider.registerAugmentation(ORG, CONTACT, augmentation())).rejects.toMatchObject(
+      { code: "RISK_SCORE_NOT_FOUND", statusCode: 404 },
+    );
   });
 });
 
@@ -567,10 +575,10 @@ describe("BereavedPortalScopeProvider — the M31 bereaved-family scope (§4.6 /
         contact({ status: "opted_out", optedOutAt: new Date(optedOutRecently).toISOString() }),
       ],
     }).store;
-    const [inWindow] = await createBereavedPortalScopeProvider(
-      recent,
-      clock,
-    ).scopeForPortalAccount(ORG, PORTAL_ACCOUNT);
+    const [inWindow] = await createBereavedPortalScopeProvider(recent, clock).scopeForPortalAccount(
+      ORG,
+      PORTAL_ACCOUNT,
+    );
     expect(inWindow).toMatchObject({ mayOptOut: false, mayRescindOptOut: true });
 
     const stale = createInMemoryBereavementSeamStore({

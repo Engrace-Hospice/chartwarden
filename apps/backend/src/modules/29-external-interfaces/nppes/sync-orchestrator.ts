@@ -10,7 +10,7 @@
 // may only be initiated by a platform actor (`platform_admin`), never from within an org context.
 import type { Npi, NppesSyncKind, NppesSyncRunId, NppesSyncTrigger } from "@wardenx/types";
 import type { NppesFetchPort } from "./nppes-client";
-import { toSnapshot, type ProviderCachePort } from "./provider-cache";
+import { type ProviderCachePort, toSnapshot } from "./provider-cache";
 import type { NppesFetchResult } from "./response-projection";
 import type { NppesOutboxSink } from "./sync-events";
 
@@ -61,7 +61,12 @@ export interface NppesSyncRunStorePort {
   }): Promise<void>;
   updateCounts(id: NppesSyncRunId, counts: SyncRunCounts): Promise<void>;
   markComplete(id: NppesSyncRunId, counts: SyncRunCounts, completedAt: Date): Promise<void>;
-  markFailed(id: NppesSyncRunId, error: string, counts: SyncRunCounts, completedAt: Date): Promise<void>;
+  markFailed(
+    id: NppesSyncRunId,
+    error: string,
+    counts: SyncRunCounts,
+    completedAt: Date,
+  ): Promise<void>;
 }
 
 export interface SyncOrchestratorDeps {
@@ -72,7 +77,11 @@ export interface SyncOrchestratorDeps {
   readonly outbox: NppesOutboxSink;
   readonly now: () => Date;
   readonly newSyncRunId: () => NppesSyncRunId;
-  readonly log?: (level: "info" | "warn" | "error", event: string, fields: Record<string, unknown>) => void;
+  readonly log?: (
+    level: "info" | "warn" | "error",
+    event: string,
+    fields: Record<string, unknown>,
+  ) => void;
 }
 
 export interface SyncResult {
@@ -211,8 +220,7 @@ export class NppesSyncOrchestrator {
             name: "m29.nppes.provider_deactivated",
             payload: {
               npi,
-              deactivationDate:
-                result.provider.deactivationDate ?? now.toISOString().slice(0, 10),
+              deactivationDate: result.provider.deactivationDate ?? now.toISOString().slice(0, 10),
               deactivationReason: result.provider.deactivationReason ?? "UNKNOWN",
               detectedAt: now.toISOString(),
             },
@@ -258,7 +266,11 @@ export class NppesSyncOrchestrator {
     return this.result(syncRunId, "completed", agg);
   }
 
-  private async fail(syncRunId: NppesSyncRunId, error: string, agg: Accumulator): Promise<SyncResult> {
+  private async fail(
+    syncRunId: NppesSyncRunId,
+    error: string,
+    agg: Accumulator,
+  ): Promise<SyncResult> {
     const failedAt = this.deps.now();
     await this.deps.runStore.markFailed(syncRunId, error, this.counts(agg), failedAt);
     await this.deps.outbox.publish({
@@ -285,7 +297,11 @@ export class NppesSyncOrchestrator {
     };
   }
 
-  private result(syncRunId: NppesSyncRunId, status: "completed" | "failed", agg: Accumulator): SyncResult {
+  private result(
+    syncRunId: NppesSyncRunId,
+    status: "completed" | "failed",
+    agg: Accumulator,
+  ): SyncResult {
     return {
       syncRunId,
       status,
@@ -300,7 +316,11 @@ export class NppesSyncOrchestrator {
     };
   }
 
-  private log(level: "info" | "warn" | "error", event: string, fields: Record<string, unknown>): void {
+  private log(
+    level: "info" | "warn" | "error",
+    event: string,
+    fields: Record<string, unknown>,
+  ): void {
     this.deps.log?.(level, event, fields);
   }
 }

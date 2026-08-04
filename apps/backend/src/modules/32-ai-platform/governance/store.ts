@@ -391,27 +391,26 @@ export function createInMemoryAiGovernanceStores(seed: InMemoryAiGovernanceSeed 
     findOptIn: async (organizationId, capabilityId) =>
       optIns.find((r) => r.organizationId === organizationId && r.capabilityId === capabilityId) ??
       null,
-    listOptIns: async (organizationId) =>
-      optIns.filter((r) => r.organizationId === organizationId),
+    listOptIns: async (organizationId) => optIns.filter((r) => r.organizationId === organizationId),
     upsertOptIn: async (organizationId, capabilityId, write) => {
       const i = optIns.findIndex(
         (r) => r.organizationId === organizationId && r.capabilityId === capabilityId,
       );
       const existing = i < 0 ? undefined : optIns[i];
       const base: AiTenantOptInRow = existing ?? {
-            id: nextId("optin"),
-            organizationId,
-            capabilityId,
-            status: "opted_out",
-            orgAdminMembershipId: write.orgAdminMembershipId,
-            routingPreferenceSnapshot: "prefer_cloud",
-            pilotEnrollment: false,
-            optedInAt: null,
-            pausedAt: null,
-            pausedReason: null,
-            optedOutAt: null,
-            optedOutReason: null,
-          };
+        id: nextId("optin"),
+        organizationId,
+        capabilityId,
+        status: "opted_out",
+        orgAdminMembershipId: write.orgAdminMembershipId,
+        routingPreferenceSnapshot: "prefer_cloud",
+        pilotEnrollment: false,
+        optedInAt: null,
+        pausedAt: null,
+        pausedReason: null,
+        optedOutAt: null,
+        optedOutReason: null,
+      };
       const next: AiTenantOptInRow = {
         ...base,
         status: write.status,
@@ -440,9 +439,7 @@ export function createInMemoryAiGovernanceStores(seed: InMemoryAiGovernanceSeed 
           r.revertedAt === null,
       ) ?? null,
     listOptOuts: async (organizationId, membershipId) =>
-      optOuts.filter(
-        (r) => r.organizationId === organizationId && r.membershipId === membershipId,
-      ),
+      optOuts.filter((r) => r.organizationId === organizationId && r.membershipId === membershipId),
     insertOptOut: async (row) => {
       const live = optOuts.find(
         (r) =>

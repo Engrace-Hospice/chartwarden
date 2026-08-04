@@ -18,12 +18,12 @@ import * as schema from "@wardenx/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type BillingDb,
-  buildCursorPage,
   type CursorPage,
+  type VersionedUpdateResult,
+  buildCursorPage,
   decodeCursor,
   keysetBefore,
   pageSizeOf,
-  type VersionedUpdateResult,
   versionConflict,
   versionOk,
 } from "./db";
@@ -31,7 +31,10 @@ import {
 const M = schema.macSubmitterCredential;
 
 /** The cipher-free projection: every `mac_submitter_credential` column EXCEPT `client_secret_cipher`. */
-export type MacSubmitterCredentialSafeRecord = Omit<schema.MacSubmitterCredential, "clientSecretCipher">;
+export type MacSubmitterCredentialSafeRecord = Omit<
+  schema.MacSubmitterCredential,
+  "clientSecretCipher"
+>;
 
 /** The encrypted-secret material — the ONLY shape that carries the cipher out of this repo. */
 export interface MacCredentialSecretMaterial {
@@ -70,7 +73,9 @@ export class MacSubmitterCredentialRepository {
    * Insert a credential set (the service has already encrypted the client secret to `clientSecretCipher`
    * under the per-tenant DEK). Returns the SAFE projection — never echoes the cipher back.
    */
-  async create(values: schema.NewMacSubmitterCredential): Promise<MacSubmitterCredentialSafeRecord> {
+  async create(
+    values: schema.NewMacSubmitterCredential,
+  ): Promise<MacSubmitterCredentialSafeRecord> {
     const [row] = await this.db.insert(M).values(values).returning();
     if (!row) throw new Error("mac_submitter_credential insert returned no row");
     return toSafe(row);

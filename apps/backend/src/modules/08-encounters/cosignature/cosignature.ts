@@ -160,7 +160,11 @@ export function transitionCosignature(
         "NOT_COSIGN_ELIGIBLE",
         "a cosignature must be signed by a qualified RN",
       );
-      require_(event.stepUpFresh, "STEP_UP_AUTH_REQUIRED", "cosignature requires fresh step-up auth");
+      require_(
+        event.stepUpFresh,
+        "STEP_UP_AUTH_REQUIRED",
+        "cosignature requires fresh step-up auth",
+      );
       return result(from, event.type, "signed", [
         { kind: "set_timestamp", field: "signed_at", at: event.at },
         { kind: "audit" },

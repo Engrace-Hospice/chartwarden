@@ -585,7 +585,9 @@ export function SeverityPill({ severity }: { severity: string }): JSX.Element {
  *  computed from one page reads like a census. Each screen using this says so beside it. */
 export function CountGrid({
   entries,
-}: { entries: readonly { label: string; value: number | string; tone?: StatusTone }[] }): JSX.Element {
+}: {
+  entries: readonly { label: string; value: number | string; tone?: StatusTone }[];
+}): JSX.Element {
   return (
     <div
       style={{
@@ -612,8 +614,7 @@ export function CountGrid({
               fontSize: "1.15rem",
               fontWeight: 600,
               fontVariantNumeric: "tabular-nums",
-              color:
-              e.tone === "critical" ? t.alert : e.tone === "error" ? t.error : t.onSurface,
+              color: e.tone === "critical" ? t.alert : e.tone === "error" ? t.error : t.onSurface,
             }}
           >
             {e.value}
@@ -695,9 +696,9 @@ export function CipherText({
   if (!available)
     return (
       <Notice tone="warning">
-        <strong>Stored, but not readable here.</strong> This text rides the per-tenant encryption envelope
-        and no decipher is bound in this deployment. The record is NOT empty — do not read this as
-        "nothing was written".
+        <strong>Stored, but not readable here.</strong> This text rides the per-tenant encryption
+        envelope and no decipher is bound in this deployment. The record is NOT empty — do not read
+        this as "nothing was written".
       </Notice>
     );
   return <span style={mutedStyle}>{emptyLabel}</span>;

@@ -124,7 +124,11 @@ async function runConformanceSuite(
       const firstPatch = await app.inject({
         method: "PATCH",
         url: `/api/v1/care-plans/${planId}/problems/${problemId}`,
-        headers: { ...authHeaders, "idempotency-key": crypto.randomUUID(), "if-match": staleVersion },
+        headers: {
+          ...authHeaders,
+          "idempotency-key": crypto.randomUUID(),
+          "if-match": staleVersion,
+        },
         payload: { description: "Pain — updated" },
       });
       expect(firstPatch.statusCode).toBe(200);
@@ -133,7 +137,11 @@ async function runConformanceSuite(
       const stalePatch = await app.inject({
         method: "PATCH",
         url: `/api/v1/care-plans/${planId}/problems/${problemId}`,
-        headers: { ...authHeaders, "idempotency-key": crypto.randomUUID(), "if-match": staleVersion },
+        headers: {
+          ...authHeaders,
+          "idempotency-key": crypto.randomUUID(),
+          "if-match": staleVersion,
+        },
         payload: { description: "Pain — stale write" },
       });
       expect(stalePatch.statusCode).toBe(412);
@@ -155,7 +163,18 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
     resetAuthorizationContract();
     resetRbacEngine();
     const grantStore = createInMemoryEffectivePermissionStore([
-      { orgId: "org_a", userId: "author_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["care_plan.author", "care_plan.bootstrap", "care_plan.read"] }] },
+      {
+        orgId: "org_a",
+        userId: "author_1",
+        grants: [
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: ["care_plan.author", "care_plan.bootstrap", "care_plan.read"],
+          },
+        ],
+      },
     ]);
     registerEffectivePermissionResolver(grantStore.store);
 
@@ -189,7 +208,10 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
         .sort()) {
         let migSql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
         if (stripVector) {
-          migSql = migSql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+          migSql = migSql.replace(
+            /^.*EXTENSION IF NOT EXISTS "vector".*$/m,
+            "-- (vector stripped)",
+          );
         }
         await admin.query(migSql);
       }
@@ -253,7 +275,18 @@ describe("M7 Care Plan conformance (TASK-050B)", () => {
       ).rows[0].id as string;
 
       const grantStore = createInMemoryEffectivePermissionStore([
-        { orgId: org, userId: "author_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["care_plan.author", "care_plan.bootstrap", "care_plan.read"] }] },
+        {
+          orgId: org,
+          userId: "author_1",
+          grants: [
+            {
+              roleKey: "seed",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["care_plan.author", "care_plan.bootstrap", "care_plan.read"],
+            },
+          ],
+        },
       ]);
       registerEffectivePermissionResolver(grantStore.store);
 

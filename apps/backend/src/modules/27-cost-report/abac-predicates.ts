@@ -97,7 +97,10 @@ export interface MembershipProviderScope {
  */
 export interface ReadingM27AbacResolver {
   /** Load a cost report's scope/state facts; `null` for an absent / cross-tenant row → deny. */
-  loadCostReport(ctx: M27AbacReadContext, costReportId: string): Promise<CostReportAbacFacts | null>;
+  loadCostReport(
+    ctx: M27AbacReadContext,
+    costReportId: string,
+  ): Promise<CostReportAbacFacts | null>;
   /** Load an active membership's provider-entity scope; `null` → deny. */
   loadMembershipProviderScope(
     ctx: M27AbacReadContext,

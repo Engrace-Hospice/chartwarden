@@ -172,16 +172,10 @@ export function createDrizzlePatientEraseStore(db: DbClient): PatientEraseStore 
         );
         // PK is `patient_id` on the one-row-per-patient tables — return that as the count key.
         const communicationPreferences = await del(() =>
-          tx
-            .delete(COMM)
-            .where(eq(COMM.patientId, patientId))
-            .returning({ id: COMM.patientId }),
+          tx.delete(COMM).where(eq(COMM.patientId, patientId)).returning({ id: COMM.patientId }),
         );
         const privacySnapshots = await del(() =>
-          tx
-            .delete(PRIV)
-            .where(eq(PRIV.patientId, patientId))
-            .returning({ id: PRIV.patientId }),
+          tx.delete(PRIV).where(eq(PRIV.patientId, patientId)).returning({ id: PRIV.patientId }),
         );
         const amendments = await del(() =>
           tx.delete(AMEND).where(eq(AMEND.patientId, patientId)).returning({ id: AMEND.id }),

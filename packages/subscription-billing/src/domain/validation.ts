@@ -49,7 +49,10 @@ export function isValidUsageQuantity(quantity: number): boolean {
 
 /** §2.3 `refund.amount_cents > 0` (CHECK) AND `refund.amount_cents <= invoice.amount_paid_cents`
  *  (application-level join check). */
-export function isValidRefundAmount(input: { amountCents: number; amountPaidCents: number }): boolean {
+export function isValidRefundAmount(input: {
+  amountCents: number;
+  amountPaidCents: number;
+}): boolean {
   return (
     Number.isInteger(input.amountCents) &&
     input.amountCents > 0 &&

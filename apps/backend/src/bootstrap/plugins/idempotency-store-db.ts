@@ -25,12 +25,8 @@
 // Left as-is rather than switching the column to `json`: HTTP idempotency guarantees the same
 // RESPONSE, not the same serialization, and `jsonb` is what the table has shipped with.
 import { type DbClient, schema } from "@wardenx/db";
+import type { IdempotencyRecord, IdempotencyStore, IdempotentResponse } from "@wardenx/shared";
 import { withOrgContext } from "@wardenx/tenancy";
-import type {
-  IdempotencyRecord,
-  IdempotencyStore,
-  IdempotentResponse,
-} from "@wardenx/shared";
 import { and, eq } from "drizzle-orm";
 
 /** How long a cached response stays replayable (§3.10). */
@@ -107,13 +103,7 @@ export function createDbIdempotencyStore(db: DbClient): IdempotencyStore {
             responseStatus: response.status,
             responseBody: response.body as never,
           })
-          .where(
-            and(
-              eq(T.organizationId, organizationId),
-              eq(T.key, key),
-              eq(T.state, "pending"),
-            ),
-          );
+          .where(and(eq(T.organizationId, organizationId), eq(T.key, key), eq(T.state, "pending")));
       });
     },
   };

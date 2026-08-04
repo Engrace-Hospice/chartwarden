@@ -25,12 +25,12 @@ import {
   shouldCloseAsDeclined,
 } from "@wardenx/bereavement";
 import type {
+  BereavedContactStatus,
   BereavementAnniversaryMark,
   BereavementExternalSourceMetadata,
   BereavementPlanClosureReason,
   BereavementPlanPauseKind,
   BereavementPlanStatus,
-  BereavedContactStatus,
   IsoInstant,
   MembershipId,
 } from "@wardenx/types";
@@ -162,10 +162,7 @@ export const BEREAVEMENT_PLAN_GRAPH: Readonly<
  */
 export function closeStateForReason(
   reason: BereavementPlanClosureReason,
-): Extract<
-  BereavementPlanLifecycleState,
-  "closed_completed" | "closed_declined" | "closed_early"
-> {
+): Extract<BereavementPlanLifecycleState, "closed_completed" | "closed_declined" | "closed_early"> {
   switch (reason) {
     case "thirteen_month_completion":
     case "patient_opt_out_pre_death":

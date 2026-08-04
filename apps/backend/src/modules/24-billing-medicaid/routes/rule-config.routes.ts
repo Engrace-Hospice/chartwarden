@@ -24,14 +24,30 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
   const { readService, writeService } = deps;
 
   // 18 — read overlay + platform registry
-  app.get("/api/v1/medicaid-rule-config", { preHandler: [P("medicaid.rule_config.read")], config: { auditRead: { none: "Medicaid validation rule configuration — tenant policy, no patient data" } } }, async (request, reply) =>
-    reply.send(await readService.listRuleConfig(actorOf(request))),
+  app.get(
+    "/api/v1/medicaid-rule-config",
+    {
+      preHandler: [P("medicaid.rule_config.read")],
+      config: {
+        auditRead: {
+          none: "Medicaid validation rule configuration — tenant policy, no patient data",
+        },
+      },
+    },
+    async (request, reply) => reply.send(await readService.listRuleConfig(actorOf(request))),
   );
 
   // 19 — edit tenant overlay on non-regulatory rules
   app.patch(
     "/api/v1/medicaid-rule-config/:ruleKey",
-    { preHandler: [P("medicaid.rule_config.edit"), ABAC_RULE("medicaid.rule_config.edit", "regulatory_required_rule_protected_medicaid"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.rule_config.edit"),
+        ABAC_RULE("medicaid.rule_config.edit", "regulatory_required_rule_protected_medicaid"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const body = parse(EditRuleConfigBody, request.body);
       await writeService.editRuleConfig(writeActorOf(request), pParam(request, "ruleKey"), {
@@ -56,9 +72,20 @@ export function registerRuleConfigRoutes(app: FastifyInstance, deps: RuleConfigR
   // 21 — delete custom rule (non-regulatory only)
   app.delete(
     "/api/v1/medicaid-rule-config/:ruleKey",
-    { preHandler: [P("medicaid.rule_config.edit"), ABAC_RULE("medicaid.rule_config.edit", "regulatory_required_rule_protected_medicaid"), AI, IDEMPOTENT] },
+    {
+      preHandler: [
+        P("medicaid.rule_config.edit"),
+        ABAC_RULE("medicaid.rule_config.edit", "regulatory_required_rule_protected_medicaid"),
+        AI,
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
-      await writeService.deleteCustomRule(writeActorOf(request), pParam(request, "ruleKey"), ifMatchVersion(request));
+      await writeService.deleteCustomRule(
+        writeActorOf(request),
+        pParam(request, "ruleKey"),
+        ifMatchVersion(request),
+      );
       return reply.code(204).send();
     },
   );

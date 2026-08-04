@@ -81,10 +81,7 @@ export const safetyAcknowledgment = pgTable(
           OR ("target_kind" = 'incident' AND "incident_id" IS NOT NULL AND "sos_alert_id" IS NULL AND "overdue_check_in_schedule_id" IS NULL)
           OR ("target_kind" = 'overdue_check_in' AND "overdue_check_in_schedule_id" IS NOT NULL AND "sos_alert_id" IS NULL AND "incident_id" IS NULL)`,
     ),
-    actionTakenFloor: check(
-      "m20_sack_action_taken",
-      sql`length(btrim("action_taken")) >= 20`,
-    ),
+    actionTakenFloor: check("m20_sack_action_taken", sql`length(btrim("action_taken")) >= 20`),
     outcomeVocabulary: check(
       "m20_sack_outcome_vocab",
       sql`"outcome" IS NULL

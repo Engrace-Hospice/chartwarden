@@ -225,14 +225,14 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
     expect(rows).toHaveLength(1);
     expect(rows[0].rolbypassrls).toBe(false);
   });
-  
+
   it("every M7 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
     const rls = readFileSync(
       join(MIGRATIONS_DIR, "0029_care_plan_m7_rls_audit_triggers.sql"),
       "utf8",
     );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {

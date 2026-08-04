@@ -14,7 +14,9 @@ const R = schema.costReportValidationRule;
 export class ValidationRuleRepository {
   constructor(private readonly db: CostReportDb) {}
 
-  async create(values: schema.NewCostReportValidationRule): Promise<schema.CostReportValidationRule> {
+  async create(
+    values: schema.NewCostReportValidationRule,
+  ): Promise<schema.CostReportValidationRule> {
     const [row] = await this.db.insert(R).values(values).returning();
     if (!row) throw new Error("cost_report_validation_rule insert returned no row");
     return row;

@@ -16,11 +16,11 @@ import {
   type MetricsProvider,
   REPLICA_LAG_THRESHOLD_SECONDS,
   type ReadReplicaSessionPort,
+  type ReplicaLagGatePort,
   ReportCatalogRepository,
   type ReportSessionTier,
   type ReportableScopeEnvelope,
   type ReportingDb,
-  type ReplicaLagGatePort,
   type TranslatorBaseCatalog,
   computeFreshnessSeconds,
   translateSpec,
@@ -38,10 +38,10 @@ import type {
   MetricSeamArgs,
   MetricSeamView,
   MvMetadataView,
+  ReplicaLagView,
   ReportBaseDetailView,
   ReportBaseView,
   ReportMetricView,
-  ReplicaLagView,
   TileFreshnessView,
   TileReadArgs,
   TileReadResult,
@@ -252,7 +252,9 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
       });
       const mapped = rows
         .map(mapBaseRow)
-        .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1));
+        .sort((a, b) =>
+          a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
+        );
       return paginate(mapped, cursor, limit) as CursorPage<ReportBaseView>;
     },
 
@@ -286,7 +288,9 @@ export function createDrizzleM33ReadBackend(deps: M33ReadDrizzleDeps): {
       });
       const mapped = rows
         .map(mapMetricRow)
-        .sort((a, b) => (a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1));
+        .sort((a, b) =>
+          a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
+        );
       return paginate(mapped, cursor, limit) as CursorPage<ReportMetricView>;
     },
 

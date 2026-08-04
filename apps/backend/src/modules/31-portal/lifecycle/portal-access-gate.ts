@@ -49,7 +49,9 @@ export function consentTypeForGrantKind(kind: PortalAccessGrantKind): string {
 }
 
 /** The session class M39 records for a portal-access evaluation (§8.1 — patient-self vs delegated). */
-export function portalSessionClass(kind: PortalAccessGrantKind): "patient_portal" | "caregiver_portal" {
+export function portalSessionClass(
+  kind: PortalAccessGrantKind,
+): "patient_portal" | "caregiver_portal" {
   return kind === "patient_self" ? "patient_portal" : "caregiver_portal";
 }
 

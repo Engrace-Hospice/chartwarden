@@ -14,7 +14,11 @@
 //   2. A session is servable ONLY while unexpired AND unrevoked; a revocation cascade (§2.4) stamps
 //      `revoked_at` on every live session the instant its client is suspended/revoked, so a still-in-TTL
 //      bearer stops working immediately — expiry alone is not the whole gate.
-import { FHIR_SESSION_TTL_MINUTES, type FhirClientId, type FhirClientSessionJti } from "@wardenx/types";
+import {
+  FHIR_SESSION_TTL_MINUTES,
+  type FhirClientId,
+  type FhirClientSessionJti,
+} from "@wardenx/types";
 
 import { scopesExceedingGrant } from "./scopes";
 
@@ -84,7 +88,11 @@ export type FhirSessionRejectionReason =
 
 /** The per-request verdict: `ok:true` carries the granted scopes the mapper then scope-checks per resource. */
 export type FhirSessionVerifyResult =
-  | { readonly ok: true; readonly clientId: FhirClientId; readonly scopesGranted: readonly string[] }
+  | {
+      readonly ok: true;
+      readonly clientId: FhirClientId;
+      readonly scopesGranted: readonly string[];
+    }
   | { readonly ok: false; readonly reason: FhirSessionRejectionReason };
 
 /**

@@ -14,7 +14,10 @@ import { requireTelehealth } from "./errors";
  * room OR clinician-first). Either party can abort from any pre-`ended` state (drop / vendor outage). An ended
  * visit reconciles once M8 signs the encounter (§7.2 step 5 / §7.3 negative path documents attempted-not-done).
  */
-export const TELEHEALTH_TRANSITIONS: Record<TelehealthLifecycleState, readonly TelehealthLifecycleState[]> = {
+export const TELEHEALTH_TRANSITIONS: Record<
+  TelehealthLifecycleState,
+  readonly TelehealthLifecycleState[]
+> = {
   room_minted: ["patient_joined", "clinician_joined", "ended_aborted"],
   patient_joined: ["in_progress", "ended_aborted"],
   clinician_joined: ["in_progress", "ended_aborted"],
@@ -108,6 +111,8 @@ export function deriveEndReason(input: {
 }
 
 /** The end state for a given outcome — `ended_clean` for a normal `meeting-ended`, else `ended_aborted`. */
-export function endStateFor(clean: boolean): Extract<TelehealthLifecycleState, "ended_clean" | "ended_aborted"> {
+export function endStateFor(
+  clean: boolean,
+): Extract<TelehealthLifecycleState, "ended_clean" | "ended_aborted"> {
   return clean ? "ended_clean" : "ended_aborted";
 }

@@ -18,7 +18,8 @@ export const painadScorer: ScaleScorer<PainadData> = {
   score: painadTotal,
   interpret(d) {
     const t = painadTotal(d);
-    const band = t === 0 ? "no pain" : t <= 3 ? "mild pain" : t <= 6 ? "moderate pain" : "severe pain";
+    const band =
+      t === 0 ? "no pain" : t <= 3 ? "mild pain" : t <= 6 ? "moderate pain" : "severe pain";
     return `PAINAD ${t}/10 — ${band}`;
   },
 };

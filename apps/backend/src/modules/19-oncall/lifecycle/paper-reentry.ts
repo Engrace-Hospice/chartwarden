@@ -64,9 +64,7 @@ export function detectOutageWindows(
   scanUntil: IsoInstant,
   floorMinutes: number = OUTAGE_GAP_FLOOR_MINUTES,
 ): readonly OutageWindow[] {
-  const times = [...transitions]
-    .map((t) => new Date(t).getTime())
-    .sort((a, b) => a - b);
+  const times = [...transitions].map((t) => new Date(t).getTime()).sort((a, b) => a - b);
   const until = new Date(scanUntil).getTime();
   const bounds = [...times, until];
   const windows: OutageWindow[] = [];
@@ -202,10 +200,7 @@ export function assertPaperOriginCoherent(claim: PaperOriginClaim, now: Date): v
 /** §2.7 step 3 — the claimed original time must fall inside the outage the re-entry is being filed
  *  against. Outside it, the platform was UP and the call belongs on the ordinary late-entry path, where
  *  M8's late-entry tier records the delay honestly instead of attributing it to an outage. */
-export function assertWithinOutageWindow(
-  originalOpenedAt: IsoInstant,
-  window: OutageWindow,
-): void {
+export function assertWithinOutageWindow(originalOpenedAt: IsoInstant, window: OutageWindow): void {
   const t = new Date(originalOpenedAt).getTime();
   require_(
     t >= new Date(window.startsAt).getTime() && t <= new Date(window.endsAt).getTime(),

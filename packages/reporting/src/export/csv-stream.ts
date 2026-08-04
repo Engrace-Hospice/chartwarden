@@ -210,7 +210,9 @@ export async function handleCsvExport(
   }
 
   if (cappedMidStream) {
-    await ports.sink.write(`# WARNING: Export truncated at row ${rowCount} due to the ${cap}-row cap\r\n`);
+    await ports.sink.write(
+      `# WARNING: Export truncated at row ${rowCount} due to the ${cap}-row cap\r\n`,
+    );
   }
   await ports.sink.end();
   await ports.outbox.emitCsvStreamed({

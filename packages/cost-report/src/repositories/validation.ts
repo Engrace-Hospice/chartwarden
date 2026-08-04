@@ -95,7 +95,10 @@ export class ValidationRepository {
     values: readonly schema.NewCostReportValidationResult[],
   ): Promise<readonly schema.CostReportValidationResult[]> {
     if (values.length === 0) return [];
-    return this.db.insert(RS).values([...values]).returning();
+    return this.db
+      .insert(RS)
+      .values([...values])
+      .returning();
   }
 
   async findResultById(id: string): Promise<schema.CostReportValidationResult | null> {

@@ -9,7 +9,7 @@
 //     level of care (§4330 sources these from Worksheet S-1; here aggregated from the materialized census).
 // No DB, no clock, no `getSeam`. Reads jsonb DEFENSIVELY (every absence → a conservative, tie-out-safe
 // default; nothing fabricated). Money is INTEGER CENTS; no PHI — aggregate cost/day only (D18).
-import { type LevelOfCare, LEVELS_OF_CARE } from "./per-diem";
+import { LEVELS_OF_CARE, type LevelOfCare } from "./per-diem";
 import type { StatisticalBasis, StepDownAllocateInput, StepDownCostCenter } from "./step-down";
 
 /** One already-read `cost_report_worksheet` row: its code + untyped `data` jsonb. */
@@ -24,11 +24,17 @@ export interface RawAllocationWorksheet {
 export interface AllocationColumnConfig {
   readonly generalServiceCostCenterCode: string;
   readonly allocationBasis: string;
-  readonly statisticalWeights: readonly { readonly receivingCenterCode: string; readonly statisticValue: number }[];
+  readonly statisticalWeights: readonly {
+    readonly receivingCenterCode: string;
+    readonly statisticValue: number;
+  }[];
 }
 
 /** Total / Medicare / Medicaid unduplicated days per level of care (feeds Worksheet C, §4330). */
-export type LocDays = Record<LevelOfCare, { totalDays: number; medicareDays: number; medicaidDays: number }>;
+export type LocDays = Record<
+  LevelOfCare,
+  { totalDays: number; medicareDays: number; medicaidDays: number }
+>;
 
 /** The raw, already-read worksheet state the allocation inputs are shaped from. */
 export interface RawAllocationInputs {
@@ -47,7 +53,12 @@ export interface AllocationInputs {
 
 /** The four LOC direct-care centers, sourced from Worksheets A-1…A-4 (§4320 col. 0: A-1→CHC line 50, A-2→RHC
  *  51, A-3→IRC 52, A-4→GIP 53). The cost-center code on the step-down is the uppercase LOC token. */
-const LOC_FROM_WORKSHEET: ReadonlyArray<{ code: string; ws: string; loc: LevelOfCare; name: string }> = [
+const LOC_FROM_WORKSHEET: ReadonlyArray<{
+  code: string;
+  ws: string;
+  loc: LevelOfCare;
+  name: string;
+}> = [
   { code: "CHC", ws: "A-1", loc: "chc", name: "Continuous Home Care" },
   { code: "RHC", ws: "A-2", loc: "rhc", name: "Routine Home Care" },
   { code: "IRC", ws: "A-3", loc: "irc", name: "Inpatient Respite Care" },
@@ -85,8 +96,14 @@ function assembleStepDown(
     .map((col) => ({
       generalServiceCostCenterCode: str(col.generalServiceCostCenterCode),
       allocationBasis: str(col.allocationBasis),
-      statisticalWeights: (Array.isArray(col.statisticalPortions) ? (col.statisticalPortions as Record<string, unknown>[]) : [])
-        .map((w) => ({ receivingCenterCode: str(w.receivingCenterCode), statisticValue: num(w.statisticValue) }))
+      statisticalWeights: (Array.isArray(col.statisticalPortions)
+        ? (col.statisticalPortions as Record<string, unknown>[])
+        : []
+      )
+        .map((w) => ({
+          receivingCenterCode: str(w.receivingCenterCode),
+          statisticValue: num(w.statisticValue),
+        }))
         .filter((w) => w.receivingCenterCode.length > 0),
     }));
 
@@ -103,16 +120,24 @@ function assembleStepDown(
   const locCenters: StepDownCostCenter[] = LOC_FROM_WORKSHEET.map((m) => ({
     code: m.code,
     name: m.name,
-    directCostCents: num((byCode.get(m.ws) as Record<string, unknown> | undefined)?.netDirectCostCents),
+    directCostCents: num(
+      (byCode.get(m.ws) as Record<string, unknown> | undefined)?.netDirectCostCents,
+    ),
     isOverhead: false,
   }));
 
   const statisticalBases: StatisticalBasis[] = stepDownColumns.map((col) => ({
     allocatingCenterCode: col.generalServiceCostCenterCode,
-    weights: col.statisticalWeights.map((w) => ({ receivingCenterCode: w.receivingCenterCode, statisticValue: w.statisticValue })),
+    weights: col.statisticalWeights.map((w) => ({
+      receivingCenterCode: w.receivingCenterCode,
+      statisticValue: w.statisticValue,
+    })),
   }));
 
-  return { stepDown: { costCenters: [...overhead, ...locCenters], statisticalBases }, stepDownColumns };
+  return {
+    stepDown: { costCenters: [...overhead, ...locCenters], statisticalBases },
+    stepDownColumns,
+  };
 }
 
 /** `statistic_data.monthly_breakdown` → per-LOC total/Medicare/Medicaid day counts for Worksheet C. Unknown
@@ -124,7 +149,10 @@ function assembleLocDays(monthlyBreakdown: unknown | null): LocDays {
     irc: { totalDays: 0, medicareDays: 0, medicaidDays: 0 },
     gip: { totalDays: 0, medicareDays: 0, medicaidDays: 0 },
   };
-  const months = (monthlyBreakdown ?? {}) as Record<string, Record<string, Record<string, { patientDays?: unknown }>>>;
+  const months = (monthlyBreakdown ?? {}) as Record<
+    string,
+    Record<string, Record<string, { patientDays?: unknown }>>
+  >;
   for (const locs of Object.values(months ?? {})) {
     for (const [locKey, programs] of Object.entries(locs ?? {})) {
       const loc = locKey.toLowerCase();

@@ -18,13 +18,13 @@ import { and, desc, eq, isNull, lte, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
-  buildCursorPage,
   type CursorPage,
+  type VersionedUpdateResult,
+  buildCursorPage,
   decodeCursor,
   keysetBefore,
   noticeStateCodec,
   pageSizeOf,
-  type VersionedUpdateResult,
   versionConflict,
   versionOk,
 } from "./db";
@@ -90,11 +90,16 @@ export class NoeRepository {
   }
 
   /** The NOE for a deterministic `(provider_entity, noe_control_number)` (the D4 unique surface), or `null`. */
-  async findByControlNumber(providerEntityId: string, noeControlNumber: string): Promise<NoeRecord | null> {
+  async findByControlNumber(
+    providerEntityId: string,
+    noeControlNumber: string,
+  ): Promise<NoeRecord | null> {
     const [row] = await this.db
       .select()
       .from(N)
-      .where(and(eq(N.providerEntityId, providerEntityId), eq(N.noeControlNumber, noeControlNumber)))
+      .where(
+        and(eq(N.providerEntityId, providerEntityId), eq(N.noeControlNumber, noeControlNumber)),
+      )
       .limit(1);
     return row ? toNoeRecord(row) : null;
   }

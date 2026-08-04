@@ -1,3 +1,4 @@
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 // apps/backend/src/modules/10-hope/abac-predicates.ts — M10-T06 (§4.7).
 //
 // The THREE named ABAC predicate resolvers M10 OWNS and registers into M3's named-predicate registry (M3
@@ -18,7 +19,6 @@
 // by USING the names at the route, not by re-registering them. Registration is idempotent: the shared
 // registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import { isHopeAuthorDisciplineAllowed, isSfvAuthorDisciplineAllowed } from "@wardenx/hope";
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 
 /** The §4.7 predicate names M10 owns (registered into M3). Single-owner across the platform registry. */
 export const M10_ABAC_PREDICATES = [
@@ -49,7 +49,9 @@ export function hopeDisciplinesOf(context: AbacContext): readonly string[] {
 
 /** Whether the actor holds the HOPE clinical-lead role (case-insensitive). */
 function isClinicalLead(context: AbacContext): boolean {
-  return context.roles.some((r) => (CLINICAL_LEAD_ROLES as readonly string[]).includes(r.toLowerCase()));
+  return context.roles.some((r) =>
+    (CLINICAL_LEAD_ROLES as readonly string[]).includes(r.toLowerCase()),
+  );
 }
 
 /** The original-signer facts M10's correction predicate resolves for a target assessment id. */
@@ -59,7 +61,10 @@ export interface HopeAssessmentAbacFacts {
 
 /** Loads a HOPE assessment's org-scoped signer facts (in-memory in the slice; Drizzle in prod under RLS). */
 export interface HopeAbacResolver {
-  loadAssessment(organizationId: string, assessmentId: string): Promise<HopeAssessmentAbacFacts | null>;
+  loadAssessment(
+    organizationId: string,
+    assessmentId: string,
+  ): Promise<HopeAssessmentAbacFacts | null>;
 }
 
 /** Deps for M10's ABAC predicate resolvers (the slice injects an in-memory resolver over its dataset). */

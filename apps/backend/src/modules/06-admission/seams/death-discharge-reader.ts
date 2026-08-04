@@ -37,7 +37,8 @@ const INTERNAL_SOURCE = "internal_clinician_recorded" as const;
 const DEATH_DISCHARGE_SYSTEM_USER_ID = "";
 
 /** Project a Drizzle timestamp (Date) — or a defensive string — to an ISO-8601 instant. */
-const iso = (d: Date | string): string => (typeof d === "string" ? new Date(d).toISOString() : d.toISOString());
+const iso = (d: Date | string): string =>
+  typeof d === "string" ? new Date(d).toISOString() : d.toISOString();
 
 /**
  * The production {@link DeathDischargeReader} over M6's `discharge_event` / `admission` tables. Closes over the

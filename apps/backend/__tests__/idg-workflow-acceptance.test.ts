@@ -19,13 +19,13 @@
 // rls-isolation.live (the M14 block).
 import {
   CARRY_FORWARD_COMPLIANCE_THRESHOLD,
+  type PacketBuildInput,
   applySudRedaction,
   assertPacketWritable,
   buildPacketSnapshot,
   evaluateQuorum,
   planCarryForward,
   transitionActionItem,
-  type PacketBuildInput,
 } from "@wardenx/idg";
 import { describe, expect, it } from "vitest";
 import {
@@ -101,24 +101,55 @@ describe("M14-T08 §7 workflow acceptance", () => {
     const svc = createInMemoryIdgBackend({
       now: () => NOW,
       meetings: [
-        { id: "mtg-b", organizationId: ORG, locationId: LOC, scheduledStart: "2026-07-08T14:00:00.000Z", scheduledEnd: "2026-07-08T16:00:00.000Z" },
-        { id: "mtg-a", organizationId: ORG, locationId: LOC, scheduledStart: "2026-06-24T14:00:00.000Z", scheduledEnd: "2026-06-24T16:00:00.000Z" },
-        { id: "mtg-other-loc", organizationId: ORG, locationId: LOC_OTHER, scheduledStart: "2026-06-25T14:00:00.000Z", scheduledEnd: "2026-06-25T16:00:00.000Z" },
+        {
+          id: "mtg-b",
+          organizationId: ORG,
+          locationId: LOC,
+          scheduledStart: "2026-07-08T14:00:00.000Z",
+          scheduledEnd: "2026-07-08T16:00:00.000Z",
+        },
+        {
+          id: "mtg-a",
+          organizationId: ORG,
+          locationId: LOC,
+          scheduledStart: "2026-06-24T14:00:00.000Z",
+          scheduledEnd: "2026-06-24T16:00:00.000Z",
+        },
+        {
+          id: "mtg-other-loc",
+          organizationId: ORG,
+          locationId: LOC_OTHER,
+          scheduledStart: "2026-06-25T14:00:00.000Z",
+          scheduledEnd: "2026-06-25T16:00:00.000Z",
+        },
       ],
     });
-    const policy = await svc.createRecurringPolicy(ORG, COORD, { locationId: LOC, cadenceDays: 14 });
+    const policy = await svc.createRecurringPolicy(ORG, COORD, {
+      locationId: LOC,
+      cadenceDays: 14,
+    });
     expect(policy.cadenceDays).toBe(14);
     expect(eventNames(svc.drainEvents())).toContain("m14.schedule.materialised");
 
     // The location-scoped schedule query returns this location's meetings, ascending, the other location elided.
-    const schedule = await svc.listSchedule(ORG, { location: LOC, from: "2026-06-23T00:00:00.000Z", to: "2026-07-31T00:00:00.000Z" });
+    const schedule = await svc.listSchedule(ORG, {
+      location: LOC,
+      from: "2026-06-23T00:00:00.000Z",
+      to: "2026-07-31T00:00:00.000Z",
+    });
     expect(schedule.map((m) => m.id)).toEqual(["mtg-a", "mtg-b"]);
   });
 
   it("getPatientIdgHistory returns the patient's reviewed meetings with their own decisions (no cross-patient leak)", async () => {
     const svc = await liveQuorateMeeting();
-    await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "care_plan_update" });
-    await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT_2, decisionKind: "order_request" });
+    await svc.recordDecision(ORG, COORD, MTG, {
+      patientId: PATIENT,
+      decisionKind: "care_plan_update",
+    });
+    await svc.recordDecision(ORG, COORD, MTG, {
+      patientId: PATIENT_2,
+      decisionKind: "order_request",
+    });
 
     const history = await svc.getPatientIdgHistory(ORG, PATIENT);
     expect(history.meetings.length).toBe(1);
@@ -137,7 +168,15 @@ describe("M14-T08 §7 workflow acceptance", () => {
       now: () => NOW,
       disciplinesByMembership: QUORUM_DISCIPLINES,
       meetings: [
-        { id: MTG, organizationId: ORG, locationId: LOC, status: "packets_ready", scheduledStart: "2026-06-22T14:00:00.000Z", scheduledEnd: "2026-06-22T16:00:00.000Z", includedPatientIds: [PATIENT, PATIENT_2] },
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "packets_ready",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT, PATIENT_2],
+        },
       ],
     });
     // Start the meeting and seat the full quorum.
@@ -149,11 +188,20 @@ describe("M14-T08 §7 workflow acceptance", () => {
     expect(svc.currentQuorum(MTG).met).toBe(true);
 
     // Record three actionable decisions (1 each of the canonical D4 kinds) + one team_note (minutes-only).
-    const carePlan = await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "care_plan_update" });
+    const carePlan = await svc.recordDecision(ORG, COORD, MTG, {
+      patientId: PATIENT,
+      decisionKind: "care_plan_update",
+    });
     expect(carePlan.status).toBe("open");
     expect(carePlan.wasQuorate).toBe(true);
-    await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "order_request" });
-    await svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT_2, decisionKind: "medication_recommendation" });
+    await svc.recordDecision(ORG, COORD, MTG, {
+      patientId: PATIENT,
+      decisionKind: "order_request",
+    });
+    await svc.recordDecision(ORG, COORD, MTG, {
+      patientId: PATIENT_2,
+      decisionKind: "medication_recommendation",
+    });
     await svc.recordDecision(ORG, COORD, MTG, { patientId: null, decisionKind: "team_note" });
     svc.drainEvents();
 
@@ -192,28 +240,71 @@ describe("M14-T08 §7 workflow acceptance", () => {
     const svc = createInMemoryIdgBackend({
       now: () => NOW,
       disciplinesByMembership: QUORUM_DISCIPLINES,
-      meetings: [{ id: MTG, organizationId: ORG, locationId: LOC, status: "live", scheduledStart: "2026-06-22T14:00:00.000Z", scheduledEnd: "2026-06-22T16:00:00.000Z", includedPatientIds: [PATIENT] }],
+      meetings: [
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "live",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT],
+        },
+      ],
     });
     const predicates = buildIdgAbacPredicates({ resolver: svc });
 
     // Only 3 of the 4 required disciplines present → the meeting may be HELD but the decision write is denied.
-    await svc.recordAttendance(ORG, COORD, MTG, { membershipId: MEM_MD, discipline: "hospice_physician", status: "present" });
-    await svc.recordAttendance(ORG, COORD, MTG, { membershipId: MEM_RN, discipline: "rn_case_manager", status: "present" });
-    await svc.recordAttendance(ORG, COORD, MTG, { membershipId: MEM_MSW, discipline: "msw", status: "present" });
+    await svc.recordAttendance(ORG, COORD, MTG, {
+      membershipId: MEM_MD,
+      discipline: "hospice_physician",
+      status: "present",
+    });
+    await svc.recordAttendance(ORG, COORD, MTG, {
+      membershipId: MEM_RN,
+      discipline: "rn_case_manager",
+      status: "present",
+    });
+    await svc.recordAttendance(ORG, COORD, MTG, {
+      membershipId: MEM_MSW,
+      discipline: "msw",
+      status: "present",
+    });
     expect(await predicates.quorate_decision!(ctx(), { id: MTG })).toBe(false);
 
     // The chaplain joins → quorum satisfied → the predicate now allows the write.
-    await svc.recordAttendance(ORG, COORD, MTG, { membershipId: MEM_CHAP, discipline: "chaplain", status: "present" });
+    await svc.recordAttendance(ORG, COORD, MTG, {
+      membershipId: MEM_CHAP,
+      discipline: "chaplain",
+      status: "present",
+    });
     expect(await predicates.quorate_decision!(ctx(), { id: MTG })).toBe(true);
 
     // The decision is still RECORDED in the non-quorate gap (the meeting proceeds) with was_quorate stamped.
     const svc2 = createInMemoryIdgBackend({
       now: () => NOW,
       disciplinesByMembership: QUORUM_DISCIPLINES,
-      meetings: [{ id: MTG, organizationId: ORG, locationId: LOC, status: "live", scheduledStart: "2026-06-22T14:00:00.000Z", scheduledEnd: "2026-06-22T16:00:00.000Z", includedPatientIds: [PATIENT] }],
+      meetings: [
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "live",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT],
+        },
+      ],
     });
-    await svc2.recordAttendance(ORG, COORD, MTG, { membershipId: MEM_RN, discipline: "rn_case_manager", status: "present" });
-    const dec = await svc2.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "team_note" });
+    await svc2.recordAttendance(ORG, COORD, MTG, {
+      membershipId: MEM_RN,
+      discipline: "rn_case_manager",
+      status: "present",
+    });
+    const dec = await svc2.recordDecision(ORG, COORD, MTG, {
+      patientId: PATIENT,
+      decisionKind: "team_note",
+    });
     expect(dec.wasQuorate).toBe(false);
   });
 
@@ -222,15 +313,22 @@ describe("M14-T08 §7 workflow acceptance", () => {
     expect(first.newCarryForwardCount).toBe(1);
     expect(first.isComplianceAlert).toBe(false);
 
-    const third = planCarryForward({ priorCarryForwardCount: CARRY_FORWARD_COMPLIANCE_THRESHOLD - 1, isOpenAndOverdue: true });
+    const third = planCarryForward({
+      priorCarryForwardCount: CARRY_FORWARD_COMPLIANCE_THRESHOLD - 1,
+      isOpenAndOverdue: true,
+    });
     expect(third.newCarryForwardCount).toBe(CARRY_FORWARD_COMPLIANCE_THRESHOLD);
     expect(third.isComplianceAlert).toBe(true);
-    expect(third.effects.some((e) => e.kind === "alert" && e.alert === "m14.action_item.carry_forward.compliance")).toBe(true);
+    expect(
+      third.effects.some(
+        (e) => e.kind === "alert" && e.alert === "m14.action_item.carry_forward.compliance",
+      ),
+    ).toBe(true);
 
     // A non-overdue (or closed) item does not carry forward.
-    expect(() => planCarryForward({ priorCarryForwardCount: 0, isOpenAndOverdue: false })).toThrowError(
-      expect.objectContaining({ code: "ILLEGAL_ACTION_ITEM_TRANSITION" }),
-    );
+    expect(() =>
+      planCarryForward({ priorCarryForwardCount: 0, isOpenAndOverdue: false }),
+    ).toThrowError(expect.objectContaining({ code: "ILLEGAL_ACTION_ITEM_TRANSITION" }));
   });
 
   it("W-ACT-02 — a care-plan version-signed event auto-closes the linked action item", async () => {
@@ -242,7 +340,9 @@ describe("M14-T08 §7 workflow acceptance", () => {
     // The open action item flips to auto_closed and emits the auto-close confirmation.
     const t = transitionActionItem("open", plan!.event);
     expect(t.to).toBe("auto_closed");
-    expect(t.effects.some((e) => e.kind === "outbox" && e.event === "m14.action_item.auto_closed")).toBe(true);
+    expect(
+      t.effects.some((e) => e.kind === "outbox" && e.event === "m14.action_item.auto_closed"),
+    ).toBe(true);
 
     // An event M14 does not auto-close on is a no-op for the engine.
     expect(planActionItemAutoClose("m9.assessment.recorded", "x")).toBeNull();
@@ -250,7 +350,10 @@ describe("M14-T08 §7 workflow acceptance", () => {
     // The service path: create → start → complete an action item, asserting the status-change outbox.
     const svc = await liveQuorateMeeting();
     const item = await svc.createActionItem(ORG, COORD, MTG, {
-      patientId: PATIENT, assignedToMembershipId: MEM_MSW, dueDate: "2026-06-29T00:00:00.000Z", linkedArtifactKind: "care_plan_version",
+      patientId: PATIENT,
+      assignedToMembershipId: MEM_MSW,
+      dueDate: "2026-06-29T00:00:00.000Z",
+      linkedArtifactKind: "care_plan_version",
     });
     expect(item.status).toBe("open");
     await svc.updateActionItem(ORG, COORD, item.id, "in_progress");
@@ -264,16 +367,21 @@ describe("M14-T08 §7 workflow acceptance", () => {
     // Before adjournment the minutes are `in_progress` → the amendment request is refused.
     const inProgress = await svc.getMinutes(ORG, MTG);
     expect(inProgress.status).toBe("in_progress");
-    await expect(svc.submitAmendment(ORG, COORD, inProgress.id, "typo in the chaplain note")).rejects.toThrowError(
-      expect.objectContaining({ code: "MINUTES_NOT_IN_PROGRESS" }),
-    );
+    await expect(
+      svc.submitAmendment(ORG, COORD, inProgress.id, "typo in the chaplain note"),
+    ).rejects.toThrowError(expect.objectContaining({ code: "MINUTES_NOT_IN_PROGRESS" }));
 
     // Adjourn → minutes final → the §164.526-pattern amendment workflow now accepts the request.
     await svc.adjournMeeting(ORG, COORD, MTG, true);
     const final = await svc.getMinutes(ORG, MTG);
     expect(final.status).toBe("final");
     svc.drainEvents();
-    const amendment = await svc.submitAmendment(ORG, COORD, final.id, "correct MSW name misattribution");
+    const amendment = await svc.submitAmendment(
+      ORG,
+      COORD,
+      final.id,
+      "correct MSW name misattribution",
+    );
     expect(amendment.minutesId).toBe(final.id);
     expect(eventNames(svc.drainEvents())).toContain("m14.minutes.amended");
   });
@@ -282,33 +390,73 @@ describe("M14-T08 §7 workflow acceptance", () => {
     const built = buildPacketSnapshot(packetInput());
     expect(built.snapshot.sinceLastIdg.encounters.map((e) => e.encounterId)).toEqual(["enc-sud"]);
 
-    const withoutRelease = applySudRedaction(built, { hasPart2Release: false, sudFlaggedSourceIds: new Set(["enc-sud"]) });
+    const withoutRelease = applySudRedaction(built, {
+      hasPart2Release: false,
+      sudFlaggedSourceIds: new Set(["enc-sud"]),
+    });
     expect(withoutRelease.snapshot.sinceLastIdg.encounters).toEqual([]); // elided at the SQL-filter layer
     expect(withoutRelease.snapshot.meta.appliedSudRedaction).toBe(true); // surface renders the Part 2 banner
 
-    const withRelease = applySudRedaction(built, { hasPart2Release: true, sudFlaggedSourceIds: new Set(["enc-sud"]) });
-    expect(withRelease.snapshot.sinceLastIdg.encounters.map((e) => e.encounterId)).toEqual(["enc-sud"]);
+    const withRelease = applySudRedaction(built, {
+      hasPart2Release: true,
+      sudFlaggedSourceIds: new Set(["enc-sud"]),
+    });
+    expect(withRelease.snapshot.sinceLastIdg.encounters.map((e) => e.encounterId)).toEqual([
+      "enc-sud",
+    ]);
     expect(withRelease.snapshot.meta.appliedSudRedaction).toBe(false);
   });
 
   it("W-RVW-01 — the per_patient_review_floor_clear ABAC denies a reschedule that breaches a patient's 15-day floor, allows when clear", async () => {
     const svc = createInMemoryIdgBackend({
       now: () => NOW,
-      meetings: [{ id: MTG, organizationId: ORG, locationId: LOC, status: "scheduled", scheduledStart: "2026-06-22T14:00:00.000Z", scheduledEnd: "2026-06-22T16:00:00.000Z", includedPatientIds: [PATIENT] }],
+      meetings: [
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "scheduled",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT],
+        },
+      ],
       reviewFloorBreaches: { [MTG]: [{ patientId: PATIENT, floorAt: "2026-06-25T00:00:00.000Z" }] },
     });
     const predicates = buildIdgAbacPredicates({ resolver: svc });
 
     // A breach surfaced for this meeting → the base guard denies the reschedule (the audited override is route-composed).
-    expect(await predicates.per_patient_review_floor_clear!(ctx(), { id: MTG, proposedTransition: "reschedule", newScheduledStart: "2026-07-10T14:00:00.000Z" })).toBe(false);
+    expect(
+      await predicates.per_patient_review_floor_clear!(ctx(), {
+        id: MTG,
+        proposedTransition: "reschedule",
+        newScheduledStart: "2026-07-10T14:00:00.000Z",
+      }),
+    ).toBe(false);
 
     // A meeting with no breach → the floor is clear → the reschedule is permitted.
     const svcClear = createInMemoryIdgBackend({
       now: () => NOW,
-      meetings: [{ id: MTG, organizationId: ORG, locationId: LOC, status: "scheduled", scheduledStart: "2026-06-22T14:00:00.000Z", scheduledEnd: "2026-06-22T16:00:00.000Z", includedPatientIds: [PATIENT] }],
+      meetings: [
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "scheduled",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT],
+        },
+      ],
     });
     const clearPredicates = buildIdgAbacPredicates({ resolver: svcClear });
-    expect(await clearPredicates.per_patient_review_floor_clear!(ctx(), { id: MTG, proposedTransition: "reschedule", newScheduledStart: "2026-07-10T14:00:00.000Z" })).toBe(true);
+    expect(
+      await clearPredicates.per_patient_review_floor_clear!(ctx(), {
+        id: MTG,
+        proposedTransition: "reschedule",
+        newScheduledStart: "2026-07-10T14:00:00.000Z",
+      }),
+    ).toBe(true);
   });
 });
 
@@ -316,7 +464,10 @@ describe("M14-T08 §9.3 / §4.12 security & authorization (quorum, inclusion-tam
   it("a decision recorded for a patient NOT on the meeting's caseload is refused (INCLUSION_CRITERIA_FAILED — URL-tamper defense)", async () => {
     const svc = await liveQuorateMeeting();
     await expect(
-      svc.recordDecision(ORG, COORD, MTG, { patientId: "99999999-9999-4999-8999-999999999999", decisionKind: "care_plan_update" }),
+      svc.recordDecision(ORG, COORD, MTG, {
+        patientId: "99999999-9999-4999-8999-999999999999",
+        decisionKind: "care_plan_update",
+      }),
     ).rejects.toThrowError(expect.objectContaining({ code: "INCLUSION_CRITERIA_FAILED" }));
   });
 
@@ -324,7 +475,17 @@ describe("M14-T08 §9.3 / §4.12 security & authorization (quorum, inclusion-tam
     const svc = createInMemoryIdgBackend({
       now: () => NOW,
       disciplinesByMembership: QUORUM_DISCIPLINES,
-      meetings: [{ id: MTG, organizationId: ORG, locationId: LOC, status: "packets_ready", scheduledStart: "2026-06-22T14:00:00.000Z", scheduledEnd: "2026-06-22T16:00:00.000Z", includedPatientIds: [PATIENT] }],
+      meetings: [
+        {
+          id: MTG,
+          organizationId: ORG,
+          locationId: LOC,
+          status: "packets_ready",
+          scheduledStart: "2026-06-22T14:00:00.000Z",
+          scheduledEnd: "2026-06-22T16:00:00.000Z",
+          includedPatientIds: [PATIENT],
+        },
+      ],
     });
     await expect(
       svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "care_plan_update" }),
@@ -334,20 +495,36 @@ describe("M14-T08 §9.3 / §4.12 security & authorization (quorum, inclusion-tam
   it("the idg_meeting_scope ABAC denies a caller whose session location does not cover the meeting's location (cross-location EoP)", async () => {
     const svc = await liveQuorateMeeting();
     const predicates = buildIdgAbacPredicates({ resolver: svc });
-    expect(await predicates.idg_meeting_scope!(ctx({ locationIds: [LOC] }), { id: MTG })).toBe(true);
-    expect(await predicates.idg_meeting_scope!(ctx({ locationIds: [LOC_OTHER] }), { id: MTG })).toBe(false);
+    expect(await predicates.idg_meeting_scope!(ctx({ locationIds: [LOC] }), { id: MTG })).toBe(
+      true,
+    );
+    expect(
+      await predicates.idg_meeting_scope!(ctx({ locationIds: [LOC_OTHER] }), { id: MTG }),
+    ).toBe(false);
     // A cross-tenant caller fails closed even with the right location id (the resolver returns null off-tenant).
-    expect(await predicates.idg_meeting_scope!(ctx({ organizationId: ORG_B, locationIds: [LOC] }), { id: MTG })).toBe(false);
+    expect(
+      await predicates.idg_meeting_scope!(ctx({ organizationId: ORG_B, locationIds: [LOC] }), {
+        id: MTG,
+      }),
+    ).toBe(false);
   });
 
   it("a meeting in org_a is invisible to org_b (non-leaking NotFound, RLS-backstop layer above)", async () => {
     const svc = await liveQuorateMeeting();
     await expect(svc.getMeeting(ORG_B, MTG)).rejects.toThrow();
-    expect(await svc.listSchedule(ORG_B, { location: LOC, from: "2026-06-01T00:00:00.000Z", to: "2026-07-01T00:00:00.000Z" })).toEqual([]);
+    expect(
+      await svc.listSchedule(ORG_B, {
+        location: LOC,
+        from: "2026-06-01T00:00:00.000Z",
+        to: "2026-07-01T00:00:00.000Z",
+      }),
+    ).toEqual([]);
   });
 
   it("the platform IDG_REQUIRED_QUORUM is the four-discipline CoP 418.56(b)(3) floor (physician/RN/MSW/chaplain)", () => {
-    expect(evaluateQuorum(["hospice_physician", "rn_case_manager", "msw", "chaplain"]).met).toBe(true);
+    expect(evaluateQuorum(["hospice_physician", "rn_case_manager", "msw", "chaplain"]).met).toBe(
+      true,
+    );
     const short = evaluateQuorum(["rn_case_manager", "msw", "chaplain"]);
     expect(short.met).toBe(false);
     expect(short.missingDisciplines).toContain("hospice_physician|medical_director");
@@ -381,7 +558,12 @@ function packetInput(): PacketBuildInput {
     },
     sinceLastIdg: {
       encounters: [
-        { encounterId: "enc-sud", encounterType: "rn_visit", signedAt: "2026-06-10T00:00:00.000Z", authorDiscipline: "rn" },
+        {
+          encounterId: "enc-sud",
+          encounterType: "rn_visit",
+          signedAt: "2026-06-10T00:00:00.000Z",
+          authorDiscipline: "rn",
+        },
       ],
       significantAssessmentChanges: [],
       j2051Triggers: [],

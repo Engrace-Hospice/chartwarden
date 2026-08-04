@@ -35,6 +35,22 @@ import {
   listSupplyRequests,
 } from "./supplies-api";
 import {
+  DISPATCH_STATUS_TONE,
+  OPEN_REQUEST_STATUSES,
+  PAR_SEVERITY_RANK,
+  REQUEST_KINDS,
+  REQUEST_STATUS_TONE,
+  RETURN_STATE_TONE,
+  ageInDays,
+  deploymentSiteLabel,
+  dueLabel,
+  humanize,
+  requestKindLabel,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./supplies-status";
+import {
   Card,
   CountGrid,
   FilterRow,
@@ -54,22 +70,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import {
-  DISPATCH_STATUS_TONE,
-  OPEN_REQUEST_STATUSES,
-  PAR_SEVERITY_RANK,
-  REQUEST_KINDS,
-  REQUEST_STATUS_TONE,
-  RETURN_STATE_TONE,
-  ageInDays,
-  deploymentSiteLabel,
-  dueLabel,
-  humanize,
-  requestKindLabel,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./supplies-status";
 
 /** The §4.1 page cap for the request/dispatch/return lists. Named so the "at least" copy and the request
  *  agree — a hard-coded 100 in the query and a different literal in the sentence is how a KPI starts
@@ -180,9 +180,9 @@ export function SupplyTeamDashboard(): JSX.Element {
 
       {requestsTruncated ? (
         <Notice tone="info">
-          More than {QUEUE_PAGE} requests match this filter. The counts below are therefore "at least" —
-          M21 publishes no aggregate route, so a tile counts the page it was given, never the whole tenant.
-          Narrow the filters for an exact figure.
+          More than {QUEUE_PAGE} requests match this filter. The counts below are therefore "at
+          least" — M21 publishes no aggregate route, so a tile counts the page it was given, never
+          the whole tenant. Narrow the filters for an exact figure.
         </Notice>
       ) : null}
 
@@ -198,9 +198,9 @@ export function SupplyTeamDashboard(): JSX.Element {
           ]}
         />
         <span style={mutedStyle}>
-          "In-transit late" and "undeliverable" are not shown: `supply_request` carries no expected-delivery
-          window and `m21_supply_request_status` has no undeliverable value, so both would have to be
-          invented. The age-in-status column below is the real signal.
+          "In-transit late" and "undeliverable" are not shown: `supply_request` carries no
+          expected-delivery window and `m21_supply_request_status` has no undeliverable value, so
+          both would have to be invented. The age-in-status column below is the real signal.
         </span>
       </Card>
 
@@ -212,7 +212,8 @@ export function SupplyTeamDashboard(): JSX.Element {
       <Card title="Action queue">
         {requests.length === 0 ? (
           <span style={mutedStyle}>
-            Nothing needs supply-team action in this view — every open request has a vendor and is moving.
+            Nothing needs supply-team action in this view — every open request has a vendor and is
+            moving.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -267,8 +268,8 @@ export function SupplyTeamDashboard(): JSX.Element {
       >
         {sortedPar.length === 0 ? (
           <span style={mutedStyle}>
-            Every active shelf row is at or above its reorder point — or you do not hold `par_stock.read`,
-            in which case the server returned nothing rather than a partial shelf.
+            Every active shelf row is at or above its reorder point — or you do not hold
+            `par_stock.read`, in which case the server returned nothing rather than a partial shelf.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -316,8 +317,8 @@ export function SupplyTeamDashboard(): JSX.Element {
       >
         {openReturns.length === 0 ? (
           <span style={mutedStyle}>
-            No comfort-kit return is open. A return row is created when the obligation ARISES (the patient
-            died, the kit must come back) — long before anything is physically counted.
+            No comfort-kit return is open. A return row is created when the obligation ARISES (the
+            patient died, the kit must come back) — long before anything is physically counted.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -340,7 +341,10 @@ export function SupplyTeamDashboard(): JSX.Element {
                     </Link>
                   </td>
                   <td style={td}>
-                    <StatusPill label={humanize(r.state)} tone={toneOf(RETURN_STATE_TONE, r.state)} />
+                    <StatusPill
+                      label={humanize(r.state)}
+                      tone={toneOf(RETURN_STATE_TONE, r.state)}
+                    />
                   </td>
                   <td style={td}>{shortId(r.patientId)}</td>
                   <td style={td}>

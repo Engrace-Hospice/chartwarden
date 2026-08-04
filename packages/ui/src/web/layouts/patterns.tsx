@@ -187,7 +187,11 @@ export function WorkQueueLayout({
         <div className="wx-work-table" style={{ flex: 1, overflow: "auto" }}>
           {table}
         </div>
-        {detail ? <div className="wx-context-rail" style={contextRailBounds}>{detail}</div> : null}
+        {detail ? (
+          <div className="wx-context-rail" style={contextRailBounds}>
+            {detail}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -316,7 +320,11 @@ export function ConversationView({ list, children, detail }: ConversationViewPro
         >
           {children}
         </div>
-        {detail ? <div className="wx-context-rail" style={contextRailBounds}>{detail}</div> : null}
+        {detail ? (
+          <div className="wx-context-rail" style={contextRailBounds}>
+            {detail}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -353,7 +361,11 @@ export function AdminSplitLayout({
         <div className="wx-admin-matrix" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
           {children}
         </div>
-        {detail ? <div className="wx-context-rail" style={contextRailBounds}>{detail}</div> : null}
+        {detail ? (
+          <div className="wx-context-rail" style={contextRailBounds}>
+            {detail}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -371,7 +383,11 @@ export function DetailPageLayout({ header, children, aside }: DetailPageLayoutPr
       {header}
       <div style={splitRow}>
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>{children}</div>
-        {aside ? <div className="wx-context-rail" style={contextRailBounds}>{aside}</div> : null}
+        {aside ? (
+          <div className="wx-context-rail" style={contextRailBounds}>
+            {aside}
+          </div>
+        ) : null}
       </div>
     </div>
   );

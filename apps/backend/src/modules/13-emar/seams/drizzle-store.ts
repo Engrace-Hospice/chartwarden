@@ -134,7 +134,8 @@ function strField(data: unknown, key: string): string | undefined {
  * carries `infusionRate`, `iv_continuous_rate_change` carries `newRate`; pause/resume/stop carry none.
  */
 function segmentRateOf(data: unknown): { rate?: number; rateUnit?: string } {
-  const rate = numField(data, "infusionRate") ?? numField(data, "newRate") ?? numField(data, "rate");
+  const rate =
+    numField(data, "infusionRate") ?? numField(data, "newRate") ?? numField(data, "rate");
   const rateUnit = strField(data, "rateUnit") ?? strField(data, "infusionRateUnit");
   return {
     ...(rate !== undefined ? { rate } : {}),
@@ -263,7 +264,10 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
           iso(r.administeredAt),
           iso(r.reassessmentDueAt),
         );
-        out.push({ administeredAt: iso(r.administeredAt), hasReassessment: series.points.length > 0 });
+        out.push({
+          administeredAt: iso(r.administeredAt),
+          hasReassessment: series.points.length > 0,
+        });
       }
       return out;
     },
@@ -281,58 +285,66 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
 
     // ── org-aggregate measure reads (explicit organizationId; self-scoped withOrgContext) ─────────────
     missedDoseCountsForOrg(organizationId, window) {
-      return withOrgContext(db, { organizationId, userId: EMAR_READER_SYSTEM_USER_ID }, async (tx) => {
-        const [row] = await tx
-          .select({
-            denominator: sql<number>`count(*)::int`,
-            numerator: sql<number>`count(*) filter (where exists (
+      return withOrgContext(
+        db,
+        { organizationId, userId: EMAR_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({
+              denominator: sql<number>`count(*)::int`,
+              numerator: sql<number>`count(*) filter (where exists (
               select 1 from ${MD}
               where ${MD.scheduledDoseId} = ${SD.id}
                 and ${MD.organizationId} = ${SD.organizationId}
             ))::int`,
-          })
-          .from(SD)
-          .where(
-            and(
-              eq(SD.organizationId, organizationId),
-              gte(SD.dueAt, new Date(window.from)),
-              lt(SD.dueAt, new Date(window.to)),
-            ),
-          );
-        return {
-          numerator: Number(row?.numerator) || 0,
-          denominator: Number(row?.denominator) || 0,
-        };
-      });
+            })
+            .from(SD)
+            .where(
+              and(
+                eq(SD.organizationId, organizationId),
+                gte(SD.dueAt, new Date(window.from)),
+                lt(SD.dueAt, new Date(window.to)),
+              ),
+            );
+          return {
+            numerator: Number(row?.numerator) || 0,
+            denominator: Number(row?.denominator) || 0,
+          };
+        },
+      );
     },
 
     prnReassessmentObligationsForOrg(organizationId, window) {
-      return withOrgContext(db, { organizationId, userId: EMAR_READER_SYSTEM_USER_ID }, async (tx) => {
-        const rows = await tx
-          .select({
-            patientId: PRN.patientId,
-            scaleType: PRN.recommendedReassessmentScale,
-            administeredAt: PRN.createdAt,
-            reassessmentDueAt: PRN.reassessmentDueAt,
-          })
-          .from(PRN)
-          .where(
-            and(
-              eq(PRN.organizationId, organizationId),
-              // Only administrations that carry a reassessment obligation (a recommended scale).
-              isNotNull(PRN.recommendedReassessmentScale),
-              // Obligation window keys on the reassessment-due instant (the population, not when actioned).
-              gte(PRN.reassessmentDueAt, new Date(window.from)),
-              lt(PRN.reassessmentDueAt, new Date(window.to)),
-            ),
-          );
-        return rows.map((r) => ({
-          patientId: r.patientId as PatientId,
-          scaleType: r.scaleType as ScaleType,
-          administeredAt: iso(r.administeredAt),
-          reassessmentDueAt: iso(r.reassessmentDueAt),
-        }));
-      });
+      return withOrgContext(
+        db,
+        { organizationId, userId: EMAR_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const rows = await tx
+            .select({
+              patientId: PRN.patientId,
+              scaleType: PRN.recommendedReassessmentScale,
+              administeredAt: PRN.createdAt,
+              reassessmentDueAt: PRN.reassessmentDueAt,
+            })
+            .from(PRN)
+            .where(
+              and(
+                eq(PRN.organizationId, organizationId),
+                // Only administrations that carry a reassessment obligation (a recommended scale).
+                isNotNull(PRN.recommendedReassessmentScale),
+                // Obligation window keys on the reassessment-due instant (the population, not when actioned).
+                gte(PRN.reassessmentDueAt, new Date(window.from)),
+                lt(PRN.reassessmentDueAt, new Date(window.to)),
+              ),
+            );
+          return rows.map((r) => ({
+            patientId: r.patientId as PatientId,
+            scaleType: r.scaleType as ScaleType,
+            administeredAt: iso(r.administeredAt),
+            reassessmentDueAt: iso(r.reassessmentDueAt),
+          }));
+        },
+      );
     },
 
     // ── comfort-kit / IV-session reads (consumer's ambient request context) ───────────────────────────
@@ -363,7 +375,9 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
         return {
           admissionId,
           deployedAt: iso(deployment.deployedAt),
-          firstAdministrationAt: firstAdministration ? iso(firstAdministration.administeredAt) : null,
+          firstAdministrationAt: firstAdministration
+            ? iso(firstAdministration.administeredAt)
+            : null,
         };
       });
     },

@@ -35,9 +35,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  type AiPlatformAbacResolver,
   AI_COMPLIANCE_READER_ROLE_KEYS,
   AI_SAFETY_OWNER_ROLE_KEYS,
+  type AiPlatformAbacResolver,
   M32_ABAC_PREDICATES,
   buildAiPlatformAbacPredicates,
   denyStubAiPlatformAbacResolver,
@@ -122,7 +122,11 @@ const OTHER_ORG = "22222222-2222-4222-8222-222222222222";
 const MEMBER = "33333333-3333-4333-8333-333333333333";
 const CAPABILITY = "44444444-4444-4444-8444-444444444444";
 
-function contextOf(overrides: Partial<Parameters<ReturnType<typeof buildAiPlatformAbacPredicates>["ai_safety_owner"]>[0]> = {}) {
+function contextOf(
+  overrides: Partial<
+    Parameters<ReturnType<typeof buildAiPlatformAbacPredicates>["ai_safety_owner"]>[0]
+  > = {},
+) {
   return {
     organizationId: ORG,
     userId: "user-1",
@@ -157,7 +161,13 @@ describe("M32-T07 §4.7 — the six registered predicates", () => {
     // `organization.member` IS M3's intrinsic `inOrg`; `tenant_admin` / `compliance_officer` are already
     // expressed by §4.6's default grants; `phi.full_read` is a masking grant consumed by the projection,
     // not a guard. Registering any of them would create a second copy of a rule that must never disagree.
-    for (const name of ["inOrg", "org_scope", "tenant_admin", "compliance_officer", "phi.full_read"]) {
+    for (const name of [
+      "inOrg",
+      "org_scope",
+      "tenant_admin",
+      "compliance_officer",
+      "phi.full_read",
+    ]) {
       expect(M32_ABAC_PREDICATES).not.toContain(name as never);
     }
   });
@@ -381,9 +391,9 @@ describe("M32-T07 §4.7 — the six registered predicates", () => {
       "ai_kill_switch_inactive",
       "ai_invocation_same_org_or_safety_owner",
     ] as const) {
-      await expect(p[name](orgless, { capabilityId: CAPABILITY, invocationId: "inv-1" })).resolves.toBe(
-        false,
-      );
+      await expect(
+        p[name](orgless, { capabilityId: CAPABILITY, invocationId: "inv-1" }),
+      ).resolves.toBe(false);
     }
   });
 });
@@ -584,9 +594,9 @@ describe("M32-T07 §4.11 — the `m32.*` outbox catalog", () => {
     expect(disclosure).toBeDefined();
     expect(invoked).toBeDefined();
     expect(disclosure?.declaredConsumers).toContain("m4");
-    expect(Object.keys((invoked?.payloadSchema as { properties: object }).properties)).not.toContain(
-      "patientId",
-    );
+    expect(
+      Object.keys((invoked?.payloadSchema as { properties: object }).properties),
+    ).not.toContain("patientId");
   });
 
   it("emits FOUR discrete HITL events, not one with an outcome field (M32-F03/AI-082)", () => {
@@ -594,7 +604,12 @@ describe("M32-T07 §4.11 — the `m32.*` outbox catalog", () => {
       (e) => e.eventName,
     );
     expect(hitl.sort()).toEqual(
-      ["m32.output.accepted", "m32.output.edited", "m32.output.flagged", "m32.output.rejected"].sort(),
+      [
+        "m32.output.accepted",
+        "m32.output.edited",
+        "m32.output.flagged",
+        "m32.output.rejected",
+      ].sort(),
     );
   });
 

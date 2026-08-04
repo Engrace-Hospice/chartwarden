@@ -84,16 +84,16 @@ export function TriageTranscriptScreen(): JSX.Element {
 
       <Notice tone="warning">
         <strong>This read is recorded and it names you.</strong> Decrypting the transcript writes a
-        per-access audit row on top of the ordinary read trail, needs a permission separate from the one
-        that let you open the call, and needs a recent step-up. Open it because you need it, not to see
-        whether you can.
+        per-access audit row on top of the ordinary read trail, needs a permission separate from the
+        one that let you open the call, and needs a recent step-up. Open it because you need it, not
+        to see whether you can.
       </Notice>
 
       {!transcript ? (
         <Card title="Decrypt">
           <span style={mutedStyle}>
-            The caller's own words and the call transcript are stored encrypted under the per-tenant key
-            envelope. Nothing is decrypted until you ask.
+            The caller's own words and the call transcript are stored encrypted under the per-tenant
+            key envelope. Nothing is decrypted until you ask.
           </span>
           <div>
             <button
@@ -132,9 +132,9 @@ export function TriageTranscriptScreen(): JSX.Element {
               <p style={verbatimStyle}>{transcript.transcript}</p>
             ) : (
               <span style={mutedStyle}>
-                This call carries no transcript. Phase 1 captures no call AUDIO at all (D14) — there is no
-                storage and no transcription pipeline anywhere in M19 — so a transcript exists only where
-                one was typed.
+                This call carries no transcript. Phase 1 captures no call AUDIO at all (D14) — there
+                is no storage and no transcription pipeline anywhere in M19 — so a transcript exists
+                only where one was typed.
               </span>
             )}
           </Card>

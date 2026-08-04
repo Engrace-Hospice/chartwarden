@@ -133,12 +133,18 @@ export function Invoices(): JSX.Element {
                     <span className="tabular-nums">{formatDate(inv.issuedAt)}</span>
                   </Td>
                   <Td align="right">
-                    <span className="tabular-nums">{formatCents(inv.totalCents, inv.currencyCode)}</span>
+                    <span className="tabular-nums">
+                      {formatCents(inv.totalCents, inv.currencyCode)}
+                    </span>
                   </Td>
                   <Td align="right">
                     <Link
                       to={`/subscription/invoices/${inv.id}`}
-                      style={{ color: "var(--color-primary)", textDecoration: "none", fontSize: "0.8rem" }}
+                      style={{
+                        color: "var(--color-primary)",
+                        textDecoration: "none",
+                        fontSize: "0.8rem",
+                      }}
                     >
                       View →
                     </Link>
@@ -153,16 +159,16 @@ export function Invoices(): JSX.Element {
   );
 }
 
-function Th({ children, align }: { children?: JSX.Element | string; align?: "right" }): JSX.Element {
+function Th({
+  children,
+  align,
+}: { children?: JSX.Element | string; align?: "right" }): JSX.Element {
   return (
     <th style={{ padding: "0.6rem 1rem", fontWeight: 600, textAlign: align ?? "left" }}>
       {children ?? null}
     </th>
   );
 }
-function Td({
-  children,
-  align,
-}: { children: JSX.Element | string; align?: "right" }): JSX.Element {
+function Td({ children, align }: { children: JSX.Element | string; align?: "right" }): JSX.Element {
   return <td style={{ padding: "0.6rem 1rem", textAlign: align ?? "left" }}>{children}</td>;
 }

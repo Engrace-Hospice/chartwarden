@@ -27,16 +27,16 @@
 // foundation. AI-BLOCK (D13): no `@wardenx/ai-platform` import here; the per-route `actor_kind='ai_*'` reject
 // is composed at the route (see ./actor `rejectAiActor`).
 import { randomUUID } from "node:crypto";
-import * as schema from "@wardenx/db/schema";
 import {
   type ClaimState,
   type ClaimTransitionEvent,
+  reduce as claimReduce,
   deriveControlNumber,
   noeMachine,
   notrMachine,
-  reduce as claimReduce,
   repositories,
 } from "@wardenx/billing";
+import * as schema from "@wardenx/db/schema";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
@@ -242,8 +242,12 @@ function mapLines(
     lineChargeCents: l.lineChargeCents,
     levelOfCarePeriodId: l.levelOfCarePeriodId,
     modifiers: [...(l.modifiers ?? [])] as schema.NewClaimLine["modifiers"],
-    icdPointerPositions: [...(l.icdPointerPositions ?? [])] as schema.NewClaimLine["icdPointerPositions"],
-    backingEncounterIds: [...(l.backingEncounterIds ?? [])] as schema.NewClaimLine["backingEncounterIds"],
+    icdPointerPositions: [
+      ...(l.icdPointerPositions ?? []),
+    ] as schema.NewClaimLine["icdPointerPositions"],
+    backingEncounterIds: [
+      ...(l.backingEncounterIds ?? []),
+    ] as schema.NewClaimLine["backingEncounterIds"],
   }));
 }
 
@@ -283,7 +287,11 @@ export function buildDrizzleM23WriteService(
   const auditPort = ports.audit ?? denyAudit;
 
   const inOrgCtx = <T>(actor: M23WriteActor, fn: (tx: BillingDb) => Promise<T>): Promise<T> =>
-    withOrgContext<BillingDb, T>(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
+    withOrgContext<BillingDb, T>(
+      db,
+      { organizationId: actor.organizationId, userId: actor.userId },
+      fn,
+    );
 
   /** Emit a §4.10 `m23.*` event on the CALLER'S tx (commits in the same unit of work as the mutation). */
   const emit = async (
@@ -347,7 +355,9 @@ export function buildDrizzleM23WriteService(
   const unresolvedBlockingFailures = async (tx: BillingDb, claimId: string): Promise<number> => {
     const run = await new repositories.ValidationRunRepository(tx).findLatestForClaim(claimId);
     if (!run) return Number.POSITIVE_INFINITY; // never validated → cannot be READY-clean
-    const failures = await new repositories.ValidationResultRepository(tx).listFailuresForRun(run.id);
+    const failures = await new repositories.ValidationResultRepository(tx).listFailuresForRun(
+      run.id,
+    );
     if (failures.length === 0) return 0;
     const overrides = await new repositories.ValidationOverrideRepository(tx).listByResultIds(
       failures.map((f) => f.id),
@@ -361,7 +371,9 @@ export function buildDrizzleM23WriteService(
     tx: BillingDb,
     claim: repositories.ClaimRecord,
   ): Promise<ClaimDetailView> => {
-    const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(claim.id);
+    const latestRun = await new repositories.ValidationRunRepository(tx).findLatestForClaim(
+      claim.id,
+    );
     const hipps = await new repositories.HippsCalculationRepository(tx).findByClaim(claim.id);
     const sia = await new repositories.SiaCalculationRepository(tx).findByClaim(claim.id);
     return {
@@ -443,7 +455,11 @@ export function buildDrizzleM23WriteService(
     },
   ): Promise<repositories.ClaimRecord> => {
     const claimId = randomUUID();
-    const ccn = await providerCcn.ccnForProviderEntity(tx, actor.organizationId, input.providerEntityId);
+    const ccn = await providerCcn.ccnForProviderEntity(
+      tx,
+      actor.organizationId,
+      input.providerEntityId,
+    );
     let claimControlNumber: string;
     try {
       claimControlNumber = deriveControlNumber({
@@ -460,7 +476,9 @@ export function buildDrizzleM23WriteService(
       input.serviceFrom,
     );
     if (!seq) {
-      throw new ConflictError("no sequestration policy is in effect for the claim service-from date");
+      throw new ConflictError(
+        "no sequestration policy is in effect for the claim service-from date",
+      );
     }
     const totalCharge = input.totalChargeCents ?? sumCharges(input.lines);
     const claim = await new repositories.ClaimRepository(tx).create({
@@ -570,7 +588,12 @@ export function buildDrizzleM23WriteService(
           );
         await tx
           .delete(schema.claim)
-          .where(and(eq(schema.claim.id, claimId), eq(schema.claim.organizationId, actor.organizationId)));
+          .where(
+            and(
+              eq(schema.claim.id, claimId),
+              eq(schema.claim.organizationId, actor.organizationId),
+            ),
+          );
       });
     },
 
@@ -638,7 +661,11 @@ export function buildDrizzleM23WriteService(
             422,
           );
         }
-        const ccn = await providerCcn.ccnForProviderEntity(tx, actor.organizationId, claim.providerEntityId);
+        const ccn = await providerCcn.ccnForProviderEntity(
+          tx,
+          actor.organizationId,
+          claim.providerEntityId,
+        );
         const subRepo = new repositories.ClaimSubmissionRepository(tx);
         const latest = await subRepo.findLatestForClaim(claim.id);
         const attemptIndex = latest ? latest.attemptIndex + 1 : 0;
@@ -673,7 +700,12 @@ export function buildDrizzleM23WriteService(
           organizationId: actor.organizationId,
           aggregateKind: "claim",
           aggregateId: claim.id,
-          payload: { claimId: claim.id, submissionId: submission.id, claimControlNumber, attemptIndex },
+          payload: {
+            claimId: claim.id,
+            submissionId: submission.id,
+            claimControlNumber,
+            attemptIndex,
+          },
         });
         return { submissionId: submission.id, jobId, attemptIndex, claimControlNumber };
       });
@@ -752,7 +784,9 @@ export function buildDrizzleM23WriteService(
         if (!result || result.organizationId !== actor.organizationId) {
           throw new NotFoundError("validation result");
         }
-        const run = await new repositories.ValidationRunRepository(tx).findById(result.validationRunId);
+        const run = await new repositories.ValidationRunRepository(tx).findById(
+          result.validationRunId,
+        );
         if (!run || run.claimId !== claim.id) throw new NotFoundError("validation result");
         if (result.outcome !== "fail") {
           throw new ConflictError("only a failing validation result can be overridden");
@@ -823,7 +857,11 @@ export function buildDrizzleM23WriteService(
       });
     },
 
-    async updateRuleConfig(actor, ruleConfigId, args: UpdateRuleConfigArgs): Promise<RuleConfigView> {
+    async updateRuleConfig(
+      actor,
+      ruleConfigId,
+      args: UpdateRuleConfigArgs,
+    ): Promise<RuleConfigView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new repositories.ValidationRuleConfigRepository(tx);
         const existing = await repo.findById(ruleConfigId);
@@ -897,7 +935,11 @@ export function buildDrizzleM23WriteService(
           organizationId: actor.organizationId,
           aggregateKind: "noe_record",
           aggregateId: noe.id,
-          payload: { noeId: noe.id, submissionId: submission.id, noeControlNumber: noe.noeControlNumber },
+          payload: {
+            noeId: noe.id,
+            submissionId: submission.id,
+            noeControlNumber: noe.noeControlNumber,
+          },
         });
         return { submissionId: submission.id, jobId, kind: "noe" };
       });
@@ -978,7 +1020,10 @@ export function buildDrizzleM23WriteService(
     },
 
     // ── eligibility ──
-    async checkEligibility(actor, args: CheckEligibilityArgs): Promise<EligibilityCheckAcceptedView> {
+    async checkEligibility(
+      actor,
+      args: CheckEligibilityArgs,
+    ): Promise<EligibilityCheckAcceptedView> {
       return inOrgCtx(actor, async (tx) => {
         const { jobId } = await jobs.enqueue(
           "eligibility.refresh",
@@ -1040,7 +1085,10 @@ export function buildDrizzleM23WriteService(
     async upsertMacCredential(actor, args: UpsertMacCredentialArgs): Promise<MacCredentialView> {
       requireStepUp(actor);
       return inOrgCtx(actor, async (tx) => {
-        const { cipher, dekVersion } = await secretCipher.encrypt(actor.organizationId, args.clientSecret);
+        const { cipher, dekVersion } = await secretCipher.encrypt(
+          actor.organizationId,
+          args.clientSecret,
+        );
         const repo = new repositories.MacSubmitterCredentialRepository(tx);
         const existing = await repo.findByProviderEntity(args.providerEntityId);
         let row: repositories.MacSubmitterCredentialSafeRecord;
@@ -1072,7 +1120,8 @@ export function buildDrizzleM23WriteService(
           row = await repo.create({
             organizationId: actor.organizationId,
             providerEntityId: args.providerEntityId,
-            macJurisdiction: args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
+            macJurisdiction:
+              args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
             submitterId: args.submitterId,
             tradingPartnerId: args.tradingPartnerId,
             clientId: args.clientId,

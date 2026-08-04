@@ -121,7 +121,9 @@ export function TriageMetricsScreen(): JSX.Element {
   const withRedFlag = calls.filter((c) => c.redFlagAnswerCount > 0).length;
   const abandoned = calls.filter((c) => c.state === "abandoned").length;
   const closed = calls.filter((c) => c.state === "closed" || c.state === "documented").length;
-  const fromMachine = calls.filter((c) => c.source !== "manual" && c.source !== "paper_origin").length;
+  const fromMachine = calls.filter(
+    (c) => c.source !== "manual" && c.source !== "paper_origin",
+  ).length;
   const paperOrigin = calls.filter((c) => c.source === "paper_origin").length;
 
   const firstResponse = calls
@@ -162,16 +164,17 @@ export function TriageMetricsScreen(): JSX.Element {
       />
 
       <Notice tone="info">
-        Every number here is computed from the call page this screen fetched — at most {METRICS_PAGE} calls
-        in the selected window. There is no aggregate route and no total count on a triage list (a count is
-        an enumeration oracle), so these are program indicators, not a census. Where a §5.1 metric cannot be
-        computed honestly, it is listed at the bottom rather than approximated.
+        Every number here is computed from the call page this screen fetched — at most{" "}
+        {METRICS_PAGE} calls in the selected window. There is no aggregate route and no total count
+        on a triage list (a count is an enumeration oracle), so these are program indicators, not a
+        census. Where a §5.1 metric cannot be computed honestly, it is listed at the bottom rather
+        than approximated.
       </Notice>
 
       {truncated ? (
         <Notice tone="warning" live>
-          The window returned more calls than one page holds. Every count below is therefore "at least" —
-          narrow the window before reading any of them as a rate.
+          The window returned more calls than one page holds. Every count below is therefore "at
+          least" — narrow the window before reading any of them as a rate.
         </Notice>
       ) : null}
 
@@ -186,13 +189,21 @@ export function TriageMetricsScreen(): JSX.Element {
             { label: "Closed / documented", value: closed },
             { label: "Abandoned", value: abandoned, tone: abandoned > 0 ? "error" : undefined },
             { label: "Machine-triggered", value: fromMachine },
-            { label: "Re-entered from paper", value: paperOrigin, tone: paperOrigin > 0 ? "error" : undefined },
-            { label: "Busiest hour", value: calls.length > 0 ? `${String(peakHour).padStart(2, "0")}:00` : "—" },
+            {
+              label: "Re-entered from paper",
+              value: paperOrigin,
+              tone: paperOrigin > 0 ? "error" : undefined,
+            },
+            {
+              label: "Busiest hour",
+              value: calls.length > 0 ? `${String(peakHour).padStart(2, "0")}:00` : "—",
+            },
           ]}
         />
         <span style={mutedStyle}>
-          Machine-triggered calls are the ones a no-show, a late check-out or a failed alert opened —
-          proactive contact the agency made because a system noticed something, not because a family rang.
+          Machine-triggered calls are the ones a no-show, a late check-out or a failed alert opened
+          — proactive contact the agency made because a system noticed something, not because a
+          family rang.
         </span>
       </Card>
 
@@ -209,8 +220,8 @@ export function TriageMetricsScreen(): JSX.Element {
           ]}
         />
         <span style={mutedStyle}>
-          The coverage figure is read live and counted per provider entity, never unioned: coverage is
-          proved per CCN, and one covered entity must not mask another's dark night.
+          The coverage figure is read live and counted per provider entity, never unioned: coverage
+          is proved per CCN, and one covered entity must not mask another's dark night.
         </span>
       </Card>
 
@@ -227,9 +238,9 @@ export function TriageMetricsScreen(): JSX.Element {
           ]}
         />
         <span style={mutedStyle}>
-          A mean over no calls is shown as "—", not as zero: an unanswerable average is not an achievement.
-          Both means cover only the calls in this page that carry the stamp — the counts beside them are
-          the denominators, stated rather than implied.
+          A mean over no calls is shown as "—", not as zero: an unanswerable average is not an
+          achievement. Both means cover only the calls in this page that carry the stamp — the
+          counts beside them are the denominators, stated rather than implied.
         </span>
       </Card>
 
@@ -260,15 +271,17 @@ export function TriageMetricsScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          The share is of calls in this page that HAVE a disposition, not of all calls — an open call has
-          not chosen yet, and folding it into the denominator would understate every outcome.
+          The share is of calls in this page that HAVE a disposition, not of all calls — an open
+          call has not chosen yet, and folding it into the denominator would understate every
+          outcome.
         </span>
       </Card>
 
       <Card title="Coverage right now">
         {!current ? (
           <span style={mutedStyle}>
-            The live coverage verdict could not be read. That is an outage, not a finding of "no coverage".
+            The live coverage verdict could not be read. That is an outage, not a finding of "no
+            coverage".
           </span>
         ) : (
           <table style={tableStyle}>
@@ -296,31 +309,32 @@ export function TriageMetricsScreen(): JSX.Element {
       <Card title="What is deliberately not on this page">
         <ul style={{ margin: 0, paddingLeft: "1.1rem", fontSize: "0.82rem", color: "inherit" }}>
           <li style={mutedStyle}>
-            <strong>Hospitalization-avoidance rate.</strong> The outcome lives in admission data M19 does
-            not read; computing it from dispositions would count an intention as a result.
+            <strong>Hospitalization-avoidance rate.</strong> The outcome lives in admission data M19
+            does not read; computing it from dispositions would count an intention as a result.
           </li>
           <li style={mutedStyle}>
-            <strong>After-hours visit-conversion rate.</strong> The conversion happens when scheduling
-            accepts the proposal; M19 knows only that it emitted one.
+            <strong>After-hours visit-conversion rate.</strong> The conversion happens when
+            scheduling accepts the proposal; M19 knows only that it emitted one.
           </li>
           <li style={mutedStyle}>
-            <strong>Late-checkout-to-triage conversion.</strong> The denominator belongs to the visit
-            verification module, not to this one.
+            <strong>Late-checkout-to-triage conversion.</strong> The denominator belongs to the
+            visit verification module, not to this one.
           </li>
           <li style={mutedStyle}>
-            <strong>Calls per shift / per clinician.</strong> The call list carries no membership — the
-            covering shift is the assignment, and joining the two needs a read M19 does not publish.
+            <strong>Calls per shift / per clinician.</strong> The call list carries no membership —
+            the covering shift is the assignment, and joining the two needs a read M19 does not
+            publish.
           </li>
           <li style={mutedStyle}>
-            <strong>AI suggestion-acceptance rate.</strong> Both facts are recorded per call but not on the
-            list, so the figure would cost one patient-level read per row to produce a management
-            statistic. The suggestion-vs-selection delta already flows to the AI-governance channel that
-            owns it.
+            <strong>AI suggestion-acceptance rate.</strong> Both facts are recorded per call but not
+            on the list, so the figure would cost one patient-level read per row to produce a
+            management statistic. The suggestion-vs-selection delta already flows to the
+            AI-governance channel that owns it.
           </li>
           <li style={mutedStyle}>
             <strong>Escalation acknowledgement against SLA.</strong> The per-severity target is
-            tenant-shaped JSON on the on-call policy and no route resolves it to a per-row target; the
-            escalation inbox shows true elapsed minutes instead.
+            tenant-shaped JSON on the on-call policy and no route resolves it to a per-row target;
+            the escalation inbox shows true elapsed minutes instead.
           </li>
         </ul>
       </Card>

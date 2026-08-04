@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  CapTransitionError,
+  ERASED_MBI_SENTINEL,
   assertTransition,
   canTransition,
-  CapTransitionError,
   dollarsToCents,
-  ERASED_MBI_SENTINEL,
   eraseCapTenant,
   isAccrualEligible,
   parsePsrCsv,
@@ -43,7 +43,8 @@ describe("PS&R CSV parse + reconcile (D9)", () => {
     expect(dollarsToCents("")).toBe(0);
   });
   it("parses a permissive CSV (BOM, header aliases, hyphen-stripped MBI)", () => {
-    const csv = "﻿MBI,Paid Amount,Inpatient Days\r\n1EG4-TE5-MK73,1000.00,5\r\n2AB1-CD2-EF34,2000.00,3\r\n";
+    const csv =
+      "﻿MBI,Paid Amount,Inpatient Days\r\n1EG4-TE5-MK73,1000.00,5\r\n2AB1-CD2-EF34,2000.00,3\r\n";
     const rows = parsePsrCsv(csv, "ngs");
     expect(rows).toEqual([
       { mbi: "1EG4TE5MK73", paidCents: 100_000, inpatientDays: 5 },
@@ -62,7 +63,11 @@ describe("PS&R CSV parse + reconcile (D9)", () => {
     const lines = reconcilePsr(ledger, psr);
     const benLines = lines.filter((l) => l.scope === "beneficiary");
     expect(benLines).toHaveLength(1);
-    expect(benLines[0]).toMatchObject({ patientId: "p2", varianceCents: 10_000, aboveThreshold: true });
+    expect(benLines[0]).toMatchObject({
+      patientId: "p2",
+      varianceCents: 10_000,
+      aboveThreshold: true,
+    });
     const agg = lines.find((l) => l.scope === "agency_aggregate")!;
     expect(agg.varianceCents).toBe(10_000);
   });

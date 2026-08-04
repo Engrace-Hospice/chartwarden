@@ -74,16 +74,6 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
-  buildAiPlatformAbacPredicates,
-  createAiPromptRegistry,
-  createInMemoryAiGovernanceStores,
-  createInMemoryAiInvocationStores,
-  createInMemoryAiPromptTemplateStore,
-  createInMemoryAiSafetyStores,
-  denyStubAiPlatformAbacResolver,
-  maskInvocationForActor,
-  mountM32Routes,
-  M32_PERMISSION_KEY_LIST,
   type AiBackendRoutingRow,
   type AiCapabilityGovernanceRow,
   type AiEvaluationRunRowProjection,
@@ -94,13 +84,22 @@ import {
   type AiSafetyServiceDeps,
   type M32ReadService,
   type M32RouteServices,
+  M32_PERMISSION_KEY_LIST,
+  buildAiPlatformAbacPredicates,
+  createAiPromptRegistry,
+  createInMemoryAiGovernanceStores,
+  createInMemoryAiInvocationStores,
+  createInMemoryAiPromptTemplateStore,
+  createInMemoryAiSafetyStores,
+  denyStubAiPlatformAbacResolver,
+  maskInvocationForActor,
+  mountM32Routes,
 } from "../src/modules/32-ai-platform/index";
 // The six §4.1 read-surface types (R16/R17/R21/R22/R31/R32) live in `routes/read-service.ts` and are NOT
 // re-exported at the module's top-level barrel — only `M32ReadService`/`M32_PAGE_SIZES`/
 // `maskInvocationForActor` are (`../src/modules/32-ai-platform/index.ts`'s own selective re-export list).
 // Imported from their actual home instead of guessing a re-export path that does not exist.
 import {
-  clampLimit,
   type AiDriftFindingView,
   type AiInvocationLedgerPage,
   type AiInvocationLedgerView,
@@ -110,6 +109,7 @@ import {
   type AiTokenLedgerEntryView,
   type AiTokenLedgerFilters,
   type AiTokenLedgerPage,
+  clampLimit,
 } from "../src/modules/32-ai-platform/routes/read-service";
 
 // ── header-auth shim (the M11/M14/M19/M28 precedent), extended with the two facts M32 needs the
@@ -221,9 +221,11 @@ function buildFakeReadService(state: {
       if (filters.capabilityKey !== undefined) {
         rows = rows.filter((r) => r.capabilityKey === filters.capabilityKey);
       }
-      if (filters.backendKey !== undefined) rows = rows.filter((r) => r.backendKey === filters.backendKey);
+      if (filters.backendKey !== undefined)
+        rows = rows.filter((r) => r.backendKey === filters.backendKey);
       if (filters.status !== undefined) rows = rows.filter((r) => r.status === filters.status);
-      if (filters.patientId !== undefined) rows = rows.filter((r) => r.patientId === filters.patientId);
+      if (filters.patientId !== undefined)
+        rows = rows.filter((r) => r.patientId === filters.patientId);
       if (filters.disclosuresOnly === true) rows = rows.filter((r) => r.disclosedToVendor);
       if (filters.from !== undefined) {
         const from = Date.parse(filters.from);
@@ -259,7 +261,8 @@ function buildFakeReadService(state: {
       filters: AiTokenLedgerFilters,
     ): Promise<AiTokenLedgerPage> {
       let rows = state.tokenEntries.filter((r) => r.organizationId === actor.organizationId);
-      if (filters.capabilityId !== undefined) rows = rows.filter((r) => r.capabilityId === filters.capabilityId);
+      if (filters.capabilityId !== undefined)
+        rows = rows.filter((r) => r.capabilityId === filters.capabilityId);
       const limit = clampLimit(filters.limit);
       const page = rows.slice(0, limit);
       return {
@@ -282,7 +285,12 @@ function buildFakeReadService(state: {
       const since = Date.now() - Math.max(withinHours, 0) * 60 * 60 * 1000;
       return state.evaluationRuns
         .filter((r) => r.stage === "drift_response" && Date.parse(r.createdAt) >= since)
-        .map((run): AiDriftFindingView => ({ run, capabilityKey: state.capabilityKeyOf(run.capabilityId) }));
+        .map(
+          (run): AiDriftFindingView => ({
+            run,
+            capabilityKey: state.capabilityKeyOf(run.capabilityId),
+          }),
+        );
     },
 
     async health(at: string) {
@@ -452,7 +460,8 @@ function makeServer() {
     tokenEntries: tokenSeed,
     backends: [],
     evaluationRuns: safetyStores.evaluationRows,
-    capabilityKeyOf: (id) => (id === capA.id ? capA.capabilityKey : id === capB.id ? capB.capabilityKey : "unknown"),
+    capabilityKeyOf: (id) =>
+      id === capA.id ? capA.capabilityKey : id === capB.id ? capB.capabilityKey : "unknown",
   });
 
   const services: M32RouteServices = {
@@ -482,7 +491,14 @@ function makeServer() {
     {
       orgId: ORG,
       userId: "super_1",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M32_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M32_PERMISSION_KEY_LIST],
+        },
+      ],
     },
     {
       orgId: ORG,
@@ -531,7 +547,12 @@ describe("M32-ai-platform-inject — auth gating", () => {
 
   it("a correctly-permissioned actor with an empty body → 422 VALIDATION_FAILED (route: POST /api/v1/ai/capabilities)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: "/api/v1/ai/capabilities", headers: SUPER, payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/ai/capabilities",
+      headers: SUPER,
+      payload: {},
+    });
     expect(res.statusCode).toBe(422);
     expect(res.json().error.code).toBe("VALIDATION_FAILED");
     await app.close();
@@ -555,7 +576,11 @@ describe("M32-ai-platform-inject — R1-R3: capability registry", () => {
 
   it("R2 lists capabilities and R3 reads one's governance detail (200/200)", async () => {
     const { app, capA } = makeServer();
-    const list = await app.inject({ method: "GET", url: "/api/v1/ai/capabilities", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/capabilities",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().capabilities.map((c: { id: string }) => c.id)).toContain(capA.id);
 
@@ -579,14 +604,22 @@ describe("M32-ai-platform-inject — R4: capability lifecycle transitions", () =
         method: "POST",
         url: `/api/v1/ai/capabilities/${capB.id}/transitions`,
         headers: SUPER,
-        payload: { actorRole: "ai_safety_owner", rationaleText: "smoke-test transition", linkedEvaluationRunId: null, ...body },
+        payload: {
+          actorRole: "ai_safety_owner",
+          rationaleText: "smoke-test transition",
+          linkedEvaluationRunId: null,
+          ...body,
+        },
       });
 
     const step1 = await transition({ toState: "DESIGN_REVIEW", approvalKind: "stage_1_proposal" });
     expect(step1.statusCode).toBe(200);
     expect(step1.json().capability.lifecycleState).toBe("DESIGN_REVIEW");
 
-    const step2 = await transition({ toState: "EVALUATION", approvalKind: "stage_2_design_review" });
+    const step2 = await transition({
+      toState: "EVALUATION",
+      approvalKind: "stage_2_design_review",
+    });
     expect(step2.statusCode).toBe(200);
 
     const step3 = await transition({
@@ -648,9 +681,15 @@ describe("M32-ai-platform-inject — R7-R9: kill switch", () => {
     expect(activate.statusCode).toBe(201);
     expect(activate.json().row.active).toBe(true);
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/ai/kill-switches", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/kill-switches",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
-    expect(list.json().killSwitches.some((k: { capabilityId: string }) => k.capabilityId === capA.id)).toBe(true);
+    expect(
+      list.json().killSwitches.some((k: { capabilityId: string }) => k.capabilityId === capA.id),
+    ).toBe(true);
 
     const deactivate = await app.inject({
       method: "DELETE",
@@ -670,13 +709,21 @@ describe("M32-ai-platform-inject — R7-R9: kill switch", () => {
 
 // ── R10-R12 — the tenant opt-in (needs a PILOT capability — capB, walked by R4 above in a fresh server) ─
 describe("M32-ai-platform-inject — R10-R12: tenant opt-in", () => {
-  async function walkToPilot(app: ReturnType<typeof makeServer>["app"], capabilityId: string): Promise<void> {
+  async function walkToPilot(
+    app: ReturnType<typeof makeServer>["app"],
+    capabilityId: string,
+  ): Promise<void> {
     const transition = (body: Record<string, unknown>) =>
       app.inject({
         method: "POST",
         url: `/api/v1/ai/capabilities/${capabilityId}/transitions`,
         headers: SUPER,
-        payload: { actorRole: "ai_safety_owner", rationaleText: "walk to PILOT for opt-in smoke test", linkedEvaluationRunId: null, ...body },
+        payload: {
+          actorRole: "ai_safety_owner",
+          rationaleText: "walk to PILOT for opt-in smoke test",
+          linkedEvaluationRunId: null,
+          ...body,
+        },
       });
     await transition({ toState: "DESIGN_REVIEW", approvalKind: "stage_1_proposal" });
     await transition({ toState: "EVALUATION", approvalKind: "stage_2_design_review" });
@@ -705,7 +752,8 @@ describe("M32-ai-platform-inject — R10-R12: tenant opt-in", () => {
           baaReference: null,
           zdrContractReference: null,
           clinicalReviewerMembershipId: MEMBER_SUPER,
-          clinicalReviewerAttestationText: "reviewed the local-routing trade-offs for this smoke test",
+          clinicalReviewerAttestationText:
+            "reviewed the local-routing trade-offs for this smoke test",
           disclosureAccountingAcknowledged: true,
           calibrationTradeOffAcknowledged: "acknowledged the local-routing calibration trade-off",
         },
@@ -715,9 +763,15 @@ describe("M32-ai-platform-inject — R10-R12: tenant opt-in", () => {
     expect(record.statusCode).toBe(201);
     expect(record.json().status).toBe("active");
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/ai/tenant-opt-in", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/tenant-opt-in",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
-    expect(list.json().optIns.some((o: { capabilityId: string }) => o.capabilityId === capB.id)).toBe(true);
+    expect(
+      list.json().optIns.some((o: { capabilityId: string }) => o.capabilityId === capB.id),
+    ).toBe(true);
 
     const withdraw = await app.inject({
       method: "DELETE",
@@ -743,9 +797,15 @@ describe("M32-ai-platform-inject — R13-R15: clinician opt-out", () => {
     expect(optOut.statusCode).toBe(201);
     expect(optOut.json().optedOut).toBe(true);
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/ai/clinician-opt-out", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/clinician-opt-out",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
-    expect(list.json().optOuts.some((o: { capabilityId: string }) => o.capabilityId === capA.id)).toBe(true);
+    expect(
+      list.json().optOuts.some((o: { capabilityId: string }) => o.capabilityId === capA.id),
+    ).toBe(true);
 
     const revert = await app.inject({
       method: "DELETE",
@@ -762,11 +822,17 @@ describe("M32-ai-platform-inject — R13-R15: clinician opt-out", () => {
 describe("M32-ai-platform-inject — R16-R17: invocation ledger", () => {
   it("searches the ledger (200) and reads one row (200)", async () => {
     const { app } = makeServer();
-    const search = await app.inject({ method: "GET", url: "/api/v1/ai/invocations", headers: SUPER });
+    const search = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/invocations",
+      headers: SUPER,
+    });
     expect(search.statusCode).toBe(200);
-    expect(search.json().rows.some((r: { invocationId: string }) => r.invocationId === INVOCATION_SEED_ID)).toBe(
-      true,
-    );
+    expect(
+      search
+        .json()
+        .rows.some((r: { invocationId: string }) => r.invocationId === INVOCATION_SEED_ID),
+    ).toBe(true);
     // SUPER holds no `phi.full_read` grant — the row is present but masked, which is the documented rule
     // (read-service.ts's header), not a gap in this row.
     expect(search.json().phiMasked).toBe(true);
@@ -802,7 +868,11 @@ describe("M32-ai-platform-inject — R18-R20: hallucination reports", () => {
     expect(file.statusCode).toBe(201);
     expect(file.json().report.triageStatus).toBe("open");
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/ai/hallucination-reports", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/hallucination-reports",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().reports.some((r: { id: string }) => r.id === REPORT_SEED_ID)).toBe(true);
 
@@ -810,7 +880,12 @@ describe("M32-ai-platform-inject — R18-R20: hallucination reports", () => {
       method: "POST",
       url: `/api/v1/ai/hallucination-reports/${REPORT_SEED_ID}/triage`,
       headers: SUPER,
-      payload: { toStatus: "investigating", disposition: null, mitigationActionRef: null, severity: "medium" },
+      payload: {
+        toStatus: "investigating",
+        disposition: null,
+        mitigationActionRef: null,
+        severity: "medium",
+      },
     });
     expect(triage.statusCode).toBe(200);
     expect(triage.json().report.triageStatus).toBe("investigating");
@@ -822,11 +897,19 @@ describe("M32-ai-platform-inject — R18-R20: hallucination reports", () => {
 describe("M32-ai-platform-inject — R21-R22: token ledger + forecast", () => {
   it("reads the ledger (200) and the forecast (200)", async () => {
     const { app } = makeServer();
-    const ledger = await app.inject({ method: "GET", url: "/api/v1/ai/tokens/ledger", headers: SUPER });
+    const ledger = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/tokens/ledger",
+      headers: SUPER,
+    });
     expect(ledger.statusCode).toBe(200);
     expect(ledger.json().windowInputTokens).toBe(120);
 
-    const forecast = await app.inject({ method: "GET", url: "/api/v1/ai/tokens/forecast", headers: SUPER });
+    const forecast = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/tokens/forecast",
+      headers: SUPER,
+    });
     expect(forecast.statusCode).toBe(200);
     expect(Array.isArray(forecast.json().forecasts)).toBe(true);
     await app.close();
@@ -849,7 +932,11 @@ describe("M32-ai-platform-inject — R23-R25: routing overrides", () => {
     });
     expect(set.statusCode).toBe(201);
 
-    const list = await app.inject({ method: "GET", url: "/api/v1/ai/routing-overrides", headers: SUPER });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/routing-overrides",
+      headers: SUPER,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().overrides.length).toBeGreaterThan(0);
 
@@ -888,7 +975,11 @@ describe("M32-ai-platform-inject — R26-R28: evaluation runs", () => {
     expect(list.statusCode).toBe(200);
     expect(list.json().runs.some((r: { id: string }) => r.id === RUN_SEED_ID)).toBe(true);
 
-    const one = await app.inject({ method: "GET", url: `/api/v1/ai/evaluations/${RUN_SEED_ID}`, headers: SUPER });
+    const one = await app.inject({
+      method: "GET",
+      url: `/api/v1/ai/evaluations/${RUN_SEED_ID}`,
+      headers: SUPER,
+    });
     expect(one.statusCode).toBe(200);
     expect(one.json().id).toBe(RUN_SEED_ID);
     await app.close();
@@ -919,7 +1010,8 @@ describe("M32-ai-platform-inject — R29-R30: prompt template activation + read"
         outputEntityTargetPrefix: "note_",
         outputTypePrefix: "summary_",
         approvedByMembershipId: MEMBER_SUPER,
-        clinicalReviewerAttestation: "reviewed and approved for the M32 smoke suite; meets the clinical bar.",
+        clinicalReviewerAttestation:
+          "reviewed and approved for the M32 smoke suite; meets the clinical bar.",
       },
     });
     expect(activate.statusCode).toBe(201);
@@ -943,7 +1035,9 @@ describe("M32-ai-platform-inject — R31: drift", () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: "/api/v1/ai/drift/recent", headers: SUPER });
     expect(res.statusCode).toBe(200);
-    expect(res.json().findings.some((f: { run: { id: string } }) => f.run.id === RUN_SEED_ID)).toBe(true);
+    expect(res.json().findings.some((f: { run: { id: string } }) => f.run.id === RUN_SEED_ID)).toBe(
+      true,
+    );
     await app.close();
   });
 });

@@ -34,6 +34,21 @@ import {
   updateContact,
 } from "./bereavement-api";
 import {
+  CONTACT_STATUS_TONE,
+  DEFAULT_LOG_OUTCOME,
+  DEFAULT_NON_ENCOUNTER_KIND,
+  DEFAULT_OPT_OUT_KIND,
+  LOG_OUTCOMES,
+  NON_ENCOUNTER_OUTREACH_KINDS,
+  OPT_OUT_KINDS,
+  OUTREACH_KINDS,
+  dateTime,
+  humanize,
+  outreachKindLabel,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   CheckboxField,
   Field,
@@ -51,23 +66,16 @@ import {
   pageTitleStyle,
   primaryButtonStyle,
 } from "./bereavement-ui";
-import {
-  CONTACT_STATUS_TONE,
-  DEFAULT_LOG_OUTCOME,
-  DEFAULT_NON_ENCOUNTER_KIND,
-  DEFAULT_OPT_OUT_KIND,
-  LOG_OUTCOMES,
-  NON_ENCOUNTER_OUTREACH_KINDS,
-  OPT_OUT_KINDS,
-  OUTREACH_KINDS,
-  dateTime,
-  humanize,
-  outreachKindLabel,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
-type Ceremony = "opt-out" | "rescind" | "deceased" | "unreachable" | "confirm" | "log" | "channels" | null;
+type Ceremony =
+  | "opt-out"
+  | "rescind"
+  | "deceased"
+  | "unreachable"
+  | "confirm"
+  | "log"
+  | "channels"
+  | null;
 
 export function BereavedContactDetail(): JSX.Element {
   const client = useApiClient();
@@ -121,7 +129,10 @@ export function BereavedContactDetail(): JSX.Element {
             <Link to={`/bereavement/plans/${planId}`} style={ghostButtonStyle}>
               Back to plan
             </Link>
-            <Link to={`/bereavement/plans/${planId}/contacts/${contactId}/screen`} style={ghostButtonStyle}>
+            <Link
+              to={`/bereavement/plans/${planId}/contacts/${contactId}/screen`}
+              style={ghostButtonStyle}
+            >
               Grief screen
             </Link>
           </div>
@@ -131,7 +142,8 @@ export function BereavedContactDetail(): JSX.Element {
       {contact.status === "proposed" ? (
         <Notice tone="warning">
           This survivor is `proposed` — no outreach may be attempted until they are confirmed, and
-          confirming resolves the M39 bereavement-outreach consent server-side. That check fails CLOSED.
+          confirming resolves the M39 bereavement-outreach consent server-side. That check fails
+          CLOSED.
         </Notice>
       ) : null}
 
@@ -147,7 +159,10 @@ export function BereavedContactDetail(): JSX.Element {
       <Card
         title="Survivor"
         actions={
-          <StatusPill label={humanize(contact.status)} tone={toneOf(CONTACT_STATUS_TONE, contact.status)} />
+          <StatusPill
+            label={humanize(contact.status)}
+            tone={toneOf(CONTACT_STATUS_TONE, contact.status)}
+          />
         }
       >
         <SummaryGrid>
@@ -163,13 +178,19 @@ export function BereavedContactDetail(): JSX.Element {
             value={contact.consentRecordId ? shortId(contact.consentRecordId) : "—"}
             mono
           />
-          <Field label="M31 portal account" value={contact.portalAccountId ? "linked" : "not linked"} />
-          <Field label="Volunteer-visible only" value={contact.volunteerVisibleOnly ? "yes" : "no"} />
+          <Field
+            label="M31 portal account"
+            value={contact.portalAccountId ? "linked" : "not linked"}
+          />
+          <Field
+            label="Volunteer-visible only"
+            value={contact.volunteerVisibleOnly ? "yes" : "no"}
+          />
           <Field label="Version" value={contact.version} />
         </SummaryGrid>
         <span style={mutedStyle}>
-          Email, phone and mailing address are envelope-encrypted at rest and are not returned on this read
-          surface — the allowed CHANNELS are, because those drive what may be sent.
+          Email, phone and mailing address are envelope-encrypted at rest and are not returned on
+          this read surface — the allowed CHANNELS are, because those drive what may be sent.
         </span>
       </Card>
 
@@ -214,9 +235,9 @@ export function BereavedContactDetail(): JSX.Element {
           </button>
         </div>
         <span style={mutedStyle}>
-          Marking a survivor deceased is §2.3's only terminal state, so the verification source is required.
-          Marking unreachable accepts the nightly three-strikes proposal — the machine enforces the
-          threshold, so firing this early is refused rather than silently trusted.
+          Marking a survivor deceased is §2.3's only terminal state, so the verification source is
+          required. Marking unreachable accepts the nightly three-strikes proposal — the machine
+          enforces the threshold, so firing this early is refused rather than silently trusted.
         </span>
       </Card>
 
@@ -312,7 +333,9 @@ function OptOutModal({
   const [error, setError] = useState<string | null>(null);
 
   const toggle = (k: string) =>
-    setChannelKinds(channelKinds.includes(k) ? channelKinds.filter((x) => x !== k) : [...channelKinds, k]);
+    setChannelKinds(
+      channelKinds.includes(k) ? channelKinds.filter((x) => x !== k) : [...channelKinds, k],
+    );
 
   const submit = async () => {
     setBusy(true);
@@ -352,9 +375,9 @@ function OptOutModal({
       }
     >
       <Notice tone="info">
-        A full opt-out cancels every future touchpoint for this survivor, and closes the plan if it was the
-        last enrollee. A self-service opt-out may be rescinded for 90 days; a counselor rescind with a
-        documented reason is not bound by that window.
+        A full opt-out cancels every future touchpoint for this survivor, and closes the plan if it
+        was the last enrollee. A self-service opt-out may be rescinded for 90 days; a counselor
+        rescind with a documented reason is not bound by that window.
       </Notice>
       <SelectField
         label="Scope"
@@ -417,8 +440,9 @@ function RescindModal({
       }
     >
       <Notice tone="info">
-        A survivor who calls back at month five asking to re-enrol should not be told the software forgot
-        how. A counselor rescind is not bound by the 90-day self-service window, but it must say why.
+        A survivor who calls back at month five asking to re-enrol should not be told the software
+        forgot how. A counselor rescind is not bound by the 90-day self-service window, but it must
+        say why.
       </Notice>
       <TextAreaField label="Reason" value={reason} onChange={setReason} />
       {error ? <p style={alertStyle}>{error}</p> : null}
@@ -472,7 +496,12 @@ function DeceasedModal({
         This is the only terminal state in the survivor lifecycle. A verified date and where the
         verification came from are both required.
       </Notice>
-      <TextField label="Date of death" type="datetime-local" value={deceasedAt} onChange={setDeceasedAt} />
+      <TextField
+        label="Date of death"
+        type="datetime-local"
+        value={deceasedAt}
+        onChange={setDeceasedAt}
+      />
       <TextField
         label="Verification source"
         value={deathSource}
@@ -498,9 +527,14 @@ function UnreachableModal({
   const submit = async () => {
     setBusy(true);
     setError(null);
-    const { error: err } = await markContactUnreachable(client, contact.contactId, contact.version, {
-      note: note || undefined,
-    });
+    const { error: err } = await markContactUnreachable(
+      client,
+      contact.contactId,
+      contact.version,
+      {
+        note: note || undefined,
+      },
+    );
     setBusy(false);
     if (err) {
       setError(
@@ -575,14 +609,18 @@ function LogDirectModal({
       }
     >
       <Notice tone="info">
-        An ad-hoc kind must be one this survivor allows — stricter than the scheduled book, because a
-        counselor making an extra call has no regulatory obligation that overrides the family's wishes. An
-        in-person visit is not offered here: that is an M8 encounter, completed from the outreach planner.
+        An ad-hoc kind must be one this survivor allows — stricter than the scheduled book, because
+        a counselor making an extra call has no regulatory obligation that overrides the family's
+        wishes. An in-person visit is not offered here: that is an M8 encounter, completed from the
+        outreach planner.
       </Notice>
       <SelectField
         label="Modality"
         value={kind}
-        options={NON_ENCOUNTER_OUTREACH_KINDS.map((k) => ({ value: k, label: outreachKindLabel(k) }))}
+        options={NON_ENCOUNTER_OUTREACH_KINDS.map((k) => ({
+          value: k,
+          label: outreachKindLabel(k),
+        }))}
         onChange={setKind}
       />
       <SelectField
@@ -591,8 +629,17 @@ function LogDirectModal({
         options={LOG_OUTCOMES.map((o) => ({ value: o, label: humanize(o) }))}
         onChange={setOutcome}
       />
-      <TextField label="Contacted at" type="datetime-local" value={contactAt} onChange={setContactAt} />
-      <CheckboxField label="The survivor responded directly" checked={responded} onChange={setResponded} />
+      <TextField
+        label="Contacted at"
+        type="datetime-local"
+        value={contactAt}
+        onChange={setContactAt}
+      />
+      <CheckboxField
+        label="The survivor responded directly"
+        checked={responded}
+        onChange={setResponded}
+      />
       <TextAreaField label="Counselor note" value={notes} onChange={setNotes} />
       {error ? <p style={alertStyle}>{error}</p> : null}
     </Modal>

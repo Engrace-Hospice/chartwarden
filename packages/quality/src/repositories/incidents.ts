@@ -5,7 +5,7 @@
 // (keyset on (occurred_at, id) desc, §4.1.2). The free-text members of `kind_data` are audit-denylisted
 // (§3.6). Auto-creation idempotency runs through `findByTriggeringEvent` (the per-leaf partial-unique).
 import { schema } from "@wardenx/db";
-import { and, desc, eq, lt, ne, or, type SQL } from "drizzle-orm";
+import { type SQL, and, desc, eq, lt, ne, or } from "drizzle-orm";
 import type { QualityDb } from "./db";
 
 const I = schema.incidentReport;
@@ -161,7 +161,8 @@ export class IncidentRepository {
       .set(patch)
       .where(and(eq(I.id, id), eq(I.occurredAt, occurredAt)))
       .returning();
-    if (!row) throw new Error(`incident_report ${id}@${occurredAt.toISOString()} not found for update`);
+    if (!row)
+      throw new Error(`incident_report ${id}@${occurredAt.toISOString()} not found for update`);
     return row;
   }
 }

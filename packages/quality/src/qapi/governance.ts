@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/quality — §2.2 QAPI governance-minutes signing + amendment logic (M30-P2a). Pure, IO-free.
 //
 // `qapi_governance_minutes` has a two-state lifecycle: `draft → signed`. Signed minutes are append-only;
@@ -6,7 +7,6 @@
 // appended to the `amendment_log` jsonb array instead. This module is the pure core for both the sign
 // transition and the append-only amendment; the route persists + audits around it.
 import { WardenXError } from "@wardenx/types";
-import type { schema } from "@wardenx/db";
 
 /** The §2.2 minutes lifecycle state. */
 export type MinutesState = "draft" | "signed";

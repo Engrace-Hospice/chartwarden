@@ -44,7 +44,8 @@ export function decideVerbalExpiry(
   payload: VerbalExpiredPayload,
   facts: VerbalExpiredFacts,
 ): VerbalExpiredAction {
-  if (payload.targetKind !== "medication_order") return { kind: "skip", reason: "not_medication_order" };
+  if (payload.targetKind !== "medication_order")
+    return { kind: "skip", reason: "not_medication_order" };
   if (facts.status !== "verbal_pending") return { kind: "skip", reason: "not_verbal_pending" };
   return {
     kind: "expire",

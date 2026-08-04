@@ -93,12 +93,7 @@ export const BEREAVED_CONTACT_GRAPH: Readonly<
   Record<BereavedContactLifecycleState, ReadonlyArray<BereavedContactEvent["type"]>>
 > = {
   proposed: ["confirmContact"],
-  active: [
-    "optOut",
-    "markDeceased",
-    "markUnreachable",
-    "flagComplicatedGrief",
-  ],
+  active: ["optOut", "markDeceased", "markUnreachable", "flagComplicatedGrief"],
   opted_out: ["rescindOptOut"],
   unreachable: ["rescindUnreachable"],
   ineligible_post_review: ["clinicalReevaluation"],

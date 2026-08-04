@@ -68,16 +68,30 @@ export type NoticeState =
 export type TypeOfBill = "811" | "812" | "813" | "814" | "817" | "818";
 
 /** CMS hospice level-of-care segments (HIPPS / per-diem inputs, D7). */
-export type LevelOfCare = "routine_home_care" | "continuous_home_care" | "inpatient_respite_care" | "general_inpatient_care";
+export type LevelOfCare =
+  | "routine_home_care"
+  | "continuous_home_care"
+  | "inpatient_respite_care"
+  | "general_inpatient_care";
 
 export type ValidationOutcome = "pass" | "fail" | "warn" | "info";
 export type ValidationSeverity = "error" | "warn" | "info";
 export type EligibilityOutcome = "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
-export type SubmissionStatus = "queued" | "uploaded" | "accepted" | "partial" | "rejected" | "failed";
+export type SubmissionStatus =
+  | "queued"
+  | "uploaded"
+  | "accepted"
+  | "partial"
+  | "rejected"
+  | "failed";
 export type AdjudicationOutcome = "paid" | "partial_paid" | "denied";
 
 /** The override-role gate per rule (§4.5 / §4.7 `override_role_eligible`). */
-export type OverrideRole = "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+export type OverrideRole =
+  | "billing_manager"
+  | "compliance_officer"
+  | "medical_director"
+  | "org_admin";
 
 // ── published-seam DTO shapes (§4.3) — SKELETON projections (no PHI / no MBI) ──────────────────────────
 // TODO(P2): widen each DTO to the live projection column set as the §3.3 read services land. The shapes

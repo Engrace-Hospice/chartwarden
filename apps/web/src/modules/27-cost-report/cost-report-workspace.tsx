@@ -14,15 +14,33 @@ import {
 // surface — the server is the only authz point (ADR-0030). Lantern: WorkQueueLayout + worksheet grid.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { STATE_TONE, TIER_TONE, WORKSHEET_NAV, daysUntil, humanize, shortDate, toneOf } from "./cost-report-status";
 import { ReportPicker, sectionTitle, useReportPicker } from "./cost-report-shared";
+import {
+  STATE_TONE,
+  TIER_TONE,
+  WORKSHEET_NAV,
+  daysUntil,
+  humanize,
+  shortDate,
+  toneOf,
+} from "./cost-report-status";
 
 interface Detail {
   state: string;
   fiscalYearEndDate: string;
   reopenCount: number;
-  complianceWindow: { currentEffectiveDeadlineDate: string; lastAlertTier: string; closedAt: string | null } | null;
-  latestValidation: { status: string; passedCount: number; failedCount: number; warningCount: number; skippedCount: number } | null;
+  complianceWindow: {
+    currentEffectiveDeadlineDate: string;
+    lastAlertTier: string;
+    closedAt: string | null;
+  } | null;
+  latestValidation: {
+    status: string;
+    passedCount: number;
+    failedCount: number;
+    warningCount: number;
+    skippedCount: number;
+  } | null;
   latestSubmission: { status: string } | null;
 }
 
@@ -38,14 +56,22 @@ const chip = (active: boolean) => ({
 
 export function CostReportWorkspace(): JSX.Element {
   const client = useApiClient();
-  const { reports, selectedId, setSelectedId, loading: picking, error: pickErr } = useReportPicker();
+  const {
+    reports,
+    selectedId,
+    setSelectedId,
+    loading: picking,
+    error: pickErr,
+  } = useReportPicker();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedId) return;
     setLoading(true);
-    const res = await client.GET("/api/v1/cost-reports/{id}", { params: { path: { id: selectedId } } });
+    const res = await client.GET("/api/v1/cost-reports/{id}", {
+      params: { path: { id: selectedId } },
+    });
     setDetail(res.error ? null : (res.data as unknown as Detail));
     setLoading(false);
   }, [client, selectedId]);
@@ -55,8 +81,15 @@ export function CostReportWorkspace(): JSX.Element {
   }, [load]);
 
   if (picking) return <LoadingSpinner />;
-  if (pickErr) return <EmptyState title="Unavailable" description="Cost reports could not be loaded." />;
-  if (!selectedId) return <EmptyState title="No cost reports" description="Create a cost report to open the workspace." />;
+  if (pickErr)
+    return <EmptyState title="Unavailable" description="Cost reports could not be loaded." />;
+  if (!selectedId)
+    return (
+      <EmptyState
+        title="No cost reports"
+        description="Create a cost report to open the workspace."
+      />
+    );
 
   const v = detail?.latestValidation;
   const deadline = detail?.complianceWindow?.currentEffectiveDeadlineDate ?? null;
@@ -67,11 +100,18 @@ export function CostReportWorkspace(): JSX.Element {
       header={
         <PageHeader
           title="Cost Report Workspace"
-          breadcrumb={detail ? `Revenue Cycle — FYE ${shortDate(detail.fiscalYearEndDate)}` : "Revenue Cycle"}
+          breadcrumb={
+            detail ? `Revenue Cycle — FYE ${shortDate(detail.fiscalYearEndDate)}` : "Revenue Cycle"
+          }
           actions={
             <span style={{ display: "inline-flex", gap: "0.75rem", alignItems: "center" }}>
               <ReportPicker reports={reports} selectedId={selectedId} onChange={setSelectedId} />
-              {detail ? <StatusPill tone={toneOf(STATE_TONE, detail.state)} label={humanize(detail.state)} /> : null}
+              {detail ? (
+                <StatusPill
+                  tone={toneOf(STATE_TONE, detail.state)}
+                  label={humanize(detail.state)}
+                />
+              ) : null}
             </span>
           }
         />
@@ -83,7 +123,10 @@ export function CostReportWorkspace(): JSX.Element {
             label="Days remaining"
             value={dleft == null ? "—" : dleft < 0 ? `${-dleft} overdue` : String(dleft)}
           />
-          <KpiCard label="Validation" value={v ? `${v.passedCount}✓ / ${v.failedCount}✗` : "Not run"} />
+          <KpiCard
+            label="Validation"
+            value={v ? `${v.passedCount}✓ / ${v.failedCount}✗` : "Not run"}
+          />
         </KpiStrip>
       }
       table={
@@ -94,22 +137,55 @@ export function CostReportWorkspace(): JSX.Element {
             <div>
               <h3 style={sectionTitle}>Filing window</h3>
               {detail?.complianceWindow ? (
-                <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)", margin: 0 }}>
+                <p
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "var(--color-on-surface-variant)",
+                    margin: 0,
+                  }}
+                >
                   Effective deadline {shortDate(deadline)} ·{" "}
-                  <StatusPill tone={toneOf(TIER_TONE, detail.complianceWindow.lastAlertTier)} label={humanize(detail.complianceWindow.lastAlertTier)} />
+                  <StatusPill
+                    tone={toneOf(TIER_TONE, detail.complianceWindow.lastAlertTier)}
+                    label={humanize(detail.complianceWindow.lastAlertTier)}
+                  />
                   {detail.reopenCount > 0 ? ` · reopened ×${detail.reopenCount}` : ""}
                 </p>
               ) : (
-                <p style={{ fontSize: "0.85rem", color: "var(--color-on-surface-variant)", margin: 0 }}>No compliance window yet.</p>
+                <p
+                  style={{
+                    fontSize: "0.85rem",
+                    color: "var(--color-on-surface-variant)",
+                    margin: 0,
+                  }}
+                >
+                  No compliance window yet.
+                </p>
               )}
             </div>
             <div>
               <h3 style={sectionTitle}>Worksheets (Form CMS-1984-14)</h3>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "0.5rem" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+                  gap: "0.5rem",
+                }}
+              >
                 {WORKSHEET_NAV.map((w) => (
                   <div key={w.code} style={chip(false)}>
-                    <span style={{ fontWeight: 600, fontSize: "0.85rem", color: "var(--color-on-surface)" }}>{w.code}</span>
-                    <span style={{ fontSize: "0.72rem", color: "var(--color-on-surface-variant)" }}>{w.label}</span>
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        fontSize: "0.85rem",
+                        color: "var(--color-on-surface)",
+                      }}
+                    >
+                      {w.code}
+                    </span>
+                    <span style={{ fontSize: "0.72rem", color: "var(--color-on-surface-variant)" }}>
+                      {w.label}
+                    </span>
                   </div>
                 ))}
               </div>

@@ -14,11 +14,7 @@
 // `clinical_context_snapshot` ever crosses (store.ts header rule).
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContextFromRequest } from "@wardenx/tenancy";
-import type {
-  HopeJ2051Event,
-  HopeSubmissionStatusView,
-  HopeTimepointStatus,
-} from "@wardenx/types";
+import type { HopeJ2051Event, HopeSubmissionStatusView, HopeTimepointStatus } from "@wardenx/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { HopeSeamStore } from "./store";
 
@@ -105,7 +101,10 @@ export function createDrizzleHopeSeamStore(db: DbClient): HopeSeamStore {
   return {
     async timepointsForPatient(patientId) {
       return withOrgContextFromRequest(db, async (tx: SeamTx) => {
-        const rows = await tx.select(SCHED_COLUMNS).from(SCHED).where(eq(SCHED.patientId, patientId));
+        const rows = await tx
+          .select(SCHED_COLUMNS)
+          .from(SCHED)
+          .where(eq(SCHED.patientId, patientId));
         return rows.map(toTimepoint);
       });
     },
@@ -185,7 +184,11 @@ export function createDrizzleHopeSeamStore(db: DbClient): HopeSeamStore {
 
     async submissionById(submissionId) {
       return withOrgContextFromRequest(db, async (tx: SeamTx) => {
-        const rows = await tx.select(SUB_COLUMNS).from(SUB).where(eq(SUB.id, submissionId)).limit(1);
+        const rows = await tx
+          .select(SUB_COLUMNS)
+          .from(SUB)
+          .where(eq(SUB.id, submissionId))
+          .limit(1);
         return rows[0] ? toSubmission(rows[0]) : null;
       });
     },

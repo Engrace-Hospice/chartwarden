@@ -73,7 +73,8 @@ const POLICY: SafetyPolicyEffectiveDto = {
   effectiveFrom: "2026-01-01T00:00:00.000Z",
   effectiveTo: null,
   ...SAFETY_POLICY_FLOOR,
-  subscriptionModel: SAFETY_POLICY_FLOOR.subscriptionModel as SafetyPolicyEffectiveDto["subscriptionModel"],
+  subscriptionModel:
+    SAFETY_POLICY_FLOOR.subscriptionModel as SafetyPolicyEffectiveDto["subscriptionModel"],
 };
 
 function scheduleRow(over: Partial<SafetyScheduleRowFacts> = {}): SafetyScheduleRowFacts {
@@ -137,7 +138,9 @@ describe("§7.1 / §4.8 — the cadence materializer", () => {
       policyVersionId: POLICY_VERSION,
       existing: [],
     });
-    expect(decision.mutations.filter((m) => m.kind === "insert" && m.row.kind === "mid_visit")).toEqual([]);
+    expect(
+      decision.mutations.filter((m) => m.kind === "insert" && m.row.kind === "mid_visit"),
+    ).toEqual([]);
     expect(decision.skipped).toEqual([
       { kind: "mid_visit", reason: "visit_shorter_than_mid_visit_minimum" },
     ]);
@@ -234,8 +237,16 @@ describe("§2.2.1 — reassignment and completion", () => {
     const decision = decideVisitCompleted({
       completedAt: "2026-08-03T10:30:00.000Z",
       existing: [
-        scheduleRow({ scheduleId: "mid", kind: "mid_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
-        scheduleRow({ scheduleId: "post", kind: "post_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
+        scheduleRow({
+          scheduleId: "mid",
+          kind: "mid_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
+        scheduleRow({
+          scheduleId: "post",
+          kind: "post_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
         scheduleRow({
           scheduleId: "pre",
           kind: "pre_visit",
@@ -257,9 +268,22 @@ describe("§4.8 — the no-show inquiry", () => {
     const decision = decideVisitNoShow({
       detectedAt,
       existing: [
-        scheduleRow({ scheduleId: "pre", kind: "pre_visit", expectedAt: "2026-08-03T09:45:00.000Z", windowMinutes: 15 }),
-        scheduleRow({ scheduleId: "mid", kind: "mid_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
-        scheduleRow({ scheduleId: "post", kind: "post_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
+        scheduleRow({
+          scheduleId: "pre",
+          kind: "pre_visit",
+          expectedAt: "2026-08-03T09:45:00.000Z",
+          windowMinutes: 15,
+        }),
+        scheduleRow({
+          scheduleId: "mid",
+          kind: "mid_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
+        scheduleRow({
+          scheduleId: "post",
+          kind: "post_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
       ],
     });
     expect(decision.inquiry?.scheduleId).toBe("pre");
@@ -269,8 +293,14 @@ describe("§4.8 — the no-show inquiry", () => {
       { kind: "retire", scheduleId: "mid", reason: "visit_no_show" },
       { kind: "retire", scheduleId: "post", reason: "visit_no_show" },
     ]);
-    expect(decision.effects).toContainEqual({ kind: "outbox", event: "m20.safety.check_in_overdue" });
-    expect(decision.effects).toContainEqual({ kind: "alert", alert: "m20.safety.check_in_overdue" });
+    expect(decision.effects).toContainEqual({
+      kind: "outbox",
+      event: "m20.safety.check_in_overdue",
+    });
+    expect(decision.effects).toContainEqual({
+      kind: "alert",
+      alert: "m20.safety.check_in_overdue",
+    });
   });
 
   it("emits NO inquiry when every prompt was answered or is still in the future", () => {
@@ -278,7 +308,11 @@ describe("§4.8 — the no-show inquiry", () => {
       detectedAt,
       existing: [
         scheduleRow({ scheduleId: "pre", kind: "pre_visit", state: "recorded" }),
-        scheduleRow({ scheduleId: "mid", kind: "mid_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
+        scheduleRow({
+          scheduleId: "mid",
+          kind: "mid_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
       ],
     });
     expect(decision.inquiry).toBeNull();
@@ -292,8 +326,17 @@ describe("§4.8 — the no-show inquiry", () => {
     const decision = decideVisitNoShow({
       detectedAt,
       existing: [
-        scheduleRow({ scheduleId: "pre", kind: "pre_visit", state: "overdue", expectedAt: "2026-08-03T09:45:00.000Z" }),
-        scheduleRow({ scheduleId: "mid", kind: "mid_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
+        scheduleRow({
+          scheduleId: "pre",
+          kind: "pre_visit",
+          state: "overdue",
+          expectedAt: "2026-08-03T09:45:00.000Z",
+        }),
+        scheduleRow({
+          scheduleId: "mid",
+          kind: "mid_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
       ],
     });
     expect(decision.inquiry).toBeNull();
@@ -352,8 +395,16 @@ describe("§7.1 — the M18 bracket consumers", () => {
       policy: POLICY,
       policyVersionId: POLICY_VERSION,
       existing: [
-        scheduleRow({ scheduleId: "post", kind: "post_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
-        scheduleRow({ scheduleId: "mid", kind: "mid_visit", expectedAt: "2026-08-03T11:00:00.000Z" }),
+        scheduleRow({
+          scheduleId: "post",
+          kind: "post_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
+        scheduleRow({
+          scheduleId: "mid",
+          kind: "mid_visit",
+          expectedAt: "2026-08-03T11:00:00.000Z",
+        }),
       ],
     });
     expect(decision.mutations).toEqual([
@@ -438,7 +489,9 @@ describe("§7.7 — the GPS-spoof defensive badge", () => {
 });
 
 describe("§7.5 D14 — the after-hours parallel recipient set", () => {
-  const membershipActor = (over: Partial<Extract<OnCallActor, { kind: "membership" }>> = {}): OnCallActor => ({
+  const membershipActor = (
+    over: Partial<Extract<OnCallActor, { kind: "membership" }>> = {},
+  ): OnCallActor => ({
     kind: "membership",
     shiftId: "shift-1",
     membershipId: "rn-patricia",

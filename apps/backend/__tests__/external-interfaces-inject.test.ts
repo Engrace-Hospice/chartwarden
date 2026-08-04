@@ -49,13 +49,13 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  type M29AbacResolver,
+  type M29Store,
+  M29_PERMISSION_KEY_LIST,
   buildM29AbacPredicates,
   createInMemoryM29Store,
   denyStubM29AbacResolver,
-  M29_PERMISSION_KEY_LIST,
   mountM29Routes,
-  type M29AbacResolver,
-  type M29Store,
 } from "../src/modules/29-external-interfaces/index";
 
 // ── header-auth shim (the M11/M19/M28 precedent) ─────────────────────────────────────────────────────
@@ -478,13 +478,16 @@ describe("M29-external-interfaces-inject — §4.1.3 message search (routes 16, 
   it.each([
     ["GET", "/api/admin/external-interfaces/messages/inbound"],
     ["GET", "/api/admin/external-interfaces/messages/outbound"],
-  ] as const)("%s %s → 200 empty page (list side is real; single-read side is not — see below)", async (method, url) => {
-    const { app } = makeServer();
-    const res = await app.inject({ method, url, headers: SUPER });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().items).toEqual([]);
-    await app.close();
-  });
+  ] as const)(
+    "%s %s → 200 empty page (list side is real; single-read side is not — see below)",
+    async (method, url) => {
+      const { app } = makeServer();
+      const res = await app.inject({ method, url, headers: SUPER });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().items).toEqual([]);
+      await app.close();
+    },
+  );
 });
 
 describe("M29-external-interfaces-inject — §4.1.3 message single-read/replay/retry/decrypt (routes 17-19, 21-22 — documented 404s)", () => {
@@ -493,12 +496,15 @@ describe("M29-external-interfaces-inject — §4.1.3 message single-read/replay/
   it.each([
     ["GET", `/api/admin/external-interfaces/messages/inbound/${messageId}`],
     ["GET", `/api/admin/external-interfaces/messages/outbound/${messageId}`],
-  ] as const)("%s %s → 404 (the in-memory store's single-message read is an honest always-null stub)", async (method, url) => {
-    const { app } = makeServer();
-    const res = await app.inject({ method, url, headers: SUPER });
-    expect(res.statusCode).toBe(404);
-    await app.close();
-  });
+  ] as const)(
+    "%s %s → 404 (the in-memory store's single-message read is an honest always-null stub)",
+    async (method, url) => {
+      const { app } = makeServer();
+      const res = await app.inject({ method, url, headers: SUPER });
+      expect(res.statusCode).toBe(404);
+      await app.close();
+    },
+  );
 
   it("POST /messages/inbound/:id/decrypt → 404 (getInboundMessage is null before the 'no DEK' 501 is even reached; step-up)", async () => {
     const { app } = makeServer();

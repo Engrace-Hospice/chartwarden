@@ -75,9 +75,7 @@ export function createInMemoryHopeSeamStore(seed: HopeSeamSeed = {}): { store: H
       async latestSubmissionForProviderEntity(providerEntityId) {
         const forPe = submissions.filter((s) => s.providerEntityId === providerEntityId);
         if (forPe.length === 0) return null;
-        return forPe.reduce((latest, s) =>
-          transmittedAt(s) > transmittedAt(latest) ? s : latest,
-        );
+        return forPe.reduce((latest, s) => (transmittedAt(s) > transmittedAt(latest) ? s : latest));
       },
       async submissionById(submissionId) {
         return submissions.find((s) => s.submissionId === submissionId) ?? null;

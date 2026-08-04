@@ -1,11 +1,11 @@
 // @wardenx/scheduling — §2.2.6 D7 time_off lifecycle + §2.2.5 availability validator — M17-T03.
 import { describe, expect, it } from "vitest";
 import {
-  transitionTimeOff,
-  planTimeOffRequested,
   TIME_OFF_GRAPH,
   assertAvailabilityWindowValid,
   outboxEvents,
+  planTimeOffRequested,
+  transitionTimeOff,
 } from "../src/lifecycle";
 
 describe("§2.2.6 time_off lifecycle", () => {
@@ -22,20 +22,33 @@ describe("§2.2.6 time_off lifecycle", () => {
   });
 
   it("approve triggers the reassignment scan + emits time_off.approved", () => {
-    const t = transitionTimeOff("requested", { type: "approve", approverPresent: true, conflictingVisitCount: 3 });
+    const t = transitionTimeOff("requested", {
+      type: "approve",
+      approverPresent: true,
+      conflictingVisitCount: 3,
+    });
     expect(t.to).toBe("approved");
     expect(t.effects).toContainEqual({ kind: "trigger_reassignment_scan" });
     expect(outboxEvents(t.effects)).toEqual(["m17.time_off.approved"]);
   });
 
   it("approve requires an approver (422)", () => {
-    expect(() => transitionTimeOff("requested", { type: "approve", approverPresent: false, conflictingVisitCount: 0 })).toThrowError(
+    expect(() =>
+      transitionTimeOff("requested", {
+        type: "approve",
+        approverPresent: false,
+        conflictingVisitCount: 0,
+      }),
+    ).toThrowError(
       expect.objectContaining({ code: "TIME_OFF_APPROVER_REQUIRED", statusCode: 422 }),
     );
   });
 
   it("deny requires a ≥20-char reason and emits time_off.denied", () => {
-    const t = transitionTimeOff("requested", { type: "deny", reason: "Insufficient coverage for that week" });
+    const t = transitionTimeOff("requested", {
+      type: "deny",
+      reason: "Insufficient coverage for that week",
+    });
     expect(t.to).toBe("denied");
     expect(outboxEvents(t.effects)).toEqual(["m17.time_off.denied"]);
     expect(() => transitionTimeOff("requested", { type: "deny", reason: "no" })).toThrowError(
@@ -44,26 +57,37 @@ describe("§2.2.6 time_off lifecycle", () => {
   });
 
   it("cancel is pre-start only (409 after start)", () => {
-    expect(transitionTimeOff("approved", { type: "cancel", windowStarted: false }).to).toBe("cancelled");
-    expect(() => transitionTimeOff("approved", { type: "cancel", windowStarted: true })).toThrowError(
+    expect(transitionTimeOff("approved", { type: "cancel", windowStarted: false }).to).toBe(
+      "cancelled",
+    );
+    expect(() =>
+      transitionTimeOff("approved", { type: "cancel", windowStarted: true }),
+    ).toThrowError(
       expect.objectContaining({ code: "TIME_OFF_CANCEL_AFTER_START", statusCode: 409 }),
     );
   });
 
   it("consume is system-only and requires the window to have passed", () => {
-    expect(transitionTimeOff("approved", { type: "consume", isSystemActor: true, windowPassed: true }).to).toBe("consumed");
-    expect(() => transitionTimeOff("approved", { type: "consume", isSystemActor: false, windowPassed: true })).toThrowError(
-      expect.objectContaining({ code: "NOT_SYSTEM_ACTOR" }),
-    );
-    expect(() => transitionTimeOff("approved", { type: "consume", isSystemActor: true, windowPassed: false })).toThrowError(
-      expect.objectContaining({ code: "TIME_OFF_WINDOW_NOT_PASSED" }),
-    );
+    expect(
+      transitionTimeOff("approved", { type: "consume", isSystemActor: true, windowPassed: true })
+        .to,
+    ).toBe("consumed");
+    expect(() =>
+      transitionTimeOff("approved", { type: "consume", isSystemActor: false, windowPassed: true }),
+    ).toThrowError(expect.objectContaining({ code: "NOT_SYSTEM_ACTOR" }));
+    expect(() =>
+      transitionTimeOff("approved", { type: "consume", isSystemActor: true, windowPassed: false }),
+    ).toThrowError(expect.objectContaining({ code: "TIME_OFF_WINDOW_NOT_PASSED" }));
   });
 
   it("rejects an off-graph event (409 ILLEGAL_TIME_OFF_TRANSITION)", () => {
-    expect(() => transitionTimeOff("denied", { type: "approve", approverPresent: true, conflictingVisitCount: 0 })).toThrowError(
-      expect.objectContaining({ code: "ILLEGAL_TIME_OFF_TRANSITION" }),
-    );
+    expect(() =>
+      transitionTimeOff("denied", {
+        type: "approve",
+        approverPresent: true,
+        conflictingVisitCount: 0,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "ILLEGAL_TIME_OFF_TRANSITION" }));
   });
 });
 

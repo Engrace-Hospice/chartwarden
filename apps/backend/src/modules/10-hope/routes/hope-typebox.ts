@@ -69,12 +69,22 @@ const HopeData = Type.Object(
 );
 
 // ── Path params ───────────────────────────────────────────────────────────────────────────────────────
-export const ScheduleParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
-export const AdmissionParamsSchema = Type.Object({ admissionId: Type.String({ minLength: 1, maxLength: 64 }) });
-export const AssessmentParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
-export const PatientParamsSchema = Type.Object({ patientId: Type.String({ minLength: 1, maxLength: 64 }) });
+export const ScheduleParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 64 }),
+});
+export const AdmissionParamsSchema = Type.Object({
+  admissionId: Type.String({ minLength: 1, maxLength: 64 }),
+});
+export const AssessmentParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 64 }),
+});
+export const PatientParamsSchema = Type.Object({
+  patientId: Type.String({ minLength: 1, maxLength: 64 }),
+});
 export const SfvParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
-export const SubmissionParamsSchema = Type.Object({ id: Type.String({ minLength: 1, maxLength: 64 }) });
+export const SubmissionParamsSchema = Type.Object({
+  id: Type.String({ minLength: 1, maxLength: 64 }),
+});
 
 // ── Bodies ────────────────────────────────────────────────────────────────────────────────────────────
 export const SkipScheduleSchema = Type.Object({

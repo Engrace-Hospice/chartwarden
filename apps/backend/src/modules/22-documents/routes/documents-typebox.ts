@@ -48,13 +48,7 @@ const ACCESS_PURPOSE = [
   "amendment_review",
   "survey_export",
 ] as const;
-const SOURCE_CHANNEL = [
-  "fax",
-  "email_ingest",
-  "portal_upload",
-  "admin_upload",
-  "api",
-] as const;
+const SOURCE_CHANNEL = ["fax", "email_ingest", "portal_upload", "admin_upload", "api"] as const;
 const DECISION_KIND = ["approve", "approve_with_edit", "reject"] as const;
 
 // ── Path params (slice ids are uuid-shaped; cross-module ids validated per §4.2) ──────────────────────
@@ -390,9 +384,7 @@ export const FormTemplateVersionResponseSchema = Type.Object({
 
 /** Route 30 — the org's published tenant overlays. */
 export const TenantOverlayListResponseSchema = Type.Object({
-  overlays: Type.Array(
-    Type.Object({ templateKey: Type.String(), overlayId: Type.String() }),
-  ),
+  overlays: Type.Array(Type.Object({ templateKey: Type.String(), overlayId: Type.String() })),
 });
 
 /** Route 32 — a form-fill render record (platform-only debug). */
@@ -412,9 +404,15 @@ export const SignedUrlResponseSchema = Type.Object({
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _DocumentView = Conforms<Static<typeof DocumentViewSchema>, ServiceDocumentView>;
-type _DocumentList = Conforms<Static<typeof DocumentListResponseSchema>, ServiceCursorPage<ServiceDocumentView>>;
+type _DocumentList = Conforms<
+  Static<typeof DocumentListResponseSchema>,
+  ServiceCursorPage<ServiceDocumentView>
+>;
 type _VersionView = Conforms<Static<typeof VersionViewSchema>, ServiceVersionView>;
-type _VersionList = Conforms<Static<typeof VersionListResponseSchema>, ServiceCursorPage<ServiceVersionView>>;
+type _VersionList = Conforms<
+  Static<typeof VersionListResponseSchema>,
+  ServiceCursorPage<ServiceVersionView>
+>;
 type _IntakeBatchView = Conforms<Static<typeof IntakeBatchViewSchema>, ServiceIntakeBatchView>;
 type _ClassificationList = Conforms<
   Static<typeof ClassificationListResponseSchema>,
@@ -428,7 +426,11 @@ type _JobDetail = Conforms<
   Static<typeof JobDetailResponseSchema>,
   {
     readonly id: string;
-    readonly candidates: ServiceCursorPage<{ readonly id: string; readonly createdAt: string; readonly riskLevel: string }>;
+    readonly candidates: ServiceCursorPage<{
+      readonly id: string;
+      readonly createdAt: string;
+      readonly riskLevel: string;
+    }>;
   }
 >;
 type _ReviewDetail = Conforms<

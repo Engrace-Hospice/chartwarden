@@ -67,10 +67,16 @@ export async function erasePortalRecord(
   certificateId: string,
   store: PortalEraseStore,
 ): Promise<{ erased: number; counts: PortalEraseCounts }> {
-  const telehealthVisitsAborted = await store.abortActiveTelehealthVisits(organizationId, patientId);
+  const telehealthVisitsAborted = await store.abortActiveTelehealthVisits(
+    organizationId,
+    patientId,
+  );
   const recordingsShredded = await store.shredTelehealthRecordings(organizationId, patientId);
   const grantsRevoked = await store.revokeActiveGrantsForPatient(organizationId, patientId);
-  const accountsRevoked = await store.revokeAccountsWithNoRemainingGrants(organizationId, patientId);
+  const accountsRevoked = await store.revokeAccountsWithNoRemainingGrants(
+    organizationId,
+    patientId,
+  );
 
   const counts: PortalEraseCounts = {
     telehealthVisitsAborted,

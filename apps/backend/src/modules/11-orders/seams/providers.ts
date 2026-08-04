@@ -140,9 +140,7 @@ export function createOrderProvider(store: OrderSeamStore): OrderProvider {
       const all = await store.ordersForPatient(input.patientId);
       const covers = (o: OrderRecordDto): boolean =>
         input.spans === undefined || o.createdAt <= input.spans[1];
-      return (
-        all.find((o) => o.kind === input.kind && o.status === "active" && covers(o)) ?? null
-      );
+      return all.find((o) => o.kind === input.kind && o.status === "active" && covers(o)) ?? null;
     },
     async listByPatient(input) {
       const all = await store.ordersForPatient(input.patientId);
@@ -168,7 +166,12 @@ export function createOrderProvider(store: OrderSeamStore): OrderProvider {
     async getVerbalOrderTimeliness(input) {
       const v = await store.verbalForOrder(input.orderId);
       if (v === null) return null;
-      return { deadlineAt: v.deadlineAt, signedAt: v.signedAt, status: v.status, onTime: isOnTime(v) };
+      return {
+        deadlineAt: v.deadlineAt,
+        signedAt: v.signedAt,
+        status: v.status,
+        onTime: isOnTime(v),
+      };
     },
     async findByTriggeringAssessment(assessmentId: string) {
       return [...(await store.ordersForTriggeringAssessment(assessmentId))];

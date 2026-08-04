@@ -15,8 +15,8 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so
 // the package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ─
-import type { PatientId, AdmissionId, ProviderEntityId } from "./admission";
-import type { LocationId, IsoInstant } from "./care-plan";
+import type { AdmissionId, PatientId, ProviderEntityId } from "./admission";
+import type { IsoInstant, LocationId } from "./care-plan";
 
 // ── M11-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
 export type OrderRecordId = string;
@@ -454,7 +454,9 @@ export interface OrderSignatureProvider {
     input: RecordVerbalOrderInput,
   ): Promise<{ verbalOrderId: VerbalOrderId; deadlineAt: string }>;
   cosignOrder(input: CosignOrderInput): Promise<{ cosignatureId: OrderSignatureId }>;
-  discontinueOrder(input: DiscontinueOrderInput): Promise<{ discontinuationId: OrderDiscontinuationId }>;
+  discontinueOrder(
+    input: DiscontinueOrderInput,
+  ): Promise<{ discontinuationId: OrderDiscontinuationId }>;
 }
 
 // ── §4.3 — the OrderProvider read seam (the read-side counterpart M14/M30/M7 consume) ─────────────────
@@ -493,10 +495,17 @@ export interface OrderProvider {
     kinds?: OrderKind[];
   }): Promise<OrderRecordDto[]>;
   getOrdersSince(input: { patientId: PatientId; since: string }): Promise<OrderRecordDto[]>;
-  getDiscontinuationReason(input: { orderId: OrderRecordId }): Promise<OrderDiscontinuationDto | null>;
+  getDiscontinuationReason(input: {
+    orderId: OrderRecordId;
+  }): Promise<OrderDiscontinuationDto | null>;
   getVerbalOrderTimeliness(input: {
     orderId: OrderRecordId;
-  }): Promise<{ deadlineAt: string; signedAt: string | null; status: VerbalOrderStatus; onTime: boolean } | null>;
+  }): Promise<{
+    deadlineAt: string;
+    signedAt: string | null;
+    status: VerbalOrderStatus;
+    onTime: boolean;
+  } | null>;
   /**
    * ORG-LEVEL verbal-order timeliness population over a RECEIPT window — M30's
    * `verbal_order_signature_on_time` input. Returns the numerator/denominator PAIR, not a rate: M30's
@@ -515,4 +524,4 @@ export interface OrderProvider {
  * direct cross-module writes at the boundary; all downstream communication is the `m11.*` outbox.
  */
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface OrderEventPublisher {}
+export type OrderEventPublisher = {};

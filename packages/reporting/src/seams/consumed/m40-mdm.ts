@@ -9,5 +9,9 @@ export interface ReportingMdmConsumer {
   /** M40 `LocationReader` — display label for a facility/location id (dimension axis). */
   locationLabel(organizationId: string, locationId: string): Promise<string | null>;
   /** M40 lookup helper — display label for a state / MAC / payer dimension key. */
-  dimensionLabel(organizationId: string, dimensionKey: string, value: string): Promise<string | null>;
+  dimensionLabel(
+    organizationId: string,
+    dimensionKey: string,
+    value: string,
+  ): Promise<string | null>;
 }

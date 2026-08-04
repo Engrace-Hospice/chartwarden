@@ -114,7 +114,10 @@ export function SubmissionsTimeline(): JSX.Element {
                 </td>
                 <td style={tdStyle}>{statusLabel(r.kind)}</td>
                 <td style={tdStyle}>
-                  <StatusPill label={statusLabel(r.outcome)} tone={submissionStatusTone(r.outcome)} />
+                  <StatusPill
+                    label={statusLabel(r.outcome)}
+                    tone={submissionStatusTone(r.outcome)}
+                  />
                 </td>
                 <td style={{ ...tdStyle, color: "var(--color-on-surface-variant)" }}>
                   {r.outcomeReason ?? "—"}

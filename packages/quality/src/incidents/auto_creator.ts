@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/quality — M30 §4.10 / D8 auto-incident creation from upstream events (P2a). PURE.
 //
 // Some incidents are not hand-filed: an upstream module's typed outbox event (a reported medication error,
@@ -8,7 +9,6 @@
 // `reportedByMembershipId` (the M30 service membership), and the `triggeringEventOutboxId` (the §2.6
 // idempotency backstop on `incident_report.triggering_event_outbox_id`), then persists what we return.
 import { WardenXError } from "@wardenx/types";
-import type { schema } from "@wardenx/db";
 import { INCIDENT_KIND_CATALOG } from "./kinds";
 
 /** Fields every upstream trigger carries (resolved by the consumer from the inbound event + envelope). */
@@ -85,7 +85,8 @@ export function buildIncidentDraftFromEvent(event: IncidentTriggerEvent): schema
     case "m12.medication.error_reported": {
       const kindData: schema.IncidentKindData = {
         medicationOrderId: event.medicationOrderId,
-        narrativeText: event.summary ?? "Medication error reported by the medication-administration surface.",
+        narrativeText:
+          event.summary ?? "Medication error reported by the medication-administration surface.",
         ...(event.summary !== undefined ? { summary: event.summary } : {}),
       };
       return {
@@ -100,7 +101,8 @@ export function buildIncidentDraftFromEvent(event: IncidentTriggerEvent): schema
       const kindData: schema.IncidentKindData = {
         relatedOrderId: event.orderId,
         narrativeText:
-          event.summary ?? "A verbal order expired without the required counter-signature within the verbal window.",
+          event.summary ??
+          "A verbal order expired without the required counter-signature within the verbal window.",
         ...(event.summary !== undefined ? { summary: event.summary } : {}),
       };
       return {

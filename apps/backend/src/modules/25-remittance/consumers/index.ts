@@ -76,7 +76,10 @@ export async function dispatchM25UpstreamEvent(
  */
 export function registerM25Consumers(options?: {
   readonly ports?: M25ConsumerPorts;
-  readonly bind?: (topic: string, handler: (payload: Record<string, unknown>) => Promise<M25ConsumeReport>) => void;
+  readonly bind?: (
+    topic: string,
+    handler: (payload: Record<string, unknown>) => Promise<M25ConsumeReport>,
+  ) => void;
 }): readonly string[] {
   const { ports, bind } = options ?? {};
   if (bind && ports) {

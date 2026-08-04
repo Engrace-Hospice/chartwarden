@@ -12,7 +12,7 @@
 // linked action item flips to `auto_closed`. The §4.5 consumers (M14-T06) drive it; this is the pure
 // decider. Carry-forward (D8) is the T-24h overdue projection of still-open items onto the next meeting's
 // agenda — it does NOT change the action-item status, so it is a standalone planner.
-import type { IdgActionItemStatus, IdgActionItemLinkedKind } from "@wardenx/types";
+import type { IdgActionItemLinkedKind, IdgActionItemStatus } from "@wardenx/types";
 import { type IdgSideEffect, type IdgTransitionResult, result } from "./effects";
 import { IdgStateError, require_ } from "./errors";
 
@@ -36,7 +36,9 @@ export type ActionItemEvent =
 export type ActionItemTransition = IdgTransitionResult<ActionItemState, ActionItemEvent["type"]>;
 
 /** The legal §1.1 / D8 action-item transition graph (from → events accepted). Guards checked separately. */
-export const ACTION_ITEM_GRAPH: Readonly<Record<ActionItemState, ReadonlyArray<ActionItemEvent["type"]>>> = {
+export const ACTION_ITEM_GRAPH: Readonly<
+  Record<ActionItemState, ReadonlyArray<ActionItemEvent["type"]>>
+> = {
   open: ["start", "complete", "cancel", "autoClose"],
   in_progress: ["complete", "cancel", "autoClose"],
   completed: [],
@@ -64,12 +66,21 @@ export function planActionItemCreate(): ReadonlyArray<IdgSideEffect> {
  * specific `ACTION_ITEM_AUTO_CLOSED` code per §4.3), or the precise guard code on a guard failure. Returns
  * the new state + the §2.7 side-effect list.
  */
-export function transitionActionItem(from: ActionItemState, event: ActionItemEvent): ActionItemTransition {
+export function transitionActionItem(
+  from: ActionItemState,
+  event: ActionItemEvent,
+): ActionItemTransition {
   if (from === "auto_closed" && event.type === "autoClose") {
-    throw new IdgStateError("ACTION_ITEM_AUTO_CLOSED", "this action item is already closed by the auto-close engine");
+    throw new IdgStateError(
+      "ACTION_ITEM_AUTO_CLOSED",
+      "this action item is already closed by the auto-close engine",
+    );
   }
   if (!ACTION_ITEM_GRAPH[from].includes(event.type)) {
-    throw new IdgStateError("ILLEGAL_ACTION_ITEM_TRANSITION", `action item cannot ${event.type} from '${from}'`);
+    throw new IdgStateError(
+      "ILLEGAL_ACTION_ITEM_TRANSITION",
+      `action item cannot ${event.type} from '${from}'`,
+    );
   }
 
   switch (event.type) {
@@ -95,7 +106,11 @@ export function transitionActionItem(from: ActionItemState, event: ActionItemEve
 
     case "autoClose":
       // §4.5 — the absorbing downstream artifact closes the item; informational confirmation to assignee.
-      require_(event.isSystemActor, "ILLEGAL_ACTION_ITEM_TRANSITION", "auto-close is a system-actor operation");
+      require_(
+        event.isSystemActor,
+        "ILLEGAL_ACTION_ITEM_TRANSITION",
+        "auto-close is a system-actor operation",
+      );
       return result(from, event.type, "auto_closed", [
         { kind: "confirm_linked_artifact" },
         { kind: "set_timestamp", field: "closed_at" },
@@ -135,7 +150,11 @@ export function planCarryForward(input: {
   );
   const newCarryForwardCount = input.priorCarryForwardCount + 1;
   const isComplianceAlert = newCarryForwardCount >= CARRY_FORWARD_COMPLIANCE_THRESHOLD;
-  const effects: IdgSideEffect[] = [{ kind: "audit" }, { kind: "outbox", event: "m14.action_item.carry_forward" }];
-  if (isComplianceAlert) effects.push({ kind: "alert", alert: "m14.action_item.carry_forward.compliance" });
+  const effects: IdgSideEffect[] = [
+    { kind: "audit" },
+    { kind: "outbox", event: "m14.action_item.carry_forward" },
+  ];
+  if (isComplianceAlert)
+    effects.push({ kind: "alert", alert: "m14.action_item.carry_forward.compliance" });
   return { newCarryForwardCount, isComplianceAlert, effects };
 }

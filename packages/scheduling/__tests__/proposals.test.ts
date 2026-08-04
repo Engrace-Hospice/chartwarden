@@ -1,16 +1,16 @@
 // @wardenx/scheduling — §2.2.4 / §7.7 D5 frequency parser + frequency-driven proposal domain — M17-T04.
 import { describe, expect, it } from "vitest";
 import {
-  parseFrequency,
-  isCadencedFrequency,
-  frequencyCadenceDays,
+  type FrequencyProposalInput,
+  PROPOSE_HORIZON_DAYS,
+  SchedulingStateError,
   computeProposalDates,
+  frequencyCadenceDays,
+  isCadencedFrequency,
+  outboxEvents,
+  parseFrequency,
   planFrequencyProposals,
   transitionProposal,
-  PROPOSE_HORIZON_DAYS,
-  outboxEvents,
-  SchedulingStateError,
-  type FrequencyProposalInput,
 } from "../src";
 
 describe("§7.7 parseFrequency grammar", () => {
@@ -32,7 +32,15 @@ describe("§7.7 parseFrequency grammar", () => {
   });
 
   it("rejects a malformed / out-of-grammar string with FREQUENCY_UNPARSEABLE", () => {
-    for (const bad of ["2 visits per week", "visit:week", "2:visit", "2:visit:year", "0:visit:week", "x:visit:week", ""]) {
+    for (const bad of [
+      "2 visits per week",
+      "visit:week",
+      "2:visit",
+      "2:visit:year",
+      "0:visit:week",
+      "x:visit:week",
+      "",
+    ]) {
       try {
         parseFrequency(bad);
         throw new Error(`expected '${bad}' to throw`);
@@ -74,20 +82,32 @@ describe("§7.7 computeProposalDates", () => {
   });
 
   it("steps one interval past the anchor (last serviced date)", () => {
-    const dates = computeProposalDates(parseFrequency("1:visit:week"), "2026-07-01", "2026-07-06", 14);
+    const dates = computeProposalDates(
+      parseFrequency("1:visit:week"),
+      "2026-07-01",
+      "2026-07-06",
+      14,
+    );
     // anchor + 7 = 2026-07-08; then +7 = 2026-07-15; +7 = 2026-07-22 (> horizon 2026-07-20).
     expect(dates).toEqual(["2026-07-08", "2026-07-15"]);
   });
 
   it("fast-forwards a long-dormant anchor into the window (no stale back-fill)", () => {
-    const dates = computeProposalDates(parseFrequency("1:visit:week"), "2026-01-01", "2026-07-06", 7);
+    const dates = computeProposalDates(
+      parseFrequency("1:visit:week"),
+      "2026-01-01",
+      "2026-07-06",
+      7,
+    );
     expect(dates.every((d) => d >= "2026-07-06")).toBe(true);
     expect(dates.length).toBeGreaterThan(0);
   });
 
   it("returns no dates for a non-cadenced frequency", () => {
     expect(computeProposalDates(parseFrequency("1:prn:prn"), null, "2026-07-06", 30)).toEqual([]);
-    expect(computeProposalDates(parseFrequency("1:visit:episode"), null, "2026-07-06", 90)).toEqual([]);
+    expect(computeProposalDates(parseFrequency("1:visit:episode"), null, "2026-07-06", 90)).toEqual(
+      [],
+    );
   });
 
   it("is deterministic — identical inputs produce the identical set", () => {
@@ -151,7 +171,9 @@ describe("§7.7 planFrequencyProposals", () => {
   });
 
   it("propagates FREQUENCY_UNPARSEABLE for a malformed frequency", () => {
-    expect(() => planFrequencyProposals(baseInput({ frequency: "garbage" }))).toThrow(SchedulingStateError);
+    expect(() => planFrequencyProposals(baseInput({ frequency: "garbage" }))).toThrow(
+      SchedulingStateError,
+    );
   });
 });
 
@@ -164,7 +186,10 @@ describe("§2.2.4 proposal status machine", () => {
   });
 
   it("dismisses with a documented reason and captures it (denylisted)", () => {
-    const t = transitionProposal("pending", { type: "dismiss", reason: "duplicate of an existing visit" });
+    const t = transitionProposal("pending", {
+      type: "dismiss",
+      reason: "duplicate of an existing visit",
+    });
     expect(t.to).toBe("dismissed");
     expect(t.effects).toContainEqual({
       kind: "capture_reason",

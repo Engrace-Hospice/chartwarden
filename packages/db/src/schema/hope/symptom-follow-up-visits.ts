@@ -8,9 +8,9 @@
 // grants + the M4 write-audit trigger (alert_cadence denylisted, §8.1) land in the RLS migration.
 import { index, jsonb, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { hopeSfvStatus } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const symptomFollowUpVisits = pgTable(
   "symptom_follow_up_visit",

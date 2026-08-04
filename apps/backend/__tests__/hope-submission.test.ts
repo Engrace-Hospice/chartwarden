@@ -21,7 +21,9 @@ import {
 const PE1 = "11111111-1111-4111-8111-111111111111";
 const PE2 = "22222222-2222-4222-8222-222222222222";
 
-function assessment(over: Partial<AssemblableAssessment> & { assessmentId: string }): AssemblableAssessment {
+function assessment(
+  over: Partial<AssemblableAssessment> & { assessmentId: string },
+): AssemblableAssessment {
   return {
     providerEntityId: PE1,
     submissionPeriod: "2026-Q2",
@@ -183,7 +185,7 @@ describe("planReconcile (iqies-reconcile-worker, §4.10 / §7.9)", () => {
     });
     expect(plan.nextStatus).toBe("rejected");
     expect(plan.events.map((e) => e.eventName)).toEqual(["m10.hope.submission_rejected"]);
-    expect((plan.events[0]?.payload.findings as Array<{ ruleId: string; count: number }>)).toEqual([
+    expect(plan.events[0]?.payload.findings as Array<{ ruleId: string; count: number }>).toEqual([
       { ruleId: "cms_hope_v1_section_j", count: 1 },
     ]);
   });
@@ -197,7 +199,11 @@ describe("planCorrectionRfa (submit-correction-rfa, §7.8 / D7)", () => {
         originalAssessmentId: "orig_1",
         originalIqiesRecordId: "iqies-rec-9",
       }),
-    ).toEqual({ action: "queue_correction", correctionAssessmentId: "corr_1", originalIqiesRecordId: "iqies-rec-9" });
+    ).toEqual({
+      action: "queue_correction",
+      correctionAssessmentId: "corr_1",
+      originalIqiesRecordId: "iqies-rec-9",
+    });
   });
 
   it("skips (normal assemble handles it) when the original was never submitted", () => {

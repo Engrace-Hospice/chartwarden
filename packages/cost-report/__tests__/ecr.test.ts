@@ -1,3 +1,16 @@
+import {
+  ECR_SPEC_VERSION,
+  type EcrHeaderContext,
+  type EcrRecord,
+  type SnapshotWorksheets,
+  buildEcrArtifacts,
+  formatRecordLine,
+  parseRecordLine,
+  recordsToText,
+  renderPi,
+  textToRecords,
+  writeEcr,
+} from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 ECR/PI generation pure-domain unit tests (D11, §1.1 / §2.4).
 //
 // Covers the deterministic fixed-field ECR writer (`writeEcr`), the records-model round-trip closure
@@ -5,19 +18,6 @@
 // (`buildEcrArtifacts` ⇒ `{ ecrText, piText }`), and the human-readable Print-Image renderer (`renderPi`).
 // PURE DOMAIN only — no DB, no Fastify, no network. Money is integer cents; M27 carries no PHI (D18).
 import { describe, expect, it } from "vitest";
-import {
-  type EcrRecord,
-  type EcrHeaderContext,
-  type SnapshotWorksheets,
-  ECR_SPEC_VERSION,
-  writeEcr,
-  buildEcrArtifacts,
-  renderPi,
-  recordsToText,
-  textToRecords,
-  formatRecordLine,
-  parseRecordLine,
-} from "@wardenx/cost-report";
 
 const HEADER: EcrHeaderContext = {
   providerCcn: "100001",

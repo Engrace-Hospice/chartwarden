@@ -6,7 +6,11 @@
 //
 // IO-free: the caller supplies `now`; this core computes the next state deterministically.
 import type { Hl7OutboundStatus } from "@wardenx/types";
-import type { LabOrderTransmissionFailedPayload, OutboundAlert, OutboundAuditRecord } from "./outbound-events";
+import type {
+  LabOrderTransmissionFailedPayload,
+  OutboundAlert,
+  OutboundAuditRecord,
+} from "./outbound-events";
 
 /** D9 — the outbound dispatch attempt budget (spec §4.12.1). The fifth failed attempt DLQs. */
 export const OUTBOUND_MAX_ATTEMPTS = 5;
@@ -45,7 +49,11 @@ export interface RetryStatusUpdate {
 
 /** The retry outcome: schedule another attempt, or DLQ + emit the terminal failure (§4.12.1). */
 export type RetryDecision =
-  | { readonly kind: "retry"; readonly statusUpdate: RetryStatusUpdate; readonly audit: OutboundAuditRecord }
+  | {
+      readonly kind: "retry";
+      readonly statusUpdate: RetryStatusUpdate;
+      readonly audit: OutboundAuditRecord;
+    }
   | {
       readonly kind: "dlq";
       readonly statusUpdate: RetryStatusUpdate;
@@ -100,7 +108,8 @@ export function decideRetry(input: RetryDecisionInput): RetryDecision {
   }
 
   // Re-queue: backoff delay indexed by the attempt just failed (attempt 1 → index 0 → 30s, …).
-  const delayMs = OUTBOUND_BACKOFF_MS[attemptNumber - 1] ?? OUTBOUND_BACKOFF_MS[OUTBOUND_BACKOFF_MS.length - 1]!;
+  const delayMs =
+    OUTBOUND_BACKOFF_MS[attemptNumber - 1] ?? OUTBOUND_BACKOFF_MS[OUTBOUND_BACKOFF_MS.length - 1]!;
   const nextRetryAt = new Date(input.now.getTime() + delayMs);
   return {
     kind: "retry",

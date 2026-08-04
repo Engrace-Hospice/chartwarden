@@ -1,3 +1,4 @@
+import type { MedicationOrderDto, RefillRequestDto } from "@wardenx/types";
 // apps/backend/__tests__/dosespot-seams.test.ts — M12-T07 (§2.10 D17 MedicationOrderProvider +
 // RefillInboxProvider). Both seams are pure READ-only orchestration over an injected DoseSpotSeamStore; these
 // cover the medication-order read narrowing (active / since / by-admission / by-id), the M13 administration-
@@ -6,11 +7,10 @@
 // SUD redaction, the M28 FHIR status mapping, and the refill-inbox pending narrowing — plus the boot wiring
 // (registerDoseSpotSeams replaces the deny-stubs; validateSeams passes; the deny-stubs deny).
 import { afterEach, describe, expect, it } from "vitest";
-import type { MedicationOrderDto, RefillRequestDto } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
-  type DoseSpotSeamSeed,
   DoseSpotSeamGapError,
+  type DoseSpotSeamSeed,
   costBasisOfLines,
   createInMemoryDoseSpotSeamStore,
   createMedicationOrderProvider,
@@ -81,8 +81,17 @@ function seed(): DoseSpotSeamSeed {
   return {
     medicationOrders: [
       medOrder({ id: "med-active", status: "active", activatedAt: "2026-03-01T12:10:00.000Z" }),
-      medOrder({ id: "med-dc", status: "discontinued", discontinuedAt: "2026-03-06T00:00:00.000Z" }),
-      medOrder({ id: "med-sud", status: "active", isSudTreatment: true, drugName: "Buprenorphine" }),
+      medOrder({
+        id: "med-dc",
+        status: "discontinued",
+        discontinuedAt: "2026-03-06T00:00:00.000Z",
+      }),
+      medOrder({
+        id: "med-sud",
+        status: "active",
+        isSudTreatment: true,
+        drugName: "Buprenorphine",
+      }),
       medOrder({
         id: "med-cs",
         status: "active",
@@ -104,21 +113,44 @@ function seed(): DoseSpotSeamSeed {
     refillRequests: [
       refill({ id: "rf-pending", status: "pending" }),
       refill({ id: "rf-approved", status: "approved", resultingMedicationOrderId: "med-new" }),
-      refill({ id: "rf-other", patientId: "pat-2", prescriberMembershipId: "mem-md2", status: "pending" }),
+      refill({
+        id: "rf-other",
+        patientId: "pat-2",
+        prescriberMembershipId: "mem-md2",
+        status: "pending",
+      }),
     ],
     comfortKitTimelines: [
-      { admissionId: ADM, deployedAt: "2026-03-02T00:00:00.000Z", firstAdministrationAt: "2026-03-02T06:00:00.000Z" },
+      {
+        admissionId: ADM,
+        deployedAt: "2026-03-02T00:00:00.000Z",
+        firstAdministrationAt: "2026-03-02T06:00:00.000Z",
+      },
     ],
-    costBasis: [{ admissionId: ADM, monthIso: "2026-03-01T00:00:00.000Z", totalCostCents: 42050, lineCount: 7 }],
+    costBasis: [
+      {
+        admissionId: ADM,
+        monthIso: "2026-03-01T00:00:00.000Z",
+        totalCostCents: 42050,
+        lineCount: 7,
+      },
+    ],
   };
 }
 
 describe("MedicationOrderProvider (§2.10 D17)", () => {
-  const provider = () => createMedicationOrderProvider(createInMemoryDoseSpotSeamStore(seed()).store);
+  const provider = () =>
+    createMedicationOrderProvider(createInMemoryDoseSpotSeamStore(seed()).store);
 
   it("getActiveMedications returns only active orders for the patient", async () => {
     const out = await provider().getActiveMedications(ORG, PAT);
-    expect(out.map((m) => m.id).sort()).toEqual(["med-active", "med-cs", "med-new", "med-old", "med-sud"]);
+    expect(out.map((m) => m.id).sort()).toEqual([
+      "med-active",
+      "med-cs",
+      "med-new",
+      "med-old",
+      "med-sud",
+    ]);
     expect(out.some((m) => m.id === "med-dc")).toBe(false);
     expect(out.some((m) => m.patientId === "pat-2")).toBe(false);
   });
@@ -138,7 +170,9 @@ describe("MedicationOrderProvider (§2.10 D17)", () => {
   });
 
   it("getAdministrationContext allows an active order and blocks discontinued / replaced / unsigned", async () => {
-    expect((await provider().getAdministrationContext(ORG, "med-active"))?.allowAdministration).toBe(true);
+    expect(
+      (await provider().getAdministrationContext(ORG, "med-active"))?.allowAdministration,
+    ).toBe(true);
     const dc = await provider().getAdministrationContext(ORG, "med-dc");
     expect(dc?.allowAdministration).toBe(false);
     expect(dc?.blockedReasons).toEqual(["discontinued"]);
@@ -262,15 +296,21 @@ describe("boot wiring (registerDoseSpotSeams)", () => {
   it("registers both seams so validateSeams passes and they resolve as real impls", async () => {
     registerDoseSpotSeams({ store: createInMemoryDoseSpotSeamStore(seed()).store });
     expect(() => validateSeams()).not.toThrow();
-    expect((await getSeam("MedicationOrderProvider").getActiveMedications(ORG, PAT)).length).toBe(5);
-    expect((await getSeam("RefillInboxProvider").getPendingRefillsForPatient(ORG, PAT)).map((r) => r.id)).toEqual([
-      "rf-pending",
-    ]);
+    expect((await getSeam("MedicationOrderProvider").getActiveMedications(ORG, PAT)).length).toBe(
+      5,
+    );
+    expect(
+      (await getSeam("RefillInboxProvider").getPendingRefillsForPatient(ORG, PAT)).map((r) => r.id),
+    ).toEqual(["rf-pending"]);
   });
 
   it("falls back to fail-closed deny-stubs when M12 does not register", () => {
     validateSeams();
-    expect(() => getSeam("MedicationOrderProvider").getActiveMedications(ORG, PAT)).toThrow(/not implemented/);
-    expect(() => getSeam("RefillInboxProvider").getRefillRequestById(ORG, "rf-1")).toThrow(/not implemented/);
+    expect(() => getSeam("MedicationOrderProvider").getActiveMedications(ORG, PAT)).toThrow(
+      /not implemented/,
+    );
+    expect(() => getSeam("RefillInboxProvider").getRefillRequestById(ORG, "rf-1")).toThrow(
+      /not implemented/,
+    );
   });
 });

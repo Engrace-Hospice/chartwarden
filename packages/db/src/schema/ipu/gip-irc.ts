@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 GIP criteria + IRC cap (§2.4/§2.5, §3.3): gip_admission_criteria, its per-encounter
 // reassessment ledger, the irc_episode 5-day cap tracker, and the ipu_remote_inpatient_episode
 // (CoP 418.112 arranged-inpatient tracking). TENANT-SCOPED, RLS on app.org_id. `data`/`rationale`/
@@ -5,16 +6,25 @@
 // (triggered_by_encounter_id/M8, patient_id, membership/physician ids, level_of_care_period_id/M6,
 // remote_facility_id/M40, arrangement_agreement_document_id/M22) are logical uuids; ipu_admission_id and
 // gip_admission_criteria_id are REAL intra-module FKs. char_length CHECKs live in the migration.
-import { boolean, index, jsonb, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { bigintVersion } from "./shared";
-import { ipuAdmission } from "./admission";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import {
   gipCriterionKind,
   ipuAdmissionKind,
   ipuRemoteArrangementBillingBasis,
   ircEpisodeState,
 } from "../../enums";
+import { ipuAdmission } from "./admission";
+import { bigintVersion } from "./shared";
 
 export const gipAdmissionCriteria = pgTable(
   "gip_admission_criteria",

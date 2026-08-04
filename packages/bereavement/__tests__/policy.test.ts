@@ -107,10 +107,17 @@ describe("D4 — the per-tier cadence floor is cumulative and tighten-only", () 
       ...BEREAVEMENT_CADENCE_FLOOR.low.map((i) =>
         i.mark === "one_month" ? { ...i, offsetDays: 21, kind: "in_person_visit" as const } : i,
       ),
-      { mark: "two_month" as const, offsetDays: 60, kind: "phone_call" as const, anniversaryMark: null },
+      {
+        mark: "two_month" as const,
+        offsetDays: 60,
+        kind: "phone_call" as const,
+        anniversaryMark: null,
+      },
     ];
     expect(validateTenantCadence("low", tightened)).toEqual([]);
-    expect(effectiveCadence("low", tightened).map((i) => i.offsetDays)).toEqual([7, 21, 60, 90, 180, 365]);
+    expect(effectiveCadence("low", tightened).map((i) => i.offsetDays)).toEqual([
+      7, 21, 60, 90, 180, 365,
+    ]);
   });
 
   it("reports every loosening and refuses to materialize it", () => {
@@ -214,7 +221,9 @@ describe("D3 / D17 — the deterministic risk rubric", () => {
       activeSubstanceUse: true,
     });
     expect(allPositive.tier).toBe("high");
-    expect(promoteTierForGriefScreen("high", COMPLICATED_GRIEF_SCREEN_THRESHOLD)).toBe("complicated");
+    expect(promoteTierForGriefScreen("high", COMPLICATED_GRIEF_SCREEN_THRESHOLD)).toBe(
+      "complicated",
+    );
     expect(promoteTierForGriefScreen("high", 31)).toBe("complicated");
     expect(promoteTierForGriefScreen("high", 24)).toBe("high");
     expect(promoteTierForGriefScreen("low", null)).toBe("low");
@@ -238,12 +247,12 @@ describe("D6 / D7 / D9 / D15 — closure, opt-out and the M8 boundary", () => {
   });
 
   it("holds the self-service opt-out rescind window at 90 days", () => {
-    expect(isWithinOptOutRescindWindow("2026-03-01T00:00:00.000Z", "2026-05-30T00:00:00.000Z")).toBe(
-      true,
-    );
-    expect(isWithinOptOutRescindWindow("2026-03-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z")).toBe(
-      false,
-    );
+    expect(
+      isWithinOptOutRescindWindow("2026-03-01T00:00:00.000Z", "2026-05-30T00:00:00.000Z"),
+    ).toBe(true);
+    expect(
+      isWithinOptOutRescindWindow("2026-03-01T00:00:00.000Z", "2026-06-01T00:00:00.000Z"),
+    ).toBe(false);
   });
 
   it("backs only the in-person visit with an M8 encounter (D15)", () => {
@@ -327,7 +336,13 @@ describe("D18 — the external-source first-contact gate", () => {
         medicalDirectorMembershipId: "mem_md_engrace_01",
       }),
     ).toBeNull();
-    expect(applyCosignReceipt(null, { sourceProposalId: "x", cosignedAt: "y", medicalDirectorMembershipId: "z" })).toBeNull();
+    expect(
+      applyCosignReceipt(null, {
+        sourceProposalId: "x",
+        cosignedAt: "y",
+        medicalDirectorMembershipId: "z",
+      }),
+    ).toBeNull();
   });
 
   it("fails closed on a metadata blob with a malformed cosign status", () => {

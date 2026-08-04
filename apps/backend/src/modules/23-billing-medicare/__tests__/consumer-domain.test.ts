@@ -204,7 +204,10 @@ describe("M25 / M26 forward-seam consumers are INERT (deny-stub, fail-closed)", 
   it("an m25 remittance event fails closed via dispatch (no live binding until M25 lands)", async () => {
     await expect(
       dispatchM23UpstreamEvent(
-        { topic: "m25.remittance.claim_paid", payload: { eventId: "e", organizationId: ORG, claimId: "c" } },
+        {
+          topic: "m25.remittance.claim_paid",
+          payload: { eventId: "e", organizationId: ORG, claimId: "c" },
+        },
         makePorts(),
       ),
     ).rejects.toBeInstanceOf(ForwardSeamNotLandedError);

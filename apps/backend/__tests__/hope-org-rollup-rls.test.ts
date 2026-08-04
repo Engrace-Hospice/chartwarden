@@ -35,14 +35,24 @@ describe("createDrizzleHopeOrgRollupStore — per-method withOrgContext envelope
 
   it("scopes the j2051Triggers read and projects entries (the pain/non-pain input)", async () => {
     const { db, transaction } = fakeScopedDb([
-      { data: { J: { J2051: { entries: [{ symptomCode: "pain", severity: "severe" }] } } }, sfvDueAt: null, sfvCompletedAt: null },
+      {
+        data: { J: { J2051: { entries: [{ symptomCode: "pain", severity: "severe" }] } } },
+        sfvDueAt: null,
+        sfvCompletedAt: null,
+      },
     ]);
     const store = createDrizzleHopeOrgRollupStore(db);
 
     const rows = await store.j2051Triggers(ORG, PERIOD);
 
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(rows).toEqual([{ entries: [{ symptomCode: "pain", severity: "severe" }], sfvDueAt: null, sfvCompletedAt: null }]);
+    expect(rows).toEqual([
+      {
+        entries: [{ symptomCode: "pain", severity: "severe" }],
+        sfvDueAt: null,
+        sfvCompletedAt: null,
+      },
+    ]);
   });
 
   it("scopes every period method (each opens its own envelope)", async () => {

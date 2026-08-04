@@ -26,8 +26,8 @@ import {
   money,
   shortDate,
   shortId,
-  toneOf,
   tobLabel,
+  toneOf,
 } from "./medicaid-status";
 import {
   Card,
@@ -162,13 +162,18 @@ export function MedicaidSurveyorReadView(): JSX.Element {
           breadcrumb={
             <>
               Survey · Medicaid billing ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>{claim.medicaidClaimControlNumber}</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>
+                {claim.medicaidClaimControlNumber}
+              </span>
             </>
           }
           actions={
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Glyph name="eye" size={16} label="read-only" />
-              <StatusPill label={humanize(claim.state)} tone={toneOf(CLAIM_STATE_TONE, claim.state)} />
+              <StatusPill
+                label={humanize(claim.state)}
+                tone={toneOf(CLAIM_STATE_TONE, claim.state)}
+              />
             </div>
           }
         />
@@ -219,7 +224,11 @@ export function MedicaidSurveyorReadView(): JSX.Element {
             value={`${shortDate(claim.serviceFrom)} → ${shortDate(claim.serviceTo)}`}
           />
           <Field label="Patient" value={shortId(claim.patientId)} mono />
-          <Field label="MCO" value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"} mono={Boolean(claim.mcoId)} />
+          <Field
+            label="MCO"
+            value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"}
+            mono={Boolean(claim.mcoId)}
+          />
           <Field label="Total charges" value={money(totalCharges)} />
           <Field label="Created" value={shortDate(claim.createdAt)} />
         </SummaryGrid>

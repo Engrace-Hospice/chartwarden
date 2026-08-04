@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `noe_record` (M23 Billing-Medicare §3.3; non-partitioned; retention class
 // `compliance`). The Notice of Election: one regulatory NOE per admission/election period, with the
 // 5-day timely-filing window watched by the cron watchdog (`window_target_at` = election effective
@@ -9,8 +10,16 @@
 // `patient_id`/`admission_id`/`election_period_id` (M5/M6), the latest_*/*_document_id pointers are
 // LOGICAL FKs — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). No MBI is
 // ever stored here (D13, §8.7).
-import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { m23NoeState } from "./types";
 
@@ -54,7 +63,10 @@ export const noeRecord = pgTable(
     uniqueByAdmission: uniqueIndex("noe_record_admission_uq")
       .on(t.admissionId)
       .where(sql`state NOT IN ('CANCELLED','ACK_REJECTED')`),
-    controlNumberUq: uniqueIndex("noe_control_number_uq").on(t.providerEntityId, t.noeControlNumber),
+    controlNumberUq: uniqueIndex("noe_control_number_uq").on(
+      t.providerEntityId,
+      t.noeControlNumber,
+    ),
     // §3.4 noe_window_watch_partial — partial on the watch-eligible slice so the cron watchdog scan
     // touches only rows still in flight against the 5-day window:
     windowWatchIdx: index("noe_window_watch_idx")

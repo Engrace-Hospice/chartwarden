@@ -16,7 +16,14 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
-import { ABAC_CALL_ACTOR, ABAC_CASELOAD_OR_SCOPE, ABAC_IN_ORG, ABAC_ONCALL_ELIGIBLE, P, STEP_UP } from "./guards";
+import {
+  ABAC_CALL_ACTOR,
+  ABAC_CASELOAD_OR_SCOPE,
+  ABAC_IN_ORG,
+  ABAC_ONCALL_ELIGIBLE,
+  P,
+  STEP_UP,
+} from "./guards";
 import {
   AbandonCallBody,
   AnswerCorrectionParams,
@@ -71,7 +78,10 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
       config: { auditRead: { resourceKind: "triage_call", list: true } },
     },
     async (request) =>
-      readService.listTriageCalls(actorOf(request), parseQuery(ListTriageCallsQuery, request.query)),
+      readService.listTriageCalls(
+        actorOf(request),
+        parseQuery(ListTriageCallsQuery, request.query),
+      ),
   );
 
   // 3 — the full call, with answers, escalations and the state-history narrative. A VENDOR session gets

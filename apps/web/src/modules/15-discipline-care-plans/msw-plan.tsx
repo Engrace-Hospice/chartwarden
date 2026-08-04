@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { daysUntil, shortDate } from "./discipline-status";
 // apps/web/src/modules/15-discipline-care-plans — the MSW PLAN VIEW (§5.1 #6, Track B / ADR-0030).
 //
 // The 42 CFR §418.64(d) psychosocial surface over the shared plan spine, plus the two MSW-specific things:
@@ -10,7 +11,6 @@ import type { JSX } from "react";
 // The shared workspace renders that marker; this screen adds the sentence that tells an MSW WHY a colleague
 // may see a different plan — the honest disclosure the spec's §7.8 workflow requires.
 import { Notice } from "./discipline-ui";
-import { daysUntil, shortDate } from "./discipline-status";
 import { DisciplinePlanWorkspace } from "./plan-workspace";
 
 /** D10 — CoP 418.54(c): the comprehensive assessment (incl. psychosocial) is due within 5 days. */
@@ -34,7 +34,11 @@ export function MswPlanView(): JSX.Element {
         const dueAt = new Date(started + INITIAL_ASSESSMENT_DAYS * 86_400_000).toISOString();
         const left = daysUntil(dueAt);
         return (
-          <Notice tone={left !== null && left < 0 ? "error" : left !== null && left <= 2 ? "warning" : "info"}>
+          <Notice
+            tone={
+              left !== null && left < 0 ? "error" : left !== null && left <= 2 ? "warning" : "info"
+            }
+          >
             Initial psychosocial assessment due {shortDate(dueAt)} (five days from admission
             activation on {shortDate(plan.initialAssessmentClockStartedAt)})
             {left !== null && left < 0 ? ` — ${-left} days overdue.` : "."}

@@ -87,10 +87,7 @@ export function MedicaidOverrideAudit(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="Override Audit"
-          breadcrumb="Billing — Medicaid · validation overrides"
-        />
+        <PageHeader title="Override Audit" breadcrumb="Billing — Medicaid · validation overrides" />
       }
       filters={
         <FilterRow>
@@ -143,8 +140,8 @@ export function MedicaidOverrideAudit(): JSX.Element {
       }
       detail={
         <span style={mutedStyle}>
-          Overrides are append-only. A rule that recurs here is a candidate for an upstream fix, not a
-          standing exception.
+          Overrides are append-only. A rule that recurs here is a candidate for an upstream fix, not
+          a standing exception.
         </span>
       }
     />

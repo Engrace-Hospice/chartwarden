@@ -20,9 +20,9 @@
 // Keying on the content HASH rather than the version is what makes eviction correct without a
 // broadcast: a row whose file changed under it produces a different hash and therefore misses.
 import type {
+  AIPromptRegistry,
   ActivePromptDetail,
   ActivePromptSummary,
-  AIPromptRegistry,
 } from "@wardenx/ai-platform";
 import {
   AI_PROMPT_CACHE_TTL_MS,

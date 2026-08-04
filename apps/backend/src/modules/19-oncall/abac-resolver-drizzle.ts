@@ -66,27 +66,31 @@ export function buildDrizzleOncallAbacResolver(
   return {
     async loadCall(orgId, triageCallId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<TriageCallAbacFacts | null> => {
-          const [row] = await tx
-            .select({
-              organizationId: CALL.organizationId,
-              id: CALL.id,
-              providerEntityId: CALL.providerEntityId,
-              patientId: CALL.patientId,
-              onCallShiftId: CALL.onCallShiftId,
-            })
-            .from(CALL)
-            .where(and(eq(CALL.id, triageCallId), eq(CALL.organizationId, orgId)))
-            .limit(1);
-          if (!row) return null;
-          return {
-            organizationId: row.organizationId,
-            triageCallId: row.id,
-            providerEntityId: row.providerEntityId,
-            patientId: row.patientId,
-            onCallShiftId: row.onCallShiftId,
-          };
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<TriageCallAbacFacts | null> => {
+            const [row] = await tx
+              .select({
+                organizationId: CALL.organizationId,
+                id: CALL.id,
+                providerEntityId: CALL.providerEntityId,
+                patientId: CALL.patientId,
+                onCallShiftId: CALL.onCallShiftId,
+              })
+              .from(CALL)
+              .where(and(eq(CALL.id, triageCallId), eq(CALL.organizationId, orgId)))
+              .limit(1);
+            if (!row) return null;
+            return {
+              organizationId: row.organizationId,
+              triageCallId: row.id,
+              providerEntityId: row.providerEntityId,
+              patientId: row.patientId,
+              onCallShiftId: row.onCallShiftId,
+            };
+          },
+        );
       } catch {
         return null;
       }
@@ -94,31 +98,35 @@ export function buildDrizzleOncallAbacResolver(
 
     async loadShift(orgId, shiftId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<OnCallShiftAbacFacts | null> => {
-          const [row] = await tx
-            .select({
-              organizationId: SHIFT.organizationId,
-              id: SHIFT.id,
-              providerEntityId: SHIFT.providerEntityId,
-              discipline: SHIFT.discipline,
-              primaryOnCallMembershipId: SHIFT.primaryOnCallMembershipId,
-              backupMembershipId: SHIFT.backupMembershipId,
-              externalActorId: SHIFT.externalActorId,
-            })
-            .from(SHIFT)
-            .where(and(eq(SHIFT.id, shiftId), eq(SHIFT.organizationId, orgId)))
-            .limit(1);
-          if (!row) return null;
-          return {
-            organizationId: row.organizationId,
-            shiftId: row.id,
-            providerEntityId: row.providerEntityId,
-            discipline: row.discipline,
-            primaryOnCallMembershipId: row.primaryOnCallMembershipId,
-            backupMembershipId: row.backupMembershipId,
-            externalActorId: row.externalActorId,
-          };
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<OnCallShiftAbacFacts | null> => {
+            const [row] = await tx
+              .select({
+                organizationId: SHIFT.organizationId,
+                id: SHIFT.id,
+                providerEntityId: SHIFT.providerEntityId,
+                discipline: SHIFT.discipline,
+                primaryOnCallMembershipId: SHIFT.primaryOnCallMembershipId,
+                backupMembershipId: SHIFT.backupMembershipId,
+                externalActorId: SHIFT.externalActorId,
+              })
+              .from(SHIFT)
+              .where(and(eq(SHIFT.id, shiftId), eq(SHIFT.organizationId, orgId)))
+              .limit(1);
+            if (!row) return null;
+            return {
+              organizationId: row.organizationId,
+              shiftId: row.id,
+              providerEntityId: row.providerEntityId,
+              discipline: row.discipline,
+              primaryOnCallMembershipId: row.primaryOnCallMembershipId,
+              backupMembershipId: row.backupMembershipId,
+              externalActorId: row.externalActorId,
+            };
+          },
+        );
       } catch {
         return null;
       }

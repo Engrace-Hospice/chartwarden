@@ -12,8 +12,8 @@
 // The Part 2 SUD enforcement lives on the READ path (`redacted` projection); the disclosure HARD-deny
 // (`SUD_DISCLOSURE_DENIED`) is for FHIR/portal egress, not these chart routes (§4.4).
 import {
-  cosignRequiredFor,
   computeScaleLicenseStatus,
+  cosignRequiredFor,
   disciplineCanRecordScale,
   isLicensedScale,
   planCorrection,
@@ -117,23 +117,89 @@ export interface ScalePolicyView {
 }
 
 export interface AssessmentRouteService {
-  recordAssessment(organizationId: string, actorUserId: string, patientId: string, args: RecordAssessmentArgs): Promise<AssessmentView>;
-  correctAssessment(organizationId: string, actorUserId: string, patientId: string, targetId: string, ifVersion: number, args: CorrectAssessmentArgs): Promise<AssessmentView>;
-  listAssessments(organizationId: string, patientId: string): Promise<{ assessments: AssessmentView[] }>;
+  recordAssessment(
+    organizationId: string,
+    actorUserId: string,
+    patientId: string,
+    args: RecordAssessmentArgs,
+  ): Promise<AssessmentView>;
+  correctAssessment(
+    organizationId: string,
+    actorUserId: string,
+    patientId: string,
+    targetId: string,
+    ifVersion: number,
+    args: CorrectAssessmentArgs,
+  ): Promise<AssessmentView>;
+  listAssessments(
+    organizationId: string,
+    patientId: string,
+  ): Promise<{ assessments: AssessmentView[] }>;
   getAssessment(organizationId: string, patientId: string, id: string): Promise<AssessmentView>;
-  summary(organizationId: string, patientId: string): Promise<{ patientId: string; latest: AssessmentView[] }>;
-  latestScale(organizationId: string, patientId: string, scaleType: ScaleType): Promise<AssessmentView>;
-  seriesScale(organizationId: string, patientId: string, scaleType: ScaleType, from: string, to: string): Promise<ScaleSeries>;
-  deltaScale(organizationId: string, patientId: string, scaleType: ScaleType, from: string, to: string): Promise<ScaleDelta>;
-  latestBatch(organizationId: string, patientId: string, scaleTypes: readonly ScaleType[]): Promise<{ latest: AssessmentView[] }>;
-  cosign(organizationId: string, actorUserId: string, id: string, cosignerDiscipline: string): Promise<{ assessmentId: string; cosigned: true }>;
-  listSignificantChanges(organizationId: string, patientId: string): Promise<{ events: SignificantChangeView[] }>;
-  acknowledgeChange(organizationId: string, eventId: string): Promise<{ status: SignificantChangeStatus }>;
+  summary(
+    organizationId: string,
+    patientId: string,
+  ): Promise<{ patientId: string; latest: AssessmentView[] }>;
+  latestScale(
+    organizationId: string,
+    patientId: string,
+    scaleType: ScaleType,
+  ): Promise<AssessmentView>;
+  seriesScale(
+    organizationId: string,
+    patientId: string,
+    scaleType: ScaleType,
+    from: string,
+    to: string,
+  ): Promise<ScaleSeries>;
+  deltaScale(
+    organizationId: string,
+    patientId: string,
+    scaleType: ScaleType,
+    from: string,
+    to: string,
+  ): Promise<ScaleDelta>;
+  latestBatch(
+    organizationId: string,
+    patientId: string,
+    scaleTypes: readonly ScaleType[],
+  ): Promise<{ latest: AssessmentView[] }>;
+  cosign(
+    organizationId: string,
+    actorUserId: string,
+    id: string,
+    cosignerDiscipline: string,
+  ): Promise<{ assessmentId: string; cosigned: true }>;
+  listSignificantChanges(
+    organizationId: string,
+    patientId: string,
+  ): Promise<{ events: SignificantChangeView[] }>;
+  acknowledgeChange(
+    organizationId: string,
+    eventId: string,
+  ): Promise<{ status: SignificantChangeStatus }>;
   listLicenses(organizationId: string): Promise<{ licenses: ScaleLicenseView[] }>;
-  createLicense(organizationId: string, args: { scaleType: ScaleType; vendor: string; effectiveDate: string; expiresAt: string; seats?: number }): Promise<ScaleLicenseView>;
-  updateLicense(organizationId: string, id: string, args: { vendor?: string; effectiveDate?: string; expiresAt?: string; seats?: number }): Promise<ScaleLicenseView>;
+  createLicense(
+    organizationId: string,
+    args: {
+      scaleType: ScaleType;
+      vendor: string;
+      effectiveDate: string;
+      expiresAt: string;
+      seats?: number;
+    },
+  ): Promise<ScaleLicenseView>;
+  updateLicense(
+    organizationId: string,
+    id: string,
+    args: { vendor?: string; effectiveDate?: string; expiresAt?: string; seats?: number },
+  ): Promise<ScaleLicenseView>;
   listPolicies(organizationId: string): Promise<{ policies: ScalePolicyView[] }>;
-  updatePolicy(organizationId: string, scaleType: ScaleType, enabled: boolean): Promise<ScalePolicyView>;
+  updatePolicy(
+    organizationId: string,
+    scaleType: ScaleType,
+    enabled: boolean,
+  ): Promise<ScalePolicyView>;
 }
 
 // ── in-memory records + slice ─────────────────────────────────────────────────────────────────────────
@@ -206,7 +272,14 @@ export interface AssessmentRouteSeed {
   readonly licenses?: ReadonlyArray<ScaleLicenseRecord>;
   /** scaleTypes EXPLICITLY disabled per org (absent ⇒ enabled by default). */
   readonly disabledPolicies?: ReadonlyArray<{ organizationId: string; scaleType: ScaleType }>;
-  readonly assessments?: ReadonlyArray<Partial<AssessmentRecord> & { id: string; organizationId: string; patientId: string; scaleType: ScaleType }>;
+  readonly assessments?: ReadonlyArray<
+    Partial<AssessmentRecord> & {
+      id: string;
+      organizationId: string;
+      patientId: string;
+      scaleType: ScaleType;
+    }
+  >;
   readonly significantChanges?: ReadonlyArray<SignificantChangeRecord>;
   /** Injected clock (deterministic in tests; defaults to the server clock). */
   readonly now?: () => string;
@@ -220,7 +293,14 @@ function uuidFromCounter(prefixNibble: string, n: number): string {
 
 const SCALE_VERSION = "v1";
 
-function fullRecord(seed: Partial<AssessmentRecord> & { id: string; organizationId: string; patientId: string; scaleType: ScaleType }): AssessmentRecord {
+function fullRecord(
+  seed: Partial<AssessmentRecord> & {
+    id: string;
+    organizationId: string;
+    patientId: string;
+    scaleType: ScaleType;
+  },
+): AssessmentRecord {
   return {
     admissionId: seed.admissionId ?? uuidFromCounter("3", 0),
     scaleVersion: seed.scaleVersion ?? SCALE_VERSION,
@@ -289,7 +369,9 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
   const consents = [...(seed.consents ?? [])];
   const licenses = new Map<string, ScaleLicenseRecord>();
   for (const l of seed.licenses ?? []) licenses.set(l.id, { ...l });
-  const disabled = new Set((seed.disabledPolicies ?? []).map((p) => `${p.organizationId}::${p.scaleType}`));
+  const disabled = new Set(
+    (seed.disabledPolicies ?? []).map((p) => `${p.organizationId}::${p.scaleType}`),
+  );
   const changes = new Map<string, SignificantChangeRecord>();
   for (const c of seed.significantChanges ?? []) changes.set(c.id, { ...c });
 
@@ -305,8 +387,14 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
   const policyEnabled = (organizationId: string, scaleType: ScaleType): boolean =>
     !disabled.has(`${organizationId}::${scaleType}`);
 
-  const consentActive = (organizationId: string, patientId: string, kind: "dpoa" | "sud"): boolean => {
-    const c = consents.find((x) => x.organizationId === organizationId && x.patientId === patientId);
+  const consentActive = (
+    organizationId: string,
+    patientId: string,
+    kind: "dpoa" | "sud",
+  ): boolean => {
+    const c = consents.find(
+      (x) => x.organizationId === organizationId && x.patientId === patientId,
+    );
     if (!c) return false;
     return kind === "dpoa" ? c.dpoaActive === true : c.sudReleaseActive === true;
   };
@@ -319,28 +407,69 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
   const sudRedacted = (r: AssessmentRecord): boolean =>
     r.scaleType === "aims" && r.sudContext && !consentActive(r.organizationId, r.patientId, "sud");
 
-  const licenseStatusFor = (organizationId: string, scaleType: ScaleType): "active" | "pending_renewal" | "expired" | null => {
-    const lic = [...licenses.values()].find((l) => l.organizationId === organizationId && l.scaleType === scaleType);
+  const licenseStatusFor = (
+    organizationId: string,
+    scaleType: ScaleType,
+  ): "active" | "pending_renewal" | "expired" | null => {
+    const lic = [...licenses.values()].find(
+      (l) => l.organizationId === organizationId && l.scaleType === scaleType,
+    );
     if (!lic) return null;
-    return computeScaleLicenseStatus({ effectiveDate: lic.effectiveDate, expiresAt: lic.expiresAt }, today());
+    return computeScaleLicenseStatus(
+      { effectiveDate: lic.effectiveDate, expiresAt: lic.expiresAt },
+      today(),
+    );
   };
 
   /** The §10 task-#5 record pipeline, shared by the create + correction paths (re-scored each time). */
-  const buildScored = (organizationId: string, patientId: string, args: RecordAssessmentArgs): { score: number | null; interpretation: string | null } => {
+  const buildScored = (
+    organizationId: string,
+    patientId: string,
+    args: RecordAssessmentArgs,
+  ): { score: number | null; interpretation: string | null } => {
     // admission anchor (M6 facts): active admission + capturedAt ≥ activation.
-    const admission = admissions.find((a) => a.organizationId === organizationId && a.id === args.admissionId && a.patientId === patientId);
-    require_(admission !== undefined && admission.status === "active", "INACTIVE_ADMISSION", "Patient's admission is not active.");
-    require_(args.capturedAt >= (admission as AdmissionFact).activatedAt, "BEFORE_ADMISSION", "capturedAt precedes admission activation.");
+    const admission = admissions.find(
+      (a) =>
+        a.organizationId === organizationId &&
+        a.id === args.admissionId &&
+        a.patientId === patientId,
+    );
+    require_(
+      admission !== undefined && admission.status === "active",
+      "INACTIVE_ADMISSION",
+      "Patient's admission is not active.",
+    );
+    require_(
+      args.capturedAt >= (admission as AdmissionFact).activatedAt,
+      "BEFORE_ADMISSION",
+      "capturedAt precedes admission activation.",
+    );
     // policy + license gates (D3).
-    require_(policyEnabled(organizationId, args.scaleType), "SCALE_NOT_ENABLED", `Scale '${args.scaleType}' is disabled for this tenant.`);
+    require_(
+      policyEnabled(organizationId, args.scaleType),
+      "SCALE_NOT_ENABLED",
+      `Scale '${args.scaleType}' is disabled for this tenant.`,
+    );
     if (isLicensedScale(args.scaleType)) {
-      require_(licenseStatusFor(organizationId, args.scaleType) === "active", "SCALE_LICENSE_MISSING", `Scale '${args.scaleType}' requires an active license.`);
+      require_(
+        licenseStatusFor(organizationId, args.scaleType) === "active",
+        "SCALE_LICENSE_MISSING",
+        `Scale '${args.scaleType}' requires an active license.`,
+      );
     }
     // discipline gate (D8) — defense-in-depth behind the route's `discipline_can_record_scale` predicate.
-    require_(disciplineCanRecordScale(args.recorderDiscipline, args.scaleType), "DISCIPLINE_NOT_ELIGIBLE", `Discipline '${args.recorderDiscipline}' cannot record '${args.scaleType}'.`);
+    require_(
+      disciplineCanRecordScale(args.recorderDiscipline, args.scaleType),
+      "DISCIPLINE_NOT_ELIGIBLE",
+      `Discipline '${args.recorderDiscipline}' cannot record '${args.scaleType}'.`,
+    );
     // DPOA proxy-attribution gate (write path) — a representative report needs an active DPOA (§4.4).
     if (args.actingAs === "patient_representative") {
-      require_(consentActive(organizationId, patientId, "dpoa"), "DPOA_CONSENT_REQUIRED", "acting_as='patient_representative' requires an active dpoa_healthcare consent.");
+      require_(
+        consentActive(organizationId, patientId, "dpoa"),
+        "DPOA_CONSENT_REQUIRED",
+        "acting_as='patient_representative' requires an active dpoa_healthcare consent.",
+      );
     }
     // server-authoritative score (D6) — never trust a client-sent score.
     const { score, interpretation } = scoreAssessment(args.scaleType, args.data as never);
@@ -379,8 +508,20 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       const target = findRow(organizationId, targetId);
       // §2.2.1 / §2.3 — validate the correction against its target (active / mismatch / stale-version).
       const plan = planCorrection(
-        { id: target.id, scaleType: target.scaleType, patientId: target.patientId, admissionId: target.admissionId, status: target.status, version: target.version },
-        { scaleType: args.scaleType, patientId, admissionId: args.admissionId, expectedTargetVersion: ifVersion },
+        {
+          id: target.id,
+          scaleType: target.scaleType,
+          patientId: target.patientId,
+          admissionId: target.admissionId,
+          status: target.status,
+          version: target.version,
+        },
+        {
+          scaleType: args.scaleType,
+          patientId,
+          admissionId: args.admissionId,
+          expectedTargetVersion: ifVersion,
+        },
       );
       const { score, interpretation } = buildScored(organizationId, patientId, args);
       target.status = "superseded";
@@ -428,7 +569,12 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     async summary(organizationId, patientId) {
       const latest = new Map<ScaleType, AssessmentRecord>();
       for (const r of rows.values()) {
-        if (r.organizationId !== organizationId || r.patientId !== patientId || r.status !== "active") continue;
+        if (
+          r.organizationId !== organizationId ||
+          r.patientId !== patientId ||
+          r.status !== "active"
+        )
+          continue;
         const cur = latest.get(r.scaleType);
         if (!cur || r.capturedAt > cur.capturedAt) latest.set(r.scaleType, r);
       }
@@ -437,7 +583,11 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
 
     async latestScale(organizationId, patientId, scaleType) {
       const candidates = [...rows.values()].filter(
-        (r) => r.organizationId === organizationId && r.patientId === patientId && r.scaleType === scaleType && r.status === "active",
+        (r) =>
+          r.organizationId === organizationId &&
+          r.patientId === patientId &&
+          r.scaleType === scaleType &&
+          r.status === "active",
       );
       if (candidates.length === 0) throw new NotFoundError("assessment");
       const latest = candidates.reduce((a, b) => (b.capturedAt > a.capturedAt ? b : a));
@@ -448,12 +598,26 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       const fromI = `${from}T00:00:00.000Z`;
       const toI = `${to}T23:59:59.999Z`;
       const points: ScaleSeriesPoint[] = [...rows.values()]
-        .filter((r) => r.organizationId === organizationId && r.patientId === patientId && r.scaleType === scaleType && r.status === "active" && r.capturedAt >= fromI && r.capturedAt <= toI)
+        .filter(
+          (r) =>
+            r.organizationId === organizationId &&
+            r.patientId === patientId &&
+            r.scaleType === scaleType &&
+            r.status === "active" &&
+            r.capturedAt >= fromI &&
+            r.capturedAt <= toI,
+        )
         .sort((a, b) => (a.capturedAt < b.capturedAt ? -1 : a.capturedAt > b.capturedAt ? 1 : 0))
         .map((r) => {
           // D10 disclosure gate also withholds the score of a non-consented SUD-context AIMS trend point.
           const redacted = sudRedacted(r);
-          return { assessmentId: r.id, capturedAt: r.capturedAt, score: redacted ? null : r.score, scoreInterpretation: redacted ? null : r.scoreInterpretation, significantChange: false };
+          return {
+            assessmentId: r.id,
+            capturedAt: r.capturedAt,
+            score: redacted ? null : r.score,
+            scoreInterpretation: redacted ? null : r.scoreInterpretation,
+            significantChange: false,
+          };
         });
       return { scaleType, patientId, from: fromI, to: toI, points };
     },
@@ -461,7 +625,8 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     async deltaScale(organizationId, patientId, scaleType, from, to) {
       const { points } = await service.seriesScale(organizationId, patientId, scaleType, from, to);
       const window = { from, to };
-      if (points.length < 2) return { scaleType, patientId, window, latestScore: null, priorScore: null, delta: null };
+      if (points.length < 2)
+        return { scaleType, patientId, window, latestScore: null, priorScore: null, delta: null };
       const priorScore = points[0]!.score;
       const latestScore = points[points.length - 1]!.score;
       const delta = latestScore !== null && priorScore !== null ? latestScore - priorScore : null;
@@ -472,7 +637,13 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       const wanted = new Set(scaleTypes);
       const latest = new Map<ScaleType, AssessmentRecord>();
       for (const r of rows.values()) {
-        if (r.organizationId !== organizationId || r.patientId !== patientId || r.status !== "active" || !wanted.has(r.scaleType)) continue;
+        if (
+          r.organizationId !== organizationId ||
+          r.patientId !== patientId ||
+          r.status !== "active" ||
+          !wanted.has(r.scaleType)
+        )
+          continue;
         const cur = latest.get(r.scaleType);
         if (!cur || r.capturedAt > cur.capturedAt) latest.set(r.scaleType, r);
       }
@@ -496,13 +667,21 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     async listSignificantChanges(organizationId, patientId) {
       const events = [...changes.values()]
         .filter((c) => c.organizationId === organizationId && c.patientId === patientId)
-        .map((c) => ({ id: c.id, assessmentId: c.assessmentId, priorAssessmentId: c.priorAssessmentId, ruleId: c.ruleId, status: c.status, severity: c.severity }));
+        .map((c) => ({
+          id: c.id,
+          assessmentId: c.assessmentId,
+          priorAssessmentId: c.priorAssessmentId,
+          ruleId: c.ruleId,
+          status: c.status,
+          severity: c.severity,
+        }));
       return { events };
     },
 
     async acknowledgeChange(organizationId, eventId) {
       const c = changes.get(eventId);
-      if (!c || c.organizationId !== organizationId) throw new NotFoundError("significant_change_event");
+      if (!c || c.organizationId !== organizationId)
+        throw new NotFoundError("significant_change_event");
       c.status = transitionSignificantChange(c.status, { type: "acknowledge" });
       return { status: c.status };
     },
@@ -510,15 +689,39 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     async listLicenses(organizationId) {
       const licensesOut = [...licenses.values()]
         .filter((l) => l.organizationId === organizationId)
-        .map((l) => ({ id: l.id, scaleType: l.scaleType, vendor: l.vendor, effectiveDate: l.effectiveDate, expiresAt: l.expiresAt, seats: l.seats, status: licenseStatusFor(organizationId, l.scaleType) ?? "expired" }));
+        .map((l) => ({
+          id: l.id,
+          scaleType: l.scaleType,
+          vendor: l.vendor,
+          effectiveDate: l.effectiveDate,
+          expiresAt: l.expiresAt,
+          seats: l.seats,
+          status: licenseStatusFor(organizationId, l.scaleType) ?? "expired",
+        }));
       return { licenses: licensesOut };
     },
 
     async createLicense(organizationId, args) {
       const id = uuidFromCounter("c", ++licenseSeq);
-      const rec: ScaleLicenseRecord = { id, organizationId, scaleType: args.scaleType, vendor: args.vendor, effectiveDate: args.effectiveDate, expiresAt: args.expiresAt, seats: args.seats ?? null };
+      const rec: ScaleLicenseRecord = {
+        id,
+        organizationId,
+        scaleType: args.scaleType,
+        vendor: args.vendor,
+        effectiveDate: args.effectiveDate,
+        expiresAt: args.expiresAt,
+        seats: args.seats ?? null,
+      };
       licenses.set(id, rec);
-      return { id, scaleType: rec.scaleType, vendor: rec.vendor, effectiveDate: rec.effectiveDate, expiresAt: rec.expiresAt, seats: rec.seats, status: licenseStatusFor(organizationId, rec.scaleType) ?? "expired" };
+      return {
+        id,
+        scaleType: rec.scaleType,
+        vendor: rec.vendor,
+        effectiveDate: rec.effectiveDate,
+        expiresAt: rec.expiresAt,
+        seats: rec.seats,
+        status: licenseStatusFor(organizationId, rec.scaleType) ?? "expired",
+      };
     },
 
     async updateLicense(organizationId, id, args) {
@@ -528,7 +731,15 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       if (args.effectiveDate !== undefined) rec.effectiveDate = args.effectiveDate;
       if (args.expiresAt !== undefined) rec.expiresAt = args.expiresAt;
       if (args.seats !== undefined) rec.seats = args.seats;
-      return { id: rec.id, scaleType: rec.scaleType, vendor: rec.vendor, effectiveDate: rec.effectiveDate, expiresAt: rec.expiresAt, seats: rec.seats, status: licenseStatusFor(organizationId, rec.scaleType) ?? "expired" };
+      return {
+        id: rec.id,
+        scaleType: rec.scaleType,
+        vendor: rec.vendor,
+        effectiveDate: rec.effectiveDate,
+        expiresAt: rec.expiresAt,
+        seats: rec.seats,
+        status: licenseStatusFor(organizationId, rec.scaleType) ?? "expired",
+      };
     },
 
     async listPolicies(organizationId) {
@@ -550,7 +761,12 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     async loadAssessment(organizationId, assessmentId) {
       const r = rows.get(assessmentId);
       if (!r || r.organizationId !== organizationId) return null;
-      return { assessmentId: r.id, patientId: r.patientId, recorderDiscipline: r.capturedByDiscipline, recordedByUserId: r.recordedByUserId };
+      return {
+        assessmentId: r.id,
+        patientId: r.patientId,
+        recorderDiscipline: r.capturedByDiscipline,
+        recordedByUserId: r.recordedByUserId,
+      };
     },
   };
 

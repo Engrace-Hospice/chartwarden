@@ -191,9 +191,7 @@ export const DpoaAgentIdParamsSchema = Type.Object({
 /** Route 2 — POST /consent-types/overlay (tighten-only; the pure validator refuses a loosen). */
 export const UpsertOverlayBodySchema = Type.Object({
   typeKey: ConsentTypeKeySchema,
-  tighterExpirationSeconds: Type.Optional(
-    Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
-  ),
+  tighterExpirationSeconds: Type.Optional(Type.Union([Type.Integer({ minimum: 1 }), Type.Null()])),
   tighterCaptureMethods: Type.Optional(Type.Array(CAPTURE_METHOD, { minItems: 1 })),
   tighterReminderCadence: Type.Optional(Type.Array(REMINDER_KIND, { minItems: 1 })),
   stateAddendumText: Type.Optional(Type.Union([Type.String({ maxLength: 8000 }), Type.Null()])),
@@ -352,9 +350,7 @@ export const ConsentRecipientViewSchema = Type.Object({
   removedReasonText: nullableStr(),
   active: Type.Boolean(),
 });
-export const ConsentRecipientListResponseSchema = dataOf(
-  Type.Array(ConsentRecipientViewSchema),
-);
+export const ConsentRecipientListResponseSchema = dataOf(Type.Array(ConsentRecipientViewSchema));
 
 /** `ConsentDpoaAgentView` — a named DPOA agent (D5). */
 export const ConsentDpoaAgentViewSchema = Type.Object({
@@ -374,9 +370,7 @@ export const ConsentDpoaAgentViewSchema = Type.Object({
   removedAt: nullableStr(),
   active: Type.Boolean(),
 });
-export const ConsentDpoaAgentListResponseSchema = dataOf(
-  Type.Array(ConsentDpoaAgentViewSchema),
-);
+export const ConsentDpoaAgentListResponseSchema = dataOf(Type.Array(ConsentDpoaAgentViewSchema));
 
 // ── §4.1 RESPONSE DTOs (F0 enrichment batch 2) ───────────────────────────────────────────────────
 //

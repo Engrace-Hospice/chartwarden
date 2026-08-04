@@ -83,12 +83,7 @@ export type SnapshotReason = "submit" | "reopen" | "mac_revision_request" | "adm
 export type WageSource = "gusto" | "manual";
 export type ImportSource = "xero" | "manual_csv" | "gusto";
 export type BadDebtKind = "deductible" | "coinsurance";
-export type EcrSubmissionStatus =
-  | "generating"
-  | "generated"
-  | "uploaded"
-  | "accepted"
-  | "rejected";
+export type EcrSubmissionStatus = "generating" | "generated" | "uploaded" | "accepted" | "rejected";
 export type AlertTier = "none" | "t4_months" | "t4_5_months" | "t4_75_months" | "past_deadline";
 
 export type RuleCategory =

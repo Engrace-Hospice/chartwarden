@@ -12,15 +12,7 @@
 // The TIER and the trigger KIND are not denylisted: they are the structure a suppression investigation
 // reads, and they name a role, not a patient.
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { check, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { triageEscalationTier, triageEscalationTrigger } from "../../enums";
 import { locations } from "../locations";
 import { memberships } from "../memberships";

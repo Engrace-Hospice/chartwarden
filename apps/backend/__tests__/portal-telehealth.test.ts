@@ -27,7 +27,7 @@ import {
 
 describe("telehealth visit lifecycle (§7.2 happy path, §7.3 aborted, D8)", () => {
   it("walks the §7.2 happy path room_minted → *_joined → in_progress → ended_clean → reconciled", () => {
-    let s = "room_minted" as const;
+    const s = "room_minted" as const;
     const a = foldParticipantJoin(s, "clinician"); // clinician-first
     expect(a).toBe("clinician_joined");
     const b = foldParticipantJoin(a, "patient"); // patient joins → both present
@@ -69,11 +69,26 @@ describe("telehealth visit lifecycle (§7.2 happy path, §7.3 aborted, D8)", () 
     expect(endStateFor(true)).toBe("ended_clean");
     expect(endStateFor(false)).toBe("ended_aborted");
     // §7.3 negative path — patient dropped mid-call.
-    expect(deriveEndReason({ clean: false, patientPresentAtEnd: false, clinicianPresentAtEnd: true })).toBe("patient_dropped");
-    expect(deriveEndReason({ clean: false, patientPresentAtEnd: true, clinicianPresentAtEnd: false })).toBe("clinician_dropped");
-    expect(deriveEndReason({ clean: false, patientPresentAtEnd: false, clinicianPresentAtEnd: false })).toBe("both_dropped");
-    expect(deriveEndReason({ clean: false, patientPresentAtEnd: true, clinicianPresentAtEnd: true, vendorOutage: true })).toBe("vendor_outage");
-    expect(deriveEndReason({ clean: true, patientPresentAtEnd: false, clinicianPresentAtEnd: false })).toBe("clean");
+    expect(
+      deriveEndReason({ clean: false, patientPresentAtEnd: false, clinicianPresentAtEnd: true }),
+    ).toBe("patient_dropped");
+    expect(
+      deriveEndReason({ clean: false, patientPresentAtEnd: true, clinicianPresentAtEnd: false }),
+    ).toBe("clinician_dropped");
+    expect(
+      deriveEndReason({ clean: false, patientPresentAtEnd: false, clinicianPresentAtEnd: false }),
+    ).toBe("both_dropped");
+    expect(
+      deriveEndReason({
+        clean: false,
+        patientPresentAtEnd: true,
+        clinicianPresentAtEnd: true,
+        vendorOutage: true,
+      }),
+    ).toBe("vendor_outage");
+    expect(
+      deriveEndReason({ clean: true, patientPresentAtEnd: false, clinicianPresentAtEnd: false }),
+    ).toBe("clean");
   });
 
   it("reconciled is a terminal state with no outbound transitions", () => {
@@ -85,13 +100,26 @@ describe("audio-only Tier-3 fallback planner (§7.3 / §6.4 / D14)", () => {
   const NOW = Date.parse("2026-08-02T12:00:00.000Z");
 
   it("keeps trying video below the attempt floor, then offers audio-only at the floor (§6.4 default 2)", () => {
-    expect(evaluateAudioOnlyFallback({ failedConnectAttempts: 1, breakerOpenedAtMs: null, nowMs: NOW }).plan).toBe("continue");
-    expect(evaluateAudioOnlyFallback({ failedConnectAttempts: 2, breakerOpenedAtMs: null, nowMs: NOW }).plan).toBe("offer_audio_only");
+    expect(
+      evaluateAudioOnlyFallback({ failedConnectAttempts: 1, breakerOpenedAtMs: null, nowMs: NOW })
+        .plan,
+    ).toBe("continue");
+    expect(
+      evaluateAudioOnlyFallback({ failedConnectAttempts: 2, breakerOpenedAtMs: null, nowMs: NOW })
+        .plan,
+    ).toBe("offer_audio_only");
     expect(AUDIO_ONLY_ATTEMPT_FLOOR).toBe(2);
   });
 
   it("lets a tenant TIGHTEN the threshold to 1 but never raise it above the platform floor", () => {
-    expect(evaluateAudioOnlyFallback({ failedConnectAttempts: 1, breakerOpenedAtMs: null, nowMs: NOW, tenantAttemptThreshold: 1 }).plan).toBe("offer_audio_only");
+    expect(
+      evaluateAudioOnlyFallback({
+        failedConnectAttempts: 1,
+        breakerOpenedAtMs: null,
+        nowMs: NOW,
+        tenantAttemptThreshold: 1,
+      }).plan,
+    ).toBe("offer_audio_only");
     expect(resolveAttemptThreshold(1)).toBe(1);
     expect(resolveAttemptThreshold(5)).toBe(AUDIO_ONLY_ATTEMPT_FLOOR); // clamped down
     expect(resolveAttemptThreshold(0)).toBe(1); // clamped up to 1
@@ -99,10 +127,22 @@ describe("audio-only Tier-3 fallback planner (§7.3 / §6.4 / D14)", () => {
 
   it("reschedules to in-person once the vendor circuit is open past the 5-minute ceiling (D14)", () => {
     const openedAt = NOW - (BREAKER_OPEN_RESCHEDULE_MS + 1);
-    expect(evaluateAudioOnlyFallback({ failedConnectAttempts: 5, breakerOpenedAtMs: openedAt, nowMs: NOW }).plan).toBe("reschedule_in_person");
+    expect(
+      evaluateAudioOnlyFallback({
+        failedConnectAttempts: 5,
+        breakerOpenedAtMs: openedAt,
+        nowMs: NOW,
+      }).plan,
+    ).toBe("reschedule_in_person");
     // Just under the ceiling with enough attempts → still only audio-only, not reschedule.
     const recentlyOpened = NOW - (BREAKER_OPEN_RESCHEDULE_MS - 1);
-    expect(evaluateAudioOnlyFallback({ failedConnectAttempts: 5, breakerOpenedAtMs: recentlyOpened, nowMs: NOW }).plan).toBe("offer_audio_only");
+    expect(
+      evaluateAudioOnlyFallback({
+        failedConnectAttempts: 5,
+        breakerOpenedAtMs: recentlyOpened,
+        nowMs: NOW,
+      }).plan,
+    ).toBe("offer_audio_only");
   });
 });
 
@@ -139,13 +179,17 @@ describe("two-party recording-consent gate (§7.4 / D9 / §3.8)", () => {
     expect(verdict.allowed).toBe(true);
     expect(verdict.blockingParticipantRefs).toHaveLength(0);
     expect(() =>
-      assertRecordingConsent([{ participantRef: "acct-1", stateCode: "CA", hasActiveRecordingConsent: true }]),
+      assertRecordingConsent([
+        { participantRef: "acct-1", stateCode: "CA", hasActiveRecordingConsent: true },
+      ]),
     ).not.toThrow();
   });
 
   it("assertRecordingConsent throws TELEHEALTH_RECORDING_CONSENT_ABSENT (403) when denied", () => {
     try {
-      assertRecordingConsent([{ participantRef: "acct-1", stateCode: "IL", hasActiveRecordingConsent: false }]);
+      assertRecordingConsent([
+        { participantRef: "acct-1", stateCode: "IL", hasActiveRecordingConsent: false },
+      ]);
       throw new Error("expected refusal");
     } catch (e) {
       expect(e).toBeInstanceOf(TelehealthStateError);

@@ -9,8 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { ABAC_IN_ORG, ABAC_NPPES_PLATFORM, P, STEP_UP } from "./guards";
 import { NppesSyncRunListQuery, NppesSyncTriggerBody, parse, parseQuery } from "./m29-typebox";
-import { M29StoreError, type M29Store } from "./store";
-
+import { type M29Store, M29StoreError } from "./store";
 
 export interface NppesRouteDeps {
   readonly store: M29Store;
@@ -23,7 +22,10 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
   app.get(
     "/api/admin/external-interfaces/nppes/providers/:npi",
     {
-      preHandler: [P("external_interfaces.nppes.read"), ABAC_IN_ORG("external_interfaces.nppes.read")],
+      preHandler: [
+        P("external_interfaces.nppes.read"),
+        ABAC_IN_ORG("external_interfaces.nppes.read"),
+      ],
     },
     async (request, reply) => {
       actorOf(request);
@@ -38,7 +40,10 @@ export function registerNppesRoutes(app: FastifyInstance, deps: NppesRouteDeps):
   app.get(
     "/api/admin/external-interfaces/nppes/sync-runs",
     {
-      preHandler: [P("external_interfaces.nppes.read"), ABAC_IN_ORG("external_interfaces.nppes.read")],
+      preHandler: [
+        P("external_interfaces.nppes.read"),
+        ABAC_IN_ORG("external_interfaces.nppes.read"),
+      ],
     },
     async (request) => {
       actorOf(request);

@@ -1,15 +1,15 @@
 // @wardenx/orders — §2.1/§2.2/§4.7 discipline_can_order + signer_eligible — M11-T03.
 import { describe, expect, it } from "vitest";
 import {
-  disciplineCanOrder,
-  assertDisciplineCanOrder,
   LPN_DRAFTABLE_KINDS,
+  assertDisciplineCanOrder,
+  disciplineCanOrder,
 } from "../src/lifecycle/discipline-can-order";
 import {
-  signerEligible,
-  assertSignerEligible,
-  assertSignAuthority,
   PHYSICIAN_ONLY_SIGN_KINDS,
+  assertSignAuthority,
+  assertSignerEligible,
+  signerEligible,
 } from "../src/lifecycle/signer-eligible";
 
 describe("§2.1 disciplineCanOrder", () => {
@@ -67,28 +67,55 @@ describe("§2.2 signerEligible", () => {
 describe("§2.2 assertSignAuthority", () => {
   it("the named practitioner may always sign", () => {
     expect(() =>
-      assertSignAuthority({ isNamedPractitioner: true, onBehalf: false, onBehalfSignerIsMedicalDirector: false, viaVerbal: false }),
+      assertSignAuthority({
+        isNamedPractitioner: true,
+        onBehalf: false,
+        onBehalfSignerIsMedicalDirector: false,
+        viaVerbal: false,
+      }),
     ).not.toThrow();
   });
 
   it("a non-named signer with no on-behalf is refused (403 SIGNER_NOT_NAMED_PRACTITIONER)", () => {
     expect(() =>
-      assertSignAuthority({ isNamedPractitioner: false, onBehalf: false, onBehalfSignerIsMedicalDirector: false, viaVerbal: false }),
-    ).toThrowError(expect.objectContaining({ code: "SIGNER_NOT_NAMED_PRACTITIONER", statusCode: 403 }));
+      assertSignAuthority({
+        isNamedPractitioner: false,
+        onBehalf: false,
+        onBehalfSignerIsMedicalDirector: false,
+        viaVerbal: false,
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "SIGNER_NOT_NAMED_PRACTITIONER", statusCode: 403 }),
+    );
   });
 
   it("a medical_director may sign on behalf in the written flow", () => {
     expect(() =>
-      assertSignAuthority({ isNamedPractitioner: false, onBehalf: true, onBehalfSignerIsMedicalDirector: true, viaVerbal: false }),
+      assertSignAuthority({
+        isNamedPractitioner: false,
+        onBehalf: true,
+        onBehalfSignerIsMedicalDirector: true,
+        viaVerbal: false,
+      }),
     ).not.toThrow();
   });
 
   it("on-behalf is refused in the verbal flow and for a non-MD (403 ON_BEHALF_NOT_PERMITTED)", () => {
     expect(() =>
-      assertSignAuthority({ isNamedPractitioner: false, onBehalf: true, onBehalfSignerIsMedicalDirector: true, viaVerbal: true }),
+      assertSignAuthority({
+        isNamedPractitioner: false,
+        onBehalf: true,
+        onBehalfSignerIsMedicalDirector: true,
+        viaVerbal: true,
+      }),
     ).toThrowError(expect.objectContaining({ code: "ON_BEHALF_NOT_PERMITTED", statusCode: 403 }));
     expect(() =>
-      assertSignAuthority({ isNamedPractitioner: false, onBehalf: true, onBehalfSignerIsMedicalDirector: false, viaVerbal: false }),
+      assertSignAuthority({
+        isNamedPractitioner: false,
+        onBehalf: true,
+        onBehalfSignerIsMedicalDirector: false,
+        viaVerbal: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "ON_BEHALF_NOT_PERMITTED" }));
   });
 });

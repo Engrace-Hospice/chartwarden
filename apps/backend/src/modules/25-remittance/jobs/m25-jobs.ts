@@ -6,11 +6,11 @@
 //   - appeal-deadline: for every appeal in a non-terminal state, emit the T-30/14/7/1 deadline alert at its
 //                      boundary (the hard T-0 block is the ABAC predicate, not a cron) (D6).
 import {
+  type AgingBucketLabel,
+  agingBucketLabel,
   agingDays,
   crossedAgingAlertThreshold,
   crossedStaleAppealThreshold,
-  type AgingBucketLabel,
-  agingBucketLabel,
   deadlineAlertBoundary,
 } from "../domain";
 
@@ -58,10 +58,18 @@ export async function runDenialAging(
     const label: AgingBucketLabel = agingBucketLabel(days);
     // Fire the 30-day alert only on the tick that crosses it (yesterday's bucket was ≤30).
     if (crossedAgingAlertThreshold(days) && !crossedAgingAlertThreshold(c.currentBucketDays)) {
-      alerts.push({ kind: "denial.aging_threshold_breached", denialCaseId: c.id, detail: { days, label } });
+      alerts.push({
+        kind: "denial.aging_threshold_breached",
+        denialCaseId: c.id,
+        detail: { days, label },
+      });
     }
     if (crossedStaleAppealThreshold(days) && c.state !== "appealed") {
-      alerts.push({ kind: "denial.high_value", denialCaseId: c.id, detail: { days, autoAppealDraft: true } });
+      alerts.push({
+        kind: "denial.high_value",
+        denialCaseId: c.id,
+        detail: { days, autoAppealDraft: true },
+      });
     }
   }
   return { rebucketed, alerts };

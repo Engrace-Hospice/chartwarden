@@ -191,7 +191,10 @@ export async function readOrgShiftLocations(
       const existing = byMembership.get(sample.membershipId);
       // M18 documents this as "the most recent event within 12h" per clinician, but a seam that returned
       // two rows for one membership would otherwise silently take whichever came last in the array.
-      if (existing === undefined || Date.parse(sample.capturedAt) > Date.parse(existing.capturedAt)) {
+      if (
+        existing === undefined ||
+        Date.parse(sample.capturedAt) > Date.parse(existing.capturedAt)
+      ) {
         byMembership.set(sample.membershipId, sample);
       }
     }

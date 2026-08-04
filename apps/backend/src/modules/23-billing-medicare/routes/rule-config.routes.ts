@@ -10,10 +10,6 @@
 // `Idempotency-Key` (§4.1). Org/actor/membership binding is ALWAYS server-side.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
-import { P, RULE_PROTECTED, targetRuleKeyFromBody } from "./guards";
-import type { M23ReadRouteService } from "./read-service";
-import type { M23WriteRouteService } from "./write-service";
 import {
   CreateRuleConfigBodySchema,
   RuleConfigIdParamsSchema,
@@ -21,6 +17,10 @@ import {
   UpdateRuleConfigBodySchema,
   parse,
 } from "./billing-typebox";
+import { parseIfMatch, requireIdempotencyKey, requireIfMatch } from "./concurrency";
+import { P, RULE_PROTECTED, targetRuleKeyFromBody } from "./guards";
+import type { M23ReadRouteService } from "./read-service";
+import type { M23WriteRouteService } from "./write-service";
 
 export interface RuleConfigRouteDeps {
   readonly readService: M23ReadRouteService;

@@ -26,7 +26,7 @@ export function IpuUnits(): JSX.Element {
       setError("Units unavailable.");
       return;
     }
-    setUnits(((res.data as unknown as { items: Unit[] }).items ?? []));
+    setUnits((res.data as unknown as { items: Unit[] }).items ?? []);
   }, [client]);
 
   useEffect(() => {
@@ -40,9 +40,14 @@ export function IpuUnits(): JSX.Element {
     <div>
       <PageHeader title="Inpatient units" breadcrumb="General Inpatient / Respite bed capacity" />
       {units.length === 0 ? (
-        <EmptyState title="No units" description="No inpatient units are configured for this organization yet." />
+        <EmptyState
+          title="No units"
+          description="No inpatient units are configured for this organization yet."
+        />
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontVariantNumeric: "tabular-nums" }}
+        >
           <thead>
             <tr style={{ textAlign: "left", color: "var(--color-text-muted)" }}>
               <th style={{ padding: "var(--space-2)" }}>Unit</th>
@@ -60,7 +65,10 @@ export function IpuUnits(): JSX.Element {
                 <td style={{ padding: "var(--space-2)" }}>{u.rnCoverageHorizonHours}h</td>
                 <td style={{ padding: "var(--space-2)" }}>{u.turnoverSlaMinutes}m</td>
                 <td style={{ padding: "var(--space-2)" }}>
-                  <StatusPill tone={u.isActive ? "success" : "neutral"} label={u.isActive ? "Active" : "Inactive"} />
+                  <StatusPill
+                    tone={u.isActive ? "success" : "neutral"}
+                    label={u.isActive ? "Active" : "Inactive"}
+                  />
                 </td>
               </tr>
             ))}

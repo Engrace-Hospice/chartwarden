@@ -33,7 +33,10 @@ export interface GeofenceSettings {
 }
 
 /** The §2.2.6 pass/fail reason when an evaluation is not `inside`. */
-export type GeofenceFailReason = "distance_exceeded" | "accuracy_exceeded" | "no_baseline_coordinate";
+export type GeofenceFailReason =
+  | "distance_exceeded"
+  | "accuracy_exceeded"
+  | "no_baseline_coordinate";
 
 /** The geofence decision class (drives the §3.2 quality band + the §2.4 side-effect routing). */
 export type GeofenceDecision = "inside" | "outside_geofence" | "no_baseline";
@@ -63,8 +66,7 @@ export function haversineMeters(a: Coordinate, b: Coordinate): number {
   const dLng = toRadians(b.lng - a.lng);
   const lat1 = toRadians(a.lat);
   const lat2 = toRadians(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  const h = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
   return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 

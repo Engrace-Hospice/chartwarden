@@ -17,7 +17,7 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, AdmissionId, OrgId } from "./admission";
+import type { AdmissionId, OrgId, PatientId } from "./admission";
 import type { IsoInstant } from "./care-plan";
 
 // ── M22-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ──────────
@@ -157,7 +157,13 @@ export type ExtractionCandidateFieldKind =
   | "enum";
 
 /** §3.2 — the canonical code system a value resolved to (mirrors `extraction_candidate_code_system`). */
-export type ExtractionCandidateCodeSystem = "rxnorm" | "icd10" | "loinc" | "snomed" | "ndc" | "none";
+export type ExtractionCandidateCodeSystem =
+  | "rxnorm"
+  | "icd10"
+  | "loinc"
+  | "snomed"
+  | "ndc"
+  | "none";
 
 /** §3.2 — cross-source vs chart-existing disagreement (mirrors `extraction_discrepancy_kind`). */
 export type ExtractionDiscrepancyKind = "cross_source" | "chart_existing";
@@ -232,7 +238,12 @@ export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string
   intake_upload_batch: ["source_metadata"],
   classified_page: [],
   extraction_job: [],
-  extraction_candidate: ["value_text", "value_cipher", "vision_disagreement", "source_bounding_box"],
+  extraction_candidate: [
+    "value_text",
+    "value_cipher",
+    "vision_disagreement",
+    "source_bounding_box",
+  ],
   extraction_discrepancy: ["chart_existing_value", "resolution_value"],
   extraction_review: [],
   extraction_decision: ["edited_value", "reason"],
@@ -364,7 +375,11 @@ export interface RenderedDocumentProvider {
     readonly aggregateType: DocumentAggregateType;
     readonly aggregateId: string;
     readonly organizationId: OrgId;
-  }): Promise<{ documentId: DocumentId; versionId: DocumentVersionId; renderedAt: IsoInstant } | null>;
+  }): Promise<{
+    documentId: DocumentId;
+    versionId: DocumentVersionId;
+    renderedAt: IsoInstant;
+  } | null>;
 }
 
 /** §4.3 — used by M28 (FHIR `DocumentReference`), M31 (portal list), M33 (reporting). */

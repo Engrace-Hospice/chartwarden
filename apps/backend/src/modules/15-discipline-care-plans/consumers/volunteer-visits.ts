@@ -14,14 +14,9 @@
 // contract changes, so they belong to the M15-T05 seam task, not here. Until then the ledger's
 // encounter-sourced rows are only as complete as the durations handed in, and the count of what was
 // skipped is visible on every run.
-import type {
-  EncounterId,
-  IsoInstant,
-  MembershipId,
-  PatientId,
-} from "@wardenx/types";
-import type { VolunteerVisitCandidate } from "../volunteer/hours";
+import type { EncounterId, IsoInstant, MembershipId, PatientId } from "@wardenx/types";
 import { getSignedEncountersReader } from "../seams/index";
+import type { VolunteerVisitCandidate } from "../volunteer/hours";
 
 /** M8's `serviceDate` is an org-local `YYYY-MM-DD`; the ledger's `occurred_at` is an instant. */
 function serviceInstant(serviceDate: string): IsoInstant {

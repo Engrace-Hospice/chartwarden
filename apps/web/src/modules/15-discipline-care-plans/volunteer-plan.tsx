@@ -21,6 +21,16 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import {
+  FAILING_GATE_STATUSES,
+  GATE_STATUS_TONE,
+  dateTime,
+  gateKindLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Modal,
   Notice,
@@ -35,16 +45,6 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  FAILING_GATE_STATUSES,
-  GATE_STATUS_TONE,
-  dateTime,
-  gateKindLabel,
-  humanize,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 import { DisciplinePlanWorkspace } from "./plan-workspace";
 
 /** §8.6 — the documented-override floor the pure guard enforces server-side. */

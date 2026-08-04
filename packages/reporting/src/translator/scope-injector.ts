@@ -57,10 +57,7 @@ function inList(column: string, ids: readonly string[], startIndex: number): Com
  *
  * Pure. The scope columns are constants; only the ids bind as params.
  */
-export function injectScope(
-  env: ReportableScopeEnvelope,
-  startIndex = 1,
-): CompiledScope {
+export function injectScope(env: ReportableScopeEnvelope, startIndex = 1): CompiledScope {
   switch (env.scopeKind) {
     case "org":
       return { sql: null, params: [], nextIndex: startIndex };

@@ -31,7 +31,8 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       bodyTemplate: Type.String(),
     }),
     requiresResponseTracking: false,
-    description: "Packets for an upcoming IDG meeting are built — the T-24h reminder to scheduled attendees.",
+    description:
+      "Packets for an upcoming IDG meeting are built — the T-24h reminder to scheduled attendees.",
   },
   {
     payloadType: "m14.action_item.created",
@@ -70,7 +71,8 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       bodyTemplate: Type.String(),
     }),
     requiresResponseTracking: true,
-    description: "An action item carried forward ≥3 meetings — the compliance escalation to coordinator + supervisor.",
+    description:
+      "An action item carried forward ≥3 meetings — the compliance escalation to coordinator + supervisor.",
   },
   {
     payloadType: "m14.decision.non_quorate",
@@ -87,7 +89,8 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       bodyTemplate: Type.String(),
     }),
     requiresResponseTracking: false,
-    description: "A decision was recorded without quorum — the low-severity notice to the IDG coordinator.",
+    description:
+      "A decision was recorded without quorum — the low-severity notice to the IDG coordinator.",
   },
   {
     payloadType: "m14.review_clock.escalated",
@@ -102,7 +105,11 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       locationId: id,
       lastIdgReviewedAt: Type.Union([isoInstant, Type.Null()]),
       floorAt: isoInstant,
-      stage: Type.Union([Type.Literal("t_minus_3"), Type.Literal("t_zero"), Type.Literal("t_plus_1")]),
+      stage: Type.Union([
+        Type.Literal("t_minus_3"),
+        Type.Literal("t_zero"),
+        Type.Literal("t_plus_1"),
+      ]),
       severity: Type.Union([Type.Literal("clinical_routine"), Type.Literal("critical")]),
       recipients: Type.Object({
         idgCoordinatorMembershipId: id,
@@ -112,7 +119,8 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       bodyTemplate: Type.String(),
     }),
     requiresResponseTracking: true,
-    description: "A patient's 15-day review clock is escalating (T-3/T-0/T+1, M14-F01) — the per-patient cadence alert.",
+    description:
+      "A patient's 15-day review clock is escalating (T-3/T-0/T+1, M14-F01) — the per-patient cadence alert.",
   },
   {
     payloadType: "m14.review_floor.override_recorded",
@@ -127,10 +135,14 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       reason: Type.String(),
       breachingPatients: Type.Array(Type.Object({ patientId: id, floorAt: isoInstant })),
       severity: Type.Literal("attention"),
-      recipients: Type.Object({ complianceInbox: Type.Literal(true), clinicalSupervisorMembershipId: id }),
+      recipients: Type.Object({
+        complianceInbox: Type.Literal(true),
+        clinicalSupervisorMembershipId: id,
+      }),
       bodyTemplate: Type.String(),
     }),
     requiresResponseTracking: true,
-    description: "A CANCEL/RESCHEDULE breached the per-patient review floor under override (M14-F01) — the compliance audit alert.",
+    description:
+      "A CANCEL/RESCHEDULE breached the per-patient review floor under override (M14-F01) — the compliance audit alert.",
   },
 ];

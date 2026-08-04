@@ -17,7 +17,7 @@
  */
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { applyMigrations, MIGRATIONS_DIR } from "../db/migrate";
+import { MIGRATIONS_DIR, applyMigrations } from "../db/migrate";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 
@@ -85,17 +85,18 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       `SELECT filename FROM _wardenx_migration ORDER BY filename LIMIT 1`,
     );
     const target = rows[0]!.filename;
-    await db.query(`UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`, [
-      target,
-    ]);
+    await db.query(
+      `UPDATE _wardenx_migration SET checksum = 'deliberately-corrupted' WHERE filename = $1`,
+      [target],
+    );
 
     // Default (non-strict): drift is reported in the result, but nothing throws.
     const lenient = await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR });
     expect(lenient.drifted).toEqual([target]);
 
     // Strict: the identical drift is a hard failure — this is what the CI gate uses.
-    await expect(applyMigrations(db, { migrationsDir: MIGRATIONS_DIR, strict: true })).rejects.toThrow(
-      /checksum drift/i,
-    );
+    await expect(
+      applyMigrations(db, { migrationsDir: MIGRATIONS_DIR, strict: true }),
+    ).rejects.toThrow(/checksum drift/i);
   }, 60_000);
 });

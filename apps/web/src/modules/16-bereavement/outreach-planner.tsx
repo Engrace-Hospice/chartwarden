@@ -35,6 +35,19 @@ import {
   startOutreach,
 } from "./bereavement-api";
 import {
+  DEFAULT_LOG_OUTCOME,
+  LOG_OUTCOMES,
+  OUTREACH_STATUS_TONE,
+  anniversaryMarkLabel,
+  dateTime,
+  dueLabel,
+  humanize,
+  outreachKindLabel,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   CheckboxField,
   FilterRow,
@@ -55,19 +68,6 @@ import {
   td,
   th,
 } from "./bereavement-ui";
-import {
-  DEFAULT_LOG_OUTCOME,
-  LOG_OUTCOMES,
-  OUTREACH_STATUS_TONE,
-  anniversaryMarkLabel,
-  dateTime,
-  dueLabel,
-  humanize,
-  outreachKindLabel,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 const STATUS_FILTERS = [
   { value: "", label: "all statuses" },
@@ -136,12 +136,21 @@ export function BereavementOutreachPlanner(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!plan || !planId)
-    return <EmptyState title="Not found" description="This bereavement plan does not exist, or is not on your caseload." />;
+    return (
+      <EmptyState
+        title="Not found"
+        description="This bereavement plan does not exist, or is not on your caseload."
+      />
+    );
 
   const nameOf = (contactId: string) =>
     plan.contacts.find((c) => c.contactId === contactId)?.displayName ?? shortId(contactId);
 
-  const inlineAction = async (row: OutreachRow, fn: () => Promise<{ error: unknown }>, fallback: string) => {
+  const inlineAction = async (
+    row: OutreachRow,
+    fn: () => Promise<{ error: unknown }>,
+    fallback: string,
+  ) => {
     setBusyId(row.outreachId);
     setActionError(null);
     const { error: err } = await fn();
@@ -160,7 +169,11 @@ export function BereavementOutreachPlanner(): JSX.Element {
         breadcrumb={`Bereavement — plan ${shortId(planId)}`}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
-            <button type="button" style={ghostButtonStyle} onClick={() => setCeremony({ kind: "regenerate" })}>
+            <button
+              type="button"
+              style={ghostButtonStyle}
+              onClick={() => setCeremony({ kind: "regenerate" })}
+            >
               Regenerate forward schedule
             </button>
             <Link to={`/bereavement/plans/${planId}`} style={ghostButtonStyle}>
@@ -171,9 +184,9 @@ export function BereavementOutreachPlanner(): JSX.Element {
       />
 
       <Notice tone="info">
-        The touchpoint book runs to {shortDate(plan.windowEndsAt)} — 396 days from the death, plus the
-        30-day grace the schedule ceiling allows. Regeneration only ever writes FORWARD: a touchpoint whose
-        due date has already passed is never resurrected as a backdated obligation.
+        The touchpoint book runs to {shortDate(plan.windowEndsAt)} — 396 days from the death, plus
+        the 30-day grace the schedule ceiling allows. Regeneration only ever writes FORWARD: a
+        touchpoint whose due date has already passed is never resurrected as a backdated obligation.
       </Notice>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
@@ -218,9 +231,14 @@ export function BereavementOutreachPlanner(): JSX.Element {
                     </td>
                     <td style={td}>{nameOf(o.contactId)}</td>
                     <td style={td}>{outreachKindLabel(o.kind)}</td>
-                    <td style={td}>{o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—"}</td>
                     <td style={td}>
-                      <StatusPill label={humanize(o.status)} tone={toneOf(OUTREACH_STATUS_TONE, o.status)} />
+                      {o.anniversaryMark ? anniversaryMarkLabel(o.anniversaryMark) : "—"}
+                    </td>
+                    <td style={td}>
+                      <StatusPill
+                        label={humanize(o.status)}
+                        tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
+                      />
                     </td>
                     <td style={td}>{dateTime(o.completedAt)}</td>
                     <td style={td}>
@@ -420,8 +438,9 @@ function CompleteModal({
     >
       {inPerson ? (
         <Notice tone="info">
-          An in-person bereavement visit is an M8 encounter. The signed encounter id is required — it is
-          what links this touchpoint to the clinical record, and the database refuses the row without it.
+          An in-person bereavement visit is an M8 encounter. The signed encounter id is required —
+          it is what links this touchpoint to the clinical record, and the database refuses the row
+          without it.
         </Notice>
       ) : null}
       {inPerson ? (
@@ -443,7 +462,11 @@ function CompleteModal({
         options={LOG_OUTCOMES.map((o) => ({ value: o, label: humanize(o) }))}
         onChange={setOutcome}
       />
-      <CheckboxField label="The survivor responded directly" checked={responded} onChange={setResponded} />
+      <CheckboxField
+        label="The survivor responded directly"
+        checked={responded}
+        onChange={setResponded}
+      />
       <TextAreaField
         label="Counselor note"
         value={notes}
@@ -478,7 +501,9 @@ function OutcomeModal({
     const { error: err } =
       variant === "decline"
         ? await declineOutreach(client, row.outreachId, row.version, { notes: notes || undefined })
-        : await noResponseOutreach(client, row.outreachId, row.version, { notes: notes || undefined });
+        : await noResponseOutreach(client, row.outreachId, row.version, {
+            notes: notes || undefined,
+          });
     setBusy(false);
     if (err) {
       setError(errorMessage(err, "This touchpoint outcome could not be recorded."));
@@ -489,7 +514,9 @@ function OutcomeModal({
 
   return (
     <Modal
-      title={variant === "decline" ? "Survivor declined this touchpoint" : "No response after retries"}
+      title={
+        variant === "decline" ? "Survivor declined this touchpoint" : "No response after retries"
+      }
       onClose={onClose}
       footer={
         <button type="button" style={primaryButtonStyle} disabled={busy} onClick={submit}>
@@ -604,9 +631,9 @@ function RegenerateModal({
       }
     >
       <Notice tone="warning">
-        Regeneration cancels the remaining FUTURE touchpoints and re-materializes them from the platform
-        floor plus your organization's tightening. Past touchpoints, and their contact-log rows, are never
-        touched.
+        Regeneration cancels the remaining FUTURE touchpoints and re-materializes them from the
+        platform floor plus your organization's tightening. Past touchpoints, and their contact-log
+        rows, are never touched.
       </Notice>
       <SelectField
         label="Scope"
@@ -617,7 +644,12 @@ function RegenerateModal({
         ]}
         onChange={setContactId}
       />
-      <TextField label="Regenerate from (optional)" type="datetime-local" value={fromAt} onChange={setFromAt} />
+      <TextField
+        label="Regenerate from (optional)"
+        type="datetime-local"
+        value={fromAt}
+        onChange={setFromAt}
+      />
       {summary ? <p style={mutedStyle}>{summary}</p> : null}
       {error ? <p style={alertStyle}>{error}</p> : null}
     </Modal>

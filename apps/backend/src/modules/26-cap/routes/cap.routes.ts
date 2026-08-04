@@ -60,24 +60,46 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
     },
   );
 
-  app.get("/api/v1/cap/periods/:periodId", { preHandler: [PERIOD_READ] }, async (request, reply) => {
-    const period = await readService.getPeriod(actorOf(request), pParam(request, "periodId"));
-    if (!period) throw new NotFoundError("cap period not found");
-    return reply.send(period);
-  });
+  app.get(
+    "/api/v1/cap/periods/:periodId",
+    { preHandler: [PERIOD_READ] },
+    async (request, reply) => {
+      const period = await readService.getPeriod(actorOf(request), pParam(request, "periodId"));
+      if (!period) throw new NotFoundError("cap period not found");
+      return reply.send(period);
+    },
+  );
 
   app.patch(
     "/api/v1/cap/periods/:periodId/close",
-    { preHandler: [validateParams(PeriodIdParams), PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_open"), IDEMPOTENT] },
+    {
+      preHandler: [
+        validateParams(PeriodIdParams),
+        PERIOD_MANAGE,
+        ABAC("cap.period.manage", "cap_period_open"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) =>
       reply.send(
-        await writeService.closePeriod(writeActorOf(request), parse(PeriodIdParams, request.params).periodId),
+        await writeService.closePeriod(
+          writeActorOf(request),
+          parse(PeriodIdParams, request.params).periodId,
+        ),
       ),
   );
 
   app.patch(
     "/api/v1/cap/periods/:periodId/reopen",
-    { preHandler: [validateParams(PeriodIdParams), PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_settled"), STEP_UP("cap.period.manage"), IDEMPOTENT] },
+    {
+      preHandler: [
+        validateParams(PeriodIdParams),
+        PERIOD_MANAGE,
+        ABAC("cap.period.manage", "cap_period_settled"),
+        STEP_UP("cap.period.manage"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(ReopenCapPeriodRequest, request.body);
@@ -87,7 +109,15 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
 
   app.post(
     "/api/v1/cap/periods/:periodId/methodology",
-    { preHandler: [validateParams(PeriodIdParams), PERIOD_MANAGE, ABAC("cap.period.manage", "cap_period_methodology_unlocked"), STEP_UP("cap.period.manage"), IDEMPOTENT] },
+    {
+      preHandler: [
+        validateParams(PeriodIdParams),
+        PERIOD_MANAGE,
+        ABAC("cap.period.manage", "cap_period_methodology_unlocked"),
+        STEP_UP("cap.period.manage"),
+        IDEMPOTENT,
+      ],
+    },
     async (request, reply) => {
       const { periodId } = parse(PeriodIdParams, request.params);
       const body = parse(LockMethodologyRequest, request.body);
@@ -97,47 +127,87 @@ export function registerCapRoutes(app: FastifyInstance, deps: CapRouteDeps): voi
 
   // ── projections ──
   app.get("/api/v1/cap/projections", { preHandler: [PROJ_READ] }, async (request, reply) =>
-    reply.send(await readService.listProjections(actorOf(request), qStr(request.query, "periodId") ?? "")),
-  );
-  app.get("/api/v1/cap/projections/agency/:periodId", { preHandler: [PROJ_READ] }, async (request, reply) =>
-    reply.send(await readService.getAgencyProjection(actorOf(request), pParam(request, "periodId"))),
-  );
-  app.get("/api/v1/cap/projections/patient/:periodId/:patientId", { preHandler: [PROJ_READ] }, async (request, reply) =>
     reply.send(
-      await readService.getPatientProjection(actorOf(request), pParam(request, "periodId"), pParam(request, "patientId")),
+      await readService.listProjections(actorOf(request), qStr(request.query, "periodId") ?? ""),
     ),
   );
-  app.get("/api/v1/cap/projections/inpatient/:periodId", { preHandler: [PROJ_READ] }, async (request, reply) =>
-    reply.send(await readService.getInpatientProjection(actorOf(request), pParam(request, "periodId"))),
+  app.get(
+    "/api/v1/cap/projections/agency/:periodId",
+    { preHandler: [PROJ_READ] },
+    async (request, reply) =>
+      reply.send(
+        await readService.getAgencyProjection(actorOf(request), pParam(request, "periodId")),
+      ),
+  );
+  app.get(
+    "/api/v1/cap/projections/patient/:periodId/:patientId",
+    { preHandler: [PROJ_READ] },
+    async (request, reply) =>
+      reply.send(
+        await readService.getPatientProjection(
+          actorOf(request),
+          pParam(request, "periodId"),
+          pParam(request, "patientId"),
+        ),
+      ),
+  );
+  app.get(
+    "/api/v1/cap/projections/inpatient/:periodId",
+    { preHandler: [PROJ_READ] },
+    async (request, reply) =>
+      reply.send(
+        await readService.getInpatientProjection(actorOf(request), pParam(request, "periodId")),
+      ),
   );
   app.post(
     "/api/v1/cap/projections/:periodId/recompute",
-    { preHandler: [PROJ_RECOMPUTE, ABAC("cap.projection.recompute", "cap_period_open"), IDEMPOTENT] },
+    {
+      preHandler: [PROJ_RECOMPUTE, ABAC("cap.projection.recompute", "cap_period_open"), IDEMPOTENT],
+    },
     async (request, reply) =>
       reply.send(
-        await writeService.recompute(writeActorOf(request), parse(PeriodIdParams, request.params).periodId),
+        await writeService.recompute(
+          writeActorOf(request),
+          parse(PeriodIdParams, request.params).periodId,
+        ),
       ),
   );
 
   // ── accruals ──
-  app.get("/api/v1/cap/accruals/patient/:periodId/:patientId", { preHandler: [ACCRUAL_READ] }, async (request, reply) => {
-    const view = await readService.getPatientAccrual(actorOf(request), pParam(request, "periodId"), pParam(request, "patientId"));
-    if (!view) throw new NotFoundError("patient accrual not found");
-    return reply.send(view);
-  });
-  app.get("/api/v1/cap/accruals/patient/:periodId/:patientId/lines", { preHandler: [ACCRUAL_READ] }, async (request, reply) =>
-    reply.send(
-      await readService.listAccrualLines(
+  app.get(
+    "/api/v1/cap/accruals/patient/:periodId/:patientId",
+    { preHandler: [ACCRUAL_READ] },
+    async (request, reply) => {
+      const view = await readService.getPatientAccrual(
         actorOf(request),
         pParam(request, "periodId"),
         pParam(request, "patientId"),
-        qStr(request.query, "cursor"),
-        clampLimit(qStr(request.query, "limit")),
-      ),
-    ),
+      );
+      if (!view) throw new NotFoundError("patient accrual not found");
+      return reply.send(view);
+    },
   );
-  app.get("/api/v1/cap/accruals/inpatient/:periodId", { preHandler: [ACCRUAL_READ] }, async (request, reply) =>
-    reply.send(await readService.getInpatientAccrual(actorOf(request), pParam(request, "periodId"))),
+  app.get(
+    "/api/v1/cap/accruals/patient/:periodId/:patientId/lines",
+    { preHandler: [ACCRUAL_READ] },
+    async (request, reply) =>
+      reply.send(
+        await readService.listAccrualLines(
+          actorOf(request),
+          pParam(request, "periodId"),
+          pParam(request, "patientId"),
+          qStr(request.query, "cursor"),
+          clampLimit(qStr(request.query, "limit")),
+        ),
+      ),
+  );
+  app.get(
+    "/api/v1/cap/accruals/inpatient/:periodId",
+    { preHandler: [ACCRUAL_READ] },
+    async (request, reply) =>
+      reply.send(
+        await readService.getInpatientAccrual(actorOf(request), pParam(request, "periodId")),
+      ),
   );
 
   // ── threshold events ──

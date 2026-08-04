@@ -19,10 +19,7 @@ export type DrilldownDimensionContext = Readonly<Record<string, string>>;
 /** Raised when a template references an unknown dimension or a whitelisted dimension with no value. */
 export class DrilldownTemplateError extends Error {
   constructor(
-    public readonly code:
-      | "NO_TEMPLATE"
-      | "TEMPLATE_UNKNOWN_DIMENSION"
-      | "TEMPLATE_MISSING_VALUE",
+    public readonly code: "NO_TEMPLATE" | "TEMPLATE_UNKNOWN_DIMENSION" | "TEMPLATE_MISSING_VALUE",
     message: string,
   ) {
     super(message);
@@ -54,7 +51,10 @@ export function resolveDrilldownUrl(input: {
   readonly allowedDimensionKeys: ReadonlySet<string>;
 }): ResolvedDrilldownUrl {
   if (input.template === null || input.template.length === 0) {
-    throw new DrilldownTemplateError("NO_TEMPLATE", "base has no drilldown_url_template — drilldown unsupported");
+    throw new DrilldownTemplateError(
+      "NO_TEMPLATE",
+      "base has no drilldown_url_template — drilldown unsupported",
+    );
   }
 
   const substitutedKeys: string[] = [];

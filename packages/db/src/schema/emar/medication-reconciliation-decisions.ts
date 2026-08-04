@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `medication_reconciliation_decision` (M13 §3.3 / §2.8 D17). One per-line decision on a
 // reconciliation worksheet: the line source (an M12 active order, an M12 medhx record, or a caregiver-reported
 // home med — the latter a denylisted structured jsonb), the decision, and the back-ref to any resulting M12 order.
@@ -6,7 +7,6 @@
 // RLS + grants + the M4 write-audit trigger (decision_notes + caregiver_reported_snapshot denylisted, §3.6) land
 // in the RLS migration.
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { reconciliationDecisionKind } from "../../enums";
 import { organizations } from "../organizations";
 

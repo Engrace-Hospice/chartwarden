@@ -29,7 +29,9 @@ export const BILLING_PSEUDONYM_HEX_LENGTH = 32;
  */
 export function computeBillingPseudonym(keyMaterial: string, subjectId: string): BillingPseudonym {
   if (keyMaterial.length === 0) {
-    throw new Error("computeBillingPseudonym: empty key material (no active patient_pseudonym_key epoch)");
+    throw new Error(
+      "computeBillingPseudonym: empty key material (no active patient_pseudonym_key epoch)",
+    );
   }
   if (subjectId.length === 0) {
     throw new Error("computeBillingPseudonym: empty subject id");

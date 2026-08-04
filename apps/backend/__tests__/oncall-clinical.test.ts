@@ -20,10 +20,10 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import {
   type EncounterSignedPorts,
   type M8EncounterSignedPayload,
+  M8_ENCOUNTER_SIGNED_EVENT,
   type TriageEncounterCallFacts,
   type TriageEncounterLinkPort,
   type TriageVerbalOrderRequest,
-  M8_ENCOUNTER_SIGNED_EVENT,
   VERBAL_ATTESTATION_MAX_CHARS,
   VERBAL_ATTESTATION_MIN_CHARS,
   appendLinkedVerbalOrderId,
@@ -96,7 +96,9 @@ function callFacts(over: Partial<TriageEncounterCallFacts> = {}): TriageEncounte
   };
 }
 
-function machineCall(over: Partial<TriageCallFacts> = {}): TriageCallFacts & { triageCallId: string } {
+function machineCall(
+  over: Partial<TriageCallFacts> = {},
+): TriageCallFacts & { triageCallId: string } {
   return {
     triageCallId: CALL,
     state: "documented_pending_encounter",
@@ -349,7 +351,11 @@ describe("M19 D8 — the EncounterCreator seam call", () => {
 
     // §2.6 claims the seam is idempotent on `triage_call_id`. `CreateEncounterInput` carries no such id, so
     // a second call would mint a SECOND draft — the guard has to be M19's, and this is it.
-    expect(outcome).toEqual({ kind: "already_linked", encounterId: ENCOUNTER, orphanedEncounterId: null });
+    expect(outcome).toEqual({
+      kind: "already_linked",
+      encounterId: ENCOUNTER,
+      orphanedEncounterId: null,
+    });
     expect(creator.seen).toHaveLength(0);
   });
 
@@ -459,7 +465,11 @@ describe("M19 D8 — the m8.encounter.signed consumer", () => {
         return encounterId === ENCOUNTER ? machineCall() : null;
       },
     };
-    const hit = await decideEncounterSigned({ organizationId: ORG, payload: signedPayload(), ports });
+    const hit = await decideEncounterSigned({
+      organizationId: ORG,
+      payload: signedPayload(),
+      ports,
+    });
     expect(hit.kind).toBe("advance");
     const miss = await decideEncounterSigned({
       organizationId: ORG,
@@ -509,10 +519,14 @@ describe("M19 D9 — the §7.7 verbal-order scope and step-up gates", () => {
     // Tenants may only tighten (M2 D9). A webauthn-only floor denies a TOTP step-up the platform accepts.
     expectCode(
       () =>
-        assertVerbalOrderStepUp({ lastStepUpAt: new Date(NOW_MS - 1_000), lastStepUpFactor: "totp" }, NOW_MS, {
-          ...STEP_UP_POLICY,
-          qualifyingFactors: ["webauthn"],
-        }),
+        assertVerbalOrderStepUp(
+          { lastStepUpAt: new Date(NOW_MS - 1_000), lastStepUpFactor: "totp" },
+          NOW_MS,
+          {
+            ...STEP_UP_POLICY,
+            qualifyingFactors: ["webauthn"],
+          },
+        ),
       "VERBAL_ORDER_STEP_UP_REQUIRED",
     );
   });
@@ -559,7 +573,10 @@ describe("M19 D9 — building and recording the verbal order", () => {
       },
       async recordVerbalOrder(input) {
         seen.push(input);
-        return { verbalOrderId: "19000000-0000-4000-8000-000000000014", deadlineAt: "2026-08-03T02:30:00.000Z" };
+        return {
+          verbalOrderId: "19000000-0000-4000-8000-000000000014",
+          deadlineAt: "2026-08-03T02:30:00.000Z",
+        };
       },
       async cosignOrder() {
         throw new Error("not used");
@@ -583,7 +600,10 @@ describe("M19 D9 — building and recording the verbal order", () => {
     expect(receipt.verbalOrderId).toBe("19000000-0000-4000-8000-000000000014");
     expect(receipt.deadlineAt).toBe("2026-08-03T02:30:00.000Z");
     expect(seen).toHaveLength(1);
-    expect(verbalOrderLinkEffect(receipt)).toEqual({ kind: "link_verbal_order", orderRecordId: ORDER });
+    expect(verbalOrderLinkEffect(receipt)).toEqual({
+      kind: "link_verbal_order",
+      orderRecordId: ORDER,
+    });
   });
 
   it("gates on scope and step-up BEFORE touching the seam", async () => {
@@ -772,15 +792,18 @@ describe("M19 D15 — the M12 medication and refill surface", () => {
 
     // An RN who reads "no active medications" at 2 a.m. authorizes against a chart she believes is empty.
     expect(context.activeMedications.kind).toBe("unavailable");
-    expect(context.activeMedications.kind === "unavailable" && context.activeMedications.reason).toContain(
-      "m12 down",
-    );
+    expect(
+      context.activeMedications.kind === "unavailable" && context.activeMedications.reason,
+    ).toContain("m12 down");
     // M12 can be half-up: a genuinely empty refill list is still a FACT and stays one.
     expect(context.pendingRefills).toEqual({ kind: "ready", items: [] });
   });
 
   it("withholds 42 CFR Part 2 medications by count, never by a blanked row", async () => {
-    const rows = [medicationDto(), medicationDto({ id: "1a000000-0000-4000-8000-000000000015", isSudTreatment: true })];
+    const rows = [
+      medicationDto(),
+      medicationDto({ id: "1a000000-0000-4000-8000-000000000015", isSudTreatment: true }),
+    ];
     registerSeam("MedicationOrderProvider", medProvider(rows));
     registerSeam("RefillInboxProvider", refillProvider([]));
 
@@ -791,7 +814,9 @@ describe("M19 D15 — the M12 medication and refill surface", () => {
     });
 
     // Dropped, not blanked: a placeholder keeping route/DEA schedule re-identifies the medication class.
-    expect(gated.activeMedications.kind === "ready" && gated.activeMedications.items).toHaveLength(1);
+    expect(gated.activeMedications.kind === "ready" && gated.activeMedications.items).toHaveLength(
+      1,
+    );
     // The count is what tells the clinician the list is incomplete without disclosing what is missing.
     expect(gated.sudRedactedCount).toBe(1);
 

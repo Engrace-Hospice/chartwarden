@@ -5,28 +5,28 @@
 // W-XI-12 platform-only trigger refusal).
 import { describe, expect, it } from "vitest";
 import { isValidNpi } from "../nppes/npi-validate";
+import { type HttpFetchResponse, NppesClient } from "../nppes/nppes-client";
+import type { NppesFetchPort } from "../nppes/nppes-client";
+import { type CachedProviderView, decideCacheUpsert, toSnapshot } from "../nppes/provider-cache";
+import type { CacheUpsertDecision, ProviderCachePort } from "../nppes/provider-cache";
+import { RateLimiter } from "../nppes/rate-limiter";
 import {
+  type NppesApiResponse,
   classifyNppesResponse,
   primaryTaxonomyCode,
   projectProvider,
-  type NppesApiResponse,
 } from "../nppes/response-projection";
-import { RateLimiter } from "../nppes/rate-limiter";
-import { NppesClient, type HttpFetchResponse } from "../nppes/nppes-client";
-import { decideCacheUpsert, toSnapshot, type CachedProviderView } from "../nppes/provider-cache";
-import {
-  NPPES_CIRCUIT_BREAKER_CONSECUTIVE_FAILURES,
-  NppesSyncOrchestrator,
-  NppesTenantTriggerRefusedError,
-  type NppesNpiSourcePort,
-  type NppesSyncRequest,
-  type NppesSyncRunStorePort,
-  type SyncRunCounts,
-} from "../nppes/sync-orchestrator";
-import type { NppesFetchPort } from "../nppes/nppes-client";
-import type { ProviderCachePort, CacheUpsertDecision } from "../nppes/provider-cache";
 import type { NppesFetchResult, NppesIndividualProvider } from "../nppes/response-projection";
 import type { NppesOutboxEvent, NppesOutboxSink } from "../nppes/sync-events";
+import {
+  NPPES_CIRCUIT_BREAKER_CONSECUTIVE_FAILURES,
+  type NppesNpiSourcePort,
+  NppesSyncOrchestrator,
+  type NppesSyncRequest,
+  type NppesSyncRunStorePort,
+  NppesTenantTriggerRefusedError,
+  type SyncRunCounts,
+} from "../nppes/sync-orchestrator";
 
 // ── fixtures ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -68,7 +68,15 @@ function mkProvider(over: Partial<NppesIndividualProvider> = {}): NppesIndividua
       soleProprietor: null,
     },
     addresses: [],
-    taxonomies: [{ code: "207R00000X", desc: "Internal Medicine", primary: true, state: null, licenseNumber: null }],
+    taxonomies: [
+      {
+        code: "207R00000X",
+        desc: "Internal Medicine",
+        primary: true,
+        state: null,
+        licenseNumber: null,
+      },
+    ],
     identifiers: [],
     ...over,
   };
@@ -101,7 +109,10 @@ describe("classifyNppesResponse", () => {
     expect(classifyNppesResponse(VALID_A, {}).kind).toBe("not_found");
   });
   it("NPI-2 → organization_skipped", () => {
-    const resp: NppesApiResponse = { result_count: 1, results: [{ number: VALID_A, enumeration_type: "NPI-2" }] };
+    const resp: NppesApiResponse = {
+      result_count: 1,
+      results: [{ number: VALID_A, enumeration_type: "NPI-2" }],
+    };
     expect(classifyNppesResponse(VALID_A, resp).kind).toBe("organization_skipped");
   });
   it("active NPI-1 → found with projected fields", () => {
@@ -119,7 +130,13 @@ describe("classifyNppesResponse", () => {
         {
           number: VALID_A,
           enumeration_type: "NPI-1",
-          basic: { first_name: "JANE", last_name: "DOE", status: "D", deactivation_reason: "DEATH", deactivation_date: "2026-06-01" },
+          basic: {
+            first_name: "JANE",
+            last_name: "DOE",
+            status: "D",
+            deactivation_reason: "DEATH",
+            deactivation_date: "2026-06-01",
+          },
         },
       ],
     };
@@ -344,7 +361,10 @@ describe("NppesSyncOrchestrator", () => {
   it("W-XI-11 happy path: fetch → upsert → per-provider + run events", async () => {
     const results: Record<string, NppesFetchResult> = {
       [VALID_A]: { kind: "found", provider: mkProvider({ npi: VALID_A }) },
-      [VALID_B]: { kind: "found", provider: mkProvider({ npi: VALID_B, basic: mkProvider().basic }) },
+      [VALID_B]: {
+        kind: "found",
+        provider: mkProvider({ npi: VALID_B, basic: mkProvider().basic }),
+      },
     };
     const { orch, outbox } = mkOrchestrator({
       npis: [VALID_A, VALID_B],
@@ -396,7 +416,11 @@ describe("NppesSyncOrchestrator", () => {
       deactivationDate: "2026-06-01",
       deactivationReason: "DEATH",
     });
-    const deactivated = mkProvider({ status: "deactivated", deactivationDate: "2026-06-01", deactivationReason: "DEATH" });
+    const deactivated = mkProvider({
+      status: "deactivated",
+      deactivationDate: "2026-06-01",
+      deactivationReason: "DEATH",
+    });
     const { orch, outbox } = mkOrchestrator({
       npis: [VALID_A],
       cache,

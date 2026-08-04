@@ -10,16 +10,19 @@ import { registerReportingAdminRoutes } from "./admin.routes";
 import { registerBaseMetricRoutes } from "./bases-metrics.routes";
 import { registerDashboardTileRoutes } from "./dashboards-tiles.routes";
 import { registerDefinitionRoutes } from "./definitions.routes";
-import { registerMetricsSeamRoutes } from "./metrics-seam.routes";
-import { registerScheduleRoutes } from "./schedules.routes";
-import { registerViewShareRoutes } from "./views-shares.routes";
-import { registerExportRoutes } from "./exports.routes";
 import { registerDrilldownRoutes } from "./drilldown.routes";
 import type { M33ExportDrilldownRouteService } from "./export-drilldown-service";
+import { registerExportRoutes } from "./exports.routes";
+import { registerMetricsSeamRoutes } from "./metrics-seam.routes";
 import type { M33ReadRouteService } from "./read-service";
+import { registerScheduleRoutes } from "./schedules.routes";
+import { registerViewShareRoutes } from "./views-shares.routes";
 import type { M33WriteRouteService } from "./write-service";
 
-export { registerDashboardTileRoutes, type DashboardTileRouteDeps } from "./dashboards-tiles.routes";
+export {
+  registerDashboardTileRoutes,
+  type DashboardTileRouteDeps,
+} from "./dashboards-tiles.routes";
 export { registerBaseMetricRoutes, type BaseMetricRouteDeps } from "./bases-metrics.routes";
 export { registerReportingAdminRoutes, type ReportingAdminRouteDeps } from "./admin.routes";
 export { registerMetricsSeamRoutes, type MetricsSeamRouteDeps } from "./metrics-seam.routes";

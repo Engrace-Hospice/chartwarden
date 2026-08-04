@@ -17,10 +17,10 @@ import type { InvoiceStatus, IsoInstant, MembershipId, OrgId } from "@wardenx/ty
 import { canTransitionInvoice } from "../domain/invoice-lifecycle";
 import { invoiceLineSumsConsistent, invoiceTotalsConsistent } from "../domain/validation";
 import {
-  outboxIntent,
   type InvoiceLineMirrorInput,
   type InvoiceStore,
   type OutboxIntent,
+  outboxIntent,
 } from "./ports";
 
 export class InvoiceMirrorError extends Error {
@@ -46,7 +46,11 @@ export interface ApplyStripeInvoiceEventInput {
   readonly paidAt: Date | null;
   readonly lines: readonly InvoiceLineMirrorInput[];
   /** Set on an `invoice.payment_failed` mirror (drives `m35.invoice.payment_failed`). */
-  readonly failure?: { readonly code: string; readonly attemptCount: number; readonly nextAttemptAt: Date | null };
+  readonly failure?: {
+    readonly code: string;
+    readonly attemptCount: number;
+    readonly nextAttemptAt: Date | null;
+  };
   /** Set on a `void` mirror when a human voided it. */
   readonly voidedByMembershipId?: MembershipId | null;
   readonly now: Date;

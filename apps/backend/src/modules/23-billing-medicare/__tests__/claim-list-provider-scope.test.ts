@@ -1,3 +1,4 @@
+import type { FastifyRequest } from "fastify";
 /**
  * M23 §4.7 — the claim LIST's provider scoping (`resolveClaimProviderScope`).
  *
@@ -14,7 +15,6 @@
  * gate. `GET /claims/:id` keeps its per-row `CLAIM_CASELOAD` gate; the list narrows rows instead.
  */
 import { describe, expect, it } from "vitest";
-import type { FastifyRequest } from "fastify";
 import { resolveClaimProviderScope } from "../routes/claims.routes";
 
 /** A request carrying just the assembled context fields the resolver reads. */

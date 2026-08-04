@@ -1,7 +1,11 @@
 // M35-T03 — §D6 pseudonym hasher (W-SB-08 property test).
 import { describe, expect, it } from "vitest";
-import { BILLING_PSEUDONYM_HEX_LENGTH, computeBillingPseudonym, isBillingPseudonym } from "../src/pseudonym/hasher";
 import { isValidBillingPseudonym } from "../src/domain/validation";
+import {
+  BILLING_PSEUDONYM_HEX_LENGTH,
+  computeBillingPseudonym,
+  isBillingPseudonym,
+} from "../src/pseudonym/hasher";
 
 const KEY = "epoch-2026-01-secret-material";
 
@@ -20,7 +24,9 @@ describe("computeBillingPseudonym (D6)", () => {
   });
 
   it("distinguishes different subjects and different key epochs", () => {
-    expect(computeBillingPseudonym(KEY, "patient-x")).not.toBe(computeBillingPseudonym(KEY, "patient-y"));
+    expect(computeBillingPseudonym(KEY, "patient-x")).not.toBe(
+      computeBillingPseudonym(KEY, "patient-y"),
+    );
     expect(computeBillingPseudonym(KEY, "patient-x")).not.toBe(
       computeBillingPseudonym("epoch-2026-07-secret", "patient-x"),
     );

@@ -18,25 +18,24 @@ import type { DocumentAggregateType } from "@wardenx/types";
  * (encounters, order/administration records, IDG minutes, discipline plans, EVV, intake source) are absent,
  * so a future upstream mistake that surfaces one still cannot reach the portal.
  */
-export const PORTAL_PATIENT_FACING_DOCUMENT_KINDS: ReadonlySet<DocumentAggregateType> = new Set<
-  DocumentAggregateType
->([
-  "election_statement",
-  "nor",
-  "revocation",
-  "nomnc",
-  "abn",
-  "hipaa_privacy_notice",
-  "code_status_directive",
-  "discharge_summary",
-  "patient_medication_list",
-  "comfort_kit_receipt",
-  "idg_patient_packet",
-  "bereavement_letter",
-  "visit_confirmation",
-  "patient_amendment_statement_of_disagreement",
-  "consent_record",
-]);
+export const PORTAL_PATIENT_FACING_DOCUMENT_KINDS: ReadonlySet<DocumentAggregateType> =
+  new Set<DocumentAggregateType>([
+    "election_statement",
+    "nor",
+    "revocation",
+    "nomnc",
+    "abn",
+    "hipaa_privacy_notice",
+    "code_status_directive",
+    "discharge_summary",
+    "patient_medication_list",
+    "comfort_kit_receipt",
+    "idg_patient_packet",
+    "bereavement_letter",
+    "visit_confirmation",
+    "patient_amendment_statement_of_disagreement",
+    "consent_record",
+  ]);
 
 /** §8.4 defence-in-depth — true only for a document kind the portal is permitted to show. */
 export function isPatientFacingDocumentKind(kind: DocumentAggregateType): boolean {
@@ -51,7 +50,10 @@ export const SUD_REDACTED_PLACEHOLDER = "Protected medication — contact your c
 /** §7.8 / D7 — the display name for a possibly-redacted row: the placeholder when redacted, else the given
  *  lay name (falling back to the placeholder if the upstream nulled the name without setting the flag —
  *  fail-CLOSED on an inconsistent redaction). */
-export function redactedDisplayName(redacted: boolean, displayName: string | null | undefined): string {
+export function redactedDisplayName(
+  redacted: boolean,
+  displayName: string | null | undefined,
+): string {
   if (redacted || !displayName || displayName.length === 0) return SUD_REDACTED_PLACEHOLDER;
   return displayName;
 }

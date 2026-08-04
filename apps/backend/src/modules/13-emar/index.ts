@@ -16,7 +16,11 @@ import { registerEmarRoutes as _registerM13Routes } from "./routes/emar-routes";
  * branch. Reads + the full write lifecycle are live over Drizzle+RLS; every mutation emits `m13.*` on the
  * bound transactional `outbox`. Replaces the in-memory clinical-core scaffold mount for M13.
  */
-export function mountEmarRoutes(app: FastifyInstance, db: DbClient, outbox?: EmarWriteOutboxPort): void {
+export function mountEmarRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: EmarWriteOutboxPort,
+): void {
   const backend = createDbEmarBackend(db, outbox);
   _registerM13Abac({ resolver: backend });
   _registerM13Routes(app, { service: backend });

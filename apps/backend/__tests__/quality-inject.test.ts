@@ -46,9 +46,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   M30_PERMISSION_KEY_LIST,
+  type ReadingM30AbacResolver,
   buildM30AbacPredicates,
   mountM30Routes,
-  type ReadingM30AbacResolver,
 } from "../src/modules/30-quality/index";
 import type {
   CahpsDecedentView,
@@ -382,7 +382,11 @@ function createM30Backend(): {
     makeIncident({ incidentId: INC_SUBMIT }),
     makeIncident({ incidentId: INC_TRIAGE, state: "submitted" }),
     makeIncident({ incidentId: INC_NOTE, state: "triaged", assignedToMembershipId: M_SUPER }),
-    makeIncident({ incidentId: INC_INVESTIGATE, state: "triaged", assignedToMembershipId: M_SUPER }),
+    makeIncident({
+      incidentId: INC_INVESTIGATE,
+      state: "triaged",
+      assignedToMembershipId: M_SUPER,
+    }),
     makeIncident({
       incidentId: INC_RESOLVE,
       state: "under_investigation",
@@ -572,7 +576,9 @@ function createM30Backend(): {
     },
     async listAbuseAllegations(actor) {
       const items = [...incidents.values()]
-        .filter((i) => i.organizationId === actor.organizationId && i.kind === "allegation_of_abuse")
+        .filter(
+          (i) => i.organizationId === actor.organizationId && i.kind === "allegation_of_abuse",
+        )
         .map(toIncidentSummary);
       return { items, nextCursor: null, hasMore: false };
     },
@@ -594,7 +600,9 @@ function createM30Backend(): {
     },
 
     async listInfectionEvents(actor) {
-      const items = [...infectionEvents.values()].filter((e) => e.organizationId === actor.organizationId);
+      const items = [...infectionEvents.values()].filter(
+        (e) => e.organizationId === actor.organizationId,
+      );
       return { items, nextCursor: null, hasMore: false };
     },
     async listInfectionOutbreaks(actor) {
@@ -640,7 +648,11 @@ function createM30Backend(): {
     },
     async excludeCahpsDecedent(_actor, sampleId, args) {
       const row = mustGet(cahpsDecedents, sampleId, "cahps decedent sample");
-      const updated: CahpsDecedentView = { ...row, eligible: false, exclusionReason: args.exclusionReason };
+      const updated: CahpsDecedentView = {
+        ...row,
+        eligible: false,
+        exclusionReason: args.exclusionReason,
+      };
       cahpsDecedents.set(sampleId, updated);
       return updated;
     },
@@ -703,7 +715,10 @@ function createM30Backend(): {
     },
     async updateQapiProgramGovernance(_actor, programId, args) {
       const row = mustGet(qapiPrograms, programId, "qapi program");
-      const updated: QapiProgramView = { ...row, governanceComposition: args.governanceComposition };
+      const updated: QapiProgramView = {
+        ...row,
+        governanceComposition: args.governanceComposition,
+      };
       qapiPrograms.set(programId, updated);
       return updated;
     },
@@ -781,7 +796,12 @@ function createM30Backend(): {
     },
     async closeQapiPip(_actor, pipId, args) {
       const row = mustGet(qapiPips, pipId, "qapi pip");
-      const updated: QapiPipView = { ...row, phase: "concluded", outcome: args.outcome, closedAt: NOW };
+      const updated: QapiPipView = {
+        ...row,
+        phase: "concluded",
+        outcome: args.outcome,
+        closedAt: NOW,
+      };
       qapiPips.set(pipId, updated);
       return updated;
     },
@@ -909,7 +929,12 @@ function createM30Backend(): {
         closedByMembershipId: null,
         closedAt: null,
         stateHistory: [
-          { fromState: null, toState: "draft", actorMembershipId: actor.membershipId, occurredAt: NOW },
+          {
+            fromState: null,
+            toState: "draft",
+            actorMembershipId: actor.membershipId,
+            occurredAt: NOW,
+          },
         ],
         investigationNotes: [],
         createdAt: NOW,
@@ -1046,7 +1071,11 @@ function createM30Backend(): {
     },
     async reviewCopCitation(_actor, citationId) {
       const row = mustGet(copCitations, citationId, "cop citation");
-      const updated: CopCitationView = { ...row, lastReviewedAt: NOW, nextReviewDueAt: "2027-02-01" };
+      const updated: CopCitationView = {
+        ...row,
+        lastReviewedAt: NOW,
+        nextReviewDueAt: "2027-02-01",
+      };
       copCitations.set(citationId, updated);
       return updated;
     },
@@ -1167,14 +1196,32 @@ function makeServer() {
     {
       orgId: ORG,
       userId: "super_1",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M30_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M30_PERMISSION_KEY_LIST],
+        },
+      ],
     },
     {
       orgId: ORG,
       userId: "verifier_1",
-      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M30_PERMISSION_KEY_LIST] }],
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M30_PERMISSION_KEY_LIST],
+        },
+      ],
     },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -1182,7 +1229,9 @@ function makeServer() {
   // actually compose (see the file banner for which ones), built over THIS backend's resolver, plus a
   // permissive `step_up_recent` stub so R-47's `requireStepUp` gate has a real PASSING path in this file.
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildM30AbacPredicates({ resolver: backend.abacResolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildM30AbacPredicates({ resolver: backend.abacResolver }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
@@ -1215,7 +1264,11 @@ describe("M30 route smoke — the M1 boundary", () => {
 
   it("403s a permission-gated route for a session holding NO M30 grants", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/quality/measures", headers: NONE_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/quality/measures",
+      headers: NONE_HEADERS,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -1247,7 +1300,13 @@ const IDEMP = (key: string) => ({ "idempotency-key": key });
 
 const ROUTE_CASES: readonly RouteCase[] = [
   // 1-5 — quality measures.
-  { label: "1 GET /quality/measures", method: "GET", url: "/api/v1/quality/measures", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "1 GET /quality/measures",
+    method: "GET",
+    url: "/api/v1/quality/measures",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "2 GET /quality/measures/:measureId/values",
     method: "GET",
@@ -1267,7 +1326,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/quality/measures/recompute",
     headers: { ...SUPER_HEADERS, ...IDEMP("k4") },
-    payload: { scope: { kind: "all" }, reason: "Scheduled a targeted recompute after a data correction landed." },
+    payload: {
+      scope: { kind: "all" },
+      reason: "Scheduled a targeted recompute after a data correction landed.",
+    },
     expectStatus: 202,
   },
   {
@@ -1279,7 +1341,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 6-13 — CAHPS.
-  { label: "6 GET /quality/cahps/vendor", method: "GET", url: "/api/v1/quality/cahps/vendor", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "6 GET /quality/cahps/vendor",
+    method: "GET",
+    url: "/api/v1/quality/cahps/vendor",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "7 POST /quality/cahps/vendor",
     method: "POST",
@@ -1357,13 +1425,22 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 16-29 — QAPI.
-  { label: "16 GET /quality/qapi/programs", method: "GET", url: "/api/v1/quality/qapi/programs", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "16 GET /quality/qapi/programs",
+    method: "GET",
+    url: "/api/v1/quality/qapi/programs",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "17 POST /quality/qapi/programs",
     method: "POST",
     url: "/api/v1/quality/qapi/programs",
     headers: { ...SUPER_HEADERS, ...IDEMP("k17") },
-    payload: { planYear: 2026, governanceComposition: [{ role: "qapi_coordinator", membershipId: M_SUPER }] },
+    payload: {
+      planYear: 2026,
+      governanceComposition: [{ role: "qapi_coordinator", membershipId: M_SUPER }],
+    },
     expectStatus: 201,
   },
   {
@@ -1379,7 +1456,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     },
     expectStatus: 200,
   },
-  { label: "19 GET /quality/qapi/indicators", method: "GET", url: "/api/v1/quality/qapi/indicators", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "19 GET /quality/qapi/indicators",
+    method: "GET",
+    url: "/api/v1/quality/qapi/indicators",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "20 POST /quality/qapi/indicators",
     method: "POST",
@@ -1402,7 +1485,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { thresholdValue: 0.85 },
     expectStatus: 200,
   },
-  { label: "22 GET /quality/qapi/projects", method: "GET", url: "/api/v1/quality/qapi/projects", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "22 GET /quality/qapi/projects",
+    method: "GET",
+    url: "/api/v1/quality/qapi/projects",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "23 POST /quality/qapi/projects",
     method: "POST",
@@ -1463,10 +1552,22 @@ const ROUTE_CASES: readonly RouteCase[] = [
     },
     expectStatus: 201,
   },
-  { label: "29 GET /quality/qapi/governance", method: "GET", url: "/api/v1/quality/qapi/governance", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "29 GET /quality/qapi/governance",
+    method: "GET",
+    url: "/api/v1/quality/qapi/governance",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // 30-37 — SRA.
-  { label: "30 GET /quality/sra/cycles", method: "GET", url: "/api/v1/quality/sra/cycles", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "30 GET /quality/sra/cycles",
+    method: "GET",
+    url: "/api/v1/quality/sra/cycles",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "31 POST /quality/sra/cycles",
     method: "POST",
@@ -1509,7 +1610,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/quality/sra/findings/${SRA_FINDING_ID}/remediation`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k35") },
-    payload: { remediationNumber: 2, plan: "Implement a quarterly access review.", ownerMembershipId: M_SUPER, dueAt: "2026-06-30" },
+    payload: {
+      remediationNumber: 2,
+      plan: "Implement a quarterly access review.",
+      ownerMembershipId: M_SUPER,
+      dueAt: "2026-06-30",
+    },
     expectStatus: 201,
   },
   {
@@ -1525,12 +1631,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/quality/sra/cycles/${SRA_CYCLE_ID}/close`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k37") },
-    payload: { cosign: { securityOfficerMembershipId: M_SUPER, complianceOfficerMembershipId: M_VERIFIER } },
+    payload: {
+      cosign: { securityOfficerMembershipId: M_SUPER, complianceOfficerMembershipId: M_VERIFIER },
+    },
     expectStatus: 200,
   },
 
   // 38-40 — CoP compliance.
-  { label: "38 GET /quality/cop/citations", method: "GET", url: "/api/v1/quality/cop/citations", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "38 GET /quality/cop/citations",
+    method: "GET",
+    url: "/api/v1/quality/cop/citations",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "39 PATCH /quality/cop/citations/:citationId",
     method: "PATCH",
@@ -1549,7 +1663,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 41-52 — incidents.
-  { label: "41 GET /quality/incidents", method: "GET", url: "/api/v1/quality/incidents", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "41 GET /quality/incidents",
+    method: "GET",
+    url: "/api/v1/quality/incidents",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "42 GET /quality/incidents/abuse-allegations",
     method: "GET",
@@ -1562,7 +1682,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: "/api/v1/quality/incidents",
     headers: { ...SUPER_HEADERS, ...IDEMP("k43") },
-    payload: { kind: "fall", severity: "moderate", occurredAt: NOW, data: { location: "patient room" } },
+    payload: {
+      kind: "fall",
+      severity: "moderate",
+      occurredAt: NOW,
+      data: { location: "patient room" },
+    },
     expectStatus: 201,
   },
   {
@@ -1612,7 +1737,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: {
       rootCauseSummary:
         "Root cause summary describing the contributing factors identified during the review of this incident.",
-      actions: [{ action: "Retrain staff on the fall-prevention protocol", ownerMembershipId: M_SUPER, dueAt: "2026-09-01" }],
+      actions: [
+        {
+          action: "Retrain staff on the fall-prevention protocol",
+          ownerMembershipId: M_SUPER,
+          dueAt: "2026-09-01",
+        },
+      ],
       verificationCriteria: "Verify via a follow-up audit in 30 days.",
     },
     expectStatus: 200,
@@ -1643,7 +1774,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 53-56 — mortality.
-  { label: "53 GET /quality/mortality", method: "GET", url: "/api/v1/quality/mortality", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "53 GET /quality/mortality",
+    method: "GET",
+    url: "/api/v1/quality/mortality",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "54 GET /quality/mortality/:reviewId",
     method: "GET",
@@ -1665,13 +1802,23 @@ const ROUTE_CASES: readonly RouteCase[] = [
     url: `/api/v1/quality/mortality/${MORTALITY_REVIEW_ID}/complete`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k56") },
     payload: {
-      dimensions: { clinical: { summary: "ok" }, satisfaction: { summary: "ok" }, compliance: { summary: "ok" } },
+      dimensions: {
+        clinical: { summary: "ok" },
+        satisfaction: { summary: "ok" },
+        compliance: { summary: "ok" },
+      },
     },
     expectStatus: 200,
   },
 
   // 57-60 — infection.
-  { label: "57 GET /quality/infection/events", method: "GET", url: "/api/v1/quality/infection/events", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "57 GET /quality/infection/events",
+    method: "GET",
+    url: "/api/v1/quality/infection/events",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "58 POST /quality/infection/events",
     method: "POST",
@@ -1692,7 +1839,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "PATCH",
     url: `/api/v1/quality/infection/outbreaks/${INFECTION_CASE_ID}`,
     headers: SUPER_HEADERS, // R-93 is Idempotency-Key exempt.
-    payload: { status: "contained", resolutionNote: "Contact precautions implemented; no new cases in 14 days." },
+    payload: {
+      status: "contained",
+      resolutionNote: "Contact precautions implemented; no new cases in 14 days.",
+    },
     expectStatus: 200,
   },
 ];
@@ -1700,7 +1850,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M30 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

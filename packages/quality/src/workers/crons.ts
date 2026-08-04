@@ -173,7 +173,11 @@ export async function runCahpsMonthlySample(
       decedentCount: sampled.length,
       vendor: binding.vendor,
     });
-    dispositions.push({ organizationId: org.organizationId, outcome: "sampled", sampled: sampled.length });
+    dispositions.push({
+      organizationId: org.organizationId,
+      outcome: "sampled",
+      sampled: sampled.length,
+    });
   }
 
   return {
@@ -261,7 +265,11 @@ export interface SraRemindersCronPorts {
 /** The reminder decision for one open cycle: which §4.9 alert (if any) fires at `now`. */
 export type SraReminderDecision =
   /** Past the anniversary, cycle still open → the daily `sra_overdue` escalation. */
-  | { readonly kind: "overdue"; readonly payloadType: "m30.alerts.sra_overdue"; readonly daysOverdue: number }
+  | {
+      readonly kind: "overdue";
+      readonly payloadType: "m30.alerts.sra_overdue";
+      readonly daysOverdue: number;
+    }
   /** A milestone day before the anniversary → the matching `sra_due_*` reminder. */
   | {
       readonly kind: "milestone";

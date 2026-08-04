@@ -98,7 +98,9 @@ export function verifyStripeWebhook(input: VerifyWebhookInput): StripeEventEnvel
     throw new StripeSignatureError("malformed signature header");
   }
 
-  const expected = createHmac("sha256", webhookSecret).update(`${timestamp}.${rawBody}`).digest("hex");
+  const expected = createHmac("sha256", webhookSecret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
   const matches = v1Signatures.some((candidate) => hexEquals(candidate, expected));
   if (!matches) {
     throw new StripeSignatureError("no matching v1 signature");
@@ -115,7 +117,11 @@ export function verifyStripeWebhook(input: VerifyWebhookInput): StripeEventEnvel
   } catch {
     throw new StripeSignatureError("unparseable event body");
   }
-  if (typeof parsed.id !== "string" || typeof parsed.type !== "string" || typeof parsed.created !== "number") {
+  if (
+    typeof parsed.id !== "string" ||
+    typeof parsed.type !== "string" ||
+    typeof parsed.created !== "number"
+  ) {
     throw new StripeSignatureError("event body missing required fields");
   }
 

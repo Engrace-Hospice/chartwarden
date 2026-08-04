@@ -68,7 +68,9 @@ export function SequestrationPolicy(): JSX.Element {
         } as never),
       ]);
       if (listRes.error) {
-        setError("Sequestration timeline unavailable — the billing read seam is not bound, or you lack scope.");
+        setError(
+          "Sequestration timeline unavailable — the billing read seam is not bound, or you lack scope.",
+        );
         setPolicies([]);
         setLoadedPe(id);
         setLoading(false);
@@ -91,9 +93,22 @@ export function SequestrationPolicy(): JSX.Element {
 
   return (
     <DetailPageLayout
-      header={<PageHeader title="Sequestration Policy" breadcrumb="Billing — Medicare · Payment-reduction timeline" />}
+      header={
+        <PageHeader
+          title="Sequestration Policy"
+          breadcrumb="Billing — Medicare · Payment-reduction timeline"
+        />
+      }
       aside={
-        <aside style={{ width: "22rem", flexShrink: 0, borderLeft: ghostBorder, padding: "1.5rem", overflow: "auto" }}>
+        <aside
+          style={{
+            width: "22rem",
+            flexShrink: 0,
+            borderLeft: ghostBorder,
+            padding: "1.5rem",
+            overflow: "auto",
+          }}
+        >
           <ForwardDatePanel
             providerEntityId={loadedPe}
             onForwardDated={() => loadedPe && void load(loadedPe)}
@@ -171,13 +186,17 @@ function PolicyTimeline({
           return (
             <tr
               key={p.policyId}
-              style={{ background: active ? t.primaryTint : i % 2 === 1 ? t.surfaceLow : "transparent" }}
+              style={{
+                background: active ? t.primaryTint : i % 2 === 1 ? t.surfaceLow : "transparent",
+              }}
             >
               <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
                 {pctLabel(p.percentage)}
               </td>
               <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{p.effectiveFrom}</td>
-              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{p.effectiveTo ?? "Open"}</td>
+              <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                {p.effectiveTo ?? "Open"}
+              </td>
               <td style={tdStyle}>
                 <StatusPill
                   label={active ? "Active" : future ? "Scheduled" : "Past"}
@@ -304,7 +323,11 @@ function ForwardDatePanel({
           {msg ? (
             <p
               role={msg.tone === "err" ? "alert" : "status"}
-              style={{ margin: 0, fontSize: "0.8rem", color: msg.tone === "err" ? t.error : t.success }}
+              style={{
+                margin: 0,
+                fontSize: "0.8rem",
+                color: msg.tone === "err" ? t.error : t.success,
+              }}
             >
               {msg.text}
             </p>

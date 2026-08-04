@@ -26,32 +26,32 @@
 //   * NO PHI / NO MBI ever crosses a seam or lands on a row (D13 / §3.6 / §8.7).
 import { createHash, randomUUID } from "node:crypto";
 import {
+  type BillableEncounterSnapshot,
   type CapProjectionProvider,
   type Cents,
+  type CertificationSnapshot,
   type ClaimAssembleRequest,
   type ClaimAssembleResponse,
-  type CertificationSnapshot,
-  type FaceToFaceSnapshot,
   type ElectionPeriodSnapshot,
-  type LevelOfCarePeriodSnapshot,
-  type BillableEncounterSnapshot,
-  type SignedEncounterSnapshot,
   type EvvBracketSnapshot,
+  type FaceToFaceSnapshot,
   type HippsRateTable,
   type IsoDate,
   type LevelOfCare,
+  type LevelOfCarePeriodSnapshot,
   type MdmResolution,
   type RuleResult,
+  type SignedEncounterSnapshot,
   type TerminologyResolution,
   type ValidationContext,
   addDaysIso,
+  applySequestrationPolicy,
   calculateHipps,
   calculateSia,
-  applySequestrationPolicy,
   deriveControlNumber,
   deriveTypeOfBill,
-  isWithinInclusive,
   isSkipped,
+  isWithinInclusive,
   repositories,
   summarizeRuleRun,
 } from "@wardenx/billing";
@@ -113,7 +113,11 @@ export interface AdmissionContext {
 }
 
 export interface AdmissionContextReader {
-  resolveForRange(orgId: string, patientId: string, range: DateRange): Promise<AdmissionContext | null>;
+  resolveForRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<AdmissionContext | null>;
 }
 
 /** M6 — an election period covering the window, carrying its id (the claim's election-scope columns). */
@@ -122,17 +126,29 @@ export interface ResolvedElectionPeriod extends ElectionPeriodSnapshot {
 }
 
 export interface ElectionPeriodReader {
-  coveringRange(orgId: string, patientId: string, range: DateRange): Promise<readonly ResolvedElectionPeriod[]>;
+  coveringRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<readonly ResolvedElectionPeriod[]>;
 }
 
 /** M6 — certification (CTI) facts per election period. */
 export interface CertificationReader {
-  forPatient(orgId: string, patientId: string, range: DateRange): Promise<readonly CertificationSnapshot[]>;
+  forPatient(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<readonly CertificationSnapshot[]>;
 }
 
 /** M6 — face-to-face attestation facts (required for periods ≥ 3). */
 export interface FaceToFaceReader {
-  forPatient(orgId: string, patientId: string, range: DateRange): Promise<readonly FaceToFaceSnapshot[]>;
+  forPatient(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<readonly FaceToFaceSnapshot[]>;
 }
 
 /** M6 — a level-of-care period within the window, carrying its id (the claim_line's `level_of_care_period_id`). */
@@ -141,7 +157,11 @@ export interface ResolvedLevelOfCarePeriod extends LevelOfCarePeriodSnapshot {
 }
 
 export interface LevelOfCareReader {
-  periodsInRange(orgId: string, patientId: string, range: DateRange): Promise<readonly ResolvedLevelOfCarePeriod[]>;
+  periodsInRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<readonly ResolvedLevelOfCarePeriod[]>;
 }
 
 /** M8 — billable-encounter resolution (D10). `awaiting_cosignature` visits are surfaced but EXCLUDED from lines. */
@@ -156,12 +176,19 @@ export interface BillableEncounterReader {
 
 /** M8 — signed encounters in the last-7-days-of-life window (drives the SIA add-on). */
 export interface SignedEncountersReader {
-  inWindow(orgId: string, patientId: string, window: DateRange): Promise<readonly SignedEncounterSnapshot[]>;
+  inWindow(
+    orgId: string,
+    patientId: string,
+    window: DateRange,
+  ): Promise<readonly SignedEncounterSnapshot[]>;
 }
 
 /** M18 — EVV bracket state per backing encounter (D9). */
 export interface EvvComplianceReader {
-  bracketsForEncounters(orgId: string, encounterIds: readonly string[]): Promise<readonly EvvBracketSnapshot[]>;
+  bracketsForEncounters(
+    orgId: string,
+    encounterIds: readonly string[],
+  ): Promise<readonly EvvBracketSnapshot[]>;
 }
 
 /** M40 — the provider-entity directory entry (CCN + MAC jurisdiction + CBSA) for the control-number + rates. */
@@ -174,8 +201,15 @@ export interface ProviderEntityDirectoryEntry {
 
 /** M40 — master-data resolution: the provider-entity directory + the clinical participants (physicians/POS). */
 export interface MdmEntityProvider {
-  resolveProviderEntity(orgId: string, providerEntityId: string): Promise<ProviderEntityDirectoryEntry | null>;
-  resolveClinicalParticipants(orgId: string, patientId: string, asOf: IsoDate): Promise<MdmResolution>;
+  resolveProviderEntity(
+    orgId: string,
+    providerEntityId: string,
+  ): Promise<ProviderEntityDirectoryEntry | null>;
+  resolveClinicalParticipants(
+    orgId: string,
+    patientId: string,
+    asOf: IsoDate,
+  ): Promise<MdmResolution>;
 }
 
 /** M38 — terminology resolution (value-set membership + ICD billability) as-of `claim.service_from`. */
@@ -201,7 +235,10 @@ export interface SequestrationPolicyResolution {
 
 export interface BillingReferenceDataReader {
   /** The CMS per-diem base rate table for the claim's MAC jurisdiction + hospice fiscal year (PRE-wage-index). */
-  hippsRateTable(macJurisdiction: MacJurisdiction, fiscalYearStarting: number): Promise<HippsRateTable>;
+  hippsRateTable(
+    macJurisdiction: MacJurisdiction,
+    fiscalYearStarting: number,
+  ): Promise<HippsRateTable>;
   /** The wage-index-ADJUSTED CHC hourly rate (whole cents) the SIA add-on is priced at. */
   chcHourlyRateCents(fiscalYearStarting: number, wageIndexFactorDecimal: string): Promise<Cents>;
   wageIndexForCcn(ccn: string, fiscalYearStarting: number): Promise<WageIndexResolution | null>;
@@ -326,17 +363,28 @@ function resultOutcome(r: RuleResult): "pass" | "fail" | "warn" | "info" {
  * Build the claim-assembly service over the RLS-enforced primary `db` + the injected seam bundle. The
  * single `assemble` entry runs the whole pipeline inside one `withOrgContext` transaction.
  */
-export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySeams): ClaimAssemblyService {
+export function buildClaimAssemblyService(
+  db: BillingDb,
+  seams: ClaimAssemblySeams,
+): ClaimAssemblyService {
   const now = seams.now ?? (() => new Date());
 
   const inOrgCtx = <T>(actor: ClaimAssemblyActor, fn: (tx: BillingDb) => Promise<T>): Promise<T> =>
-    withOrgContext<BillingDb, T>(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
+    withOrgContext<BillingDb, T>(
+      db,
+      { organizationId: actor.organizationId, userId: actor.userId },
+      fn,
+    );
 
   return {
     async assemble(actor, input): Promise<ClaimAssembleResponse> {
       // AI-BLOCK (D13): no AI actor may create an M23 row — reject before any read.
       if (actor.actorKind.startsWith("ai_")) {
-        throw new WardenXError("AI_ACTOR_FORBIDDEN", "AI actors may not assemble claims (D13)", 403);
+        throw new WardenXError(
+          "AI_ACTOR_FORBIDDEN",
+          "AI actors may not assemble claims (D13)",
+          403,
+        );
       }
 
       const orgId = actor.organizationId;
@@ -359,7 +407,11 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
 
       const admission = await seams.admission.resolveForRange(orgId, patientId, range);
       if (!admission) {
-        throw new WardenXError("PATIENT_NOT_ELECTED", "no hospice admission covers the service window", 409);
+        throw new WardenXError(
+          "PATIENT_NOT_ELECTED",
+          "no hospice admission covers the service window",
+          409,
+        );
       }
       if (admission.deceasedDate !== null && admission.deceasedDate < serviceFrom) {
         throw new WardenXError(
@@ -369,19 +421,31 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
         );
       }
 
-      const resolvedPeriods = [...(await seams.electionPeriods.coveringRange(orgId, patientId, range))].sort(
-        (a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0),
+      const resolvedPeriods = [
+        ...(await seams.electionPeriods.coveringRange(orgId, patientId, range)),
+      ].sort((a, b) =>
+        a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0,
       );
       if (resolvedPeriods.length === 0) {
-        throw new WardenXError("PATIENT_NOT_ELECTED", "no active election covers the service window", 409);
+        throw new WardenXError(
+          "PATIENT_NOT_ELECTED",
+          "no active election covers the service window",
+          409,
+        );
       }
       const firstPeriod = resolvedPeriods[0];
       const lastPeriod = resolvedPeriods[resolvedPeriods.length - 1];
       if (!firstPeriod || !lastPeriod) {
-        throw new WardenXError("PATIENT_NOT_ELECTED", "no active election covers the service window", 409);
+        throw new WardenXError(
+          "PATIENT_NOT_ELECTED",
+          "no active election covers the service window",
+          409,
+        );
       }
-      const electionPeriodIdFrom = input.electionPeriodScope?.electionPeriodIdFrom ?? firstPeriod.electionPeriodId;
-      const electionPeriodIdTo = input.electionPeriodScope?.electionPeriodIdTo ?? lastPeriod.electionPeriodId;
+      const electionPeriodIdFrom =
+        input.electionPeriodScope?.electionPeriodIdFrom ?? firstPeriod.electionPeriodId;
+      const electionPeriodIdTo =
+        input.electionPeriodScope?.electionPeriodIdTo ?? lastPeriod.electionPeriodId;
 
       const certifications = await seams.certifications.forPatient(orgId, patientId, range);
       const faceToFace = await seams.faceToFace.forPatient(orgId, patientId, range);
@@ -389,7 +453,11 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
 
       const pe = await seams.mdm.resolveProviderEntity(orgId, providerEntityId);
       if (!pe) {
-        throw new WardenXError("PROVIDER_ENTITY_UNRESOLVED", "the provider entity could not be resolved (M40)", 422);
+        throw new WardenXError(
+          "PROVIDER_ENTITY_UNRESOLVED",
+          "the provider entity could not be resolved (M40)",
+          422,
+        );
       }
       const fiscalYearStarting = hospiceFiscalYearStarting(serviceFrom);
       const wageIndex = await seams.referenceData.wageIndexForCcn(pe.ccn, fiscalYearStarting);
@@ -400,8 +468,15 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
           422,
         );
       }
-      const rateTable = await seams.referenceData.hippsRateTable(pe.macJurisdiction, fiscalYearStarting);
-      const seqPolicy = await seams.referenceData.activeSequestrationPolicy(orgId, providerEntityId, serviceFrom);
+      const rateTable = await seams.referenceData.hippsRateTable(
+        pe.macJurisdiction,
+        fiscalYearStarting,
+      );
+      const seqPolicy = await seams.referenceData.activeSequestrationPolicy(
+        orgId,
+        providerEntityId,
+        serviceFrom,
+      );
       if (!seqPolicy) {
         throw new WardenXError(
           "SEQUESTRATION_POLICY_UNAVAILABLE",
@@ -410,12 +485,21 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
         );
       }
 
-      const billableEncounters = await seams.billableEncounters.forRange(orgId, providerEntityId, patientId, range);
+      const billableEncounters = await seams.billableEncounters.forRange(
+        orgId,
+        providerEntityId,
+        patientId,
+        range,
+      );
       const billableIds = billableEncounters
         .filter((e) => e.billability === "billable") // D10: awaiting_cosignature excluded entirely
         .map((e) => e.encounterId);
       const evvBrackets = await seams.evvCompliance.bracketsForEncounters(orgId, billableIds);
-      const mdmResolution = await seams.mdm.resolveClinicalParticipants(orgId, patientId, serviceFrom);
+      const mdmResolution = await seams.mdm.resolveClinicalParticipants(
+        orgId,
+        patientId,
+        serviceFrom,
+      );
       const terminology = await seams.terminology.resolveForClaim(orgId, serviceFrom);
       // M26 §11.A cap projection (D8). Cap year is the federal FY (Oct–Sep): a service date in Oct–Dec
       // belongs to the NEXT FY. The provider degrades to status:"unavailable" when M26 is unbound or has no
@@ -439,7 +523,10 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
       // SIA only when deceased; gather the last-7-days-of-life signed visits.
       let signedEncounters: readonly SignedEncounterSnapshot[] = [];
       if (admission.deceasedDate !== null) {
-        const window: DateRange = { from: addDaysIso(admission.deceasedDate, -6), to: admission.deceasedDate };
+        const window: DateRange = {
+          from: addDaysIso(admission.deceasedDate, -6),
+          to: admission.deceasedDate,
+        };
         signedEncounters = await seams.signedEncounters.inWindow(orgId, patientId, window);
       }
 
@@ -462,8 +549,7 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
         // OVERLAPPING_ACTIVE_CLAIM: any live interim claim whose range intersects this window (the DB
         // partial-unique index `claim_active_by_range_uq` is the hard exact-range backstop).
         const overlap = admissionClaims.find(
-          (c) =>
-            interimTobs.has(c.tob) && c.serviceFrom <= serviceTo && c.serviceTo >= serviceFrom,
+          (c) => interimTobs.has(c.tob) && c.serviceFrom <= serviceTo && c.serviceTo >= serviceFrom,
         );
         if (overlap) {
           throw new WardenXError(
@@ -476,15 +562,24 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
           .filter((c) => interimTobs.has(c.tob))
           .sort((a, b) => (a.serviceTo < b.serviceTo ? 1 : a.serviceTo > b.serviceTo ? -1 : 0))[0];
         const hasPriorClaimForAdmission = priorClaim !== undefined;
-        const patientDischarged = admission.dischargeDate !== null && admission.dischargeDate <= serviceTo;
-        const tob = deriveTypeOfBill({ hasPriorClaimForAdmission, patientDischarged, adjustment: "none" });
+        const patientDischarged =
+          admission.dischargeDate !== null && admission.dischargeDate <= serviceTo;
+        const tob = deriveTypeOfBill({
+          hasPriorClaimForAdmission,
+          patientDischarged,
+          adjustment: "none",
+        });
 
         // ── 3. HIPPS per-diem math (D7) — lines are derived, never client-supplied ───────────────────
         const hipps = calculateHipps({
           claimServiceFrom: serviceFrom,
           claimServiceTo: serviceTo,
           hospiceAdmissionDate: admission.hospiceAdmissionDate,
-          levelOfCarePeriods: resolvedLoc.map((p) => ({ levelOfCare: p.levelOfCare, from: p.from, to: p.to })),
+          levelOfCarePeriods: resolvedLoc.map((p) => ({
+            levelOfCare: p.levelOfCare,
+            from: p.from,
+            to: p.to,
+          })),
           rateTable,
           wageIndexCcn: pe.ccn,
           wageIndexFiscalYear: fiscalYearStarting,
@@ -493,8 +588,8 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
 
         const placeOfService = qCodeForPlaceOfService(mdmResolution.placeOfService);
         const lineInputs: repositories.NewClaimLineInput[] = hipps.segments.map((seg, idx) => {
-          const owningPeriod = resolvedLoc.find(
-            (p) => isWithinInclusive(seg.dateFrom, p.from, p.to),
+          const owningPeriod = resolvedLoc.find((p) =>
+            isWithinInclusive(seg.dateFrom, p.from, p.to),
           );
           if (!owningPeriod) {
             throw new WardenXError(
@@ -504,7 +599,11 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
             );
           }
           const backingEncounterIds = billableEncounters
-            .filter((e) => e.billability === "billable" && isWithinInclusive(e.serviceDate, seg.dateFrom, seg.dateTo))
+            .filter(
+              (e) =>
+                e.billability === "billable" &&
+                isWithinInclusive(e.serviceDate, seg.dateFrom, seg.dateTo),
+            )
             .map((e) => e.encounterId);
           return {
             organizationId: orgId,
@@ -569,7 +668,9 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
 
         // ── 5. Sequestration (D11) over the gross HIPPS + SIA payable ────────────────────────────────
         const grossCents: Cents = hipps.totalCents + siaCents;
-        const sequestration = applySequestrationPolicy(grossCents, { percentage: seqPolicy.percentage });
+        const sequestration = applySequestrationPolicy(grossCents, {
+          percentage: seqPolicy.percentage,
+        });
 
         // ── 6. Mint ids + the deterministic control number, then persist the claim DRAFT ─────────────
         const claimId = randomUUID();
@@ -689,7 +790,12 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
           },
           sia:
             siaQualifyingVisitCount > 0
-              ? { present: true, qualifyingVisitCount: siaQualifyingVisitCount, amountCents: siaCents, doubleCounted: false }
+              ? {
+                  present: true,
+                  qualifyingVisitCount: siaQualifyingVisitCount,
+                  amountCents: siaCents,
+                  doubleCounted: false,
+                }
               : null,
           capProjection: capProjectionCtx, // M26 §11.A live projection (or null → cap rules warn-skip, D8)
           eligibility: null, // resolved by the HETS refresh worker, not at assembly — the rule skips
@@ -715,9 +821,14 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
 
         const startedAt = now();
         const results = seams.ruleRegistry.runRules(ctx);
-        const summary = summarizeRuleRun(results, new Set(seams.ruleRegistry.regulatoryRequiredKeys()));
+        const summary = summarizeRuleRun(
+          results,
+          new Set(seams.ruleRegistry.regulatoryRequiredKeys()),
+        );
         const completedAt = now();
-        const rulesInfo = results.filter((r) => !isSkipped(r) && !r.passed && r.severity === "info").length;
+        const rulesInfo = results.filter(
+          (r) => !isSkipped(r) && !r.passed && r.severity === "info",
+        ).length;
         const outcome: "all_pass" | "failures_present" =
           summary.failedCount > 0 ? "failures_present" : "all_pass";
         const runInputHash = createHash("sha256")
@@ -762,7 +873,8 @@ export function buildClaimAssemblyService(db: BillingDb, seams: ClaimAssemblySea
               ruleVersion: seams.ruleRegistry.getRule(r.ruleKey)?.version ?? 1,
               severity: r.severity,
               outcome: resultOutcome(r),
-              remediation: (r.annotations?.remediation ?? {}) as NewValidationResultInput["remediation"],
+              remediation: (r.annotations?.remediation ??
+                {}) as NewValidationResultInput["remediation"],
             })),
           );
         }

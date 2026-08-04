@@ -79,7 +79,11 @@ export type SafetySideEffect =
    *  machine cannot do. */
   | { readonly kind: "alert"; readonly alert: SafetyAlertPayload["eventType"] }
   /** Stamp one of the aggregate's timestamp columns. */
-  | { readonly kind: "set_timestamp"; readonly field: SafetyTimestampField; readonly at: IsoInstant }
+  | {
+      readonly kind: "set_timestamp";
+      readonly field: SafetyTimestampField;
+      readonly at: IsoInstant;
+    }
   /** D5 — write the cancel triple. §3.3's `m20_ssa_cancel_attempt` CHECK requires all three to move
    *  together, so they are ONE effect: a runner cannot write the status and forget the verdict. */
   | {

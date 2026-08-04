@@ -22,7 +22,7 @@
 //  4. NEITHER DIRECTION TOUCHES WORK ALREADY DONE. §10.5: "previously generated AI outputs in chart
 //     remain (with provenance marking them as AI-assisted from time when capability was active)". An
 //     opt-out that retracted past outputs would be rewriting the chart, not expressing a preference.
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "./errors";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "./errors";
 
 /** The `ai_capability` columns the opt-out gate reads. */
 export interface AiOptOutCapabilitySnapshot {

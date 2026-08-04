@@ -1,3 +1,13 @@
+import {
+  computeCarePlan15DayAdherence,
+  computeEvvComplianceRate,
+  computeIdgCadenceAdherence,
+  computeLateEncounterEntryRate,
+  computeMissedDoseRate,
+  computePrnEffectivenessDocumentedRate,
+  computeVerbalOrderSignatureOnTime,
+  computeVisitOnTimeRate,
+} from "@wardenx/quality";
 // apps/backend/__tests__/m30-operational-measure-input.test.ts — the counts-not-rates measure inputs.
 //
 // M30's operational measures could not be bound because their producer seams returned a RATE while the
@@ -11,16 +21,6 @@
 // stores; the division at the seam boundary was the loss. These tests pin the shaping and, more
 // importantly, the empty-window behaviour the two answers disagree about.
 import { describe, expect, it } from "vitest";
-import {
-  computeCarePlan15DayAdherence,
-  computeEvvComplianceRate,
-  computeIdgCadenceAdherence,
-  computeLateEncounterEntryRate,
-  computeMissedDoseRate,
-  computePrnEffectivenessDocumentedRate,
-  computeVerbalOrderSignatureOnTime,
-  computeVisitOnTimeRate,
-} from "@wardenx/quality";
 import { resolveOperationalMeasureInput } from "../src/modules/30-quality/jobs/m30-jobs";
 
 const REQUEST = (code: string) => ({
@@ -36,16 +36,44 @@ const seamsWith = (
   evv = visit,
   lateEntry = visit,
 ) => ({
-  visitMetrics: { async getOnTimeVisitCounts() { return visit; } },
-  evvMetrics: { async getComplianceCounts() { return evv; } },
-  signedEncounters: { async lateEntryCountsForOrg() { return lateEntry; } },
-  orders: { async getVerbalTimelinessCountsForOrg() { return lateEntry; } },
-  carePlan: { async fifteenDayCycleCountsForOrg() { return lateEntry; } },
-  administrations: {
-    async getMissedDoseCountsForOrg() { return lateEntry; },
-    async getPrnEffectivenessCountsForOrg() { return lateEntry; },
+  visitMetrics: {
+    async getOnTimeVisitCounts() {
+      return visit;
+    },
   },
-  idg: { async getCadenceCountsForOrg() { return lateEntry; } },
+  evvMetrics: {
+    async getComplianceCounts() {
+      return evv;
+    },
+  },
+  signedEncounters: {
+    async lateEntryCountsForOrg() {
+      return lateEntry;
+    },
+  },
+  orders: {
+    async getVerbalTimelinessCountsForOrg() {
+      return lateEntry;
+    },
+  },
+  carePlan: {
+    async fifteenDayCycleCountsForOrg() {
+      return lateEntry;
+    },
+  },
+  administrations: {
+    async getMissedDoseCountsForOrg() {
+      return lateEntry;
+    },
+    async getPrnEffectivenessCountsForOrg() {
+      return lateEntry;
+    },
+  },
+  idg: {
+    async getCadenceCountsForOrg() {
+      return lateEntry;
+    },
+  },
 });
 
 describe("M30 operational measure inputs — counts, not rates", () => {
@@ -136,10 +164,7 @@ describe("M30 operational measure inputs — counts, not rates", () => {
 
   it("every newly bound measure suppresses on an empty window rather than scoring perfect", async () => {
     const empty = seamsWith({ numerator: 0, denominator: 0 });
-    for (const code of [
-      "verbal_order_signature_on_time",
-      "care_plan_15_day_adherence",
-    ] as const) {
+    for (const code of ["verbal_order_signature_on_time", "care_plan_15_day_adherence"] as const) {
       const input = await resolveOperationalMeasureInput(REQUEST(code), empty);
       const compute =
         code === "verbal_order_signature_on_time"

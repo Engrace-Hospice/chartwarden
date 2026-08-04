@@ -48,7 +48,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.claim.validation_failed",
     moduleOwner: "m23",
     description: "A validation run completed with blocking failures.",
-    payloadSchema: Type.Object({ claimId: id, validationRunId: id, failedRuleKeys: Type.Array(id) }),
+    payloadSchema: Type.Object({
+      claimId: id,
+      validationRunId: id,
+      failedRuleKeys: Type.Array(id),
+    }),
     declaredConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -63,7 +67,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.submit_requested",
     moduleOwner: "m23",
-    description: "User clicked Submit; drives the m23.claim.submit worker (outbox-only MAC posture, D2).",
+    description:
+      "User clicked Submit; drives the m23.claim.submit worker (outbox-only MAC posture, D2).",
     payloadSchema: Type.Object({
       claimId: id,
       submissionId: id,
@@ -90,8 +95,14 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.claim.submission_failed",
     moduleOwner: "m23",
-    description: "The submission worker reported a MAC portal failure (retry worker pickup signal).",
-    payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: Type.Integer(), reason: id }),
+    description:
+      "The submission worker reported a MAC portal failure (retry worker pickup signal).",
+    payloadSchema: Type.Object({
+      claimId: id,
+      submissionId: id,
+      attemptIndex: Type.Integer(),
+      reason: id,
+    }),
     declaredConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -99,7 +110,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.claim.submission_stalled",
     moduleOwner: "m23",
     description: "The retry worker exhausted attempts (severity=critical alert).",
-    payloadSchema: Type.Object({ claimId: id, submissionId: id, attemptIndex: Type.Integer(), reason: id }),
+    payloadSchema: Type.Object({
+      claimId: id,
+      submissionId: id,
+      attemptIndex: Type.Integer(),
+      reason: id,
+    }),
     declaredConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -155,7 +171,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.claim.denied",
     moduleOwner: "m23",
     description: "ACK_ACCEPTED → DENIED (driven by M25).",
-    payloadSchema: Type.Object({ claimId: id, remittanceAdviceId: id, denialCodes: Type.Array(id) }),
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceAdviceId: id,
+      denialCodes: Type.Array(id),
+    }),
     declaredConsumers: ["m25", "m33", "m36"],
     isOutboxOnly: true,
   },
@@ -166,7 +186,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       claimId: id,
       providerEntityId: id,
-      outcome: Type.Union([Type.Literal("paid"), Type.Literal("partial_paid"), Type.Literal("denied")]),
+      outcome: Type.Union([
+        Type.Literal("paid"),
+        Type.Literal("partial_paid"),
+        Type.Literal("denied"),
+      ]),
       remittanceAdviceId: nullableId,
       adjudicatedAt: isoInstant,
     }),
@@ -286,7 +310,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.notr.draft_created",
     moduleOwner: "m23",
-    description: "A NOTR was created from m6.revocation.created / m6.discharge.* / m6.transfer.created.",
+    description:
+      "A NOTR was created from m6.revocation.created / m6.discharge.* / m6.transfer.created.",
     payloadSchema: Type.Object({
       notrId: id,
       providerEntityId: id,
@@ -349,7 +374,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.eligibility.refresh_requested",
     moduleOwner: "m23",
-    description: "Route 22 trigger / stale auto-trigger at claim assembly (HETS 270/271 worker pickup).",
+    description:
+      "Route 22 trigger / stale auto-trigger at claim assembly (HETS 270/271 worker pickup).",
     payloadSchema: Type.Object({ patientId: id, asOfServiceDate: isoDate }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -357,7 +383,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.eligibility.checked",
     moduleOwner: "m23",
-    description: "An eligibility_check row was inserted (the parsed outcome only — never the MBI, §3.6).",
+    description:
+      "An eligibility_check row was inserted (the parsed outcome only — never the MBI, §3.6).",
     payloadSchema: Type.Object({
       checkId: id,
       patientId: id,
@@ -381,16 +408,26 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.mac_credential.updated",
     moduleOwner: "m23",
-    description: "A mac_submitter_credential was upserted (secret redacted — only the version is signaled).",
-    payloadSchema: Type.Object({ providerEntityId: id, macJurisdiction: id, version: Type.Integer() }),
+    description:
+      "A mac_submitter_credential was upserted (secret redacted — only the version is signaled).",
+    payloadSchema: Type.Object({
+      providerEntityId: id,
+      macJurisdiction: id,
+      version: Type.Integer(),
+    }),
     declaredConsumers: ["m34", "m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m23.mac_portal.unavailable",
     moduleOwner: "m23",
-    description: "The health-cron transitioned a MAC portal to down (severity=critical; system_status).",
-    payloadSchema: Type.Object({ macJurisdiction: id, lastSeenUpAt: isoInstant, downedAt: isoInstant }),
+    description:
+      "The health-cron transitioned a MAC portal to down (severity=critical; system_status).",
+    payloadSchema: Type.Object({
+      macJurisdiction: id,
+      lastSeenUpAt: isoInstant,
+      downedAt: isoInstant,
+    }),
     declaredConsumers: ["m36", "m33", "m1"],
     isOutboxOnly: true,
   },
@@ -398,7 +435,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.mac_portal.recovered",
     moduleOwner: "m23",
     description: "The health-cron transitioned a MAC portal back up.",
-    payloadSchema: Type.Object({ macJurisdiction: id, downedAt: isoInstant, recoveredAt: isoInstant }),
+    payloadSchema: Type.Object({
+      macJurisdiction: id,
+      downedAt: isoInstant,
+      recoveredAt: isoInstant,
+    }),
     declaredConsumers: ["m36", "m33", "m1"],
     isOutboxOnly: true,
   },
@@ -406,7 +447,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.billing.document_render_requested",
     moduleOwner: "m23",
-    description: "A NOE/NOTR receipt / claim-ack letter / denial-appeal cover letter render was requested.",
+    description:
+      "A NOE/NOTR receipt / claim-ack letter / denial-appeal cover letter render was requested.",
     payloadSchema: Type.Object({ kind: id, aggregateId: id, payload: Type.Unknown() }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,
@@ -414,7 +456,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.abn.required",
     moduleOwner: "m23",
-    description: "A coverage determination resolved a service line as non-covered before the service is furnished.",
+    description:
+      "A coverage determination resolved a service line as non-covered before the service is furnished.",
     payloadSchema: Type.Object({
       abnId: id,
       patientId: id,

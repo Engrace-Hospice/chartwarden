@@ -1,12 +1,20 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M37 equipment + biomed inspection (§2.9 D10, §3.3): ipu_equipment (the asset), its
 // maintenance ledger, and its inspection ledger (an overdue inspection blocks bed assignment, §5.8).
 // TENANT-SCOPED, RLS on app.org_id. inspection `notes` is PHI-denylisted. equipment_id is a REAL FK;
 // current_unit/room/bed ids are intra-module FKs; current_assigned_patient_id and
 // inspection_certificate_document_id (M22) are logical uuids.
-import { date, index, jsonb, pgTable, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
-import { bigintVersion } from "./shared";
-import { inpatientUnit, ipuBed, ipuRoom } from "./units";
+import {
+  date,
+  index,
+  jsonb,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import {
   ipuEquipmentInspectionKind,
   ipuEquipmentInspectionOutcome,
@@ -14,6 +22,8 @@ import {
   ipuEquipmentStatus,
   ipuEquipmentType,
 } from "../../enums";
+import { bigintVersion } from "./shared";
+import { inpatientUnit, ipuBed, ipuRoom } from "./units";
 
 export const ipuEquipment = pgTable(
   "ipu_equipment",
@@ -25,7 +35,9 @@ export const ipuEquipment = pgTable(
     manufacturer: text("manufacturer").notNull(),
     modelNumber: text("model_number").notNull(),
     yearOfManufacture: smallint("year_of_manufacture"),
-    currentLocationKind: ipuEquipmentLocationKind("current_location_kind").notNull().default("storage"),
+    currentLocationKind: ipuEquipmentLocationKind("current_location_kind")
+      .notNull()
+      .default("storage"),
     currentUnitId: uuid("current_unit_id").references(() => inpatientUnit.id),
     currentRoomId: uuid("current_room_id").references(() => ipuRoom.id),
     currentBedId: uuid("current_bed_id").references(() => ipuBed.id),

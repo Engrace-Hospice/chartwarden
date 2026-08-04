@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/quality — M30 §7.8 / D11: infection-surveillance event normalization (coding helpers).
 //
 // Each `infection_surveillance_event` row records a per-organism observation (pathogen, body site,
@@ -11,7 +12,6 @@
 // concern in a LATER phase) — these helpers only canonicalize an already-validated code into the form
 // the cluster key compares. Empty/blank codes throw a `WardenXError`.
 import { WardenXError } from "@wardenx/types";
-import type { schema } from "@wardenx/db";
 
 /**
  * The minimal surveillance observation the cluster pipeline consumes — a structural subset of the

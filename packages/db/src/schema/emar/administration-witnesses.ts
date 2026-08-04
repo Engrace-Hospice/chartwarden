@@ -4,7 +4,7 @@
 // RLS. Non-partitioned. administration_record is partitioned, so `administration_record_id` is plain uuid (no SQL FK);
 // the 1:1 is enforced by a unique index. Witness refs go to M1 `membership`. RLS + grants + the M4 write-audit trigger
 // land in the RLS migration.
-import { pgTable, index, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { administrationWitnessKind, administrationWitnessesScope } from "../../enums";
 import { organizations } from "../organizations";
 

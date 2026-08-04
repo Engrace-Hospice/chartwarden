@@ -1,23 +1,3 @@
-// @wardenx/reporting — boot-time seam registration + consumed-seam binding (M33 §4.3 / §4.4).
-//
-// Mirrors M34's seam-registration shape, adapted to M33's M1-bootstrap-registry posture (the M22-style
-// path: the published-seam contracts are registered into the M1 SeamRegistry, the consumed seams are
-// resolved through it). M33 takes NO `apps/backend` edge, so the registry's `registerSeam` / `getSeam`
-// are injected as PORTS — the composition root binds them to the real M1 registry at boot (P2C). This
-// file is the single wiring site; it does NOT touch the apps/backend boot graph itself (that lands in P2C).
-//
-// Two halves:
-//  1. PUBLISH — `registerReportingPublishedSeams` registers the three M33 seams (MetricsProvider /
-//     DashboardCatalogProvider / ScheduledReportProvider) into the M1 registry. The real Drizzle-backed
-//     providers are supplied by the caller once the §3 repositories land (later M33 phase).
-//  2. CONSUME — `bindReportingConsumedSeams` assembles the consumed-seam bundle: PRESENT producers'
-//     bindings (built by the composition root as adapters over `getSeam`, P2C) merged with the package's
-//     forward-seam DENY-STUBS for every ABSENT producer (fail-closed, never fails open — D6/D13).
-import type {
-  DashboardCatalogProvider,
-  MetricsProvider,
-  ScheduledReportProvider,
-} from "./seams/published";
 import {
   denyStubReportingBereavementConsumer,
   denyStubReportingBillingConsumer,
@@ -61,6 +41,26 @@ import type {
   ReportingSupplyConsumer,
   ReportingTriageConsumer,
 } from "./seams/consumed";
+// @wardenx/reporting — boot-time seam registration + consumed-seam binding (M33 §4.3 / §4.4).
+//
+// Mirrors M34's seam-registration shape, adapted to M33's M1-bootstrap-registry posture (the M22-style
+// path: the published-seam contracts are registered into the M1 SeamRegistry, the consumed seams are
+// resolved through it). M33 takes NO `apps/backend` edge, so the registry's `registerSeam` / `getSeam`
+// are injected as PORTS — the composition root binds them to the real M1 registry at boot (P2C). This
+// file is the single wiring site; it does NOT touch the apps/backend boot graph itself (that lands in P2C).
+//
+// Two halves:
+//  1. PUBLISH — `registerReportingPublishedSeams` registers the three M33 seams (MetricsProvider /
+//     DashboardCatalogProvider / ScheduledReportProvider) into the M1 registry. The real Drizzle-backed
+//     providers are supplied by the caller once the §3 repositories land (later M33 phase).
+//  2. CONSUME — `bindReportingConsumedSeams` assembles the consumed-seam bundle: PRESENT producers'
+//     bindings (built by the composition root as adapters over `getSeam`, P2C) merged with the package's
+//     forward-seam DENY-STUBS for every ABSENT producer (fail-closed, never fails open — D6/D13).
+import type {
+  DashboardCatalogProvider,
+  MetricsProvider,
+  ScheduledReportProvider,
+} from "./seams/published";
 
 // ── injected ports (the composition root binds these to the real M1 SeamRegistry at boot, P2C) ───────
 

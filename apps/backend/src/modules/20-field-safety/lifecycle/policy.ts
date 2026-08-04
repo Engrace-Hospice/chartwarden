@@ -86,8 +86,7 @@ export function mergeEffectivePolicy(
     escalationMinutes: version.escalationMinutes ?? f.escalationMinutes,
     sosEquivalentMinutes: version.sosEquivalentMinutes ?? f.sosEquivalentMinutes,
     sosCancelWindowSeconds: version.sosCancelWindowSeconds ?? f.sosCancelWindowSeconds,
-    sosCancelRequiresBiometric:
-      version.sosCancelRequiresBiometric ?? f.sosCancelRequiresBiometric,
+    sosCancelRequiresBiometric: version.sosCancelRequiresBiometric ?? f.sosCancelRequiresBiometric,
     sosContinuousLocationEnabled:
       version.sosContinuousLocationEnabled ?? f.sosContinuousLocationEnabled,
     sosContinuousLocationSampleSeconds:
@@ -97,7 +96,8 @@ export function mergeEffectivePolicy(
     sosTier1SlaSeconds: version.sosTier1SlaSeconds ?? f.sosTier1SlaSeconds,
     sosTier2SlaSeconds: version.sosTier2SlaSeconds ?? f.sosTier2SlaSeconds,
     sosTier3SlaSeconds: version.sosTier3SlaSeconds ?? f.sosTier3SlaSeconds,
-    subscriptionModel: version.subscriptionModel ?? (f.subscriptionModel as SafetySubscriptionModel),
+    subscriptionModel:
+      version.subscriptionModel ?? (f.subscriptionModel as SafetySubscriptionModel),
     afterHoursStartHour: version.afterHoursStartHour ?? f.afterHoursStartHour,
     afterHoursEndHour: version.afterHoursEndHour ?? f.afterHoursEndHour,
     oshaReportableAutoFlagCategories:
@@ -111,12 +111,17 @@ export function safetyPolicyFloorSeed(): Omit<
   SafetyPolicyEffectiveDto,
   "organizationId" | "versionId" | "effectiveFrom" | "effectiveTo"
 > {
-  const { organizationId: _o, versionId: _v, effectiveFrom: _f, effectiveTo: _t, ...knobs } =
-    mergeEffectivePolicy("" as OrgId, {
-      versionId: "" as SafetyPolicyVersionId,
-      effectiveFrom: new Date(0).toISOString(),
-      effectiveTo: null,
-    });
+  const {
+    organizationId: _o,
+    versionId: _v,
+    effectiveFrom: _f,
+    effectiveTo: _t,
+    ...knobs
+  } = mergeEffectivePolicy("" as OrgId, {
+    versionId: "" as SafetyPolicyVersionId,
+    effectiveFrom: new Date(0).toISOString(),
+    effectiveTo: null,
+  });
   return knobs;
 }
 
@@ -135,7 +140,9 @@ export interface SafetyPolicyBoundViolation {
 
 /** §2.2.4 / D4 — every bounded knob in `patch`, checked against its own band. Returned rather than thrown
  *  so the §5 policy editor can mark all the offending inputs at once instead of one per round trip. */
-export function policyBoundViolations(patch: SafetyPolicyPatch): readonly SafetyPolicyBoundViolation[] {
+export function policyBoundViolations(
+  patch: SafetyPolicyPatch,
+): readonly SafetyPolicyBoundViolation[] {
   const violations: SafetyPolicyBoundViolation[] = [];
   for (const [field, band] of Object.entries(SAFETY_POLICY_BOUNDS) as [
     keyof typeof SAFETY_POLICY_BOUNDS,

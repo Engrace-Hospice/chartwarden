@@ -110,7 +110,9 @@ describe("M33 §3.7 eraser — the FK-safe deletion sequence", () => {
       "countDrilldownAudit", // LAST — counted (not deleted), the compliance class
     ]);
     // The eraser-complete emit fires only after the whole sequence.
-    expect(calls.indexOf("emitEraserComplete")).toBeGreaterThan(calls.indexOf("countDrilldownAudit"));
+    expect(calls.indexOf("emitEraserComplete")).toBeGreaterThan(
+      calls.indexOf("countDrilldownAudit"),
+    );
   });
 
   it("the operational `erased` total sums every deleted table (excludes the refused compliance class)", async () => {

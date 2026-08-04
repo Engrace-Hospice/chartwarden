@@ -16,7 +16,13 @@
 // PHASE-1 PURE DECISION CORE, the M21-T04 shape: this file is the payload type plus the decider. The live
 // outbox binding, the transactional insert and the alert dispatch land with the M19-T07 route/service layer
 // that owns `withOrgContext` and the effect runner.
-import type { IsoInstant, M19SubscribedEventName, MembershipId, OrgId, PatientId } from "@wardenx/types";
+import type {
+  IsoInstant,
+  M19SubscribedEventName,
+  MembershipId,
+  OrgId,
+  PatientId,
+} from "@wardenx/types";
 import {
   type InboundTriggerAction,
   type InboundTriggerFacts,

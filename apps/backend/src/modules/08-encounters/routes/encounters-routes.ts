@@ -66,7 +66,8 @@ function signingActorOf(request: FastifyRequest): { membershipId: string; sessio
   const ctx = request.context;
   const membershipId = ctx?.attributes.membershipId;
   const sessionId = ctx?.attributes.sessionId;
-  if (typeof membershipId !== "string" || typeof sessionId !== "string") throw new UnauthorizedError();
+  if (typeof membershipId !== "string" || typeof sessionId !== "string")
+    throw new UnauthorizedError();
   return { membershipId, sessionId };
 }
 

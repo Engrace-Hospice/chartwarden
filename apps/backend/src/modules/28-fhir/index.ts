@@ -6,9 +6,7 @@
 // store (+ in-memory for tests), the Drizzle published-seam store, and the §3.7 `fhir_gateway` eraser.
 // `fhir.write` stays OFF: the gateway is read-only US Core R4.
 export * from "./seams/index";
-export {
-  createDrizzleFhirPublishedSeamStore,
-} from "./seams/published-store-drizzle";
+export { createDrizzleFhirPublishedSeamStore } from "./seams/published-store-drizzle";
 export {
   type M28ContributedPermissionKey,
   type M28PermissionKey,

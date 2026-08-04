@@ -72,196 +72,197 @@ export interface M23TopicSubscription {
  * triggers. Frozen so no consumer can mutate it. The handlers in `./handlers.ts` read this map; the boot
  * dispatcher forward-declares one binding per LIVE key (the `M23_UPSTREAM_SUBSCRIPTIONS` list below).
  */
-export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscription>> = Object.freeze({
-  // ── M6 election → NOE draft (task 47) ───────────────────────────────────────────────────────────────
-  "m6.election.signed": {
-    status: "live",
-    effects: [
-      {
-        kind: "create_noe_draft",
-        note: "An election was signed in M6 — M23 creates a `noe_record` DRAFT and computes the 5-day CMS filing-window target (task 47); the bound noe-assembly port emits `m23.noe.draft_created`.",
-      },
-    ],
-  },
+export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscription>> =
+  Object.freeze({
+    // ── M6 election → NOE draft (task 47) ───────────────────────────────────────────────────────────────
+    "m6.election.signed": {
+      status: "live",
+      effects: [
+        {
+          kind: "create_noe_draft",
+          note: "An election was signed in M6 — M23 creates a `noe_record` DRAFT and computes the 5-day CMS filing-window target (task 47); the bound noe-assembly port emits `m23.noe.draft_created`.",
+        },
+      ],
+    },
 
-  // ── M6 revocation / transfer-out / discharge → NOTR draft (task 50) ─────────────────────────────────
-  "m6.revocation.created": {
-    status: "live",
-    effects: [
-      {
-        kind: "create_notr_draft",
-        trigger: "revocation",
-        note: "A benefit revocation was recorded in M6 — M23 creates a `notr_record` DRAFT (trigger `revocation`) and computes the filing-window target (task 50); emits `m23.notr.draft_created`.",
-      },
-    ],
-  },
-  "m6.transfer.created": {
-    status: "live",
-    effects: [
-      {
-        kind: "create_notr_draft",
-        trigger: "transfer_out",
-        note: "A transfer was recorded in M6 — ONLY a transfer-OUT (direction='out') seeds a `notr_record` DRAFT (trigger `transfer_out`); a transfer-IN is a deliberate no-op (task 50).",
-      },
-    ],
-  },
-  "m6.discharge.created": {
-    status: "live",
-    effects: [
-      {
-        kind: "create_notr_draft",
-        trigger: "discharge",
-        note: "A discharge was recorded in M6 — M23 creates a `notr_record` DRAFT (trigger `discharge`) and computes the filing-window target (task 50); emits `m23.notr.draft_created`.",
-      },
-    ],
-  },
+    // ── M6 revocation / transfer-out / discharge → NOTR draft (task 50) ─────────────────────────────────
+    "m6.revocation.created": {
+      status: "live",
+      effects: [
+        {
+          kind: "create_notr_draft",
+          trigger: "revocation",
+          note: "A benefit revocation was recorded in M6 — M23 creates a `notr_record` DRAFT (trigger `revocation`) and computes the filing-window target (task 50); emits `m23.notr.draft_created`.",
+        },
+      ],
+    },
+    "m6.transfer.created": {
+      status: "live",
+      effects: [
+        {
+          kind: "create_notr_draft",
+          trigger: "transfer_out",
+          note: "A transfer was recorded in M6 — ONLY a transfer-OUT (direction='out') seeds a `notr_record` DRAFT (trigger `transfer_out`); a transfer-IN is a deliberate no-op (task 50).",
+        },
+      ],
+    },
+    "m6.discharge.created": {
+      status: "live",
+      effects: [
+        {
+          kind: "create_notr_draft",
+          trigger: "discharge",
+          note: "A discharge was recorded in M6 — M23 creates a `notr_record` DRAFT (trigger `discharge`) and computes the filing-window target (task 50); emits `m23.notr.draft_created`.",
+        },
+      ],
+    },
 
-  // ── M5 patient deceased → freeze new claims + re-validate in-flight (task 53) ────────────────────────
-  "m5.patient.deceased": {
-    status: "live",
-    effects: [
-      {
-        kind: "freeze_new_claims",
-        note: "The patient was marked deceased in M5 — M23 freezes new-claim creation for the decedent (task 53); only the discharge/bereavement claim path proceeds.",
-      },
-      {
-        kind: "revalidate",
-        note: "Re-validate every in-flight (VALIDATING/READY) claim for the decedent so a date-of-death-dependent rule re-runs (task 53/54).",
-      },
-    ],
-  },
+    // ── M5 patient deceased → freeze new claims + re-validate in-flight (task 53) ────────────────────────
+    "m5.patient.deceased": {
+      status: "live",
+      effects: [
+        {
+          kind: "freeze_new_claims",
+          note: "The patient was marked deceased in M5 — M23 freezes new-claim creation for the decedent (task 53); only the discharge/bereavement claim path proceeds.",
+        },
+        {
+          kind: "revalidate",
+          note: "Re-validate every in-flight (VALIDATING/READY) claim for the decedent so a date-of-death-dependent rule re-runs (task 53/54).",
+        },
+      ],
+    },
 
-  // ── M6 cert / F2F / LOC → re-validate (task 53) ─────────────────────────────────────────────────────
-  "m6.cti.signed": {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "A CTI was signed in M6 (CMS 418.22) — re-validate every affected claim so the `cti_signed_for_period` rule re-runs (task 53/54).",
-      },
-    ],
-  },
-  "m6.f2f.attested": {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "An F2F was attested in M6 — re-validate every affected claim so the `f2f_attested_for_recert` rule re-runs (task 53/54; the §11 Whitfield walkthrough).",
-      },
-    ],
-  },
-  "m6.loc.changed": {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "A level-of-care change was recorded in M6 — re-validate the affected claim's date range so HIPPS is recomputed (task 53/54).",
-      },
-    ],
-  },
+    // ── M6 cert / F2F / LOC → re-validate (task 53) ─────────────────────────────────────────────────────
+    "m6.cti.signed": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "A CTI was signed in M6 (CMS 418.22) — re-validate every affected claim so the `cti_signed_for_period` rule re-runs (task 53/54).",
+        },
+      ],
+    },
+    "m6.f2f.attested": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "An F2F was attested in M6 — re-validate every affected claim so the `f2f_attested_for_recert` rule re-runs (task 53/54; the §11 Whitfield walkthrough).",
+        },
+      ],
+    },
+    "m6.loc.changed": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "A level-of-care change was recorded in M6 — re-validate the affected claim's date range so HIPPS is recomputed (task 53/54).",
+        },
+      ],
+    },
 
-  // ── M8 encounter signed / cosigned → re-validate (task 53) ──────────────────────────────────────────
-  "m8.encounter.signed": {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "An encounter was signed in M8 — the daily claim-eligibility recompute re-validates affected claims so the newly-billable visit can be brought onto a line (task 53/54).",
-      },
-    ],
-  },
-  "m8.encounter.cosigned": {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "An LPN/CHHA encounter was cosigned in M8 (M8 D3) — the visit is now billable; re-validate affected claims so it leaves the `awaiting_cosignature` hold (task 53/54).",
-      },
-    ],
-  },
+    // ── M8 encounter signed / cosigned → re-validate (task 53) ──────────────────────────────────────────
+    "m8.encounter.signed": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "An encounter was signed in M8 — the daily claim-eligibility recompute re-validates affected claims so the newly-billable visit can be brought onto a line (task 53/54).",
+        },
+      ],
+    },
+    "m8.encounter.cosigned": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "An LPN/CHHA encounter was cosigned in M8 (M8 D3) — the visit is now billable; re-validate affected claims so it leaves the `awaiting_cosignature` hold (task 53/54).",
+        },
+      ],
+    },
 
-  // ── M18 EVV late-check resolved → re-validate (task 53) ─────────────────────────────────────────────
-  "m18.evv.late_check_resolved": {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "An EVV unresolved-missing bracket was resolved in M18 — re-validate affected claims so the hard `unresolved_missing` EVV rule clears (task 53/54).",
-      },
-    ],
-  },
+    // ── M18 EVV late-check resolved → re-validate (task 53) ─────────────────────────────────────────────
+    "m18.evv.late_check_resolved": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "An EVV unresolved-missing bracket was resolved in M18 — re-validate affected claims so the hard `unresolved_missing` EVV rule clears (task 53/54).",
+        },
+      ],
+    },
 
-  // ── M40 master-data canonical change → re-validate (task 53) ────────────────────────────────────────
-  [M40_CANONICAL_UPDATED_TOPIC]: {
-    status: "live",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "An M40 canonical entity (NPI / physician credential) changed — re-validate affected claims so the `physician credentials` rule re-runs against the new canonical fact (task 53/54).",
-      },
-    ],
-  },
+    // ── M40 master-data canonical change → re-validate (task 53) ────────────────────────────────────────
+    [M40_CANONICAL_UPDATED_TOPIC]: {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "An M40 canonical entity (NPI / physician credential) changed — re-validate affected claims so the `physician credentials` rule re-runs against the new canonical fact (task 53/54).",
+        },
+      ],
+    },
 
-  // ── M22 document render handshake (task 57) ─────────────────────────────────────────────────────────
-  "m22.document.rendered": {
-    status: "live",
-    effects: [
-      {
-        kind: "record_document_back_reference",
-        note: "M22 rendered + stored a NOE/NOTR receipt or claim-ack letter and returned its document id — M23 records the back-ref `document_id` on `noe_record` / `notr_record` / `claim` (task 57).",
-      },
-    ],
-  },
+    // ── M22 document render handshake (task 57) ─────────────────────────────────────────────────────────
+    "m22.document.rendered": {
+      status: "live",
+      effects: [
+        {
+          kind: "record_document_back_reference",
+          note: "M22 rendered + stored a NOE/NOTR receipt or claim-ack letter and returned its document id — M23 records the back-ref `document_id` on `noe_record` / `notr_record` / `claim` (task 57).",
+        },
+      ],
+    },
 
-  // ── M25 remittance → claim PAID/PARTIAL_PAID/DENIED (task 55 — DENY-STUB until M25 lands) ────────────
-  "m25.remittance.claim_paid": {
-    status: "deny_stub",
-    effects: [
-      {
-        kind: "claim_remittance_transition",
-        note: "M25 posted an 835 full-payment — claim ACK_ACCEPTED → PAID, emit `m23.claim.paid` (task 55). DENY-STUB until M25 lands.",
-      },
-    ],
-  },
-  "m25.remittance.claim_partial_paid": {
-    status: "deny_stub",
-    effects: [
-      {
-        kind: "claim_remittance_transition",
-        note: "M25 posted an 835 partial-payment — claim → PARTIAL_PAID (task 55). DENY-STUB until M25 lands.",
-      },
-    ],
-  },
-  "m25.remittance.claim_denied": {
-    status: "deny_stub",
-    effects: [
-      {
-        kind: "claim_remittance_transition",
-        note: "M25 posted a denial 835 — claim ACK_ACCEPTED → DENIED, emit `m23.claim.denied` (task 55). DENY-STUB until M25 lands.",
-      },
-    ],
-  },
-  "m25.remittance.claim_adjusted": {
-    status: "deny_stub",
-    effects: [
-      {
-        kind: "claim_remittance_transition",
-        note: "M25 posted an adjustment 835 — the claim's adjudicated amounts are revised (task 55). DENY-STUB until M25 lands.",
-      },
-    ],
-  },
+    // ── M25 remittance → claim PAID/PARTIAL_PAID/DENIED (task 55 — DENY-STUB until M25 lands) ────────────
+    "m25.remittance.claim_paid": {
+      status: "deny_stub",
+      effects: [
+        {
+          kind: "claim_remittance_transition",
+          note: "M25 posted an 835 full-payment — claim ACK_ACCEPTED → PAID, emit `m23.claim.paid` (task 55). DENY-STUB until M25 lands.",
+        },
+      ],
+    },
+    "m25.remittance.claim_partial_paid": {
+      status: "deny_stub",
+      effects: [
+        {
+          kind: "claim_remittance_transition",
+          note: "M25 posted an 835 partial-payment — claim → PARTIAL_PAID (task 55). DENY-STUB until M25 lands.",
+        },
+      ],
+    },
+    "m25.remittance.claim_denied": {
+      status: "deny_stub",
+      effects: [
+        {
+          kind: "claim_remittance_transition",
+          note: "M25 posted a denial 835 — claim ACK_ACCEPTED → DENIED, emit `m23.claim.denied` (task 55). DENY-STUB until M25 lands.",
+        },
+      ],
+    },
+    "m25.remittance.claim_adjusted": {
+      status: "deny_stub",
+      effects: [
+        {
+          kind: "claim_remittance_transition",
+          note: "M25 posted an adjustment 835 — the claim's adjudicated amounts are revised (task 55). DENY-STUB until M25 lands.",
+        },
+      ],
+    },
 
-  // ── M26 cap projection change → re-validate (task 56 — DENY-STUB until M26 lands) ────────────────────
-  [M26_CAP_PROJECTION_TOPIC]: {
-    status: "deny_stub",
-    effects: [
-      {
-        kind: "revalidate",
-        note: "M26 recomputed an aggregate cap projection — re-validate claims in VALIDATING whose `aggregate cap projection not exceeded` rule depends on it (task 56). DENY-STUB until M26 lands.",
-      },
-    ],
-  },
-});
+    // ── M26 cap projection change → re-validate (task 56 — DENY-STUB until M26 lands) ────────────────────
+    [M26_CAP_PROJECTION_TOPIC]: {
+      status: "deny_stub",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "M26 recomputed an aggregate cap projection — re-validate claims in VALIDATING whose `aggregate cap projection not exceeded` rule depends on it (task 56). DENY-STUB until M26 lands.",
+        },
+      ],
+    },
+  });
 
 /** Every upstream topic M23 subscribes to (the §4.4 inbound set, LIVE + DENY-STUB). */
 export const M23_OUTBOX_SUBSCRIPTION_TOPICS: readonly string[] = Object.freeze(

@@ -1,4 +1,4 @@
-import { cardSurface, EmptyState, LoadingSpinner, t } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, cardSurface, t } from "@wardenx/ui";
 // @wardenx/portal — shared screen frame for the §5.1 caregiver surfaces. A titled card column inside the
 // portal's centered reading width, with the loading / error / empty triad every read screen needs. Keeps
 // the individual screens focused on their data shape rather than re-deriving layout chrome.
@@ -25,11 +25,22 @@ export interface PortalPageProps {
 export function PortalPage({ title, subtitle, actions, children }: PortalPageProps): JSX.Element {
   return (
     <main style={column}>
-      <header style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "1rem" }}>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "1rem",
+        }}
+      >
         <div>
-          <h1 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.6rem", fontWeight: 500 }}>{title}</h1>
+          <h1 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.6rem", fontWeight: 500 }}>
+            {title}
+          </h1>
           {subtitle ? (
-            <p style={{ margin: "0.25rem 0 0", color: t.onSurfaceVariant, fontSize: "0.9rem" }}>{subtitle}</p>
+            <p style={{ margin: "0.25rem 0 0", color: t.onSurfaceVariant, fontSize: "0.9rem" }}>
+              {subtitle}
+            </p>
           ) : null}
         </div>
         {actions ? <div>{actions}</div> : null}
@@ -40,7 +51,10 @@ export function PortalPage({ title, subtitle, actions, children }: PortalPagePro
 }
 
 /** A titled card holding a screen section. */
-export function PortalCard({ heading, children }: { heading?: string; children: ReactNode }): JSX.Element {
+export function PortalCard({
+  heading,
+  children,
+}: { heading?: string; children: ReactNode }): JSX.Element {
   return (
     <section style={cardSurface}>
       {heading ? <h2 style={{ margin: "0 0 0.75rem", fontSize: "1rem" }}>{heading}</h2> : null}
@@ -74,7 +88,11 @@ export function PortalLoadState({
   return <>{children}</>;
 }
 
-export const tableCell: CSSProperties = { padding: "0.55rem 0.75rem", textAlign: "left", verticalAlign: "middle" };
+export const tableCell: CSSProperties = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left",
+  verticalAlign: "middle",
+};
 export const tableHead: CSSProperties = {
   ...tableCell,
   fontSize: "0.72rem",

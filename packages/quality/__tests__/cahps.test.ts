@@ -1,3 +1,25 @@
+import {
+  CAHPS_ADAPTER_FACTORIES,
+  DeytaCahpsAdapter,
+  HealthcarefirstCahpsAdapter,
+  MANUAL_RESULT_COLUMNS,
+  ManualCahpsAdapter,
+  PressGaneyCahpsAdapter,
+  SHP_DECEDENT_COLUMNS,
+  SUPPORTED_CAHPS_VENDOR_IDS,
+  ShpCahpsAdapter,
+  renderCsv,
+  shpExportFilename,
+} from "@wardenx/cahps-vendors";
+import {
+  type CahpsDecedentSampleRow,
+  type CahpsSampleCandidate,
+  type CahpsSamplePeriod,
+  type ParsedCahpsResultRow,
+  applyMinimumCellSuppression,
+  sampleDecedents,
+} from "@wardenx/quality";
+import { WardenXError } from "@wardenx/types";
 // @wardenx/quality — M30 §4.5 / §4.13 / §7.2 CAHPS unit tests (PURE; no DB).
 //
 // Covers the platform-side CAHPS pipeline + the pluggable vendor adapters:
@@ -10,28 +32,6 @@
 // Both packages are M30 codePaths (intra-module edge), so importing @wardenx/cahps-vendors from this
 // quality test is an allowed boundary. The PURE design (no I/O) is asserted by injecting plain values.
 import { describe, expect, it } from "vitest";
-import { WardenXError } from "@wardenx/types";
-import {
-  type CahpsDecedentSampleRow,
-  type CahpsSampleCandidate,
-  type CahpsSamplePeriod,
-  type ParsedCahpsResultRow,
-  applyMinimumCellSuppression,
-  sampleDecedents,
-} from "@wardenx/quality";
-import {
-  CAHPS_ADAPTER_FACTORIES,
-  DeytaCahpsAdapter,
-  HealthcarefirstCahpsAdapter,
-  ManualCahpsAdapter,
-  MANUAL_RESULT_COLUMNS,
-  PressGaneyCahpsAdapter,
-  renderCsv,
-  SHP_DECEDENT_COLUMNS,
-  ShpCahpsAdapter,
-  shpExportFilename,
-  SUPPORTED_CAHPS_VENDOR_IDS,
-} from "@wardenx/cahps-vendors";
 
 // ── shared fixtures ────────────────────────────────────────────────────────────────────────────────────
 
@@ -186,7 +186,10 @@ describe("CAHPS result-ingest minimum-cell-size suppression (CMS ≤30 small-cel
   }
 
   it("suppresses score payloads AT the minimum cell size (responseCount === 30, minSize 30 ⇒ ≤)", () => {
-    const { inputs, suppressed } = applyMinimumCellSuppression([parsedRow({ responseCount: 30 })], 30);
+    const { inputs, suppressed } = applyMinimumCellSuppression(
+      [parsedRow({ responseCount: 30 })],
+      30,
+    );
     const [row] = inputs;
     expect(row?.topBoxPercentages).toEqual({});
     expect(row?.compositeScores).toEqual({});
@@ -199,7 +202,10 @@ describe("CAHPS result-ingest minimum-cell-size suppression (CMS ≤30 small-cel
   });
 
   it("does NOT suppress a cell just above the threshold (responseCount === 31)", () => {
-    const { inputs, suppressed } = applyMinimumCellSuppression([parsedRow({ responseCount: 31 })], 30);
+    const { inputs, suppressed } = applyMinimumCellSuppression(
+      [parsedRow({ responseCount: 31 })],
+      30,
+    );
     expect(inputs[0]?.topBoxPercentages).toEqual({ q1: 88.5 });
     expect(inputs[0]?.compositeScores).toEqual({ communication: 91 });
     expect(suppressed).toHaveLength(0);
@@ -224,9 +230,9 @@ describe("CAHPS result-ingest minimum-cell-size suppression (CMS ≤30 small-cel
     expect(() =>
       applyMinimumCellSuppression([parsedRow({ responseCount: 60, attemptedSampleCount: 50 })], 30),
     ).toThrowError(/cannot exceed attemptedSampleCount/);
-    expect(() =>
-      applyMinimumCellSuppression([parsedRow({ responseCount: -1 })], 30),
-    ).toThrowError(/non-negative integer/);
+    expect(() => applyMinimumCellSuppression([parsedRow({ responseCount: -1 })], 30)).toThrowError(
+      /non-negative integer/,
+    );
   });
 });
 

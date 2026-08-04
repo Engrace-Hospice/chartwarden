@@ -45,15 +45,21 @@ describe("M11-T09 §5 workflow acceptance", () => {
   it("W-VO-01 — verbal order received → 48h timer → physician signs in time", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "comfort_kit",
-      drafterDiscipline: "rn_case_manager", data: {}, orderingPhysicianMdmId: PHYS,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "comfort_kit",
+      drafterDiscipline: "rn_case_manager",
+      data: {},
+      orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
     svc.drainEvents();
 
     const verbal = await svc.recordVerbal(ORG, "rn_1", draft.id, {
-      recorderDiscipline: "rn_case_manager", verbalAttestation: ATTEST,
-      receivedAt: NOW, orderingPhysicianMdmId: PHYS,
+      recorderDiscipline: "rn_case_manager",
+      verbalAttestation: ATTEST,
+      receivedAt: NOW,
+      orderingPhysicianMdmId: PHYS,
     });
     expect(verbal.status).toBe("verbal_pending");
     // §2.3 D3 — deadline_at = received_at + 48h (wall-clock default policy).
@@ -64,7 +70,8 @@ describe("M11-T09 §5 workflow acceptance", () => {
     const signAt = "2026-06-09T12:00:00.000Z";
     expect(isVerbalExpired(signAt, verbal.verbalDeadlineAt as string)).toBe(false);
     const signed = await svc.signOrder(ORG, PHYS, draft.id, {
-      signerDiscipline: "hospice_physician", signedAtClient: signAt,
+      signerDiscipline: "hospice_physician",
+      signedAtClient: signAt,
     });
     expect(signed.status).toBe("active");
     expect(svc.drainEvents().map((e) => e.eventName)).toContain("m11.order.signed");
@@ -73,13 +80,19 @@ describe("M11-T09 §5 workflow acceptance", () => {
   it("W-VO-02 — verbal order expires without signature (verbal-timer worker path)", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "comfort_kit",
-      drafterDiscipline: "rn_case_manager", data: {}, orderingPhysicianMdmId: PHYS,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "comfort_kit",
+      drafterDiscipline: "rn_case_manager",
+      data: {},
+      orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
     const verbal = await svc.recordVerbal(ORG, "rn_1", draft.id, {
-      recorderDiscipline: "rn_case_manager", verbalAttestation: ATTEST,
-      receivedAt: NOW, orderingPhysicianMdmId: PHYS,
+      recorderDiscipline: "rn_case_manager",
+      verbalAttestation: ATTEST,
+      receivedAt: NOW,
+      orderingPhysicianMdmId: PHYS,
     });
     const deadline = verbal.verbalDeadlineAt as string; // 2026-06-10T12:00:00Z
 
@@ -102,16 +115,26 @@ describe("M11-T09 §5 workflow acceptance", () => {
     const plan = planVerbalExpiry(deadline, deadline);
     expect(plan.to).toBe("expired_unsigned");
     expect(plan.effects).toContainEqual({ kind: "set_verbal_status", status: "expired_unsigned" });
-    expect(plan.effects).toContainEqual({ kind: "write_discontinuation", reason: "expired_verbal" });
-    expect(plan.effects).toContainEqual({ kind: "outbox", event: "m11.order.verbal_expired_unsigned" });
+    expect(plan.effects).toContainEqual({
+      kind: "write_discontinuation",
+      reason: "expired_verbal",
+    });
+    expect(plan.effects).toContainEqual({
+      kind: "outbox",
+      event: "m11.order.verbal_expired_unsigned",
+    });
   });
 
   it("W-CS-01 — LPN draft → RN cosign → physician sign", async () => {
     const svc = backend();
     // An LPN may draft a clinical kind; the order then carries an RN-cosign requirement (§2.5 axis 1).
     const draft = await svc.createDraft(ORG, "lpn_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "lab",
-      drafterDiscipline: "lpn", data: { loinc: "2160-0" }, orderingPhysicianMdmId: PHYS,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "lab",
+      drafterDiscipline: "lpn",
+      data: { loinc: "2160-0" },
+      orderingPhysicianMdmId: PHYS,
     });
     const req = await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
     expect(req.cosignRequired).toBe(true);
@@ -119,17 +142,22 @@ describe("M11-T09 §5 workflow acceptance", () => {
 
     // The physician cannot sign while the cosignature is still pending (COSIGN_PENDING gate).
     await expect(
-      svc.signOrder(ORG, PHYS, draft.id, { signerDiscipline: "medical_director", signedAtClient: NOW }),
+      svc.signOrder(ORG, PHYS, draft.id, {
+        signerDiscipline: "medical_director",
+        signedAtClient: NOW,
+      }),
     ).rejects.toThrow();
 
     // A DIFFERENT RN cosigns (the author cannot cosign their own order, §7.3).
     const cos = await svc.cosignOrder(ORG, "rn_2", draft.id, {
-      cosignerRole: "rn_case_manager", attestationText: "Reviewed and cosigned per scope.",
+      cosignerRole: "rn_case_manager",
+      attestationText: "Reviewed and cosigned per scope.",
     });
     expect(cos.cosignStatus).toBe("attached");
 
     const signed = await svc.signOrder(ORG, PHYS, draft.id, {
-      signerDiscipline: "medical_director", signedAtClient: NOW,
+      signerDiscipline: "medical_director",
+      signedAtClient: NOW,
     });
     expect(signed.status).toBe("active");
   });
@@ -137,26 +165,39 @@ describe("M11-T09 §5 workflow acceptance", () => {
   it("W-CS-01 edge — the order's own author cannot cosign it (self-cosign blocked)", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, "lpn_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "lab",
-      drafterDiscipline: "lpn", data: { loinc: "2160-0" }, orderingPhysicianMdmId: PHYS,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "lab",
+      drafterDiscipline: "lpn",
+      data: { loinc: "2160-0" },
+      orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
     await expect(
-      svc.cosignOrder(ORG, "lpn_1", draft.id, { cosignerRole: "rn_case_manager", attestationText: "x".repeat(40) }),
+      svc.cosignOrder(ORG, "lpn_1", draft.id, {
+        cosignerRole: "rn_case_manager",
+        attestationText: "x".repeat(40),
+      }),
     ).rejects.toThrow();
   });
 
   it("W-SO-01 — standing-order template → scheduled (worker) spawn inherits the template signature", () => {
     // The hourly `orders.standing_spawn` worker composes the pure plan (system actor advances next_spawn_at).
     const plan = planStandingSpawn({
-      kind: "lab", cadence: "weekly", cadenceDetail: { daysOfWeek: ["mon"] },
-      spawnedBy: "system", now: NOW, timeZone: TZ,
+      kind: "lab",
+      cadence: "weekly",
+      cadenceDetail: { daysOfWeek: ["mon"] },
+      spawnedBy: "system",
+      now: NOW,
+      timeZone: TZ,
     });
     // §2.4 D5 — the spawned order is born `active` (signature inherited), bypassing pending_signature.
     expect(plan.spawnedOrderStatus).toBe("active");
     // The spawn emits standing_spawned → signed → the kind's downstream signed events (lab → HL7 ORM).
     expect(plan.events).toEqual([
-      "m11.order.standing_spawned", "m11.order.signed", "m11.order.hl7_orm_requested",
+      "m11.order.standing_spawned",
+      "m11.order.signed",
+      "m11.order.hl7_orm_requested",
     ]);
     // The next fire is the next Monday at 06:00 org-local time.
     const next = plan.nextSpawnAt as string;
@@ -167,8 +208,12 @@ describe("M11-T09 §5 workflow acceptance", () => {
   it("W-SO-02 — PRN standing-order spawns an active order on clinician request", async () => {
     const svc = backend();
     const tmpl = await svc.createStandingOrder(ORG, "phys_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "supply",
-      signerDiscipline: "hospice_physician", cadence: "prn", data: {},
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "supply",
+      signerDiscipline: "hospice_physician",
+      cadence: "prn",
+      data: {},
     });
     svc.drainEvents();
 
@@ -191,12 +236,19 @@ describe("M11-T09 §9.3 race / concurrency (verbal-timer vs in-flight sign)", ()
   it("sign wins the race: a verbal_pending order signed in time cannot then be expired by the worker", () => {
     // The physician's sign commits first → active.
     const signed = transitionOrder("verbal_pending", {
-      type: "sign", kind: "comfort_kit", cosignAttached: true, onBehalf: false,
+      type: "sign",
+      kind: "comfort_kit",
+      cosignAttached: true,
+      onBehalf: false,
     });
     expect(signed.to).toBe("active");
     // The verbal-timer fires a beat later — the §2.2 graph rejects `expire` from `active` (no-op for the worker).
     expect(() =>
-      transitionOrder("active", { type: "expire", isSystemActor: true, deadlineReached: isVerbalExpired(deadline, deadline) }),
+      transitionOrder("active", {
+        type: "expire",
+        isSystemActor: true,
+        deadlineReached: isVerbalExpired(deadline, deadline),
+      }),
     ).toThrowError(expect.objectContaining({ code: "ILLEGAL_ORDER_TRANSITION", statusCode: 409 }));
   });
 
@@ -205,15 +257,28 @@ describe("M11-T09 §9.3 race / concurrency (verbal-timer vs in-flight sign)", ()
     expect(plan.to).toBe("expired_unsigned");
     // A physician who sees the alert and signs after expiry hits the terminal-state guard.
     expect(() =>
-      transitionOrder("expired_unsigned", { type: "sign", kind: "comfort_kit", cosignAttached: true, onBehalf: false }),
+      transitionOrder("expired_unsigned", {
+        type: "sign",
+        kind: "comfort_kit",
+        cosignAttached: true,
+        onBehalf: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "ILLEGAL_ORDER_TRANSITION", statusCode: 409 }));
   });
 
   it("idempotency at deadline: a re-fired timer cannot double-expire an already-expired order", () => {
-    transitionOrder("verbal_pending", { type: "expire", isSystemActor: true, deadlineReached: true });
+    transitionOrder("verbal_pending", {
+      type: "expire",
+      isSystemActor: true,
+      deadlineReached: true,
+    });
     // The second delivery finds the order already terminal — the graph makes the redelivery a no-op.
     expect(() =>
-      transitionOrder("expired_unsigned", { type: "expire", isSystemActor: true, deadlineReached: true }),
+      transitionOrder("expired_unsigned", {
+        type: "expire",
+        isSystemActor: true,
+        deadlineReached: true,
+      }),
     ).toThrowError(expect.objectContaining({ code: "ILLEGAL_ORDER_TRANSITION", statusCode: 409 }));
   });
 });
@@ -222,8 +287,12 @@ describe("M11-T09 cross-tenant isolation (service-layer non-leaking 404; live-PG
   it("an order created in org_a is invisible to org_b (non-leaking NotFound)", async () => {
     const svc = backend();
     const draft = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "comfort_kit",
-      drafterDiscipline: "rn_case_manager", data: {}, orderingPhysicianMdmId: PHYS,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "comfort_kit",
+      drafterDiscipline: "rn_case_manager",
+      data: {},
+      orderingPhysicianMdmId: PHYS,
     });
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toThrow();
     expect((await svc.listOrders(ORG_B, {})).orders).toEqual([]);

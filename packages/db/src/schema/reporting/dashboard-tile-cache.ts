@@ -4,7 +4,16 @@
 // (retention class `operational`). UNIQUE (organization_id, cache_key). RLS + grants + the M4
 // write-audit trigger land in the M33 RLS migration.
 import { sql } from "drizzle-orm";
-import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const dashboardTileCache = pgTable(
   "dashboard_tile_cache",

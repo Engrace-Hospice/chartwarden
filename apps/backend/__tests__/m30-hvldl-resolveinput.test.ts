@@ -75,9 +75,10 @@ function digest(
 }
 
 /** A recording fake M6 death-census reader returning a fixed decedent list + capturing the call args. */
-function fakeDeathReader(
-  rows: ReadonlyArray<DeathDischargeRow>,
-): { reader: DeathDischargeReader; calls: { org?: string; period?: { from: string; to: string } } } {
+function fakeDeathReader(rows: ReadonlyArray<DeathDischargeRow>): {
+  reader: DeathDischargeReader;
+  calls: { org?: string; period?: { from: string; to: string } };
+} {
   const calls: { org?: string; period?: { from: string; to: string } } = {};
   const reader: DeathDischargeReader = {
     async listDeathDischargesInPeriod(organizationId, period) {
@@ -90,9 +91,10 @@ function fakeDeathReader(
 }
 
 /** A fake M8 signed-encounter reader keyed by patient id + capturing the `since` lower bound per patient. */
-function fakeEncounters(
-  byPatient: Record<string, ReadonlyArray<SignedEncounterDigest>>,
-): { encounters: SignedEncountersReader; sinceByPatient: Record<string, string> } {
+function fakeEncounters(byPatient: Record<string, ReadonlyArray<SignedEncounterDigest>>): {
+  encounters: SignedEncountersReader;
+  sinceByPatient: Record<string, string>;
+} {
   const sinceByPatient: Record<string, string> = {};
   const encounters: SignedEncountersReader = {
     async signedEncountersForPatientSince(_organizationId, patientId, since) {
@@ -112,8 +114,18 @@ describe("resolveHvldlMeasureInput — HVLDL measure-input binding (§4.11)", ()
   const DEATH_B = "2025-04-10T08:00:00.000Z";
 
   const decedents: ReadonlyArray<DeathDischargeRow> = [
-    { patientId: PATIENT_A, admissionId: ADMISSION_A, deathAt: DEATH_A, source: "internal_clinician_recorded" },
-    { patientId: PATIENT_B, admissionId: ADMISSION_B, deathAt: DEATH_B, source: "internal_clinician_recorded" },
+    {
+      patientId: PATIENT_A,
+      admissionId: ADMISSION_A,
+      deathAt: DEATH_A,
+      source: "internal_clinician_recorded",
+    },
+    {
+      patientId: PATIENT_B,
+      admissionId: ADMISSION_B,
+      deathAt: DEATH_B,
+      source: "internal_clinician_recorded",
+    },
   ];
 
   // Patient A: exactly two visits qualify (rn + msw, EVV-present, in-window). The other three are excluded —

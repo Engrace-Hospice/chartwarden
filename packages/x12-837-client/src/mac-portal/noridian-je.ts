@@ -6,13 +6,13 @@
 // and return the X12WorkerResult envelope — must pass. dependency-cruiser (task 20) forbids this module
 // from importing any sibling jurisdiction module: it imports ONLY from ../types.
 import {
-  NotImplementedError,
   type MacJurisdiction,
   type MacPortalClient,
   type MacPortalReceipt,
   type MacPortalStatus,
   type MacPortalStatusRequest,
   type MacPortalSubmitRequest,
+  NotImplementedError,
   type X12WorkerResult,
 } from "../types";
 

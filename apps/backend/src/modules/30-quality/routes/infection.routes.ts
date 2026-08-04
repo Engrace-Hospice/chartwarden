@@ -24,12 +24,6 @@ import { requireAbac, requirePermission } from "@wardenx/auth";
 import type { FastifyInstance } from "fastify";
 import { type PreHandler, actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import type {
-  InfectionEventFilter,
-  InfectionOutbreakFilter,
-  M30ReadRouteService,
-} from "./read-service";
-import type { M30WriteRouteService } from "./write-service";
 import {
   CaseIdParamsSchema,
   InfectionEventListQuerySchema,
@@ -38,6 +32,12 @@ import {
   UpdateInfectionOutbreakBodySchema,
   parse,
 } from "./quality-typebox";
+import type {
+  InfectionEventFilter,
+  InfectionOutbreakFilter,
+  M30ReadRouteService,
+} from "./read-service";
+import type { M30WriteRouteService } from "./write-service";
 
 export interface InfectionRouteDeps {
   readonly readService: M30ReadRouteService;
@@ -46,7 +46,8 @@ export interface InfectionRouteDeps {
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 // §4.7 ABAC composed AFTER RBAC; the default target is `request.params` (the `:caseId` on R-93).
-const ABAC = (key: string, predicate: string): PreHandler => requireAbac(key, predicate) as PreHandler;
+const ABAC = (key: string, predicate: string): PreHandler =>
+  requireAbac(key, predicate) as PreHandler;
 
 const INF_READ = P("infection.read");
 const INF_WRITE = P("infection.write");
@@ -62,7 +63,10 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
   // R-90 — list surveillance events (cursor-paginated; PHI). §4.1/§4.1.2.
   app.get(
     "/api/v1/quality/infection/events",
-    { preHandler: [INF_READ, READ_INORG], config: { auditRead: { resourceKind: "infection_event", list: true } } },
+    {
+      preHandler: [INF_READ, READ_INORG],
+      config: { auditRead: { resourceKind: "infection_event", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(InfectionEventListQuerySchema, request.query);
@@ -97,7 +101,10 @@ export function registerInfectionRoutes(app: FastifyInstance, deps: InfectionRou
   // R-92 — list outbreak cases (aggregate-only; org-scoped). §4.1.
   app.get(
     "/api/v1/quality/infection/outbreaks",
-    { preHandler: [INF_READ, READ_INORG], config: { auditRead: { resourceKind: "infection_outbreak", list: true } } },
+    {
+      preHandler: [INF_READ, READ_INORG],
+      config: { auditRead: { resourceKind: "infection_outbreak", list: true } },
+    },
     async (request) => {
       const actor = actorOf(request);
       const q = parse(InfectionOutbreakListQuerySchema, request.query);

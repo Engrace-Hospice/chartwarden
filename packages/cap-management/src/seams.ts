@@ -62,7 +62,10 @@ export interface InpatientProjectionView {
   computedAt: string;
 }
 export interface InpatientCapProvider {
-  getInpatientProjection(orgId: string, capPeriodId: string): Promise<InpatientProjectionView | null>;
+  getInpatientProjection(
+    orgId: string,
+    capPeriodId: string,
+  ): Promise<InpatientProjectionView | null>;
   getInpatientDayCount(
     orgId: string,
     capPeriodId: string,

@@ -207,7 +207,9 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
   // answer is a SECOND pooled credential for those reads, not a blanket bypass on the app role.
   // Until that pool exists, a local single-org demo opts in explicitly with WARDENX_DEV_BYPASSRLS=1.
   if (opts.bypassRlsRequested && !opts.isProduction) {
-    console.log(`⚠️  DEV ONLY: granting BYPASSRLS to ${APP_ROLE} (RLS is not enforced for this role)`);
+    console.log(
+      `⚠️  DEV ONLY: granting BYPASSRLS to ${APP_ROLE} (RLS is not enforced for this role)`,
+    );
     await db.query(`ALTER ROLE ${APP_ROLE} WITH BYPASSRLS`);
   } else {
     // Idempotent and safe to run against a cluster where a previous migrate granted it.
@@ -247,7 +249,11 @@ async function main(): Promise<void> {
   const db = new Client({ connectionString: url });
   await db.connect();
   try {
-    await applyMigrations(db, { migrationsDir: MIGRATIONS_DIR, baseline: BASELINE, strict: STRICT });
+    await applyMigrations(db, {
+      migrationsDir: MIGRATIONS_DIR,
+      baseline: BASELINE,
+      strict: STRICT,
+    });
     if (SCHEMA_ONLY) {
       console.log(
         "--schema-only: skipping wardenx_app LOGIN/password/BYPASSRLS bootstrap (run a plain " +

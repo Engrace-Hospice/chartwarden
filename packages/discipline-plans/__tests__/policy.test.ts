@@ -66,9 +66,9 @@ describe("required signer sets (D11 / §3.5)", () => {
   it("makes the CHHA an acknowledgment, never a cosignature", () => {
     const chha = AIDE_POC_REQUIRED_SIGNERS.initial.find((s) => s.role === "chha_acknowledgment");
     expect(chha?.isAcknowledgment).toBe(true);
-    expect(AIDE_POC_REQUIRED_SIGNERS.initial.find((s) => s.role === "rn_case_manager")?.isAcknowledgment).toBe(
-      false,
-    );
+    expect(
+      AIDE_POC_REQUIRED_SIGNERS.initial.find((s) => s.role === "rn_case_manager")?.isAcknowledgment,
+    ).toBe(false);
   });
 
   it("lets the chaplain self-sign without an RN cosignature", () => {

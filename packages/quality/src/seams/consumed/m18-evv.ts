@@ -19,8 +19,5 @@ export interface QualityEvvConsumer {
   /** M18 `EvvMetricsProvider.getLateCheckoutRate` — late-checkout rate over a window. */
   lateCheckoutRate(organizationId: string, period: { from: string; to: string }): Promise<number>;
   /** M18 `EvvMetricsProvider.getGeofenceBreachRate` — geofence-breach rate over a window. */
-  geofenceBreachRate(
-    organizationId: string,
-    period: { from: string; to: string },
-  ): Promise<number>;
+  geofenceBreachRate(organizationId: string, period: { from: string; to: string }): Promise<number>;
 }

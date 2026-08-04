@@ -25,16 +25,16 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, AdmissionId, ProviderEntityId } from "./admission";
+import type { AdmissionId, PatientId, ProviderEntityId } from "./admission";
 import type {
-  IsoInstant,
-  MembershipId,
-  LocationId,
   ConsentId,
   GoalId,
-  ProblemId,
-  InterventionId,
   IdgDecisionId,
+  InterventionId,
+  IsoInstant,
+  LocationId,
+  MembershipId,
+  ProblemId,
 } from "./care-plan";
 
 // ── M15-owned id aliases (mirror the §3.3 uuid PKs; packages/types cannot import @wardenx/db) ─────────
@@ -128,7 +128,13 @@ export type DisciplineSignerRole =
 /** The authoring discipline stamped on a goal / intervention (§2.3 discipline-scope enforcement). Named
  *  `DisciplineAuthorRole` rather than the spec's bare "discipline" because `./idg.ts` already exports a
  *  (broader, packet-facing) `DisciplineKey` and `export *` would make a second definition a TS2308 collision. */
-export type DisciplineAuthorRole = "rn" | "lpn" | "chha" | "msw" | "chaplain" | "volunteer_coordinator";
+export type DisciplineAuthorRole =
+  | "rn"
+  | "lpn"
+  | "chha"
+  | "msw"
+  | "chaplain"
+  | "volunteer_coordinator";
 
 // ── §3.3 owned-table names + §3.6 / §8.1 audit denylist (the M4 trigger arguments for M15-T02) ────────
 
@@ -590,15 +596,24 @@ export interface VolunteerHourRatio {
 
 /** §4.3 — discipline-plan reads (consumed by M14's IDG packet builder, M22, M28, M31, M33). */
 export interface DisciplinePlanReader {
-  activePlansForPatient(orgId: string, patientId: PatientId): Promise<readonly DisciplinePlanDigest[]>;
+  activePlansForPatient(
+    orgId: string,
+    patientId: PatientId,
+  ): Promise<readonly DisciplinePlanDigest[]>;
   planById(orgId: string, planId: DisciplinePlanId): Promise<DisciplinePlanFull | null>;
-  planSummaryForIdg(orgId: string, planId: DisciplinePlanId): Promise<DisciplinePlanIdgDigest | null>;
+  planSummaryForIdg(
+    orgId: string,
+    planId: DisciplinePlanId,
+  ): Promise<DisciplinePlanIdgDigest | null>;
 }
 
 /** §4.3 — MSW psychosocial risk-factor reads (consumed by M16's bereavement risk rubric). M15 exposes the
  *  factors; the bereavement SCORE is M16's (§1.2). */
 export interface MswRiskFactorReader {
-  riskFactorsForAdmission(orgId: string, admissionId: AdmissionId): Promise<readonly MswRiskFactor[]>;
+  riskFactorsForAdmission(
+    orgId: string,
+    admissionId: AdmissionId,
+  ): Promise<readonly MswRiskFactor[]>;
 }
 
 /**
@@ -617,7 +632,10 @@ export interface VolunteerGateExpiryReader {
  * surface M14's dashboard and M30's supervisory-on-time measure need.
  */
 export interface SupervisoryCadencePlanReader {
-  nextSupervisoryDueFor(orgId: string, planId: DisciplinePlanId): Promise<SupervisoryCadenceState | null>;
+  nextSupervisoryDueFor(
+    orgId: string,
+    planId: DisciplinePlanId,
+  ): Promise<SupervisoryCadenceState | null>;
   listOverdueSupervisory(scope: ComplianceScope): Promise<readonly SupervisoryOverdue[]>;
 }
 

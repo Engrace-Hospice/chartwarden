@@ -6,12 +6,16 @@
 // the registry cache on success (§4.10: "Cache invalidation triggered ... by direct invalidation when
 // POST /api/v1/ai/prompts/:capabilityKey/activate succeeds").
 import {
+  type AiPromptActivationRequest,
   evaluateAiPromptActivation,
   requireAiGovernance,
-  type AiPromptActivationRequest,
 } from "@wardenx/ai-platform";
 
-import type { AiPromptArtifactReader, AiPromptTemplateRowProjection, AiPromptTemplateStore } from "./store";
+import type {
+  AiPromptArtifactReader,
+  AiPromptTemplateRowProjection,
+  AiPromptTemplateStore,
+} from "./store";
 
 export interface AiPromptServiceDeps {
   readonly store: AiPromptTemplateStore;

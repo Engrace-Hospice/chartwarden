@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/reporting — translator step 1: SEMANTIC validation of a ReportDefinitionSpec against its
 // base catalog (M33 §2.3, D4).
 //
@@ -12,7 +13,6 @@
 // This file is the translator leaf: it owns the domain-error class, the comparator-by-type table, and
 // the SQL-identifier guard that the filter/scope/sql steps reuse — so there is no sibling import cycle.
 import { WardenXError } from "@wardenx/types";
-import { schema } from "@wardenx/db";
 
 // ── Domain error catalog (§2.3) ──────────────────────────────────────────────────────────────────
 
@@ -76,7 +76,17 @@ export const COMPARATORS_BY_TYPE: Readonly<Record<DataType, ReadonlySet<Comparat
     "is_null",
     "is_not_null",
   ]),
-  date: new Set<Comparator>(["eq", "ne", "lt", "le", "gt", "ge", "between", "is_null", "is_not_null"]),
+  date: new Set<Comparator>([
+    "eq",
+    "ne",
+    "lt",
+    "le",
+    "gt",
+    "ge",
+    "between",
+    "is_null",
+    "is_not_null",
+  ]),
 };
 
 // ── SQL-identifier guard (the whitelist's last mile) ──────────────────────────────────────────────
@@ -163,7 +173,12 @@ function filterValueMatches(filter: schema.ReportFilter, type: DataType): boolea
       return isArrayOfType(filter.value, type);
     case "between": {
       const v = filter.value;
-      return Array.isArray(v) && v.length === 2 && isScalarOfType(v[0], type) && isScalarOfType(v[1], type);
+      return (
+        Array.isArray(v) &&
+        v.length === 2 &&
+        isScalarOfType(v[0], type) &&
+        isScalarOfType(v[1], type)
+      );
     }
     default:
       // eq/ne/lt/le/gt/ge — a single scalar of the dimension's type.

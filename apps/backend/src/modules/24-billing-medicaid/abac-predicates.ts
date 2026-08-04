@@ -19,8 +19,8 @@
 // not in the acting org always denies). Noted in P3; full caseload narrowing is a follow-up.
 import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
 import { DEFAULT_MEDICAID_RULES } from "@wardenx/medicaid-adapters";
+import { withOrgContext } from "@wardenx/tenancy";
 import { eq } from "drizzle-orm";
 
 /** The §4.8 predicate names M24 OWNS and registers into M3 (six). Single-owner registry. */
@@ -141,7 +141,8 @@ export function buildM24AbacPredicates(
     const direct = targetStr(target, "providerEntityId");
     if (direct) return direct;
     const claimId = targetStr(target, "medicaidClaimId");
-    if (claimId) return (await resolver.loadClaim(readContextOf(context), claimId))?.providerEntityId ?? null;
+    if (claimId)
+      return (await resolver.loadClaim(readContextOf(context), claimId))?.providerEntityId ?? null;
     return null;
   };
   return {
@@ -180,7 +181,10 @@ export function buildM24AbacPredicates(
       if (direct) return peInScope(context, direct);
       const arrangementId = targetStr(target, "rbArrangementId");
       if (!arrangementId) return false;
-      return peInScope(context, await resolver.loadArrangementPe(readContextOf(context), arrangementId));
+      return peInScope(
+        context,
+        await resolver.loadArrangementPe(readContextOf(context), arrangementId),
+      );
     },
 
     state_trading_partner_credential_admin: async (context, target) => {

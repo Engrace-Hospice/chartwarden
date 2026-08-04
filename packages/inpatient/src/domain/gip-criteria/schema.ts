@@ -16,7 +16,9 @@ export const GipCriteriaAcuteSymptomManagement = Type.Object({
     }),
     { minItems: 1 },
   ),
-  planned_inpatient_interventions: Type.Array(Type.String({ minLength: 5, maxLength: 500 }), { minItems: 1 }),
+  planned_inpatient_interventions: Type.Array(Type.String({ minLength: 5, maxLength: 500 }), {
+    minItems: 1,
+  }),
   rationale: Type.String({ minLength: 100, maxLength: 4000 }),
 });
 

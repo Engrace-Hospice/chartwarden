@@ -7,8 +7,8 @@ import type { operations } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { actionButtonStyle, bodyRow, cell, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
-import { cap, dunningTone, orgLabel, subscriptionTone, SUBSCRIPTION_STATUSES } from "./status";
+import { SUBSCRIPTION_STATUSES, cap, dunningTone, orgLabel, subscriptionTone } from "./status";
+import { LoadMore, actionButtonStyle, bodyRow, cell, inputStyle, tableStyle, theadRow } from "./ui";
 
 type SubscriptionsPage =
   operations["getApiAdminSubscriptions"]["responses"][200]["content"]["application/json"];
@@ -50,15 +50,24 @@ export function SubscriptionsList(): JSX.Element {
   }, [load]);
 
   return (
-    <div style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+    >
       <PageHeader
         title="Subscriptions"
         breadcrumb="Platform Ops"
         actions={
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={inputStyle} aria-label="Filter by status">
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            style={inputStyle}
+            aria-label="Filter by status"
+          >
             <option value="">All statuses</option>
             {SUBSCRIPTION_STATUSES.map((s) => (
-              <option key={s} value={s}>{cap(s)}</option>
+              <option key={s} value={s}>
+                {cap(s)}
+              </option>
             ))}
           </select>
         }
@@ -66,7 +75,10 @@ export function SubscriptionsList(): JSX.Element {
       {loading && rows.length === 0 ? (
         <LoadingSpinner />
       ) : error || rows.length === 0 ? (
-        <EmptyState title={error ?? "No subscriptions"} description={error ? "Retry shortly." : "No subscriptions match this filter."} />
+        <EmptyState
+          title={error ?? "No subscriptions"}
+          description={error ? "Retry shortly." : "No subscriptions match this filter."}
+        />
       ) : (
         <>
           <table style={tableStyle}>
@@ -83,12 +95,35 @@ export function SubscriptionsList(): JSX.Element {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} style={bodyRow}>
-                  <td style={cell}><span style={{ fontWeight: 600 }}>{orgLabel(r.organizationName, r.organizationId)}</span></td>
-                  <td style={cell}>{r.planName} <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.75rem" }}>{cap(r.planTier)}</span></td>
-                  <td style={cell}><StatusPill label={cap(r.status)} tone={subscriptionTone(r.status)} /></td>
-                  <td style={cell}>{r.dunningStage === "none" ? "—" : <StatusPill label={cap(r.dunningStage)} tone={dunningTone(r.dunningStage)} />}</td>
-                  <td style={cell} className="tabular-nums">{r.defaultPaymentMethodLast4 ? `•••• ${r.defaultPaymentMethodLast4}` : "—"}</td>
-                  <td style={cell}><Link to={`/admin/subscriptions/${r.id}`} style={actionButtonStyle(false)}>Open</Link></td>
+                  <td style={cell}>
+                    <span style={{ fontWeight: 600 }}>
+                      {orgLabel(r.organizationName, r.organizationId)}
+                    </span>
+                  </td>
+                  <td style={cell}>
+                    {r.planName}{" "}
+                    <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.75rem" }}>
+                      {cap(r.planTier)}
+                    </span>
+                  </td>
+                  <td style={cell}>
+                    <StatusPill label={cap(r.status)} tone={subscriptionTone(r.status)} />
+                  </td>
+                  <td style={cell}>
+                    {r.dunningStage === "none" ? (
+                      "—"
+                    ) : (
+                      <StatusPill label={cap(r.dunningStage)} tone={dunningTone(r.dunningStage)} />
+                    )}
+                  </td>
+                  <td style={cell} className="tabular-nums">
+                    {r.defaultPaymentMethodLast4 ? `•••• ${r.defaultPaymentMethodLast4}` : "—"}
+                  </td>
+                  <td style={cell}>
+                    <Link to={`/admin/subscriptions/${r.id}`} style={actionButtonStyle(false)}>
+                      Open
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

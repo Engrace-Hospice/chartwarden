@@ -47,10 +47,10 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
-  buildM35AbacPredicates,
-  M35_PERMISSION_KEY_LIST,
-  mountM35Routes,
   type M35WebhookIngest,
+  M35_PERMISSION_KEY_LIST,
+  buildM35AbacPredicates,
+  mountM35Routes,
 } from "../src/modules/35-subscription/index";
 import type { M35ReadActor, M35WriteActor } from "../src/modules/35-subscription/routes/actor";
 import type { CursorPage } from "../src/modules/35-subscription/routes/concurrency";
@@ -521,7 +521,10 @@ function createM35Backend(): { readonly service: M35RouteService } {
       const row = id ? subscriptions.get(id) : undefined;
       return row ? toSubscriptionView(row) : null;
     },
-    async createSubscription(actor: M35WriteActor, args: CreateSubscriptionArgs): Promise<SubscriptionView> {
+    async createSubscription(
+      actor: M35WriteActor,
+      args: CreateSubscriptionArgs,
+    ): Promise<SubscriptionView> {
       const plan = requirePlanBySlug(args.planSlug);
       const id = randomUUID();
       const row: SubRow = {
@@ -553,7 +556,12 @@ function createM35Backend(): { readonly service: M35RouteService } {
     async changePlan(actor: M35WriteActor, args: ChangePlanArgs): Promise<SubscriptionView> {
       const row = requireSubForOrg(actor.organizationId);
       const plan = requirePlanBySlug(args.newPlanSlug);
-      const updated: SubRow = { ...row, planSlug: plan.slug, planName: plan.name, planTier: plan.tier };
+      const updated: SubRow = {
+        ...row,
+        planSlug: plan.slug,
+        planName: plan.name,
+        planTier: plan.tier,
+      };
       subscriptions.set(row.id, updated);
       return toSubscriptionView(updated);
     },
@@ -572,15 +580,25 @@ function createM35Backend(): { readonly service: M35RouteService } {
     async applyPromoTenant(actor: M35WriteActor, promoCode: string): Promise<PromoApplicationView> {
       const row = requireSubForOrg(actor.organizationId);
       const promo = requirePromoByCode(promoCode);
-      return { applicationId: randomUUID(), subscriptionId: row.id, promoCode: promo.code, applied: true };
+      return {
+        applicationId: randomUUID(),
+        subscriptionId: row.id,
+        promoCode: promo.code,
+        applied: true,
+      };
     },
     async listPaymentMethods(actor: M35ReadActor): Promise<PaymentMethodView[]> {
-      return [...paymentMethods.values()].filter((p) => p.organizationId === actor.organizationId).map(toPmView);
+      return [...paymentMethods.values()]
+        .filter((p) => p.organizationId === actor.organizationId)
+        .map(toPmView);
     },
     async createSetupIntent(_actor: M35WriteActor): Promise<SetupIntentView> {
       return { clientSecret: null, status: "pending" };
     },
-    async attachPaymentMethod(actor: M35WriteActor, args: AttachPaymentMethodArgs): Promise<PaymentMethodView> {
+    async attachPaymentMethod(
+      actor: M35WriteActor,
+      args: AttachPaymentMethodArgs,
+    ): Promise<PaymentMethodView> {
       const id = randomUUID();
       const row: PmRow = {
         id,
@@ -595,7 +613,10 @@ function createM35Backend(): { readonly service: M35RouteService } {
       paymentMethods.set(id, row);
       return toPmView(row);
     },
-    async setDefaultPaymentMethod(actor: M35WriteActor, paymentMethodId: string): Promise<PaymentMethodView> {
+    async setDefaultPaymentMethod(
+      actor: M35WriteActor,
+      paymentMethodId: string,
+    ): Promise<PaymentMethodView> {
       const row = requirePm(actor.organizationId, paymentMethodId);
       const updated: PmRow = { ...row, isDefault: true };
       paymentMethods.set(paymentMethodId, updated);
@@ -638,7 +659,13 @@ function createM35Backend(): { readonly service: M35RouteService } {
     },
     async getUsageHistory(): Promise<CursorPage<UsagePeriodView>> {
       return page([
-        { periodStart: NOW, periodEnd: NOW, totalQuantity: 500, inclusiveQuantity: 1000, overageQuantity: 0 },
+        {
+          periodStart: NOW,
+          periodEnd: NOW,
+          totalQuantity: 500,
+          inclusiveQuantity: 1000,
+          overageQuantity: 0,
+        },
       ]);
     },
     async getBillingStatus(actor: M35ReadActor): Promise<BillingStatusView> {
@@ -680,7 +707,11 @@ function createM35Backend(): { readonly service: M35RouteService } {
       plans.set(id, row);
       return toPlanAdminView(row);
     },
-    async adminUpdatePlan(_actor: M35WriteActor, planId: string, args: UpdatePlanArgs): Promise<PlanAdminView> {
+    async adminUpdatePlan(
+      _actor: M35WriteActor,
+      planId: string,
+      args: UpdatePlanArgs,
+    ): Promise<PlanAdminView> {
       const row = requirePlan(planId);
       const updated: PlanRow = {
         ...row,
@@ -704,7 +735,11 @@ function createM35Backend(): { readonly service: M35RouteService } {
       plans.set(planId, updated);
       return toPlanAdminView(updated);
     },
-    async adminAddMeter(_actor: M35WriteActor, planId: string, args: AddMeterArgs): Promise<MeterAdminView> {
+    async adminAddMeter(
+      _actor: M35WriteActor,
+      planId: string,
+      args: AddMeterArgs,
+    ): Promise<MeterAdminView> {
       requirePlan(planId);
       const id = randomUUID();
       const row: MeterRow = {
@@ -738,10 +773,13 @@ function createM35Backend(): { readonly service: M35RouteService } {
     },
 
     // ── platform-ops subscriptions (§4.2) ──
-    async adminListSubscriptions(filters: AdminSubscriptionListFilters): Promise<CursorPage<SubscriptionAdminView>> {
+    async adminListSubscriptions(
+      filters: AdminSubscriptionListFilters,
+    ): Promise<CursorPage<SubscriptionAdminView>> {
       let rows = [...subscriptions.values()];
       if (filters.status) rows = rows.filter((r) => r.status === filters.status);
-      if (filters.organizationId) rows = rows.filter((r) => r.organizationId === filters.organizationId);
+      if (filters.organizationId)
+        rows = rows.filter((r) => r.organizationId === filters.organizationId);
       return page(rows.map(toSubscriptionAdminView));
     },
     async adminGetSubscription(subscriptionId: string): Promise<SubscriptionAdminView> {
@@ -758,13 +796,19 @@ function createM35Backend(): { readonly service: M35RouteService } {
       subscriptions.set(subscriptionId, updated);
       return toSubscriptionAdminView(updated);
     },
-    async adminResumeSubscription(_actor: M35WriteActor, subscriptionId: string): Promise<SubscriptionAdminView> {
+    async adminResumeSubscription(
+      _actor: M35WriteActor,
+      subscriptionId: string,
+    ): Promise<SubscriptionAdminView> {
       const row = requireSub(subscriptionId);
       const updated: SubRow = { ...row, status: "active" };
       subscriptions.set(subscriptionId, updated);
       return toSubscriptionAdminView(updated);
     },
-    async adminCancelSubscription(_actor: M35WriteActor, subscriptionId: string): Promise<SubscriptionAdminView> {
+    async adminCancelSubscription(
+      _actor: M35WriteActor,
+      subscriptionId: string,
+    ): Promise<SubscriptionAdminView> {
       const row = requireSub(subscriptionId);
       const updated: SubRow = { ...row, status: "canceled", canceledAt: NOW };
       subscriptions.set(subscriptionId, updated);
@@ -777,9 +821,18 @@ function createM35Backend(): { readonly service: M35RouteService } {
     ): Promise<PromoApplicationView> {
       const row = requireSub(subscriptionId);
       const promo = requirePromoByCode(promoCode);
-      return { applicationId: randomUUID(), subscriptionId: row.id, promoCode: promo.code, applied: true };
+      return {
+        applicationId: randomUUID(),
+        subscriptionId: row.id,
+        promoCode: promo.code,
+        applied: true,
+      };
     },
-    async adminRevokePromo(_actor: M35WriteActor, subscriptionId: string, applicationId: string): Promise<AckView> {
+    async adminRevokePromo(
+      _actor: M35WriteActor,
+      subscriptionId: string,
+      applicationId: string,
+    ): Promise<AckView> {
       requireSub(subscriptionId);
       void applicationId;
       return { ok: true };
@@ -791,7 +844,10 @@ function createM35Backend(): { readonly service: M35RouteService } {
       if (filters.stage) rows = rows.filter((r) => r.dunningStage === filters.stage);
       return page(rows.map(toDunningListItem));
     },
-    async adminSkipDunningStage(_actor: M35WriteActor, subscriptionId: string): Promise<DunningView> {
+    async adminSkipDunningStage(
+      _actor: M35WriteActor,
+      subscriptionId: string,
+    ): Promise<DunningView> {
       const row = requireSub(subscriptionId);
       const updated: SubRow = { ...row, dunningStage: "day_14" };
       subscriptions.set(subscriptionId, updated);
@@ -830,7 +886,12 @@ function createM35Backend(): { readonly service: M35RouteService } {
     },
     async approveRefund(actor: M35WriteActor, refundId: string): Promise<RefundView> {
       const row = requireRefund(refundId);
-      const updated: RefundRow = { ...row, status: "approved", approvedByMembershipId: actor.membershipId, approvedAt: NOW };
+      const updated: RefundRow = {
+        ...row,
+        status: "approved",
+        approvedByMembershipId: actor.membershipId,
+        approvedAt: NOW,
+      };
       refunds.set(refundId, updated);
       return toRefundView(updated);
     },
@@ -873,7 +934,11 @@ function createM35Backend(): { readonly service: M35RouteService } {
       promos.set(id, row);
       return row;
     },
-    async adminUpdatePromo(_actor: M35WriteActor, promoId: string, args: UpdatePromoArgs): Promise<PromoView> {
+    async adminUpdatePromo(
+      _actor: M35WriteActor,
+      promoId: string,
+      args: UpdatePromoArgs,
+    ): Promise<PromoView> {
       const row = requirePromo(promoId);
       const updated: PromoRow = {
         ...row,
@@ -939,7 +1004,8 @@ function createM35Backend(): { readonly service: M35RouteService } {
       return page([...webhookReceipts.values()]);
     },
     async replayWebhook(_actor: M35WriteActor, stripeEventId: string): Promise<AckView> {
-      if (!webhookReceipts.has(stripeEventId)) throw new NotFoundError("stripe_webhook_event", stripeEventId);
+      if (!webhookReceipts.has(stripeEventId))
+        throw new NotFoundError("stripe_webhook_event", stripeEventId);
       return { ok: true };
     },
   };
@@ -968,8 +1034,23 @@ function makeServer() {
   const backend = createM35Backend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "super_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M35_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "super_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M35_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -1011,7 +1092,11 @@ describe("M35 route smoke — the M1 boundary", () => {
 
   it("403s a permission-gated route for a session holding NO M35 grants", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/subscription", headers: NONE_HEADERS });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/subscription",
+      headers: NONE_HEADERS,
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
@@ -1043,8 +1128,20 @@ const IDEMP = () => ({ "idempotency-key": randomUUID() });
 
 const ROUTE_CASES: readonly RouteCase[] = [
   // ── §4.1 tenant surface (routes 1-19) ──
-  { label: "1 GET /v1/plans (public, no permission key)", method: "GET", url: "/api/v1/plans", headers: {}, expectStatus: 200 },
-  { label: "2 GET /v1/subscription", method: "GET", url: "/api/v1/subscription", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "1 GET /v1/plans (public, no permission key)",
+    method: "GET",
+    url: "/api/v1/plans",
+    headers: {},
+    expectStatus: 200,
+  },
+  {
+    label: "2 GET /v1/subscription",
+    method: "GET",
+    url: "/api/v1/subscription",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "3 POST /v1/subscription",
     method: "POST",
@@ -1085,7 +1182,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { promoCode: PROMO_CODE },
     expectStatus: 200,
   },
-  { label: "8 GET /v1/payment_methods", method: "GET", url: "/api/v1/payment_methods", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "8 GET /v1/payment_methods",
+    method: "GET",
+    url: "/api/v1/payment_methods",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "9 POST /v1/payment_methods/setup_intent",
     method: "POST",
@@ -1117,17 +1220,71 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: { ...SUPER_HEADERS, ...IDEMP() },
     expectStatus: 200,
   },
-  { label: "13 GET /v1/invoices", method: "GET", url: "/api/v1/invoices", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "14 GET /v1/invoices/:id", method: "GET", url: `/api/v1/invoices/${INVOICE_ID}`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "15 GET /v1/invoices/:id/hosted_url", method: "GET", url: `/api/v1/invoices/${INVOICE_ID}/hosted_url`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "16 GET /v1/invoices/:id/pdf", method: "GET", url: `/api/v1/invoices/${INVOICE_ID}/pdf`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "17 GET /v1/usage/current", method: "GET", url: "/api/v1/usage/current", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "18 GET /v1/usage/history", method: "GET", url: "/api/v1/usage/history", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "19 GET /v1/billing/status", method: "GET", url: "/api/v1/billing/status", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "13 GET /v1/invoices",
+    method: "GET",
+    url: "/api/v1/invoices",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "14 GET /v1/invoices/:id",
+    method: "GET",
+    url: `/api/v1/invoices/${INVOICE_ID}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "15 GET /v1/invoices/:id/hosted_url",
+    method: "GET",
+    url: `/api/v1/invoices/${INVOICE_ID}/hosted_url`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "16 GET /v1/invoices/:id/pdf",
+    method: "GET",
+    url: `/api/v1/invoices/${INVOICE_ID}/pdf`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "17 GET /v1/usage/current",
+    method: "GET",
+    url: "/api/v1/usage/current",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "18 GET /v1/usage/history",
+    method: "GET",
+    url: "/api/v1/usage/history",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "19 GET /v1/billing/status",
+    method: "GET",
+    url: "/api/v1/billing/status",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── §4.2 platform-ops plans (routes 20-27) ──
-  { label: "20 GET /admin/plans", method: "GET", url: "/api/admin/plans", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "21 GET /admin/plans/:id", method: "GET", url: `/api/admin/plans/${PLAN_ID}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "20 GET /admin/plans",
+    method: "GET",
+    url: "/api/admin/plans",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "21 GET /admin/plans/:id",
+    method: "GET",
+    url: `/api/admin/plans/${PLAN_ID}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "22 POST /admin/plans",
     method: "POST",
@@ -1173,7 +1330,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/admin/plans/${PLAN_ID}/meters`,
     headers: { ...SUPER_HEADERS, ...IDEMP() },
-    payload: { eventType: "storage_gb", label: "Storage (GB)", inclusiveQuantity: 100, overageUnitPriceCents: 5, billingAggregation: "sum" },
+    payload: {
+      eventType: "storage_gb",
+      label: "Storage (GB)",
+      inclusiveQuantity: 100,
+      overageUnitPriceCents: 5,
+      billingAggregation: "sum",
+    },
     expectStatus: 201,
   },
   {
@@ -1186,8 +1349,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── §4.2 platform-ops subscriptions (routes 28-34) ──
-  { label: "28 GET /admin/subscriptions", method: "GET", url: "/api/admin/subscriptions", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "29 GET /admin/subscriptions/:id", method: "GET", url: `/api/admin/subscriptions/${SUB_ID}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "28 GET /admin/subscriptions",
+    method: "GET",
+    url: "/api/admin/subscriptions",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "29 GET /admin/subscriptions/:id",
+    method: "GET",
+    url: `/api/admin/subscriptions/${SUB_ID}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "30 POST /admin/subscriptions/:id/pause",
     method: "POST",
@@ -1230,7 +1405,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── §4.2 platform-ops dunning (routes 35-37) ──
-  { label: "35 GET /admin/dunning", method: "GET", url: "/api/admin/dunning", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "35 GET /admin/dunning",
+    method: "GET",
+    url: "/api/admin/dunning",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "36 POST /admin/dunning/:subscriptionId/skip_stage",
     method: "POST",
@@ -1259,7 +1440,8 @@ const ROUTE_CASES: readonly RouteCase[] = [
       amountCents: 4900,
       kind: "full",
       reasonCode: "requested_by_customer",
-      reasonDetail: "The customer requested a full refund after cancelling within the trial window.",
+      reasonDetail:
+        "The customer requested a full refund after cancelling within the trial window.",
     },
     expectStatus: 201,
   },
@@ -1279,12 +1461,36 @@ const ROUTE_CASES: readonly RouteCase[] = [
     payload: { reason: "Outside the refund policy window." },
     expectStatus: 200,
   },
-  { label: "41 GET /admin/refunds", method: "GET", url: "/api/admin/refunds", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "42 GET /admin/refunds/:id", method: "GET", url: `/api/admin/refunds/${REFUND_ID}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "41 GET /admin/refunds",
+    method: "GET",
+    url: "/api/admin/refunds",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "42 GET /admin/refunds/:id",
+    method: "GET",
+    url: `/api/admin/refunds/${REFUND_ID}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // ── §4.2 platform-ops promos (routes 43-47) ──
-  { label: "43 GET /admin/promos", method: "GET", url: "/api/admin/promos", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "44 GET /admin/promos/:id", method: "GET", url: `/api/admin/promos/${PROMO_ID}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "43 GET /admin/promos",
+    method: "GET",
+    url: "/api/admin/promos",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "44 GET /admin/promos/:id",
+    method: "GET",
+    url: `/api/admin/promos/${PROMO_ID}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "45 POST /admin/promos",
     method: "POST",
@@ -1318,8 +1524,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── §4.2 platform-ops revenue (routes 48-50) ──
-  { label: "48 GET /admin/revenue/snapshots", method: "GET", url: "/api/admin/revenue/snapshots", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "49 GET /admin/revenue/current", method: "GET", url: "/api/admin/revenue/current", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "48 GET /admin/revenue/snapshots",
+    method: "GET",
+    url: "/api/admin/revenue/snapshots",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "49 GET /admin/revenue/current",
+    method: "GET",
+    url: "/api/admin/revenue/current",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "50 POST /admin/revenue/snapshots/compute",
     method: "POST",
@@ -1330,8 +1548,20 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // ── §4.2 platform-ops usage + stripe (routes 51-53) ──
-  { label: "51 GET /admin/usage/:organizationId/current", method: "GET", url: `/api/admin/usage/${USAGE_ORG_ID}/current`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "52 GET /admin/webhooks/stripe/recent", method: "GET", url: "/api/admin/webhooks/stripe/recent", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "51 GET /admin/usage/:organizationId/current",
+    method: "GET",
+    url: `/api/admin/usage/${USAGE_ORG_ID}/current`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "52 GET /admin/webhooks/stripe/recent",
+    method: "GET",
+    url: "/api/admin/webhooks/stripe/recent",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "53 POST /admin/webhooks/stripe/replay/:eventId",
     method: "POST",
@@ -1355,7 +1585,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
 describe.each(ROUTE_CASES)("M35 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });
@@ -1367,11 +1602,18 @@ describe("M35 route smoke — the /api/admin `platform_billing_scope` lock", () 
   it("403s a tenant-role session holding plan.admin.read but no platform-ops role", async () => {
     const backend = createM35Backend();
     const grantStore = createInMemoryEffectivePermissionStore([
-      { orgId: ORG, userId: "tenant_admin_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["plan.admin.read"] }] },
+      {
+        orgId: ORG,
+        userId: "tenant_admin_1",
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["plan.admin.read"] },
+        ],
+      },
     ]);
     registerEffectivePermissionResolver(grantStore.store);
     const reg = createPredicateRegistry();
-    for (const [name, predicate] of Object.entries(buildM35AbacPredicates())) reg.register(name, predicate);
+    for (const [name, predicate] of Object.entries(buildM35AbacPredicates()))
+      reg.register(name, predicate);
     reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
     registerAbacRegistry(reg);
 

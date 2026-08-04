@@ -10,8 +10,8 @@
 // RLS + grants + the M4 write-audit trigger land in the RLS migration (M12-T02).
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { epcsSecondFactorType, epcsSigningAttemptOutcome } from "../../enums";
-import { organizations } from "../organizations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
 
 export const epcsSigningAttempts = pgTable(
   "epcs_signing_attempt",

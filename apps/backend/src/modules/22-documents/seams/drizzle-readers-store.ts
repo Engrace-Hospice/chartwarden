@@ -142,7 +142,12 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
               eq(DOC.organizationId, args.organizationId),
               eq(DOC.patientId, args.patientId),
               ...(args.aggregateType
-                ? [eq(DOC.aggregateType, args.aggregateType as typeof DOC.$inferSelect.aggregateType)]
+                ? [
+                    eq(
+                      DOC.aggregateType,
+                      args.aggregateType as typeof DOC.$inferSelect.aggregateType,
+                    ),
+                  ]
                 : []),
               ...cursorClauses,
             ),
@@ -213,7 +218,11 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
           })
           .from(ED)
           .where(
-            and(eq(ED.organizationId, args.organizationId), gte(ED.decidedAt, from), lt(ED.decidedAt, to)),
+            and(
+              eq(ED.organizationId, args.organizationId),
+              gte(ED.decidedAt, from),
+              lt(ED.decidedAt, to),
+            ),
           );
         const metrics: IntakeMetrics = {
           organizationId: args.organizationId,

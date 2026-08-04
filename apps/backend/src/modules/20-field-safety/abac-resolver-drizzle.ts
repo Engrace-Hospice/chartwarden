@@ -81,27 +81,31 @@ export function buildDrizzleSafetyAbacResolver(
   return {
     async loadSosAlert(orgId, sosAlertId) {
       try {
-        return await withOrgContext(db, ctx(orgId), async (tx): Promise<SafetySosAbacFacts | null> => {
-          const [row] = await tx
-            .select({
-              organizationId: SOS.organizationId,
-              id: SOS.id,
-              providerEntityId: SOS.providerEntityId,
-              postedByMembershipId: SOS.postedByMembershipId,
-              lifecycleState: SOS.lifecycleState,
-            })
-            .from(SOS)
-            .where(and(eq(SOS.id, sosAlertId), eq(SOS.organizationId, orgId)))
-            .limit(1);
-          if (!row) return null;
-          return {
-            organizationId: row.organizationId as OrgId,
-            sosAlertId: row.id,
-            providerEntityId: row.providerEntityId as ProviderEntityId,
-            postedByMembershipId: row.postedByMembershipId as MembershipId,
-            lifecycleState: row.lifecycleState as SafetySosLifecycleState,
-          };
-        });
+        return await withOrgContext(
+          db,
+          ctx(orgId),
+          async (tx): Promise<SafetySosAbacFacts | null> => {
+            const [row] = await tx
+              .select({
+                organizationId: SOS.organizationId,
+                id: SOS.id,
+                providerEntityId: SOS.providerEntityId,
+                postedByMembershipId: SOS.postedByMembershipId,
+                lifecycleState: SOS.lifecycleState,
+              })
+              .from(SOS)
+              .where(and(eq(SOS.id, sosAlertId), eq(SOS.organizationId, orgId)))
+              .limit(1);
+            if (!row) return null;
+            return {
+              organizationId: row.organizationId as OrgId,
+              sosAlertId: row.id,
+              providerEntityId: row.providerEntityId as ProviderEntityId,
+              postedByMembershipId: row.postedByMembershipId as MembershipId,
+              lifecycleState: row.lifecycleState as SafetySosLifecycleState,
+            };
+          },
+        );
       } catch {
         return null;
       }

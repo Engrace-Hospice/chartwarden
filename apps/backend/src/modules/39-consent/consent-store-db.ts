@@ -25,8 +25,8 @@ import {
   type StoredRecipient,
   consentTerminatesOnDeath,
   createConsentEvaluator,
-  recipientActive,
   removeRecipient as decideRemoveRecipient,
+  recipientActive,
   validateConsentOverlay,
   validateRecipientFk,
 } from "@wardenx/consent";
@@ -583,7 +583,9 @@ export function createDbConsentRouteService(db: DbClient): ConsentRouteService {
             .limit(1)
         )[0];
         if (!current) throw new ConsentRouteError("not_found", "recipient not found");
-        const d = decideRemoveRecipient(current.removedAt === null ? null : current.removedAt.getTime());
+        const d = decideRemoveRecipient(
+          current.removedAt === null ? null : current.removedAt.getTime(),
+        );
         if (!d.ok) throw new ConsentRouteError("invalid_transition", d.message);
 
         const [updated] = await tx
@@ -757,9 +759,7 @@ export function createDbConsentRouteService(db: DbClient): ConsentRouteService {
             ),
           ),
       );
-      const match = rows
-        .map((r) => toDpoaView(r.agent, patientId, nowMs))
-        .find((a) => a.active);
+      const match = rows.map((r) => toDpoaView(r.agent, patientId, nowMs)).find((a) => a.active);
       return match ?? null;
     },
 
@@ -837,11 +837,7 @@ export function createDbConsentRouteService(db: DbClient): ConsentRouteService {
     },
 
     // ── 21. the D10 delegated-access projection rows for a patient.
-    async listDelegatedAccess(
-      organizationId,
-      patientId,
-      nowIso,
-    ): Promise<DelegatedAccessView[]> {
+    async listDelegatedAccess(organizationId, patientId, nowIso): Promise<DelegatedAccessView[]> {
       const nowMs = Date.parse(nowIso);
       const rows = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
         tx
@@ -872,10 +868,7 @@ export function createDbConsentRouteService(db: DbClient): ConsentRouteService {
 
     // ── 28. which of the patient's consents survive death (the M16 consumer view, D13). The
     // verdict itself is the pure `consentTerminatesOnDeath`; this only supplies the rows.
-    async listPostMortemEligible(
-      organizationId,
-      patientId,
-    ): Promise<PostMortemEligibilityView[]> {
+    async listPostMortemEligible(organizationId, patientId): Promise<PostMortemEligibilityView[]> {
       const rows = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
         tx
           .select({

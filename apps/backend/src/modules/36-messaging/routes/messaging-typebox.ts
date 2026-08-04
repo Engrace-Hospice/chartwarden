@@ -302,7 +302,10 @@ type _Prefs = Conforms<
   Static<typeof NotificationPreferencesResponseSchema>,
   ServiceNotificationPreferencesView
 >;
-type _Endpoint = Conforms<Static<typeof DeliveryEndpointResponseSchema>, ServiceDeliveryEndpointView>;
+type _Endpoint = Conforms<
+  Static<typeof DeliveryEndpointResponseSchema>,
+  ServiceDeliveryEndpointView
+>;
 type _AlertInbox = Conforms<Static<typeof AlertInboxItemSchema>, ServiceAlertInboxItem>;
 type _AlertRule = Conforms<Static<typeof AlertRuleResponseSchema>, ServiceAlertRuleView>;
 

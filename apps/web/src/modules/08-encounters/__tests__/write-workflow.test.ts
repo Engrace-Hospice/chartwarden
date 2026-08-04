@@ -19,7 +19,9 @@ describe("authFailureRedirect", () => {
   });
 
   it("does not redirect on unrelated failures (412/422/503)", () => {
-    expect(authFailureRedirect(412, "STEP_UP_AUTH_REQUIRED", "/patients/p1/encounters/e1")).toBeNull();
+    expect(
+      authFailureRedirect(412, "STEP_UP_AUTH_REQUIRED", "/patients/p1/encounters/e1"),
+    ).toBeNull();
     expect(authFailureRedirect(422, "VALIDATION_FAILED", "/patients/p1/encounters/e1")).toBeNull();
     expect(authFailureRedirect(503, undefined, "/patients/p1/encounters/e1")).toBeNull();
     expect(authFailureRedirect(undefined, undefined, "/patients/p1/encounters/e1")).toBeNull();

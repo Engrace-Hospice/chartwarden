@@ -1,3 +1,9 @@
+import {
+  type PerDiemInput,
+  type StepDownAllocateInput,
+  calculatePerDiem,
+  stepDownAllocate,
+} from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 allocation-chain (A → B/B-1 step-down → C per-diem) pure-domain unit tests.
 //
 // Hospice cost-report math is REGULATORY (Form CMS-1984-14): a cent off in a per-diem is a real
@@ -6,12 +12,6 @@
 //     conserved input pool (§4320 col. 18 line 101 = col. 0 line 101);
 //   - per-diem (Worksheet C): per diem = level cost ÷ days, program cost = per diem × program days (§4330).
 import { describe, expect, it } from "vitest";
-import {
-  type PerDiemInput,
-  type StepDownAllocateInput,
-  calculatePerDiem,
-  stepDownAllocate,
-} from "@wardenx/cost-report";
 
 describe("stepDownAllocate — Worksheet B step-down conserves the pool to the cent", () => {
   // One overhead center (A&G) stepping down onto the four LOC centers by a statistical basis.
@@ -63,10 +63,28 @@ describe("stepDownAllocate — Worksheet B step-down conserves the pool to the c
 describe("calculatePerDiem — Worksheet C per-diem cost (§4330)", () => {
   const input: PerDiemInput = {
     levels: [
-      { levelOfCare: "chc", totalCostCents: 60_000, totalDays: 30, medicareDays: 20, medicaidDays: 5 },
-      { levelOfCare: "rhc", totalCostCents: 360_000, totalDays: 300, medicareDays: 250, medicaidDays: 40 },
+      {
+        levelOfCare: "chc",
+        totalCostCents: 60_000,
+        totalDays: 30,
+        medicareDays: 20,
+        medicaidDays: 5,
+      },
+      {
+        levelOfCare: "rhc",
+        totalCostCents: 360_000,
+        totalDays: 300,
+        medicareDays: 250,
+        medicaidDays: 40,
+      },
       { levelOfCare: "irc", totalCostCents: 0, totalDays: 0, medicareDays: 0, medicaidDays: 0 },
-      { levelOfCare: "gip", totalCostCents: 40_000, totalDays: 10, medicareDays: 8, medicaidDays: 1 },
+      {
+        levelOfCare: "gip",
+        totalCostCents: 40_000,
+        totalDays: 10,
+        medicareDays: 8,
+        medicaidDays: 1,
+      },
     ],
   };
 

@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 // apps/backend/src/modules/02-identity — DB-backed InvitationStore + UserDirectory.
 //
 // Replaces two of the four in-memory slices `mountIdentityRoutes` was still wiring in PRODUCTION.
@@ -18,7 +19,6 @@
 // and (since no vendor sender is wired yet) to echo an admin-visible copyable link back to the inviter.
 import { type DbClient, schema } from "@wardenx/db";
 import { and, count, desc, eq } from "drizzle-orm";
-import { createHash, randomUUID } from "node:crypto";
 import {
   type InvitationDetail,
   type InvitationListItem,
@@ -48,7 +48,9 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
       const rows = await db
         .select({ id: I.id })
         .from(I)
-        .where(and(eq(I.organizationId, organizationId), eq(I.email, email), eq(I.status, "pending")))
+        .where(
+          and(eq(I.organizationId, organizationId), eq(I.email, email), eq(I.status, "pending")),
+        )
         .limit(1);
       return rows.length > 0;
     },

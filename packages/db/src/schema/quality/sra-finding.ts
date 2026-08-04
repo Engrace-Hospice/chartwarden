@@ -3,15 +3,7 @@
 // status, and accepted-risk attestation with auto-reopen. Real intra-M30 FK to sra_cycle; parent of
 // sra_remediation. ORG-SCOPED: organization_id NOT NULL (canonical app.org_id RLS). The vulnerability
 // and impact narratives are security-posture sensitive → audit-denylisted (§3.6). No PHI.
-import {
-  integer,
-  pgEnum,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { sraCycle } from "./sra-cycle";
 

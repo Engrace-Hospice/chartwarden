@@ -61,7 +61,12 @@ export function registerAdminExportRoutes(app: FastifyInstance, deps: AdminExpor
   // R33 — cancel a job (initiator, the bearer client, or a cancel-permitted operator — the §4.7 predicate).
   app.post(
     "/api/v1/fhir/bulk-export-jobs/:id/cancel",
-    { preHandler: [P("fhir.export.bulk.cancel"), ABAC_BULK_EXPORT_CANCEL("fhir.export.bulk.cancel")] },
+    {
+      preHandler: [
+        P("fhir.export.bulk.cancel"),
+        ABAC_BULK_EXPORT_CANCEL("fhir.export.bulk.cancel"),
+      ],
+    },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(JobIdParams, request.params);

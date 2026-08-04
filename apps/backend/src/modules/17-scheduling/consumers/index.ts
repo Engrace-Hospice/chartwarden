@@ -12,7 +12,7 @@
 // `m8.encounter.signed` producer exists (Wave E) — this binding is LIVE-eligible. M11's `m11.order_requires_visit`
 // and M14's `idg.decision_recorded` (kind `change_visit_frequency`) flow into the proposal queue and are wired by
 // the proposal task (M17-T04); the EVV `m18.evv.check_in/out_recorded` advance bindings land with M18 (Wave F).
-import { type VisitEvent, type VisitState, VISIT_GRAPH } from "@wardenx/scheduling";
+import { VISIT_GRAPH, type VisitEvent, type VisitState } from "@wardenx/scheduling";
 
 /** The fields M17 reads off `m8.encounter.signed` (a subset of M8's LOCKED payload §2.4). `visitId` is OPTIONAL:
  *  an ad-hoc / retroactive encounter signs with NULL `visit_id` and never completes a visit (M17 reconciliation,
@@ -33,7 +33,10 @@ export type VisitCompletionPlan =
       /** The §2.2.1 system-actor `complete` event the live handler feeds to `transitionVisit(state, event)`. */
       readonly event: Extract<VisitEvent, { type: "complete" }>;
     }
-  | { readonly kind: "skip"; readonly reason: "no_visit_link" | "visit_not_found" | "not_completable" };
+  | {
+      readonly kind: "skip";
+      readonly reason: "no_visit_link" | "visit_not_found" | "not_completable";
+    };
 
 /**
  * §4.4 — map a consumed `m8.encounter.signed` event + the current state of its linked visit to the visit's

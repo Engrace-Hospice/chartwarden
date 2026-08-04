@@ -19,14 +19,14 @@ import {
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
+  SAFETY_SOS_EDGES,
+  SAFETY_SOS_STREAMING_STATES,
   type SafetyCheckInScheduleFacts,
   type SafetyCoverageSubjectFacts,
   type SafetySideEffect,
   type SafetySosAlertFacts,
   type SafetyStreamConsentFacts,
   type SafetySubscriptionFacts,
-  SAFETY_SOS_EDGES,
-  SAFETY_SOS_STREAMING_STATES,
   acknowledgeSos,
   assertPolicyEditValid,
   assertScheduleActionable,
@@ -255,9 +255,7 @@ describe("D5 / §7.4 the cancel", () => {
       biometricResult: "failed",
       attemptedAt: "2026-07-31T11:00:03.000Z",
     });
-    expect(events(decision.effects)).toContain(
-      "m20.safety.sos_alert_cancel_attempted_rejected",
-    );
+    expect(events(decision.effects)).toContain("m20.safety.sos_alert_cancel_attempted_rejected");
   });
 
   it("treats a missing biometric as a rejection when the tenant requires one", () => {
@@ -647,9 +645,9 @@ describe("D4 / §7.3 overdue escalation", () => {
   it("renders `reminder` for the prompted-but-not-yet-late window", () => {
     expect(overdueBadgeFor({ minutesOverdue: -1, windowMinutes: 5, tier: "none" })).toBe("on_time");
     expect(overdueBadgeFor({ minutesOverdue: 2, windowMinutes: 5, tier: "none" })).toBe("reminder");
-    expect(
-      overdueBadgeFor({ minutesOverdue: 6, windowMinutes: 5, tier: "gentle_reminder" }),
-    ).toBe("overdue");
+    expect(overdueBadgeFor({ minutesOverdue: 6, windowMinutes: 5, tier: "gentle_reminder" })).toBe(
+      "overdue",
+    );
     expect(
       overdueBadgeFor({ minutesOverdue: 16, windowMinutes: 5, tier: "supervisor_alert" }),
     ).toBe("escalated");
@@ -845,9 +843,10 @@ describe("D6 / §8.7 continuous-location gates", () => {
   });
 
   it("stops the moment the alert leaves the streaming set", () => {
-    expect(
-      decideLocationStreamSample({ ...streamBase, lifecycleState: "resolved" }),
-    ).toEqual({ kind: "stop", reason: "sos_no_longer_active" });
+    expect(decideLocationStreamSample({ ...streamBase, lifecycleState: "resolved" })).toEqual({
+      kind: "stop",
+      reason: "sos_no_longer_active",
+    });
     expect(
       decideLocationStreamSample({ ...streamBase, lifecycleState: "cancel_window_open" }),
     ).toEqual({ kind: "stop", reason: "sos_no_longer_active" });
@@ -967,9 +966,9 @@ describe("§7.8 / D8 coverage-gap watchdog", () => {
   });
 
   it("does not count a row that pages on everything EXCEPT `sos`", () => {
-    expect(subscriptionCovers(subscription({ alertKinds: ["overdue", "incident"] }), subject())).toBe(
-      false,
-    );
+    expect(
+      subscriptionCovers(subscription({ alertKinds: ["overdue", "incident"] }), subject()),
+    ).toBe(false);
     expect(
       coverageGapFor({
         subject: subject(),
@@ -981,7 +980,10 @@ describe("§7.8 / D8 coverage-gap watchdog", () => {
 
   it("covers a traveling clinician through ANY of her locations", () => {
     expect(
-      subscriptionCovers(subscription({ locationId: "loc-b" }), subject({ locationIds: ["loc-a", "loc-b"] })),
+      subscriptionCovers(
+        subscription({ locationId: "loc-b" }),
+        subject({ locationIds: ["loc-a", "loc-b"] }),
+      ),
     ).toBe(true);
     expect(subscriptionCovers(subscription({ locationId: "loc-z" }), subject())).toBe(false);
   });
@@ -1029,7 +1031,11 @@ describe("§7.8 / D8 coverage-gap watchdog", () => {
         subject({ membershipId: "mem-covered" as MembershipId, locationIds: ["loc-a"] }),
       ],
       activeSubscriptions: [
-        subscription({ scopeKind: "explicit", locationId: null, clinicianMembershipId: "mem-covered" as MembershipId }),
+        subscription({
+          scopeKind: "explicit",
+          locationId: null,
+          clinicianMembershipId: "mem-covered" as MembershipId,
+        }),
       ],
       activeSupervisorMembershipIds: activeSupervisors,
     });
@@ -1140,14 +1146,18 @@ describe("§2.2.4 / D4 policy", () => {
     const at = "2026-07-31T02:00:00.000Z" as IsoInstant;
     expect(isAfterHours(POLICY, at, "UTC")).toBe(true);
     expect(isAfterHours(POLICY, "2026-07-31T09:00:00.000Z" as IsoInstant, "UTC")).toBe(false);
-    expect(isAfterHours(POLICY, "2026-07-31T09:00:00.000Z" as IsoInstant, "America/Los_Angeles")).toBe(
-      true,
-    );
+    expect(
+      isAfterHours(POLICY, "2026-07-31T09:00:00.000Z" as IsoInstant, "America/Los_Angeles"),
+    ).toBe(true);
   });
 
   it("reads a degenerate window as always-after-hours, never as never", () => {
     expect(
-      isAfterHours({ afterHoursStartHour: 8, afterHoursEndHour: 8 }, "2026-07-31T11:00:00.000Z", "UTC"),
+      isAfterHours(
+        { afterHoursStartHour: 8, afterHoursEndHour: 8 },
+        "2026-07-31T11:00:00.000Z",
+        "UTC",
+      ),
     ).toBe(true);
   });
 });

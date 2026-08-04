@@ -107,7 +107,10 @@ interface RuleProtectionFacts {
 const RULE_PROTECTION_BY_KEY: ReadonlyMap<string, RuleProtectionFacts> = new Map(
   DEFAULT_BILLING_RULES.map((rule) => [
     rule.key,
-    { regulatoryRequired: rule.regulatoryRequired, overrideRoleRequired: rule.overrideRoleRequired },
+    {
+      regulatoryRequired: rule.regulatoryRequired,
+      overrideRoleRequired: rule.overrideRoleRequired,
+    },
   ]),
 );
 

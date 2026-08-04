@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `validation_override` (M23 Billing-Medicare §3.3, D5; append-only; NON-partitioned;
 // retention class `compliance`). One row per overridden failed validation result: a role-gated,
 // reason-required, M4-audited override that lets a claim proceed past a non-regulatory failure. At most
@@ -9,10 +10,9 @@
 // — plain uuid, validated at runtime (mirrors the M27 cost-report precedent). No PHI / MBI is ever
 // stored here (D13, §8.7).
 import { pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
-import { validationResult } from "./validation-result";
 import { m23OverrideRoleRequired } from "./types";
+import { validationResult } from "./validation-result";
 
 export const validationOverride = pgTable(
   "validation_override",

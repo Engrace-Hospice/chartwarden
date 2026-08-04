@@ -109,8 +109,7 @@ function relativeTime(deltaMs: number): string {
   const mins = Math.round(Math.abs(deltaMs) / 60000);
   const hrs = Math.round(mins / 60);
   const days = Math.round(hrs / 24);
-  const body =
-    mins < 60 ? `${mins}m` : hrs < 48 ? `${hrs}h` : `${days}d`;
+  const body = mins < 60 ? `${mins}m` : hrs < 48 ? `${hrs}h` : `${days}d`;
   return past ? `${body} overdue` : `in ${body}`;
 }
 export function CountdownChip({
@@ -124,7 +123,13 @@ export function CountdownChip({
   const deltaMs = due.getTime() - now.getTime();
   const hoursLeft = deltaMs / 3_600_000;
   const tone: Tone =
-    hoursLeft <= 0 ? "error" : hoursLeft <= alertWithinHours ? "alert" : hoursLeft <= warnWithinHours ? "warning" : "neutral";
+    hoursLeft <= 0
+      ? "error"
+      : hoursLeft <= alertWithinHours
+        ? "alert"
+        : hoursLeft <= warnWithinHours
+          ? "warning"
+          : "neutral";
   const fg = TONE_FG[tone];
   return (
     <span
@@ -192,7 +197,14 @@ export function GateStepper({
     <ul
       className="wx-gate-stepper"
       aria-label={ariaLabel}
-      style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}
+      style={{
+        listStyle: "none",
+        margin: 0,
+        padding: 0,
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.5rem",
+      }}
     >
       {ordered.map((item) => {
         const meta = GATE_META[item.status];
@@ -224,7 +236,9 @@ export function GateStepper({
                 {item.label}
               </div>
               {item.detail ? (
-                <div style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant, marginTop: "0.15rem" }}>
+                <div
+                  style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant, marginTop: "0.15rem" }}
+                >
                   {item.detail}
                 </div>
               ) : null}
@@ -293,7 +307,10 @@ function PrimaryButton({
     </button>
   );
 }
-function GhostButton({ children, onClick }: { children: ReactNode; onClick?: () => void }): JSX.Element {
+function GhostButton({
+  children,
+  onClick,
+}: { children: ReactNode; onClick?: () => void }): JSX.Element {
   return (
     <button
       type="button"
@@ -345,18 +362,34 @@ export function BlockingDialog({
   const reasonId = useId();
   if (!open) return null;
   return (
-    <Modal open={open} ariaLabel={typeof title === "string" ? title : "Action blocked"} role="alertdialog" accent={t.alert}>
+    <Modal
+      open={open}
+      ariaLabel={typeof title === "string" ? title : "Action blocked"}
+      role="alertdialog"
+      accent={t.alert}
+    >
       <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: t.alert }}>
           <Glyph name="alert" size={22} label="Blocked" />
-          <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.375rem", fontWeight: 500, color: t.onSurface }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: t.fontDisplay,
+              fontSize: "1.375rem",
+              fontWeight: 500,
+              color: t.onSurface,
+            }}
+          >
             {title}
           </h2>
         </div>
         <GateStepper items={invariants} ariaLabel="Unmet requirements" />
         {overriding ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-            <label htmlFor={reasonId} style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}>
+            <label
+              htmlFor={reasonId}
+              style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}
+            >
               Override reason (captured to audit)
             </label>
             <textarea
@@ -369,11 +402,17 @@ export function BlockingDialog({
             />
           </div>
         ) : null}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div
+          style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}
+        >
           <GhostButton onClick={onClose}>{closeLabel}</GhostButton>
           {overrideAllowed ? (
             overriding ? (
-              <PrimaryButton tone="error" disabled={reason.trim().length === 0} onClick={() => onOverride?.(reason.trim())}>
+              <PrimaryButton
+                tone="error"
+                disabled={reason.trim().length === 0}
+                onClick={() => onOverride?.(reason.trim())}
+              >
                 Confirm override
               </PrimaryButton>
             ) : (
@@ -432,37 +471,76 @@ export function CeremonyModal({
   const needsStepUp = Boolean(stepUp);
   const commitReady = (!needsStepUp || credential.trim().length > 0) && (!legalText || affirmed);
   return (
-    <Modal open={open} ariaLabel={typeof title === "string" ? title : "Signature ceremony"} accent={accent}>
+    <Modal
+      open={open}
+      ariaLabel={typeof title === "string" ? title : "Signature ceremony"}
+      accent={accent}
+    >
       <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", color: accent }}>
           <Glyph name={epcs ? "lock" : "shield"} size={22} label={epcs ? "EPCS" : "Signature"} />
-          <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontSize: "1.375rem", fontWeight: 500, color: t.onSurface }}>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: t.fontDisplay,
+              fontSize: "1.375rem",
+              fontWeight: 500,
+              color: t.onSurface,
+            }}
+          >
             {title}
           </h2>
         </div>
 
         {/* What is being attested. */}
-        <div style={{ background: t.surfaceLow, borderRadius: t.radiusLg, padding: "0.75rem 1rem", color: t.onSurface }}>
+        <div
+          style={{
+            background: t.surfaceLow,
+            borderRadius: t.radiusLg,
+            padding: "0.75rem 1rem",
+            color: t.onSurface,
+          }}
+        >
           {attestation}
         </div>
 
         {legalText ? (
-          <label htmlFor={affirmId} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer" }}>
-            <input id={affirmId} type="checkbox" checked={affirmed} onChange={(e) => setAffirmed(e.target.checked)} />
-            <span style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant, lineHeight: 1.5 }}>{legalText}</span>
+          <label
+            htmlFor={affirmId}
+            style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", cursor: "pointer" }}
+          >
+            <input
+              id={affirmId}
+              type="checkbox"
+              checked={affirmed}
+              onChange={(e) => setAffirmed(e.target.checked)}
+            />
+            <span style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant, lineHeight: 1.5 }}>
+              {legalText}
+            </span>
           </label>
         ) : null}
 
         {/* Signer identity. */}
         <div style={{ fontSize: "0.8125rem", color: t.onSurfaceVariant }}>
-          Signing as{" "}
-          <strong style={{ color: t.onSurface }}>{signer.name}</strong>
+          Signing as <strong style={{ color: t.onSurface }}>{signer.name}</strong>
           {signer.role ? <span> · {signer.role}</span> : null}
         </div>
 
         {needsStepUp ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", borderTop: ghostBorder, paddingTop: "1rem" }}>
-            <label htmlFor={stepUpId} style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.4rem",
+              borderTop: ghostBorder,
+              paddingTop: "1rem",
+            }}
+          >
+            <label
+              htmlFor={stepUpId}
+              style={{ fontSize: "0.75rem", fontWeight: 600, color: t.onSurfaceVariant }}
+            >
               {stepUp?.label ?? "Re-enter your credentials to continue"}
             </label>
             <input

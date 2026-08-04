@@ -7,14 +7,28 @@ import type { operations } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
-import { actionButtonStyle, bodyRow, cell, cellRight, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
 import { cap, formatCents, formatDate, orgLabel, refundTone } from "./status";
+import {
+  LoadMore,
+  actionButtonStyle,
+  bodyRow,
+  cell,
+  cellRight,
+  inputStyle,
+  tableStyle,
+  theadRow,
+} from "./ui";
 
-type RefundPage =
-  operations["getApiAdminRefunds"]["responses"][200]["content"]["application/json"];
+type RefundPage = operations["getApiAdminRefunds"]["responses"][200]["content"]["application/json"];
 type Refund = RefundPage["items"][number];
 
-const STATE_FILTERS = ["requested", "approved", "executed_success", "executed_failed", "denied"] as const;
+const STATE_FILTERS = [
+  "requested",
+  "approved",
+  "executed_success",
+  "executed_failed",
+  "denied",
+] as const;
 
 export function RefundsQueue(): JSX.Element {
   const client = useApiClient();
@@ -50,22 +64,36 @@ export function RefundsQueue(): JSX.Element {
     void load(null, false);
   }, [load]);
 
-  const filtered = useMemo(() => (state ? rows.filter((r) => r.status === state) : rows), [rows, state]);
+  const filtered = useMemo(
+    () => (state ? rows.filter((r) => r.status === state) : rows),
+    [rows, state],
+  );
 
   return (
-    <div style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+    >
       <PageHeader
         title="Refunds"
         breadcrumb="Platform Ops"
         actions={
           <div style={{ display: "flex", gap: "0.75rem" }}>
-            <select value={state} onChange={(e) => setState(e.target.value)} style={inputStyle} aria-label="Filter by state">
+            <select
+              value={state}
+              onChange={(e) => setState(e.target.value)}
+              style={inputStyle}
+              aria-label="Filter by state"
+            >
               <option value="">All states</option>
               {STATE_FILTERS.map((s) => (
-                <option key={s} value={s}>{cap(s)}</option>
+                <option key={s} value={s}>
+                  {cap(s)}
+                </option>
               ))}
             </select>
-            <Link to="/admin/refunds/new" style={actionButtonStyle(true)}>New refund</Link>
+            <Link to="/admin/refunds/new" style={actionButtonStyle(true)}>
+              New refund
+            </Link>
           </div>
         }
       />
@@ -92,15 +120,23 @@ export function RefundsQueue(): JSX.Element {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} style={bodyRow}>
-                  <td style={cell} className="tabular-nums">{formatDate(r.requestedAt)}</td>
+                  <td style={cell} className="tabular-nums">
+                    {formatDate(r.requestedAt)}
+                  </td>
                   <td style={cell}>{orgLabel(r.organizationName, r.organizationId)}</td>
-                  <td style={cellRight} className="tabular-nums">{formatCents(r.amountCents)}</td>
+                  <td style={cellRight} className="tabular-nums">
+                    {formatCents(r.amountCents)}
+                  </td>
                   <td style={cell}>{cap(r.kind)}</td>
                   <td style={cell}>{cap(r.reasonCode)}</td>
-                  <td style={cell}><StatusPill label={cap(r.status)} tone={refundTone(r.status)} /></td>
+                  <td style={cell}>
+                    <StatusPill label={cap(r.status)} tone={refundTone(r.status)} />
+                  </td>
                   <td style={cell}>
                     {r.status === "requested" ? (
-                      <Link to={`/admin/refunds/${r.id}/approve`} style={actionButtonStyle(true)}>Review</Link>
+                      <Link to={`/admin/refunds/${r.id}/approve`} style={actionButtonStyle(true)}>
+                        Review
+                      </Link>
                     ) : null}
                   </td>
                 </tr>

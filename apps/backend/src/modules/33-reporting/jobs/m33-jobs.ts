@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/33-reporting/jobs/m33-jobs.ts — M33 Phase 2C LIVE BullMQ wiring for the §4.8 jobs.
 // The thin, infra-touching adapter that turns the @wardenx/reporting pure workers (catalog in ./index.ts)
@@ -44,12 +45,11 @@ import {
 } from "@wardenx/reporting";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
 import {
   type ExportRenderProcessorPorts,
   M33_JOB_SCHEDULES,
-  M33_QUEUE_PARAMS,
   M33_QUEUES,
+  M33_QUEUE_PARAMS,
   drilldownAuditFlushProcessor,
   exportRenderProcessor,
   lagProbeProcessor,
@@ -263,9 +263,15 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
     },
     audit: {
       recordRecipientLostAccess: () =>
-        unbound("scheduledRun.audit.recordRecipientLostAccess", "bind to the M4 audit() helper (§164.528)"),
+        unbound(
+          "scheduledRun.audit.recordRecipientLostAccess",
+          "bind to the M4 audit() helper (§164.528)",
+        ),
       recordAllRecipientsRevoked: () =>
-        unbound("scheduledRun.audit.recordAllRecipientsRevoked", "bind to the M4 audit() helper (§164.528)"),
+        unbound(
+          "scheduledRun.audit.recordAllRecipientsRevoked",
+          "bind to the M4 audit() helper (§164.528)",
+        ),
     },
   };
 
@@ -370,9 +376,15 @@ export function buildM33WorkerPorts(deps: M33WorkerDeps): M33WorkerPortBundles {
     },
     sink: {
       write: () =>
-        unbound("csvExport.sink.write", "bound per-request by the route to the chunked HTTP response sink"),
+        unbound(
+          "csvExport.sink.write",
+          "bound per-request by the route to the chunked HTTP response sink",
+        ),
       end: () =>
-        unbound("csvExport.sink.end", "bound per-request by the route to the chunked HTTP response sink"),
+        unbound(
+          "csvExport.sink.end",
+          "bound per-request by the route to the chunked HTTP response sink",
+        ),
     },
     outbox: {
       emitCsvStreamed: () =>
@@ -413,10 +425,15 @@ export function registerM33Workers(deps: M33WorkerDeps): Worker[] {
     queue: string,
     processor: (data: D) => Promise<R>,
     concurrency: number,
-  ): Worker => new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
+  ): Worker =>
+    new Worker(queue, async (job) => processor(job.data as D), { connection, concurrency });
 
   return [
-    mk(M33_QUEUES.mvRefresh, mvRefreshProcessor(ports.mvRefresh), M33_QUEUE_PARAMS.mvRefresh.concurrency),
+    mk(
+      M33_QUEUES.mvRefresh,
+      mvRefreshProcessor(ports.mvRefresh),
+      M33_QUEUE_PARAMS.mvRefresh.concurrency,
+    ),
     mk(
       M33_QUEUES.scheduledRun,
       scheduledRunProcessor(ports.scheduledRun),
@@ -432,7 +449,11 @@ export function registerM33Workers(deps: M33WorkerDeps): Worker[] {
       drilldownAuditFlushProcessor(ports.drilldownAuditFlush),
       M33_QUEUE_PARAMS.drilldownAuditFlush.concurrency,
     ),
-    mk(M33_QUEUES.lagProbe, lagProbeProcessor(ports.lagProbe), M33_QUEUE_PARAMS.lagProbe.concurrency),
+    mk(
+      M33_QUEUES.lagProbe,
+      lagProbeProcessor(ports.lagProbe),
+      M33_QUEUE_PARAMS.lagProbe.concurrency,
+    ),
   ];
 }
 

@@ -234,12 +234,9 @@ describe.skipIf(!DB_URL)("M10 HOPE — RLS cross-tenant denial — LIVE Postgres
   });
 
   it("every M10 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0035_hope_m10_rls_audit_triggers.sql"),
-      "utf8",
-    );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const rls = readFileSync(join(MIGRATIONS_DIR, "0035_hope_m10_rls_audit_triggers.sql"), "utf8");
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {

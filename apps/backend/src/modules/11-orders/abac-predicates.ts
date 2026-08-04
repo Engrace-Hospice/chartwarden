@@ -1,3 +1,4 @@
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 // apps/backend/src/modules/11-orders/abac-predicates.ts — M11-T06 (§4.7).
 //
 // The named ABAC predicate resolvers M11 OWNS and registers into M3's named-predicate registry (M3 §3.4).
@@ -20,7 +21,6 @@
 // at the route (it is each clinical key's default ABAC), not by re-registering it. Registration is
 // idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
 import { disciplineCanOrder, signerEligible } from "@wardenx/orders";
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
 import type { OrderKind } from "@wardenx/types";
 import type { OrderAbacResolver } from "./routes/service";
 

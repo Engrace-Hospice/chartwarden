@@ -5,9 +5,9 @@
 // PURE DATA — no IO, `@wardenx/types`-only.
 
 import type {
+  DisciplineAssessmentKind,
   DisciplineAuthorRole,
   DisciplinePlanKind,
-  DisciplineAssessmentKind,
   VolunteerGateKind,
   VolunteerRatioStatus,
 } from "@wardenx/types";

@@ -34,7 +34,12 @@ export const TITRATION_CATALOG: Readonly<Record<string, TitrationWindow>> = {
   midazolam: { minRate: 0.5, maxRate: 10, rateUnit: "mg_per_hour", isSedationClass: true },
   propofol: { minRate: 5, maxRate: 50, rateUnit: "mcg_per_kg_per_min", isSedationClass: true },
   ketamine: { minRate: 0.1, maxRate: 1.0, rateUnit: "mg_per_hour", isSedationClass: true },
-  dexmedetomidine: { minRate: 0.2, maxRate: 1.5, rateUnit: "mcg_per_kg_per_min", isSedationClass: true },
+  dexmedetomidine: {
+    minRate: 0.2,
+    maxRate: 1.5,
+    rateUnit: "mcg_per_kg_per_min",
+    isSedationClass: true,
+  },
   ketorolac: { minRate: 1, maxRate: 5, rateUnit: "mg_per_hour", isSedationClass: true },
   morphine: { minRate: 0.5, maxRate: 20, rateUnit: "mg_per_hour", isSedationClass: false },
   hydromorphone: { minRate: 0.1, maxRate: 5, rateUnit: "mg_per_hour", isSedationClass: false },

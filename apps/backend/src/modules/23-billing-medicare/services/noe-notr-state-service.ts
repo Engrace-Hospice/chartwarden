@@ -15,20 +15,15 @@
 //
 // ENUM-CASE BOUNDARY: this service speaks the lowercase domain `NoticeState`; the repo maps to the UPPERCASE
 // DB pgEnum at the boundary. NO PHI / NO MBI on any surface (D13). D13 AI-actor reject guard applies here too.
-import {
-  type NoticeState,
-  noeMachine,
-  notrMachine,
-  repositories,
-} from "@wardenx/billing";
+import { type NoticeState, noeMachine, notrMachine, repositories } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, NotFoundError, WardenXError } from "@wardenx/types";
 import {
-  assertNotAiActor,
   type BillingDb,
   type BillingTx,
   type BillingWriteActor,
   type WriteOutboxPort,
+  assertNotAiActor,
 } from "./claim-state-service";
 
 /** Which notice family a transition targets (selects the repo, machine, event prefix). */
@@ -129,7 +124,12 @@ function buildNoticeEmissions(
   rec: NoticeRecordShape,
   controlNumber: string,
   extra: NoticeEventExtra,
-): readonly { eventName: string; aggregateKind: string; aggregateId: string; payload: Record<string, unknown> }[] {
+): readonly {
+  eventName: string;
+  aggregateKind: string;
+  aggregateId: string;
+  payload: Record<string, unknown>;
+}[] {
   const n = naming(kind);
   const base = { aggregateKind: n.aggregateKind, aggregateId: rec.id };
   switch (event) {
@@ -138,7 +138,11 @@ function buildNoticeEmissions(
         {
           ...base,
           eventName: `${n.prefix}.submit_requested`,
-          payload: { [n.idKey]: rec.id, submissionId: extra.submissionId, [n.ctrlKey]: controlNumber },
+          payload: {
+            [n.idKey]: rec.id,
+            submissionId: extra.submissionId,
+            [n.ctrlKey]: controlNumber,
+          },
         },
       ];
     case "submit":
@@ -146,7 +150,11 @@ function buildNoticeEmissions(
         {
           ...base,
           eventName: `${n.prefix}.submitted`,
-          payload: { [n.idKey]: rec.id, submissionId: extra.submissionId, submittedAt: extra.submittedAt },
+          payload: {
+            [n.idKey]: rec.id,
+            submissionId: extra.submissionId,
+            submittedAt: extra.submittedAt,
+          },
         },
       ];
     case "ack_277ca_accepted":
@@ -182,8 +190,12 @@ function noePatch(p?: NoticeTransitionPatch): repositories.NoeTransitionPatch {
   return {
     ...(p.payerControlNumber !== undefined ? { payerNoeControlNumber: p.payerControlNumber } : {}),
     ...(p.latestSubmissionId !== undefined ? { latestSubmissionId: p.latestSubmissionId } : {}),
-    ...(p.latestAcknowledgmentId !== undefined ? { latestAcknowledgmentId: p.latestAcknowledgmentId } : {}),
-    ...(p.confirmationDocumentId !== undefined ? { confirmationDocumentId: p.confirmationDocumentId } : {}),
+    ...(p.latestAcknowledgmentId !== undefined
+      ? { latestAcknowledgmentId: p.latestAcknowledgmentId }
+      : {}),
+    ...(p.confirmationDocumentId !== undefined
+      ? { confirmationDocumentId: p.confirmationDocumentId }
+      : {}),
     ...(p.windowBreachedAt !== undefined ? { windowBreachedAt: p.windowBreachedAt } : {}),
   };
 }
@@ -194,8 +206,12 @@ function notrPatch(p?: NoticeTransitionPatch): repositories.NotrTransitionPatch 
   return {
     ...(p.payerControlNumber !== undefined ? { payerNotrControlNumber: p.payerControlNumber } : {}),
     ...(p.latestSubmissionId !== undefined ? { latestSubmissionId: p.latestSubmissionId } : {}),
-    ...(p.latestAcknowledgmentId !== undefined ? { latestAcknowledgmentId: p.latestAcknowledgmentId } : {}),
-    ...(p.confirmationDocumentId !== undefined ? { confirmationDocumentId: p.confirmationDocumentId } : {}),
+    ...(p.latestAcknowledgmentId !== undefined
+      ? { latestAcknowledgmentId: p.latestAcknowledgmentId }
+      : {}),
+    ...(p.confirmationDocumentId !== undefined
+      ? { confirmationDocumentId: p.confirmationDocumentId }
+      : {}),
     ...(p.windowBreachedAt !== undefined ? { windowBreachedAt: p.windowBreachedAt } : {}),
   };
 }
@@ -219,7 +235,10 @@ export interface NoeNotrStateServicePorts {
 
 export interface NoeNotrStateService {
   /** Apply a notice transition in its OWN `withOrgContext` transaction (route / worker / consumer entry). */
-  transition(actor: BillingWriteActor, input: NoticeTransitionInput): Promise<NoticeTransitionResult>;
+  transition(
+    actor: BillingWriteActor,
+    input: NoticeTransitionInput,
+  ): Promise<NoticeTransitionResult>;
   /** Apply a notice transition on a CALLER-PROVIDED tx (same-unit-of-work entry). */
   applyInTx(
     tx: BillingTx,
@@ -251,7 +270,12 @@ export function buildNoeNotrStateService(
   const emit = async (
     tx: BillingTx,
     organizationId: string,
-    e: { eventName: string; aggregateKind: string; aggregateId: string; payload: Record<string, unknown> },
+    e: {
+      eventName: string;
+      aggregateKind: string;
+      aggregateId: string;
+      payload: Record<string, unknown>;
+    },
   ) => {
     if (ports.outbox) await ports.outbox.publish(tx, { ...e, organizationId });
   };
@@ -266,7 +290,8 @@ export function buildNoeNotrStateService(
     if (input.kind === "noe") {
       const repo = new repositories.NoeRepository(tx);
       const rec = await repo.findById(input.noticeId);
-      if (!rec || rec.organizationId !== actor.organizationId) throw new NotFoundError("noe record");
+      if (!rec || rec.organizationId !== actor.organizationId)
+        throw new NotFoundError("noe record");
       const reduced = noeMachine.reduce(
         rec.state,
         input.event,
@@ -287,7 +312,13 @@ export function buildNoeNotrStateService(
         );
       }
       const updated = versioned.row;
-      const emissions = buildNoticeEmissions("noe", input.event, updated, updated.noeControlNumber, input.extra ?? {});
+      const emissions = buildNoticeEmissions(
+        "noe",
+        input.event,
+        updated,
+        updated.noeControlNumber,
+        input.extra ?? {},
+      );
       for (const e of emissions) await emit(tx, actor.organizationId, e);
       return {
         kind: "noe",
@@ -322,7 +353,13 @@ export function buildNoeNotrStateService(
       );
     }
     const updated = versioned.row;
-    const emissions = buildNoticeEmissions("notr", input.event, updated, updated.notrControlNumber, input.extra ?? {});
+    const emissions = buildNoticeEmissions(
+      "notr",
+      input.event,
+      updated,
+      updated.notrControlNumber,
+      input.extra ?? {},
+    );
     for (const e of emissions) await emit(tx, actor.organizationId, e);
     return {
       kind: "notr",
@@ -335,7 +372,11 @@ export function buildNoeNotrStateService(
   };
 
   const inOrgCtx = <T>(actor: BillingWriteActor, fn: (tx: BillingTx) => Promise<T>) =>
-    withOrgContext<BillingTx, T>(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
+    withOrgContext<BillingTx, T>(
+      db,
+      { organizationId: actor.organizationId, userId: actor.userId },
+      fn,
+    );
 
   return {
     applyInTx,
@@ -351,7 +392,8 @@ export function buildNoeNotrStateService(
         if (input.kind === "noe") {
           const repo = new repositories.NoeRepository(tx);
           const rec = await repo.findById(input.noticeId);
-          if (!rec || rec.organizationId !== actor.organizationId) throw new NotFoundError("noe record");
+          if (!rec || rec.organizationId !== actor.organizationId)
+            throw new NotFoundError("noe record");
           // Same-state patch of window_breached_at (a breach is not a machine transition).
           const versioned = await repo.transitionToState(rec.id, input.expectedVersion, rec.state, {
             windowBreachedAt: breachedAt.slice(0, 10),
@@ -376,7 +418,8 @@ export function buildNoeNotrStateService(
         }
         const repo = new repositories.NotrRepository(tx);
         const rec = await repo.findById(input.noticeId);
-        if (!rec || rec.organizationId !== actor.organizationId) throw new NotFoundError("notr record");
+        if (!rec || rec.organizationId !== actor.organizationId)
+          throw new NotFoundError("notr record");
         const versioned = await repo.transitionToState(rec.id, input.expectedVersion, rec.state, {
           windowBreachedAt: breachedAt.slice(0, 10),
         });
@@ -408,7 +451,11 @@ export function buildNoeNotrStateService(
           eventName: `${n.prefix}.window_warning`,
           aggregateKind: n.aggregateKind,
           aggregateId: input.noticeId,
-          payload: { [n.idKey]: input.noticeId, admissionId: input.admissionId, daysIntoWindow: input.daysIntoWindow },
+          payload: {
+            [n.idKey]: input.noticeId,
+            admissionId: input.admissionId,
+            daysIntoWindow: input.daysIntoWindow,
+          },
         });
       });
     },

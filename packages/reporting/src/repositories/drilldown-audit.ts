@@ -58,9 +58,7 @@ export class ReportDrilldownAuditRepository {
   }
 
   /** The cross-module-audit join (§3.4 `..._trace_id_idx`): the row(s) for a drilldown trace id. */
-  async findByTraceId(
-    drilldownTraceId: string,
-  ): Promise<readonly schema.ReportDrilldownAudit[]> {
+  async findByTraceId(drilldownTraceId: string): Promise<readonly schema.ReportDrilldownAudit[]> {
     return this.db
       .select()
       .from(A)

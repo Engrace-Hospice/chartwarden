@@ -1,3 +1,4 @@
+import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — The Guardrail System (DESIGN.md §7). Guards, gates, blockers, ceremonies,
 // and regulatory clocks in one legible language. The WardenX-defining surface.
 import {
@@ -8,7 +9,6 @@ import {
   GateStepper,
   GuardChip,
 } from "@wardenx/ui";
-import type { Meta, StoryObj } from "@storybook/react-vite";
 import { type JSX, useState } from "react";
 
 const meta: Meta = { title: "Lantern/Guardrail" };
@@ -16,7 +16,15 @@ export default meta;
 
 function Stack({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1.5rem", maxWidth: "40rem" }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "1rem",
+        padding: "1.5rem",
+        maxWidth: "40rem",
+      }}
+    >
       {children}
     </div>
   );
@@ -41,7 +49,12 @@ const GATES: GateItem[] = [
     status: "in-progress",
     action: { label: "Open", onAction: () => {} },
   },
-  { id: "election", label: "Election statement on file", status: "not-started", action: { label: "Add", onAction: () => {} } },
+  {
+    id: "election",
+    label: "Election statement on file",
+    status: "not-started",
+    action: { label: "Add", onAction: () => {} },
+  },
 ];
 
 export const GuardChips: StoryObj = {
@@ -49,7 +62,12 @@ export const GuardChips: StoryObj = {
   render: () => (
     <Stack>
       <GuardChip reason="2 unsigned notes block submission" onFix={() => {}} />
-      <GuardChip tone="error" reason="Cap exceeded — override required" fixLabel="Resolve" onFix={() => {}} />
+      <GuardChip
+        tone="error"
+        reason="Cap exceeded — override required"
+        fixLabel="Resolve"
+        onFix={() => {}}
+      />
       <GuardChip reason="F2F encounter missing" />
     </Stack>
   ),

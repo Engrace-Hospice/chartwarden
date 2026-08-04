@@ -123,7 +123,9 @@ export function applyOutreachFilters(
  * authorization fact: it answers `false` when the plan cannot be read at all (fail-CLOSED). The other four
  * propagate.
  */
-export function createBereavementPlanProvider(store: BereavementSeamStore): BereavementPlanProvider {
+export function createBereavementPlanProvider(
+  store: BereavementSeamStore,
+): BereavementPlanProvider {
   return {
     async planById(_orgId, planId) {
       const facts = await store.planById(planId);
@@ -185,7 +187,10 @@ export function createBereavementOutreachProvider(
 }
 
 /** Project the latest score row onto the §4.6 factor snapshot M32 narrates from. */
-function snapshotOf(facts: BereavementRiskScoreFacts, asOfIso: IsoInstant): BereavementRiskFactorsSnapshot {
+function snapshotOf(
+  facts: BereavementRiskScoreFacts,
+  asOfIso: IsoInstant,
+): BereavementRiskFactorsSnapshot {
   return {
     contactId: facts.contactId,
     planId: facts.planId,

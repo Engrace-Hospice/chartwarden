@@ -80,6 +80,10 @@ export class MedicationOrderStateError extends WardenXError {
 }
 
 /** Throw a {@link MedicationOrderStateError} when `condition` is false (guard helper). */
-export function require_(condition: boolean, code: M12ErrorCode, message: string): asserts condition {
+export function require_(
+  condition: boolean,
+  code: M12ErrorCode,
+  message: string,
+): asserts condition {
   if (!condition) throw new MedicationOrderStateError(code, message);
 }

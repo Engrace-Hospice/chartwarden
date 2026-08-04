@@ -68,7 +68,10 @@ import type {
   SafetySosAlertId,
   SafetySosLifecycleState,
 } from "@wardenx/types";
-import type { SafetyCoverageSubjectFacts, SafetySubscriptionFacts } from "../lifecycle/coverage-gap";
+import type {
+  SafetyCoverageSubjectFacts,
+  SafetySubscriptionFacts,
+} from "../lifecycle/coverage-gap";
 import type { SafetyPolicyVersionFacts } from "../lifecycle/policy";
 
 /** One clinician's M20-OWNED board facts. The cross-module half (current visit, patient first name, last
@@ -234,9 +237,7 @@ export interface SafetySeamStore {
   membershipsWithInactiveSubscriptions(): Promise<ReadonlySet<MembershipId>>;
   /** Which of `membershipIds` are ACTIVE memberships — the vacation-forward target check (§7.8's
    *  `vacation_forwards_unresolved`, the worst of the three because the configuration LOOKS complete). */
-  activeMembershipIds(
-    membershipIds: readonly MembershipId[],
-  ): Promise<ReadonlySet<MembershipId>>;
+  activeMembershipIds(membershipIds: readonly MembershipId[]): Promise<ReadonlySet<MembershipId>>;
 
   // ── §4.5 composition + M20-F06 ─────────────────────────────────────────────────────────────────────
   /** The user id behind a membership — M36 delivers to USERS, M20's subscription rows name memberships.
@@ -312,7 +313,9 @@ export function createInMemorySafetySeamStore(seed: SafetySeamSeed = {}): InMemo
           Date.parse(v.effectiveFrom) <= at &&
           (v.effectiveTo === null || Date.parse(v.effectiveTo) > at),
       );
-      return covering.length === 0 ? null : (covering[covering.length - 1] as SafetyPolicyVersionFacts);
+      return covering.length === 0
+        ? null
+        : (covering[covering.length - 1] as SafetyPolicyVersionFacts);
     },
 
     async coverageSubjects() {
@@ -413,4 +416,3 @@ export function createInMemorySafetySeamStore(seed: SafetySeamSeed = {}): InMemo
     },
   };
 }
-

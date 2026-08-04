@@ -5,7 +5,16 @@
 // `medication_order_id` is an M12 logical FK (resolved through seam). RLS + grants + the M4 write-audit trigger
 // (notes denylisted, §3.6) land in the RLS migration.
 import { sql } from "drizzle-orm";
-import { date, index, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  date,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const comfortKitDrawdowns = pgTable(
@@ -25,7 +34,10 @@ export const comfortKitDrawdowns = pgTable(
       precision: 12,
       scale: 4,
     }),
-    replenishmentThreshold: numeric("replenishment_threshold", { precision: 12, scale: 4 }).notNull(),
+    replenishmentThreshold: numeric("replenishment_threshold", {
+      precision: 12,
+      scale: 4,
+    }).notNull(),
 
     lotNumber: text("lot_number"),
     expirationDate: date("expiration_date"),

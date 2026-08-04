@@ -37,8 +37,9 @@ export interface FhirMedicationAdministrationPublisher {
  * The Phase-1 DENY-STUB publisher: M28 is not built (Wave H), so every publish fails closed with
  * `M28_NOT_BOUND`. Pure — no I/O. Swapped for M28's real publisher when M28 registers its seam.
  */
-export const denyStubFhirMedicationAdministrationPublisher: FhirMedicationAdministrationPublisher = {
-  async publish() {
-    return { available: false, reason: "M28_NOT_BOUND" };
-  },
-};
+export const denyStubFhirMedicationAdministrationPublisher: FhirMedicationAdministrationPublisher =
+  {
+    async publish() {
+      return { available: false, reason: "M28_NOT_BOUND" };
+    },
+  };

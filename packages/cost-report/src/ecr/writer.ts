@@ -15,11 +15,11 @@
 // financial / statistical values only (D18).
 import { WORKSHEET_CODES, type WorksheetCode } from "../contracts";
 import {
+  ECR_SPEC_VERSION,
   type EcrDataRecord,
   type EcrHeaderRecord,
   type EcrRecord,
   type EcrValue,
-  ECR_SPEC_VERSION,
   recordsToText,
 } from "./records";
 
@@ -124,7 +124,10 @@ export function buildHeaderRecord(header?: EcrHeaderContext): EcrHeaderRecord {
  * the canonical `WORKSHEET_CODES` order; a worksheet absent from the snapshot contributes no records (it
  * was never populated). The trailer's `recordCount` is the number of header + data records preceding it.
  */
-export function writeEcr(snapshotWorksheets: SnapshotWorksheets, header?: EcrHeaderContext): string {
+export function writeEcr(
+  snapshotWorksheets: SnapshotWorksheets,
+  header?: EcrHeaderContext,
+): string {
   const records: EcrRecord[] = [buildHeaderRecord(header)];
 
   for (const code of WORKSHEET_CODES) {

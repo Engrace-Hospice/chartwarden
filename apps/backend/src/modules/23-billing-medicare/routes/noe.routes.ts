@@ -9,11 +9,16 @@
 // §D13 AI-block + `Idempotency-Key` (§4.1). Org/actor/membership binding is ALWAYS server-side.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import {
+  CancelNoeBodySchema,
+  NoeIdParamsSchema,
+  NoeListQuerySchema,
+  parse,
+} from "./billing-typebox";
 import { requireIdempotencyKey } from "./concurrency";
 import { P, PROVIDER_SCOPE, STEP_UP, targetNoeId } from "./guards";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
-import { CancelNoeBodySchema, NoeIdParamsSchema, NoeListQuerySchema, parse } from "./billing-typebox";
 
 export interface NoeRouteDeps {
   readonly readService: M23ReadRouteService;
@@ -35,28 +40,39 @@ export function registerNoeRoutes(app: FastifyInstance, deps: NoeRouteDeps): voi
   const { readService, writeService } = deps;
 
   // GET /noe-records — list NOE records (cursor-paginated). §4.1 #24.
-  app.get("/api/v1/noe-records", { preHandler: [READ], config: { auditRead: { resourceKind: "noe_record", list: true } } }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(NoeListQuerySchema, request.query);
-    return readService.listNoes(
-      actor,
-      {
-        providerEntityId: q.providerEntityId,
-        patientId: q.patientId,
-        admissionId: q.admissionId,
-        state: q.state,
-      },
-      q.cursor,
-      q.limit,
-    );
-  });
+  app.get(
+    "/api/v1/noe-records",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "noe_record", list: true } } },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(NoeListQuerySchema, request.query);
+      return readService.listNoes(
+        actor,
+        {
+          providerEntityId: q.providerEntityId,
+          patientId: q.patientId,
+          admissionId: q.admissionId,
+          state: q.state,
+        },
+        q.cursor,
+        q.limit,
+      );
+    },
+  );
 
   // GET /noe-records/:id — NOE detail. §4.1 #25.
-  app.get("/api/v1/noe-records/:id", { preHandler: [READ, READ_ABAC], config: { auditRead: { resourceKind: "noe_record", resourceIdParam: "id" } } }, async (request) => {
-    const actor = actorOf(request);
-    const { id } = parse(NoeIdParamsSchema, request.params);
-    return readService.getNoe(actor, id);
-  });
+  app.get(
+    "/api/v1/noe-records/:id",
+    {
+      preHandler: [READ, READ_ABAC],
+      config: { auditRead: { resourceKind: "noe_record", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const { id } = parse(NoeIdParamsSchema, request.params);
+      return readService.getNoe(actor, id);
+    },
+  );
 
   // POST /noe-records/:id/submit — READY → SUBMITTED (step-up; 202; emits `m23.noe.submit_requested`). #26.
   app.post(

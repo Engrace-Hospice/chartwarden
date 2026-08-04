@@ -43,10 +43,10 @@
 // calls it, having already taken gate 1 on its own so gate 2 can be interleaved at §6's position.
 import type { AiCapabilityUnavailable, AiCapabilityUnavailableReason } from "@wardenx/types";
 
-import { aiGovernanceGateFor, type AiGovernanceGateInput } from "../governance/capability-access";
+import { type AiGovernanceGateInput, aiGovernanceGateFor } from "../governance/capability-access";
 import { aiConsumerPostureFor } from "../lifecycle/state-machine";
 import type { AiResolvedRoute, AiRouteResolution } from "./routing";
-import { aiTokenCapRefuses, type AiTokenCapState } from "./token-cap";
+import { type AiTokenCapState, aiTokenCapRefuses } from "./token-cap";
 
 /** Which gate decided. The ledger's `error_class` and the operator's first question. */
 export type AiInvocationGate =
@@ -131,9 +131,7 @@ function deny(
  * that will be refused — resolving a route is reading the registry, not choosing to use it, and it is
  * what lets a refused call name the backend it was aimed at in the disclosure ledger.
  */
-export function evaluateAiInvocationGates(
-  facts: AiInvocationGateFacts,
-): AiInvocationGateDecision {
+export function evaluateAiInvocationGates(facts: AiInvocationGateFacts): AiInvocationGateDecision {
   const ledgerRoute = facts.route.ledgerRoute;
 
   // 0 — the wave's platform posture.
@@ -178,8 +176,15 @@ export function evaluateAiInvocationGates(
   const governance = aiGovernanceGateFor(facts);
   if (!governance.allowed) {
     const reason = governance.unavailable.reason;
-    const gate: AiInvocationGate = reason === "clinician_opted_out" ? "clinician_opt_out" : "tenant_opt_in";
-    return deny(gate, reason, `governance gate refused: ${reason}`, ledgerRoute, governance.unavailable);
+    const gate: AiInvocationGate =
+      reason === "clinician_opted_out" ? "clinician_opt_out" : "tenant_opt_in";
+    return deny(
+      gate,
+      reason,
+      `governance gate refused: ${reason}`,
+      ledgerRoute,
+      governance.unavailable,
+    );
   }
 
   // 5 — token cap (§6.5 / D7).

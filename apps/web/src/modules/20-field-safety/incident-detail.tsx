@@ -253,10 +253,8 @@ export function IncidentDetailScreen(): JSX.Element {
 
   const isDraft = incident.lifecycleState === "draft";
   const isClosed = CLOSED_STATES.includes(incident.lifecycleState);
-  const filedOnBehalf =
-    incident.affectedClinicianMembershipId !== incident.reportedByMembershipId;
-  const reportableUnsigned =
-    incident.oshaReportable && incident.oshaReportableSignedOffAt === null;
+  const filedOnBehalf = incident.affectedClinicianMembershipId !== incident.reportedByMembershipId;
+  const reportableUnsigned = incident.oshaReportable && incident.oshaReportableSignedOffAt === null;
 
   const ledger = incident.stateHistory.map((h) => ({
     label: `${h.fromState ? `${humanize(h.fromState)} → ` : ""}${humanize(h.toState)}`,
@@ -284,19 +282,19 @@ export function IncidentDetailScreen(): JSX.Element {
 
       {reportableUnsigned ? (
         <Notice tone="error" assertive>
-          <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must sign off
-          before this incident can leave draft — the database refuses the combination outright, so this is
-          not a warning that can be worked around.
+          <strong>Marked OSHA-reportable with no sign-off on record.</strong> A supervisor must sign
+          off before this incident can leave draft — the database refuses the combination outright,
+          so this is not a warning that can be worked around.
         </Notice>
       ) : null}
 
       {filedOnBehalf && !isClosed ? (
         <Notice tone="warning" live>
-          <strong>This incident was filed on the affected clinician's behalf.</strong> §6 requires HER
-          acknowledgment before it may close, and that acknowledgment cannot be coerced — if she declines,
-          the row stays under review and a compliance flag fires. There is no button here to record it for
-          her, deliberately: M20 publishes no route that would let one person post another's
-          acknowledgment.
+          <strong>This incident was filed on the affected clinician's behalf.</strong> §6 requires
+          HER acknowledgment before it may close, and that acknowledgment cannot be coerced — if she
+          declines, the row stays under review and a compliance flag fires. There is no button here
+          to record it for her, deliberately: M20 publishes no route that would let one person post
+          another's acknowledgment.
         </Notice>
       ) : null}
 
@@ -470,14 +468,18 @@ export function IncidentDetailScreen(): JSX.Element {
         >
           {!incident.narrativeAvailable ? (
             <Notice tone="warning" assertive>
-              The stored narrative could not be decrypted for display, so the box below starts empty.
-              Leaving it empty keeps what is already stored; typing into it REPLACES text you cannot see.
+              The stored narrative could not be decrypted for display, so the box below starts
+              empty. Leaving it empty keeps what is already stored; typing into it REPLACES text you
+              cannot see.
             </Notice>
           ) : null}
           <SelectField
             label="Category"
             value={category}
-            options={INCIDENT_CATEGORIES.map((v) => ({ value: v, label: incidentCategoryLabel(v) }))}
+            options={INCIDENT_CATEGORIES.map((v) => ({
+              value: v,
+              label: incidentCategoryLabel(v),
+            }))}
             onChange={setCategory}
           />
           <SelectField
@@ -528,8 +530,8 @@ export function IncidentDetailScreen(): JSX.Element {
           }
         >
           <Notice tone="warning">
-            Submitting ends the editable phase. From here the incident moves through the supervisor state
-            machine, and the narrative becomes part of a record that survives your account.
+            Submitting ends the editable phase. From here the incident moves through the supervisor
+            state machine, and the narrative becomes part of a record that survives your account.
           </Notice>
           <TextAreaField
             label="Anything to add before it goes?"
@@ -539,10 +541,11 @@ export function IncidentDetailScreen(): JSX.Element {
             hint="Optional. Appended to the record; it does not replace what you already wrote."
           />
           <span style={mutedStyle}>
-            This submission is filed as <strong>{incident.oshaReportable ? "OSHA-reportable" : "not OSHA-reportable"}</strong>{" "}
-            — the flag this incident already carries. You cannot raise it here: D9 makes that a supervisor's
-            step-up'd sign-off, precisely so a filing with a state agency is never made on the reporting
-            clinician's own say-so.
+            This submission is filed as{" "}
+            <strong>{incident.oshaReportable ? "OSHA-reportable" : "not OSHA-reportable"}</strong> —
+            the flag this incident already carries. You cannot raise it here: D9 makes that a
+            supervisor's step-up'd sign-off, precisely so a filing with a state agency is never made
+            on the reporting clinician's own say-so.
           </span>
           {modalError ? (
             <Notice tone="error" assertive>
@@ -584,9 +587,9 @@ export function IncidentDetailScreen(): JSX.Element {
             onChange={setToState}
           />
           <span style={mutedStyle}>
-            <code>draft</code> and <code>submitted</code> are absent from this list on purpose: each is
-            reached by its own route, and a picker that offered <code>submitted</code> would let you
-            un-submit — which is exactly the immutability point §2.2.3 puts there.
+            <code>draft</code> and <code>submitted</code> are absent from this list on purpose: each
+            is reached by its own route, and a picker that offered <code>submitted</code> would let
+            you un-submit — which is exactly the immutability point §2.2.3 puts there.
           </span>
           <TextAreaField
             label="Why"
@@ -606,8 +609,8 @@ export function IncidentDetailScreen(): JSX.Element {
           ) : null}
           {toState === "reopened" ? (
             <Notice tone="warning">
-              Reopening is also the only way to undo an OSHA sign-off (§6), and undoing one needs a second
-              sign-off afterwards.
+              Reopening is also the only way to undo an OSHA sign-off (§6), and undoing one needs a
+              second sign-off afterwards.
             </Notice>
           ) : null}
           {modalError ? (
@@ -643,15 +646,19 @@ export function IncidentDetailScreen(): JSX.Element {
                   : primaryButtonStyle
               }
             >
-              {saving ? "Signing…" : oshaReportable ? "Sign off as reportable" : "Sign off as NOT reportable"}
+              {saving
+                ? "Signing…"
+                : oshaReportable
+                  ? "Sign off as reportable"
+                  : "Sign off as NOT reportable"}
             </button>
           }
         >
           <Notice tone="warning" assertive>
-            This is a <strong>step-up</strong> act with your name on it, logged at warn severity. Signing
-            an incident as reportable starts a filing clock with a state agency; signing it as not
-            reportable is the decision a later review will ask you to justify. Undoing either needs a
-            reopen and a second sign-off.
+            This is a <strong>step-up</strong> act with your name on it, logged at warn severity.
+            Signing an incident as reportable starts a filing clock with a state agency; signing it
+            as not reportable is the decision a later review will ask you to justify. Undoing either
+            needs a reopen and a second sign-off.
           </Notice>
           <CheckboxField
             label="This incident IS OSHA-equivalent reportable"
@@ -683,8 +690,9 @@ export function IncidentDetailScreen(): JSX.Element {
           />
           {isClosed ? (
             <Notice tone="error">
-              This incident is closed, and the sign-off route refuses a closed row. Reopen it first (§6) —
-              that reopen is itself a recorded act with a reason, which is how the trail stays honest.
+              This incident is closed, and the sign-off route refuses a closed row. Reopen it first
+              (§6) — that reopen is itself a recorded act with a reason, which is how the trail
+              stays honest.
             </Notice>
           ) : null}
           {modalError ? (

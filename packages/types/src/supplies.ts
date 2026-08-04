@@ -31,8 +31,8 @@
 import type { AdmissionId, LocalDate, OrgId, PatientId, ProviderEntityId } from "./admission";
 import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 import type { DocumentId } from "./documents";
-import type { ComfortKitDeploymentId } from "./emar";
 import type { MedicationOrderId } from "./dosespot";
+import type { ComfortKitDeploymentId } from "./emar";
 import type { OrderRecordId } from "./orders";
 
 // ── M21-owned id aliases (mirror the §3.1 uuid PKs; packages/types cannot import @wardenx/db) ─────────
@@ -376,7 +376,8 @@ export interface M21SupplyRequestDocumentRequestedPayload extends M21PatientScop
 
 /** `m21.supply_request.vendor_confirmation_overdue` — §2.10, a request sat in `ordered` past the tenant's
  *  vendor-confirmation window (default 24h). Advisory: nothing about the order is wrong yet. */
-export interface M21SupplyRequestVendorConfirmationOverduePayload extends M21PatientScopedEventBase {
+export interface M21SupplyRequestVendorConfirmationOverduePayload
+  extends M21PatientScopedEventBase {
   readonly supplyRequestId: SupplyRequestId;
   readonly orderedAt: IsoInstant;
   readonly windowHours: number;
@@ -535,7 +536,10 @@ export interface M21ControlledSubstanceDiscrepancyPayload extends M21PatientScop
   readonly dispatchId: ComfortKitDispatchId;
   readonly m13DeploymentId: ComfortKitDeploymentId | null;
   /** `m21_reconciliation` for M21's own 5% detection, `m13_reemit` when M13's bedside count found it. */
-  readonly detectionSource: "m21_reconciliation" | "m13_reemit" | "m21_unreturnable_assumption_of_loss";
+  readonly detectionSource:
+    | "m21_reconciliation"
+    | "m13_reemit"
+    | "m21_unreturnable_assumption_of_loss";
   readonly discrepantMedications: readonly ComfortKitReturnedContentPayload[];
   readonly custodyChain: {
     readonly dispatchedByMembershipId: MembershipId;

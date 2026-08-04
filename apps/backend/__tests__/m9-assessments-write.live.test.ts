@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M9L — the Drizzle assessment WRITE pipeline, proven against real Postgres.
  *
@@ -14,7 +15,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -36,9 +36,21 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const CAPTURED_AT = "2026-01-20T12:00:00.000Z";
 /** A PAINAD payload scoring 5/10 (each of the five items 0..2). */
-const PAINAD = { breathing: 1, negativeVocalization: 1, facialExpression: 1, bodyLanguage: 1, consolability: 1 };
+const PAINAD = {
+  breathing: 1,
+  negativeVocalization: 1,
+  facialExpression: 1,
+  bodyLanguage: 1,
+  consolability: 1,
+};
 /** A PPS payload scoring 50 (mainly_sit_lie band). */
-const PPS = { ambulation: "mainly_sit_lie", activity: "reduced", selfCare: "considerable_assist", intake: "reduced", consciousness: "full" };
+const PPS = {
+  ambulation: "mainly_sit_lie",
+  activity: "reduced",
+  selfCare: "considerable_assist",
+  intake: "reduced",
+  consciousness: "full",
+};
 
 describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)", () => {
   let admin: Client;
@@ -60,7 +72,9 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
   }
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (stripVector) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -97,7 +111,10 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m9w@x.test'),($2,'m9w2@x.test')`, [USER, USER2]);
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m9w@x.test'),($2,'m9w2@x.test')`, [
+      USER,
+      USER2,
+    ]);
     recorderOf[ORG_A] = await membership(ORG_A, USER);
     recorderOf[ORG_B] = await membership(ORG_B, USER);
     cosignerA = await membership(ORG_A, USER2);
@@ -153,7 +170,10 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     // The seam registry is not booted in this suite, so the DEFAULT service resolves UNSITED → NULL.
     const plain = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
     const plainRow = (
-      await admin.query("SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1", [plain.id])
+      await admin.query(
+        "SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1",
+        [plain.id],
+      )
     ).rows[0];
     expect(plainRow).toEqual({ provider_entity_id: null, location_id: null });
     // An injected resolver (standing in for the M6 AdmissionStatusReader seam) sites the insert.
@@ -162,24 +182,39 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
     });
     const sited = await sitedSvc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
     const sitedRow = (
-      await admin.query("SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1", [sited.id])
+      await admin.query(
+        "SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1",
+        [sited.id],
+      )
     ).rows[0];
     expect(sitedRow).toEqual({ provider_entity_id: providerA, location_id: locationA });
     // A correction documents the SAME capture event — it reuses the target's stored siting even when
     // the correcting service's resolver cannot answer (the default seam-less service).
-    const corrected = await svc.correctAssessment(ORG_A, recorderOf[ORG_A], PATIENT, sited.id, sited.version, {
-      ...recordArgs({ data: { ...PAINAD, breathing: 2 } }),
-      correctionReason: "siting reuse check",
-    });
+    const corrected = await svc.correctAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      sited.id,
+      sited.version,
+      {
+        ...recordArgs({ data: { ...PAINAD, breathing: 2 } }),
+        correctionReason: "siting reuse check",
+      },
+    );
     const correctedRow = (
-      await admin.query("SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1", [corrected.id])
+      await admin.query(
+        "SELECT provider_entity_id, location_id FROM clinical_assessment WHERE id=$1",
+        [corrected.id],
+      )
     ).rows[0];
     expect(correctedRow).toEqual({ provider_entity_id: providerA, location_id: locationA });
   });
 
   it("policy gate — a tenant-disabled scale is refused (SCALE_NOT_ENABLED → 403)", async () => {
     await svc.updatePolicy(ORG_A, "painad" as never, false);
-    await expect(svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs())).rejects.toMatchObject({
+    await expect(
+      svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs()),
+    ).rejects.toMatchObject({
       statusCode: 403,
     });
     await svc.updatePolicy(ORG_A, "painad" as never, true); // re-enable for the rest of the suite
@@ -189,7 +224,12 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
 
   it("license gate — a licensed scale without an active license is refused (SCALE_LICENSE_MISSING → 403)", async () => {
     await expect(
-      svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs({ scaleType: "pps", data: PPS })),
+      svc.recordAssessment(
+        ORG_A,
+        recorderOf[ORG_A],
+        PATIENT,
+        recordArgs({ scaleType: "pps", data: PPS }),
+      ),
     ).rejects.toMatchObject({ statusCode: 403 });
     // Grant an active PPS license, then the same record succeeds with the server score (50).
     await svc.createLicense(ORG_A, {
@@ -198,13 +238,23 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
       effectiveDate: "2026-01-01",
       expiresAt: "2027-01-01",
     });
-    const v = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs({ scaleType: "pps", data: PPS }));
+    const v = await svc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({ scaleType: "pps", data: PPS }),
+    );
     expect(v.score).toBe(50);
   });
 
   it("discipline gate — a discipline that cannot record the scale is refused (DISCIPLINE_NOT_ELIGIBLE → 403)", async () => {
     await expect(
-      svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs({ recorderDiscipline: "chaplain" })),
+      svc.recordAssessment(
+        ORG_A,
+        recorderOf[ORG_A],
+        PATIENT,
+        recordArgs({ recorderDiscipline: "chaplain" }),
+      ),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
@@ -217,10 +267,17 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
         correctionReason: "corrected breathing item after re-review",
       }),
     ).rejects.toMatchObject({ statusCode: 412 });
-    const corrected = await svc.correctAssessment(ORG_A, recorderOf[ORG_A], PATIENT, orig.id, orig.version, {
-      ...recordArgs({ data: { ...PAINAD, breathing: 2 } }),
-      correctionReason: "corrected breathing item after re-review",
-    });
+    const corrected = await svc.correctAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      orig.id,
+      orig.version,
+      {
+        ...recordArgs({ data: { ...PAINAD, breathing: 2 } }),
+        correctionReason: "corrected breathing item after re-review",
+      },
+    );
     expect(corrected.score).toBe(6);
     expect(corrected.correctsAssessmentId).toBe(orig.id);
     // The composite self-FK forces the amendment to reuse the target's captured_at.
@@ -233,22 +290,33 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
   });
 
   it("cosign — an LPN-recorded PPS requires a cosignature; a non-recorder RN attests, the recorder cannot", async () => {
-    const rec = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs({ scaleType: "pps", data: PPS, recorderDiscipline: "lpn" }));
+    const rec = await svc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({ scaleType: "pps", data: PPS, recorderDiscipline: "lpn" }),
+    );
     expect(rec.cosignRequired).toBe(true);
     // The original recorder may not cosign their own row (NOT_COSIGN_ELIGIBLE → 403).
-    await expect(svc.cosign(ORG_A, recorderOf[ORG_A], rec.id, "rn")).rejects.toMatchObject({ statusCode: 403 });
+    await expect(svc.cosign(ORG_A, recorderOf[ORG_A], rec.id, "rn")).rejects.toMatchObject({
+      statusCode: 403,
+    });
     // A different RN attests → the assessment_cosignature row lands.
     const done = await svc.cosign(ORG_A, cosignerA, rec.id, "rn");
     expect(done).toEqual({ assessmentId: rec.id, cosigned: true });
     const back = await svc.getAssessment(ORG_A, PATIENT, rec.id);
     expect(back.cosignedAt).not.toBeNull();
     // A second attest is refused (ALREADY_COSIGNED → 409).
-    await expect(svc.cosign(ORG_A, cosignerA, rec.id, "rn")).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.cosign(ORG_A, cosignerA, rec.id, "rn")).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 
   it("cosign — a row that never required a cosignature is refused (COSIGN_NOT_REQUIRED → 422)", async () => {
     const rec = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
-    await expect(svc.cosign(ORG_A, cosignerA, rec.id, "rn")).rejects.toMatchObject({ statusCode: 422 });
+    await expect(svc.cosign(ORG_A, cosignerA, rec.id, "rn")).rejects.toMatchObject({
+      statusCode: 422,
+    });
   });
 
   it("acknowledgeChange — an open significant-change event transitions to acknowledged (§2.2.2)", async () => {
@@ -267,7 +335,9 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
 
   it("RLS — org B cannot read or correct org A's assessment (non-leaking 404)", async () => {
     const rec = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
-    await expect(svc.getAssessment(ORG_B, PATIENT, rec.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(svc.getAssessment(ORG_B, PATIENT, rec.id)).rejects.toMatchObject({
+      statusCode: 404,
+    });
     await expect(
       svc.correctAssessment(ORG_B, recorderOf[ORG_B], PATIENT, rec.id, rec.version, {
         ...recordArgs(),

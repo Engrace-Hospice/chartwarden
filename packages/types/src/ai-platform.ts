@@ -675,11 +675,7 @@ export const M32_AUDIT_RETENTION_CLASS: {
  *                          `M32_IMMUTABLE_COLUMNS`.
  *   `mutable`            — ordinary row.
  */
-export type M32ImmutabilityRule =
-  | "append_only"
-  | "no_delete"
-  | "column_restricted"
-  | "mutable";
+export type M32ImmutabilityRule = "append_only" | "no_delete" | "column_restricted" | "mutable";
 
 export const M32_IMMUTABILITY_RULE: { readonly [K in M32TableName]: M32ImmutabilityRule } = {
   ai_capability: "mutable",
@@ -792,7 +788,10 @@ export const M32_CIPHER_COLUMNS: { readonly [K in M32TableName]: readonly string
 /** The two tables partitioned monthly (§3.8). Their PK is composite BECAUSE of this — the partition key
  *  must be in every UNIQUE index (ADR-0022 D1.1, which `arch:ddl` enforces). */
 export const M32_PARTITIONED_TABLES: {
-  readonly [K in "ai_invocation" | "ai_token_ledger"]: { readonly partitionKey: string; readonly retentionYears: number };
+  readonly [K in "ai_invocation" | "ai_token_ledger"]: {
+    readonly partitionKey: string;
+    readonly retentionYears: number;
+  };
 } = {
   ai_invocation: { partitionKey: "invoked_at", retentionYears: 7 },
   ai_token_ledger: { partitionKey: "accrued_at", retentionYears: 6 },

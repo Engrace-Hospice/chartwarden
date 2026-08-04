@@ -1,3 +1,8 @@
+import type {
+  DocumentRenderer,
+  DocumentStorageProvider,
+  SignedUrlDescriptor,
+} from "@wardenx/types";
 // apps/backend/__tests__/document-seams.test.ts — M22-T04 (§4.3 DocumentRenderer + DocumentStorageProvider).
 //
 // M22 publishes the two boot-registered surfaces of the §7.2 W2 render-from-typed-payload handshake. These
@@ -24,11 +29,6 @@ import {
   getDocumentStorageProvider,
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
-import {
-  type DocumentRenderer,
-  type DocumentStorageProvider,
-  type SignedUrlDescriptor,
-} from "@wardenx/types";
 import { deriveTenantBucket, planSignedUrl } from "../src/modules/22-documents/index";
 
 const ORG = "org-1";

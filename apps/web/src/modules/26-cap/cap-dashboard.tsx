@@ -44,7 +44,11 @@ interface Dashboard {
   openVarianceCount: number;
 }
 
-const cellStyle = { padding: "0.55rem 0.75rem", textAlign: "left" as const, verticalAlign: "middle" as const };
+const cellStyle = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left" as const,
+  verticalAlign: "middle" as const,
+};
 const headStyle = {
   ...cellStyle,
   fontSize: "0.72rem",
@@ -54,7 +58,11 @@ const headStyle = {
   fontWeight: 600,
 };
 const rowStyle = { borderTop: "1px solid var(--color-surface-container)" };
-const numStyle = { ...cellStyle, textAlign: "right" as const, fontVariantNumeric: "tabular-nums" as const };
+const numStyle = {
+  ...cellStyle,
+  textAlign: "right" as const,
+  fontVariantNumeric: "tabular-nums" as const,
+};
 
 export function CapDashboard(): JSX.Element {
   const client = useApiClient();
@@ -67,7 +75,9 @@ export function CapDashboard(): JSX.Element {
     setError(null);
     const res = await client.GET("/api/v1/cap/dashboard");
     if (res.error) {
-      setError("Cap watch is unavailable — you may lack cap visibility, or no cap period is open yet.");
+      setError(
+        "Cap watch is unavailable — you may lack cap visibility, or no cap period is open yet.",
+      );
       setLoading(false);
       return;
     }
@@ -82,7 +92,12 @@ export function CapDashboard(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (!data?.period)
-    return <EmptyState title="No open cap period" description="Open a cap period to begin tracking the aggregate and inpatient caps." />;
+    return (
+      <EmptyState
+        title="No open cap period"
+        description="Open a cap period to begin tracking the aggregate and inpatient caps."
+      />
+    );
 
   const { period, agency, inpatient } = data;
 
@@ -92,7 +107,21 @@ export function CapDashboard(): JSX.Element {
         <PageHeader
           title="Cap Watch"
           breadcrumb={`Revenue Cycle — ${period.capYear} · ${humanize(period.methodology) ?? "methodology unset"}`}
-          actions={<StatusPill tone={toneOf({ open: "progress", active: "progress", in_settlement: "warning", settled: "neutral", reopened: "warning" }, period.status)} label={humanize(period.status)} />}
+          actions={
+            <StatusPill
+              tone={toneOf(
+                {
+                  open: "progress",
+                  active: "progress",
+                  in_settlement: "warning",
+                  settled: "neutral",
+                  reopened: "warning",
+                },
+                period.status,
+              )}
+              label={humanize(period.status)}
+            />
+          }
         />
       }
       kpis={
@@ -109,73 +138,101 @@ export function CapDashboard(): JSX.Element {
         </KpiStrip>
       }
       table={
-      <section style={{ display: "grid", gap: "1.5rem" }}>
-        <div>
-          <h3 style={{ fontSize: "0.85rem", margin: "0 0 0.5rem", color: "var(--color-on-surface)" }}>
-            Patients on the watch
-          </h3>
-          {data.topPatients.length === 0 ? (
-            <EmptyState title="No patients near cap" description="No patient is projected near the per-beneficiary cap." />
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-              <thead>
-                <tr>
-                  <th style={headStyle}>Patient</th>
-                  <th style={headStyle}>Band</th>
-                  <th style={{ ...headStyle, textAlign: "right" }}>Paid YTD</th>
-                  <th style={{ ...headStyle, textAlign: "right" }}>Allocated cap</th>
-                  <th style={{ ...headStyle, textAlign: "right" }}>Utilization</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.topPatients.map((p) => (
-                  <tr key={p.patientId ?? Math.random()} style={rowStyle}>
-                    <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>{p.patientId?.slice(0, 8) ?? "—"}</td>
-                    <td style={cellStyle}>
-                      <StatusPill tone={toneOf(BAND_TONE, p.alertBand)} label={humanize(p.alertBand)} />
-                    </td>
-                    <td style={numStyle}>{money(p.paidYtdCents)}</td>
-                    <td style={numStyle}>{money(p.capAmountCents)}</td>
-                    <td style={numStyle}>{pct(p.pctOfCap)}</td>
+        <section style={{ display: "grid", gap: "1.5rem" }}>
+          <div>
+            <h3
+              style={{
+                fontSize: "0.85rem",
+                margin: "0 0 0.5rem",
+                color: "var(--color-on-surface)",
+              }}
+            >
+              Patients on the watch
+            </h3>
+            {data.topPatients.length === 0 ? (
+              <EmptyState
+                title="No patients near cap"
+                description="No patient is projected near the per-beneficiary cap."
+              />
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                <thead>
+                  <tr>
+                    <th style={headStyle}>Patient</th>
+                    <th style={headStyle}>Band</th>
+                    <th style={{ ...headStyle, textAlign: "right" }}>Paid YTD</th>
+                    <th style={{ ...headStyle, textAlign: "right" }}>Allocated cap</th>
+                    <th style={{ ...headStyle, textAlign: "right" }}>Utilization</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {data.topPatients.map((p) => (
+                    <tr key={p.patientId ?? Math.random()} style={rowStyle}>
+                      <td style={{ ...cellStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {p.patientId?.slice(0, 8) ?? "—"}
+                      </td>
+                      <td style={cellStyle}>
+                        <StatusPill
+                          tone={toneOf(BAND_TONE, p.alertBand)}
+                          label={humanize(p.alertBand)}
+                        />
+                      </td>
+                      <td style={numStyle}>{money(p.paidYtdCents)}</td>
+                      <td style={numStyle}>{money(p.capAmountCents)}</td>
+                      <td style={numStyle}>{pct(p.pctOfCap)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
 
-        <div>
-          <h3 style={{ fontSize: "0.85rem", margin: "0 0 0.5rem", color: "var(--color-on-surface)" }}>
-            Recent threshold events
-          </h3>
-          {data.recentEvents.length === 0 ? (
-            <EmptyState title="No recent events" description="No band transitions in the last 14 days." />
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-              <thead>
-                <tr>
-                  <th style={headStyle}>Scope</th>
-                  <th style={headStyle}>Transition</th>
-                  <th style={headStyle}>Raised</th>
-                  <th style={headStyle}>State</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recentEvents.map((e) => (
-                  <tr key={e.id} style={rowStyle}>
-                    <td style={cellStyle}>{humanize(e.scope)}</td>
-                    <td style={cellStyle}>
-                      <StatusPill tone={toneOf(BAND_TONE, e.currentBand)} label={`${humanize(e.priorBand)} → ${humanize(e.currentBand)}`} />
-                    </td>
-                    <td style={cellStyle}>{shortDate(e.raisedAt)}</td>
-                    <td style={cellStyle}>{e.acknowledgedAt ? "Acknowledged" : "Unacknowledged"}</td>
+          <div>
+            <h3
+              style={{
+                fontSize: "0.85rem",
+                margin: "0 0 0.5rem",
+                color: "var(--color-on-surface)",
+              }}
+            >
+              Recent threshold events
+            </h3>
+            {data.recentEvents.length === 0 ? (
+              <EmptyState
+                title="No recent events"
+                description="No band transitions in the last 14 days."
+              />
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                <thead>
+                  <tr>
+                    <th style={headStyle}>Scope</th>
+                    <th style={headStyle}>Transition</th>
+                    <th style={headStyle}>Raised</th>
+                    <th style={headStyle}>State</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {data.recentEvents.map((e) => (
+                    <tr key={e.id} style={rowStyle}>
+                      <td style={cellStyle}>{humanize(e.scope)}</td>
+                      <td style={cellStyle}>
+                        <StatusPill
+                          tone={toneOf(BAND_TONE, e.currentBand)}
+                          label={`${humanize(e.priorBand)} → ${humanize(e.currentBand)}`}
+                        />
+                      </td>
+                      <td style={cellStyle}>{shortDate(e.raisedAt)}</td>
+                      <td style={cellStyle}>
+                        {e.acknowledgedAt ? "Acknowledged" : "Unacknowledged"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
       }
     />
   );

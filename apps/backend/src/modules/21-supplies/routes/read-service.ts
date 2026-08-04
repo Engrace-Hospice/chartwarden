@@ -361,7 +361,10 @@ export interface M21ReadService {
   ): Promise<CursorPage<SupplyRequestListItem>>;
   getSupplyRequest(actor: M21ReadActor, supplyRequestId: string): Promise<SupplyRequestDetail>;
 
-  listSupplyItems(actor: M21ReadActor, filters: CatalogFilters): Promise<CursorPage<SupplyItemView>>;
+  listSupplyItems(
+    actor: M21ReadActor,
+    filters: CatalogFilters,
+  ): Promise<CursorPage<SupplyItemView>>;
   getSupplyItem(actor: M21ReadActor, supplyItemId: string): Promise<SupplyItemView>;
 
   listComfortKitTemplates(
@@ -372,7 +375,10 @@ export interface M21ReadService {
    *  that would 404 the 501st template an org authored. */
   getComfortKitTemplate(actor: M21ReadActor, templateId: string): Promise<ComfortKitTemplateView>;
 
-  listDispatches(actor: M21ReadActor, filters: DispatchFilters): Promise<CursorPage<DispatchListItem>>;
+  listDispatches(
+    actor: M21ReadActor,
+    filters: DispatchFilters,
+  ): Promise<CursorPage<DispatchListItem>>;
   getDispatch(actor: M21ReadActor, dispatchId: string): Promise<DispatchDetail>;
 
   listReturns(

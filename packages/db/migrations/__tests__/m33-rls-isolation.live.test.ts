@@ -304,7 +304,7 @@ describe.skipIf(!DB_URL)(
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
     });
-    
+
     it("§3.5 every org-scoped policy keys ONLY on the canonical app.org_id variable", () => {
       const rls = readFileSync(join(MIGRATIONS_DIR, "0058_reporting_rls.sql"), "utf8");
       for (const { table } of COVERED) {
@@ -340,7 +340,9 @@ describe.skipIf(!DB_URL)(
     // Every report_mv.select_*() wrapper must be SECURITY DEFINER and carry the org-assertion.
     it("§3.5 every MV wrapper is SECURITY DEFINER and asserts p_org_id = app.org_id", () => {
       const mv = readFileSync(join(MIGRATIONS_DIR, "0060_reporting_mv.sql"), "utf8");
-      const wrappers = [...mv.matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$\$;/g)].map((m) => m[0]);
+      const wrappers = [...mv.matchAll(/CREATE OR REPLACE FUNCTION[\s\S]*?\$\$;/g)].map(
+        (m) => m[0],
+      );
       expect(wrappers.length).toBeGreaterThan(0);
       for (const fn of wrappers) {
         expect(fn).toMatch(/SECURITY DEFINER/);
@@ -441,9 +443,7 @@ describe.skipIf(!DB_URL)(
     describe("report_mv — direct SELECT denied; wrapper enforces the org-assertion (§3.5)", () => {
       it("wardenx_app cannot SELECT the materialized view directly (no MV SELECT grant)", async () => {
         await expect(
-          withOrg(ORG_A, () =>
-            db.query("SELECT count(*) FROM report_mv.mv_census_org_daily"),
-          ),
+          withOrg(ORG_A, () => db.query("SELECT count(*) FROM report_mv.mv_census_org_daily")),
         ).rejects.toThrow(/permission denied/i);
       });
 

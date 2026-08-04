@@ -21,6 +21,7 @@ import type { FastifyInstance } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { parse } from "./reporting-typebox";
+import type { M33WriteRouteService } from "./write-service";
 import {
   CreateDefinitionRequest,
   CreateVersionRequest,
@@ -28,7 +29,6 @@ import {
   DefinitionListQuery,
   DefinitionVersionParams,
 } from "./write-typebox";
-import type { M33WriteRouteService } from "./write-service";
 
 export interface DefinitionRouteDeps {
   readonly service: M33WriteRouteService;

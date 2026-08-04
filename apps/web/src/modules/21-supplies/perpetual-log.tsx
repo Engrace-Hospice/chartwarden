@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { type PerpetualLogView, errorMessage, getPerpetualLog } from "./supplies-api";
+import { LOG_KIND_TONE, dateTime, humanize, shortDate, shortId, toneOf } from "./supplies-status";
 import {
   Card,
   Field,
@@ -39,14 +40,15 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import { LOG_KIND_TONE, dateTime, humanize, shortDate, shortId, toneOf } from "./supplies-status";
 
 /**
  * Walk a line's entries and mark any whose RECORDED balance disagrees with the running sum of the deltas.
  * The running sum is a check, never a replacement: a mismatch means an entry is missing or a delta was
  * mis-recorded, and both are findings — so the row is flagged and both numbers are rendered.
  */
-function balanceChecks(entries: readonly { quantityDelta: string; balanceAfterQuantity: string }[]): boolean[] {
+function balanceChecks(
+  entries: readonly { quantityDelta: string; balanceAfterQuantity: string }[],
+): boolean[] {
   let running: number | null = null;
   return entries.map((e) => {
     const delta = Number(e.quantityDelta);
@@ -110,9 +112,9 @@ export function ComfortKitPerpetualLog(): JSX.Element {
       />
 
       <Notice tone="info">
-        This is the record an inspection asks for: one kit, every lot, every movement, in the order it was
-        recorded. It is append-only — a corrected count appears as a new adjustment entry rather than as an
-        edit to the entry it corrects.
+        This is the record an inspection asks for: one kit, every lot, every movement, in the order
+        it was recorded. It is append-only — a corrected count appears as a new adjustment entry
+        rather than as an edit to the entry it corrects.
       </Notice>
 
       <Card title="Kit">
@@ -127,8 +129,8 @@ export function ComfortKitPerpetualLog(): JSX.Element {
       {log.lines.length === 0 ? (
         <Card title="Lines">
           <span style={mutedStyle}>
-            This kit carries no lot-tracked line. Only medications with a lot number enter the perpetual
-            log; a non-controlled, non-lot-tracked item has no §1304 obligation.
+            This kit carries no lot-tracked line. Only medications with a lot number enter the
+            perpetual log; a non-controlled, non-lot-tracked item has no §1304 obligation.
           </span>
         </Card>
       ) : null}
@@ -163,9 +165,9 @@ export function ComfortKitPerpetualLog(): JSX.Element {
 
             {anyMismatch ? (
               <Notice tone="error">
-                At least one entry's recorded balance does not match the running sum of the deltas before
-                it. Both numbers are shown below — the recorded balance is the legal record, and the
-                disagreement is the finding, so neither is silently corrected here.
+                At least one entry's recorded balance does not match the running sum of the deltas
+                before it. Both numbers are shown below — the recorded balance is the legal record,
+                and the disagreement is the finding, so neither is silently corrected here.
               </Notice>
             ) : null}
 
@@ -202,7 +204,9 @@ export function ComfortKitPerpetualLog(): JSX.Element {
                       <td style={tdQty}>
                         {e.balanceAfterQuantity}
                         {mismatches[i] ? (
-                          <div style={{ ...mutedStyle, color: t.error }}>disagrees with running sum</div>
+                          <div style={{ ...mutedStyle, color: t.error }}>
+                            disagrees with running sum
+                          </div>
                         ) : null}
                       </td>
                       <td style={{ ...td, fontFamily: t.fontMono }}>
@@ -211,7 +215,9 @@ export function ComfortKitPerpetualLog(): JSX.Element {
                       <td style={{ ...td, fontFamily: t.fontMono }}>
                         {e.witnessMembershipId ? shortId(e.witnessMembershipId) : "—"}
                       </td>
-                      <td style={{ ...td, fontFamily: t.fontMono }}>{shortId(e.sourceReference)}</td>
+                      <td style={{ ...td, fontFamily: t.fontMono }}>
+                        {shortId(e.sourceReference)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

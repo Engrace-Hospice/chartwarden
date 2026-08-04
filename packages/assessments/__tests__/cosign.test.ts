@@ -1,12 +1,12 @@
 // @wardenx/assessments — LPN cosignature workflow (§7.4, §2.3, §6) — M9-T03.
 import { describe, expect, it } from "vitest";
 import {
+  type CosignAttest,
+  LPN_COSIGN_SCALES,
+  assertCosignSatisfied,
   cosignRequiredFor,
   cosignSatisfied,
-  assertCosignSatisfied,
   planCosignAttest,
-  LPN_COSIGN_SCALES,
-  type CosignAttest,
 } from "../src/cosign";
 
 describe("§2.3 cosignRequiredFor", () => {
@@ -59,7 +59,9 @@ describe("§7.4 / §6 planCosignAttest", () => {
 
   it("a supervising RN attests a required, un-cosigned row → emits cosigned", () => {
     expect(planCosignAttest(base)).toEqual({ clinicalAssessmentId: "a1", emitsCosigned: true });
-    expect(planCosignAttest({ ...base, cosignerDiscipline: "clinical_supervisor" }).emitsCosigned).toBe(true);
+    expect(
+      planCosignAttest({ ...base, cosignerDiscipline: "clinical_supervisor" }).emitsCosigned,
+    ).toBe(true);
   });
 
   it("refuses to cosign a row that does not require it (422 COSIGN_NOT_REQUIRED)", () => {

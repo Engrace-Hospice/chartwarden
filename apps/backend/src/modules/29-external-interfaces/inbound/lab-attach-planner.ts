@@ -1,3 +1,8 @@
+import type {
+  NewLabObservationInboundLinkRow,
+  NewLabObservationRow,
+  NewLabObservationValueRow,
+} from "@wardenx/db/schema";
 // apps/backend/src/modules/29-external-interfaces/inbound — ORU lab attach planning (M29-T05, §2.2/§4.6 D7).
 // PURE. The transactional-pinch-point core: it turns a projected ORU + its resolved patient binding +
 // terminology/SUD/abnormal decisions into either
@@ -21,15 +26,10 @@ import type {
   LabValueType,
 } from "@wardenx/types";
 import { LAB_VALUE_TYPES } from "@wardenx/types";
-import type {
-  NewLabObservationInboundLinkRow,
-  NewLabObservationRow,
-  NewLabObservationValueRow,
-} from "@wardenx/db/schema";
 import type { ProjectedObr, ProjectedObx } from "./hl7-oru-projection";
-import type { LabPatientResolution } from "./lab-patient-resolver";
 import { computeAbnormalSummary, isCriticalFlagSet, selectValueFlag } from "./lab-abnormal";
-import { OBX_ENCAPSULATED_DATA_TYPE, type ExtractedPdf } from "./obx-pdf";
+import type { LabPatientResolution } from "./lab-patient-resolver";
+import { type ExtractedPdf, OBX_ENCAPSULATED_DATA_TYPE } from "./obx-pdf";
 
 /** The value written to a SUD-redacted `string_value` (the raw wire value never lands, D15). */
 export const SUD_REDACTED_SENTINEL = "[REDACTED_SUD]";
@@ -111,7 +111,10 @@ export type LabAttachPlan =
     }
   | {
       readonly kind: "unmatched";
-      readonly event: { readonly name: "m29.lab_observation.unmatched"; readonly payload: LabUnmatchedPayload };
+      readonly event: {
+        readonly name: "m29.lab_observation.unmatched";
+        readonly payload: LabUnmatchedPayload;
+      };
     };
 
 export interface LabAttachInput {
@@ -157,9 +160,15 @@ function mapResultStatus(raw: string): LabResultStatus {
 }
 
 /** The observation-level LOINC (OBR-4 universal service id; falls back to the first OBX-3). */
-function observationLoinc(obr: ProjectedObr, obxList: readonly ProjectedObx[]): { code: string; text: string } {
+function observationLoinc(
+  obr: ProjectedObr,
+  obxList: readonly ProjectedObx[],
+): { code: string; text: string } {
   if (obr.universalServiceCode) {
-    return { code: obr.universalServiceCode, text: obr.universalServiceText || obr.universalServiceCode };
+    return {
+      code: obr.universalServiceCode,
+      text: obr.universalServiceText || obr.universalServiceCode,
+    };
   }
   const first = obxList.find((o) => o.loincCode !== "");
   const code = first?.loincCode ?? "";
@@ -174,7 +183,8 @@ function buildValueRows(input: LabAttachInput): NewLabObservationValueRow[] {
     const valueType = mapValueType(obx.valueType);
     const isNumeric = valueType === "NM" || valueType === "SN";
     const rawValue = obx.value.trim();
-    const parsedNumeric = isNumeric && rawValue !== "" && Number.isFinite(Number(rawValue)) ? rawValue : null;
+    const parsedNumeric =
+      isNumeric && rawValue !== "" && Number.isFinite(Number(rawValue)) ? rawValue : null;
     rows.push({
       organizationId: input.organizationId,
       observationId: input.observationId,
@@ -184,7 +194,11 @@ function buildValueRows(input: LabAttachInput): NewLabObservationValueRow[] {
       terminologyValidation: input.terminologyValidation,
       valueType,
       numericValue: input.sudRedacted ? null : parsedNumeric,
-      stringValue: input.sudRedacted ? SUD_REDACTED_SENTINEL : parsedNumeric === null ? rawValue || null : null,
+      stringValue: input.sudRedacted
+        ? SUD_REDACTED_SENTINEL
+        : parsedNumeric === null
+          ? rawValue || null
+          : null,
       units: obx.units || null,
       referenceRange: obx.referenceRange || null,
       abnormalFlag: selectValueFlag(obx.abnormalFlagsRaw),
@@ -225,9 +239,15 @@ export function planLabAttach(input: LabAttachInput): LabAttachPlan {
   const { patientId } = input.resolution;
   const orderId = input.resolution.orderId;
   const valueRows = buildValueRows(input);
-  const abnormalSummary: LabAbnormalSummary = computeAbnormalSummary(valueRows.map((v) => v.abnormalFlag ?? null));
-  const topFlag: LabAbnormalFlag | null = selectValueFlag(input.obxList.flatMap((o) => o.abnormalFlagsRaw));
-  const resultStatus = mapResultStatus(input.obr.resultStatusRaw || input.obxList[0]?.resultStatusRaw || "");
+  const abnormalSummary: LabAbnormalSummary = computeAbnormalSummary(
+    valueRows.map((v) => v.abnormalFlag ?? null),
+  );
+  const topFlag: LabAbnormalFlag | null = selectValueFlag(
+    input.obxList.flatMap((o) => o.abnormalFlagsRaw),
+  );
+  const resultStatus = mapResultStatus(
+    input.obr.resultStatusRaw || input.obxList[0]?.resultStatusRaw || "",
+  );
 
   const observation: NewLabObservationRow = {
     id: input.observationId,
@@ -312,7 +332,12 @@ export function planLabAttach(input: LabAttachInput): LabAttachPlan {
       payload: {
         organizationId: input.organizationId,
         requestingModule: "m29",
-        backRef: { kind: "lab_observation", observationId: input.observationId, orderId, patientId },
+        backRef: {
+          kind: "lab_observation",
+          observationId: input.observationId,
+          orderId,
+          patientId,
+        },
         mimeType: "application/pdf",
         retentionClass: "clinical_record",
         payloadBase64: pdf.payloadBase64,

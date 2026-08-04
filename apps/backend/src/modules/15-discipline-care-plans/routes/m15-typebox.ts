@@ -239,9 +239,7 @@ export const CreateInterventionBody = Type.Object({
   frequencyText: Type.String({ minLength: 1, maxLength: 500 }),
   frequencyValue: Type.String({ minLength: 1, maxLength: 64 }),
   discipline: Type.String({ minLength: 1, maxLength: 64 }),
-  responsibleRoles: Type.Optional(
-    Type.Array(Type.String({ maxLength: 64 }), { maxItems: 16 }),
-  ),
+  responsibleRoles: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { maxItems: 16 })),
   addedByDiscipline: Type.String({ minLength: 1, maxLength: 64 }),
 });
 
@@ -256,9 +254,7 @@ export const UpdateInterventionBody = Type.Object({
   scopeText: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
   frequencyText: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
   frequencyValue: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-  responsibleRoles: Type.Optional(
-    Type.Array(Type.String({ maxLength: 64 }), { maxItems: 16 }),
-  ),
+  responsibleRoles: Type.Optional(Type.Array(Type.String({ maxLength: 64 }), { maxItems: 16 })),
 });
 
 /** Route 12 — the per-kind `data` payload is validated against the §3.4 TypeBox inside the domain. */
@@ -374,10 +370,7 @@ const cursorPage = <T extends TSchema>(item: T) =>
     total_count: Type.Optional(Int),
   });
 
-const RedactedCategorySchema = Type.Union([
-  Type.Literal("sud"),
-  Type.Literal("family_violence"),
-]);
+const RedactedCategorySchema = Type.Union([Type.Literal("sud"), Type.Literal("family_violence")]);
 
 /** Route 1 — a plan as the worklist sees it. */
 export const DisciplinePlanListItemResponseSchema = Type.Object({
@@ -565,9 +558,7 @@ export const DisciplinePlanSummaryResponseSchema = Type.Object({
   planId: Str,
   kind: Str,
   status: Str,
-  goals: Type.Array(
-    Type.Object({ goalId: Str, text: Str, status: Str, targetAt: StrN }),
-  ),
+  goals: Type.Array(Type.Object({ goalId: Str, text: Str, status: Str, targetAt: StrN })),
   interventions: Type.Array(
     Type.Object({ interventionId: Str, scopeText: Str, frequencyText: Str, status: Str }),
   ),
@@ -633,7 +624,9 @@ export const VolunteerHourEntryViewResponseSchema = Type.Object({
 });
 
 // ── page envelopes (the list routes return `CursorPage<T>`) ──────────────────────────────────────────
-export const DisciplinePlanListPageResponseSchema = cursorPage(DisciplinePlanListItemResponseSchema);
+export const DisciplinePlanListPageResponseSchema = cursorPage(
+  DisciplinePlanListItemResponseSchema,
+);
 export const DisciplinePlanVersionListPageResponseSchema = cursorPage(
   DisciplinePlanVersionListItemResponseSchema,
 );
@@ -647,9 +640,18 @@ export const SupervisoryCadencePageResponseSchema = cursorPage(
 
 // ── compile-time pins: `T` (what the schema publishes) must be assignable to `V` (the service view) ────
 type Conforms<T extends V, V> = T;
-type _PlanListItem = Conforms<Static<typeof DisciplinePlanListItemResponseSchema>, DisciplinePlanListItem>;
-type _PlanDetail = Conforms<Static<typeof DisciplinePlanDetailResponseSchema>, DisciplinePlanDetail>;
-type _PlanSummary = Conforms<Static<typeof DisciplinePlanSummaryResponseSchema>, DisciplinePlanSummary>;
+type _PlanListItem = Conforms<
+  Static<typeof DisciplinePlanListItemResponseSchema>,
+  DisciplinePlanListItem
+>;
+type _PlanDetail = Conforms<
+  Static<typeof DisciplinePlanDetailResponseSchema>,
+  DisciplinePlanDetail
+>;
+type _PlanSummary = Conforms<
+  Static<typeof DisciplinePlanSummaryResponseSchema>,
+  DisciplinePlanSummary
+>;
 type _VersionListItem = Conforms<
   Static<typeof DisciplinePlanVersionListItemResponseSchema>,
   DisciplinePlanVersionListItem
@@ -691,7 +693,10 @@ type _SupervisoryCadence = Conforms<
   Static<typeof SupervisoryCadenceRowViewResponseSchema>,
   SupervisoryCadenceRowView
 >;
-type _HourEntry = Conforms<Static<typeof VolunteerHourEntryViewResponseSchema>, VolunteerHourEntryView>;
+type _HourEntry = Conforms<
+  Static<typeof VolunteerHourEntryViewResponseSchema>,
+  VolunteerHourEntryView
+>;
 type _PlanPage = Conforms<
   Static<typeof DisciplinePlanListPageResponseSchema>,
   CursorPage<DisciplinePlanListItem>

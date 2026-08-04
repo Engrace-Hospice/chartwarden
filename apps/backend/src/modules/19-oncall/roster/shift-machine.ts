@@ -29,7 +29,12 @@
 //     `opened_at` — it is written for a shift that never opened. An active shift that ends early is
 //     `completed` with an early `closed_at`, which is the truthful record: for the hours it was active,
 //     coverage existed. Cancelling it would erase them.
-import type { IsoInstant, MembershipId, OncallShiftDiscipline, OncallShiftStatus } from "@wardenx/types";
+import type {
+  IsoInstant,
+  MembershipId,
+  OncallShiftDiscipline,
+  OncallShiftStatus,
+} from "@wardenx/types";
 import {
   type TriageSideEffect,
   type TriageTransitionResult,

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `idg_meeting` (M14 §3.3.1). One row per IDG meeting occurrence: the §2.2 lifecycle
 // (scheduled → packets_building → packets_ready → live → adjourned, with cancelled/rescheduled branches),
 // the per-meeting quorum snapshot (frozen at schedule time), and the coordinator. Org+location-scoped
@@ -7,10 +8,9 @@
 // app-validated. RLS + grants + the M4 write-audit trigger land in the RLS migration (M14-T02).
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { index } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { idgMeetingStatus } from "../../enums";
-import { organizations } from "../organizations";
 import { locations } from "../locations";
+import { organizations } from "../organizations";
 import { idgRecurringPolicy } from "./idg-recurring-policies";
 
 export const idgMeeting = pgTable(

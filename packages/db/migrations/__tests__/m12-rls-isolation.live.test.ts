@@ -238,8 +238,8 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
       join(MIGRATIONS_DIR, "0039_dosespot_m12_rls_audit_triggers.sql"),
       "utf8",
     );
-    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter((b) =>
-      COVERED.some((t) => b.includes(`"${t.table}"`)),
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {
@@ -284,10 +284,14 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
 
   it("org B cannot UPDATE org A's medication order (the USING clause covers writes too)", async () => {
     const res = await withOrg(ORG_B, () =>
-      db.query("UPDATE medication_order SET status='discontinued' WHERE id=$1", [a.medicationOrder]),
+      db.query("UPDATE medication_order SET status='discontinued' WHERE id=$1", [
+        a.medicationOrder,
+      ]),
     );
     expect(res.rowCount).toBe(0);
-    const still = await db.query("SELECT status FROM medication_order WHERE id=$1", [a.medicationOrder]);
+    const still = await db.query("SELECT status FROM medication_order WHERE id=$1", [
+      a.medicationOrder,
+    ]);
     expect(still.rows[0].status).toBe("draft");
   });
 

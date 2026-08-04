@@ -11,9 +11,9 @@
 // §2.4 in-transaction side-effect list. `time_off` carries no `visit_state_history` (that log is the
 // visit's), but every transition still writes the M4 audit row and bumps the optimistic `version`.
 import type { TimeOffState } from "@wardenx/types";
-import { TIME_OFF_DENIAL_REASON_MIN_LENGTH } from "./reason-floors";
 import { type SchedulingSideEffect, type SchedulingTransitionResult, result } from "./effects";
 import { SchedulingStateError, require_ } from "./errors";
+import { TIME_OFF_DENIAL_REASON_MIN_LENGTH } from "./reason-floors";
 
 export type TimeOffLifecycleState = TimeOffState;
 
@@ -43,7 +43,10 @@ export type TimeOffEvent =
       readonly windowPassed: boolean;
     };
 
-export type TimeOffTransition = SchedulingTransitionResult<TimeOffLifecycleState, TimeOffEvent["type"]>;
+export type TimeOffTransition = SchedulingTransitionResult<
+  TimeOffLifecycleState,
+  TimeOffEvent["type"]
+>;
 
 /** The legal §2.2.6 transition graph (from → events accepted). Guards are checked separately. */
 export const TIME_OFF_GRAPH: Readonly<
@@ -61,7 +64,10 @@ export const TIME_OFF_GRAPH: Readonly<
  * `ILLEGAL_TIME_OFF_TRANSITION` if the event is not accepted from `from`, or the specific §2.2.6 guard
  * code on a guard failure. Returns the new state + the ordered §2.4 side-effect list.
  */
-export function transitionTimeOff(from: TimeOffLifecycleState, event: TimeOffEvent): TimeOffTransition {
+export function transitionTimeOff(
+  from: TimeOffLifecycleState,
+  event: TimeOffEvent,
+): TimeOffTransition {
   if (!TIME_OFF_GRAPH[from].includes(event.type)) {
     throw new SchedulingStateError(
       "ILLEGAL_TIME_OFF_TRANSITION",
@@ -109,23 +115,21 @@ export function transitionTimeOff(from: TimeOffLifecycleState, event: TimeOffEve
         "TIME_OFF_CANCEL_AFTER_START",
         "an approved time-off window can only be cancelled before it starts",
       );
-      return result(from, event.type, "cancelled", [
-        { kind: "bump_version" },
-        { kind: "audit" },
-      ]);
+      return result(from, event.type, "cancelled", [{ kind: "bump_version" }, { kind: "audit" }]);
     }
 
     case "consume": {
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "time-off is consumed by the system once the window passes");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "time-off is consumed by the system once the window passes",
+      );
       require_(
         event.windowPassed,
         "TIME_OFF_WINDOW_NOT_PASSED",
         "the time-off window has not yet passed",
       );
-      return result(from, event.type, "consumed", [
-        { kind: "bump_version" },
-        { kind: "audit" },
-      ]);
+      return result(from, event.type, "consumed", [{ kind: "bump_version" }, { kind: "audit" }]);
     }
   }
 }

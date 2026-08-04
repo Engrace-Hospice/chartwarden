@@ -7,7 +7,17 @@
 //
 // CROSS-MODULE FK POLICY (architecture WINS): only `organization_id` (core) + `claim_id` (intra-M23)
 // get real `.references(...)`. No PHI / MBI is stored here (D13, §8.7).
-import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { claim } from "./claim";
 import type { HippsCalculationSegments } from "./types";

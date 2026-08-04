@@ -130,7 +130,8 @@ export function buildEmarAbacPredicates(
     },
     controlled_substance_witness_eligible: async (context, target) => {
       const administeringMembershipId =
-        targetStr(target, "administeringClinicianMembershipId") ?? targetStr(target, "administeringMembershipId");
+        targetStr(target, "administeringClinicianMembershipId") ??
+        targetStr(target, "administeringMembershipId");
       if (!administeringMembershipId) return false; // no administering clinician named → deny (fail-closed)
       const facts = await resolver.loadWitnessFacts(context.organizationId, context.userId);
       if (!facts) return false; // no membership facts (fail-closed)
@@ -146,7 +147,8 @@ export function buildEmarAbacPredicates(
       return verdict.eligible;
     },
     caregiver_attested_review_required: async (context, target) => {
-      const administrationId = targetStr(target, "id") ?? targetStr(target, "administrationRecordId");
+      const administrationId =
+        targetStr(target, "id") ?? targetStr(target, "administrationRecordId");
       if (!administrationId) return false; // no row named → deny (fail-closed)
       const facts = await resolver.loadCaregiverReviewFacts(
         context.organizationId,
@@ -159,7 +161,10 @@ export function buildEmarAbacPredicates(
     reconciliation_authoring_eligible: async (context, target) => {
       const worksheetId = targetStr(target, "id") ?? targetStr(target, "worksheetId");
       if (!worksheetId) return false; // no worksheet named → deny (fail-closed)
-      const triggerKind = await resolver.loadWorksheetTriggerKind(context.organizationId, worksheetId);
+      const triggerKind = await resolver.loadWorksheetTriggerKind(
+        context.organizationId,
+        worksheetId,
+      );
       if (!triggerKind) return false; // absent / cross-tenant (fail-closed)
       const matrix = RECONCILIATION_AUTHORING_DISCIPLINES[triggerKind];
       return actorDisciplinesOf(context).some((d) => (matrix as readonly string[]).includes(d));

@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
 //
 // The screen-driving READS (timepoint-schedule worklist, HOPE assessment chart + detail, SFV worklist,
@@ -27,7 +28,6 @@ import {
   planSfvCreation,
   require_,
 } from "@wardenx/hope";
-import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { J2051Severity } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
@@ -88,7 +88,12 @@ const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] =>
   if (!Array.isArray(j)) return [];
   return j.flatMap((e) =>
     e && typeof e === "object" && typeof (e as { severity?: unknown }).severity === "string"
-      ? [{ symptomCode: String((e as { symptomCode?: unknown }).symptomCode ?? "other"), severity: (e as { severity: J2051Severity }).severity }]
+      ? [
+          {
+            symptomCode: String((e as { symptomCode?: unknown }).symptomCode ?? "other"),
+            severity: (e as { severity: J2051Severity }).severity,
+          },
+        ]
       : [],
   );
 };
@@ -167,12 +172,22 @@ export function createDbHopeBackend(
     aggregateId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    await outbox.publish(tx, { eventName, payload, organizationId: org, aggregateKind, aggregateId });
+    await outbox.publish(tx, {
+      eventName,
+      payload,
+      organizationId: org,
+      aggregateKind,
+      aggregateId,
+    });
   }
 
   /** Load a tenant-scoped assessment row (RLS-scoped) or raise the non-leaking 404. */
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
-    const [r] = (await t.select().from(ASSESS).where(eq(ASSESS.id, id)).limit(1)) as AssessmentRow[];
+    const [r] = (await t
+      .select()
+      .from(ASSESS)
+      .where(eq(ASSESS.id, id))
+      .limit(1)) as AssessmentRow[];
     if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
     return r;
   }
@@ -195,7 +210,11 @@ export function createDbHopeBackend(
     },
     async getSchedule(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx.select().from(SCHED).where(eq(SCHED.id, id)).limit(1)) as ScheduleRow[];
+        const [r] = (await tx
+          .select()
+          .from(SCHED)
+          .where(eq(SCHED.id, id))
+          .limit(1)) as ScheduleRow[];
         if (!r) throw new NotFoundError(`HOPE schedule ${id} not found`);
         return toScheduleView(r);
       });
@@ -204,7 +223,11 @@ export function createDbHopeBackend(
     // ── HOPE assessment reads (parent of the partitioned hope_assessment) ──────────────────────────
     async getAssessment(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx.select().from(ASSESS).where(eq(ASSESS.id, id)).limit(1)) as AssessmentRow[];
+        const [r] = (await tx
+          .select()
+          .from(ASSESS)
+          .where(eq(ASSESS.id, id))
+          .limit(1)) as AssessmentRow[];
         if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
         return toAssessmentView(r);
       });
@@ -238,7 +261,11 @@ export function createDbHopeBackend(
     // ── Pre-submission validation findings (§3.3 hope_validation_finding) ───────────────────────────
     async getValidation(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [a] = (await tx.select({ id: ASSESS.id }).from(ASSESS).where(eq(ASSESS.id, id)).limit(1)) as {
+        const [a] = (await tx
+          .select({ id: ASSESS.id })
+          .from(ASSESS)
+          .where(eq(ASSESS.id, id))
+          .limit(1)) as {
           id: string;
         }[];
         if (!a) throw new NotFoundError(`HOPE assessment ${id} not found`);
@@ -246,7 +273,14 @@ export function createDbHopeBackend(
           .select({ ruleId: FINDING.ruleId, severity: FINDING.severity, message: FINDING.message })
           .from(FINDING)
           .where(eq(FINDING.hopeAssessmentId, id));
-        return { assessmentId: id, findings: rows.map((f) => ({ ruleId: f.ruleId, severity: String(f.severity), message: f.message })) };
+        return {
+          assessmentId: id,
+          findings: rows.map((f) => ({
+            ruleId: f.ruleId,
+            severity: String(f.severity),
+            message: f.message,
+          })),
+        };
       });
     },
 
@@ -271,17 +305,23 @@ export function createDbHopeBackend(
     // ── Compliance dashboard (§7 — mirrors the in-mem rate math over the RLS-scoped org rows) ────────
     async complianceDashboard(organizationId, providerEntityId): Promise<HopeComplianceView> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const scheds = (await tx.select({ status: SCHED.status }).from(SCHED)) as { status: string }[];
+        const scheds = (await tx.select({ status: SCHED.status }).from(SCHED)) as {
+          status: string;
+        }[];
         const completed = scheds.filter((s) => s.status === "completed").length;
         const expired = scheds.filter((s) => s.status === "expired").length;
         const denom = completed + expired;
         const sfvAll = (await tx.select({ status: SFV.status }).from(SFV)) as { status: string }[];
         const sfvOnTime = sfvAll.filter((s) => s.status === "completed").length;
-        const sfvDenom = sfvAll.filter((s) => s.status === "completed" || s.status === "missed").length;
+        const sfvDenom = sfvAll.filter(
+          (s) => s.status === "completed" || s.status === "missed",
+        ).length;
         const subsAll = (await tx
           .select({ status: SUB.status, providerEntityId: SUB.providerEntityId })
           .from(SUB)) as { status: string; providerEntityId: string }[];
-        const subs = subsAll.filter((s) => !providerEntityId || s.providerEntityId === providerEntityId);
+        const subs = subsAll.filter(
+          (s) => !providerEntityId || s.providerEntityId === providerEntityId,
+        );
         const accepted = subs.filter((s) => s.status === "accepted").length;
         return {
           providerEntityId: providerEntityId ?? null,
@@ -320,7 +360,11 @@ export function createDbHopeBackend(
     async skipSchedule(organizationId, id, reasonCode) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [existing] = (await t.select().from(SCHED).where(eq(SCHED.id, id)).limit(1)) as ScheduleRow[];
+        const [existing] = (await t
+          .select()
+          .from(SCHED)
+          .where(eq(SCHED.id, id))
+          .limit(1)) as ScheduleRow[];
         if (!existing) throw new NotFoundError(`HOPE schedule ${id} not found`);
         const rows = (await t
           .update(SCHED)
@@ -378,7 +422,11 @@ export function createDbHopeBackend(
           .from(SFV)
           .where(eq(SFV.triggeringAssessmentId, args.triggeringAssessmentId))
           .limit(1)) as SfvRow[];
-        require_(sfv != null, "M10_SFV_NO_TRIGGER", `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`);
+        require_(
+          sfv != null,
+          "M10_SFV_NO_TRIGGER",
+          `No SFV obligation for triggering assessment ${args.triggeringAssessmentId}.`,
+        );
         const at = new Date();
         // Insert the signed RFA-04 row, then complete the open SFV (the §4.4 guards live in planSfvCompletion).
         const row = firstOrThrow(
@@ -407,7 +455,12 @@ export function createDbHopeBackend(
         );
         await t
           .update(SFV)
-          .set({ status: "completed", completingAssessmentId: plan.completingAssessmentId, completedAt: at, updatedAt: at })
+          .set({
+            status: "completed",
+            completingAssessmentId: plan.completingAssessmentId,
+            completedAt: at,
+            updatedAt: at,
+          })
           .where(eq(SFV.id, sfv.id));
         await emit(t, organizationId, "m10.hope.sfv_completed", "symptom_follow_up_visit", sfv.id, {
           sfvId: sfv.id,
@@ -423,7 +476,11 @@ export function createDbHopeBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadA(t, id);
-        require_(r.status === "draft", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} is not a draft.`);
+        require_(
+          r.status === "draft",
+          "M10_CORRECTION_TARGET_NOT_SIGNED",
+          `Assessment ${id} is not a draft.`,
+        );
         const merged = { ...(r.data as Record<string, unknown>), ...data };
         const rows = (await t
           .update(ASSESS)
@@ -439,9 +496,15 @@ export function createDbHopeBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadA(t, id);
-        require_(r.status === "draft", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} is not a draft and cannot be signed.`);
+        require_(
+          r.status === "draft",
+          "M10_CORRECTION_TARGET_NOT_SIGNED",
+          `Assessment ${id} is not a draft and cannot be signed.`,
+        );
         const at = new Date();
-        const verdict = evaluateJ2051Trigger({ entries: j2051EntriesOf(r.data as Record<string, unknown>) }); // D4
+        const verdict = evaluateJ2051Trigger({
+          entries: j2051EntriesOf(r.data as Record<string, unknown>),
+        }); // D4
         // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
         const signed = firstOrThrow(
           await t
@@ -468,7 +531,11 @@ export function createDbHopeBackend(
         });
         if (verdict.triggerFired) {
           // D4 — exactly one SFV per source timepoint; D3 anchored to signed_at (org TZ defaults to UTC here).
-          const descriptor = planSfvCreation({ triggeringAssessmentId: id, signedAt: at.toISOString(), timeZone: "UTC" });
+          const descriptor = planSfvCreation({
+            triggeringAssessmentId: id,
+            signedAt: at.toISOString(),
+            timeZone: "UTC",
+          });
           const sfv = firstOrThrow(
             await t
               .insert(SFV)
@@ -507,8 +574,16 @@ export function createDbHopeBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const original = await loadA(t, id);
-        require_(original.status === "signed", "M10_CORRECTION_TARGET_NOT_SIGNED", `Assessment ${id} must be signed to correct (edit the draft instead).`);
-        require_(original.supersededById == null, "M10_CORRECTION_TARGET_SUPERSEDED", `Assessment ${id} is already superseded; correct the latest instead.`);
+        require_(
+          original.status === "signed",
+          "M10_CORRECTION_TARGET_NOT_SIGNED",
+          `Assessment ${id} must be signed to correct (edit the draft instead).`,
+        );
+        require_(
+          original.supersededById == null,
+          "M10_CORRECTION_TARGET_SUPERSEDED",
+          `Assessment ${id} is already superseded; correct the latest instead.`,
+        );
         const at = new Date();
         const correction = firstOrThrow(
           await t
@@ -534,10 +609,17 @@ export function createDbHopeBackend(
             .returning(),
           "hope_assessment (correction) insert returned no row",
         );
-        await emit(t, organizationId, "m10.hope.correction_submitted", "hope_assessment", correction.id, {
-          correctionAssessmentId: correction.id,
-          originalAssessmentId: id,
-        });
+        await emit(
+          t,
+          organizationId,
+          "m10.hope.correction_submitted",
+          "hope_assessment",
+          correction.id,
+          {
+            correctionAssessmentId: correction.id,
+            originalAssessmentId: id,
+          },
+        );
         return toAssessmentView(correction);
       });
     },
@@ -561,7 +643,11 @@ export function createDbHopeBackend(
         const t = tx as unknown as DbClient;
         const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
-        require_(r.status === "rejected", "M10_SUBMISSION_RETRY_NOT_REJECTED", `Submission ${id} is ${r.status}; only a rejected submission can be retried.`);
+        require_(
+          r.status === "rejected",
+          "M10_SUBMISSION_RETRY_NOT_REJECTED",
+          `Submission ${id} is ${r.status}; only a rejected submission can be retried.`,
+        );
         const rows = (await t
           .update(SUB)
           .set({ status: "queued", updatedAt: new Date() })

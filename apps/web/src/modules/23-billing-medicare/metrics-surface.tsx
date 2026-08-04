@@ -53,7 +53,9 @@ export function MetricsSurface(): JSX.Element {
       setLoading(false);
       return;
     }
-    setBuckets(((res.data as unknown as { buckets?: MetricsBucket[] })?.buckets ?? []) as MetricsBucket[]);
+    setBuckets(
+      ((res.data as unknown as { buckets?: MetricsBucket[] })?.buckets ?? []) as MetricsBucket[],
+    );
     setLoading(false);
   }, [client, applied]);
 
@@ -66,7 +68,8 @@ export function MetricsSurface(): JSX.Element {
     const totalCents = buckets.reduce((n, b) => n + b.amountCents, 0);
     const byKey = new Map(buckets.map((b) => [b.key, b]));
     const denied = byKey.get("denied")?.count ?? 0;
-    const paidCents = (byKey.get("paid")?.amountCents ?? 0) + (byKey.get("partial_paid")?.amountCents ?? 0);
+    const paidCents =
+      (byKey.get("paid")?.amountCents ?? 0) + (byKey.get("partial_paid")?.amountCents ?? 0);
     const denialRate = totalCount > 0 ? Math.round((denied / totalCount) * 100) : null;
     return { totalCount, totalCents, denied, paidCents, denialRate };
   }, [buckets]);
@@ -78,13 +81,18 @@ export function MetricsSurface(): JSX.Element {
         <KpiStrip>
           <KpiCard label="Claims (all states)" value={totals.totalCount} />
           <KpiCard label="Total billed" value={dollars(totals.totalCents)} />
-          <KpiCard label="Denial rate" value={totals.denialRate === null ? "—" : `${totals.denialRate}%`} />
+          <KpiCard
+            label="Denial rate"
+            value={totals.denialRate === null ? "—" : `${totals.denialRate}%`}
+          />
           <KpiCard label="Denied claims" value={totals.denied} />
           <KpiCard label="Paid amount" value={dollars(totals.paidCents)} />
         </KpiStrip>
       }
       charts={
-        <section style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}>
+        <section
+          style={{ display: "flex", alignItems: "flex-end", gap: "0.5rem", flexWrap: "wrap" }}
+        >
           <label style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
             <span style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>
               Provider entity window
@@ -97,7 +105,11 @@ export function MetricsSurface(): JSX.Element {
               style={inputStyle}
             />
           </label>
-          <button type="button" onClick={() => setApplied(providerEntityId)} style={primaryButtonStyle}>
+          <button
+            type="button"
+            onClick={() => setApplied(providerEntityId)}
+            style={primaryButtonStyle}
+          >
             Apply
           </button>
           {applied ? (
@@ -150,7 +162,15 @@ function StateMixTable({
   };
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
-      <caption style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+      <caption
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+        }}
+      >
         Claim state mix
       </caption>
       <thead>
@@ -176,7 +196,10 @@ function StateMixTable({
         {sorted.map((b, i) => {
           const share = totalCount > 0 ? Math.round((b.count / totalCount) * 100) : 0;
           return (
-            <tr key={b.key} style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}>
+            <tr
+              key={b.key}
+              style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
+            >
               <td style={tdStyle}>
                 <StatusPill label={statusLabel(b.key)} tone={claimStateTone(b.key)} />
               </td>
@@ -190,7 +213,10 @@ function StateMixTable({
                 {dollars(b.amountCents)}
               </td>
               <td style={tdStyle}>
-                <a href={drillHref(b.key)} style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}>
+                <a
+                  href={drillHref(b.key)}
+                  style={{ fontSize: "0.8rem", color: "var(--color-primary)" }}
+                >
                   Open in workbench →
                 </a>
               </td>

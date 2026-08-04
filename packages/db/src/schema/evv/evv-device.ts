@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `evv_device` (M18 §3.3 / §2.2.3 D8). The per-clinician mobile-device registration lifecycle
 // (pending_approval → approved | rejected → suspended → retired), gating EVV capture on an M2-attested
 // device. Membership-scoped, NOT patient-scoped (erases on workforce-member departure per M2 D8, not on a
@@ -5,10 +6,9 @@
 // are DENYLISTED from audit (§3.6). `m2_device_attestation_id` is a plain uuid logical FK to M2. RLS + grants
 // + M4 write-audit trigger land in the RLS migration (M18-T02 / 0047).
 import { bigint, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { evvDevicePlatform, evvDeviceStatus } from "../../enums";
-import { organizations } from "../organizations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
 
 export const evvDevice = pgTable(
   "evv_device",

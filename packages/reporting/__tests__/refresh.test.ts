@@ -167,7 +167,9 @@ describe("M33 §2.5 dispatcher — the three refresh tiers resolve to the right 
       ports,
     );
     expect(result.kind).toBe("enqueued");
-    expect(calls.indexOf("findByKey:mv_census")).toBeLessThan(calls.findIndex((c) => c.startsWith("enqueue:")));
+    expect(calls.indexOf("findByKey:mv_census")).toBeLessThan(
+      calls.findIndex((c) => c.startsWith("enqueue:")),
+    );
   });
 
   it("a SKIP never touches the queue", async () => {
@@ -202,7 +204,10 @@ describe("M33 §2.6 debounce — the window-tick floor makes the jobId idempoten
   });
 
   it("the dispatched job carries the floored ISO instant + the derived jobId (the §2.6 dedup oracle)", async () => {
-    const { ports, enqueued } = makeDispatcherPorts(makeMeta({ debounceWindowSeconds: 5 }), FIXED_NOW);
+    const { ports, enqueued } = makeDispatcherPorts(
+      makeMeta({ debounceWindowSeconds: 5 }),
+      FIXED_NOW,
+    );
     await dispatchMvRefresh(
       { mvKey: "mv_census", triggerKind: "incremental_outbox", organizationId: null },
       ports,
@@ -210,7 +215,9 @@ describe("M33 §2.6 debounce — the window-tick floor makes the jobId idempoten
     expect(enqueued).toHaveLength(1);
     const job = enqueued[0]!.job as { requestedAtFloor: string };
     expect(job.requestedAtFloor).toBe("2026-06-25T12:00:05.000Z");
-    expect(enqueued[0]!.opts.jobId).toBe(mvRefreshJobId("mv_census", floorToDebounceTick(FIXED_NOW, 5)));
+    expect(enqueued[0]!.opts.jobId).toBe(
+      mvRefreshJobId("mv_census", floorToDebounceTick(FIXED_NOW, 5)),
+    );
   });
 });
 
@@ -379,7 +386,12 @@ describe("M33 §2.4 / D14 lag probe — crossing the 10-min freshness SLO emits 
     const atThreshold = decideLagTransition({
       lagSeconds: 600,
       thresholdSeconds: 600,
-      prior: { breached: true, consecutiveOver: 5, consecutiveUnder: 1, breachStartedAt: "2026-06-25T11:50:00.000Z" },
+      prior: {
+        breached: true,
+        consecutiveOver: 5,
+        consecutiveUnder: 1,
+        breachStartedAt: "2026-06-25T11:50:00.000Z",
+      },
       now: FIXED_NOW,
     });
     expect(atThreshold.transition).toBe("recovered"); // 600 is under → second under-probe recovers

@@ -3,11 +3,7 @@
 // string compare — no `Date`, no timezone, no I/O. Election-/LOC-period coverage helpers are the common
 // spine of the period/cert/f2f/loc rules. PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no clock.
 import type { IsoDate } from "../contracts";
-import type {
-  ClaimSnapshot,
-  ElectionPeriodSnapshot,
-  LevelOfCarePeriodSnapshot,
-} from "./types";
+import type { ClaimSnapshot, ElectionPeriodSnapshot, LevelOfCarePeriodSnapshot } from "./types";
 
 /** `a <= b` on ISO calendar dates (lexicographic == chronological for `YYYY-MM-DD`). */
 export function dateLte(a: IsoDate, b: IsoDate): boolean {

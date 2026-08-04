@@ -1,12 +1,12 @@
 // @wardenx/idg — §1.1 / D8 action-item lifecycle + carry-forward + auto-close — M14-T03.
 import { describe, expect, it } from "vitest";
 import {
-  transitionActionItem,
-  planActionItemCreate,
-  planCarryForward,
   ACTION_ITEM_GRAPH,
   CARRY_FORWARD_COMPLIANCE_THRESHOLD,
   outboxEvents,
+  planActionItemCreate,
+  planCarryForward,
+  transitionActionItem,
 } from "../src/lifecycle";
 
 describe("§1.1 / D8 transition graph", () => {
@@ -63,7 +63,12 @@ describe("§4.5 D8 auto-close", () => {
 
   it("refuses a human-actor auto-close", () => {
     expect(() =>
-      transitionActionItem("open", { type: "autoClose", linkedKind: "encounter", linkedArtifactId: "e1", isSystemActor: false }),
+      transitionActionItem("open", {
+        type: "autoClose",
+        linkedKind: "encounter",
+        linkedArtifactId: "e1",
+        isSystemActor: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "ILLEGAL_ACTION_ITEM_TRANSITION" }));
   });
 });
@@ -77,15 +82,21 @@ describe("§2.7 D8 carry-forward", () => {
   });
 
   it("emits the critical Compliance alert when the count reaches the threshold (≥ 3)", () => {
-    const r = planCarryForward({ priorCarryForwardCount: CARRY_FORWARD_COMPLIANCE_THRESHOLD - 1, isOpenAndOverdue: true });
+    const r = planCarryForward({
+      priorCarryForwardCount: CARRY_FORWARD_COMPLIANCE_THRESHOLD - 1,
+      isOpenAndOverdue: true,
+    });
     expect(r.newCarryForwardCount).toBe(CARRY_FORWARD_COMPLIANCE_THRESHOLD);
     expect(r.isComplianceAlert).toBe(true);
-    expect(r.effects).toContainEqual({ kind: "alert", alert: "m14.action_item.carry_forward.compliance" });
+    expect(r.effects).toContainEqual({
+      kind: "alert",
+      alert: "m14.action_item.carry_forward.compliance",
+    });
   });
 
   it("refuses carry-forward of an item that is not open + overdue", () => {
-    expect(() => planCarryForward({ priorCarryForwardCount: 0, isOpenAndOverdue: false })).toThrowError(
-      expect.objectContaining({ code: "ILLEGAL_ACTION_ITEM_TRANSITION" }),
-    );
+    expect(() =>
+      planCarryForward({ priorCarryForwardCount: 0, isOpenAndOverdue: false }),
+    ).toThrowError(expect.objectContaining({ code: "ILLEGAL_ACTION_ITEM_TRANSITION" }));
   });
 });

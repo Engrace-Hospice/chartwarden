@@ -6,16 +6,16 @@
 // refusal (wrong alg, iss/sub confusion, audience confusion, expiry, over-long lifetime, missing jti,
 // tampered signature), then the api-key constant-time compare and the session mint/verify invariants.
 
-import { generateKeyPairSync, createSign, type KeyObject } from "node:crypto";
+import { type KeyObject, createSign, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
+import { apiKeyFingerprint, verifyApiKey } from "../src/auth/api-key";
 import {
   FHIR_ASSERTION_ALG,
   FHIR_ASSERTION_MAX_LIFETIME_MS,
-  verifyClientAssertion,
   type FhirJwk,
+  verifyClientAssertion,
 } from "../src/auth/backend-services";
-import { apiKeyFingerprint, verifyApiKey } from "../src/auth/api-key";
 import {
   FHIR_SESSION_TTL_MS,
   buildSessionMint,
@@ -69,19 +69,28 @@ describe("§D2 SMART Backend Services client-assertion", () => {
     if (result.ok) {
       expect(result.claims.clientId).toBe(CLIENT_ID);
       expect(result.claims.jti).toBe("jti-abc-123");
-      expect(result.claims.expiresAtMs).toBe((Math.floor((NOW + 2 * 60 * 1000) / 1000)) * 1000);
+      expect(result.claims.expiresAtMs).toBe(Math.floor((NOW + 2 * 60 * 1000) / 1000) * 1000);
     }
   });
 
   it("refuses a non-RS384 alg (algorithm downgrade / alg:none)", () => {
-    const r1 = verifyClientAssertion({ ...baseInput, assertion: mintAssertion({}, { alg: "RS256" }) });
+    const r1 = verifyClientAssertion({
+      ...baseInput,
+      assertion: mintAssertion({}, { alg: "RS256" }),
+    });
     expect(r1).toEqual({ ok: false, reason: "UNSUPPORTED_ALG" });
-    const r2 = verifyClientAssertion({ ...baseInput, assertion: mintAssertion({}, { alg: "none" }) });
+    const r2 = verifyClientAssertion({
+      ...baseInput,
+      assertion: mintAssertion({}, { alg: "none" }),
+    });
     expect(r2).toEqual({ ok: false, reason: "UNSUPPORTED_ALG" });
   });
 
   it("refuses iss/sub that disagree or name a different client", () => {
-    const mismatched = verifyClientAssertion({ ...baseInput, assertion: mintAssertion({ sub: "other" }) });
+    const mismatched = verifyClientAssertion({
+      ...baseInput,
+      assertion: mintAssertion({ sub: "other" }),
+    });
     expect(mismatched).toEqual({ ok: false, reason: "ISS_SUB_MISMATCH" });
     const impersonation = verifyClientAssertion({
       ...baseInput,
@@ -115,18 +124,26 @@ describe("§D2 SMART Backend Services client-assertion", () => {
 
     const tooLong = verifyClientAssertion({
       ...baseInput,
-      assertion: mintAssertion({ exp: Math.floor((NOW + FHIR_ASSERTION_MAX_LIFETIME_MS + 60_000) / 1000) }),
+      assertion: mintAssertion({
+        exp: Math.floor((NOW + FHIR_ASSERTION_MAX_LIFETIME_MS + 60_000) / 1000),
+      }),
     });
     expect(tooLong).toEqual({ ok: false, reason: "ASSERTION_LIFETIME_TOO_LONG" });
   });
 
   it("refuses an assertion with no jti (un-dedupable ⇒ replayable)", () => {
-    const result = verifyClientAssertion({ ...baseInput, assertion: mintAssertion({ jti: undefined }) });
+    const result = verifyClientAssertion({
+      ...baseInput,
+      assertion: mintAssertion({ jti: undefined }),
+    });
     expect(result).toEqual({ ok: false, reason: "MISSING_JTI" });
   });
 
   it("refuses when the header kid names no key in the resolved JWKS", () => {
-    const result = verifyClientAssertion({ ...baseInput, assertion: mintAssertion({}, { kid: "kid-unknown" }) });
+    const result = verifyClientAssertion({
+      ...baseInput,
+      assertion: mintAssertion({}, { kid: "kid-unknown" }),
+    });
     expect(result).toEqual({ ok: false, reason: "NO_MATCHING_JWK" });
   });
 
@@ -170,10 +187,12 @@ describe("§2.3 session scope resolution + §2.4 verification", () => {
       ok: true,
       granted: ["system/Patient.read"],
     });
-    expect(resolveGrantedScopes(["system/Patient.read", "system/Encounter.read"], ALLOWED)).toEqual({
-      ok: false,
-      invalidScopes: ["system/Encounter.read"],
-    });
+    expect(resolveGrantedScopes(["system/Patient.read", "system/Encounter.read"], ALLOWED)).toEqual(
+      {
+        ok: false,
+        invalidScopes: ["system/Encounter.read"],
+      },
+    );
   });
 
   it("mints a session whose expiry is issued_at + 15min, server-derived", () => {

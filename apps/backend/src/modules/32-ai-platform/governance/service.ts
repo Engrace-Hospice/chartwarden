@@ -1,3 +1,27 @@
+import {
+  AI_LIFECYCLE_INITIAL_STATE,
+  type AiCalibrationPublicationRequest,
+  type AiEvaluationRunSnapshot,
+  AiGovernanceError,
+  type AiGovernanceGateDecision,
+  type AiLifecycleTransitionRequest,
+  type AiOptInAcknowledgmentSubmission,
+  type AiOptInResolvedEvidence,
+  type AiTenantOptInRequest,
+  aiConsumerPostureFor,
+  aiEvaluationRunSupportsEdge,
+  aiGovernanceGateFor,
+  aiLifecycleTransition,
+  aiRequiredSignerRoles,
+  evaluateAiCalibrationPublication,
+  evaluateAiClinicianOptOut,
+  evaluateAiClinicianOptOutRevert,
+  evaluateAiLifecycleTransition,
+  evaluateAiTenantOptIn,
+  evaluateAiTenantOptInPause,
+  evaluateAiTenantOptInWithdrawal,
+  requireAiGovernance,
+} from "@wardenx/ai-platform";
 // apps/backend/src/modules/32-ai-platform/governance/service.ts — M32-T03's governance SERVICES: the
 // capability lifecycle (§2.2), calibration publication (§3.2.3), tenant opt-in (§5.3/W4) and clinician
 // opt-out (§5.4), sequenced over the `./store` ports.
@@ -28,39 +52,15 @@
 // resolver REFUSES the opt-in instead of waving it through. That direction is the whole point: a
 // default that returned "resolved" would make the wave's most consequential consent gate a no-op that
 // nothing distinguishes from a working one.
-import {
-  type AiCapabilityConsumerPosture,
-  type AiCapabilityOwningRole,
-  type AiCapabilityRiskTier,
-  type AiLifecycleApprovalKind,
-  type AiCapabilityLifecycleState,
-  type AiRoutingMode,
-  type AiRoutingPreference,
+import type {
+  AiCapabilityConsumerPosture,
+  AiCapabilityLifecycleState,
+  AiCapabilityOwningRole,
+  AiCapabilityRiskTier,
+  AiLifecycleApprovalKind,
+  AiRoutingMode,
+  AiRoutingPreference,
 } from "@wardenx/types";
-import {
-  type AiCalibrationPublicationRequest,
-  type AiEvaluationRunSnapshot,
-  type AiGovernanceGateDecision,
-  type AiLifecycleTransitionRequest,
-  type AiOptInAcknowledgmentSubmission,
-  type AiOptInResolvedEvidence,
-  type AiTenantOptInRequest,
-  AI_LIFECYCLE_INITIAL_STATE,
-  AiGovernanceError,
-  aiConsumerPostureFor,
-  aiEvaluationRunSupportsEdge,
-  aiGovernanceGateFor,
-  aiRequiredSignerRoles,
-  aiLifecycleTransition,
-  evaluateAiCalibrationPublication,
-  evaluateAiClinicianOptOut,
-  evaluateAiClinicianOptOutRevert,
-  evaluateAiLifecycleTransition,
-  evaluateAiTenantOptIn,
-  evaluateAiTenantOptInPause,
-  evaluateAiTenantOptInWithdrawal,
-  requireAiGovernance,
-} from "@wardenx/ai-platform";
 
 import type {
   AiCalibrationRow,

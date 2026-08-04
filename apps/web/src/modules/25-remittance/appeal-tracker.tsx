@@ -33,7 +33,11 @@ const TIER_LABEL: Record<string, string> = {
   federal_court: "Federal Court",
 };
 
-const cellStyle = { padding: "0.55rem 0.75rem", textAlign: "left" as const, verticalAlign: "middle" as const };
+const cellStyle = {
+  padding: "0.55rem 0.75rem",
+  textAlign: "left" as const,
+  verticalAlign: "middle" as const,
+};
 const headStyle = {
   ...cellStyle,
   fontSize: "0.72rem",
@@ -85,7 +89,10 @@ export function AppealTracker(): JSX.Element {
           <KpiCard label="Total appeals" value={rows.length} />
           <KpiCard label="In flight" value={open.length} />
           <KpiCard label="Deadline ≤ 7 days" value={dueSoon} />
-          <KpiCard label="Favorable" value={rows.filter((r) => r.decisionOutcome === "favorable").length} />
+          <KpiCard
+            label="Favorable"
+            value={rows.filter((r) => r.decisionOutcome === "favorable").length}
+          />
         </KpiStrip>
       }
       table={
@@ -106,7 +113,10 @@ export function AppealTracker(): JSX.Element {
                 <tr key={r.id} style={rowStyle}>
                   <td style={cellStyle}>{TIER_LABEL[r.tier] ?? humanize(r.tier)}</td>
                   <td style={cellStyle}>
-                    <StatusPill label={humanize(r.state)} tone={toneOf(APPEAL_STATE_TONE, r.state)} />
+                    <StatusPill
+                      label={humanize(r.state)}
+                      tone={toneOf(APPEAL_STATE_TONE, r.state)}
+                    />
                   </td>
                   <td style={cellStyle}>
                     {r.decisionOutcome ? (
@@ -120,7 +130,12 @@ export function AppealTracker(): JSX.Element {
                   </td>
                   <td style={cellStyle}>
                     {isOpen(r.state) ? (
-                      <CountdownChip dueAt={r.tierDeadlineAt} label="files" warnWithinHours={14 * 24} alertWithinHours={3 * 24} />
+                      <CountdownChip
+                        dueAt={r.tierDeadlineAt}
+                        label="files"
+                        warnWithinHours={14 * 24}
+                        alertWithinHours={3 * 24}
+                      />
                     ) : (
                       <span style={{ color: "var(--color-on-surface-variant)" }}>
                         {new Date(r.tierDeadlineAt).toLocaleDateString()}

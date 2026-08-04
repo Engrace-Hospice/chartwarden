@@ -5,9 +5,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DegradedError,
+  type HopeSubmissionEnvelope,
+  INITIAL_BREAKER_SNAPSHOT,
   IQIES_CIRCUIT_BREAKER_CONFIG,
   IQIES_ENVELOPE_OBJECT_LOCK,
-  INITIAL_BREAKER_SNAPSHOT,
   applyOutcome,
   assembleEnvelopeCanonical,
   buildEnvelopeStorageUri,
@@ -16,7 +17,6 @@ import {
   evaluateBreaker,
   isDegradedError,
   openCircuitError,
-  type HopeSubmissionEnvelope,
 } from "../src/index";
 
 describe("DegradedError (INT-009 five-field shape)", () => {

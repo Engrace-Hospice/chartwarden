@@ -1,3 +1,6 @@
+import * as billing from "@wardenx/billing";
+import { BillingRuleRegistry, pass } from "@wardenx/billing";
+import type { Rule } from "@wardenx/billing";
 // apps/backend/src/modules/23-billing-medicare/__tests__/assembly.test.ts — the §10 task-30 CLAIM ASSEMBLY
 // service tests (D10 / D15). The service constructs its repos internally (`new repositories.X(tx)`), so this
 // suite PARTIAL-mocks `@wardenx/billing`: the data ports are swapped for the in-memory `_billing-repo-fakes`
@@ -11,14 +14,8 @@
 //   • one logical unit — claim + claim_line[] + hipps_calculation (+ optional sia_calculation) + the initial
 //     validation_run + the creation history row + the `m23.claim.draft_created` outbox emit all land together.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as billing from "@wardenx/billing";
-import { BillingRuleRegistry, pass } from "@wardenx/billing";
-import type { Rule } from "@wardenx/billing";
 import { buildClaimAssemblyService } from "../services/claim-assembly";
-import type {
-  ClaimAssemblyActor,
-  ClaimAssemblySeams,
-} from "../services/claim-assembly";
+import type { ClaimAssemblyActor, ClaimAssemblySeams } from "../services/claim-assembly";
 import type { FakeStore } from "./_billing-repo-fakes";
 import { makeFakeDb } from "./_billing-repo-fakes";
 
@@ -114,13 +111,21 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
     billableEncounters: {
       forRange: async () => [
         { encounterId: "enc-bill", serviceDate: "2025-11-03", billability: "billable" },
-        { encounterId: "enc-cosign", serviceDate: "2025-11-04", billability: "awaiting_cosignature" },
+        {
+          encounterId: "enc-cosign",
+          serviceDate: "2025-11-04",
+          billability: "awaiting_cosignature",
+        },
       ],
     },
     signedEncounters: { inWindow: async () => [] },
     evvCompliance: { bracketsForEncounters: async () => [] },
     mdm: {
-      resolveProviderEntity: async () => ({ ccn: "123456", macJurisdiction: "ngs_j6", cbsaCode: null }),
+      resolveProviderEntity: async () => ({
+        ccn: "123456",
+        macJurisdiction: "ngs_j6",
+        cbsaCode: null,
+      }),
       resolveClinicalParticipants: async () => ({
         attending: null,
         hospicePhysician: null,

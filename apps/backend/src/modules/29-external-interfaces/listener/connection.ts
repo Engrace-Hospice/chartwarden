@@ -1,3 +1,4 @@
+import { type InboundAckDisposition, buildAckFrame } from "./ack";
 // apps/backend/src/modules/29-external-interfaces/listener — per-connection MLLP frame handling (M29-T03,
 // §4.11.3). Orchestration over an abstract socket + an injected ingest sink, so the framing → allowlist →
 // idempotency → ACK flow is unit-testable with a fake socket (the real `tls.Socket` wiring is in
@@ -25,7 +26,6 @@ import {
   parseMshEnvelope,
   sha256Hex,
 } from "./mllp-framing";
-import { type InboundAckDisposition, buildAckFrame } from "./ack";
 import type { SupervisorFeedDescriptor } from "./supervisor";
 
 /** The minimal socket surface the handler drives — satisfied by a `tls.Socket` and by a test fake. */
@@ -140,7 +140,9 @@ export async function processInboundFrame(
   }
 
   // §4.11.3 idempotency (D14) — a re-send after an ACK-window timeout ACKs `AA` without re-enqueue.
-  if (await deps.sink.isDuplicate({ feedId: feed.id, messageControlId: envelope.messageControlId })) {
+  if (
+    await deps.sink.isDuplicate({ feedId: feed.id, messageControlId: envelope.messageControlId })
+  ) {
     deps.log("info", "hl7.inbound.duplicate_dropped", {
       feedId: feed.id,
       messageControlId: envelope.messageControlId,
@@ -166,7 +168,10 @@ export function handleMllpConnection(
   const buffer = new MllpFrameBuffer();
   socket.setTimeout(deps.readTimeoutMs);
   socket.on("timeout", () => {
-    deps.log("warn", "hl7.listener.read_timeout", { feedId: feed.id, pending: buffer.pendingBytes });
+    deps.log("warn", "hl7.listener.read_timeout", {
+      feedId: feed.id,
+      pending: buffer.pendingBytes,
+    });
     socket.destroy();
   });
   socket.on("data", (chunk: Buffer) => {

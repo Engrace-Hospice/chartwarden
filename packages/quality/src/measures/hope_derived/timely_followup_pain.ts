@@ -21,7 +21,9 @@ export interface TimelyFollowUpPainInput extends ComputeMeasureInput {
 }
 
 /** Compute TFP-PI (timely follow-up for pain impact). Pure. */
-export function computeTimelyFollowUpPain(input: TimelyFollowUpPainInput): QualityMeasureValueResult {
+export function computeTimelyFollowUpPain(
+  input: TimelyFollowUpPainInput,
+): QualityMeasureValueResult {
   return ratioResult({
     numerator: input.followUpVisitsWithinWindow,
     denominator: input.qualifyingPainImpactTriggers,

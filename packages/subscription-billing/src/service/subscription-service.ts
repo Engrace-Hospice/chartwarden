@@ -18,21 +18,17 @@ import {
 } from "../domain/subscription-lifecycle";
 import { isPlanReferenceEligible } from "../domain/validation";
 import {
-  outboxIntent,
   type DunningContext,
   type OutboxIntent,
   type SubscriptionRecord,
   type SubscriptionStore,
+  outboxIntent,
 } from "./ports";
 
 /** The reason a transition attempt was refused (surfaced as a typed error, not a thrown string). */
 export class SubscriptionTransitionError extends Error {
   constructor(
-    readonly code:
-      | "not_found"
-      | "terminal_status"
-      | "illegal_transition"
-      | "plan_not_eligible",
+    readonly code: "not_found" | "terminal_status" | "illegal_transition" | "plan_not_eligible",
     message: string,
   ) {
     super(message);
@@ -134,7 +130,10 @@ export class SubscriptionLifecycleService {
   async transition(input: TransitionInput): Promise<TransitionResult> {
     const current = await this.store.loadForUpdate(input.subscriptionId);
     if (!current) {
-      throw new SubscriptionTransitionError("not_found", `subscription ${input.subscriptionId} not found`);
+      throw new SubscriptionTransitionError(
+        "not_found",
+        `subscription ${input.subscriptionId} not found`,
+      );
     }
     const from = current.status;
 
@@ -188,7 +187,10 @@ export class SubscriptionLifecycleService {
   }): Promise<{ from: SubscriptionRecord; toPlanSlug: string; outbox: OutboxIntent[] }> {
     const current = await this.store.loadForUpdate(input.subscriptionId);
     if (!current) {
-      throw new SubscriptionTransitionError("not_found", `subscription ${input.subscriptionId} not found`);
+      throw new SubscriptionTransitionError(
+        "not_found",
+        `subscription ${input.subscriptionId} not found`,
+      );
     }
     const plan = await this.store.planEligibility(input.toPlanId);
     if (

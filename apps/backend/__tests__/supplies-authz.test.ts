@@ -217,8 +217,9 @@ describe("M21-T05 §4.4 — controlled_substance_dispatcher_eligible", () => {
         };
       },
     };
-    const predicate = buildSuppliesAbacPredicates({ resolver })
-      .controlled_substance_dispatcher_eligible;
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
     // A wound-supply delivery: RBAC already passed and this narrower gate simply does not apply.
     expect(
       await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
@@ -228,8 +229,9 @@ describe("M21-T05 §4.4 — controlled_substance_dispatcher_eligible", () => {
   });
 
   it("DENIES a create-path target that declares no Location (a route that forgot its getTarget)", async () => {
-    const predicate = buildSuppliesAbacPredicates({ resolver: denyStubSuppliesAbacResolver })
-      .controlled_substance_dispatcher_eligible;
+    const predicate = buildSuppliesAbacPredicates({
+      resolver: denyStubSuppliesAbacResolver,
+    }).controlled_substance_dispatcher_eligible;
     expect(
       await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
         involvesControlledSubstance: true,
@@ -244,8 +246,9 @@ describe("M21-T05 §4.4 — controlled_substance_dispatcher_eligible", () => {
         throw new Error("db down");
       },
     };
-    const predicate = buildSuppliesAbacPredicates({ resolver })
-      .controlled_substance_dispatcher_eligible;
+    const predicate = buildSuppliesAbacPredicates({
+      resolver,
+    }).controlled_substance_dispatcher_eligible;
     expect(
       await predicate(contextOf({ attributes: { membershipId: DISPATCHER } }), {
         locationId: LOC_A,
@@ -350,8 +353,9 @@ describe("M21-T05 §4.4 — comfort_kit_return_reconciler_eligible", () => {
   });
 
   it("DENIES an unresolvable return (absent / cross-tenant / unreadable)", async () => {
-    const predicate = buildSuppliesAbacPredicates({ resolver: denyStubSuppliesAbacResolver })
-      .comfort_kit_return_reconciler_eligible;
+    const predicate = buildSuppliesAbacPredicates({
+      resolver: denyStubSuppliesAbacResolver,
+    }).comfort_kit_return_reconciler_eligible;
     expect(
       await predicate(contextOf({ attributes: { membershipId: RECONCILER } }), {
         returnId: RETURN_ID,
@@ -368,8 +372,9 @@ describe("M21-T05 §4.4 — comfort_kit_return_reconciler_eligible", () => {
       "controlled_substance_dispatcher_eligible",
       "comfort_kit_return_reconciler_eligible",
     ]);
-    expect(Object.keys(buildSuppliesAbacPredicates({ resolver: denyStubSuppliesAbacResolver })).sort())
-      .toEqual([...M21_ABAC_PREDICATES].sort());
+    expect(
+      Object.keys(buildSuppliesAbacPredicates({ resolver: denyStubSuppliesAbacResolver })).sort(),
+    ).toEqual([...M21_ABAC_PREDICATES].sort());
   });
 });
 

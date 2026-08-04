@@ -1,10 +1,10 @@
+import type { LatestAssessment } from "@wardenx/types";
 // apps/backend/__tests__/assessment-seams.test.ts — M9-T04 (§4.7 / D7 LatestAssessmentProvider +
 // ScaleSeriesProvider). Both seams are pure orchestration over an injected AssessmentReaderStore; these
 // cover the latest-active reads (single + batch), the windowed read-time series (D4, ascending), the
 // latest-vs-window delta (≥2-captures rule, §4.1), and the boot wiring (registerAssessmentSeams replaces
 // the deny-stubs; validateSeams passes; the deny-stubs deny loudly).
 import { afterEach, describe, expect, it } from "vitest";
-import type { LatestAssessment } from "@wardenx/types";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {
   type SeededSeriesPoint,
@@ -44,20 +44,71 @@ function latest(over: Partial<LatestAssessment>): LatestAssessment {
 }
 
 const points: readonly SeededSeriesPoint[] = [
-  { patientId: PAT, scaleType: "pps", assessmentId: "p1", capturedAt: "2026-03-01T09:00:00.000Z", score: 70, scoreInterpretation: "PPS 70%", significantChange: false },
-  { patientId: PAT, scaleType: "pps", assessmentId: "p3", capturedAt: "2026-03-20T09:00:00.000Z", score: 40, scoreInterpretation: "PPS 40%", significantChange: true },
-  { patientId: PAT, scaleType: "pps", assessmentId: "p2", capturedAt: "2026-03-10T09:00:00.000Z", score: 50, scoreInterpretation: "PPS 50%", significantChange: false },
+  {
+    patientId: PAT,
+    scaleType: "pps",
+    assessmentId: "p1",
+    capturedAt: "2026-03-01T09:00:00.000Z",
+    score: 70,
+    scoreInterpretation: "PPS 70%",
+    significantChange: false,
+  },
+  {
+    patientId: PAT,
+    scaleType: "pps",
+    assessmentId: "p3",
+    capturedAt: "2026-03-20T09:00:00.000Z",
+    score: 40,
+    scoreInterpretation: "PPS 40%",
+    significantChange: true,
+  },
+  {
+    patientId: PAT,
+    scaleType: "pps",
+    assessmentId: "p2",
+    capturedAt: "2026-03-10T09:00:00.000Z",
+    score: 50,
+    scoreInterpretation: "PPS 50%",
+    significantChange: false,
+  },
   // out of the test window (April) + a different scale, to prove filtering:
-  { patientId: PAT, scaleType: "pps", assessmentId: "p4", capturedAt: "2026-04-05T09:00:00.000Z", score: 30, scoreInterpretation: "PPS 30%", significantChange: false },
-  { patientId: PAT, scaleType: "esas_r", assessmentId: "e1", capturedAt: "2026-03-10T09:00:00.000Z", score: 12, scoreInterpretation: null, significantChange: false },
+  {
+    patientId: PAT,
+    scaleType: "pps",
+    assessmentId: "p4",
+    capturedAt: "2026-04-05T09:00:00.000Z",
+    score: 30,
+    scoreInterpretation: "PPS 30%",
+    significantChange: false,
+  },
+  {
+    patientId: PAT,
+    scaleType: "esas_r",
+    assessmentId: "e1",
+    capturedAt: "2026-03-10T09:00:00.000Z",
+    score: 12,
+    scoreInterpretation: null,
+    significantChange: false,
+  },
 ];
 
 function store() {
   return createInMemoryAssessmentReaderStore({
     latest: [
       latest({}),
-      latest({ assessmentId: "asmt-fast", scaleType: "fast", score: 7, scoreInterpretation: "FAST 7" }),
-      latest({ assessmentId: "asmt-aims", scaleType: "aims", score: 4, scoreInterpretation: "AIMS 4", redacted: true }),
+      latest({
+        assessmentId: "asmt-fast",
+        scaleType: "fast",
+        score: 7,
+        scoreInterpretation: "FAST 7",
+      }),
+      latest({
+        assessmentId: "asmt-aims",
+        scaleType: "aims",
+        score: 4,
+        scoreInterpretation: "AIMS 4",
+        redacted: true,
+      }),
     ],
     points,
   }).store;
@@ -93,7 +144,12 @@ describe("LatestAssessmentProvider (§4.7 / D7)", () => {
 describe("ScaleSeriesProvider.series (§4.7 / D4)", () => {
   it("returns the in-window scored captures of one scale, ascending by capturedAt", async () => {
     const provider = createScaleSeriesProvider(store());
-    const out = await provider.series(PAT, "pps", "2026-03-01T00:00:00.000Z", "2026-03-31T23:59:59.999Z");
+    const out = await provider.series(
+      PAT,
+      "pps",
+      "2026-03-01T00:00:00.000Z",
+      "2026-03-31T23:59:59.999Z",
+    );
     // p4 (April) and the esas_r point are excluded; order is ascending.
     expect(out.points.map((p) => p.assessmentId)).toEqual(["p1", "p2", "p3"]);
     expect(out.scaleType).toBe("pps");
@@ -102,7 +158,12 @@ describe("ScaleSeriesProvider.series (§4.7 / D4)", () => {
 
   it("returns an empty series when no captures fall in the window", async () => {
     const provider = createScaleSeriesProvider(store());
-    const out = await provider.series(PAT, "pps", "2026-01-01T00:00:00.000Z", "2026-01-31T23:59:59.999Z");
+    const out = await provider.series(
+      PAT,
+      "pps",
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-31T23:59:59.999Z",
+    );
     expect(out.points).toEqual([]);
   });
 });

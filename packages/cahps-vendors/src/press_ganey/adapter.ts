@@ -1,14 +1,14 @@
+import type {
+  CahpsDecedentSampleRow,
+  CahpsResultSummaryInput,
+  CahpsVendorAdapter,
+} from "@wardenx/quality";
 // @wardenx/cahps-vendors — Press Ganey adapter (M30 §4.5). Phase-2 PLACEHOLDER.
 //
 // A real, registrable adapter whose behavior is deliberately not-yet-implemented: `validateConfig`
 // reports the vendor is unavailable (so org boot refuses to bind it), and every operating method fails
 // closed with `vendor_adapter_not_implemented`. The Press Ganey CSV/result layouts land in Phase 2.
 import { WardenXError } from "@wardenx/types";
-import type {
-  CahpsDecedentSampleRow,
-  CahpsResultSummaryInput,
-  CahpsVendorAdapter,
-} from "@wardenx/quality";
 
 const NOT_IMPLEMENTED = "the Press Ganey CAHPS adapter is not yet implemented (phase 2)";
 

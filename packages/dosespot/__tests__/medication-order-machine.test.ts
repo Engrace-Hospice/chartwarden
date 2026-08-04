@@ -1,11 +1,11 @@
 // @wardenx/dosespot — §2.2 D2 medication-order lifecycle state machine — M12-T03.
 import { describe, expect, it } from "vitest";
 import {
-  transitionMedicationOrder,
-  planDraftCreation,
-  isEpcsRequired,
   MEDICATION_ORDER_GRAPH,
   type MedicationOrderSideEffect,
+  isEpcsRequired,
+  planDraftCreation,
+  transitionMedicationOrder,
 } from "../src/lifecycle";
 
 /** Collect the `m12.*` outbox events a transition declares (order-preserving). */
@@ -83,7 +83,10 @@ describe("§2.2 requestSignature (draft → pending_signature)", () => {
     expect(() =>
       transitionMedicationOrder("draft", { ...goodRequest, requiredDataComplete: false }),
     ).toThrowError(
-      expect.objectContaining({ code: "MEDICATION_ORDER_REQUIRED_DATA_INCOMPLETE", statusCode: 422 }),
+      expect.objectContaining({
+        code: "MEDICATION_ORDER_REQUIRED_DATA_INCOMPLETE",
+        statusCode: 422,
+      }),
     );
   });
   it("refuses an ineligible prescriber (403)", () => {
@@ -147,7 +150,10 @@ describe("§2.2 discardDraft (draft → discontinued)", () => {
         hasExternalReferences: true,
       }),
     ).toThrowError(
-      expect.objectContaining({ code: "MEDICATION_ORDER_HAS_EXTERNAL_REFERENCES", statusCode: 409 }),
+      expect.objectContaining({
+        code: "MEDICATION_ORDER_HAS_EXTERNAL_REFERENCES",
+        statusCode: 409,
+      }),
     );
   });
 });
@@ -183,7 +189,10 @@ describe("§2.2 sign — standard (pending_signature → signed)", () => {
   });
   it("refuses a non-ordering-physician signer (403)", () => {
     expect(() =>
-      transitionMedicationOrder("pending_signature", { ...goodSign, signerIsOrderingPhysician: false }),
+      transitionMedicationOrder("pending_signature", {
+        ...goodSign,
+        signerIsOrderingPhysician: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "SIGNER_NOT_ORDERING_PHYSICIAN" }));
   });
 });
@@ -204,17 +213,26 @@ describe("§2.4 EPCS controlled-substance branch", () => {
   });
   it("refuses signControlled on a non-controlled order (422)", () => {
     expect(() =>
-      transitionMedicationOrder("pending_signature", { ...goodSignControlled, medClass: "standard" }),
+      transitionMedicationOrder("pending_signature", {
+        ...goodSignControlled,
+        medClass: "standard",
+      }),
     ).toThrowError(expect.objectContaining({ code: "NOT_CONTROLLED_FOR_EPCS" }));
   });
   it("refuses an unauthorized DEA schedule (403)", () => {
     expect(() =>
-      transitionMedicationOrder("pending_signature", { ...goodSignControlled, deaScheduleAuthorized: false }),
+      transitionMedicationOrder("pending_signature", {
+        ...goodSignControlled,
+        deaScheduleAuthorized: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "DEA_SCHEDULE_NOT_AUTHORIZED" }));
   });
   it("refuses an unverified prescriber (403 EPCS_PRESCRIBER_NOT_VERIFIED)", () => {
     expect(() =>
-      transitionMedicationOrder("pending_signature", { ...goodSignControlled, prescriberIal2Verified: false }),
+      transitionMedicationOrder("pending_signature", {
+        ...goodSignControlled,
+        prescriberIal2Verified: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "EPCS_PRESCRIBER_NOT_VERIFIED" }));
   });
   it("completeSecondFactor signs with the second-factor type populated", () => {
@@ -296,7 +314,10 @@ describe("§2.3 recordVerbal (pending_signature → verbal_pending)", () => {
   });
   it("refuses without a named prescriber (422)", () => {
     expect(() =>
-      transitionMedicationOrder("pending_signature", { ...goodVerbal, namedPrescriberPresent: false }),
+      transitionMedicationOrder("pending_signature", {
+        ...goodVerbal,
+        namedPrescriberPresent: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "VERBAL_PRESCRIBER_REQUIRED" }));
   });
   it("refuses without an attestation (422)", () => {
@@ -324,7 +345,10 @@ describe("§2.3 verbal follow-up sign (verbal_pending → signed)", () => {
   });
   it("refuses an on-behalf signer in the verbal flow (403 VERBAL_SIGNER_NOT_NAMED_PRESCRIBER)", () => {
     expect(() =>
-      transitionMedicationOrder("verbal_pending", { ...verbalSign, signerIsOrderingPhysician: false }),
+      transitionMedicationOrder("verbal_pending", {
+        ...verbalSign,
+        signerIsOrderingPhysician: false,
+      }),
     ).toThrowError(expect.objectContaining({ code: "VERBAL_SIGNER_NOT_NAMED_PRESCRIBER" }));
   });
   it("expire (system actor, deadline reached) → expired_unsigned + verbal-expiry alert", () => {
@@ -358,7 +382,10 @@ describe("§2.3 verbal follow-up sign (verbal_pending → signed)", () => {
 
 describe("§2.2 transmission chain (signed → … → active)", () => {
   it("enqueueTransmission writes the transmission row + queues the job", () => {
-    const t = transitionMedicationOrder("signed", { type: "enqueueTransmission", isSystemActor: true });
+    const t = transitionMedicationOrder("signed", {
+      type: "enqueueTransmission",
+      isSystemActor: true,
+    });
     expect(t.to).toBe("queued_for_transmission");
     expect(t.effects).toContainEqual({ kind: "write_transmission" });
     expect(t.effects).toContainEqual({ kind: "enqueue_transmission_job" });
@@ -386,10 +413,16 @@ describe("§2.2 transmission chain (signed → … → active)", () => {
     expect(MEDICATION_ORDER_GRAPH.transmission_failed).toEqual([]);
   });
   it("pharmacyAck → ack_received, then activate → active", () => {
-    const ack = transitionMedicationOrder("transmitted", { type: "pharmacyAck", isSystemActor: true });
+    const ack = transitionMedicationOrder("transmitted", {
+      type: "pharmacyAck",
+      isSystemActor: true,
+    });
     expect(ack.to).toBe("ack_received");
     expect(outboxEvents(ack.effects)).toEqual(["m12.medication_order.ack_received"]);
-    const active = transitionMedicationOrder("ack_received", { type: "activate", isSystemActor: true });
+    const active = transitionMedicationOrder("ack_received", {
+      type: "activate",
+      isSystemActor: true,
+    });
     expect(active.to).toBe("active");
     expect(active.effects).toContainEqual({ kind: "set_timestamp", field: "activated_at" });
     expect(outboxEvents(active.effects)).toEqual(["m12.medication_order.active"]);
@@ -402,7 +435,10 @@ describe("§2.2 transmission chain (signed → … → active)", () => {
     });
     expect(nack.to).toBe("nack_received");
     expect(alerts(nack.effects)).toEqual(["medication_order.nack_received"]);
-    const dc = transitionMedicationOrder("nack_received", { type: "discontinue", reason: "pharmacy_nack" });
+    const dc = transitionMedicationOrder("nack_received", {
+      type: "discontinue",
+      reason: "pharmacy_nack",
+    });
     expect(dc.to).toBe("discontinued");
     expect(dc.effects).toContainEqual({ kind: "write_discontinuation", reason: "pharmacy_nack" });
   });
@@ -431,22 +467,33 @@ describe("§2.2 active terminal transitions", () => {
     expect(outboxEvents(t.effects)).toEqual(["m12.medication_order.discontinued"]);
   });
   it("withdraw (pending_signature) → discontinued (clinical_judgement)", () => {
-    const t = transitionMedicationOrder("pending_signature", { type: "withdraw", actorMayWithdraw: true });
+    const t = transitionMedicationOrder("pending_signature", {
+      type: "withdraw",
+      actorMayWithdraw: true,
+    });
     expect(t.to).toBe("discontinued");
-    expect(t.effects).toContainEqual({ kind: "write_discontinuation", reason: "clinical_judgement" });
+    expect(t.effects).toContainEqual({
+      kind: "write_discontinuation",
+      reason: "clinical_judgement",
+    });
   });
 });
 
 describe("§2.2 D13 discharge cascade", () => {
-  it.each(["pending_signature", "epcs_identity_pending", "queued_for_transmission", "active"] as const)(
-    "cascadeDiscontinue from %s → discontinued (admission_discharged)",
-    (from) => {
-      const t = transitionMedicationOrder(from, { type: "cascadeDiscontinue", isSystemActor: true });
-      expect(t.to).toBe("discontinued");
-      expect(t.effects).toContainEqual({ kind: "write_discontinuation", reason: "admission_discharged" });
-      expect(outboxEvents(t.effects)).toEqual(["m12.medication_order.discontinued"]);
-    },
-  );
+  it.each([
+    "pending_signature",
+    "epcs_identity_pending",
+    "queued_for_transmission",
+    "active",
+  ] as const)("cascadeDiscontinue from %s → discontinued (admission_discharged)", (from) => {
+    const t = transitionMedicationOrder(from, { type: "cascadeDiscontinue", isSystemActor: true });
+    expect(t.to).toBe("discontinued");
+    expect(t.effects).toContainEqual({
+      kind: "write_discontinuation",
+      reason: "admission_discharged",
+    });
+    expect(outboxEvents(t.effects)).toEqual(["m12.medication_order.discontinued"]);
+  });
   it("cascadeDiscontinue refuses a human actor (403)", () => {
     expect(() =>
       transitionMedicationOrder("active", { type: "cascadeDiscontinue", isSystemActor: false }),

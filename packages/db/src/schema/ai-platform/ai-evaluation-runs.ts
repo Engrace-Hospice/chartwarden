@@ -14,11 +14,7 @@
 // ruled on is visibly undecided rather than implicitly approved.
 import { sql } from "drizzle-orm";
 import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import {
-  aiEvaluationRunDecision,
-  aiEvaluationRunStage,
-  aiEvaluationRunStatus,
-} from "../../enums";
+import { aiEvaluationRunDecision, aiEvaluationRunStage, aiEvaluationRunStatus } from "../../enums";
 import { aiCapability } from "./ai-capabilities";
 import { aiModelBackend } from "./ai-model-backends";
 

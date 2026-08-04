@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * M6L-T03 — the Drizzle election-statement + CTI write lifecycle, proven against real Postgres.
  *
@@ -9,7 +10,6 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -39,7 +39,9 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
       );
   }
   async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort())
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort())
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
   }
 
@@ -47,7 +49,12 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
   async function admitFor(patientId: string): Promise<{ admissionId: string; periodId: string }> {
     const ref = await svc.createReferral(
       ORG_A,
-      { source: "phone", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "P" },
+      {
+        source: "phone",
+        receivedAt: new Date().toISOString(),
+        receivingUserId: USER,
+        patientNameAtReceipt: "P",
+      },
       USER,
     );
     await svc.triageReferral(ORG_A, ref.id, "eligible", 0);
@@ -73,7 +80,9 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6t3@x.test')`, [USER]);
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     svc = createDbAdmissionRouteService(handle.db);
   }, 120_000);
 
@@ -88,12 +97,18 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     expect(es.state).toBe("drafted");
     const signed = await svc.signElection(ORG_A, es.id, es.version, USER);
     expect(signed.state).toBe("signed");
-    await expect(svc.signElection(ORG_A, es.id, 0, USER)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(svc.signElection(ORG_A, es.id, 0, USER)).rejects.toMatchObject({
+      statusCode: 409,
+    });
   });
 
   it("CTI (period 1, no attending): draft → hospice-MD sign → signed", async () => {
     const { periodId } = await admitFor(randomUUID());
-    const cti = await svc.draftCti(ORG_A, { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false }, USER);
+    const cti = await svc.draftCti(
+      ORG_A,
+      { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false },
+      USER,
+    );
     expect(cti.state).toBe("drafted");
     const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
     expect(signed.state).toBe("signed");
@@ -103,7 +118,12 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     const { periodId } = await admitFor(randomUUID());
     const cti = await svc.draftCti(
       ORG_A,
-      { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, attendingPhysicianId: ATTENDING, isRecert: false },
+      {
+        electionPeriodId: periodId,
+        hospiceMedicalDirectorId: MD,
+        attendingPhysicianId: ATTENDING,
+        isRecert: false,
+      },
       USER,
     );
     const h = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
@@ -116,7 +136,11 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     const { admissionId } = await admitFor(randomUUID());
     const p2 = await svc.createElectionPeriod(ORG_A, admissionId);
     expect(p2.state).toBe("pending");
-    const cti = await svc.draftCti(ORG_A, { electionPeriodId: p2.id, hospiceMedicalDirectorId: MD, isRecert: true }, USER);
+    const cti = await svc.draftCti(
+      ORG_A,
+      { electionPeriodId: p2.id, hospiceMedicalDirectorId: MD, isRecert: true },
+      USER,
+    );
     const signed = await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
     expect(signed.state).toBe("signed");
     const status = await admin.query("SELECT status FROM election_period WHERE id=$1", [p2.id]);
@@ -128,7 +152,11 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
     const nor = await svc.acknowledgeNor(ORG_A, admissionId, USER);
     const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
     await svc.signElection(ORG_A, es.id, es.version, USER);
-    const cti = await svc.draftCti(ORG_A, { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false }, USER);
+    const cti = await svc.draftCti(
+      ORG_A,
+      { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false },
+      USER,
+    );
     await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
     const active = await svc.activateAdmission(ORG_A, admissionId, nor.version);
     expect(active.state).toBe("active");
@@ -136,7 +164,11 @@ describe.skipIf(!DB_URL)("M6 election + CTI write lifecycle — LIVE Postgres (M
 
   it("voidCti and markCtiLate", async () => {
     const { periodId } = await admitFor(randomUUID());
-    const cti = await svc.draftCti(ORG_A, { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false }, USER);
+    const cti = await svc.draftCti(
+      ORG_A,
+      { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, isRecert: false },
+      USER,
+    );
     const late = await svc.markCtiLate(ORG_A, cti.id, cti.version);
     expect(late.writtenCertDeadlineAt).toBeTruthy();
     const voided = await svc.voidCti(ORG_A, cti.id, "entered in error", late.version);

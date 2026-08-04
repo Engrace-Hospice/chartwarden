@@ -56,7 +56,9 @@ export function ReferralDetail(): JSX.Element {
     if (!id) return;
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET("/api/v1/referrals/{id}", { params: { path: { id } } });
+    const { data, error: err } = await client.GET("/api/v1/referrals/{id}", {
+      params: { path: { id } },
+    });
     if (err || !data) {
       setError("Referral not found or not visible to you.");
       setLoading(false);
@@ -84,7 +86,8 @@ export function ReferralDetail(): JSX.Element {
         return true;
       }
       setBusy(false);
-      if (status === 412) setActionError("This referral changed since you opened it — reload to retry.");
+      if (status === 412)
+        setActionError("This referral changed since you opened it — reload to retry.");
       else if (status === 422) setActionError("Validation failed — check the values you entered.");
       else if (status === 403) setActionError("You do not have permission for this action.");
       else setActionError("The action could not be completed.");
@@ -99,7 +102,11 @@ export function ReferralDetail(): JSX.Element {
     setActionError(null);
     const { error: err, response } = await client.POST("/api/v1/referrals/{id}/triage", {
       params: { path: { id } },
-      body: { outcome, ...(notes.trim() ? { notes: notes.trim() } : {}), ifVersion: referral.version },
+      body: {
+        outcome,
+        ...(notes.trim() ? { notes: notes.trim() } : {}),
+        ifVersion: referral.version,
+      },
     });
     if (err) {
       branchError(response?.status, err?.error?.code);
@@ -118,11 +125,17 @@ export function ReferralDetail(): JSX.Element {
     }
     setBusy(true);
     setActionError(null);
-    const { data, error: err, response } = await client.POST("/api/v1/referrals/{id}/accept", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/referrals/{id}/accept", {
       params: { path: { id } },
       body: {
         primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim(),
-        ...(attendingPhysicianId.trim() ? { attendingPhysicianId: attendingPhysicianId.trim() } : {}),
+        ...(attendingPhysicianId.trim()
+          ? { attendingPhysicianId: attendingPhysicianId.trim() }
+          : {}),
         ...(patientId.trim() ? { patientId: patientId.trim() } : {}),
         ifVersion: referral.version,
       },
@@ -134,10 +147,20 @@ export function ReferralDetail(): JSX.Element {
     setBusy(false);
     // Straight into the seeded admission — the accept ceremony's whole point is to open it next.
     navigate(`/admissions/${data.admissionId}`);
-  }, [id, referral, client, primaryDiagnosisIcd10, attendingPhysicianId, patientId, branchError, navigate]);
+  }, [
+    id,
+    referral,
+    client,
+    primaryDiagnosisIcd10,
+    attendingPhysicianId,
+    patientId,
+    branchError,
+    navigate,
+  ]);
 
   if (loading) return <LoadingSpinner />;
-  if (error || !referral) return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+  if (error || !referral)
+    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
 
   const r = referral;
   const canTriage = r.state === "received";
@@ -148,13 +171,15 @@ export function ReferralDetail(): JSX.Element {
       header={
         <PageHeader
           title={`Referral ${r.id}`}
-          actions={<StatusPill label={stateLabel(r.state)} tone={REFERRAL_TONE[r.state] ?? "neutral"} />}
+          actions={
+            <StatusPill label={stateLabel(r.state)} tone={REFERRAL_TONE[r.state] ?? "neutral"} />
+          }
         />
       }
     >
       <p style={meta}>
-        Version {r.version}. This read carries only the referral's summary and state — the intake facts
-        (source, patient-at-receipt, referring diagnosis) aren't exposed on this DTO yet.
+        Version {r.version}. This read carries only the referral's summary and state — the intake
+        facts (source, patient-at-receipt, referring diagnosis) aren't exposed on this DTO yet.
       </p>
 
       <div style={{ display: "flex", gap: "0.625rem", marginTop: "1rem" }}>
@@ -189,7 +214,12 @@ export function ReferralDetail(): JSX.Element {
             <label htmlFor="triage-notes" style={fieldLabel}>
               Notes (optional)
             </label>
-            <textarea id="triage-notes" value={notes} onChange={(ev) => setNotes(ev.target.value)} rows={3} />
+            <textarea
+              id="triage-notes"
+              value={notes}
+              onChange={(ev) => setNotes(ev.target.value)}
+              rows={3}
+            />
             {actionError ? (
               <p role="alert" aria-live="assertive" style={alertStyle}>
                 {actionError}
@@ -231,7 +261,11 @@ export function ReferralDetail(): JSX.Element {
             <label htmlFor="accept-patient" style={fieldLabel}>
               Patient id (optional — leave blank to seed a placeholder)
             </label>
-            <input id="accept-patient" value={patientId} onChange={(ev) => setPatientId(ev.target.value)} />
+            <input
+              id="accept-patient"
+              value={patientId}
+              onChange={(ev) => setPatientId(ev.target.value)}
+            />
             {actionError ? (
               <p role="alert" aria-live="assertive" style={alertStyle}>
                 {actionError}
@@ -251,7 +285,11 @@ export function ReferralDetail(): JSX.Element {
 
 const meta: CSSProperties = { fontSize: "0.85rem", color: "var(--color-on-surface-variant)" };
 const hint: CSSProperties = { fontSize: "0.8125rem", color: "var(--color-on-surface-variant)" };
-const fieldLabel: CSSProperties = { fontSize: "0.75rem", fontWeight: 600, color: "var(--color-on-surface-variant)" };
+const fieldLabel: CSSProperties = {
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface-variant)",
+};
 const alertStyle: CSSProperties = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
 const primaryBtn: CSSProperties = {
   padding: "0.45rem 1rem",

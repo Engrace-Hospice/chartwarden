@@ -27,7 +27,9 @@ describe("M35A-T03 createOrganizationReader", () => {
 
   it("dedups ids into a single batched WHERE and returns the db's org summaries", async () => {
     let whereCalls = 0;
-    const rows = [{ organizationId: UUID, displayName: "Acme", legalName: "Acme LLC", slug: "acme" }];
+    const rows = [
+      { organizationId: UUID, displayName: "Acme", legalName: "Acme LLC", slug: "acme" },
+    ];
     const db = {
       select: () => ({
         from: () => ({

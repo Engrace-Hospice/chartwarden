@@ -10,7 +10,9 @@ import type { JSX } from "react";
 export function CapPsrWorkbench(): JSX.Element {
   return (
     <WorkQueueLayout
-      header={<PageHeader title="PS&R Reconciliation" breadcrumb="Revenue Cycle — MAC reconciliation" />}
+      header={
+        <PageHeader title="PS&R Reconciliation" breadcrumb="Revenue Cycle — MAC reconciliation" />
+      }
       table={
         <EmptyState
           title="Upload a PS&R extract to reconcile"

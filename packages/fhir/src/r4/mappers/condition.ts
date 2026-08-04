@@ -2,8 +2,8 @@
 
 import type { FhirMapper, MapperContext } from "../../interfaces/mapper";
 import type { Condition, FhirCoding } from "../types";
-import type { ConditionDomain } from "./domain";
 import { ICD10CM_SYSTEM, SNOMED_SYSTEM } from "../uris";
+import type { ConditionDomain } from "./domain";
 
 export const US_CORE_CONDITION_PROFILE =
   "http://hl7.org/fhir/us/core/StructureDefinition/us-core-condition-problems-health-concerns";
@@ -17,7 +17,12 @@ export const conditionMapper: FhirMapper<ConditionDomain, Condition> = {
   profile: US_CORE_CONDITION_PROFILE,
   map(row: ConditionDomain, ctx: MapperContext): Condition {
     const coding: FhirCoding[] = [];
-    if (row.icd10Code) coding.push({ system: ICD10CM_SYSTEM, code: row.icd10Code, display: row.icd10Text ?? undefined });
+    if (row.icd10Code)
+      coding.push({
+        system: ICD10CM_SYSTEM,
+        code: row.icd10Code,
+        display: row.icd10Text ?? undefined,
+      });
     if (row.snomedCode) coding.push({ system: SNOMED_SYSTEM, code: row.snomedCode });
 
     return {
@@ -31,7 +36,9 @@ export const conditionMapper: FhirMapper<ConditionDomain, Condition> = {
       category: row.categoryCode
         ? [{ coding: [{ system: CATEGORY_SYSTEM, code: row.categoryCode }] }]
         : undefined,
-      code: coding.length ? { coding, text: row.icd10Text ?? undefined } : { text: row.icd10Text ?? undefined },
+      code: coding.length
+        ? { coding, text: row.icd10Text ?? undefined }
+        : { text: row.icd10Text ?? undefined },
       subject: { reference: `Patient/${row.patientId}` },
       onsetDateTime: row.onsetDateTime ?? undefined,
       recordedDate: row.recordedDate ?? undefined,

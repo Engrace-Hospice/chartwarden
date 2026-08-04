@@ -58,7 +58,10 @@ export function registerSupplyCatalogRoutes(app: FastifyInstance, deps: CatalogR
     "/api/v1/supplies/supply-items",
     { preHandler: [P("supplies.item.read"), NO_OFFSET], config: NO_PHI },
     async (request) =>
-      readService.listSupplyItems(actorOf(request), parseQuery(ListSupplyItemsQuery, request.query)),
+      readService.listSupplyItems(
+        actorOf(request),
+        parseQuery(ListSupplyItemsQuery, request.query),
+      ),
   );
 
   // 12 — create a canonical HCPCS-keyed SKU (PLATFORM-ONLY; see the module header).

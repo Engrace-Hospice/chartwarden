@@ -36,7 +36,10 @@ export interface TransferResult {
   readonly transferredInvoiceIds: string[];
   readonly transferredLineCount: number;
   readonly retainUntil: Date | null;
-  readonly platformRetentionTables: readonly ["platform_retained_invoice", "platform_retained_invoice_line"];
+  readonly platformRetentionTables: readonly [
+    "platform_retained_invoice",
+    "platform_retained_invoice_line",
+  ];
 }
 
 export class PlatformRetentionService {
@@ -82,7 +85,10 @@ export class PlatformRetentionService {
         });
       }
       // 3. delete the source rows (impl deletes invoice_line then invoice — FK order)
-      await this.store.deleteTenantInvoice({ organizationId: input.organizationId, invoiceId: invoice.id });
+      await this.store.deleteTenantInvoice({
+        organizationId: input.organizationId,
+        invoiceId: invoice.id,
+      });
 
       retainedInvoiceIds.push(retainedInvoiceId);
       transferredInvoiceIds.push(invoice.id);

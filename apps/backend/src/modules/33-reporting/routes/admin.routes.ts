@@ -35,7 +35,10 @@ const LAG_READ = P("report.admin.lag_read");
 const AUDIT_READ = P("report.admin.audit_read");
 
 /** Register the §4.1 platform/compliance admin routes (#37–#41). */
-export function registerReportingAdminRoutes(app: FastifyInstance, deps: ReportingAdminRouteDeps): void {
+export function registerReportingAdminRoutes(
+  app: FastifyInstance,
+  deps: ReportingAdminRouteDeps,
+): void {
   const { service } = deps;
 
   // 37 — list the registered materialized views (refresh telemetry + status). §4.1.

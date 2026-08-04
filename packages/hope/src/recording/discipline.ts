@@ -37,7 +37,10 @@ export function isSfvAuthorDisciplineAllowed(discipline: DisciplineCode): boolea
  * (RFA 04) requires RN/NP; every other RFA requires RN/NP/MD. Raises `M10_DISCIPLINE_NOT_PERMITTED`
  * (403). This is the service-layer enforcement behind the M3 ABAC predicate (defense in depth).
  */
-export function assertAuthorDisciplineAllowed(rfaKind: HopeRfaKind, discipline: DisciplineCode): void {
+export function assertAuthorDisciplineAllowed(
+  rfaKind: HopeRfaKind,
+  discipline: DisciplineCode,
+): void {
   const allowed =
     rfaKind === "04_sfv"
       ? isSfvAuthorDisciplineAllowed(discipline)

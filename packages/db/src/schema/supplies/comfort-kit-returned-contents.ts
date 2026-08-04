@@ -29,15 +29,7 @@
 // parents — `return_id` and `dispatched_content_id`, both unpartitioned — carry real FKs, ON DELETE
 // RESTRICT. The accounting must not be deletable out from under itself.
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  check,
-  index,
-  numeric,
-  pgTable,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, check, index, numeric, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 import { controlledSubstanceSchedule } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";

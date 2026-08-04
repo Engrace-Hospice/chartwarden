@@ -6,8 +6,16 @@ import type { operations } from "@wardenx/ui";
 // reset (dunning.admin.override, step-up + Idempotency-Key) — are applied one row at a time; there is no bulk.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { actionButtonStyle, bodyRow, cell, inputStyle, LoadMore, tableStyle, theadRow } from "./ui";
-import { cap, dunningTone, DUNNING_STAGES, formatDate, idempotencyKey, isCriticalDunningStage, orgLabel } from "./status";
+import {
+  DUNNING_STAGES,
+  cap,
+  dunningTone,
+  formatDate,
+  idempotencyKey,
+  isCriticalDunningStage,
+  orgLabel,
+} from "./status";
+import { LoadMore, actionButtonStyle, bodyRow, cell, inputStyle, tableStyle, theadRow } from "./ui";
 
 type DunningPage =
   operations["getApiAdminDunning"]["responses"][200]["content"]["application/json"];
@@ -54,13 +62,28 @@ export function Dunning(): JSX.Element {
     async (subscriptionId: string, action: "skip_stage" | "reset") => {
       setBusyId(subscriptionId);
       setOutcome(null);
-      const path = action === "skip_stage" ? "/api/admin/dunning/{subscriptionId}/skip_stage" : "/api/admin/dunning/{subscriptionId}/reset";
-      const res = await client.POST(path, { params: { path: { subscriptionId } }, headers: { "Idempotency-Key": idempotencyKey() } });
+      const path =
+        action === "skip_stage"
+          ? "/api/admin/dunning/{subscriptionId}/skip_stage"
+          : "/api/admin/dunning/{subscriptionId}/reset";
+      const res = await client.POST(path, {
+        params: { path: { subscriptionId } },
+        headers: { "Idempotency-Key": idempotencyKey() },
+      });
       if (res.error) {
         const c = (res.error as { code?: string })?.code;
-        setOutcome({ ok: false, message: c === "STEP_UP_REQUIRED" ? "Step-up required — re-verify and retry." : `Could not ${action.replace("_", " ")}.` });
+        setOutcome({
+          ok: false,
+          message:
+            c === "STEP_UP_REQUIRED"
+              ? "Step-up required — re-verify and retry."
+              : `Could not ${action.replace("_", " ")}.`,
+        });
       } else {
-        setOutcome({ ok: true, message: action === "reset" ? "Dunning reset." : "Dunning stage skipped." });
+        setOutcome({
+          ok: true,
+          message: action === "reset" ? "Dunning reset." : "Dunning stage skipped.",
+        });
         await load(null, false);
       }
       setBusyId(null);
@@ -69,15 +92,24 @@ export function Dunning(): JSX.Element {
   );
 
   return (
-    <div style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+    <div
+      style={{ padding: "1.5rem 1.75rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+    >
       <PageHeader
         title="Dunning"
         breadcrumb="Platform Ops"
         actions={
-          <select value={stage} onChange={(e) => setStage(e.target.value)} style={inputStyle} aria-label="Filter by stage">
+          <select
+            value={stage}
+            onChange={(e) => setStage(e.target.value)}
+            style={inputStyle}
+            aria-label="Filter by stage"
+          >
             <option value="">All stages</option>
             {DUNNING_STAGES.map((s) => (
-              <option key={s} value={s}>{cap(s)}</option>
+              <option key={s} value={s}>
+                {cap(s)}
+              </option>
             ))}
           </select>
         }
@@ -92,7 +124,10 @@ export function Dunning(): JSX.Element {
       ) : error ? (
         <EmptyState title={error} description="Retry shortly." />
       ) : rows.length === 0 ? (
-        <EmptyState title="No subscriptions in dunning" description="Every subscription is current." />
+        <EmptyState
+          title="No subscriptions in dunning"
+          description="Every subscription is current."
+        />
       ) : (
         <>
           <table style={tableStyle}>
@@ -108,16 +143,40 @@ export function Dunning(): JSX.Element {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.subscriptionId} style={bodyRow} {...(isCriticalDunningStage(r.stage) ? { role: "alert" } : {})}>
+                <tr
+                  key={r.subscriptionId}
+                  style={bodyRow}
+                  {...(isCriticalDunningStage(r.stage) ? { role: "alert" } : {})}
+                >
                   <td style={cell}>{orgLabel(r.organizationName, r.organizationId)}</td>
                   <td style={cell}>{r.planName}</td>
-                  <td style={cell}><StatusPill label={cap(r.stage)} tone={dunningTone(r.stage)} /></td>
-                  <td style={cell} className="tabular-nums">{formatDate(r.enteredAt)}</td>
-                  <td style={cell} className="tabular-nums">{formatDate(r.nextAttemptAt)}</td>
+                  <td style={cell}>
+                    <StatusPill label={cap(r.stage)} tone={dunningTone(r.stage)} />
+                  </td>
+                  <td style={cell} className="tabular-nums">
+                    {formatDate(r.enteredAt)}
+                  </td>
+                  <td style={cell} className="tabular-nums">
+                    {formatDate(r.nextAttemptAt)}
+                  </td>
                   <td style={cell}>
                     <div style={{ display: "flex", gap: "0.5rem" }}>
-                      <button type="button" onClick={() => void override(r.subscriptionId, "skip_stage")} disabled={busyId === r.subscriptionId} style={actionButtonStyle(false, busyId === r.subscriptionId)}>Skip stage</button>
-                      <button type="button" onClick={() => void override(r.subscriptionId, "reset")} disabled={busyId === r.subscriptionId} style={actionButtonStyle(false, busyId === r.subscriptionId)}>Reset</button>
+                      <button
+                        type="button"
+                        onClick={() => void override(r.subscriptionId, "skip_stage")}
+                        disabled={busyId === r.subscriptionId}
+                        style={actionButtonStyle(false, busyId === r.subscriptionId)}
+                      >
+                        Skip stage
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void override(r.subscriptionId, "reset")}
+                        disabled={busyId === r.subscriptionId}
+                        style={actionButtonStyle(false, busyId === r.subscriptionId)}
+                      >
+                        Reset
+                      </button>
                     </div>
                   </td>
                 </tr>

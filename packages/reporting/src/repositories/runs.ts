@@ -18,9 +18,7 @@ export class ReportRunRepository {
   // ── report_schedule_run (scheduled-report occurrence ledger) ─────────────────────────────────
 
   /** Insert a scheduled-report occurrence row (defaults to `queued`). Returns the inserted row. */
-  async createScheduleRun(
-    values: schema.NewReportScheduleRun,
-  ): Promise<schema.ReportScheduleRun> {
+  async createScheduleRun(values: schema.NewReportScheduleRun): Promise<schema.ReportScheduleRun> {
     const [row] = await this.db.insert(SR).values(values).returning();
     if (!row) throw new Error("report_schedule_run insert returned no row");
     return row;

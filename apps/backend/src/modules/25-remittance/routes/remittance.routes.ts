@@ -33,64 +33,97 @@ function qStr(q: unknown, key: string): string | undefined {
 export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceRouteDeps): void {
   const { readService, writeService } = deps;
 
-  app.get("/api/v1/remittance/advices", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_advice", list: true } } }, async (request, reply) => {
-    const actor = actorOf(request);
-    const q = request.query;
-    const pageRes = await readService.listAdvices(
-      actor,
-      { providerEntityId: qStr(q, "providerEntityId"), parseStatus: qStr(q, "parseStatus") },
-      qStr(q, "cursor"),
-      clampLimit(qStr(q, "limit")),
-    );
-    return reply.send(pageRes);
-  });
+  app.get(
+    "/api/v1/remittance/advices",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "remittance_advice", list: true } },
+    },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const q = request.query;
+      const pageRes = await readService.listAdvices(
+        actor,
+        { providerEntityId: qStr(q, "providerEntityId"), parseStatus: qStr(q, "parseStatus") },
+        qStr(q, "cursor"),
+        clampLimit(qStr(q, "limit")),
+      );
+      return reply.send(pageRes);
+    },
+  );
 
-  app.get("/api/v1/remittance/advices/:id", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_advice", resourceIdParam: "id" } } }, async (request, reply) => {
-    const actor = actorOf(request);
-    const id = (request.params as { id: string }).id;
-    const advice = await readService.getAdvice(actor, id);
-    if (!advice) throw new NotFoundError("remittance advice not found");
-    return reply.send(advice);
-  });
+  app.get(
+    "/api/v1/remittance/advices/:id",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "remittance_advice", resourceIdParam: "id" } },
+    },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const id = (request.params as { id: string }).id;
+      const advice = await readService.getAdvice(actor, id);
+      if (!advice) throw new NotFoundError("remittance advice not found");
+      return reply.send(advice);
+    },
+  );
 
-  app.post("/api/v1/remittance/advices/:id/replay", { preHandler: [REPLAY, IDEMPOTENT] }, async (request, reply) => {
-    const actor = writeActorOf(request);
-    const id = (request.params as { id: string }).id;
-    await writeService.replayAdvice(actor, id);
-    return reply.code(202).send({ id, status: "queued" });
-  });
+  app.post(
+    "/api/v1/remittance/advices/:id/replay",
+    { preHandler: [REPLAY, IDEMPOTENT] },
+    async (request, reply) => {
+      const actor = writeActorOf(request);
+      const id = (request.params as { id: string }).id;
+      await writeService.replayAdvice(actor, id);
+      return reply.code(202).send({ id, status: "queued" });
+    },
+  );
 
-  app.get("/api/v1/remittance/lines", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", list: true } } }, async (request, reply) => {
-    const actor = actorOf(request);
-    const q = request.query;
-    const pageRes = await readService.listLines(
-      actor,
-      { remittanceAdviceId: qStr(q, "remittanceAdviceId"), matchState: qStr(q, "matchState") },
-      qStr(q, "cursor"),
-      clampLimit(qStr(q, "limit")),
-    );
-    return reply.send(pageRes);
-  });
+  app.get(
+    "/api/v1/remittance/lines",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", list: true } } },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const q = request.query;
+      const pageRes = await readService.listLines(
+        actor,
+        { remittanceAdviceId: qStr(q, "remittanceAdviceId"), matchState: qStr(q, "matchState") },
+        qStr(q, "cursor"),
+        clampLimit(qStr(q, "limit")),
+      );
+      return reply.send(pageRes);
+    },
+  );
 
-  app.get("/api/v1/remittance/lines/:id", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", resourceIdParam: "id" } } }, async (request, reply) => {
-    const actor = actorOf(request);
-    const id = (request.params as { id: string }).id;
-    const line = await readService.getLine(actor, id);
-    if (!line) throw new NotFoundError("remittance line not found");
-    return reply.send(line);
-  });
+  app.get(
+    "/api/v1/remittance/lines/:id",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "remittance_line", resourceIdParam: "id" } },
+    },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const id = (request.params as { id: string }).id;
+      const line = await readService.getLine(actor, id);
+      if (!line) throw new NotFoundError("remittance line not found");
+      return reply.send(line);
+    },
+  );
 
-  app.get("/api/v1/remittance/unmatched", { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", list: true } } }, async (request, reply) => {
-    const actor = actorOf(request);
-    const q = request.query;
-    const pageRes = await readService.listUnmatched(
-      actor,
-      qStr(q, "providerEntityId"),
-      qStr(q, "cursor"),
-      clampLimit(qStr(q, "limit")),
-    );
-    return reply.send(pageRes);
-  });
+  app.get(
+    "/api/v1/remittance/unmatched",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "remittance_line", list: true } } },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      const q = request.query;
+      const pageRes = await readService.listUnmatched(
+        actor,
+        qStr(q, "providerEntityId"),
+        qStr(q, "cursor"),
+        clampLimit(qStr(q, "limit")),
+      );
+      return reply.send(pageRes);
+    },
+  );
 
   app.post(
     "/api/v1/remittance/lines/:id/manual-match",
@@ -99,7 +132,10 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
       const actor = writeActorOf(request);
       const id = (request.params as { id: string }).id;
       const body = parse(ManualMatchRequestSchema, request.body);
-      await writeService.manualMatch(actor, id, { proposedClaimId: body.proposedClaimId, reason: body.reason });
+      await writeService.manualMatch(actor, id, {
+        proposedClaimId: body.proposedClaimId,
+        reason: body.reason,
+      });
       return reply.send({ id, matchState: "manual_matched" });
     },
   );
@@ -112,7 +148,10 @@ export function registerRemittanceRoutes(app: FastifyInstance, deps: RemittanceR
       const id = (request.params as { id: string }).id;
       const body = parse(AdjustmentOverrideRequestSchema, request.body);
       // Adjustments are worker-written; no optimistic version on this surface (the step-up is the gate).
-      await writeService.overrideAdjustment(actor, id, { newPostAction: body.newPostAction, reason: body.reason });
+      await writeService.overrideAdjustment(actor, id, {
+        newPostAction: body.newPostAction,
+        reason: body.reason,
+      });
       return reply.send({ id, postAction: body.newPostAction });
     },
   );

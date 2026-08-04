@@ -177,16 +177,16 @@ export function EscalationInboxScreen(): JSX.Element {
       {mandatoryOpen > 0 ? (
         <Notice tone="error" assertive>
           {mandatoryOpen} platform-floor mandatory escalation
-          {mandatoryOpen === 1 ? " is" : "s are"} outstanding. Each holds its call's disposition and can be
-          cleared only by an explicit resolution written by the escalated party — closing the call will not
-          clear it.
+          {mandatoryOpen === 1 ? " is" : "s are"} outstanding. Each holds its call's disposition and
+          can be cleared only by an explicit resolution written by the escalated party — closing the
+          call will not clear it.
         </Notice>
       ) : null}
 
       {truncated ? (
         <Notice tone="info">
-          More than {INBOX_PAGE} escalations match. The counts below count the page fetched, not the whole
-          tenant — §4.1.1 publishes no total on a PHI list.
+          More than {INBOX_PAGE} escalations match. The counts below count the page fetched, not the
+          whole tenant — §4.1.1 publishes no total on a PHI list.
         </Notice>
       ) : null}
 
@@ -194,15 +194,28 @@ export function EscalationInboxScreen(): JSX.Element {
         <CountGrid
           entries={[
             { label: "On this page", value: rows.length },
-            { label: "Unacknowledged", value: unacknowledged, tone: unacknowledged > 0 ? "error" : undefined },
-            { label: "Mandatory, open", value: mandatoryOpen, tone: mandatoryOpen > 0 ? "error" : undefined },
-            { label: "Open over an hour", value: overAnHour, tone: overAnHour > 0 ? "error" : undefined },
+            {
+              label: "Unacknowledged",
+              value: unacknowledged,
+              tone: unacknowledged > 0 ? "error" : undefined,
+            },
+            {
+              label: "Mandatory, open",
+              value: mandatoryOpen,
+              tone: mandatoryOpen > 0 ? "error" : undefined,
+            },
+            {
+              label: "Open over an hour",
+              value: overAnHour,
+              tone: overAnHour > 0 ? "error" : undefined,
+            },
           ]}
         />
         <span style={mutedStyle}>
-          Age is elapsed minutes as the SERVER computed them, not a browser clock and not a percentage of
-          an SLA target: the per-severity callback SLA lives on the tenant policy as tenant-shaped JSON and
-          no route resolves it to a per-row target, so a "% of SLA" here would be invented.
+          Age is elapsed minutes as the SERVER computed them, not a browser clock and not a
+          percentage of an SLA target: the per-severity callback SLA lives on the tenant policy as
+          tenant-shaped JSON and no route resolves it to a per-row target, so a "% of SLA" here
+          would be invented.
         </span>
       </Card>
 
@@ -214,9 +227,9 @@ export function EscalationInboxScreen(): JSX.Element {
       <Card title="Pages">
         {sorted.length === 0 ? (
           <span style={mutedStyle}>
-            Nothing is outstanding in your tier band. An empty inbox is the ordinary night — and it is not
-            the same as "you are on no tier": the server narrows this list to the tiers you sit on, and a
-            page addressed to a colleague is simply absent.
+            Nothing is outstanding in your tier band. An empty inbox is the ordinary night — and it
+            is not the same as "you are on no tier": the server narrows this list to the tiers you
+            sit on, and a page addressed to a colleague is simply absent.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -247,7 +260,10 @@ export function EscalationInboxScreen(): JSX.Element {
                   </td>
                   <td style={td}>{humanize(r.triggerKind)}</td>
                   <td style={td}>
-                    <StatusPill label={humanize(r.state)} tone={toneOf(ESCALATION_STATE_TONE, r.state)} />
+                    <StatusPill
+                      label={humanize(r.state)}
+                      tone={toneOf(ESCALATION_STATE_TONE, r.state)}
+                    />
                   </td>
                   <td style={td}>
                     <Link to={`/triage/calls/${r.triageCallId}`} style={linkStyle}>
@@ -294,9 +310,9 @@ export function EscalationInboxScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          A refusal on either action reads "not yours" rather than 404, deliberately: an escalation id
-          discloses nothing to somebody who already holds the inbox permission, and a 404 would send a
-          supervisor hunting for a page that is sitting in a colleague's queue.
+          A refusal on either action reads "not yours" rather than 404, deliberately: an escalation
+          id discloses nothing to somebody who already holds the inbox permission, and a 404 would
+          send a supervisor hunting for a page that is sitting in a colleague's queue.
         </span>
       </Card>
 
@@ -324,7 +340,8 @@ export function EscalationInboxScreen(): JSX.Element {
           {resolving.mandatory ? (
             <Notice tone="warning">
               This is a platform-floor mandatory escalation. This write is the ONLY way it reaches
-              `resolved`, and it is what the agency shows a surveyor to prove a named human answered.
+              `resolved`, and it is what the agency shows a surveyor to prove a named human
+              answered.
             </Notice>
           ) : null}
           <TextAreaField

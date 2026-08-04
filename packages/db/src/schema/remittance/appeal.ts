@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — M25 Remittance & Denials §3.3 — the Medicare appeal cluster:
 //   appeal_case (five-tier hierarchy: redetermination → reconsideration → alj → council →
 //     federal_court) ─ appeal_case_event (lifecycle history)
@@ -13,7 +14,6 @@
 // avoid a self-FK ordering constraint), actor_membership_id (core) are LOGICAL uuid FKs.
 // appeal_narrative / mac_reference_numbers / event_payload are audit-denylisted (§3.6).
 import { index, integer, jsonb, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { organizations } from "../organizations";
 import { denialCase } from "./denial";
 import {

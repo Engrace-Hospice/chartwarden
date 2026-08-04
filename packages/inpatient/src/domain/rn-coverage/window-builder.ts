@@ -42,7 +42,9 @@ export function coveringAssignmentsForHour(
   hourStartMs: number,
 ): string[] {
   return assignments
-    .filter((a) => isCoveringAssignment(a) && a.shiftStartMs <= hourStartMs && hourStartMs < a.shiftEndMs)
+    .filter(
+      (a) => isCoveringAssignment(a) && a.shiftStartMs <= hourStartMs && hourStartMs < a.shiftEndMs,
+    )
     .map((a) => a.assignmentId);
 }
 

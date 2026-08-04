@@ -65,7 +65,11 @@ export interface DocumentSeamStore {
     readonly aggregateType: DocumentAggregateType;
     readonly aggregateId: string;
     readonly organizationId: OrgId;
-  }): Promise<{ documentId: DocumentId; versionId: DocumentVersionId; renderedAt: IsoInstant } | null>;
+  }): Promise<{
+    documentId: DocumentId;
+    versionId: DocumentVersionId;
+    renderedAt: IsoInstant;
+  } | null>;
 }
 
 /**
@@ -167,8 +171,7 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
         const versionId = uuidFromCounter("8001", ++verCounter);
         if (existing) {
           // W2 addendum/correction: a NEW immutable version on the SAME document (never a new document).
-          const versionNumber =
-            Math.max(...existing.versions.map((v) => v.versionNumber)) + 1;
+          const versionNumber = Math.max(...existing.versions.map((v) => v.versionNumber)) + 1;
           existing.versions.push({
             versionId,
             versionNumber,
@@ -200,13 +203,23 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
             },
           ],
         });
-        return { documentId, versionId, versionNumber: 1, isFirstVersion: true, renderedAt: input.renderedAt };
+        return {
+          documentId,
+          versionId,
+          versionNumber: 1,
+          isFirstVersion: true,
+          renderedAt: input.renderedAt,
+        };
       },
       async renderedDocumentForAggregate(args) {
         const d = find(args.aggregateType, args.aggregateId, args.organizationId);
         if (!d) return null;
         const latest = d.versions.reduce((a, b) => (a.versionNumber >= b.versionNumber ? a : b));
-        return { documentId: d.documentId, versionId: latest.versionId, renderedAt: latest.renderedAt };
+        return {
+          documentId: d.documentId,
+          versionId: latest.versionId,
+          renderedAt: latest.renderedAt,
+        };
       },
     },
   };

@@ -36,7 +36,8 @@ export class MeasureRecomputeQueueRepository {
       values.periodStart,
       values.periodEnd,
     );
-    if (!existing) throw new Error("measure_recompute_queue enqueue produced neither insert nor hit");
+    if (!existing)
+      throw new Error("measure_recompute_queue enqueue produced neither insert nor hit");
     return existing;
   }
 

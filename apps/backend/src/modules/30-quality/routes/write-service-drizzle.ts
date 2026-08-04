@@ -76,10 +76,10 @@ import type {
   SraRemediationView,
 } from "./read-service";
 import type {
+  AddInvestigationNoteArgs,
   AddQapiPipArgs,
   AddSraFindingArgs,
   AdoptQapiProgramArgs,
-  AddInvestigationNoteArgs,
   BindCahpsVendorArgs,
   CahpsIngestResultView,
   CharterQapiProjectArgs,
@@ -102,6 +102,7 @@ import type {
   RecordQapiGovernanceArgs,
   ReopenIncidentArgs,
   ResolveIncidentArgs,
+  ReviewCopCitationArgs,
   RiskRegisterRefreshAcceptedView,
   TriageIncidentArgs,
   UpdateCopCitationArgs,
@@ -113,7 +114,6 @@ import type {
   UpdateQapiProjectArgs,
   UpdateSraFindingArgs,
   UpdateSraRemediationArgs,
-  ReviewCopCitationArgs,
   WriteOutboxPort,
 } from "./write-service";
 
@@ -224,7 +224,9 @@ function dispositionToFindingStatus(
 }
 
 /** `sra_remediation.status` → the §4.2 remediation-status union the view projects. */
-function remediationStatusToView(status: schema.SraRemediation["status"]): SraRemediationView["status"] {
+function remediationStatusToView(
+  status: schema.SraRemediation["status"],
+): SraRemediationView["status"] {
   switch (status) {
     case "proposed":
       return "planned";
@@ -318,19 +320,19 @@ export function buildDrizzleM30WriteService(
   ports: M30WriteServicePorts = {},
 ): M30WriteRouteService {
   const now = ports.now ?? (() => new Date());
-  const recompute: RecomputeEnqueuePort =
-    ports.recompute ?? { enqueue: async () => ({ jobId: randomUUID() }) };
-  const providerEntity: ProviderEntityPort =
-    ports.providerEntity ?? {
-      async primaryProviderEntityId() {
-        // Fail-closed: the composition root MUST bind this before provider-scoped inserts succeed.
-        throw new WardenXError(
-          "PROVIDER_ENTITY_UNRESOLVED",
-          "no provider-entity resolver is bound; cannot stamp provider_entity_id server-side",
-          503,
-        );
-      },
-    };
+  const recompute: RecomputeEnqueuePort = ports.recompute ?? {
+    enqueue: async () => ({ jobId: randomUUID() }),
+  };
+  const providerEntity: ProviderEntityPort = ports.providerEntity ?? {
+    async primaryProviderEntityId() {
+      // Fail-closed: the composition root MUST bind this before provider-scoped inserts succeed.
+      throw new WardenXError(
+        "PROVIDER_ENTITY_UNRESOLVED",
+        "no provider-entity resolver is bound; cannot stamp provider_entity_id server-side",
+        503,
+      );
+    },
+  };
 
   /** Run `fn` inside the actor's org-context tx (RLS scopes to `app.org_id`; never bypass). */
   const inOrgCtx = <T>(actor: M30WriteActor, fn: (tx: WriteTx) => Promise<T>): Promise<T> =>
@@ -371,7 +373,8 @@ export function buildDrizzleM30WriteService(
       .from(schema.incidentReport)
       .where(eq(schema.incidentReport.id, incidentId))
       .limit(1);
-    if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("incident report");
+    if (!row || row.organizationId !== actor.organizationId)
+      throw new NotFoundError("incident report");
     return row;
   };
 
@@ -385,7 +388,8 @@ export function buildDrizzleM30WriteService(
       .from(schema.mortalityReview)
       .where(eq(schema.mortalityReview.id, reviewId))
       .limit(1);
-    if (!row || row.organizationId !== actor.organizationId) throw new NotFoundError("mortality review");
+    if (!row || row.organizationId !== actor.organizationId)
+      throw new NotFoundError("mortality review");
     return row;
   };
 
@@ -657,7 +661,12 @@ export function buildDrizzleM30WriteService(
       const { jobId } = await recompute.enqueue(
         "m30.measure_recompute",
         `${actor.organizationId}:${scopeKey}`,
-        { orgId: actor.organizationId, scope: args.scope, reason: args.reason, priority: args.priority ?? "normal" },
+        {
+          orgId: actor.organizationId,
+          scope: args.scope,
+          reason: args.reason,
+          priority: args.priority ?? "normal",
+        },
       );
       return { jobId, scope: args.scope, priority: args.priority ?? "normal" };
     },
@@ -669,7 +678,11 @@ export function buildDrizzleM30WriteService(
         const prior = await repo.findActiveBinding(actor.organizationId);
         if (prior) {
           // V-7: ≤1 active binding per org — retire the incumbent before activating the rotation.
-          await repo.updateBinding(prior.id, { active: false, effectiveUntil: now(), updatedAt: now() });
+          await repo.updateBinding(prior.id, {
+            active: false,
+            effectiveUntil: now(),
+            updatedAt: now(),
+          });
         }
         const row = await repo.createBinding({
           organizationId: actor.organizationId,
@@ -704,7 +717,8 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         const repo = new CahpsRepository(tx);
         const binding = await repo.findActiveBinding(actor.organizationId);
-        if (!binding) throw new ConflictError("the org has no active CAHPS vendor binding to export to");
+        if (!binding)
+          throw new ConflictError("the org has no active CAHPS vendor binding to export to");
         const cycleMonth = firstOfMonth(args.samplePeriodStart);
         const samples = await repo.listSamplesForCycle(actor.organizationId, cycleMonth);
         const decedentCount = samples.filter((s) => s.exclusionReason === null).length;
@@ -729,7 +743,10 @@ export function buildDrizzleM30WriteService(
     async ingestCahpsResults(actor, args: IngestCahpsResultsArgs): Promise<CahpsIngestResultView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new CahpsRepository(tx);
-        const providerEntityId = await providerEntity.primaryProviderEntityId(tx, actor.organizationId);
+        const providerEntityId = await providerEntity.primaryProviderEntityId(
+          tx,
+          actor.organizationId,
+        );
         const startDate = args.reportingPeriodStart.slice(0, 10);
         const endDate = args.reportingPeriodEnd.slice(0, 10);
         // Idempotent on (provider, vendor, period, payloadHash) — a redelivered vendor payload no-ops.
@@ -799,7 +816,10 @@ export function buildDrizzleM30WriteService(
         if (await repo.findProgramByYear(actor.organizationId, args.planYear)) {
           throw new ConflictError(`a QAPI program already exists for plan year ${args.planYear}`);
         }
-        const providerEntityId = await providerEntity.primaryProviderEntityId(tx, actor.organizationId);
+        const providerEntityId = await providerEntity.primaryProviderEntityId(
+          tx,
+          actor.organizationId,
+        );
         const row = await repo.createProgram({
           organizationId: actor.organizationId,
           providerEntityId,
@@ -869,7 +889,9 @@ export function buildDrizzleM30WriteService(
         const row = await repo.updateIndicator(indicatorId, {
           indicatorName: args.displayName ?? existing.indicatorName,
           tenantTargetValue:
-            args.thresholdValue !== undefined ? String(args.thresholdValue) : existing.tenantTargetValue,
+            args.thresholdValue !== undefined
+              ? String(args.thresholdValue)
+              : existing.tenantTargetValue,
         });
         return mapIndicator(row, args.thresholdDirection ?? "min");
       });
@@ -982,9 +1004,12 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         const repo = new QapiRepository(tx);
         const pip = await repo.findPipById(pipId);
-        if (!pip || pip.organizationId !== actor.organizationId) throw new NotFoundError("qapi pip");
+        if (!pip || pip.organizationId !== actor.organizationId)
+          throw new NotFoundError("qapi pip");
         // Resolve the charterer server-side (the linked project's owner) — NEVER read off the wire.
-        const project = pip.linkedProjectId ? await repo.findProjectById(pip.linkedProjectId) : null;
+        const project = pip.linkedProjectId
+          ? await repo.findProjectById(pip.linkedProjectId)
+          : null;
         const charteredByMembershipId = project?.ownerMembershipId ?? "";
         const cosign: PipClosureCosign = {
           qapiCoordinatorMembershipId: args.cosign.qapiCoordinatorMembershipId,
@@ -1040,7 +1065,10 @@ export function buildDrizzleM30WriteService(
           qapiProgramId: args.qapiProgramId,
           organizationId: actor.organizationId,
           meetingAt: new Date(args.meetingAt),
-          attendeeRoster: args.attendees.map((a) => ({ membershipId: a.membershipId, role: a.role })),
+          attendeeRoster: args.attendees.map((a) => ({
+            membershipId: a.membershipId,
+            role: a.role,
+          })),
           minutesText: args.summary,
           reviewedProjectIds: [],
           reviewedPipIds: [],
@@ -1085,7 +1113,8 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         const repo = new SraRepository(tx);
         const cycle = await repo.findCycleById(cycleId);
-        if (!cycle || cycle.organizationId !== actor.organizationId) throw new NotFoundError("sra cycle");
+        if (!cycle || cycle.organizationId !== actor.organizationId)
+          throw new NotFoundError("sra cycle");
         // Server-authoritative sequential number (the per-cycle uq_sra_finding_in_cycle surface).
         const findingNumber = (await repo.highestFindingNumber(cycleId)) + 1;
         const score = args.likelihood * args.impact;
@@ -1188,7 +1217,8 @@ export function buildDrizzleM30WriteService(
         const row = await repo.updateRemediation(remediationId, {
           status,
           targetDate: args.dueAt ? args.dueAt.slice(0, 10) : existing.targetDate,
-          completedAt: status === "completed" ? (existing.completedAt ?? now()) : existing.completedAt,
+          completedAt:
+            status === "completed" ? (existing.completedAt ?? now()) : existing.completedAt,
           updatedAt: now(),
           version: existing.version + 1,
         });
@@ -1200,7 +1230,8 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         const repo = new SraRepository(tx);
         const cycle = await repo.findCycleById(cycleId);
-        if (!cycle || cycle.organizationId !== actor.organizationId) throw new NotFoundError("sra cycle");
+        if (!cycle || cycle.organizationId !== actor.organizationId)
+          throw new NotFoundError("sra cycle");
         // The pure SRA machine enforces the V-12 two-person split; the route enforces the recent step-up.
         const status = transitionSraCycle(cycle.status, {
           type: "close",
@@ -1242,10 +1273,21 @@ export function buildDrizzleM30WriteService(
       return inOrgCtx(actor, async (tx) => {
         // §4.2 per-kind validation: a present-but-disallowed exposure subkind is refused at create.
         const subkind = typeof args.data.subkind === "string" ? args.data.subkind : undefined;
-        if (args.kind === "exposure_event" && subkind !== undefined && !isAllowedSubkind(args.kind, subkind)) {
-          throw new WardenXError("VALIDATION_FAILED", `'${subkind}' is not a valid exposure subkind`, 422);
+        if (
+          args.kind === "exposure_event" &&
+          subkind !== undefined &&
+          !isAllowedSubkind(args.kind, subkind)
+        ) {
+          throw new WardenXError(
+            "VALIDATION_FAILED",
+            `'${subkind}' is not a valid exposure subkind`,
+            422,
+          );
         }
-        const providerEntityId = await providerEntity.primaryProviderEntityId(tx, actor.organizationId);
+        const providerEntityId = await providerEntity.primaryProviderEntityId(
+          tx,
+          actor.organizationId,
+        );
         const row = await new IncidentRepository(tx).create({
           organizationId: actor.organizationId,
           providerEntityId,
@@ -1261,11 +1303,7 @@ export function buildDrizzleM30WriteService(
       });
     },
 
-    async updateIncident(
-      actor,
-      incidentId,
-      args: UpdateIncidentArgs,
-    ): Promise<IncidentDetailView> {
+    async updateIncident(actor, incidentId, args: UpdateIncidentArgs): Promise<IncidentDetailView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new IncidentRepository(tx);
         const row = await loadIncident(tx, actor, incidentId);
@@ -1300,7 +1338,9 @@ export function buildDrizzleM30WriteService(
         const at = now();
         const updated = await repo.update(row.id, row.occurredAt, {
           lifecycle: result.to,
-          kindData: withSidecar(row, { stateHistory: appendHistory(row, result.to, actor, at.toISOString()) }),
+          kindData: withSidecar(row, {
+            stateHistory: appendHistory(row, result.to, actor, at.toISOString()),
+          }),
           updatedAt: at,
           version: row.version + 1,
         });
@@ -1323,11 +1363,7 @@ export function buildDrizzleM30WriteService(
       });
     },
 
-    async triageIncident(
-      actor,
-      incidentId,
-      args: TriageIncidentArgs,
-    ): Promise<IncidentDetailView> {
+    async triageIncident(actor, incidentId, args: TriageIncidentArgs): Promise<IncidentDetailView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new IncidentRepository(tx);
         const row = await loadIncident(tx, actor, incidentId);
@@ -1422,7 +1458,9 @@ export function buildDrizzleM30WriteService(
         const row = await loadIncident(tx, actor, incidentId);
         const assignedToMembershipId = readSidecar(row).assignedToMembershipId;
         if (!assignedToMembershipId) {
-          throw new ConflictError("the incident has no assignee; it must be triaged before it can resolve");
+          throw new ConflictError(
+            "the incident has no assignee; it must be triaged before it can resolve",
+          );
         }
         // The pure machine enforces WF-12 / R-58: the resolver MUST NOT be the assignee (two-person control).
         const result = transitionIncident(row.lifecycle, {
@@ -1474,11 +1512,7 @@ export function buildDrizzleM30WriteService(
       });
     },
 
-    async reopenIncident(
-      actor,
-      incidentId,
-      args: ReopenIncidentArgs,
-    ): Promise<IncidentDetailView> {
+    async reopenIncident(actor, incidentId, args: ReopenIncidentArgs): Promise<IncidentDetailView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new IncidentRepository(tx);
         const row = await loadIncident(tx, actor, incidentId);
@@ -1646,13 +1680,13 @@ export function buildDrizzleM30WriteService(
     },
 
     // ── infection (R-91, R-93) ──
-    async recordInfectionEvent(
-      actor,
-      args: RecordInfectionEventArgs,
-    ): Promise<InfectionEventView> {
+    async recordInfectionEvent(actor, args: RecordInfectionEventArgs): Promise<InfectionEventView> {
       return inOrgCtx(actor, async (tx) => {
         const repo = new InfectionRepository(tx);
-        const providerEntityId = await providerEntity.primaryProviderEntityId(tx, actor.organizationId);
+        const providerEntityId = await providerEntity.primaryProviderEntityId(
+          tx,
+          actor.organizationId,
+        );
         const pathogen = normalizePathogen(args.pathogen);
         const bodySite = normalizeBodySite(args.bodySite);
         const observedAt = new Date(args.observedAt);

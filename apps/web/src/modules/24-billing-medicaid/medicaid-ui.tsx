@@ -26,7 +26,11 @@ export const td = {
   verticalAlign: "top" as const,
 };
 export const tdMono = { ...td, fontFamily: "var(--font-mono)" };
-export const tdNum = { ...td, textAlign: "right" as const, fontVariantNumeric: "tabular-nums" as const };
+export const tdNum = {
+  ...td,
+  textAlign: "right" as const,
+  fontVariantNumeric: "tabular-nums" as const,
+};
 export const rowLine = { borderTop: "1px solid var(--color-surface-container)" };
 /** Screen-reader-only text (§5.4) — keeps a column head announced without occupying visual space. */
 export const visuallyHidden = {

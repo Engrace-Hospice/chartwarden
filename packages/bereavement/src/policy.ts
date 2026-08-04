@@ -5,9 +5,9 @@
 // PURE DATA — no IO, `@wardenx/types`-only.
 
 import type {
+  BereavedContactStatus,
   BereavementPlanClosureReason,
   BereavementPlanStatus,
-  BereavedContactStatus,
 } from "@wardenx/types";
 
 /**
@@ -97,9 +97,7 @@ export function isEngageableContactStatus(status: BereavedContactStatus): boolea
  * operational problem for the counselor, not a declined program, and closing it as `declined` would put a
  * false "the family refused bereavement services" on the survey record.
  */
-export function shouldCloseAsDeclined(
-  contactStatuses: readonly BereavedContactStatus[],
-): boolean {
+export function shouldCloseAsDeclined(contactStatuses: readonly BereavedContactStatus[]): boolean {
   return contactStatuses.length > 0 && contactStatuses.every((s) => s === "opted_out");
 }
 

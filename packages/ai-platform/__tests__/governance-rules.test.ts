@@ -11,6 +11,7 @@ import {
   AI_REAPPROVAL_INTERVAL_MONTHS,
   aiCloudReachableUnder,
   aiGovernanceGateFor,
+  aiLifecycleTransition,
   aiNextReapprovalDueAt,
   aiRequiredSignerRoles,
   aiResolveRoutingPreference,
@@ -22,7 +23,6 @@ import {
   evaluateAiTenantOptIn,
   evaluateAiTenantOptInPause,
   evaluateAiTenantOptInWithdrawal,
-  aiLifecycleTransition,
 } from "../src/index";
 import type {
   AiLifecycleCapabilitySnapshot,
@@ -341,7 +341,10 @@ describe("§5.3 / W4 tenant opt-in", () => {
       null,
       {
         ...fullRequest,
-        acknowledgments: { ...fullRequest.acknowledgments, disclosureAccountingAcknowledged: false },
+        acknowledgments: {
+          ...fullRequest.acknowledgments,
+          disclosureAccountingAcknowledged: false,
+        },
       },
       fullEvidence,
       "prefer_cloud",
@@ -356,7 +359,10 @@ describe("§5.3 / W4 tenant opt-in", () => {
       null,
       {
         ...fullRequest,
-        acknowledgments: { ...fullRequest.acknowledgments, disclosureAccountingAcknowledged: false },
+        acknowledgments: {
+          ...fullRequest.acknowledgments,
+          disclosureAccountingAcknowledged: false,
+        },
       },
       fullEvidence,
       "prefer_cloud",
@@ -457,9 +463,10 @@ describe("§5.3 / W4 tenant opt-in", () => {
     );
     expect(missing).toMatchObject({ ok: false, code: "AI_OPT_IN_ACKNOWLEDGMENT_MISSING" });
     // The same submission on the default cloud route is complete.
-    expect(evaluateAiTenantOptIn(cloudCapability, null, fullRequest, fullEvidence, "prefer_cloud", T0).ok).toBe(
-      true,
-    );
+    expect(
+      evaluateAiTenantOptIn(cloudCapability, null, fullRequest, fullEvidence, "prefer_cloud", T0)
+        .ok,
+    ).toBe(true);
   });
 
   it("refuses local_only for a capability with no local backend (§10.8)", () => {
@@ -531,7 +538,11 @@ describe("§10.6 withdrawal and pause", () => {
     const decision = evaluateAiTenantOptInWithdrawal("active", null, T0);
     expect(decision.ok).toBe(true);
     if (decision.ok !== true) return;
-    expect(decision.patch).toMatchObject({ status: "opted_out", optedOutAt: T0, optedOutReason: null });
+    expect(decision.patch).toMatchObject({
+      status: "opted_out",
+      optedOutAt: T0,
+      optedOutReason: null,
+    });
   });
 
   it("refuses a second withdrawal so the instant consent ended is not overwritten", () => {
@@ -559,12 +570,7 @@ describe("§10.6 withdrawal and pause", () => {
 
 describe("§5.4 clinician opt-out", () => {
   it("records an opt-out with no reason", () => {
-    const decision = evaluateAiClinicianOptOut(
-      { clinicianOptOutSupported: true },
-      null,
-      null,
-      T0,
-    );
+    const decision = evaluateAiClinicianOptOut({ clinicianOptOutSupported: true }, null, null, T0);
     expect(decision.ok).toBe(true);
     if (decision.ok !== true) return;
     expect(decision.alreadyOptedOut).toBe(false);
@@ -591,7 +597,10 @@ describe("§5.4 clinician opt-out", () => {
   });
 
   it("reverts by stamping the live row, and refuses when there is nothing live", () => {
-    const decision = evaluateAiClinicianOptOutRevert({ id: "oo-1", optedOutAt: T0 }, "2026-02-01T00:00:00.000Z");
+    const decision = evaluateAiClinicianOptOutRevert(
+      { id: "oo-1", optedOutAt: T0 },
+      "2026-02-01T00:00:00.000Z",
+    );
     expect(decision.ok).toBe(true);
     if (decision.ok !== true) return;
     expect(decision.patch).toEqual({ optOutId: "oo-1", revertedAt: "2026-02-01T00:00:00.000Z" });

@@ -22,9 +22,9 @@
 // decision reaches a backend that then cannot dispatch — T04 already handles that at call time; this
 // makes it visible at boot.
 import {
+  type AIPromptRegistry,
   findAiProhibitedZoneViolations,
   formatAiProhibitedZoneViolations,
-  type AIPromptRegistry,
 } from "@wardenx/ai-platform";
 
 import type { AiCapabilityRegistryStore } from "../governance/store";
@@ -201,10 +201,7 @@ export function createAiBootValidators(deps: AiBootValidatorDeps): AiBootValidat
       // backend needs the row for THAT backend. A service-routed capability has no backend to calibrate
       // against and is skipped; none of the five is APPROVED in Phase 1 anyway.
       if (c.defaultBackendKey === "") continue;
-      const calibration = await deps.capabilities.findCurrentCalibration(
-        c.id,
-        c.defaultBackendKey,
-      );
+      const calibration = await deps.capabilities.findCurrentCalibration(c.id, c.defaultBackendKey);
       if (calibration === null) {
         failures.push(
           `'${c.capabilityKey}' is ${c.lifecycleState} on backend '${c.defaultBackendKey}' with no current ai_capability_calibration row`,

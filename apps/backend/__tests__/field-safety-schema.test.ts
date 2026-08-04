@@ -18,20 +18,17 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  type M20TableName,
   M20_AUDIT_DENYLIST,
   M20_AUDIT_RETENTION_CLASS,
   M20_TABLE_NAMES,
-  type M20TableName,
   SAFETY_SOS_OPEN_STATES,
 } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 
 const MIGRATIONS = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
 const tables = readFileSync(join(MIGRATIONS, "0110_field_safety_m20_enums_tables.sql"), "utf8");
-const rls = readFileSync(
-  join(MIGRATIONS, "0111_field_safety_m20_rls_audit_triggers.sql"),
-  "utf8",
-);
+const rls = readFileSync(join(MIGRATIONS, "0111_field_safety_m20_rls_audit_triggers.sql"), "utf8");
 
 /** The §3.2 Phase-A enum types, incl. the `emergency_terminus` value M20-T01 added to close S13. */
 const M20_ENUM_TYPES = [
@@ -222,9 +219,7 @@ describe("M20-T02 migration 0111 — RLS, grants and the M4 write-audit denylist
     // no row predicate, so under-retaining would take the check-ins that BRACKET an SOS.
     expect(M20_AUDIT_RETENTION_CLASS.safety_check_in).toBe("compliance");
     // …and the purge that reclaims the routine rows must have an index to run on.
-    expect(tables).toContain(
-      `WHERE is_part_of_sos_bracket = false AND status = 'ok'`,
-    );
+    expect(tables).toContain(`WHERE is_part_of_sos_bracket = false AND status = 'ok'`);
   });
 
   it("does NOT scrub the fields a surveyor or insurer reads", () => {
@@ -244,7 +239,9 @@ describe("M20-T02 migration 0111 — RLS, grants and the M4 write-audit denylist
   });
 
   it("guards the location stream on the FULL open-state set, terminus included (§2.3 / §8.7)", () => {
-    const guard = rls.slice(rls.indexOf("CREATE OR REPLACE FUNCTION m20_enforce_sos_stream_active"));
+    const guard = rls.slice(
+      rls.indexOf("CREATE OR REPLACE FUNCTION m20_enforce_sos_stream_active"),
+    );
     const body = guard.slice(0, guard.indexOf("END $$;"));
     for (const s of SAFETY_SOS_OPEN_STATES) expect(body, s).toContain(`'${s}'`);
     // Fails CLOSED: an unknown parent (or one RLS hides) raises rather than inserting.

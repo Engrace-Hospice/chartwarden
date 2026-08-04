@@ -1,12 +1,12 @@
 // @wardenx/scheduling — §2.2.3 D4 / §7.7 RRULE materializer + discontinuation — M17-T03.
 import { describe, expect, it } from "vitest";
 import {
-  parseRrule,
+  type MaterializeInput,
   materializeRecurrence,
+  outboxEvents,
+  parseRrule,
   planRecurrenceDiscontinuation,
   weekdayCode,
-  outboxEvents,
-  type MaterializeInput,
 } from "../src/lifecycle";
 
 const TZ = "America/Los_Angeles";
@@ -23,7 +23,11 @@ function localHourMinute(instant: string, tz: string): string {
   return `${get("hour")}:${get("minute")}`;
 }
 
-const baseInput = (rrule: string, startDate: string, endDate: string | null = null): MaterializeInput => ({
+const baseInput = (
+  rrule: string,
+  startDate: string,
+  endDate: string | null = null,
+): MaterializeInput => ({
   rule: parseRrule(rrule),
   startDate,
   endDate,
@@ -68,22 +72,32 @@ describe("§2.2.5 parseRrule subset", () => {
   });
 
   it("rejects a WEEKLY rule with no BYDAY, and BYDAY on a DAILY rule", () => {
-    expect(() => parseRrule("FREQ=WEEKLY")).toThrowError(expect.objectContaining({ code: "RECURRENCE_BYDAY_INVALID" }));
-    expect(() => parseRrule("FREQ=DAILY;BYDAY=MO")).toThrowError(expect.objectContaining({ code: "RECURRENCE_INVALID_RRULE" }));
+    expect(() => parseRrule("FREQ=WEEKLY")).toThrowError(
+      expect.objectContaining({ code: "RECURRENCE_BYDAY_INVALID" }),
+    );
+    expect(() => parseRrule("FREQ=DAILY;BYDAY=MO")).toThrowError(
+      expect.objectContaining({ code: "RECURRENCE_INVALID_RRULE" }),
+    );
   });
 
   it("rejects out-of-subset operators (BYSETPOS) and malformed input", () => {
     expect(() => parseRrule("FREQ=WEEKLY;BYDAY=MO;BYSETPOS=1")).toThrowError(
       expect.objectContaining({ code: "RECURRENCE_INVALID_RRULE" }),
     );
-    expect(() => parseRrule("FREQ=WEEKLY;BYDAY")).toThrowError(expect.objectContaining({ code: "RECURRENCE_INVALID_RRULE" }));
+    expect(() => parseRrule("FREQ=WEEKLY;BYDAY")).toThrowError(
+      expect.objectContaining({ code: "RECURRENCE_INVALID_RRULE" }),
+    );
   });
 });
 
 describe("§7.7 materialization", () => {
   it("materializes only the BYDAY weekdays across the horizon", () => {
     // 2026-07-01 is a Wednesday.
-    const occ = materializeRecurrence(baseInput("FREQ=WEEKLY;BYDAY=MO,WE,FR", "2026-07-01"), "2026-07-01", 90);
+    const occ = materializeRecurrence(
+      baseInput("FREQ=WEEKLY;BYDAY=MO,WE,FR", "2026-07-01"),
+      "2026-07-01",
+      90,
+    );
     expect(occ.length).toBeGreaterThan(30);
     for (const o of occ) {
       expect(["MO", "WE", "FR"]).toContain(weekdayCode(o.serviceDate));
@@ -97,19 +111,31 @@ describe("§7.7 materialization", () => {
 
   it("honors a biweekly INTERVAL (every 14 days)", () => {
     // 2026-07-06 is a Monday.
-    const occ = materializeRecurrence(baseInput("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", "2026-07-06"), "2026-07-06", 90);
+    const occ = materializeRecurrence(
+      baseInput("FREQ=WEEKLY;INTERVAL=2;BYDAY=MO", "2026-07-06"),
+      "2026-07-06",
+      90,
+    );
     expect(occ[0]!.serviceDate).toBe("2026-07-06");
     expect(occ[1]!.serviceDate).toBe("2026-07-20");
     expect(occ[2]!.serviceDate).toBe("2026-08-03");
   });
 
   it("caps at COUNT total occurrences", () => {
-    const occ = materializeRecurrence(baseInput("FREQ=WEEKLY;BYDAY=MO;COUNT=3", "2026-07-06"), "2026-07-06", 90);
+    const occ = materializeRecurrence(
+      baseInput("FREQ=WEEKLY;BYDAY=MO;COUNT=3", "2026-07-06"),
+      "2026-07-06",
+      90,
+    );
     expect(occ.map((o) => o.serviceDate)).toEqual(["2026-07-06", "2026-07-13", "2026-07-20"]);
   });
 
   it("stops at the UNTIL terminator (inclusive)", () => {
-    const occ = materializeRecurrence(baseInput("FREQ=DAILY;UNTIL=20260705", "2026-07-01"), "2026-07-01", 90);
+    const occ = materializeRecurrence(
+      baseInput("FREQ=DAILY;UNTIL=20260705", "2026-07-01"),
+      "2026-07-01",
+      90,
+    );
     expect(occ.map((o) => o.serviceDate)).toEqual([
       "2026-07-01",
       "2026-07-02",
@@ -120,19 +146,35 @@ describe("§7.7 materialization", () => {
   });
 
   it("honors the recurring_visit end_date column alongside the rule (earliest wins)", () => {
-    const occ = materializeRecurrence(baseInput("FREQ=DAILY", "2026-07-01", "2026-07-03"), "2026-07-01", 90);
+    const occ = materializeRecurrence(
+      baseInput("FREQ=DAILY", "2026-07-01", "2026-07-03"),
+      "2026-07-01",
+      90,
+    );
     expect(occ.map((o) => o.serviceDate)).toEqual(["2026-07-01", "2026-07-02", "2026-07-03"]);
   });
 
   it("is idempotent — identical inputs produce the identical set", () => {
-    const a = materializeRecurrence(baseInput("FREQ=WEEKLY;BYDAY=TU,TH", "2026-07-01"), "2026-07-01", 90);
-    const b = materializeRecurrence(baseInput("FREQ=WEEKLY;BYDAY=TU,TH", "2026-07-01"), "2026-07-01", 90);
+    const a = materializeRecurrence(
+      baseInput("FREQ=WEEKLY;BYDAY=TU,TH", "2026-07-01"),
+      "2026-07-01",
+      90,
+    );
+    const b = materializeRecurrence(
+      baseInput("FREQ=WEEKLY;BYDAY=TU,TH", "2026-07-01"),
+      "2026-07-01",
+      90,
+    );
     expect(a).toEqual(b);
   });
 
   it("COUNT counts occurrences from the rule start, not the window start", () => {
     // 6 weekly Mondays exist, but 3 fall before the window — only the remaining ones are emitted.
-    const occ = materializeRecurrence(baseInput("FREQ=WEEKLY;BYDAY=MO;COUNT=6", "2026-07-06"), "2026-07-27", 90);
+    const occ = materializeRecurrence(
+      baseInput("FREQ=WEEKLY;BYDAY=MO;COUNT=6", "2026-07-06"),
+      "2026-07-27",
+      90,
+    );
     expect(occ.map((o) => o.serviceDate)).toEqual(["2026-07-27", "2026-08-03", "2026-08-10"]);
   });
 });

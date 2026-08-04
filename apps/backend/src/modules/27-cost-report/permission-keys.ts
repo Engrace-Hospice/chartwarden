@@ -16,7 +16,7 @@
 // Integrate phase (P3). The KEYS here are kept in lock-step with `@wardenx/cost-report`'s `M27_PERMISSIONS`
 // tuple (the pure source of truth) and the §4.1 route inventory — asserted equal in test.
 import type { PermissionDef } from "@wardenx/auth";
-import { M27_PERMISSIONS, type M27PermissionKey } from "@wardenx/cost-report";
+import { type M27PermissionKey, M27_PERMISSIONS } from "@wardenx/cost-report";
 
 /**
  * The §4.6 permission keys M27 owns (registered into M3). Single-owner across the platform registry.

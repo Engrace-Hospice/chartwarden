@@ -1,10 +1,10 @@
+import { periodsOverlappingClaim } from "./_util";
 // @wardenx/billing — §4.5 rule `f2f_attested_for_recert` (f2f, error, regulatory). A face-to-face
 // encounter attestation is required for the third and subsequent benefit periods (42 CFR §418.22(a)(4)).
 // Reads the resolved `electionPeriods` + `faceToFace` snapshots; only periods with sequence ≥ 3 are in
 // scope. PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, pass } from "./types";
-import { periodsOverlappingClaim } from "./_util";
 
 const KEY = "f2f_attested_for_recert";
 
@@ -29,7 +29,11 @@ export const f2fAttestedForRecert: Rule = {
       (p) => p.sequence >= min,
     );
     if (recertPeriods.length === 0) {
-      return pass(KEY, "error", "No recertification period (≥ 3) in range — face-to-face not required.");
+      return pass(
+        KEY,
+        "error",
+        "No recertification period (≥ 3) in range — face-to-face not required.",
+      );
     }
     const missing: number[] = [];
     for (const p of recertPeriods) {
@@ -37,14 +41,19 @@ export const f2fAttestedForRecert: Rule = {
       if (f2f === undefined || !f2f.attested) missing.push(p.sequence);
     }
     if (missing.length === 0) {
-      return pass(KEY, "error", "A face-to-face attestation exists for every recertification period.");
+      return pass(
+        KEY,
+        "error",
+        "A face-to-face attestation exists for every recertification period.",
+      );
     }
     return fail(
       KEY,
       "error",
       `${missing.length} recertification period(s) lack a face-to-face attestation.`,
       {
-        summary: "Record the face-to-face encounter attestation (M6) for the recertification period(s).",
+        summary:
+          "Record the face-to-face encounter attestation (M6) for the recertification period(s).",
         blameTarget: "election_period",
         fixAction: "edit_in_m6",
       },

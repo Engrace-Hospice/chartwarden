@@ -8,10 +8,10 @@
 // (low volume — ~3 per admission, D14). RLS + grants + the M4 write-audit trigger land in M17-T02.
 import { date, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { recurringVisitStatus, visitPurpose, visitSetting } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 
 export const recurringVisit = pgTable(
   "recurring_visit",

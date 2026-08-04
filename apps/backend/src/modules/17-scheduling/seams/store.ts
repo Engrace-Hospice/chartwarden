@@ -140,7 +140,9 @@ export function createInMemorySchedulingSeamStore(seed: SchedulingSeamSeed = {})
         return byId.get(visitId) ?? null;
       },
       async scheduledVisitsForMembershipOnDate(membershipId, date) {
-        return visits.filter((v) => v.assignedMembershipId === membershipId && visitOnDate(v, date));
+        return visits.filter(
+          (v) => v.assignedMembershipId === membershipId && visitOnDate(v, date),
+        );
       },
       async completedVisitsForPatientSince(patientId, sinceIso) {
         return visits.filter(
@@ -172,9 +174,8 @@ export function createInMemorySchedulingSeamStore(seed: SchedulingSeamSeed = {})
       },
       async currentVisitForClinician(membershipId) {
         return (
-          visits.find(
-            (v) => v.assignedMembershipId === membershipId && v.status === "in_visit",
-          ) ?? null
+          visits.find((v) => v.assignedMembershipId === membershipId && v.status === "in_visit") ??
+          null
         );
       },
       async upcomingForPatient(patientId, _withinHours) {
@@ -195,7 +196,8 @@ export function createInMemorySchedulingSeamStore(seed: SchedulingSeamSeed = {})
         let publishedCount = 0;
         let rescheduledCount = 0;
         for (const v of inWindow) {
-          if (v.actualStartedAt !== null && v.actualStartedAt <= v.scheduledStartedAt) onTimeCount++;
+          if (v.actualStartedAt !== null && v.actualStartedAt <= v.scheduledStartedAt)
+            onTimeCount++;
           if (v.status === "no_show") noShowCount++;
           // A visit that reached `published` (it carries a non-null evvBracketState or any non-proposed status):
           // count anything past the proposal stage as "published" for the stability denominator.

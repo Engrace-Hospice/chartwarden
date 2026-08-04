@@ -7,6 +7,8 @@
 // honest tier and one a permission boundary or a seam outage silently lowered.
 import {
   BEREAVEMENT_RULE_SCORE_SCALE,
+  type BereavementRiskEvidence,
+  type BereavementRosterEvidence,
   MSW_FACTOR_ALIASES,
   PPS_EXPECTED_DECLINE_DELTA,
   PPS_IMMINENT_DEATH_CEILING,
@@ -20,23 +22,21 @@ import {
   ruleScoreToWeighted,
   suddenUnexpectedDeathFromPps,
   weightedScoreToRuleScore,
-  type BereavementRiskEvidence,
-  type BereavementRosterEvidence,
 } from "@wardenx/bereavement";
 import type { MswRiskFactor, ScaleSeriesPoint } from "@wardenx/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { BereavementStateError } from "../src/modules/16-bereavement/lifecycle/index";
 import {
+  type RiskExtractionInput,
+  type RiskScoreRequest,
   computeDeterministicRisk,
   extractRiskInputs,
   gatherRiskEvidence,
   requestAugmentedRisk,
   riskScoreComputedPayload,
   scoreBereavementRisk,
-  type RiskExtractionInput,
-  type RiskScoreRequest,
 } from "../src/modules/16-bereavement/risk/index";
-import { BereavementStateError } from "../src/modules/16-bereavement/lifecycle/index";
 
 const ORG = "11111111-1111-1111-1111-111111111111";
 const PLAN = "22222222-2222-2222-2222-222222222222";
@@ -117,7 +117,9 @@ describe("MSW vocabulary → the 8 D17 rubric slots", () => {
   it("normalizes the spellings MSW templates actually produce", () => {
     expect(normalizeMswFactor("Prior Unresolved Loss")).toBe("prior_unresolved_loss");
     expect(normalizeMswFactor("  social-isolation  ")).toBe("social_isolation");
-    expect(normalizeMswFactor("Substance Use Disorder (active)")).toBe("substance_use_disorder_active");
+    expect(normalizeMswFactor("Substance Use Disorder (active)")).toBe(
+      "substance_use_disorder_active",
+    );
   });
 
   it("maps §7.3's `sole_caregiver_isolation` onto socialIsolation", () => {
@@ -537,7 +539,10 @@ describe("§4.3.4 — evidence gathered through M15 + M9, fail-SOFT to `unknown`
     __resetSeamsForTest();
   });
 
-  function registerBoth(factors: readonly MswRiskFactor[], points: readonly ScaleSeriesPoint[]): void {
+  function registerBoth(
+    factors: readonly MswRiskFactor[],
+    points: readonly ScaleSeriesPoint[],
+  ): void {
     registerSeam("MswRiskFactorReader", {
       async riskFactorsForAdmission() {
         return factors;
@@ -712,7 +717,11 @@ describe("AI Governance §7.4 — the narrative can never move the tier", () => 
   it("`ai.full` ON but M32 unbound stays deterministic", async () => {
     const deterministic = computeDeterministicRisk(complete, request());
     const augmented = await requestAugmentedRisk(deterministic, CONTEXT, {
-      flags: { async forOrg() { return { "ai.full": true }; } },
+      flags: {
+        async forOrg() {
+          return { "ai.full": true };
+        },
+      },
     });
     expect(augmented.applied).toBe(false);
     expect(augmented.reason).toBe("m32_unbound");
@@ -721,7 +730,11 @@ describe("AI Governance §7.4 — the narrative can never move the tier", () => 
   it("with every gate open, the narrative lands in the augmented columns and `rule_tier` does not move", async () => {
     const deterministic = computeDeterministicRisk(complete, request());
     const augmented = await requestAugmentedRisk(deterministic, CONTEXT, {
-      flags: { async forOrg() { return { "ai.full": true }; } },
+      flags: {
+        async forOrg() {
+          return { "ai.full": true };
+        },
+      },
       narrative: narrator,
     });
     expect(augmented.applied).toBe(true);
@@ -736,7 +749,11 @@ describe("AI Governance §7.4 — the narrative can never move the tier", () => 
   it("an M32 throw costs the narrative, never the score", async () => {
     const deterministic = computeDeterministicRisk(complete, request());
     const augmented = await requestAugmentedRisk(deterministic, CONTEXT, {
-      flags: { async forOrg() { return { "ai.full": true }; } },
+      flags: {
+        async forOrg() {
+          return { "ai.full": true };
+        },
+      },
       narrative: {
         async narrate(): Promise<never> {
           throw new Error("m32 timeout");
@@ -765,7 +782,11 @@ describe("AI Governance §7.4 — the narrative can never move the tier", () => 
   it("a half-populated M32 answer degrades rather than producing a row the §3.3.3 CHECK would refuse", async () => {
     const deterministic = computeDeterministicRisk(complete, request());
     const augmented = await requestAugmentedRisk(deterministic, CONTEXT, {
-      flags: { async forOrg() { return { "ai.full": true }; } },
+      flags: {
+        async forOrg() {
+          return { "ai.full": true };
+        },
+      },
       narrative: {
         async narrate() {
           return {

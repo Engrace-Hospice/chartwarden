@@ -70,7 +70,10 @@ export function SafetyMetricsScreen(): JSX.Element {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [b, i] = await Promise.all([getDashboard(client, {}), listIncidents(client, { limit: 100 })]);
+    const [b, i] = await Promise.all([
+      getDashboard(client, {}),
+      listIncidents(client, { limit: 100 }),
+    ]);
     if (b.error && i.error) {
       setError(errorMessage(b.error, "Neither the safety board nor the incident ledger answered."));
       setLoading(false);
@@ -82,7 +85,9 @@ export function SafetyMetricsScreen(): JSX.Element {
     // caller may read. It is tracked so the copy can say "one page of" versus "every row you may read"
     // rather than saying the same thing in both cases.
     setIncidentsComplete(i.page !== null && !i.page.has_more);
-    setError(b.error || i.error ? "One of the two reads did not answer; figures below are partial." : null);
+    setError(
+      b.error || i.error ? "One of the two reads did not answer; figures below are partial." : null,
+    );
     setLoading(false);
   }, [client]);
 
@@ -135,13 +140,14 @@ export function SafetyMetricsScreen(): JSX.Element {
       />
 
       <Notice tone="warning" live>
-        <strong>These are counts, not trends, and there are no charts on this page.</strong> The six trend
-        series §5.1 describes — SOS volume, overdue rate, incident rate, response-time median and p95,
-        after-hours SOS count, check-in compliance — all exist on M20's <code>SafetyMetricsProvider</code>{" "}
-        seam, which M30 and M33 consume server-side. It has no HTTP route, and §4.1 publishes no aggregate
-        endpoint at all. Drawing a rate from the pages this browser happens to have fetched would produce a
-        number that looks like the real one and is not; on a safety dashboard that number would always
-        flatter. The trend surface belongs in an M33 report over the seam M20 already publishes.
+        <strong>These are counts, not trends, and there are no charts on this page.</strong> The six
+        trend series §5.1 describes — SOS volume, overdue rate, incident rate, response-time median
+        and p95, after-hours SOS count, check-in compliance — all exist on M20's{" "}
+        <code>SafetyMetricsProvider</code> seam, which M30 and M33 consume server-side. It has no
+        HTTP route, and §4.1 publishes no aggregate endpoint at all. Drawing a rate from the pages
+        this browser happens to have fetched would produce a number that looks like the real one and
+        is not; on a safety dashboard that number would always flatter. The trend surface belongs in
+        an M33 report over the seam M20 already publishes.
       </Notice>
 
       {error ? (
@@ -181,14 +187,15 @@ export function SafetyMetricsScreen(): JSX.Element {
               ]}
             />
             <span style={mutedStyle}>
-              These six are trustworthy: the server computes the first three over the same snapshot it
-              returns, taken at {dateTime(board.fetchedAt)}. They describe this MOMENT and say nothing
-              about any other one.
+              These six are trustworthy: the server computes the first three over the same snapshot
+              it returns, taken at {dateTime(board.fetchedAt)}. They describe this MOMENT and say
+              nothing about any other one.
             </span>
           </>
         ) : (
           <Notice tone="error" assertive>
-            The board did not answer, so there is no census. Treat this as unknown rather than as zero.
+            The board did not answer, so there is no census. Treat this as unknown rather than as
+            zero.
           </Notice>
         )}
       </Card>
@@ -197,7 +204,11 @@ export function SafetyMetricsScreen(): JSX.Element {
         <CountGrid
           entries={[
             { label: "Incidents fetched", value: incidents.length },
-            { label: "Still open", value: openIncidents, tone: openIncidents > 0 ? "warning" : undefined },
+            {
+              label: "Still open",
+              value: openIncidents,
+              tone: openIncidents > 0 ? "warning" : undefined,
+            },
             { label: "OSHA-reportable", value: osha, tone: osha > 0 ? "critical" : undefined },
             {
               label: "Reportable, unsigned",
@@ -211,14 +222,14 @@ export function SafetyMetricsScreen(): JSX.Element {
         <Notice tone={incidentsComplete ? "info" : "warning"}>
           {incidentsComplete ? (
             <>
-              These figures cover <strong>every incident row the server sent</strong> for this caller —
-              the page was not truncated. They still cover only what you may read, which is not the same
-              as every incident in the agency.
+              These figures cover <strong>every incident row the server sent</strong> for this
+              caller — the page was not truncated. They still cover only what you may read, which is
+              not the same as every incident in the agency.
             </>
           ) : (
             <>
-              <strong>This is one page.</strong> More incidents exist beyond it, so every figure above is
-              a floor, not a total. Do not report these numbers.
+              <strong>This is one page.</strong> More incidents exist beyond it, so every figure
+              above is a floor, not a total. Do not report these numbers.
             </>
           )}
         </Notice>
@@ -242,8 +253,8 @@ export function SafetyMetricsScreen(): JSX.Element {
           </tbody>
         </table>
         <span style={mutedStyle}>
-          Severity is the clinician's own attestation, adjustable by a supervisor while the incident is
-          under review — so this distribution is a record of what people said, not an assessment.
+          Severity is the clinician's own attestation, adjustable by a supervisor while the incident
+          is under review — so this distribution is a record of what people said, not an assessment.
         </span>
       </Card>
 
@@ -274,13 +285,14 @@ export function SafetyMetricsScreen(): JSX.Element {
 
       <Card title="What a real trend surface needs">
         <span style={mutedStyle}>
-          M20 already publishes the numbers: <code>SafetyMetricsProvider</code> answers SOS frequency,
-          overdue rate, incident rate, response-time median and p95, and check-in compliance — each{" "}
-          <strong>with its denominator</strong>, which is the part that makes suppression below a
-          reportable floor possible and back-computing impossible. What is missing is a way for a browser
-          to reach it: a seam is a server-side registry entry, so this needs either an M20 aggregate route
-          (a new permission, audit declaration and RLS path — not something a screen task may mint) or an
-          M33 report over the seam that already exists. The second is the architecture's own answer.
+          M20 already publishes the numbers: <code>SafetyMetricsProvider</code> answers SOS
+          frequency, overdue rate, incident rate, response-time median and p95, and check-in
+          compliance — each <strong>with its denominator</strong>, which is the part that makes
+          suppression below a reportable floor possible and back-computing impossible. What is
+          missing is a way for a browser to reach it: a seam is a server-side registry entry, so
+          this needs either an M20 aggregate route (a new permission, audit declaration and RLS path
+          — not something a screen task may mint) or an M33 report over the seam that already
+          exists. The second is the architecture's own answer.
         </span>
       </Card>
     </div>

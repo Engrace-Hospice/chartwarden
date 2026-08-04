@@ -1,3 +1,4 @@
+import type { BereavementAugmentationColumns } from "@wardenx/bereavement";
 // apps/backend/src/modules/16-bereavement/seams/store.ts — M16-T05, the data PORT the seven §4.6 published
 // seams compose over, plus an in-memory slice for tests / boot-without-DB. The providers (./providers.ts) are
 // pure orchestration over this port; production injects a Drizzle-backed store reading M16's
@@ -23,12 +24,14 @@
 // deterministic tier a cadence decision was made on. The Drizzle adapter runs that insert inside the M4-audited
 // transaction the M16-T06 service layer owns.
 import type {
+  AdmissionId,
   BereavedContactId,
   BereavedContactView,
   BereavedPortalAccountId,
   BereavementConfidenceBand,
   BereavementCopComplianceCounts,
   BereavementDataCompleteness,
+  BereavementExternalSourceMetadata,
   BereavementOutreachStatus,
   BereavementOutreachStatusCounts,
   BereavementOutreachView,
@@ -40,7 +43,6 @@ import type {
   BereavementRiskTier,
   BereavementRiskTierDistribution,
   BereavementScope,
-  AdmissionId,
   DocumentId,
   IsoInstant,
   LocalDate,
@@ -49,9 +51,7 @@ import type {
   MembershipId,
   PatientId,
   ProviderEntityId,
-  BereavementExternalSourceMetadata,
 } from "@wardenx/types";
-import type { BereavementAugmentationColumns } from "@wardenx/bereavement";
 
 /**
  * The `bereavement_plan` columns every plan-shaped seam read projects from. Deliberately the ROW, not the

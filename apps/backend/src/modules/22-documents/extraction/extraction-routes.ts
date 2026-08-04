@@ -1,3 +1,4 @@
+import { type Static, Type } from "@sinclair/typebox";
 // apps/backend/src/modules/22-documents/extraction/extraction-routes.ts — M22-T08 the DocLens
 // extraction-trigger routes, gated behind `documents.doclens` (OFF → 503 EXTRACTION_DISABLED).
 //
@@ -15,14 +16,10 @@
 // M3). Org binding is server-side (`request.context`, never the body). The DocLens pipeline service is
 // injected (in-memory/fake in tests; the deny-stub-backed service in prod).
 import { requirePermission } from "@wardenx/auth";
-import { type Static, Type } from "@sinclair/typebox";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
-import {
-  type DocumentFeatureFlagReader,
-  isDocLensEnabled,
-} from "./feature-flag";
+import { type DocumentFeatureFlagReader, isDocLensEnabled } from "./feature-flag";
 import { type DocLensPipelineService, extractionDisabled } from "./pipeline-service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -63,7 +60,10 @@ const BatchParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 
 const INTAKE_REVIEW = requirePermission("intake.review") as PreHandler;
 
-export function registerDocLensExtractionRoutes(app: FastifyInstance, deps: DocLensRouteDeps): void {
+export function registerDocLensExtractionRoutes(
+  app: FastifyInstance,
+  deps: DocLensRouteDeps,
+): void {
   const { pipeline, flags } = deps;
 
   /**
@@ -112,7 +112,13 @@ export function registerDocLensExtractionRoutes(app: FastifyInstance, deps: DocL
       const run = {
         status: "ready_for_review" as const,
         classifiedPages: [],
-        review: { batchId: id, candidates: [], discrepancies: [], bulkApproveAllowed: true, sudDetected: false },
+        review: {
+          batchId: id,
+          candidates: [],
+          discrepancies: [],
+          bulkApproveAllowed: true,
+          sudDetected: false,
+        },
       };
       return pipeline.commitReview({
         organizationId,

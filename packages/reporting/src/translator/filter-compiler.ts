@@ -7,7 +7,7 @@
 // filter is the (catalog-validated, regex-guarded) column identifier; the values travel in the params
 // array. The semantic legality of each comparator/value was already proven by `spec-validator.ts`; this
 // step re-asserts column membership as defense-in-depth and lays down the bound placeholders.
-import { schema } from "@wardenx/db";
+import type { schema } from "@wardenx/db";
 import { ReportTranslatorError, quoteIdent } from "./spec-validator";
 
 /** SQL operator text per scalar comparator. `le`/`ge`/`ne` map to their SQL spellings. */
@@ -34,7 +34,10 @@ export interface CompiledWhere {
 /** The relation alias the MV wrapper function is given in the FROM clause (`… AS t`). */
 export const REL_ALIAS = "t";
 
-function col(dimensionKey: string, allowed: ReadonlyMap<string, schema.DimensionCatalog["dataType"]>): string {
+function col(
+  dimensionKey: string,
+  allowed: ReadonlyMap<string, schema.DimensionCatalog["dataType"]>,
+): string {
   // WHITELIST: a filter may only ever reference a dimension the base catalog publishes. Post
   // spec-validation this cannot fail; we re-assert so a translator bug fails closed, never open.
   if (!allowed.has(dimensionKey)) {

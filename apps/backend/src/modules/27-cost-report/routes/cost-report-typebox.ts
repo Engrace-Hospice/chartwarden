@@ -75,10 +75,23 @@ const COST_REPORT_STATE = [
   "closed",
 ] as const;
 const WORKSHEET_CODE = [
-  "S", "S-1", "S-2",
-  "A", "A-1", "A-2", "A-3", "A-4", "A-6", "A-8", "A-8-1",
-  "B", "B-1", "C",
-  "F", "F-1", "F-2",
+  "S",
+  "S-1",
+  "S-2",
+  "A",
+  "A-1",
+  "A-2",
+  "A-3",
+  "A-4",
+  "A-6",
+  "A-8",
+  "A-8-1",
+  "B",
+  "B-1",
+  "C",
+  "F",
+  "F-1",
+  "F-2",
 ] as const;
 const WAGE_SOURCE = ["gusto", "manual"] as const;
 const BAD_DEBT_KIND = ["deductible", "coinsurance"] as const;
@@ -451,7 +464,9 @@ export const WageDataImportResponseSchema = Type.Object({
 });
 export const WageDataImportListResponseSchema = Type.Array(WageDataImportResponseSchema);
 
-export const ValidationRunSummaryListResponseSchema = Type.Array(ValidationRunSummaryResponseSchema);
+export const ValidationRunSummaryListResponseSchema = Type.Array(
+  ValidationRunSummaryResponseSchema,
+);
 
 export const EcrSubmissionListResponseSchema = Type.Array(EcrSubmissionResponseSchema);
 
@@ -511,44 +526,71 @@ export const ValidationJobAcceptedResponseSchema = Type.Object({
 
 // Compile-time pins: what each schema publishes (`T`) must be assignable to what the service returns (`V`).
 type Conforms<T extends V, V> = T;
-type _CostReportSummary = Conforms<Static<typeof CostReportSummaryResponseSchema>, CostReportSummaryView>;
-type _CostReportDetail = Conforms<Static<typeof CostReportDetailResponseSchema>, CostReportDetailView>;
+type _CostReportSummary = Conforms<
+  Static<typeof CostReportSummaryResponseSchema>,
+  CostReportSummaryView
+>;
+type _CostReportDetail = Conforms<
+  Static<typeof CostReportDetailResponseSchema>,
+  CostReportDetailView
+>;
 type _CostReportPage = Conforms<
   Static<typeof CostReportPageResponseSchema>,
   CursorPage<CostReportSummaryView>
 >;
 type _Worksheet = Conforms<Static<typeof WorksheetResponseSchema>, WorksheetView>;
-type _CostCenterMapping = Conforms<Static<typeof CostCenterMappingResponseSchema>, CostCenterMappingView>;
+type _CostCenterMapping = Conforms<
+  Static<typeof CostCenterMappingResponseSchema>,
+  CostCenterMappingView
+>;
 type _MappingPreview = Conforms<Static<typeof MappingPreviewResponseSchema>, MappingPreviewView>;
 type _BadDebtRecord = Conforms<Static<typeof BadDebtRecordResponseSchema>, BadDebtRecordView>;
 type _StatisticData = Conforms<Static<typeof StatisticDataResponseSchema>, StatisticDataView>;
-type _TrialBalanceImport = Conforms<Static<typeof TrialBalanceImportResponseSchema>, TrialBalanceImportView>;
+type _TrialBalanceImport = Conforms<
+  Static<typeof TrialBalanceImportResponseSchema>,
+  TrialBalanceImportView
+>;
 type _WageDataImport = Conforms<Static<typeof WageDataImportResponseSchema>, WageDataImportView>;
 type _ValidationRunSummary = Conforms<
   Static<typeof ValidationRunSummaryResponseSchema>,
   ValidationRunSummaryView
 >;
-type _ValidationResult = Conforms<Static<typeof ValidationResultResponseSchema>, ValidationResultView>;
+type _ValidationResult = Conforms<
+  Static<typeof ValidationResultResponseSchema>,
+  ValidationResultView
+>;
 type _ValidationRunDetail = Conforms<
   Static<typeof ValidationRunDetailResponseSchema>,
   ValidationRunDetailView
 >;
-type _ValidationOverride = Conforms<Static<typeof ValidationOverrideResponseSchema>, ValidationOverrideView>;
+type _ValidationOverride = Conforms<
+  Static<typeof ValidationOverrideResponseSchema>,
+  ValidationOverrideView
+>;
 type _EcrSubmission = Conforms<Static<typeof EcrSubmissionResponseSchema>, EcrSubmissionView>;
 type _SnapshotSummary = Conforms<Static<typeof SnapshotSummaryResponseSchema>, SnapshotSummaryView>;
 type _SnapshotDetail = Conforms<Static<typeof SnapshotDetailResponseSchema>, SnapshotDetailView>;
-type _ComplianceWindow = Conforms<Static<typeof ComplianceWindowResponseSchema>, ComplianceWindowView>;
+type _ComplianceWindow = Conforms<
+  Static<typeof ComplianceWindowResponseSchema>,
+  ComplianceWindowView
+>;
 type _ValidationRule = Conforms<Static<typeof ValidationRuleResponseSchema>, ValidationRuleView>;
 type _RefreshInputsAccepted = Conforms<
   Static<typeof RefreshInputsAcceptedResponseSchema>,
   RefreshInputsAcceptedView
 >;
-type _ImportJobAccepted = Conforms<Static<typeof ImportJobAcceptedResponseSchema>, ImportJobAcceptedView>;
+type _ImportJobAccepted = Conforms<
+  Static<typeof ImportJobAcceptedResponseSchema>,
+  ImportJobAcceptedView
+>;
 type _StatisticsRefreshAccepted = Conforms<
   Static<typeof StatisticsRefreshAcceptedResponseSchema>,
   StatisticsRefreshAcceptedView
 >;
-type _AllocationAccepted = Conforms<Static<typeof AllocationAcceptedResponseSchema>, AllocationAcceptedView>;
+type _AllocationAccepted = Conforms<
+  Static<typeof AllocationAcceptedResponseSchema>,
+  AllocationAcceptedView
+>;
 type _ValidationJobAccepted = Conforms<
   Static<typeof ValidationJobAcceptedResponseSchema>,
   ValidationJobAcceptedView

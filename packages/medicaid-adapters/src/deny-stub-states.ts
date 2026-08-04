@@ -5,7 +5,13 @@
 import { createDenyStubAdapter } from "./deny-stub";
 import type { MedicaidAdapter } from "./interface";
 
-export const washingtonMedicaidAdapter: MedicaidAdapter = createDenyStubAdapter("WA", "washington-mmis");
+export const washingtonMedicaidAdapter: MedicaidAdapter = createDenyStubAdapter(
+  "WA",
+  "washington-mmis",
+);
 export const idahoMedicaidAdapter: MedicaidAdapter = createDenyStubAdapter("ID", "idaho-mmis");
-export const californiaMedicaidAdapter: MedicaidAdapter = createDenyStubAdapter("CA", "california-medi-cal");
+export const californiaMedicaidAdapter: MedicaidAdapter = createDenyStubAdapter(
+  "CA",
+  "california-medi-cal",
+);
 export const nevadaMedicaidAdapter: MedicaidAdapter = createDenyStubAdapter("NV", "nevada-mmis");

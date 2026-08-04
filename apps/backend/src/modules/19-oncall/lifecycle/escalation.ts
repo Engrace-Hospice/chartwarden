@@ -90,7 +90,11 @@ export function acknowledgeEscalation(input: {
   readonly at: IsoInstant;
 }): TriageTransitionResult<TriageEscalationState, TriageEscalationCommand> {
   const from = escalationState(input.escalation);
-  require_(from !== "resolved", "ESCALATION_ALREADY_RESOLVED", "the escalation is already resolved");
+  require_(
+    from !== "resolved",
+    "ESCALATION_ALREADY_RESOLVED",
+    "the escalation is already resolved",
+  );
   require_(
     from !== "acknowledged",
     "ESCALATION_ALREADY_ACKNOWLEDGED",
@@ -122,7 +126,11 @@ export function resolveEscalation(input: {
   readonly at: IsoInstant;
 }): TriageTransitionResult<TriageEscalationState, TriageEscalationCommand> {
   const from = escalationState(input.escalation);
-  require_(from !== "resolved", "ESCALATION_ALREADY_RESOLVED", "the escalation is already resolved");
+  require_(
+    from !== "resolved",
+    "ESCALATION_ALREADY_RESOLVED",
+    "the escalation is already resolved",
+  );
   require_(
     from === "acknowledged",
     "ESCALATION_INVALID_TRANSITION",
@@ -242,9 +250,7 @@ export function hasUnacknowledgedMandatoryEscalation(
 
 /** §2.3 — `completeProtocol` rejects while any red-flag escalation is still open. A red flag that nobody
  *  has picked up is not a finding the walk may step past. */
-export function hasOpenRedFlagEscalation(
-  escalations: readonly TriageEscalationFacts[],
-): boolean {
+export function hasOpenRedFlagEscalation(escalations: readonly TriageEscalationFacts[]): boolean {
   return escalations.some(
     (e) => e.triggerKind === "red_flag_question" && escalationState(e) === "open",
   );

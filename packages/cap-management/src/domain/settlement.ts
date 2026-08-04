@@ -1,9 +1,9 @@
+import { computeInpatientOverage } from "./inpatient";
 // @wardenx/cap-management — the cap-year settlement calculation (§2.1 cap_settlement). At year-close the
 // final paid total is compared to the methodology-derived aggregate cap; the signed overage drives the
 // owed-direction. Positive aggregate overage = the hospice was overpaid and owes CMS back; negative =
 // underpaid (rare). The inpatient overage is a separate recoupment computed at the RHC differential.
 import { agencyAllocatedCap } from "./methodology";
-import { computeInpatientOverage } from "./inpatient";
 import type { Methodology, SettlementDirection } from "./types";
 
 export interface SettlementInput {

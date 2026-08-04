@@ -2,6 +2,18 @@
 // (§4.11: framing, MSH pre-parse, ACK/NAK, allowlist, idempotency, circuit breaker, supervisor boot).
 import { describe, expect, it, vi } from "vitest";
 
+import type { ExternalInterfaceBaaResult } from "../feed/baa-gate";
+import { buildAckMessage } from "../listener/ack";
+import {
+  LISTENER_DOWN_THRESHOLD_FLOOR_MS,
+  evaluateListenerCircuit,
+} from "../listener/circuit-breaker";
+import {
+  type MllpConnectionDeps,
+  type MllpIngestSink,
+  isSenderAllowed,
+  processInboundFrame,
+} from "../listener/connection";
 import {
   MLLP_CR,
   MLLP_FS,
@@ -13,21 +25,12 @@ import {
   parseMshEnvelope,
   sha256Hex,
 } from "../listener/mllp-framing";
-import { buildAckMessage } from "../listener/ack";
-import { evaluateListenerCircuit, LISTENER_DOWN_THRESHOLD_FLOOR_MS } from "../listener/circuit-breaker";
-import {
-  type MllpConnectionDeps,
-  type MllpIngestSink,
-  isSenderAllowed,
-  processInboundFrame,
-} from "../listener/connection";
 import {
   type SupervisorDeps,
   type SupervisorFeedDescriptor,
   bootFeedListeners,
   drainAndShutdown,
 } from "../listener/supervisor";
-import type { ExternalInterfaceBaaResult } from "../feed/baa-gate";
 
 const ADT = `MSH|^~\\&|SENDAPP|SENDFAC|RECVAPP|RECVFAC|20260802120000||ADT^A01|MSGID123|P|2.5.1\rPID|1||MRN^^^H`;
 
@@ -54,7 +57,12 @@ describe("MLLP framing (§4.11.3)", () => {
 
   it("splits two frames delivered in one chunk", () => {
     const buf = new MllpFrameBuffer();
-    buf.append(Buffer.concat([frameBytes("MSH|^~\\&|A|B|C|D|T||ADT^A01|M1|P|2.5.1"), frameBytes("MSH|^~\\&|A|B|C|D|T||ADT^A01|M2|P|2.5.1")]));
+    buf.append(
+      Buffer.concat([
+        frameBytes("MSH|^~\\&|A|B|C|D|T||ADT^A01|M1|P|2.5.1"),
+        frameBytes("MSH|^~\\&|A|B|C|D|T||ADT^A01|M2|P|2.5.1"),
+      ]),
+    );
     const frames = buf.drain();
     expect(frames).toHaveLength(2);
     expect(parseMshEnvelope(frames[0]!).messageControlId).toBe("M1");
@@ -69,7 +77,9 @@ describe("MLLP framing (§4.11.3)", () => {
 
   it("throws MllpFramingError when <FS> is not followed by <CR>", () => {
     const buf = new MllpFrameBuffer();
-    buf.append(Buffer.concat([Buffer.from([MLLP_VT]), Buffer.from("MSH|x"), Buffer.from([MLLP_FS, 0x00])]));
+    buf.append(
+      Buffer.concat([Buffer.from([MLLP_VT]), Buffer.from("MSH|x"), Buffer.from([MLLP_FS, 0x00])]),
+    );
     expect(() => buf.drain()).toThrow(MllpFramingError);
   });
 
@@ -95,7 +105,9 @@ describe("MSH pre-parse (§4.11.3 step 2)", () => {
   });
 
   it("throws when MSH-10 is empty", () => {
-    expect(() => parseMshEnvelope("MSH|^~\\&|A|B|C|D|T||ADT^A01||P|2.5.1")).toThrow(MllpMshParseError);
+    expect(() => parseMshEnvelope("MSH|^~\\&|A|B|C|D|T||ADT^A01||P|2.5.1")).toThrow(
+      MllpMshParseError,
+    );
   });
 
   it("hashes payloads deterministically", () => {
@@ -169,7 +181,11 @@ describe("listener-down circuit breaker (§4.11.5 / D17)", () => {
       lastFrameAtMs: 0, // > 5min ago
       probe: { tcpOk: false, tlsOk: false },
     });
-    expect(d).toEqual({ state: "open", transitioned: true, emit: "m29.external_feed.listener_down" });
+    expect(d).toEqual({
+      state: "open",
+      transitioned: true,
+      emit: "m29.external_feed.listener_down",
+    });
   });
 
   it("does not re-emit while already OPEN", () => {
@@ -267,7 +283,11 @@ describe("processInboundFrame disposition ladder (§4.11.3)", () => {
 
   it("AA without re-ingest for a duplicate (D14)", async () => {
     const ingest = vi.fn(async () => "aa" as const);
-    const sink: MllpIngestSink = { isDuplicate: async () => true, ingest, recordRejected: async () => {} };
+    const sink: MllpIngestSink = {
+      isDuplicate: async () => true,
+      ingest,
+      recordRejected: async () => {},
+    };
     const ack = (await processInboundFrame(FEED, ADT, connDeps(sink))).toString("utf8");
     expect(ack).toContain("MSA|AA|MSGID123");
     expect(ingest).not.toHaveBeenCalled();
@@ -324,8 +344,16 @@ describe("supervisor boot + shutdown (§4.11.1 / §4.11.4)", () => {
     return { deps, started, state };
   }
 
-  const activeBaa: ExternalInterfaceBaaResult = { isActive: true, status: "executed", expiresOn: null };
-  const missingBaa: ExternalInterfaceBaaResult = { isActive: false, status: "missing", expiresOn: null };
+  const activeBaa: ExternalInterfaceBaaResult = {
+    isActive: true,
+    status: "executed",
+    expiresOn: null,
+  };
+  const missingBaa: ExternalInterfaceBaaResult = {
+    isActive: false,
+    status: "missing",
+    expiresOn: null,
+  };
 
   it("starts feeds that pass the BAA gate", async () => {
     const h = makeDeps([FEED], activeBaa);

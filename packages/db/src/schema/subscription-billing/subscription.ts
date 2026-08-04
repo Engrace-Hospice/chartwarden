@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `subscription` (M35 §3.3). TENANT-SCOPED, RLS keyed ONLY on canonical app.org_id (0143).
 // One live subscription per Organization (partial-unique `subscription_org_active_uq`). M35-F04
 // (ADR-0011 / ARCH-147): `organization_id` is a plain uuid (logical FK to M2 organizations, RLS-governed)
@@ -13,7 +14,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 import { subscriptionStatus } from "../../enums";
 import { plan } from "./plan";
 

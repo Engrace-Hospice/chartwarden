@@ -30,7 +30,8 @@ export const medicarePrimaryRequiredForDual: MedicaidRule = {
       return skip(KEY, "error", "seam_not_bound", "M23 ClaimReader unbound; COB rule deferred.");
     }
     const ms = ctx.medicareSecondary;
-    const resolved = ms.medicareClaimState !== null && MEDICARE_RESOLVED_STATES.has(ms.medicareClaimState);
+    const resolved =
+      ms.medicareClaimState !== null && MEDICARE_RESOLVED_STATES.has(ms.medicareClaimState);
     if (ctx.claim.medicareClaimId !== null && resolved && ms.eobContextPresent) {
       return pass(KEY, "error", `Medicare-primary is '${ms.medicareClaimState}' with EOB context.`);
     }
@@ -57,7 +58,8 @@ export const medicaidRateSchedulePresentForServiceDate: MedicaidRule = {
   version: 1,
   category: "rate",
   title: "Rate schedule present for service date",
-  description: "Each claim line resolves a non-null state rate schedule rate for its LOC and service date.",
+  description:
+    "Each claim line resolves a non-null state rate schedule rate for its LOC and service date.",
   severity: "error",
   regulatoryRequired: true,
   overrideRoleRequired: "billing_manager",
@@ -67,7 +69,9 @@ export const medicaidRateSchedulePresentForServiceDate: MedicaidRule = {
     if (!ctx.seams.rateScheduleBound) {
       return skip(KEY, "error", "seam_not_bound", "Rate-schedule seam unbound; rule deferred.");
     }
-    const missing = ctx.rateLookups.filter((r) => !r.rateFound || r.rateCents === null || r.rateCents <= 0);
+    const missing = ctx.rateLookups.filter(
+      (r) => !r.rateFound || r.rateCents === null || r.rateCents <= 0,
+    );
     if (missing.length === 0 && ctx.rateLookups.length > 0) {
       return pass(KEY, "error", "All lines resolve a positive rate-schedule rate.");
     }
@@ -81,7 +85,10 @@ export const medicaidRateSchedulePresentForServiceDate: MedicaidRule = {
       KEY,
       "error",
       `${missing.length} line(s) have no rate-schedule rate for the service date.`,
-      { summary: "Load the state rate schedule for the affected LOC/date(s).", fixAction: "load_rate_schedule" },
+      {
+        summary: "Load the state rate schedule for the affected LOC/date(s).",
+        fixAction: "load_rate_schedule",
+      },
       { missingRates: missing.length },
     );
   },

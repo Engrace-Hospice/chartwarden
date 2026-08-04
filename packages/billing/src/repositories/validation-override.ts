@@ -14,8 +14,8 @@ import * as schema from "@wardenx/db/schema";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   type BillingDb,
-  buildCursorPage,
   type CursorPage,
+  buildCursorPage,
   decodeCursor,
   keysetBefore,
   pageSizeOf,
@@ -40,7 +40,8 @@ export class ValidationOverrideRepository {
       .returning();
     if (inserted) return inserted;
     const existing = await this.findByResult(values.resultId);
-    if (!existing) throw new Error("validation_override append: conflict but no existing row found");
+    if (!existing)
+      throw new Error("validation_override append: conflict but no existing row found");
     return existing;
   }
 
@@ -61,7 +62,10 @@ export class ValidationOverrideRepository {
     resultIds: readonly string[],
   ): Promise<readonly schema.ValidationOverride[]> {
     if (resultIds.length === 0) return [];
-    return this.db.select().from(O).where(inArray(O.resultId, [...resultIds]));
+    return this.db
+      .select()
+      .from(O)
+      .where(inArray(O.resultId, [...resultIds]));
   }
 
   /**

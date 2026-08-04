@@ -438,8 +438,12 @@ describe("§3.2 Phase E — the platform policy floor (M20-F03)", () => {
   });
 
   it("ships the D4 overdue tiers in ascending order", () => {
-    const { gentleReminderMinutes, supervisorAlertMinutes, escalationMinutes, sosEquivalentMinutes } =
-      SAFETY_POLICY_FLOOR;
+    const {
+      gentleReminderMinutes,
+      supervisorAlertMinutes,
+      escalationMinutes,
+      sosEquivalentMinutes,
+    } = SAFETY_POLICY_FLOOR;
     expect(gentleReminderMinutes).toBeLessThan(supervisorAlertMinutes);
     expect(supervisorAlertMinutes).toBeLessThan(escalationMinutes);
     expect(escalationMinutes).toBeLessThan(sosEquivalentMinutes);

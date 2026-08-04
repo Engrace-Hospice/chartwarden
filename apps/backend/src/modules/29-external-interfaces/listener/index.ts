@@ -11,14 +11,8 @@
 // with T08. This file exposes the registry + re-exports the supervisor so T08 wires `startListenerProcess`.
 import net from "node:net";
 import tls from "node:tls";
-import {
-  type MllpConnectionDeps,
-  handleMllpConnection,
-} from "./connection";
-import {
-  type ListenerRegistryPort,
-  type SupervisorFeedDescriptor,
-} from "./supervisor";
+import { type MllpConnectionDeps, handleMllpConnection } from "./connection";
+import type { ListenerRegistryPort, SupervisorFeedDescriptor } from "./supervisor";
 
 export * from "./supervisor";
 export * from "./connection";

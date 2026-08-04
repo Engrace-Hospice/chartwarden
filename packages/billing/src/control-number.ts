@@ -71,7 +71,9 @@ export const CONTROL_NUMBER_RE = /^([A-Za-z0-9]{6})-(\d{6})-([0-9a-z]{5})-(\d{2}
 export function deriveControlNumber(input: ControlNumberInput): string {
   const ccn = input.ccn.trim();
   if (!CCN_RE.test(ccn)) {
-    throw new RangeError(`deriveControlNumber: ccn must be 6 alphanumeric chars (got '${input.ccn}')`);
+    throw new RangeError(
+      `deriveControlNumber: ccn must be 6 alphanumeric chars (got '${input.ccn}')`,
+    );
   }
 
   const dateMatch = ISO_DATE_RE.exec(input.serviceFrom);
@@ -90,18 +92,23 @@ export function deriveControlNumber(input: ControlNumberInput): string {
   }
   const attempt2 = String(input.attemptIndex).padStart(2, "0");
 
-  const hexPrefix = input.claimId.replace(/-/g, "").slice(0, CLAIM_ID_PREFIX_HEX_CHARS).toLowerCase();
+  const hexPrefix = input.claimId
+    .replace(/-/g, "")
+    .slice(0, CLAIM_ID_PREFIX_HEX_CHARS)
+    .toLowerCase();
   if (hexPrefix.length < CLAIM_ID_PREFIX_HEX_CHARS || !HEX_PREFIX_RE.test(hexPrefix)) {
     throw new RangeError(
       `deriveControlNumber: claimId must yield ${CLAIM_ID_PREFIX_HEX_CHARS} leading hex chars ` +
         `(got prefix '${hexPrefix}' from '${input.claimId}')`,
     );
   }
-  const base36 = parseInt(hexPrefix, 16).toString(36).padStart(BASE36_SEGMENT_WIDTH, "0");
+  const base36 = Number.parseInt(hexPrefix, 16).toString(36).padStart(BASE36_SEGMENT_WIDTH, "0");
   // 24-bit value ⇒ max base36 length 5; guard the invariant so a future prefix-width change can't
   // silently overflow the MAC field width.
   if (base36.length !== BASE36_SEGMENT_WIDTH) {
-    throw new RangeError(`deriveControlNumber: base36 segment width invariant broken ('${base36}')`);
+    throw new RangeError(
+      `deriveControlNumber: base36 segment width invariant broken ('${base36}')`,
+    );
   }
 
   const controlNumber = `${ccn}-${yymmdd}-${base36}-${attempt2}`;
@@ -132,7 +139,5 @@ export function parseControlNumber(controlNumber: string): ParsedControlNumber |
 
 /** True iff `controlNumber` conforms to the D4 format AND is strictly under the MAC field length. */
 export function isValidControlNumber(controlNumber: string): boolean {
-  return (
-    controlNumber.length < MAX_CONTROL_NUMBER_LENGTH && CONTROL_NUMBER_RE.test(controlNumber)
-  );
+  return controlNumber.length < MAX_CONTROL_NUMBER_LENGTH && CONTROL_NUMBER_RE.test(controlNumber);
 }

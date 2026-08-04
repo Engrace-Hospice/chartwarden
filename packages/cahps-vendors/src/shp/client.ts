@@ -75,7 +75,10 @@ export class ShpClient {
   }
 
   /** Build the signed intake request for a rendered export file (no I/O). */
-  buildIntakeRequest(file: { filename: string; bytes: Buffer }, timestamp: string): ShpSignedRequest {
+  buildIntakeRequest(
+    file: { filename: string; bytes: Buffer },
+    timestamp: string,
+  ): ShpSignedRequest {
     const signature = signShpRequest(this.config.apiSecret, file.bytes, timestamp);
     return {
       url: this.config.baseUrl ?? SHP_INTAKE_URL,

@@ -20,9 +20,7 @@ export interface QualityFilingPosture {
 
 export interface QualityCostReportConsumer {
   /** M27 `CostReportFilingStatusReader.filingStatusForOrg` — filing posture (CoP 418.310). */
-  filingStatusForOrg(
-    organizationId: string,
-  ): Promise<QualityFilingPosture | ForwardSeamMetric>;
+  filingStatusForOrg(organizationId: string): Promise<QualityFilingPosture | ForwardSeamMetric>;
 }
 
 export const denyStubQualityCostReportConsumer: QualityCostReportConsumer = {

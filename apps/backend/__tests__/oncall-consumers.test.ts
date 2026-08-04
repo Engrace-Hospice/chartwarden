@@ -10,13 +10,13 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import {
   type CoveringShiftCandidate,
   type InboundTriggerFacts,
-  type M17VisitNoShowDetectedPayload,
-  type M18LateCheckOutDetectedPayload,
-  type TriggerVisitContext,
   LATE_CHECKOUT_CHIEF_COMPLAINT,
+  type M17VisitNoShowDetectedPayload,
   M17_NO_SHOW_DETECTED_EVENT,
+  type M18LateCheckOutDetectedPayload,
   M18_LATE_CHECK_OUT_DETECTED_EVENT,
   NO_SHOW_CHIEF_COMPLAINT,
+  type TriggerVisitContext,
   decideLateCheckoutTrigger,
   decideNoShowTrigger,
   readTriggerVisit,
@@ -163,7 +163,10 @@ describe("M19 §7.6 — the m17.visit.no_show_detected consumer", () => {
       organizationId: ORG,
       sourceOutboxEventId: EVENT,
       payload: noShow,
-      facts: facts({ existingCallForEventId: EXISTING_CALL, openMachineCallForPatientId: EXISTING_CALL }),
+      facts: facts({
+        existingCallForEventId: EXISTING_CALL,
+        openMachineCallForPatientId: EXISTING_CALL,
+      }),
       at: AT,
     });
     // The event-id check runs FIRST: a redelivery of the very call that is open reports as the redelivery
@@ -322,29 +325,43 @@ describe("M19 D10 — two different events about one patient coalesce into one c
 
 describe("M19 §4.5 — the m17.visit.assigned debounce trigger", () => {
   it("keys the debounce on the ORG, so an assignment burst collapses to one reconciliation", () => {
-    const a = decideRosterSyncTrigger(ORG, {
-      visitId: VISIT,
-      assignedMembershipId: NURSE,
-      patientId: PATIENT,
-      scheduledStartedAt: "2026-08-01T14:00:00.000Z",
-      scheduledEndedAt: "2026-08-01T15:00:00.000Z",
-    }, AT);
-    const b = decideRosterSyncTrigger(ORG, {
-      visitId: "99999999-0000-4000-8000-000000000000",
-      assignedMembershipId: "88888888-0000-4000-8000-000000000000",
-      patientId: PATIENT,
-      scheduledStartedAt: "2026-08-01T16:00:00.000Z",
-      scheduledEndedAt: "2026-08-01T17:00:00.000Z",
-    }, AT);
+    const a = decideRosterSyncTrigger(
+      ORG,
+      {
+        visitId: VISIT,
+        assignedMembershipId: NURSE,
+        patientId: PATIENT,
+        scheduledStartedAt: "2026-08-01T14:00:00.000Z",
+        scheduledEndedAt: "2026-08-01T15:00:00.000Z",
+      },
+      AT,
+    );
+    const b = decideRosterSyncTrigger(
+      ORG,
+      {
+        visitId: "99999999-0000-4000-8000-000000000000",
+        assignedMembershipId: "88888888-0000-4000-8000-000000000000",
+        patientId: PATIENT,
+        scheduledStartedAt: "2026-08-01T16:00:00.000Z",
+        scheduledEndedAt: "2026-08-01T17:00:00.000Z",
+      },
+      AT,
+    );
     expect(a.debounceKey).toBe(b.debounceKey);
     expect(a.debounceKey).toContain(ORG);
-    expect(decideRosterSyncTrigger(ORG_OTHER, {
-      visitId: VISIT,
-      assignedMembershipId: NURSE,
-      patientId: PATIENT,
-      scheduledStartedAt: "2026-08-01T14:00:00.000Z",
-      scheduledEndedAt: "2026-08-01T15:00:00.000Z",
-    }, AT).debounceKey).not.toBe(a.debounceKey);
+    expect(
+      decideRosterSyncTrigger(
+        ORG_OTHER,
+        {
+          visitId: VISIT,
+          assignedMembershipId: NURSE,
+          patientId: PATIENT,
+          scheduledStartedAt: "2026-08-01T14:00:00.000Z",
+          scheduledEndedAt: "2026-08-01T15:00:00.000Z",
+        },
+        AT,
+      ).debounceKey,
+    ).not.toBe(a.debounceKey);
   });
 });
 

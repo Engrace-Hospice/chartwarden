@@ -21,8 +21,8 @@
 import type { DbClient } from "@wardenx/db";
 import { DegradedError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
-import { createDbDocumentBackend } from "./documents-route-service-db";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
+import { createDbDocumentBackend } from "./documents-route-service-db";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
 

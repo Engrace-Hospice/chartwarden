@@ -20,6 +20,7 @@ import type { FastifyInstance } from "fastify";
 import { type PreHandler, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { parse } from "./reporting-typebox";
+import type { M33WriteRouteService } from "./write-service";
 import {
   ScheduleIdParams,
   ScheduleListQuery,
@@ -28,7 +29,6 @@ import {
   ScheduledReportCreate,
   UpdateScheduleRequest,
 } from "./write-typebox";
-import type { M33WriteRouteService } from "./write-service";
 
 export interface ScheduleRouteDeps {
   readonly service: M33WriteRouteService;

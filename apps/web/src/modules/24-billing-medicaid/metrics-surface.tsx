@@ -89,9 +89,7 @@ export function MedicaidMetricsSurface(): JSX.Element {
     return <EmptyState title="Unavailable" description={error ?? "No metrics."} />;
 
   const totalCharges = metrics.aging.reduce((acc, b) => acc + b.chargesCents, 0);
-  const mcoAttributed = metrics.byMco
-    .filter((m) => m.mcoId)
-    .reduce((acc, m) => acc + m.count, 0);
+  const mcoAttributed = metrics.byMco.filter((m) => m.mcoId).reduce((acc, m) => acc + m.count, 0);
   const nowIso = new Date().toISOString().slice(0, 10);
   const activeChannels = credentials.filter((c) => !c.activeTo || c.activeTo >= nowIso);
   const states = [...new Set(activeChannels.map((c) => c.serviceState))].sort();
@@ -116,9 +114,7 @@ export function MedicaidMetricsSurface(): JSX.Element {
           <KpiCard label="Open AR" value={money(totalCharges)} />
           <KpiCard
             label="MCO-routed"
-            value={
-              metrics.openCount > 0 ? pct(mcoAttributed / metrics.openCount) : "—"
-            }
+            value={metrics.openCount > 0 ? pct(mcoAttributed / metrics.openCount) : "—"}
           />
         </KpiStrip>
       }
@@ -127,7 +123,10 @@ export function MedicaidMetricsSurface(): JSX.Element {
           <div>
             <h2 style={sectionTitleStyle}>AR aging</h2>
             {metrics.aging.length === 0 ? (
-              <EmptyState title="No open AR" description="No Medicaid claim is currently outstanding." />
+              <EmptyState
+                title="No open AR"
+                description="No Medicaid claim is currently outstanding."
+              />
             ) : (
               <table style={tableStyle}>
                 <thead>
@@ -180,7 +179,8 @@ export function MedicaidMetricsSurface(): JSX.Element {
                       .sort()
                       .pop();
                     const anyFailing = forState.some(
-                      (c) => c.lastSandboxTestResult === "fail" || c.lastSandboxTestResult === "error",
+                      (c) =>
+                        c.lastSandboxTestResult === "fail" || c.lastSandboxTestResult === "error",
                     );
                     return (
                       <tr key={s} style={rowLine}>

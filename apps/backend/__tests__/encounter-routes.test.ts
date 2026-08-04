@@ -22,12 +22,12 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
 import {
   createInMemoryEncounterBackend,
   registerEncounterAbacPredicates,
   registerEncounterRoutes,
 } from "../src/modules/08-encounters/index";
-import { registerAuthorizationAbacPredicates } from "../src/modules/03-authorization/index";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];

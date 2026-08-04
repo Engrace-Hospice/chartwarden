@@ -28,7 +28,6 @@
 // see stale pre-commit data — the M11 write-lifecycle gotcha), and the cosigner axis is RE-DERIVED
 // server-side from the persisted drafter/kind/policy facts, never trusted from input.
 import { type DbClient, schema } from "@wardenx/db";
-import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import {
   DEFAULT_COSIGN_POLICY,
   DEFAULT_VERBAL_POLICY,
@@ -37,6 +36,7 @@ import {
   planCosignAttest,
   transitionOrder,
 } from "@wardenx/orders";
+import { requireRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import {
   type AdmissionId,
   type IsoInstant,
@@ -180,7 +180,8 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
       .limit(1)) as { lpn: unknown; np: unknown }[];
     if (!r) return DEFAULT_COSIGN_POLICY;
     return {
-      lpnCosignRequiredKinds: (r.lpn as OrderKind[]) ?? DEFAULT_COSIGN_POLICY.lpnCosignRequiredKinds,
+      lpnCosignRequiredKinds:
+        (r.lpn as OrderKind[]) ?? DEFAULT_COSIGN_POLICY.lpnCosignRequiredKinds,
       npCosignRequiredKinds: (r.np as OrderKind[]) ?? [],
     };
   }
@@ -506,7 +507,9 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             const [v] = await tx
               .select({ id: V.id, deadlineAt: V.deadlineAt })
               .from(V)
-              .where(and(eq(V.targetKind, "order"), eq(V.targetId, orderId), eq(V.status, "pending")))
+              .where(
+                and(eq(V.targetKind, "order"), eq(V.targetId, orderId), eq(V.status, "pending")),
+              )
               .limit(1);
             if (v) {
               await tx

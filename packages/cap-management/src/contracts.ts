@@ -3,7 +3,7 @@
 // wrote some money fields as numeric strings — the canonical posture here is integer cents (the schema is
 // BIGINT cents, §2.3), with the seam read-views (seams.ts) doing the cents-as-string conversion for
 // cross-module consumers that must not parse to a lossy float.
-import { Type, type Static } from "@sinclair/typebox";
+import { type Static, Type } from "@sinclair/typebox";
 
 const Uuid = Type.String({ format: "uuid" });
 const IsoDate = Type.String({ format: "date" });

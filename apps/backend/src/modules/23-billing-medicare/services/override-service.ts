@@ -14,20 +14,16 @@
 // The override row + its M4 audit-event id are written in the SAME `withOrgContext` transaction, and the
 // audit-prominent `m23.claim.override_applied` event is emitted on that same tx (D2 outbox-only). At most
 // one override per result (`validation_override_result_uq`; the repo append is idempotent). NO PHI / MBI.
-import {
-  type OverrideRole,
-  repositories,
-  type BillingRuleRegistry,
-} from "@wardenx/billing";
+import { type BillingRuleRegistry, type OverrideRole, repositories } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import {
-  assertNotAiActor,
   type BillingDb,
   type BillingTx,
   type BillingWriteActor,
-  requireStepUp,
   type WriteOutboxPort,
+  assertNotAiActor,
+  requireStepUp,
 } from "./claim-state-service";
 
 /** The §4.5 elevated override roles, most-broad last (used to pick the applied role). */
@@ -151,9 +147,12 @@ export function buildOverrideService(
         async (tx) => {
           // Resolve + cross-check the claim → run → result chain under RLS.
           const claim = await new repositories.ClaimRepository(tx).findById(input.claimId);
-          if (!claim || claim.organizationId !== actor.organizationId) throw new NotFoundError("claim");
+          if (!claim || claim.organizationId !== actor.organizationId)
+            throw new NotFoundError("claim");
 
-          const run = await new repositories.ValidationRunRepository(tx).findById(input.validationRunId);
+          const run = await new repositories.ValidationRunRepository(tx).findById(
+            input.validationRunId,
+          );
           if (!run || run.organizationId !== actor.organizationId || run.claimId !== claim.id) {
             throw new NotFoundError("validation run");
           }
@@ -183,7 +182,10 @@ export function buildOverrideService(
               "a regulatory-required validation failure with no override path cannot be overridden",
             );
           }
-          const overrideRoleApplied = applicableOverrideRole(actor.roles, rule?.overrideRoleRequired);
+          const overrideRoleApplied = applicableOverrideRole(
+            actor.roles,
+            rule?.overrideRoleRequired,
+          );
           if (!overrideRoleApplied) {
             throw new ForbiddenError(
               "the actor does not hold a role eligible to override this validation result",

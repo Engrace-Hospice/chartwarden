@@ -9,16 +9,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applySudRedactionToDiagnosticReport,
-  createFhirSearchTranslator,
-  decodeCursor,
-  normalizeCount,
-  parseReferenceId,
   type DiagnosticReportProjectorDeps,
   type FhirSearchRequest,
   type LabObservationRow,
   type LabOrderRow,
   type SearchContext,
+  applySudRedactionToDiagnosticReport,
+  createFhirSearchTranslator,
+  decodeCursor,
+  normalizeCount,
+  parseReferenceId,
 } from "../src";
 
 const ctx: SearchContext = {
@@ -47,7 +47,17 @@ const obs: LabObservationRow = {
   id: "obs-x",
   attachedAt: "2026-07-02T08:00:00Z",
   values: [
-    { loincCode: "6690-2", loincText: "WBC", numericValue: 7.2, unit: "10*3/uL", stringValue: null, criticalFlag: null, abnormalFlag: null, referenceRange: null, sudRedactionStatus: "not_applicable" },
+    {
+      loincCode: "6690-2",
+      loincText: "WBC",
+      numericValue: 7.2,
+      unit: "10*3/uL",
+      stringValue: null,
+      criticalFlag: null,
+      abnormalFlag: null,
+      referenceRange: null,
+      sudRedactionStatus: "not_applicable",
+    },
   ],
 };
 
@@ -63,18 +73,41 @@ function depsFor(orders: LabOrderRow[]): DiagnosticReportProjectorDeps {
         return orders.slice(start, start + o.limit);
       },
     },
-    labObservationReader: { async loadById() { return { ...obs }; } },
+    labObservationReader: {
+      async loadById() {
+        return { ...obs };
+      },
+    },
     patientReader: {
       async findById() {
         return {
-          id: "pat-1", mrn: null, firstName: "A", lastName: "B", middleName: null, gender: "unknown",
-          birthDate: null, deceasedDateTime: null, phone: null, email: null, addressLines: null,
-          city: null, state: null, postalCode: null,
+          id: "pat-1",
+          mrn: null,
+          firstName: "A",
+          lastName: "B",
+          middleName: null,
+          gender: "unknown",
+          birthDate: null,
+          deceasedDateTime: null,
+          phone: null,
+          email: null,
+          addressLines: null,
+          city: null,
+          state: null,
+          postalCode: null,
         };
       },
     },
-    externalPhysicianReader: { async findById() { return null; } },
-    facilityReader: { async findById() { return null; } },
+    externalPhysicianReader: {
+      async findById() {
+        return null;
+      },
+    },
+    facilityReader: {
+      async findById() {
+        return null;
+      },
+    },
     sudRedactionApplier: applySudRedactionToDiagnosticReport,
   };
 }
@@ -101,10 +134,19 @@ describe("FhirSearchTranslator.validate", () => {
 
   it("rejects an unsupported search parameter", () => {
     const v = t.validate(
-      req({ parameters: [{ name: "patient", value: "pat-1" }, { name: "ethnicity", value: "x" }] }),
+      req({
+        parameters: [
+          { name: "patient", value: "pat-1" },
+          { name: "ethnicity", value: "x" },
+        ],
+      }),
     );
     expect(v.valid).toBe(false);
-    expect(v.issues.some((i) => i.code === "not-supported" && i.expression === "DiagnosticReport.ethnicity")).toBe(true);
+    expect(
+      v.issues.some(
+        (i) => i.code === "not-supported" && i.expression === "DiagnosticReport.ethnicity",
+      ),
+    ).toBe(true);
   });
 
   it("requires a patient anchor for a compartment resource", () => {
@@ -115,7 +157,12 @@ describe("FhirSearchTranslator.validate", () => {
 
   it("accepts a valid DiagnosticReport?patient search", () => {
     const v = t.validate(
-      req({ parameters: [{ name: "patient", value: "Patient/pat-1" }, { name: "category", value: "LAB" }] }),
+      req({
+        parameters: [
+          { name: "patient", value: "Patient/pat-1" },
+          { name: "category", value: "LAB" },
+        ],
+      }),
     );
     expect(v.valid).toBe(true);
   });
@@ -123,7 +170,9 @@ describe("FhirSearchTranslator.validate", () => {
 
 describe("FhirSearchTranslator.resolve — DiagnosticReport?patient (W-FHIR-14)", () => {
   it("returns one Bundle entry per lab order for the patient", async () => {
-    const t = createFhirSearchTranslator({ diagnosticReport: depsFor([makeOrder("o1"), makeOrder("o2"), makeOrder("o3")]) });
+    const t = createFhirSearchTranslator({
+      diagnosticReport: depsFor([makeOrder("o1"), makeOrder("o2"), makeOrder("o3")]),
+    });
     const resolved = t.resolve(
       req({ count: 10, parameters: [{ name: "patient", value: "Patient/pat-1" }] }),
       ctx,
@@ -138,13 +187,22 @@ describe("FhirSearchTranslator.resolve — DiagnosticReport?patient (W-FHIR-14)"
     const orders = [makeOrder("o1"), makeOrder("o2"), makeOrder("o3")];
     const t = createFhirSearchTranslator({ diagnosticReport: depsFor(orders) });
 
-    const page1 = await t.resolve(req({ count: 2, parameters: [{ name: "patient", value: "pat-1" }] }), ctx).execute();
+    const page1 = await t
+      .resolve(req({ count: 2, parameters: [{ name: "patient", value: "pat-1" }] }), ctx)
+      .execute();
     expect(page1.rows).toHaveLength(2);
     expect(page1.nextCursor).not.toBeNull();
     expect(decodeCursor(page1.nextCursor!)?.lastId).toBe("o2");
 
     const page2 = await t
-      .resolve(req({ count: 2, cursor: page1.nextCursor!, parameters: [{ name: "patient", value: "pat-1" }] }), ctx)
+      .resolve(
+        req({
+          count: 2,
+          cursor: page1.nextCursor!,
+          parameters: [{ name: "patient", value: "pat-1" }],
+        }),
+        ctx,
+      )
       .execute();
     expect(page2.rows).toHaveLength(1);
     expect((page2.rows[0] as { id: string }).id).toBe("o3");
@@ -153,7 +211,10 @@ describe("FhirSearchTranslator.resolve — DiagnosticReport?patient (W-FHIR-14)"
 
   it("rejects execution for a grammar-known but unwired resource", async () => {
     const t = createFhirSearchTranslator({ diagnosticReport: depsFor([]) });
-    const resolved = t.resolve(req({ resourceType: "Observation", parameters: [{ name: "patient", value: "pat-1" }] }), ctx);
+    const resolved = t.resolve(
+      req({ resourceType: "Observation", parameters: [{ name: "patient", value: "pat-1" }] }),
+      ctx,
+    );
     await expect(resolved.execute()).rejects.toThrow(/not yet wired/);
   });
 });

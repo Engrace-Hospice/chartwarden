@@ -10,16 +10,22 @@
 // `Idempotency-Key`. An update carries the §2.5 `If-Match` version (412 on stale); a first insert omits it.
 import type { FastifyInstance } from "fastify";
 import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { parseIfMatch, requireIdempotencyKey } from "./concurrency";
-import { P, PROVIDER_SCOPE, STEP_UP, targetProviderFromBody, targetProviderFromParams } from "./guards";
-import type { M23ReadRouteService } from "./read-service";
-import type { M23WriteRouteService } from "./write-service";
 import {
   MacCredentialListQuerySchema,
   ProviderEntityParamsSchema,
   UpsertMacCredentialBodySchema,
   parse,
 } from "./billing-typebox";
+import { parseIfMatch, requireIdempotencyKey } from "./concurrency";
+import {
+  P,
+  PROVIDER_SCOPE,
+  STEP_UP,
+  targetProviderFromBody,
+  targetProviderFromParams,
+} from "./guards";
+import type { M23ReadRouteService } from "./read-service";
+import type { M23WriteRouteService } from "./write-service";
 
 export interface MacCredentialRouteDeps {
   readonly readService: M23ReadRouteService;
@@ -42,20 +48,39 @@ function optionalIfMatch(request: Parameters<typeof parseIfMatch>[0]): number | 
 }
 
 /** Register the §4.1 MAC-credential routes (#34–#35). */
-export function registerMacCredentialRoutes(app: FastifyInstance, deps: MacCredentialRouteDeps): void {
+export function registerMacCredentialRoutes(
+  app: FastifyInstance,
+  deps: MacCredentialRouteDeps,
+): void {
   const { readService, writeService } = deps;
 
   // GET /billing/mac-credentials — list per-PE credentials (secrets masked, cursor-paginated). §4.1 #34.
-  app.get("/api/v1/billing/mac-credentials", { preHandler: [READ], config: { auditRead: { none: "MAC submitter credential metadata (never the secret) — no patient data" } } }, async (request) => {
-    const actor = actorOf(request);
-    const q = parse(MacCredentialListQuerySchema, request.query);
-    return readService.listMacCredentials(actor, q.cursor, q.limit);
-  });
+  app.get(
+    "/api/v1/billing/mac-credentials",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          none: "MAC submitter credential metadata (never the secret) — no patient data",
+        },
+      },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const q = parse(MacCredentialListQuerySchema, request.query);
+      return readService.listMacCredentials(actor, q.cursor, q.limit);
+    },
+  );
 
   // GET /billing/mac-credentials/:providerEntityId — the credential for one PE (or null). §4.1.
   app.get(
     "/api/v1/billing/mac-credentials/:providerEntityId",
-    { preHandler: [READ, READ_ABAC], config: { auditRead: { none: "one provider entity's MAC credential metadata — no patient data" } } },
+    {
+      preHandler: [READ, READ_ABAC],
+      config: {
+        auditRead: { none: "one provider entity's MAC credential metadata — no patient data" },
+      },
+    },
     async (request) => {
       const actor = actorOf(request);
       const { providerEntityId } = parse(ProviderEntityParamsSchema, request.params);

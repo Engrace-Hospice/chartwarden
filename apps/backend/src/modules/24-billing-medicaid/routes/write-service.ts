@@ -127,25 +127,72 @@ export interface LoadRateScheduleInput {
 
 export interface M24WriteService {
   assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView>;
-  updateDraftClaim(actor: M24WriteActor, claimId: string, input: UpdateDraftClaimInput): Promise<ClaimView>;
-  deleteDraftClaim(actor: M24WriteActor, claimId: string, expectedVersion: number | null): Promise<void>;
+  updateDraftClaim(
+    actor: M24WriteActor,
+    claimId: string,
+    input: UpdateDraftClaimInput,
+  ): Promise<ClaimView>;
+  deleteDraftClaim(
+    actor: M24WriteActor,
+    claimId: string,
+    expectedVersion: number | null,
+  ): Promise<void>;
   validateClaim(actor: M24WriteActor, claimId: string): Promise<{ validationRunId: string }>;
   submitClaim(actor: M24WriteActor, claimId: string, input: SubmitClaimInput): Promise<ClaimView>;
   replaceClaim(actor: M24WriteActor, claimId: string, input: ReplaceClaimInput): Promise<ClaimView>;
   voidClaim(actor: M24WriteActor, claimId: string, input: VoidClaimInput): Promise<ClaimView>;
-  abandonClaim(actor: M24WriteActor, claimId: string, expectedVersion: number | null): Promise<ClaimView>;
-  applyOverride(actor: M24WriteActor, resultId: string, input: ApplyOverrideInput): Promise<{ overrideId: string }>;
+  abandonClaim(
+    actor: M24WriteActor,
+    claimId: string,
+    expectedVersion: number | null,
+  ): Promise<ClaimView>;
+  applyOverride(
+    actor: M24WriteActor,
+    resultId: string,
+    input: ApplyOverrideInput,
+  ): Promise<{ overrideId: string }>;
   editRuleConfig(actor: M24WriteActor, ruleKey: string, input: EditRuleConfigInput): Promise<void>;
-  createCustomRule(actor: M24WriteActor, input: CreateCustomRuleInput): Promise<{ ruleKey: string }>;
-  deleteCustomRule(actor: M24WriteActor, ruleKey: string, expectedVersion: number | null): Promise<void>;
-  refreshEligibility(actor: M24WriteActor, input: RefreshEligibilityInput): Promise<{ checkId: string; outcome: string }>;
-  createRbArrangement(actor: M24WriteActor, input: CreateRbArrangementInput): Promise<RbArrangementView>;
-  editRbArrangement(actor: M24WriteActor, arrangementId: string, input: EditRbArrangementInput): Promise<RbArrangementView>;
-  activateRbArrangement(actor: M24WriteActor, arrangementId: string, expectedVersion: number | null): Promise<RbArrangementView>;
-  terminateRbArrangement(actor: M24WriteActor, arrangementId: string, input: TerminateRbArrangementInput): Promise<RbArrangementView>;
+  createCustomRule(
+    actor: M24WriteActor,
+    input: CreateCustomRuleInput,
+  ): Promise<{ ruleKey: string }>;
+  deleteCustomRule(
+    actor: M24WriteActor,
+    ruleKey: string,
+    expectedVersion: number | null,
+  ): Promise<void>;
+  refreshEligibility(
+    actor: M24WriteActor,
+    input: RefreshEligibilityInput,
+  ): Promise<{ checkId: string; outcome: string }>;
+  createRbArrangement(
+    actor: M24WriteActor,
+    input: CreateRbArrangementInput,
+  ): Promise<RbArrangementView>;
+  editRbArrangement(
+    actor: M24WriteActor,
+    arrangementId: string,
+    input: EditRbArrangementInput,
+  ): Promise<RbArrangementView>;
+  activateRbArrangement(
+    actor: M24WriteActor,
+    arrangementId: string,
+    expectedVersion: number | null,
+  ): Promise<RbArrangementView>;
+  terminateRbArrangement(
+    actor: M24WriteActor,
+    arrangementId: string,
+    input: TerminateRbArrangementInput,
+  ): Promise<RbArrangementView>;
   overrideRbDay(actor: M24WriteActor, rbDayId: string, input: OverrideRbDayInput): Promise<void>;
   upsertCredential(actor: M24WriteActor, input: UpsertCredentialInput): Promise<{ id: string }>;
-  testCredential(actor: M24WriteActor, credentialId: string): Promise<{ ok: boolean; errorMessage?: string }>;
+  testCredential(
+    actor: M24WriteActor,
+    credentialId: string,
+  ): Promise<{ ok: boolean; errorMessage?: string }>;
   registerPlatformRule(actor: M24WriteActor, input: RegisterPlatformRuleInput): Promise<void>;
-  loadRateSchedule(actor: M24WriteActor, input: LoadRateScheduleInput): Promise<{ queued: boolean }>;
+  loadRateSchedule(
+    actor: M24WriteActor,
+    input: LoadRateScheduleInput,
+  ): Promise<{ queued: boolean }>;
 }

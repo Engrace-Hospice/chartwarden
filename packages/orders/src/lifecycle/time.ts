@@ -4,7 +4,7 @@
 // `scheduling/time.ts` precedent but lives here because `packages/orders` is a leaf feature lib (the backend
 // depends on it, never the reverse) and may only import `@wardenx/types`. `Intl` (ICU ships with the runtime)
 // resolves the zone offset, so DST is handled exactly — the spec §2.3 "deadline-at-midnight / DST" edges.
-import type { LocalDate, IsoInstant } from "@wardenx/types";
+import type { IsoInstant, LocalDate } from "@wardenx/types";
 
 /** Org timezone default when M2 `organization.timezone` is unset (matches the M6/M10 default). */
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";
@@ -40,7 +40,13 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
   });
   const parts = dtf.formatToParts(new Date(utcMs));
   const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
-  const localMinute = Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"));
+  const localMinute = Date.UTC(
+    get("year"),
+    get("month") - 1,
+    get("day"),
+    get("hour"),
+    get("minute"),
+  );
   return localMinute - Math.floor(utcMs / 60_000) * 60_000;
 }
 

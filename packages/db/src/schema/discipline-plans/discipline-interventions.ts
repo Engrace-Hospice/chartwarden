@@ -33,17 +33,13 @@ export const disciplineIntervention = pgTable(
       .references(() => disciplineCarePlan.id, { onDelete: "restrict" }),
 
     parentInterventionId: uuid("parent_intervention_id"), // logical FK → M7 IPOC intervention
-    goalRefs: jsonb("goal_refs")
-      .notNull()
-      .default(sql`'[]'::jsonb`), // discipline_goal ids (intra-module)
+    goalRefs: jsonb("goal_refs").notNull().default(sql`'[]'::jsonb`), // discipline_goal ids (intra-module)
 
     scopeText: text("scope_text").notNull(), // audit-denylisted (§3.6)
     frequencyText: text("frequency_text").notNull(),
     frequencyValue: text("frequency_value").notNull(), // '<count>:<unit>:<period>'
     discipline: text("discipline").notNull(),
-    responsibleRoles: jsonb("responsible_roles")
-      .notNull()
-      .default(sql`'[]'::jsonb`),
+    responsibleRoles: jsonb("responsible_roles").notNull().default(sql`'[]'::jsonb`),
 
     status: disciplineInterventionStatus("status").notNull().default("active"),
     discontinuationReason: text("discontinuation_reason"), // audit-denylisted (§3.6)

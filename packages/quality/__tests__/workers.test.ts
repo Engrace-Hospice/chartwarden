@@ -29,11 +29,19 @@ import { describe, expect, it } from "vitest";
 
 const snapshot = { note: "test" } as unknown as schema.MeasureComputationSnapshot;
 
-function trivialRegistration(rate: { numerator: number; denominator: number }): MeasureRegistration {
+function trivialRegistration(rate: {
+  numerator: number;
+  denominator: number;
+}): MeasureRegistration {
   return registerMeasure(
     "hci_composite",
     () => ratioResult({ numerator: rate.numerator, denominator: rate.denominator, snapshot }),
-    { periodKind: "rolling_12m_to_quarter", family: "hci", activatesFy: 2025, calculatorVersion: "0.1.0" },
+    {
+      periodKind: "rolling_12m_to_quarter",
+      family: "hci",
+      activatesFy: 2025,
+      calculatorVersion: "0.1.0",
+    },
   );
 }
 
@@ -44,7 +52,8 @@ function baseMeasurePorts(overrides: {
   registration?: MeasureRegistration;
 }): { ports: MeasureRecomputePorts; calls: string[] } {
   const calls: string[] = [];
-  const registration = overrides.registration ?? trivialRegistration({ numerator: 5, denominator: 10 });
+  const registration =
+    overrides.registration ?? trivialRegistration({ numerator: 5, denominator: 10 });
   const ports: MeasureRecomputePorts = {
     processingLog: {
       isProcessed: async () => overrides.isProcessed ?? false,
@@ -115,29 +124,55 @@ describe("measureRecomputeProcessor", () => {
   });
 
   it("supersedes the prior current row when one exists", async () => {
-    const prior = { id: "value-OLD", snapshotContentHash: "hash-OLD", ratio: "0.5", thresholdMet: true } as schema.QualityMeasureValue;
+    const prior = {
+      id: "value-OLD",
+      snapshotContentHash: "hash-OLD",
+      ratio: "0.5",
+      thresholdMet: true,
+    } as schema.QualityMeasureValue;
     const { ports, calls } = baseMeasurePorts({ current: prior, hash: "hash-NEW" });
     await handleMeasureRecompute(makeMeasureJob(), ports);
     expect(calls).toContain("supersede:value-OLD->value-NEW");
   });
 
   it("is V-8 idempotent: an identical snapshot hash on the current row inserts nothing", async () => {
-    const prior = { id: "value-OLD", snapshotContentHash: "hash-A", ratio: "0.5", thresholdMet: true } as schema.QualityMeasureValue;
+    const prior = {
+      id: "value-OLD",
+      snapshotContentHash: "hash-A",
+      ratio: "0.5",
+      thresholdMet: true,
+    } as schema.QualityMeasureValue;
     const { ports, calls } = baseMeasurePorts({ current: prior, hash: "hash-A" });
     const result = await handleMeasureRecompute(makeMeasureJob(), ports);
-    expect(result).toEqual({ outcome: "unchanged", measureCode: "hci_composite", valueId: "value-OLD" });
+    expect(result).toEqual({
+      outcome: "unchanged",
+      measureCode: "hci_composite",
+      valueId: "value-OLD",
+    });
     expect(calls.some((c) => c.startsWith("insert:"))).toBe(false);
   });
 });
 
 describe("decideThresholdBreach (pure)", () => {
-  const red = ratioResult({ numerator: 1, denominator: 10, snapshot, threshold: { value: 0.9, direction: "gte" } });
-  const green = ratioResult({ numerator: 10, denominator: 10, snapshot, threshold: { value: 0.9, direction: "gte" } });
+  const red = ratioResult({
+    numerator: 1,
+    denominator: 10,
+    snapshot,
+    threshold: { value: 0.9, direction: "gte" },
+  });
+  const green = ratioResult({
+    numerator: 10,
+    denominator: 10,
+    snapshot,
+    threshold: { value: 0.9, direction: "gte" },
+  });
   it("fires on a transition INTO red (no prior)", () => {
     expect(decideThresholdBreach(null, null, red)).toBe(true);
   });
   it("stays silent when the prior was already red", () => {
-    expect(decideThresholdBreach({ ratio: "0.1" } as schema.QualityMeasureValue, "red", red)).toBe(false);
+    expect(decideThresholdBreach({ ratio: "0.1" } as schema.QualityMeasureValue, "red", red)).toBe(
+      false,
+    );
   });
   it("never breaches on a green value", () => {
     expect(decideThresholdBreach(null, null, green)).toBe(false);
@@ -314,7 +349,10 @@ describe("cron decision cores (pure)", () => {
   it("decideSraReminder escalates past the anniversary to sra_overdue", () => {
     const now = new Date("2026-01-10T09:00:00Z");
     const due = new Date("2026-01-01T09:00:00Z");
-    expect(decideSraReminder(due, now)).toMatchObject({ kind: "overdue", payloadType: "m30.alerts.sra_overdue" });
+    expect(decideSraReminder(due, now)).toMatchObject({
+      kind: "overdue",
+      payloadType: "m30.alerts.sra_overdue",
+    });
   });
 
   it("decideSraReminder is quiet on a non-milestone day", () => {

@@ -1,4 +1,11 @@
-import { cardSurface, EmptyState, LoadingSpinner, PortalDashboardLayout, t, useApiClient } from "@wardenx/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PortalDashboardLayout,
+  cardSurface,
+  t,
+  useApiClient,
+} from "@wardenx/ui";
 // @wardenx/portal — §5.1 Patient dashboard (`/p/:patientId`). The session-context anchor: the lay-language
 // aggregate the backend assembles from the upstream reader seams (GET /portal/care-summary) plus the next
 // scheduled visits (GET /portal/upcoming). Every card links to the deeper surface. No internal coordinator
@@ -24,12 +31,28 @@ interface UpcomingVisit {
   visitSetting: string;
 }
 
-const link: CSSProperties = { color: t.primary, textDecoration: "none", fontWeight: 600, fontSize: "0.85rem" };
+const link: CSSProperties = {
+  color: t.primary,
+  textDecoration: "none",
+  fontWeight: 600,
+  fontSize: "0.85rem",
+};
 
-function Card({ title, to, children }: { title: string; to?: string; children: JSX.Element | JSX.Element[] }): JSX.Element {
+function Card({
+  title,
+  to,
+  children,
+}: { title: string; to?: string; children: JSX.Element | JSX.Element[] }): JSX.Element {
   return (
     <section style={cardSurface}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.6rem" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          marginBottom: "0.6rem",
+        }}
+      >
         <h2 style={{ margin: 0, fontSize: "1rem" }}>{title}</h2>
         {to ? (
           <Link to={to} style={link}>
@@ -98,33 +121,65 @@ export function PortalPatientDashboard(): JSX.Element {
     <PortalDashboardLayout
       header={
         <div style={{ padding: "1.25rem 1.5rem", borderBottom: `1px solid ${t.surfaceContainer}` }}>
-          <div style={{ fontFamily: t.fontDisplay, fontSize: "1.35rem", fontWeight: 600 }}>{who}</div>
+          <div style={{ fontFamily: t.fontDisplay, fontSize: "1.35rem", fontWeight: 600 }}>
+            {who}
+          </div>
           {summary?.patient.pronouns ? (
-            <div style={{ color: t.onSurfaceVariant, fontSize: "0.85rem" }}>{summary.patient.pronouns}</div>
+            <div style={{ color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
+              {summary.patient.pronouns}
+            </div>
           ) : null}
         </div>
       }
       summary={
         <Card title="At a glance">
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-            <Stat label="Upcoming visits" value={summary?.upcomingVisitsCount ?? 0} to={`${base}/visits`} />
-            <Stat label="Active medications" value={summary?.activeMedicationsCount ?? 0} to={`${base}/medications`} />
-            <Stat label="Unread messages" value={summary?.unreadMessagesCount ?? 0} to={`${base}/messages`} />
-            <Stat label="Shared documents" value={summary?.pendingDocumentSharesCount ?? 0} to={`${base}/documents`} />
+            <Stat
+              label="Upcoming visits"
+              value={summary?.upcomingVisitsCount ?? 0}
+              to={`${base}/visits`}
+            />
+            <Stat
+              label="Active medications"
+              value={summary?.activeMedicationsCount ?? 0}
+              to={`${base}/medications`}
+            />
+            <Stat
+              label="Unread messages"
+              value={summary?.unreadMessagesCount ?? 0}
+              to={`${base}/messages`}
+            />
+            <Stat
+              label="Shared documents"
+              value={summary?.pendingDocumentSharesCount ?? 0}
+              to={`${base}/documents`}
+            />
           </div>
         </Card>
       }
       safety={
         <div style={{ fontSize: "0.85rem", color: t.onSurfaceVariant }}>
-          After-hours concern? Call your hospice team's 24/7 line — do not use the portal for emergencies.
+          After-hours concern? Call your hospice team's 24/7 line — do not use the portal for
+          emergencies.
         </div>
       }
     >
       <Card title="Coming up" to={`${base}/visits`}>
         {upcoming.length === 0 ? (
-          <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.88rem" }}>Nothing scheduled right now.</p>
+          <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.88rem" }}>
+            Nothing scheduled right now.
+          </p>
         ) : (
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
             {upcoming.map((u) => (
               <li key={u.visitId} style={{ fontSize: "0.9rem" }}>
                 <strong>{u.visitPurposeLabel}</strong>

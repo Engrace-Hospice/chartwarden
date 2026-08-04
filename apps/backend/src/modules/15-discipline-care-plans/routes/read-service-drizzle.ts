@@ -21,10 +21,10 @@ import {
 } from "../lifecycle/index";
 import {
   GATE_STORE_UNAVAILABLE,
+  type VolunteerGateFacts,
   computeVolunteerHourRatio,
   deriveGateStatus,
   effectiveStatusFor,
-  type VolunteerGateFacts,
 } from "../volunteer/index";
 import type { M15ReadActor } from "./actor";
 import {

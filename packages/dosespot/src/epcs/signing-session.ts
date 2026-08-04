@@ -117,7 +117,12 @@ export function planEpcsSigningSession(req: OpenSigningSessionRequest): OpenSign
   return {
     expiresAt,
     effects: [
-      { kind: "write_signing_attempt", nonceDigest: req.nonceDigest, startedAt: req.startedAtIso, expiresAt },
+      {
+        kind: "write_signing_attempt",
+        nonceDigest: req.nonceDigest,
+        startedAt: req.startedAtIso,
+        expiresAt,
+      },
       { kind: "audit" },
     ],
   };
@@ -188,7 +193,11 @@ export function validateSecondFactor(req: CompleteSigningSessionRequest): EpcsTr
   }
   // §1311.116 step 6 — valid proof inside the window: the service now invokes the M11 signature primitive.
   return epcsResult("succeeded", [
-    { kind: "update_signing_attempt", outcome: "succeeded", secondFactorType: req.secondFactorType },
+    {
+      kind: "update_signing_attempt",
+      outcome: "succeeded",
+      secondFactorType: req.secondFactorType,
+    },
     { kind: "audit" },
   ]);
 }

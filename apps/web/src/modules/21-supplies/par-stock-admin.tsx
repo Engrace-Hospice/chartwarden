@@ -17,7 +17,7 @@
 // not what changed since the last count, and an adjustment-shaped form drifts from the shelf every time a
 // count is missed. The server derives the delta and runs it through the §2.7 rule, so a count that would
 // drive the shelf negative is a typed refusal rather than a silent clamp.
-import { EmptyState, LoadingSpinner, PageHeader, useApiClient, t } from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, t, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
@@ -28,6 +28,7 @@ import {
   observeParStock,
   updateParStock,
 } from "./supplies-api";
+import { PAR_SEVERITY_RANK, dateTime, shortId } from "./supplies-status";
 import {
   Card,
   CheckboxField,
@@ -53,7 +54,6 @@ import {
   th,
   thNum,
 } from "./supplies-ui";
-import { PAR_SEVERITY_RANK, dateTime, shortId } from "./supplies-status";
 
 const PAGE = 200;
 
@@ -118,11 +118,13 @@ export function ParStockAdmin(): JSX.Element {
 
   // The band filter is applied CLIENT-side because §4.1 publishes no `severity` query param — only the
   // coarser `belowThresholdOnly`. Narrowing a fetched page is honest; inventing a server filter is not.
-  const visible = (severity ? rows.filter((r) => r.severity === severity) : rows).slice().sort(
-    (a, b) =>
-      (PAR_SEVERITY_RANK[a.severity] ?? 9) - (PAR_SEVERITY_RANK[b.severity] ?? 9) ||
-      a.skuName.localeCompare(b.skuName),
-  );
+  const visible = (severity ? rows.filter((r) => r.severity === severity) : rows)
+    .slice()
+    .sort(
+      (a, b) =>
+        (PAR_SEVERITY_RANK[a.severity] ?? 9) - (PAR_SEVERITY_RANK[b.severity] ?? 9) ||
+        a.skuName.localeCompare(b.skuName),
+    );
 
   const startEdit = (row: ParStockView) => {
     setEditing(row.parStockId);
@@ -164,16 +166,21 @@ export function ParStockAdmin(): JSX.Element {
       />
 
       <Notice tone="info">
-        The band on each row is DERIVED at read time from the current quantity and the thresholds beside it —
-        it is never stored. A stored band goes stale the moment a threshold is edited, and the screen reading
-        it would show a green shelf that is actually empty.
+        The band on each row is DERIVED at read time from the current quantity and the thresholds
+        beside it — it is never stored. A stored band goes stale the moment a threshold is edited,
+        and the screen reading it would show a green shelf that is actually empty.
       </Notice>
 
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 
       <FilterRow>
         <TextField label="Location id" value={locationId} onChange={setLocationId} mono />
-        <SelectField label="Band" value={severity} options={SEVERITY_FILTERS} onChange={setSeverity} />
+        <SelectField
+          label="Band"
+          value={severity}
+          options={SEVERITY_FILTERS}
+          onChange={setSeverity}
+        />
         <CheckboxField
           label="Only rows at or below the reorder point"
           checked={belowOnly}
@@ -184,8 +191,8 @@ export function ParStockAdmin(): JSX.Element {
       <Card title={`Shelf (${visible.length})`}>
         {visible.length === 0 ? (
           <span style={mutedStyle}>
-            No par row matches. A Location with no par rows has no monitored shelf — the nightly par monitor
-            has nothing to raise for it.
+            No par row matches. A Location with no par rows has no monitored shelf — the nightly par
+            monitor has nothing to raise for it.
           </span>
         ) : (
           <table style={tableStyle}>
@@ -308,8 +315,8 @@ export function ParStockAdmin(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          The band filter narrows the page you fetched — M21 publishes no per-band query parameter, only the
-          coarser "below reorder point".
+          The band filter narrows the page you fetched — M21 publishes no per-band query parameter,
+          only the coarser "below reorder point".
         </span>
       </Card>
 
@@ -321,7 +328,9 @@ export function ParStockAdmin(): JSX.Element {
             <button
               type="button"
               disabled={busy || observedQuantity.trim() === ""}
-              style={busy || observedQuantity.trim() === "" ? disabledButtonStyle : primaryButtonStyle}
+              style={
+                busy || observedQuantity.trim() === "" ? disabledButtonStyle : primaryButtonStyle
+              }
               onClick={async () => {
                 setBusy(true);
                 setActionError(null);
@@ -344,9 +353,9 @@ export function ParStockAdmin(): JSX.Element {
           }
         >
           <Notice tone="info">
-            This SETS the shelf to what you counted; it is not an adjustment. The nightly monitor — not this
-            form — is what raises the below-threshold alert, so a busy Location gets one alert a night rather
-            than one per count.
+            This SETS the shelf to what you counted; it is not an adjustment. The nightly monitor —
+            not this form — is what raises the below-threshold alert, so a busy Location gets one
+            alert a night rather than one per count.
           </Notice>
           <TextField
             label={`Counted quantity (${observing.unit})`}

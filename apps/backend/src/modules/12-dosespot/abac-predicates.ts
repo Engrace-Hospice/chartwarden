@@ -77,7 +77,10 @@ export function buildDoseSpotAbacPredicates(
     dea_schedule_authorized: async (context, target) => {
       const schedule = targetStr(target, "schedule");
       if (!schedule) return false; // no schedule named → deny (fail-closed)
-      const authorized = await resolver.loadAuthorizedSchedules(context.organizationId, context.userId);
+      const authorized = await resolver.loadAuthorizedSchedules(
+        context.organizationId,
+        context.userId,
+      );
       if (!authorized) return false; // no roster row (fail-closed)
       return authorized.includes(schedule);
     },

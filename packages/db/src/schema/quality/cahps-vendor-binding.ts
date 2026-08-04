@@ -4,15 +4,7 @@
 // binding per org (V-7 partial-unique). ORG-SCOPED: organization_id NOT NULL (canonical app.org_id
 // RLS). `configuration_cipher` is ciphertext → audit-denylisted (§3.6).
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  integer,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const cahpsVendorBinding = pgTable(

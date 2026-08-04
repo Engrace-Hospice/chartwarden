@@ -30,10 +30,7 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
       }}
     >
       {breadcrumb ? (
-        <div
-          className="wx-breadcrumb"
-          style={{ fontSize: "0.8rem", color: t.onSurfaceVariant }}
-        >
+        <div className="wx-breadcrumb" style={{ fontSize: "0.8rem", color: t.onSurfaceVariant }}>
           {breadcrumb}
         </div>
       ) : null}
@@ -75,7 +72,12 @@ export function KpiStrip({ children }: { children: ReactNode }): JSX.Element {
   return (
     <div
       className="wx-kpi-strip"
-      style={{ display: "flex", gap: t.space4, padding: `${t.space4} ${t.space5}`, overflowX: "auto" }}
+      style={{
+        display: "flex",
+        gap: t.space4,
+        padding: `${t.space4} ${t.space5}`,
+        overflowX: "auto",
+      }}
     >
       {children}
     </div>
@@ -232,7 +234,12 @@ export function RightDetailPanel({
               type="button"
               onClick={onClose}
               aria-label="Close detail panel"
-              style={{ cursor: "pointer", color: t.onSurfaceVariant, border: "none", background: "none" }}
+              style={{
+                cursor: "pointer",
+                color: t.onSurfaceVariant,
+                border: "none",
+                background: "none",
+              }}
             >
               ×
             </button>

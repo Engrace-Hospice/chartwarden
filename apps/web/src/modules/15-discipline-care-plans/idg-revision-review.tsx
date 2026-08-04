@@ -1,11 +1,4 @@
-import {
-  EmptyState,
-  LoadingSpinner,
-  PageHeader,
-  StatusPill,
-  t,
-  useApiClient,
-} from "@wardenx/ui";
+import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@wardenx/ui";
 // apps/web/src/modules/15-discipline-care-plans — the IDG-DRIVEN REVISION REVIEW (§5.1 #14, Track B).
 // Spec layout: "Use Detail Page."
 //
@@ -30,6 +23,16 @@ import {
   writeHeaders,
 } from "./discipline-api";
 import {
+  GOAL_STATUS_TONE,
+  INTERVENTION_STATUS_TONE,
+  VERSION_STATUS_TONE,
+  dateTime,
+  humanize,
+  kindLabel,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   Card,
   Field,
   Notice,
@@ -45,16 +48,6 @@ import {
   td,
   th,
 } from "./discipline-ui";
-import {
-  GOAL_STATUS_TONE,
-  INTERVENTION_STATUS_TONE,
-  VERSION_STATUS_TONE,
-  dateTime,
-  humanize,
-  kindLabel,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 
 export function IdgRevisionReview(): JSX.Element {
   const client = useApiClient();
@@ -137,15 +130,19 @@ export function IdgRevisionReview(): JSX.Element {
         title={<span style={pageTitleStyle}>{kindLabel(kind)} — IDG revision review</span>}
         breadcrumb="Clinical — post-IDG finalization"
         actions={
-          <Link to={`/patients/${patientId}/discipline-plans/${kind}/versions`} style={ghostButtonStyle}>
+          <Link
+            to={`/patients/${patientId}/discipline-plans/${kind}/versions`}
+            style={ghostButtonStyle}
+          >
             Version history
           </Link>
         }
       />
 
       <Notice tone="info">
-        The interdisciplinary group's decisions have already been applied to this plan. Reviewing here
-        confirms the record before the revision is finalized and signed — it does not re-decide it.
+        The interdisciplinary group's decisions have already been applied to this plan. Reviewing
+        here confirms the record before the revision is finalized and signed — it does not re-decide
+        it.
       </Notice>
       {actionError ? <p style={alertStyle}>{actionError}</p> : null}
 
@@ -170,8 +167,8 @@ export function IdgRevisionReview(): JSX.Element {
           </button>
         ) : (
           <span style={mutedStyle}>
-            This revision is {humanize(version.status).toLowerCase()} — its snapshot is sealed. Signing
-            happens on the plan view.
+            This revision is {humanize(version.status).toLowerCase()} — its snapshot is sealed.
+            Signing happens on the plan view.
           </span>
         )}
         {normalizeSignerSet(version.requiredSignerSet).length > 0 ? (
@@ -204,7 +201,10 @@ export function IdgRevisionReview(): JSX.Element {
                   <td style={td}>{humanize(g.source)}</td>
                   <td style={td}>{dateTime(g.addedAt)}</td>
                   <td style={td}>
-                    <StatusPill label={humanize(g.status)} tone={toneOf(GOAL_STATUS_TONE, g.status)} />
+                    <StatusPill
+                      label={humanize(g.status)}
+                      tone={toneOf(GOAL_STATUS_TONE, g.status)}
+                    />
                   </td>
                 </tr>
               ))}

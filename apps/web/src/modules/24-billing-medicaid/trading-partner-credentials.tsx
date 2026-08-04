@@ -63,7 +63,9 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
     setError(null);
     const res = await client.GET("/api/v1/state-medicaid-trading-partner-credentials", {});
     if (res.error) {
-      setError("Trading-partner credentials are unavailable — this surface requires org-admin access.");
+      setError(
+        "Trading-partner credentials are unavailable — this surface requires org-admin access.",
+      );
       setLoading(false);
       return;
     }
@@ -79,10 +81,17 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
     async (credentialId: string) => {
       setTestingId(credentialId);
       setActionError(null);
-      const { data, error: err, response } = (await client.POST(
-        "/api/v1/state-medicaid-trading-partner-credentials/{id}/test",
-        { params: { path: { id: credentialId } } } as never,
-      )) as { data?: { ok?: boolean; errorMessage?: string }; error?: unknown; response?: Response };
+      const {
+        data,
+        error: err,
+        response,
+      } = (await client.POST("/api/v1/state-medicaid-trading-partner-credentials/{id}/test", {
+        params: { path: { id: credentialId } },
+      } as never)) as {
+        data?: { ok?: boolean; errorMessage?: string };
+        error?: unknown;
+        response?: Response;
+      };
       setTestingId(null);
       if (err) {
         setActionError(testErrorMessage(response?.status));
@@ -122,86 +131,88 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
       detail={
         <Card title="About secrets">
           <span style={mutedStyle}>
-            Client secrets and SFTP keys are stored encrypted and are never returned to the browser — not
-            even masked. This surface shows only whether each is configured.
+            Client secrets and SFTP keys are stored encrypted and are never returned to the browser
+            — not even masked. This surface shows only whether each is configured.
           </span>
         </Card>
       }
       table={
         rows.length === 0 ? (
-        <EmptyState
-          title="No credentials"
-          description="No state trading-partner credential is configured for your provider entities."
-        />
-      ) : (
-        <table style={tableStyle}>
-          <thead>
-            <tr>
-              <th style={th}>State</th>
-              <th style={th}>Provider entity</th>
-              <th style={th}>Channel</th>
-              <th style={th}>MCO</th>
-              <th style={th}>Trading partner</th>
-              <th style={th}>Secrets</th>
-              <th style={th}>Active</th>
-              <th style={th}>Last sandbox test</th>
-              <th style={{ ...th, textAlign: "right" }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((c) => {
-              const testing = testingId === c.id;
-              return (
-                <tr key={c.id} style={rowLine}>
-                  <td style={td}>{c.serviceState}</td>
-                  <td style={tdMono}>{shortId(c.providerEntityId)}</td>
-                  <td style={td}>
-                    {channelLabel(c.channel)}
-                    {c.sftpHost ? (
-                      <div style={{ ...mutedStyle, fontFamily: "var(--font-mono)" }}>{c.sftpHost}</div>
-                    ) : null}
-                  </td>
-                  <td style={tdMono}>{c.mcoId ? shortId(c.mcoId) : "FFS"}</td>
-                  <td style={tdMono}>{c.tradingPartnerId}</td>
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-                      <SecretFlag label="Client secret" present={c.hasClientSecret} />
-                      <SecretFlag label="SFTP key" present={c.hasSftpKey} />
-                    </div>
-                  </td>
-                  <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
-                    {shortDate(c.activeFrom)} → {c.activeTo ? shortDate(c.activeTo) : "open"}
-                  </td>
-                  <td style={td}>
-                    {c.lastSandboxTestAt ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                        <StatusPill
-                          label={c.lastSandboxTestResult ?? "Unknown"}
-                          tone={toneOf(SANDBOX_RESULT_TONE, c.lastSandboxTestResult)}
-                        />
-                        <span style={mutedStyle}>{shortDate(c.lastSandboxTestAt)}</span>
+          <EmptyState
+            title="No credentials"
+            description="No state trading-partner credential is configured for your provider entities."
+          />
+        ) : (
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={th}>State</th>
+                <th style={th}>Provider entity</th>
+                <th style={th}>Channel</th>
+                <th style={th}>MCO</th>
+                <th style={th}>Trading partner</th>
+                <th style={th}>Secrets</th>
+                <th style={th}>Active</th>
+                <th style={th}>Last sandbox test</th>
+                <th style={{ ...th, textAlign: "right" }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => {
+                const testing = testingId === c.id;
+                return (
+                  <tr key={c.id} style={rowLine}>
+                    <td style={td}>{c.serviceState}</td>
+                    <td style={tdMono}>{shortId(c.providerEntityId)}</td>
+                    <td style={td}>
+                      {channelLabel(c.channel)}
+                      {c.sftpHost ? (
+                        <div style={{ ...mutedStyle, fontFamily: "var(--font-mono)" }}>
+                          {c.sftpHost}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td style={tdMono}>{c.mcoId ? shortId(c.mcoId) : "FFS"}</td>
+                    <td style={tdMono}>{c.tradingPartnerId}</td>
+                    <td style={td}>
+                      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+                        <SecretFlag label="Client secret" present={c.hasClientSecret} />
+                        <SecretFlag label="SFTP key" present={c.hasSftpKey} />
                       </div>
-                    ) : (
-                      <StatusPill label="Never tested" tone="neutral" />
-                    )}
-                  </td>
-                  <td style={{ ...td, textAlign: "right" }}>
-                    <button
-                      type="button"
-                      onClick={() => void runTest(c.id)}
-                      disabled={testing}
-                      aria-label={`Run sandbox test for ${c.serviceState} ${c.tradingPartnerId}`}
-                      style={testing ? disabledButtonStyle : ghostButtonStyle}
-                    >
-                      {testing ? "Testing…" : "Test"}
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )
+                    </td>
+                    <td style={{ ...td, fontVariantNumeric: "tabular-nums" }}>
+                      {shortDate(c.activeFrom)} → {c.activeTo ? shortDate(c.activeTo) : "open"}
+                    </td>
+                    <td style={td}>
+                      {c.lastSandboxTestAt ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                          <StatusPill
+                            label={c.lastSandboxTestResult ?? "Unknown"}
+                            tone={toneOf(SANDBOX_RESULT_TONE, c.lastSandboxTestResult)}
+                          />
+                          <span style={mutedStyle}>{shortDate(c.lastSandboxTestAt)}</span>
+                        </div>
+                      ) : (
+                        <StatusPill label="Never tested" tone="neutral" />
+                      )}
+                    </td>
+                    <td style={{ ...td, textAlign: "right" }}>
+                      <button
+                        type="button"
+                        onClick={() => void runTest(c.id)}
+                        disabled={testing}
+                        aria-label={`Run sandbox test for ${c.serviceState} ${c.tradingPartnerId}`}
+                        style={testing ? disabledButtonStyle : ghostButtonStyle}
+                      >
+                        {testing ? "Testing…" : "Test"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )
       }
     />
   );

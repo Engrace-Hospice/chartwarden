@@ -26,12 +26,12 @@ export {
   type HopeJ2051TriggerPayload,
   decideHopeSuggestion,
 } from "./hope-trigger";
-export {
-  type OrderSuggestionEntry,
-  type SuggestionAction,
-  type SuggestionFacts,
-  type SuggestionSkipReason,
-  type SuggestionSource,
+export type {
+  OrderSuggestionEntry,
+  SuggestionAction,
+  SuggestionFacts,
+  SuggestionSkipReason,
+  SuggestionSource,
 } from "./suggestion-banner";
 
 /** The §4.5 event → M11-consumer bindings. The live dispatcher wires each `eventName` to `consumerName`'s

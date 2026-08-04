@@ -18,12 +18,12 @@
 // The dispatch decrement REFUSES rather than clamps (see `@wardenx/supplies` `applyParDelta`): a hub asked
 // for more than it had is the reorder signal, and clamping to zero deletes it.
 import {
+  type ParStockLevels,
+  type ParStockSeverity,
   applyParDelta,
   areParThresholdsOrdered,
   isBelowReorderPoint,
   isStockoutImminent,
-  type ParStockLevels,
-  type ParStockSeverity,
   parStockSeverity,
 } from "@wardenx/supplies";
 import type { IsoInstant, M21EventName, ParStockId } from "@wardenx/types";

@@ -49,11 +49,30 @@ const CHANGE_OPEN = "e0000000-0000-4000-8000-0000000000aa";
 const NOW = "2026-06-20T12:00:00.000Z";
 
 const PERMISSION_SEED = [
-  { userId: "rn_1", permissions: ["assessment.read", "assessment.author", "assessment.amend", "assessment.cosign", "assessment.read_trend", "assessment.acknowledge_change", "assessment.read_summary"] },
+  {
+    userId: "rn_1",
+    permissions: [
+      "assessment.read",
+      "assessment.author",
+      "assessment.amend",
+      "assessment.cosign",
+      "assessment.read_trend",
+      "assessment.acknowledge_change",
+      "assessment.read_summary",
+    ],
+  },
   { userId: "rn_2", permissions: ["assessment.read", "assessment.cosign"] },
   { userId: "chap_1", permissions: ["assessment.author"] },
   { userId: "viewer_1", permissions: ["assessment.read"] },
-  { userId: "admin_1", permissions: ["assessment.license_read", "assessment.license_admin", "assessment.policy_read", "assessment.policy_admin"] },
+  {
+    userId: "admin_1",
+    permissions: [
+      "assessment.license_read",
+      "assessment.license_admin",
+      "assessment.policy_read",
+      "assessment.policy_admin",
+    ],
+  },
 ];
 
 // biome-ignore lint/suspicious/noExplicitAny: heterogeneous seed rows for test-only extension.
@@ -62,18 +81,86 @@ type ExtraSeed = { assessments?: any[]; consents?: any[] };
 function makeServer(extra: ExtraSeed = {}) {
   const backend = createInMemoryAssessmentBackend({
     now: () => NOW,
-    admissions: [{ id: ADMISSION, organizationId: ORG, patientId: PATIENT, status: "active", activatedAt: "2026-01-01T00:00:00.000Z" }],
-    licenses: [{ id: "c0000000-0000-4000-8000-000000000001", organizationId: ORG, scaleType: "pps", vendor: "Victoria Hospice", effectiveDate: "2026-01-01", expiresAt: "2027-01-01", seats: null }],
+    admissions: [
+      {
+        id: ADMISSION,
+        organizationId: ORG,
+        patientId: PATIENT,
+        status: "active",
+        activatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+    licenses: [
+      {
+        id: "c0000000-0000-4000-8000-000000000001",
+        organizationId: ORG,
+        scaleType: "pps",
+        vendor: "Victoria Hospice",
+        effectiveDate: "2026-01-01",
+        expiresAt: "2027-01-01",
+        seats: null,
+      },
+    ],
     consents: extra.consents ?? [],
     assessments: [
-      { id: PPS_BY_LPN, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, scaleType: "pps", capturedByDiscipline: "lpn", recordedByUserId: "lpn_1", cosignRequired: true, score: 60, capturedAt: "2026-06-19T10:00:00.000Z" },
-      { id: PAINAD_ACTIVE, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, scaleType: "painad", capturedByDiscipline: "rn", recordedByUserId: "rn_1", score: 4, version: 1, capturedAt: "2026-06-18T10:00:00.000Z" },
-      { id: PPS_BY_RN, organizationId: ORG, patientId: PATIENT, admissionId: ADMISSION, scaleType: "pps", capturedByDiscipline: "rn", recordedByUserId: "rn_1", cosignRequired: true, score: 60, capturedAt: "2026-06-17T10:00:00.000Z" },
-      { id: PPS_B, organizationId: ORG_B, patientId: PATIENT, admissionId: ADMISSION, scaleType: "pps", capturedByDiscipline: "rn", recordedByUserId: "rn_1" },
+      {
+        id: PPS_BY_LPN,
+        organizationId: ORG,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        scaleType: "pps",
+        capturedByDiscipline: "lpn",
+        recordedByUserId: "lpn_1",
+        cosignRequired: true,
+        score: 60,
+        capturedAt: "2026-06-19T10:00:00.000Z",
+      },
+      {
+        id: PAINAD_ACTIVE,
+        organizationId: ORG,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        scaleType: "painad",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+        score: 4,
+        version: 1,
+        capturedAt: "2026-06-18T10:00:00.000Z",
+      },
+      {
+        id: PPS_BY_RN,
+        organizationId: ORG,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        scaleType: "pps",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+        cosignRequired: true,
+        score: 60,
+        capturedAt: "2026-06-17T10:00:00.000Z",
+      },
+      {
+        id: PPS_B,
+        organizationId: ORG_B,
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        scaleType: "pps",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+      },
       ...(extra.assessments ?? []),
     ],
     significantChanges: [
-      { id: CHANGE_OPEN, organizationId: ORG, patientId: PATIENT, assessmentId: PAINAD_ACTIVE, priorAssessmentId: null, ruleId: "pps_drop_20_in_14d", status: "open", severity: "high" },
+      {
+        id: CHANGE_OPEN,
+        organizationId: ORG,
+        patientId: PATIENT,
+        assessmentId: PAINAD_ACTIVE,
+        priorAssessmentId: null,
+        ruleId: "pps_drop_20_in_14d",
+        status: "open",
+        severity: "high",
+      },
     ],
   });
 
@@ -82,7 +169,9 @@ function makeServer(extra: ExtraSeed = {}) {
       [ORG, ORG_B].map((org) => ({
         orgId: org,
         userId: s.userId,
-        grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions }],
+        grants: [
+          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions },
+        ],
       })),
     ),
   );
@@ -106,10 +195,22 @@ const painadBody = (over: Record<string, unknown> = {}) => ({
   admissionId: ADMISSION,
   scaleType: "painad",
   capturedAt: NOW,
-  data: { breathing: 1, negativeVocalization: 1, facialExpression: 0, bodyLanguage: 0, consolability: 0 },
+  data: {
+    breathing: 1,
+    negativeVocalization: 1,
+    facialExpression: 0,
+    bodyLanguage: 0,
+    consolability: 0,
+  },
   ...over,
 });
-const ppsData = { ambulation: "full", activity: "normal", selfCare: "full", intake: "normal", consciousness: "full" };
+const ppsData = {
+  ambulation: "full",
+  activity: "normal",
+  selfCare: "full",
+  intake: "normal",
+  consciousness: "full",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -125,7 +226,12 @@ afterEach(() => {
 describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
   it("POST /assessments records a scale for an eligible author (201, server-computed score)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: painadBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: painadBody(),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().scaleType).toBe("painad");
     expect(res.json().score).toBe(2); // 1+1+0+0+0
@@ -134,7 +240,12 @@ describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
 
   it("rejects an author without the permission key (403)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: VIEWER, payload: painadBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: VIEWER,
+      payload: painadBody(),
+    });
     expect(res.statusCode).toBe(403);
   });
 
@@ -144,7 +255,13 @@ describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
       method: "POST",
       url: `/api/v1/patients/${PATIENT}/assessments`,
       headers: CHAPLAIN,
-      payload: { admissionId: ADMISSION, scaleType: "aims", capturedAt: NOW, sudContext: false, data: { facialMuscles: 0 } },
+      payload: {
+        admissionId: ADMISSION,
+        scaleType: "aims",
+        capturedAt: NOW,
+        sudContext: false,
+        data: { facialMuscles: 0 },
+      },
     });
     expect(res.statusCode).toBe(403);
   });
@@ -153,7 +270,12 @@ describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
 describe("M9-T05 — license + admission gates (§4.4)", () => {
   it("records a licensed scale (PPS) when the tenant has an active license (201)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: { admissionId: ADMISSION, scaleType: "pps", capturedAt: NOW, data: ppsData } });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: { admissionId: ADMISSION, scaleType: "pps", capturedAt: NOW, data: ppsData },
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().score).toBe(90); // PPS v2: full/normal ⇒ 90 ("some disease"), never 100 in hospice
   });
@@ -174,7 +296,12 @@ describe("M9-T05 — license + admission gates (§4.4)", () => {
 describe("M9-T05 — LPN cosignature (§7.4, §4.7 cosigner_role_match)", () => {
   it("an RN (not the recorder) cosigns an LPN-recorded PPS (201)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`, headers: RN, payload: { attestationConfirmed: true } });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().cosigned).toBe(true);
   });
@@ -182,16 +309,31 @@ describe("M9-T05 — LPN cosignature (§7.4, §4.7 cosigner_role_match)", () => 
   it("self-cosign is denied: the recorder cannot cosign their own row (ABAC 403)", async () => {
     const { app } = makeServer();
     // PPS_BY_RN was recorded by rn_1; rn_1 attempting to cosign it fails `cosigner_role_match` (no self-cosign).
-    const res = await app.inject({ method: "POST", url: `/api/v1/assessments/${PPS_BY_RN}/cosignatures`, headers: RN, payload: { attestationConfirmed: true } });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/assessments/${PPS_BY_RN}/cosignatures`,
+      headers: RN,
+      payload: { attestationConfirmed: true },
+    });
     expect(res.statusCode).toBe(403);
     // A different eligible RN (not the recorder) may cosign the same row (201).
-    const ok = await app.inject({ method: "POST", url: `/api/v1/assessments/${PPS_BY_RN}/cosignatures`, headers: RN2, payload: { attestationConfirmed: true } });
+    const ok = await app.inject({
+      method: "POST",
+      url: `/api/v1/assessments/${PPS_BY_RN}/cosignatures`,
+      headers: RN2,
+      payload: { attestationConfirmed: true },
+    });
     expect(ok.statusCode).toBe(201);
   });
 
   it("a non-cosigner role is denied (no permission key → 403)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`, headers: CHAPLAIN, payload: { attestationConfirmed: true } });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+      headers: CHAPLAIN,
+      payload: { attestationConfirmed: true },
+    });
     expect(res.statusCode).toBe(403);
   });
 });
@@ -237,30 +379,52 @@ describe("M9-T05 — correction-of-record (§2.3 If-Match → STALE_VERSION)", (
 describe("M9-T05 — reads, trends, significant-change ack, admin", () => {
   it("GET latest returns the active row; cross-tenant id is a non-leaking 404", async () => {
     const { app } = makeServer();
-    const ok = await app.inject({ method: "GET", url: `/api/v1/patients/${PATIENT}/scales/painad/latest`, headers: RN });
+    const ok = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/scales/painad/latest`,
+      headers: RN,
+    });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().scaleType).toBe("painad");
-    const cross = await app.inject({ method: "GET", url: `/api/v1/patients/${PATIENT}/assessments/${PPS_B}`, headers: RN });
+    const cross = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/assessments/${PPS_B}`,
+      headers: RN,
+    });
     expect(cross.statusCode).toBe(404);
   });
 
   it("acknowledges an open significant-change event (open → acknowledged)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/significant-changes/${CHANGE_OPEN}/acknowledge`, headers: RN, payload: {} });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/significant-changes/${CHANGE_OPEN}/acknowledge`,
+      headers: RN,
+      payload: {},
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("acknowledged");
   });
 
   it("org_admin lists + registers a scale license (201)", async () => {
     const { app } = makeServer();
-    const list = await app.inject({ method: "GET", url: "/api/v1/admin/scales/licenses", headers: ADMIN });
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/scales/licenses",
+      headers: ADMIN,
+    });
     expect(list.statusCode).toBe(200);
     expect(list.json().licenses.length).toBe(1);
     const created = await app.inject({
       method: "POST",
       url: "/api/v1/admin/scales/licenses",
       headers: ADMIN,
-      payload: { scaleType: "fast", vendor: "Reisberg", effectiveDate: "2026-06-01", expiresAt: "2027-06-01" },
+      payload: {
+        scaleType: "fast",
+        vendor: "Reisberg",
+        effectiveDate: "2026-06-01",
+        expiresAt: "2027-06-01",
+      },
     });
     expect(created.statusCode).toBe(201);
     expect(created.json().status).toBe("active");
@@ -268,7 +432,11 @@ describe("M9-T05 — reads, trends, significant-change ack, admin", () => {
 
   it("a non-admin cannot read the license registry (403)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: "/api/v1/admin/scales/licenses", headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/admin/scales/licenses",
+      headers: RN,
+    });
     expect(res.statusCode).toBe(403);
   });
 });
@@ -287,14 +455,44 @@ describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () 
   const sudSeed = (): ExtraSeed => ({
     consents: [{ organizationId: ORG, patientId: SUD_PAT_CONSENTED, sudReleaseActive: true }],
     assessments: [
-      { id: AIMS_VISIBLE, organizationId: ORG, patientId: SUD_PAT_CONSENTED, admissionId: ADMISSION, scaleType: "aims", capturedByDiscipline: "rn", recordedByUserId: "rn_1", sudContext: true, score: 4, scoreInterpretation: "AIMS 4", data: { facialMuscles: 1 }, capturedAt: "2026-06-19T09:00:00.000Z" },
-      { id: AIMS_REDACTED, organizationId: ORG, patientId: SUD_PAT_NOCONSENT, admissionId: ADMISSION, scaleType: "aims", capturedByDiscipline: "rn", recordedByUserId: "rn_1", sudContext: true, score: 4, scoreInterpretation: "AIMS 4", data: { facialMuscles: 1 }, capturedAt: "2026-06-19T09:00:00.000Z" },
+      {
+        id: AIMS_VISIBLE,
+        organizationId: ORG,
+        patientId: SUD_PAT_CONSENTED,
+        admissionId: ADMISSION,
+        scaleType: "aims",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+        sudContext: true,
+        score: 4,
+        scoreInterpretation: "AIMS 4",
+        data: { facialMuscles: 1 },
+        capturedAt: "2026-06-19T09:00:00.000Z",
+      },
+      {
+        id: AIMS_REDACTED,
+        organizationId: ORG,
+        patientId: SUD_PAT_NOCONSENT,
+        admissionId: ADMISSION,
+        scaleType: "aims",
+        capturedByDiscipline: "rn",
+        recordedByUserId: "rn_1",
+        sudContext: true,
+        score: 4,
+        scoreInterpretation: "AIMS 4",
+        data: { facialMuscles: 1 },
+        capturedAt: "2026-06-19T09:00:00.000Z",
+      },
     ],
   });
 
   it("a non-consented read returns the redacted-shape row (redacted=true, empty data, null score) — never a hard block", async () => {
     const { app } = makeServer(sudSeed());
-    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/assessments/${AIMS_REDACTED}`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/assessments/${AIMS_REDACTED}`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200); // the clinician sees "there IS an AIMS but you can't see it"
     const row = res.json();
     expect(row.redacted).toBe(true);
@@ -306,7 +504,11 @@ describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () 
 
   it("an active 42 CFR Part 2 release discloses the AIMS in full (redacted=false)", async () => {
     const { app } = makeServer(sudSeed());
-    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_CONSENTED}/assessments/${AIMS_VISIBLE}`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${SUD_PAT_CONSENTED}/assessments/${AIMS_VISIBLE}`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200);
     const row = res.json();
     expect(row.redacted).toBe(false);
@@ -316,7 +518,11 @@ describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () 
 
   it("latest() applies the same redaction projection for a non-consented SUD-context AIMS", async () => {
     const { app } = makeServer(sudSeed());
-    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/scales/aims/latest`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/scales/aims/latest`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().redacted).toBe(true);
     expect(res.json().score).toBeNull();
@@ -324,7 +530,11 @@ describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () 
 
   it("series withholds the score of a non-consented SUD-context AIMS trend point", async () => {
     const { app } = makeServer(sudSeed());
-    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/scales/aims/series?from=2026-06-01&to=2026-06-30`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${SUD_PAT_NOCONSENT}/scales/aims/series?from=2026-06-01&to=2026-06-30`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200);
     const pts = res.json().points;
     expect(pts.length).toBe(1);
@@ -333,7 +543,11 @@ describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () 
 
   it("non-SUD scales are never redacted regardless of consent (PPS reads in full)", async () => {
     const { app } = makeServer(sudSeed());
-    const res = await app.inject({ method: "GET", url: `/api/v1/patients/${PATIENT}/scales/pps/latest`, headers: RN });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/scales/pps/latest`,
+      headers: RN,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().redacted).toBe(false);
     expect(res.json().score).toBe(60);
@@ -345,21 +559,38 @@ describe("M9-T08 — §9.3 DPOA proxy-attribution write gate (§4.4)", () => {
 
   it("a representative report without an active DPOA is refused (403 DPOA_CONSENT_REQUIRED)", async () => {
     const { app } = makeServer(); // no consent seeded for PATIENT
-    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: repBody() });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: repBody(),
+    });
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe("DPOA_CONSENT_REQUIRED");
   });
 
   it("a representative report with an active DPOA is accepted (201)", async () => {
-    const { app } = makeServer({ consents: [{ organizationId: ORG, patientId: PATIENT, dpoaActive: true }] });
-    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: repBody() });
+    const { app } = makeServer({
+      consents: [{ organizationId: ORG, patientId: PATIENT, dpoaActive: true }],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: repBody(),
+    });
     expect(res.statusCode).toBe(201);
     expect(res.json().actingAs).toBe("patient_representative");
   });
 
   it("a self-attributed report needs no DPOA (201)", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: `/api/v1/patients/${PATIENT}/assessments`, headers: RN, payload: painadBody({ actingAs: "self" }) });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/patients/${PATIENT}/assessments`,
+      headers: RN,
+      payload: painadBody({ actingAs: "self" }),
+    });
     expect(res.statusCode).toBe(201);
   });
 });

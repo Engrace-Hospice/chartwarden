@@ -16,7 +16,11 @@
 //     cancel in-flight bulk exports — §2.4) runs on ENTRY to `revoked`; there is no un-revoke, only a new
 //     client. `suspended`, by contrast, is reversible (`suspended → active` on manual unsuspend).
 
-import type { FhirClientStatus, FhirClientServePosture, FhirStatusTransition } from "@wardenx/types";
+import type {
+  FhirClientServePosture,
+  FhirClientStatus,
+  FhirStatusTransition,
+} from "@wardenx/types";
 
 /** The status a freshly-proposed client lands in (§2.2 `[*] --> proposed` / "Org Admin requests"). */
 export const FHIR_CLIENT_INITIAL_STATUS: FhirClientStatus = "pending_approval";
@@ -94,7 +98,10 @@ export function fhirClientTransition(
 }
 
 /** True when the FSM permits the transition. Fails CLOSED: an unknown pair is not a transition. */
-export function canFhirClientTransition(from: FhirClientStatus | null, to: FhirClientStatus): boolean {
+export function canFhirClientTransition(
+  from: FhirClientStatus | null,
+  to: FhirClientStatus,
+): boolean {
   return fhirClientTransition(from, to) !== null;
 }
 
@@ -117,9 +124,7 @@ export function fhirDualApprovalSatisfied(
   complianceMembershipId: string | null | undefined,
 ): boolean {
   return (
-    !!adminMembershipId &&
-    !!complianceMembershipId &&
-    adminMembershipId !== complianceMembershipId
+    !!adminMembershipId && !!complianceMembershipId && adminMembershipId !== complianceMembershipId
   );
 }
 

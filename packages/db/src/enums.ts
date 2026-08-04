@@ -1166,7 +1166,10 @@ export const scaleType = pgEnum("scale_type", [
 export const assessmentStatus = pgEnum("assessment_status", ["active", "superseded"]);
 
 /** `assessment_acting_as` — whether the reporter is the patient or an attributed representative (DPOA). */
-export const assessmentActingAs = pgEnum("assessment_acting_as", ["self", "patient_representative"]);
+export const assessmentActingAs = pgEnum("assessment_acting_as", [
+  "self",
+  "patient_representative",
+]);
 
 /** `significant_change_rule_id` — the §2.4 threshold-crossing rules the detector evaluates (D2). */
 export const significantChangeRuleId = pgEnum("significant_change_rule_id", [
@@ -1238,12 +1241,7 @@ export const hopeScheduleStatus = pgEnum("hope_schedule_status", [
 ]);
 
 /** `hope_sfv_status` — the §2.2.3 Symptom-Follow-Up-Visit lifecycle (open → completed/overdue → missed). */
-export const hopeSfvStatus = pgEnum("hope_sfv_status", [
-  "open",
-  "completed",
-  "overdue",
-  "missed",
-]);
+export const hopeSfvStatus = pgEnum("hope_sfv_status", ["open", "completed", "overdue", "missed"]);
 
 /** `hope_submission_status` — the §2.2.4 iQIES submission-batch lifecycle. */
 export const hopeSubmissionStatus = pgEnum("hope_submission_status", [
@@ -1262,18 +1260,10 @@ export const hopeSubmissionItemStatus = pgEnum("hope_submission_item_status", [
 ]);
 
 /** `hope_validation_severity` — a §3 `hope_validation_finding`'s blocking class (error vs warning). */
-export const hopeValidationSeverity = pgEnum("hope_validation_severity", [
-  "error",
-  "warning",
-]);
+export const hopeValidationSeverity = pgEnum("hope_validation_severity", ["error", "warning"]);
 
 /** `j2051_severity` — the CMS-defined four-level symptom-impact item (D4; drives the 2-day SFV trigger). */
-export const j2051Severity = pgEnum("j2051_severity", [
-  "none",
-  "mild",
-  "moderate",
-  "severe",
-]);
+export const j2051Severity = pgEnum("j2051_severity", ["none", "mild", "moderate", "severe"]);
 
 /** `hope_schedule_generated_by` — provenance of a timepoint schedule row (§2 `generated_by`). */
 export const hopeScheduleGeneratedBy = pgEnum("hope_schedule_generated_by", [
@@ -1635,11 +1625,7 @@ export const comfortKitReplenishmentUrgency = pgEnum("comfort_kit_replenishment_
 ]);
 
 /** `offline_sync_status` — the §2.10 D18 server-side offline-queue ingest state. */
-export const offlineSyncStatus = pgEnum("offline_sync_status", [
-  "pending",
-  "synced",
-  "rejected",
-]);
+export const offlineSyncStatus = pgEnum("offline_sync_status", ["pending", "synced", "rejected"]);
 
 // ── Module 14 (Interdisciplinary Group / IDG) — §3.2 enums (M14-T01) ──────────────────────────────────
 
@@ -2878,11 +2864,10 @@ export const safetyAcknowledgmentTargetKind = pgEnum("safety_acknowledgment_targ
 /** `safety_emergency_contact_consent_status` — §2.2.8 / D10. `expired` is a tenant consent-rotation
  *  outcome and is NOT `revoked`: the clinician never withdrew consent, the acknowledgment aged out, and
  *  the two must stay distinguishable in a coercion review. */
-export const safetyEmergencyContactConsentStatus = pgEnum("safety_emergency_contact_consent_status", [
-  "granted",
-  "revoked",
-  "expired",
-]);
+export const safetyEmergencyContactConsentStatus = pgEnum(
+  "safety_emergency_contact_consent_status",
+  ["granted", "revoked", "expired"],
+);
 
 // ── Module 32 (AI Platform) — §3.1 enums (M32-T01) ────────────────────────────────────────────────
 //
@@ -2958,7 +2943,11 @@ export const aiPromptTemplateStatus = pgEnum("ai_prompt_template_status", [
 ]);
 
 /** `ai_tenant_opt_in_status` — §3.2.6 defaults to `opted_out`: the row's EXISTENCE is not consent. */
-export const aiTenantOptInStatus = pgEnum("ai_tenant_opt_in_status", ["active", "paused", "opted_out"]);
+export const aiTenantOptInStatus = pgEnum("ai_tenant_opt_in_status", [
+  "active",
+  "paused",
+  "opted_out",
+]);
 
 /** `ai_invocation_status` — `capability_unavailable` is a RECORDED outcome, not an absent row: a gate
  *  refusal is itself the §164.528 evidence that no PHI left the platform. */
@@ -2981,7 +2970,11 @@ export const aiInvocationHitlOutcome = pgEnum("ai_invocation_hitl_outcome", [
 ]);
 
 /** `ai_routing_decision` — WHICH link of the capability's chain served the call. */
-export const aiRoutingDecision = pgEnum("ai_routing_decision", ["primary", "fallback_1", "fallback_2"]);
+export const aiRoutingDecision = pgEnum("ai_routing_decision", [
+  "primary",
+  "fallback_1",
+  "fallback_2",
+]);
 
 /** `ai_routing_reason` — WHY that link served it. §3.1 adds `cost_cap_fallback` beyond the four the
  *  §2.1 ERD lists, so D7's hard-cap fallback is distinguishable from a vendor outage in the ledger. */
@@ -3127,11 +3120,17 @@ export const fhirClientStatus = pgEnum("fhir_client_status", [
 
 /** `fhir_client_credential_kind` — `api_key` ships in Phase 1; `jwks_pin` is the future option to pin a
  *  specific JWK by `kid` rather than rely on `jwks_uri` rotation (§2.2). */
-export const fhirClientCredentialKind = pgEnum("fhir_client_credential_kind", ["api_key", "jwks_pin"]);
+export const fhirClientCredentialKind = pgEnum("fhir_client_credential_kind", [
+  "api_key",
+  "jwks_pin",
+]);
 
 /** `fhir_client_credential_status` — rotation retires the prior row and opens a 30-day overlap window in
  *  which both verify, then the prior is destruction-erased per M4 (§2.2). */
-export const fhirClientCredentialStatus = pgEnum("fhir_client_credential_status", ["active", "retired"]);
+export const fhirClientCredentialStatus = pgEnum("fhir_client_credential_status", [
+  "active",
+  "retired",
+]);
 
 /** `fhir_bulk_export_status` — the §2.2 async-export FSM. `completed` mints output URLs with a 24h TTL;
  *  a sweeper walks `completed → expired` and purges the MinIO NDJSON. */
@@ -3463,7 +3462,10 @@ export const ipuVisitorRelationship = pgEnum("ipu_visitor_relationship", [
 ]);
 
 /** `ipu_visitor_restriction_scope` — unit-wide vs per-patient restriction (§2.7). */
-export const ipuVisitorRestrictionScope = pgEnum("ipu_visitor_restriction_scope", ["unit", "patient"]);
+export const ipuVisitorRestrictionScope = pgEnum("ipu_visitor_restriction_scope", [
+  "unit",
+  "patient",
+]);
 
 /** `ipu_visitor_restriction_kind` — restriction severity (§2.7). */
 export const ipuVisitorRestrictionKind = pgEnum("ipu_visitor_restriction_kind", [

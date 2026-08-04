@@ -5,7 +5,7 @@
 // `validation_run`. 817/818 are NOT assemblable here — they go through the dedicated :replace / :void
 // routes (so `tob` is the four interim/admission-through-discharge codes only).
 import { type Static, Type } from "@sinclair/typebox";
-import { CentsSchema, Count, IsoDateSchema, Uuid, ClaimTobAssemblable } from "./common";
+import { CentsSchema, ClaimTobAssemblable, Count, IsoDateSchema, Uuid } from "./common";
 
 export const ClaimAssembleRequest = Type.Object({
   providerEntityId: Uuid,

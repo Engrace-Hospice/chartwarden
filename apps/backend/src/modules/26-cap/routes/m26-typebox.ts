@@ -20,8 +20,8 @@
 // impact was business-logic corruption and unhandled `pg` errors rather than takeover.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@wardenx/types";
 import { contracts } from "@wardenx/cap-management";
+import { ValidationError } from "@wardenx/types";
 
 /**
  * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on
@@ -134,6 +134,7 @@ export const ProjectionListResponse = Type.Array(contracts.ProjectionSnapshotDto
 export const InpatientProjectionDto = contracts.InpatientProjectionDto;
 export const SettlementDto = contracts.SettlementDto;
 
+import type { CursorPage as ServiceCursorPage } from "./concurrency";
 // ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
 // The handlers do not return the `contracts.*` DTOs above; they return the READ/WRITE-service VIEW
 // interfaces (`PeriodView`, `ProjectionView`, `SettlementView`, …) verbatim. Those views published NO
@@ -155,7 +156,6 @@ import type {
   SettlementView as ServiceSettlementView,
   ThresholdEventView as ServiceThresholdEventView,
 } from "./read-service";
-import type { CursorPage as ServiceCursorPage } from "./concurrency";
 
 const Nullable = <T extends TSchema>(t: T) => Type.Union([t, Type.Null()]);
 const NullStr = () => Nullable(Type.String());
@@ -320,7 +320,10 @@ type _AccrualPage = Conforms<
   Static<typeof CapAccrualLinePageResponse>,
   ServiceCursorPage<ServiceAccrualLineView>
 >;
-type _InpatientAccrual = Conforms<Static<typeof CapInpatientAccrualViewDto>, ServiceInpatientAccrualView>;
+type _InpatientAccrual = Conforms<
+  Static<typeof CapInpatientAccrualViewDto>,
+  ServiceInpatientAccrualView
+>;
 type _ThresholdEvent = Conforms<Static<typeof CapThresholdEventViewDto>, ServiceThresholdEventView>;
 type _PsrImport = Conforms<Static<typeof CapPsrImportViewDto>, ServicePsrImportView>;
 type _PsrVariance = Conforms<Static<typeof CapPsrVarianceViewDto>, ServicePsrVarianceView>;

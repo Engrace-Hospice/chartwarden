@@ -4,7 +4,16 @@
 // derived coords source); both coordinate ciphers are DENYLISTED from audit (§3.6) to avoid re-emission. The
 // `evv_event_id` ref is plain uuid (no SQL FK — `evv_event` is partitioned). RLS + grants + M4 write-audit
 // trigger land in the RLS migration (M18-T02 / 0047).
-import { index, integer, pgTable, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { evvGeofencePolicyScope } from "../../enums";
 import { organizations } from "../organizations";
 

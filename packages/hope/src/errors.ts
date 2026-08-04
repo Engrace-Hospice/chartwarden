@@ -54,6 +54,10 @@ export class HopeStateError extends WardenXError {
 }
 
 /** Throw a {@link HopeStateError} when `condition` is false (guard helper). */
-export function require_(condition: boolean, code: M10ErrorCode, message: string): asserts condition {
+export function require_(
+  condition: boolean,
+  code: M10ErrorCode,
+  message: string,
+): asserts condition {
   if (!condition) throw new HopeStateError(code, message);
 }

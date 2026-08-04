@@ -1,3 +1,4 @@
+import type { DocumentDigest } from "@wardenx/types";
 // apps/backend/__tests__/document-readers.test.ts — M22-T05 the five §4.3 PUBLISHED reader seams.
 //
 // Covers each reader over its in-memory slice + the boot wiring: RenderedDocumentProvider (back-ref resolve),
@@ -29,13 +30,14 @@ import {
   getRenderedDocumentProvider,
   registerDocumentSeams,
 } from "../src/modules/22-documents/index";
-import type { DocumentDigest } from "@wardenx/types";
 
 const ORG = "org-1";
 
 afterEach(() => __resetSeamsForTest());
 
-function digest(over: Partial<DocumentDigest> & Pick<DocumentDigest, "documentId" | "createdAt">): DocumentDigest {
+function digest(
+  over: Partial<DocumentDigest> & Pick<DocumentDigest, "documentId" | "createdAt">,
+): DocumentDigest {
   return {
     organizationId: ORG,
     patientId: "pat-1",
@@ -103,10 +105,20 @@ describe("RenderedDocumentProvider", () => {
   it("resolves the rendered document for an aggregate, null otherwise", async () => {
     const { store } = createInMemoryDocumentReaderStore(SEED);
     const r = createRenderedDocumentProvider(store);
-    expect(await r.getRenderedDocumentForAggregate({ aggregateType: "cti", aggregateId: "cti-1", organizationId: ORG }))
-      .toMatchObject({ documentId: "doc-cti", versionId: "doc-cti-v1" });
-    expect(await r.getRenderedDocumentForAggregate({ aggregateType: "cti", aggregateId: "nope", organizationId: ORG }))
-      .toBeNull();
+    expect(
+      await r.getRenderedDocumentForAggregate({
+        aggregateType: "cti",
+        aggregateId: "cti-1",
+        organizationId: ORG,
+      }),
+    ).toMatchObject({ documentId: "doc-cti", versionId: "doc-cti-v1" });
+    expect(
+      await r.getRenderedDocumentForAggregate({
+        aggregateType: "cti",
+        aggregateId: "nope",
+        organizationId: ORG,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -114,19 +126,34 @@ describe("DocumentReader", () => {
   it("lists a patient's documents newest-first and pages by sinceCursor", async () => {
     const { store } = createInMemoryDocumentReaderStore(SEED);
     const r = createDocumentReader(store);
-    const page1 = await r.documentsForPatient({ patientId: "pat-1", organizationId: ORG, limit: 2 });
+    const page1 = await r.documentsForPatient({
+      patientId: "pat-1",
+      organizationId: ORG,
+      limit: 2,
+    });
     expect(page1.map((d) => d.documentId)).toEqual(["d3", "d2"]); // 06-23, 06-22
     const cursor = `${page1[1]!.createdAt}|${page1[1]!.documentId}`;
-    const page2 = await r.documentsForPatient({ patientId: "pat-1", organizationId: ORG, sinceCursor: cursor, limit: 2 });
+    const page2 = await r.documentsForPatient({
+      patientId: "pat-1",
+      organizationId: ORG,
+      sinceCursor: cursor,
+      limit: 2,
+    });
     expect(page2.map((d) => d.documentId)).toEqual(["d1"]); // 06-20 (pat-2's d4 excluded)
   });
 
   it("filters by aggregateType and reads by-id metadata", async () => {
     const { store } = createInMemoryDocumentReaderStore(SEED);
     const r = createDocumentReader(store);
-    const nors = await r.documentsForPatient({ patientId: "pat-1", organizationId: ORG, aggregateType: "nor" });
+    const nors = await r.documentsForPatient({
+      patientId: "pat-1",
+      organizationId: ORG,
+      aggregateType: "nor",
+    });
     expect(nors.map((d) => d.documentId)).toEqual(["d2"]);
-    expect(await r.documentMetadata({ documentId: "d1", organizationId: ORG })).toMatchObject({ documentId: "d1" });
+    expect(await r.documentMetadata({ documentId: "d1", organizationId: ORG })).toMatchObject({
+      documentId: "d1",
+    });
     expect(await r.documentMetadata({ documentId: "ghost", organizationId: ORG })).toBeNull();
   });
 });
@@ -145,7 +172,13 @@ describe("PortalDocumentReader", () => {
     // d3 is patient_facing:false → excluded; d1/d2 included; the projection has no internal tags
     expect(list.map((d) => d.documentId).sort()).toEqual(["d1", "d2"]);
     expect(Object.keys(list[0]!)).toEqual(
-      expect.arrayContaining(["documentId", "aggregateType", "title", "activeVersionId", "createdAt"]),
+      expect.arrayContaining([
+        "documentId",
+        "aggregateType",
+        "title",
+        "activeVersionId",
+        "createdAt",
+      ]),
     );
     expect(list[0]).not.toHaveProperty("retentionClass");
   });
@@ -211,10 +244,16 @@ describe("IntakeMetricsProvider", () => {
   it("returns the org's throughput counts (zeros when unseeded)", async () => {
     const { store } = createInMemoryDocumentReaderStore(SEED);
     const m = createIntakeMetricsProvider(store);
-    expect(await m.metricsForOrg({ organizationId: ORG, from: "2026-06-01T00:00:00.000Z", to: "2026-06-30T00:00:00.000Z" }))
-      .toMatchObject({ bundlesProcessed: 12, candidatesApproved: 30 });
-    expect(await m.metricsForOrg({ organizationId: "org-x", from: "a", to: "b" }))
-      .toMatchObject({ bundlesProcessed: 0 });
+    expect(
+      await m.metricsForOrg({
+        organizationId: ORG,
+        from: "2026-06-01T00:00:00.000Z",
+        to: "2026-06-30T00:00:00.000Z",
+      }),
+    ).toMatchObject({ bundlesProcessed: 12, candidatesApproved: 30 });
+    expect(await m.metricsForOrg({ organizationId: "org-x", from: "a", to: "b" })).toMatchObject({
+      bundlesProcessed: 0,
+    });
   });
 });
 
@@ -222,11 +261,20 @@ describe("ExtractionProvenanceReader", () => {
   it("returns the provenance records for a chart-target aggregate (data exists, DocLens OFF)", async () => {
     const { store } = createInMemoryDocumentReaderStore(SEED);
     const p = createExtractionProvenanceReader(store);
-    const recs = await p.provenanceForTargetAggregate({ targetModule: "m12", targetAggregateId: "order-9", organizationId: ORG });
+    const recs = await p.provenanceForTargetAggregate({
+      targetModule: "m12",
+      targetAggregateId: "order-9",
+      organizationId: ORG,
+    });
     expect(recs).toHaveLength(1);
     expect(recs[0]).toMatchObject({ sourceDocumentId: "d1", sourcePage: 2 });
-    expect(await p.provenanceForTargetAggregate({ targetModule: "m12", targetAggregateId: "none", organizationId: ORG }))
-      .toHaveLength(0);
+    expect(
+      await p.provenanceForTargetAggregate({
+        targetModule: "m12",
+        targetAggregateId: "none",
+        organizationId: ORG,
+      }),
+    ).toHaveLength(0);
   });
 });
 
@@ -243,8 +291,9 @@ describe("boot wiring (registerDocumentSeams)", () => {
 
   it("without registration, validateSeams applies the fail-closed deny-stubs (deny loudly on call)", () => {
     validateSeams(); // no registerDocumentSeams() — deny-stubs stand
-    expect(() => getSeam("DocumentReader").documentMetadata({ documentId: "x", organizationId: ORG }))
-      .toThrowError(NotImplementedError);
+    expect(() =>
+      getSeam("DocumentReader").documentMetadata({ documentId: "x", organizationId: ORG }),
+    ).toThrowError(NotImplementedError);
     expect(() =>
       getSeam("ExtractionProvenanceReader").provenanceForTargetAggregate({
         targetModule: "m12",

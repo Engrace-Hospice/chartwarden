@@ -1,3 +1,18 @@
+import {
+  BadDebtRepository,
+  ComplianceWindowRepository,
+  CostCenterMappingRepository,
+  type CostReportDb,
+  CostReportRepository,
+  CostReportSnapshotRepository,
+  CostReportWorksheetRepository,
+  EcrSubmissionRepository,
+  ImportsRepository,
+  StatisticDataRepository,
+  ValidationRepository,
+  ValidationRuleRepository,
+  emptyWorksheetData,
+} from "@wardenx/cost-report";
 // apps/backend/src/modules/27-cost-report/routes/read-service-drizzle.ts — the Drizzle-backed
 // M27ReadRouteService (§4.1 GET surface: cost-report list/detail, worksheets, mappings, bad-debt,
 // statistics, imports, validations, ECR submissions, snapshots, compliance window, the rule library).
@@ -13,22 +28,7 @@
 // DTO discipline: the cipher / audit-denylisted columns (`raw_payload_cipher`, and on list views the
 // `materialized_inputs` / `worksheet_snapshot`) are NEVER projected here — only `getSnapshot` (the one
 // audit-read-logged route) surfaces the materialized payloads.
-import { schema } from "@wardenx/db";
-import {
-  BadDebtRepository,
-  ComplianceWindowRepository,
-  type CostReportDb,
-  CostCenterMappingRepository,
-  CostReportRepository,
-  CostReportSnapshotRepository,
-  CostReportWorksheetRepository,
-  EcrSubmissionRepository,
-  ImportsRepository,
-  StatisticDataRepository,
-  ValidationRepository,
-  ValidationRuleRepository,
-  emptyWorksheetData,
-} from "@wardenx/cost-report";
+import type { schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError } from "@wardenx/types";
 import type { M27ReadActor } from "./actor";
@@ -48,9 +48,9 @@ import type {
   TrialBalanceImportView,
   ValidationOverrideView,
   ValidationResultView,
+  ValidationRuleView,
   ValidationRunDetailView,
   ValidationRunSummaryView,
-  ValidationRuleView,
   WageDataImportView,
   WorksheetCode,
   WorksheetView,
@@ -287,10 +287,12 @@ export function buildDrizzleM27ReadService(
         });
         const mapped = rows
           .filter((r) => {
-            if (filter.providerEntityId && r.providerEntityId !== filter.providerEntityId) return false;
+            if (filter.providerEntityId && r.providerEntityId !== filter.providerEntityId)
+              return false;
             if (
               filter.fiscalYear !== undefined &&
-              new Date(`${r.fiscalYearEndDate}T00:00:00.000Z`).getUTCFullYear() !== filter.fiscalYear
+              new Date(`${r.fiscalYearEndDate}T00:00:00.000Z`).getUTCFullYear() !==
+                filter.fiscalYear
             ) {
               return false;
             }
@@ -383,7 +385,10 @@ export function buildDrizzleM27ReadService(
     async listBadDebt(actor, costReportId) {
       return read(actor, async (tx) => {
         await loadReport(tx, actor, costReportId);
-        const rows = await new BadDebtRepository(tx).listForReport(actor.organizationId, costReportId);
+        const rows = await new BadDebtRepository(tx).listForReport(
+          actor.organizationId,
+          costReportId,
+        );
         return rows.map(mapBadDebt);
       });
     },
@@ -437,7 +442,11 @@ export function buildDrizzleM27ReadService(
         await loadReport(tx, actor, costReportId);
         const repo = new ValidationRepository(tx);
         const run = await repo.findRunById(validationId);
-        if (!run || run.organizationId !== actor.organizationId || run.costReportId !== costReportId) {
+        if (
+          !run ||
+          run.organizationId !== actor.organizationId ||
+          run.costReportId !== costReportId
+        ) {
           throw new NotFoundError("validation run");
         }
         const results = await repo.listResults(validationId);
@@ -455,7 +464,10 @@ export function buildDrizzleM27ReadService(
             recordedAt: isoReq(r.recordedAt),
           });
         }
-        return { ...mapValidationRun(run), results: mappedResults } satisfies ValidationRunDetailView;
+        return {
+          ...mapValidationRun(run),
+          results: mappedResults,
+        } satisfies ValidationRunDetailView;
       });
     },
 
@@ -474,7 +486,11 @@ export function buildDrizzleM27ReadService(
       return read(actor, async (tx) => {
         await loadReport(tx, actor, costReportId);
         const row = await new EcrSubmissionRepository(tx).findById(submissionId);
-        if (!row || row.organizationId !== actor.organizationId || row.costReportId !== costReportId) {
+        if (
+          !row ||
+          row.organizationId !== actor.organizationId ||
+          row.costReportId !== costReportId
+        ) {
           throw new NotFoundError("ecr submission");
         }
         return mapEcr(row);
@@ -496,7 +512,11 @@ export function buildDrizzleM27ReadService(
       return read(actor, async (tx) => {
         await loadReport(tx, actor, costReportId);
         const row = await new CostReportSnapshotRepository(tx).findById(snapshotId);
-        if (!row || row.organizationId !== actor.organizationId || row.costReportId !== costReportId) {
+        if (
+          !row ||
+          row.organizationId !== actor.organizationId ||
+          row.costReportId !== costReportId
+        ) {
           throw new NotFoundError("snapshot");
         }
         return {

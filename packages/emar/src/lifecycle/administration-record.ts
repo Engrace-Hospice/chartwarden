@@ -152,7 +152,11 @@ export function planRecordAdministration(
     "ADMINISTRATION_BLOCKED",
     "M12 reports this medication order does not allow administration (not active)",
   );
-  require_(input.fiveRightsPassed, "FIVE_RIGHTS_VIOLATION", "the five-rights validation did not pass");
+  require_(
+    input.fiveRightsPassed,
+    "FIVE_RIGHTS_VIOLATION",
+    "the five-rights validation did not pass",
+  );
   require_(
     input.lateEntryTierResolved,
     "LATE_ENTRY_TIER_UNRESOLVED",
@@ -179,7 +183,11 @@ export function planRecordCaregiverAttested(
     "ADMINISTRATION_BLOCKED",
     "M12 reports this medication order does not allow administration (not active)",
   );
-  require_(input.fiveRightsPassed, "FIVE_RIGHTS_VIOLATION", "the five-rights validation did not pass");
+  require_(
+    input.fiveRightsPassed,
+    "FIVE_RIGHTS_VIOLATION",
+    "the five-rights validation did not pass",
+  );
   require_(
     input.attestationRecorded,
     "CAREGIVER_ATTESTATION_REQUIRED",
@@ -270,7 +278,11 @@ export function transitionAdministration(
 
     case "supersede": {
       // §5.12 — the correction route's replacement row commits and the trigger flips the original.
-      require_(event.isSystemActor, "NOT_SYSTEM_ACTOR", "the supersede transition is a system-actor (correction-trigger) operation");
+      require_(
+        event.isSystemActor,
+        "NOT_SYSTEM_ACTOR",
+        "the supersede transition is a system-actor (correction-trigger) operation",
+      );
       return result(from, event.type, "superseded", [
         { kind: "supersede_original" },
         { kind: "audit" },
@@ -279,8 +291,16 @@ export function transitionAdministration(
     }
 
     case "void": {
-      require_(event.hasVoidPermission, "VOID_NOT_PERMITTED", "the actor lacks the administration.void permission");
-      require_(event.stepUpCompleted, "VOID_STEP_UP_REQUIRED", "the void path requires step-up re-authentication");
+      require_(
+        event.hasVoidPermission,
+        "VOID_NOT_PERMITTED",
+        "the actor lacks the administration.void permission",
+      );
+      require_(
+        event.stepUpCompleted,
+        "VOID_STEP_UP_REQUIRED",
+        "the void path requires step-up re-authentication",
+      );
       require_(
         event.reason.trim().length >= VOID_REASON_MIN_LENGTH,
         "VOID_REASON_TOO_SHORT",

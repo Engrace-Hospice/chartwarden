@@ -178,7 +178,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m18.evv.device_pending_approval",
     moduleOwner: "m18",
-    description: "A clinician self-registered a device (→ pending_approval) — the M36 supervisor approval prompt.",
+    description:
+      "A clinician self-registered a device (→ pending_approval) — the M36 supervisor approval prompt.",
     payloadSchema: Type.Object({
       deviceId: id,
       membershipId: id,
@@ -190,7 +191,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m18.evv.device_approved",
     moduleOwner: "m18",
-    description: "A pending device was approved — the device may now post EVV captures (M2 attestation context).",
+    description:
+      "A pending device was approved — the device may now post EVV captures (M2 attestation context).",
     payloadSchema: Type.Object({
       deviceId: id,
       membershipId: id,
@@ -202,7 +204,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m18.evv.device_suspended",
     moduleOwner: "m18",
-    description: "A device was suspended — the M36 warn alert to the clinician + supervisor; the device cannot capture.",
+    description:
+      "A device was suspended — the M36 warn alert to the clinician + supervisor; the device cannot capture.",
     payloadSchema: Type.Object({
       deviceId: id,
       membershipId: id,
@@ -232,7 +235,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m18.evv.aggregator_submitted",
     moduleOwner: "m18",
-    description: "A submission reached `submitted` (the per-state worker posted to the aggregator) — operational visibility.",
+    description:
+      "A submission reached `submitted` (the per-state worker posted to the aggregator) — operational visibility.",
     payloadSchema: Type.Object({
       submissionId: id,
       visitId: id,
@@ -276,7 +280,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m18.evv.aggregator_timeout",
     moduleOwner: "m18",
-    description: "A submission timed out awaiting the aggregator — the M36 critical alert to billing-ops + platform-ops.",
+    description:
+      "A submission timed out awaiting the aggregator — the M36 critical alert to billing-ops + platform-ops.",
     payloadSchema: Type.Object({
       submissionId: id,
       visitId: id,
@@ -289,7 +294,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m18.evv.aggregator_cancelled",
     moduleOwner: "m18",
-    description: "An operator cancelled a non-terminal submission — operational visibility. `reason` is denylisted in audit.",
+    description:
+      "An operator cancelled a non-terminal submission — operational visibility. `reason` is denylisted in audit.",
     payloadSchema: Type.Object({
       submissionId: id,
       visitId: id,

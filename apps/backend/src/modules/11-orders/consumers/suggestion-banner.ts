@@ -30,7 +30,11 @@ export type SuggestionAction =
   /** A non-qualifying rule/severity, a redelivery (already present), or the clinician already acted. */
   | { readonly kind: "skip"; readonly reason: SuggestionSkipReason }
   /** Add the entry to the patient's banner state and emit `m11.order.suggestion_state_changed`. */
-  | { readonly kind: "add_suggestion"; readonly patientId: string; readonly entry: OrderSuggestionEntry };
+  | {
+      readonly kind: "add_suggestion";
+      readonly patientId: string;
+      readonly entry: OrderSuggestionEntry;
+    };
 
 /** Why a trigger delivery added nothing to the banner (all audited for reconciliation, never a hard error). */
 export type SuggestionSkipReason =

@@ -30,7 +30,7 @@ import {
   deactivateAiKillSwitch,
   listActiveAiKillSwitches,
 } from "../safety/service";
-import { killSwitchScopeOf, writeActorOf, actorOf } from "./actor";
+import { actorOf, killSwitchScopeOf, writeActorOf } from "./actor";
 import { ABAC_KILL_SWITCH_SCOPE, ABAC_SAFETY_OWNER_OR_IN_ORG, P, STEP_UP } from "./guards";
 import {
   ActivateKillSwitchBody,

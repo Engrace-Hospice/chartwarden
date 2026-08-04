@@ -419,7 +419,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m35.tenant.billing_blocked",
     moduleOwner: "m35",
-    description: "A tenant was billing-blocked at dunning day-28 suspension (M34 consumes the gate).",
+    description:
+      "A tenant was billing-blocked at dunning day-28 suspension (M34 consumes the gate).",
     payloadSchema: Type.Object({
       organizationId: id,
       subscriptionId: id,

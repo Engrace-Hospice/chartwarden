@@ -15,8 +15,12 @@
 
 import type { IsoInstant, M35StripeWebhookReceivedPayload, OrgId } from "@wardenx/types";
 import { type OutboxIntent, outboxIntent } from "../service/ports";
+import type {
+  StripeEventEnvelope,
+  StripeWebhookEventStore,
+  WebhookPayloadEncryptor,
+} from "./types";
 import { verifyStripeWebhook } from "./webhook-verifier";
-import type { StripeEventEnvelope, StripeWebhookEventStore, WebhookPayloadEncryptor } from "./types";
 
 /** §4.14 replay window: an event whose `created` is older than this is rejected (HTTP 410). */
 export const WEBHOOK_MAX_AGE_DAYS = 30;
@@ -27,7 +31,11 @@ export type WebhookIngestResult =
   | { readonly kind: "invalid_signature" } // → 401
   | { readonly kind: "too_old" } // → 410
   | { readonly kind: "duplicate" } // → 200 (Stripe TOS wants a fast 200 even on replays)
-  | { readonly kind: "accepted"; readonly stripeEventId: string; readonly outbox: readonly OutboxIntent[] }; // → 200
+  | {
+      readonly kind: "accepted";
+      readonly stripeEventId: string;
+      readonly outbox: readonly OutboxIntent[];
+    }; // → 200
 
 export interface WebhookIngestDeps {
   readonly store: StripeWebhookEventStore;

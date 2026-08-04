@@ -28,7 +28,9 @@ const BILLING_ADMIN_KEYS = Object.entries(M35_CONTRIBUTED_PERMISSIONS)
   .filter(([, def]) => def.category === "billing_admin")
   .map(([key]) => key);
 
-const platformTemplates = ROLE_TEMPLATES.filter((t) => PLATFORM_OPS_ROLE_KEYS.includes(t.key as never));
+const platformTemplates = ROLE_TEMPLATES.filter((t) =>
+  PLATFORM_OPS_ROLE_KEYS.includes(t.key as never),
+);
 
 describe("ADMIN-T02 platform-ops role catalog (§4.7)", () => {
   it("registers exactly the six platform-ops roles as non-locked platform_staff templates", () => {
@@ -61,7 +63,12 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
   it("read keys bind to support/billing/admin/owner", () => {
     for (const key of M35_BILLING_ADMIN_READ_KEYS) {
       expect(rolesForPermission(key).sort()).toEqual(
-        ["platform_admin", "platform_billing_admin", "platform_owner", "platform_support_t2"].sort(),
+        [
+          "platform_admin",
+          "platform_billing_admin",
+          "platform_owner",
+          "platform_support_t2",
+        ].sort(),
       );
     }
   });

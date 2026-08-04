@@ -98,9 +98,7 @@ export function createDrizzleMessagingEraseStore(
         const shredded = await tx
           .update(MSG)
           .set({ bodyCipher: Buffer.alloc(0), bodySha256: "" })
-          .where(
-            and(eq(MSG.organizationId, orgId), sql`octet_length(${MSG.bodyCipher}) > 0`),
-          )
+          .where(and(eq(MSG.organizationId, orgId), sql`octet_length(${MSG.bodyCipher}) > 0`))
           .returning({ id: MSG.id });
         return { bodiesRendered: shredded.length };
       });
@@ -110,10 +108,7 @@ export function createDrizzleMessagingEraseStore(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
-        const orgAlertIds = tx
-          .select({ id: AL.id })
-          .from(AL)
-          .where(eq(AL.organizationId, orgId));
+        const orgAlertIds = tx.select({ id: AL.id }).from(AL).where(eq(AL.organizationId, orgId));
         const orgMessageIds = tx
           .select({ id: MSG.id })
           .from(MSG)

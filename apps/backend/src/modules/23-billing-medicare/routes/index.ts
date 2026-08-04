@@ -1,3 +1,4 @@
+import type { ClaimAssemblyService } from "../services/claim-assembly";
 // apps/backend/src/modules/23-billing-medicare/routes/index.ts — M23 route-service barrel.
 //
 // The split READ + WRITE route services the §4.1 M23 route plugins compose over (the M27 `M27RouteServices`
@@ -10,7 +11,6 @@
 // HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
-import type { ClaimAssemblyService } from "../services/claim-assembly";
 
 export {
   type M23ReadActor,

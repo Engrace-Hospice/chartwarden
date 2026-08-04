@@ -21,6 +21,17 @@ import {
   listPlans,
 } from "./bereavement-api";
 import {
+  OUTREACH_STATUS_TONE,
+  PLAN_STATUS_TONE,
+  anniversaryCountdown,
+  dueLabel,
+  humanize,
+  outreachKindLabel,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./bereavement-status";
+import {
   Card,
   CountGrid,
   Field,
@@ -41,17 +52,6 @@ import {
   th,
   thNum,
 } from "./bereavement-ui";
-import {
-  OUTREACH_STATUS_TONE,
-  PLAN_STATUS_TONE,
-  anniversaryCountdown,
-  dueLabel,
-  humanize,
-  outreachKindLabel,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./bereavement-status";
 
 const HORIZONS = [
   { value: "7", label: "next 7 days" },
@@ -91,13 +91,15 @@ export function BereavementCounselorDashboard(): JSX.Element {
 
   if (loading) return <LoadingSpinner />;
   if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (!view) return <EmptyState title="No caseload" description="No bereavement caseload was returned." />;
+  if (!view)
+    return <EmptyState title="No caseload" description="No bereavement caseload was returned." />;
 
   // §5.1 #17 — every plan inside the 30/14/7-day pre-anniversary marks, soonest first.
   const anniversaries = plans
     .map((p) => ({ plan: p, countdown: anniversaryCountdown(p.deathDate) }))
-    .filter((r): r is { plan: PlanListItem; countdown: { days: number; mark: 30 | 14 | 7 } } =>
-      r.countdown !== null,
+    .filter(
+      (r): r is { plan: PlanListItem; countdown: { days: number; mark: 30 | 14 | 7 } } =>
+        r.countdown !== null,
     )
     .sort((a, b) => a.countdown.days - b.countdown.days);
 
@@ -123,8 +125,8 @@ export function BereavementCounselorDashboard(): JSX.Element {
           {view.externalSourceCosignPendingCount === 1
             ? "One plan on your caseload is"
             : `${view.externalSourceCosignPendingCount} plans on your caseload are`}{" "}
-          awaiting the medical-director cosign on an external (HL7 ADT) death notice. Counselor first
-          contact stays locked on those plans until the cosign is received.
+          awaiting the medical-director cosign on an external (HL7 ADT) death notice. Counselor
+          first contact stays locked on those plans until the cosign is received.
         </Notice>
       ) : null}
 
@@ -194,7 +196,10 @@ export function BereavementCounselorDashboard(): JSX.Element {
                     ) : null}
                   </td>
                   <td style={td}>
-                    <StatusPill label={humanize(p.status)} tone={toneOf(PLAN_STATUS_TONE, p.status)} />
+                    <StatusPill
+                      label={humanize(p.status)}
+                      tone={toneOf(PLAN_STATUS_TONE, p.status)}
+                    />
                   </td>
                   <td style={td}>{shortDate(p.deathDate)}</td>
                   <td style={td}>
@@ -227,7 +232,14 @@ function OutreachTable({
 }: {
   title: string;
   empty: string;
-  rows: { outreachId: string; planId: string; contactId: string; kind: string; status: string; dueAt: string }[];
+  rows: {
+    outreachId: string;
+    planId: string;
+    contactId: string;
+    kind: string;
+    status: string;
+    dueAt: string;
+  }[];
   tone?: "error";
 }): JSX.Element {
   return (
@@ -258,11 +270,16 @@ function OutreachTable({
               <tr key={o.outreachId} style={rowLine}>
                 <td style={td}>
                   {shortDate(o.dueAt)}
-                  <div style={{ ...mutedStyle, color: t.onSurfaceVariant }}>{dueLabel(o.dueAt)}</div>
+                  <div style={{ ...mutedStyle, color: t.onSurfaceVariant }}>
+                    {dueLabel(o.dueAt)}
+                  </div>
                 </td>
                 <td style={td}>{outreachKindLabel(o.kind)}</td>
                 <td style={td}>
-                  <StatusPill label={humanize(o.status)} tone={toneOf(OUTREACH_STATUS_TONE, o.status)} />
+                  <StatusPill
+                    label={humanize(o.status)}
+                    tone={toneOf(OUTREACH_STATUS_TONE, o.status)}
+                  />
                 </td>
                 <td style={td}>
                   <Link to={`/bereavement/plans/${o.planId}`} style={linkStyle}>

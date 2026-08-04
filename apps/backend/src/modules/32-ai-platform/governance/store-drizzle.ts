@@ -22,11 +22,7 @@
 // would make the two stores structurally different and the slice tests would stop proving anything
 // about this one.
 import { type DbClient, schema } from "@wardenx/db";
-import {
-  type PlatformBypassAuditor,
-  withOrgContext,
-  withPlatformContext,
-} from "@wardenx/tenancy";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import type { AiModelBackendKind, AiRoutingPreference } from "@wardenx/types";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 

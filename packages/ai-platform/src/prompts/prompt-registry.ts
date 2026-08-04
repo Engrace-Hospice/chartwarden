@@ -1,3 +1,4 @@
+import type { AiPromptTemplateStatus } from "@wardenx/types";
 // @wardenx/ai-platform — §4.5 / §4.10 `AIPromptRegistry` (M32-T05).
 //
 // The typed query API D13/D18 make load-bearing: M12, M13, M18, M21, M27 and M28 each call
@@ -28,8 +29,7 @@
 //  3. `getActivePromptsTargeting` DOES NOT NEED THE READER, and must not. It answers from the TABLE
 //     alone. A D18 boot validator that could not answer because a filesystem mount was missing would
 //     fail open — "no contraband found" — which is the one answer this query must never invent.
-import { aiGovernanceRefusal, type AiGovernanceRefusal } from "../governance/errors";
-import type { AiPromptTemplateStatus } from "@wardenx/types";
+import { type AiGovernanceRefusal, aiGovernanceRefusal } from "../governance/errors";
 
 /** SHA-256, lowercase hex — §3.2.5's `length(template_content_hash) = 64` CHECK, as a predicate. */
 const SHA256_HEX = /^[0-9a-f]{64}$/;
@@ -63,7 +63,10 @@ export function aiPromptContentHashMatches(expected: string, actual: string): bo
  * targeting `'medication_order'` must MATCH; a naive `query.startsWith(target)` would not, and M12's
  * boot validator would sail past the exact contraband it exists to catch.
  */
-export function aiPromptTargetsPrefix(templateTargetPrefix: string, queriedPrefix: string): boolean {
+export function aiPromptTargetsPrefix(
+  templateTargetPrefix: string,
+  queriedPrefix: string,
+): boolean {
   return templateTargetPrefix.startsWith(queriedPrefix);
 }
 
@@ -183,9 +186,16 @@ export interface AiPromptActivationRequest {
 /** The two writes an accepted activation makes, in one transaction. */
 export interface AiPromptActivationPlan {
   /** The row to INSERT, already `active` (see the request's header). */
-  readonly insert: AiPromptActivationRequest & { readonly status: "active"; readonly approvedAt: string };
+  readonly insert: AiPromptActivationRequest & {
+    readonly status: "active";
+    readonly approvedAt: string;
+  };
   /** The currently-active row to walk to `deprecated`; `null` when the capability has none yet. */
-  readonly deprecate: { readonly id: string; readonly supersededAt: string; readonly deprecatedAt: string } | null;
+  readonly deprecate: {
+    readonly id: string;
+    readonly supersededAt: string;
+    readonly deprecatedAt: string;
+  } | null;
 }
 
 export type AiPromptActivationDecision =
@@ -253,8 +263,7 @@ export function evaluateAiPromptActivation(
     ok: true,
     plan: {
       insert: { ...request, status: "active", approvedAt: at },
-      deprecate:
-        current === null ? null : { id: current.id, supersededAt: at, deprecatedAt: at },
+      deprecate: current === null ? null : { id: current.id, supersededAt: at, deprecatedAt: at },
     },
   };
 }

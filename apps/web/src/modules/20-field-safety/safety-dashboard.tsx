@@ -167,9 +167,9 @@ export function SafetyDashboardScreen(): JSX.Element {
 
       {state === "unknown" ? (
         <Notice tone="warning" assertive>
-          <strong>This board did not refresh.</strong> {error} What you see below is the last snapshot
-          that DID answer, taken at {dateTime(board.fetchedAt)}. Do not read it as current, and do not read
-          a quiet board as a safe one.
+          <strong>This board did not refresh.</strong> {error} What you see below is the last
+          snapshot that DID answer, taken at {dateTime(board.fetchedAt)}. Do not read it as current,
+          and do not read a quiet board as a safe one.
         </Notice>
       ) : null}
 
@@ -198,9 +198,9 @@ export function SafetyDashboardScreen(): JSX.Element {
         />
         <span style={mutedStyle}>
           Server snapshot at <strong>{dateTime(board.fetchedAt)}</strong>, refreshed every{" "}
-          {POLL_MS / 1000} seconds by polling — this screen holds no live socket, so treat every figure as
-          "as of" rather than "now". The SOS and overdue counts are the SERVER's, computed over the same
-          snapshot as the grid, so the tiles and the rows can never disagree.
+          {POLL_MS / 1000} seconds by polling — this screen holds no live socket, so treat every
+          figure as "as of" rather than "now". The SOS and overdue counts are the SERVER's, computed
+          over the same snapshot as the grid, so the tiles and the rows can never disagree.
         </span>
       </Card>
 
@@ -226,20 +226,21 @@ export function SafetyDashboardScreen(): JSX.Element {
         </FilterRow>
         <span style={mutedStyle}>
           These two select which of §4.3's two board reads the server makes — by location, or by a
-          supervisor's own subscription set. Neither WIDENS anything: a clinician outside your reach is
-          absent from the answer whatever you type here, and a clinician with no supervisory grant sees
-          exactly one row, her own. They are ids rather than pickers because M20 publishes no location or
-          membership directory; M2/M40 own those and M20 holds no reader for either.
+          supervisor's own subscription set. Neither WIDENS anything: a clinician outside your reach
+          is absent from the answer whatever you type here, and a clinician with no supervisory
+          grant sees exactly one row, her own. They are ids rather than pickers because M20
+          publishes no location or membership directory; M2/M40 own those and M20 holds no reader
+          for either.
         </span>
       </Card>
 
       <Card title="Clinicians">
         {rows.length === 0 ? (
           <Notice tone="warning" live>
-            The board came back with <strong>no rows</strong>. That is not the same as "nobody is in the
-            field": it means nobody in your scope has a safety row right now. If you expect clinicians
-            here, check the supervisor-subscription matrix — an unsubscribed clinician is exactly what the
-            §7.8 coverage watchdog exists to find.
+            The board came back with <strong>no rows</strong>. That is not the same as "nobody is in
+            the field": it means nobody in your scope has a safety row right now. If you expect
+            clinicians here, check the supervisor-subscription matrix — an unsubscribed clinician is
+            exactly what the §7.8 coverage watchdog exists to find.
           </Notice>
         ) : (
           <table style={tableStyle}>
@@ -343,24 +344,25 @@ export function SafetyDashboardScreen(): JSX.Element {
           A position older than {LOCATION_STALE_MINUTES} minutes is shown in amber; "No position on
           record" is a different fact and reads differently on purpose. {noPosition} row
           {noPosition === 1 ? " has" : "s have"} no position at all. The high-risk-area badge is{" "}
-          <strong>advisory</strong> (D12) — it blocks no visit and never has; it exists so the person
-          scanning this grid knows to ring first.
+          <strong>advisory</strong> (D12) — it blocks no visit and never has; it exists so the
+          person scanning this grid knows to ring first.
         </span>
       </Card>
 
       <Card title="What this board deliberately does not show">
         <span style={mutedStyle}>
-          <strong>No coordinates, and no map.</strong> Every row answers "when did we last hear from her,
-          and how" — which needs a timestamp and a source, not a latitude. The coordinate stream lives
-          behind its own permission (<code>safety.sos.read_coords</code>), its own predicate, its own
-          warn-severity audit row and — once an alert has closed — a written reason the clinician herself
-          later sees on her consent surface. It is reachable from one SOS at a time, from that alert's
-          page. A dot on a map here would have moved that boundary from the type system into a component.
+          <strong>No coordinates, and no map.</strong> Every row answers "when did we last hear from
+          her, and how" — which needs a timestamp and a source, not a latitude. The coordinate
+          stream lives behind its own permission (<code>safety.sos.read_coords</code>), its own
+          predicate, its own warn-severity audit row and — once an alert has closed — a written
+          reason the clinician herself later sees on her consent surface. It is reachable from one
+          SOS at a time, from that alert's page. A dot on a map here would have moved that boundary
+          from the type system into a component.
         </span>
         <span style={mutedStyle}>
-          <strong>No push.</strong> §5.1 sketches a Socket.IO room; M20 publishes none to this client, so
-          this is a {POLL_MS / 1000}-second poll and says so above rather than claiming a realtime SLA it
-          does not meet.
+          <strong>No push.</strong> §5.1 sketches a Socket.IO room; M20 publishes none to this
+          client, so this is a {POLL_MS / 1000}-second poll and says so above rather than claiming a
+          realtime SLA it does not meet.
         </span>
       </Card>
     </div>

@@ -15,7 +15,16 @@
 // CROSS-MODULE FK POLICY: org/PE/location + the intra-M16 contact parent carry real FKs; plan_id is
 // denormalized for the plan-level "have all contacts opted out?" rollup, and the membership ids are logical.
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { bereavementOptOutKind } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";

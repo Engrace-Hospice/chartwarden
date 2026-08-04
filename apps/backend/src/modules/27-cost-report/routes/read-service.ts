@@ -26,10 +26,23 @@ export type CostReportState =
   | "closed";
 
 export type WorksheetCode =
-  | "S" | "S-1" | "S-2"
-  | "A" | "A-1" | "A-2" | "A-3" | "A-4" | "A-6" | "A-8" | "A-8-1"
-  | "B" | "B-1" | "C"
-  | "F" | "F-1" | "F-2";
+  | "S"
+  | "S-1"
+  | "S-2"
+  | "A"
+  | "A-1"
+  | "A-2"
+  | "A-3"
+  | "A-4"
+  | "A-6"
+  | "A-8"
+  | "A-8-1"
+  | "B"
+  | "B-1"
+  | "C"
+  | "F"
+  | "F-1"
+  | "F-2";
 
 export type ValidationOutcome = "pass" | "fail" | "warn" | "skip";
 export type ValidationRunStatus = "in_progress" | "complete" | "failed_to_run";
@@ -343,4 +356,3 @@ export interface M27ReadRouteService {
   // ── rule library ──
   listValidationRules(actor: M27ReadActor): Promise<readonly ValidationRuleView[]>;
 }
-

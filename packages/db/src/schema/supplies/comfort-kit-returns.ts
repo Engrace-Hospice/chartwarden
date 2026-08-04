@@ -87,11 +87,7 @@ export const comfortKitReturn = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    stateIdx: index("comfort_kit_return_state_idx").on(
-      t.organizationId,
-      t.state,
-      t.returnDueAt,
-    ),
+    stateIdx: index("comfort_kit_return_state_idx").on(t.organizationId, t.state, t.returnDueAt),
     dispatchIdx: index("comfort_kit_return_dispatch_idx").on(t.dispatchId),
     m13DeploymentIdx: index("comfort_kit_return_m13_deployment_idx").on(t.m13DeploymentId),
     openIdx: index("comfort_kit_return_overdue_idx")

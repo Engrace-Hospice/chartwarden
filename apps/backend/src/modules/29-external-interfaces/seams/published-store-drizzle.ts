@@ -38,7 +38,9 @@ export function createDrizzleM29PublishedSeamStore(db: DbClient): M29PublishedSe
     const values = await tx
       .select()
       .from(OBS_VALUE)
-      .where(and(eq(OBS_VALUE.observationId, row.id), eq(OBS_VALUE.organizationId, organizationId)));
+      .where(
+        and(eq(OBS_VALUE.observationId, row.id), eq(OBS_VALUE.organizationId, organizationId)),
+      );
     return {
       id: row.id,
       organizationId: row.organizationId,
@@ -164,23 +166,27 @@ export function createDrizzleM29PublishedSeamStore(db: DbClient): M29PublishedSe
       });
     },
     async feedHealth(organizationId, feedId) {
-      return withOrgContext(db, ctx(organizationId), async (tx): Promise<FeedHealthSeamDTO | null> => {
-        const [row] = await tx
-          .select()
-          .from(HEALTH)
-          .where(and(eq(HEALTH.feedId, feedId), eq(HEALTH.organizationId, organizationId)))
-          .orderBy(desc(HEALTH.hourBucket))
-          .limit(1);
-        if (!row) return null;
-        return {
-          feedId: row.feedId,
-          hourBucket: row.hourBucket.toISOString(),
-          listenerUpSeconds: row.listenerUpSeconds,
-          listenerDownSeconds: row.listenerDownSeconds,
-          inboundMessageCount: row.inboundMessageCount,
-          outboundMessageCount: row.outboundMessageCount,
-        };
-      });
+      return withOrgContext(
+        db,
+        ctx(organizationId),
+        async (tx): Promise<FeedHealthSeamDTO | null> => {
+          const [row] = await tx
+            .select()
+            .from(HEALTH)
+            .where(and(eq(HEALTH.feedId, feedId), eq(HEALTH.organizationId, organizationId)))
+            .orderBy(desc(HEALTH.hourBucket))
+            .limit(1);
+          if (!row) return null;
+          return {
+            feedId: row.feedId,
+            hourBucket: row.hourBucket.toISOString(),
+            listenerUpSeconds: row.listenerUpSeconds,
+            listenerDownSeconds: row.listenerDownSeconds,
+            inboundMessageCount: row.inboundMessageCount,
+            outboundMessageCount: row.outboundMessageCount,
+          };
+        },
+      );
     },
     async feedMessageCounts(organizationId, periodStart, periodEnd) {
       return withOrgContext(db, ctx(organizationId), async (tx) => {

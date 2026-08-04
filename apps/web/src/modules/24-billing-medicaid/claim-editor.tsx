@@ -30,8 +30,8 @@ import {
   money,
   shortDate,
   shortId,
-  toneOf,
   tobLabel,
+  toneOf,
 } from "./medicaid-status";
 import {
   Card,
@@ -196,12 +196,17 @@ export function MedicaidClaimEditor(): JSX.Element {
           breadcrumb={
             <>
               Billing — Medicaid ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>{claim.medicaidClaimControlNumber}</span>
+              <span style={{ fontFamily: "var(--font-mono)" }}>
+                {claim.medicaidClaimControlNumber}
+              </span>
             </>
           }
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-              <StatusPill label={humanize(claim.state)} tone={toneOf(CLAIM_STATE_TONE, claim.state)} />
+              <StatusPill
+                label={humanize(claim.state)}
+                tone={toneOf(CLAIM_STATE_TONE, claim.state)}
+              />
               <button
                 type="button"
                 disabled={!canSubmit}
@@ -316,7 +321,11 @@ export function MedicaidClaimEditor(): JSX.Element {
             label="Service dates"
             value={`${shortDate(claim.serviceFrom)} → ${shortDate(claim.serviceTo)}`}
           />
-          <Field label="MCO" value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"} mono={Boolean(claim.mcoId)} />
+          <Field
+            label="MCO"
+            value={claim.mcoId ? shortId(claim.mcoId) : "Fee-for-service"}
+            mono={Boolean(claim.mcoId)}
+          />
           <Field label="Total charges" value={money(totalCharges)} />
           <Field label="Patient" value={shortId(claim.patientId)} mono />
           <Field label="Version" value={String(claim.version)} />
@@ -364,7 +373,10 @@ export function MedicaidClaimEditor(): JSX.Element {
                     <td style={td}>
                       {l.isRb ? (
                         l.rbDayId ? (
-                          <a href={`/medicaid/billing/rb-arrangements/${claim.rbArrangementId ?? ""}`} style={linkMonoStyle}>
+                          <a
+                            href={`/medicaid/billing/rb-arrangements/${claim.rbArrangementId ?? ""}`}
+                            style={linkMonoStyle}
+                          >
                             R&amp;B day
                           </a>
                         ) : (
@@ -428,7 +440,11 @@ export function MedicaidClaimEditor(): JSX.Element {
             <Field label="Original control #" value={claim.medicaidClaimControlNumber} mono />
             <label
               htmlFor="m24-rv-reason"
-              style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--color-on-surface-variant)" }}
+              style={{
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                color: "var(--color-on-surface-variant)",
+              }}
             >
               Reason (≥ {REASON_MIN} characters)
             </label>
@@ -460,7 +476,9 @@ export function MedicaidClaimEditor(): JSX.Element {
         signer={{ name: "Billing manager", role: "This session" }}
         stepUp={{ label: "Re-enter your credentials to continue", type: "password" }}
         epcs={false}
-        commitLabel={busy ? "Working…" : ceremony === "void" ? "Build void draft" : "Build replacement draft"}
+        commitLabel={
+          busy ? "Working…" : ceremony === "void" ? "Build void draft" : "Build replacement draft"
+        }
         onCommit={() => void runWrite(ceremony === "void" ? "void" : "replace")}
         onCancel={closeCeremony}
       />

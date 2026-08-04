@@ -1,3 +1,4 @@
+import type { AiBackendRoutingRow } from "@wardenx/ai-platform";
 // apps/backend/src/modules/32-ai-platform/invocation/store-drizzle.ts — the Drizzle implementations of
 // M32-T04's invocation stores.
 //
@@ -30,15 +31,14 @@ import type {
   AiRoutingOverrideReason,
   AiZdrStatus,
 } from "@wardenx/types";
-import type { AiBackendRoutingRow } from "@wardenx/ai-platform";
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
+import type { AiInvocationCapabilityStore } from "./service";
 import type {
   AiBackendRegistryStore,
   AiInvocationLedgerStore,
   AiRoutingOverrideStore,
 } from "./store";
-import type { AiInvocationCapabilityStore } from "./service";
 
 type BackendSelect = typeof schema.aiModelBackend.$inferSelect;
 type OverrideSelect = typeof schema.aiRoutingOverride.$inferSelect;
@@ -53,8 +53,9 @@ function asStringArray(value: unknown): readonly string[] {
 
 function asModalities(value: unknown): readonly AiModelModality[] {
   return Array.isArray(value)
-    ? value.filter((v): v is AiModelModality =>
-        v === "text" || v === "embedding" || v === "classification" || v === "vision",
+    ? value.filter(
+        (v): v is AiModelModality =>
+          v === "text" || v === "embedding" || v === "classification" || v === "vision",
       )
     : [];
 }
@@ -267,8 +268,7 @@ export function createDrizzleAiInvocationLedgerStore(deps: {
             errorMessage: invocation.errorMessage,
             zdrConfirmed: invocation.zdrConfirmed,
             invokedAt: new Date(invocation.invokedAt),
-            completedAt:
-              invocation.completedAt === null ? null : new Date(invocation.completedAt),
+            completedAt: invocation.completedAt === null ? null : new Date(invocation.completedAt),
           })
           .returning({
             id: schema.aiInvocation.id,

@@ -3,11 +3,11 @@
 // the fail-closed default client returns a retryable degraded envelope when no transport is wired.
 import { describe, expect, it } from "vitest";
 import {
+  NO_X12_835_PORT,
+  type X12835HttpPort,
   createX12835Client,
   mapParsed277ca,
   mapParsed835,
-  NO_X12_835_PORT,
-  type X12835HttpPort,
 } from "../src/index";
 
 const WELL_FORMED_835 = {
@@ -58,7 +58,12 @@ describe("mapParsed835", () => {
   it("drops invalid adjustment group codes but keeps the claim", () => {
     const wire = {
       ...WELL_FORMED_835,
-      claims: [{ ...WELL_FORMED_835.claims[0], adjustments: [{ groupCode: "ZZ", reasonCode: "1", amount: 5 }] }],
+      claims: [
+        {
+          ...WELL_FORMED_835.claims[0],
+          adjustments: [{ groupCode: "ZZ", reasonCode: "1", amount: 5 }],
+        },
+      ],
     };
     const r = mapParsed835(wire, "medicare");
     expect(r.ok).toBe(true);
@@ -123,7 +128,10 @@ describe("createX12835Client (fail-closed default)", () => {
     const port: X12835HttpPort = {
       request: () => Promise.resolve({ status: 503, body: null }),
     };
-    const r = await createX12835Client(port).parse835({ minioObjectKey: "k", payerProgram: "medicare" });
+    const r = await createX12835Client(port).parse835({
+      minioObjectKey: "k",
+      payerProgram: "medicare",
+    });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.degraded.retryable).toBe(true);

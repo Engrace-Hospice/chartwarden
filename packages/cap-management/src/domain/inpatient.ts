@@ -3,9 +3,9 @@
 // claim lines; the denominator is all-LOC patient days. Overage days (above the 20% allowance) are recouped
 // at the routine-home-care differential at settlement.
 import { capYearWindow, elapsedFraction } from "../cap-year";
-import { inpatientBand } from "./bands";
 import { ratio, round4, roundCents } from "../money";
-import { BAND_THRESHOLDS, type AlertBand } from "./types";
+import { inpatientBand } from "./bands";
+import { type AlertBand, BAND_THRESHOLDS } from "./types";
 
 export interface InpatientProjectionInput {
   readonly gipDays: number; // rev 0656

@@ -32,7 +32,13 @@ export interface HopeSubmissionEnvelope {
  */
 export function assembleEnvelopeCanonical(envelope: HopeSubmissionEnvelope): string {
   const items = [...envelope.items]
-    .sort((a, b) => (a.hopeAssessmentId < b.hopeAssessmentId ? -1 : a.hopeAssessmentId > b.hopeAssessmentId ? 1 : 0))
+    .sort((a, b) =>
+      a.hopeAssessmentId < b.hopeAssessmentId
+        ? -1
+        : a.hopeAssessmentId > b.hopeAssessmentId
+          ? 1
+          : 0,
+    )
     .map((i) => ({
       hopeAssessmentId: i.hopeAssessmentId,
       rfaKind: i.rfaKind,

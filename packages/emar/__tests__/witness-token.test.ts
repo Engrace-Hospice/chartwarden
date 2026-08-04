@@ -1,13 +1,13 @@
 // @wardenx/emar — §7.4 witness-attestation token security — M13-T04.
 import { describe, expect, it } from "vitest";
 import {
+  WITNESS_TOKEN_TTL_MS,
+  type WitnessTokenClaims,
+  type WitnessTokenScope,
   assertWitnessToken,
   buildWitnessAttestationToken,
   verifyWitnessAttestationToken,
   witnessTokenDigest,
-  WITNESS_TOKEN_TTL_MS,
-  type WitnessTokenClaims,
-  type WitnessTokenScope,
 } from "../src/witness";
 
 const SECRET = "tenant-session-token-secret";
@@ -49,20 +49,35 @@ describe("§7.4 verifyWitnessAttestationToken", () => {
     const token = tokenFor();
     const tampered = `${token.slice(0, -2)}00`;
     expect(
-      verifyWitnessAttestationToken({ token: tampered, secret: SECRET, expectedScope: scope, nowMs: ISSUED_AT }),
+      verifyWitnessAttestationToken({
+        token: tampered,
+        secret: SECRET,
+        expectedScope: scope,
+        nowMs: ISSUED_AT,
+      }),
     ).toEqual({ ok: false, reason: "WITNESS_TOKEN_INVALID" });
   });
 
   it("rejects a token signed with a different tenant secret", () => {
     const token = tokenFor(claims, "other-tenant-secret");
     expect(
-      verifyWitnessAttestationToken({ token, secret: SECRET, expectedScope: scope, nowMs: ISSUED_AT }),
+      verifyWitnessAttestationToken({
+        token,
+        secret: SECRET,
+        expectedScope: scope,
+        nowMs: ISSUED_AT,
+      }),
     ).toEqual({ ok: false, reason: "WITNESS_TOKEN_INVALID" });
   });
 
   it("rejects a malformed token (no signature segment)", () => {
     expect(
-      verifyWitnessAttestationToken({ token: "garbage", secret: SECRET, expectedScope: scope, nowMs: ISSUED_AT }),
+      verifyWitnessAttestationToken({
+        token: "garbage",
+        secret: SECRET,
+        expectedScope: scope,
+        nowMs: ISSUED_AT,
+      }),
     ).toEqual({ ok: false, reason: "WITNESS_TOKEN_INVALID" });
   });
 
@@ -89,7 +104,12 @@ describe("§7.4 verifyWitnessAttestationToken", () => {
       }).ok,
     ).toBe(true);
     expect(
-      verifyWitnessAttestationToken({ token, secret: SECRET, expectedScope: scope, nowMs: ISSUED_AT - 1 }),
+      verifyWitnessAttestationToken({
+        token,
+        secret: SECRET,
+        expectedScope: scope,
+        nowMs: ISSUED_AT - 1,
+      }),
     ).toEqual({ ok: false, reason: "WITNESS_TOKEN_EXPIRED" });
   });
 

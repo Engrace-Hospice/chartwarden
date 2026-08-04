@@ -109,7 +109,12 @@ const PLATFORM_WRITE_TABLES = [
 ] as const;
 
 /** The §5.2 admin ACTIONS' mutation surface (refunds / dunning / promos) — INSERT+UPDATE only. */
-const PLATFORM_MUTATE_TABLES = ["refund", "dunning_state", "promo_code", "promo_code_application"] as const;
+const PLATFORM_MUTATE_TABLES = [
+  "refund",
+  "dunning_state",
+  "promo_code",
+  "promo_code_application",
+] as const;
 
 /** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods). */
 const PLATFORM_ERASE_TABLES = [
@@ -167,7 +172,9 @@ async function main(): Promise<void> {
       );
       await run(`GRANT wardenx_platform TO wardenx_platform_login;`);
       console.log("✓ wardenx_platform_login provisioned (carrier wardenx_platform + BYPASSRLS)");
-      console.log("  → set DATABASE_PLATFORM_URL=postgres://wardenx_platform_login:<pw>@<host>/<db>");
+      console.log(
+        "  → set DATABASE_PLATFORM_URL=postgres://wardenx_platform_login:<pw>@<host>/<db>",
+      );
     }
 
     if (destructionPassword) {
@@ -189,7 +196,9 @@ async function main(): Promise<void> {
         `ALTER ROLE wardenx_destruction_login LOGIN NOBYPASSRLS PASSWORD ${quoteLiteral(destructionPassword)};`,
       );
       await run(`GRANT wardenx_destruction TO wardenx_destruction_login;`);
-      console.log("✓ wardenx_destruction_login provisioned (carrier wardenx_destruction, NOBYPASSRLS)");
+      console.log(
+        "✓ wardenx_destruction_login provisioned (carrier wardenx_destruction, NOBYPASSRLS)",
+      );
       console.log(
         "  → set DATABASE_DESTRUCTION_URL=postgres://wardenx_destruction_login:<pw>@<host>/<db>",
       );

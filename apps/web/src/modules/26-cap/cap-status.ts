@@ -42,7 +42,10 @@ export const PSR_RECON_TONE: Record<string, StatusTone> = {
 };
 
 /** Resolve a wire enum through a tone map, defaulting to neutral (use `?` not `&&` — empty string is valid). */
-export function toneOf(map: Record<string, StatusTone>, key: string | null | undefined): StatusTone {
+export function toneOf(
+  map: Record<string, StatusTone>,
+  key: string | null | undefined,
+): StatusTone {
   return key ? (map[key] ?? "neutral") : "neutral";
 }
 

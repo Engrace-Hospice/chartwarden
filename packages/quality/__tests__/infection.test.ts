@@ -1,3 +1,13 @@
+import {
+  type NormalizedSurveillanceEvent,
+  OUTBREAK_MIN_EVENTS,
+  OUTBREAK_WINDOW_DAYS,
+  type RawSurveillanceObservation,
+  detectOutbreakClusters,
+  normalizeSurveillanceEvent,
+  toNewOutbreakCase,
+} from "@wardenx/quality";
+import { WardenXError } from "@wardenx/types";
 // @wardenx/quality — M30 §7.8 / D11 (WF-18) infection outbreak-detector unit tests (PURE; no DB).
 //
 // Proves the ≥3-events-in-14-days cluster algorithm: a cluster OPENS exactly at the threshold (the third
@@ -7,16 +17,6 @@
 // on the third event; further growth is the worker's concern). PURE: a deterministic function over an
 // event list — no clock, no DB.
 import { describe, expect, it } from "vitest";
-import { WardenXError } from "@wardenx/types";
-import {
-  OUTBREAK_MIN_EVENTS,
-  OUTBREAK_WINDOW_DAYS,
-  type NormalizedSurveillanceEvent,
-  type RawSurveillanceObservation,
-  detectOutbreakClusters,
-  normalizeSurveillanceEvent,
-  toNewOutbreakCase,
-} from "@wardenx/quality";
 
 const ORG = "org-1";
 const PE = "pe-1";

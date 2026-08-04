@@ -5,8 +5,8 @@
 // only the tenancy spine (organization / location) carries FKs. RLS + grants + the M4 write-audit trigger
 // land in the RLS migration (M14-T02).
 import { boolean, integer, pgTable, text, time, timestamp, uuid } from "drizzle-orm/pg-core";
-import { organizations } from "../organizations";
 import { locations } from "../locations";
+import { organizations } from "../organizations";
 
 export const idgRecurringPolicy = pgTable("idg_recurring_policy", {
   id: uuid("id").primaryKey().defaultRandom(),

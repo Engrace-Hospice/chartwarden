@@ -1,3 +1,4 @@
+import { mapParsed277ca } from "./parse-277ca";
 // @wardenx/x12-835-client — the X12_835WorkerClient SHAPE + a fail-closed factory.
 //
 // Implements the parse-835 / parse-277ca contract over an injected raw HTTP transport
@@ -9,14 +10,13 @@
 //
 // Imports ONLY from ./types + the ./parse-* mappers — never from ./index — to keep the no-circular rule.
 import { mapParsed835 } from "./parse-835";
-import { mapParsed277ca } from "./parse-277ca";
 import {
-  degraded835,
-  X12_835_WORKER_NOT_WIRED,
   type Parsed277ca,
   type ParsedRemittanceAdvice,
   type PayerProgram,
   type X12WorkerResult,
+  X12_835_WORKER_NOT_WIRED,
+  degraded835,
 } from "./types";
 
 /** A single sidecar HTTP exchange. The transport is injected so this package holds no network code. */

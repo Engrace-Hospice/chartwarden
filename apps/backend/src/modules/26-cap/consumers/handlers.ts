@@ -32,8 +32,16 @@ export interface InpatientDayToRecord {
 export interface CapConsumerStore {
   recordAccrualLine(line: AccrualLineToRecord): Promise<{ recorded: boolean }>;
   recordInpatientDay(day: InpatientDayToRecord): Promise<{ recorded: boolean }>;
-  freezePatient(organizationId: string, patientId: string, frozenAt: string): Promise<{ frozen: boolean }>;
-  setProportionalWeight(organizationId: string, patientId: string, weight: number): Promise<{ updated: boolean }>;
+  freezePatient(
+    organizationId: string,
+    patientId: string,
+    frozenAt: string,
+  ): Promise<{ frozen: boolean }>;
+  setProportionalWeight(
+    organizationId: string,
+    patientId: string,
+    weight: number,
+  ): Promise<{ updated: boolean }>;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -108,7 +116,11 @@ export async function handleFreeze(
 ): Promise<{ frozen: boolean }> {
   const patientId = str(p.patientId);
   if (!patientId) return { frozen: false };
-  return store.freezePatient(str(p.organizationId), patientId, str(p.occurredAt ?? p.deceasedAt ?? p.revokedAt ?? new Date(0).toISOString()));
+  return store.freezePatient(
+    str(p.organizationId),
+    patientId,
+    str(p.occurredAt ?? p.deceasedAt ?? p.revokedAt ?? new Date(0).toISOString()),
+  );
 }
 
 /** m6.transfer.created → initialize the proportional methodology weight from the election-day share (D10). */

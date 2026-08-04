@@ -13,7 +13,11 @@ import { registerIdgRoutes as _registerM14Routes } from "./routes/idg-routes";
  * recurring policies) are live over Drizzle+RLS; every mutation emits `m14.*` / the canonical
  * `idg.decision_recorded` on the bound transactional `outbox`. Replaces the in-memory scaffold mount for M14.
  */
-export function mountIdgRoutes(app: FastifyInstance, db: DbClient, outbox?: IdgWriteOutboxPort): void {
+export function mountIdgRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: IdgWriteOutboxPort,
+): void {
   const backend = createDbIdgBackend(db, outbox);
   _registerM14Abac({ resolver: backend });
   _registerM14Routes(app, { service: backend });

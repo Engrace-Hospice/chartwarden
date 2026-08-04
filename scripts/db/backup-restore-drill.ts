@@ -115,7 +115,17 @@ async function main(): Promise<void> {
   try {
     console.log(`Work dir: ${work}`);
     console.log("• initdb (source cluster) …");
-    run(bin(binDir, "initdb"), ["-D", sourceData, "-U", "postgres", "-A", "trust", "--no-locale", "-E", "UTF8"]);
+    run(bin(binDir, "initdb"), [
+      "-D",
+      sourceData,
+      "-U",
+      "postgres",
+      "-A",
+      "trust",
+      "--no-locale",
+      "-E",
+      "UTF8",
+    ]);
 
     appendFileSync(
       join(sourceData, "postgresql.conf"),
@@ -144,7 +154,12 @@ async function main(): Promise<void> {
     run("pgbackrest", ["--config", confPath, "--stanza", STANZA, "stanza-create"]);
 
     console.log(`• seeding ${PROBE_ROWS} deterministic rows …`);
-    const seedClient = new Client({ host: sockDir, port: PORT, user: "postgres", database: "postgres" });
+    const seedClient = new Client({
+      host: sockDir,
+      port: PORT,
+      user: "postgres",
+      database: "postgres",
+    });
     await seedClient.connect();
     await seedClient.query("CREATE TABLE drill_probe (id serial PRIMARY KEY, val text NOT NULL)");
     await seedClient.query(
@@ -164,14 +179,27 @@ async function main(): Promise<void> {
 
     console.log("• pgbackrest restore → fresh directory …");
     mkdirSync(restoreData, { recursive: true });
-    run("pgbackrest", ["--config", confPath, "--stanza", STANZA, "--pg1-path", restoreData, "restore"]);
+    run("pgbackrest", [
+      "--config",
+      confPath,
+      "--stanza",
+      STANZA,
+      "--pg1-path",
+      restoreData,
+      "restore",
+    ]);
 
     console.log("• starting restored cluster …");
     run(bin(binDir, "pg_ctl"), ["-D", restoreData, "-l", join(work, "restore.log"), "start"]);
     restoreStarted = true;
     waitForReady(sockDir, PORT, binDir);
 
-    const verifyClient = new Client({ host: sockDir, port: PORT, user: "postgres", database: "postgres" });
+    const verifyClient = new Client({
+      host: sockDir,
+      port: PORT,
+      user: "postgres",
+      database: "postgres",
+    });
     await verifyClient.connect();
     const restored = await probeChecksum(verifyClient);
     await verifyClient.end();

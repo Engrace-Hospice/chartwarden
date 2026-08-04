@@ -3,14 +3,14 @@
 // data. The recording/correction services (M9-T05) compose these over the Drizzle write transaction; the
 // significant-change escalation cron (M9-T06) composes the ack machine. No cross-module schema import.
 import type {
+  AdmissionId,
   AssessmentStatus,
-  SignificantChangeStatus,
+  ClinicalAssessmentId,
+  PatientId,
   ScaleLicenseStatus,
   ScaleType,
-  ClinicalAssessmentId,
   SignificantChangeRuleId,
-  AdmissionId,
-  PatientId,
+  SignificantChangeStatus,
 } from "@wardenx/types";
 import { isCriticalRule } from "@wardenx/types";
 import { AssessmentStateError, require_ } from "./errors";
@@ -86,7 +86,9 @@ export type SignificantChangeEvent =
   | { readonly type: "escalate"; readonly ruleId: SignificantChangeRuleId };
 
 /** The legal §2.2.2 transition graph (from → events accepted). `acknowledged` is terminal. */
-const CHANGE_GRAPH: { readonly [S in SignificantChangeStatus]: ReadonlySet<SignificantChangeEvent["type"]> } = {
+const CHANGE_GRAPH: {
+  readonly [S in SignificantChangeStatus]: ReadonlySet<SignificantChangeEvent["type"]>;
+} = {
   open: new Set(["acknowledge", "escalate"]),
   escalated: new Set(["acknowledge"]),
   acknowledged: new Set(),
@@ -156,7 +158,10 @@ export function canRecordUnderLicense(status: ScaleLicenseStatus): boolean {
 }
 
 /** Guard the recording path on an active license (raises `SCALE_LICENSE_MISSING` 403, §2.3 / §7.7). */
-export function assertLicenseAllowsRecording(scaleType: ScaleType, status: ScaleLicenseStatus): void {
+export function assertLicenseAllowsRecording(
+  scaleType: ScaleType,
+  status: ScaleLicenseStatus,
+): void {
   require_(
     canRecordUnderLicense(status),
     "SCALE_LICENSE_MISSING",

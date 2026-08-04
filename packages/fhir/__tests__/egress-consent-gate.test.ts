@@ -8,23 +8,27 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  applyEgressConsentGate,
-  applySudRedactionToDiagnosticReport,
   DISCLOSURE_UNAUTHORIZED_TEXT,
-  gateBundleForEgress,
-  gateResourceForEgress,
-  PART2_CONSENT_ABSENT_TEXT,
-  PART2_REDACTED_TEXT,
   type DiagnosticReport,
   type EgressResourceInput,
   type FhirDisclosureConsentEvaluator,
   type FhirDisclosureDecision,
   type MedicationRequest,
+  PART2_CONSENT_ABSENT_TEXT,
+  PART2_REDACTED_TEXT,
+  applyEgressConsentGate,
+  applySudRedactionToDiagnosticReport,
+  gateBundleForEgress,
+  gateResourceForEgress,
 } from "../src";
 
 /** A fake M39 evaluator returning a fixed decision — the shape T06 binds the real `ConsentEvaluator` to. */
 function evaluator(decision: FhirDisclosureDecision): FhirDisclosureConsentEvaluator {
-  return { async evaluateForDisclosure() { return decision; } };
+  return {
+    async evaluateForDisclosure() {
+      return decision;
+    },
+  };
 }
 
 /** A per-patient evaluator, so a mixed-patient Bundle applies each patient's own consent (W-FHIR-03). */
@@ -160,9 +164,24 @@ describe("gateResourceForEgress — consults M39 per resource", () => {
 describe("gateBundleForEgress — search / $everything result set (W-FHIR-14 + W-FHIR-03)", () => {
   it("filters SUD resources, keeps non-SUD, and folds ONE deduplicated warning", async () => {
     const inputs: EgressResourceInput<MedicationRequest>[] = [
-      { resource: medReq("mr-carol", "carol"), patientId: "carol", sudClass: true, onSudRedact: "filter" },
-      { resource: medReq("mr-carol-2", "carol"), patientId: "carol", sudClass: true, onSudRedact: "filter" },
-      { resource: medReq("mr-dave", "dave"), patientId: "dave", sudClass: false, onSudRedact: "filter" },
+      {
+        resource: medReq("mr-carol", "carol"),
+        patientId: "carol",
+        sudClass: true,
+        onSudRedact: "filter",
+      },
+      {
+        resource: medReq("mr-carol-2", "carol"),
+        patientId: "carol",
+        sudClass: true,
+        onSudRedact: "filter",
+      },
+      {
+        resource: medReq("mr-dave", "dave"),
+        patientId: "dave",
+        sudClass: false,
+        onSudRedact: "filter",
+      },
     ];
     const result = await gateBundleForEgress(
       perPatientEvaluator({
@@ -181,7 +200,14 @@ describe("gateBundleForEgress — search / $everything result set (W-FHIR-14 + W
     const result = await gateBundleForEgress(
       evaluator({ allowed: true, redactSudContent: false }),
       ctx,
-      [{ resource: medReq("mr-1", "carol"), patientId: "carol", sudClass: true, onSudRedact: "filter" }],
+      [
+        {
+          resource: medReq("mr-1", "carol"),
+          patientId: "carol",
+          sudClass: true,
+          onSudRedact: "filter",
+        },
+      ],
     );
     expect(result.resources).toHaveLength(1);
     expect(result.warnings).toHaveLength(0);

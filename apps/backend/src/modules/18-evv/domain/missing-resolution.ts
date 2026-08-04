@@ -19,7 +19,7 @@
 // downstream billing; every `closed_*` state (including `closed_documented_at_encounter` — documented_missing)
 // is non-blocking. The classifiers at the foot encode that rule for the M8/M23 bracket/compliance readers.
 import type { EvvMissingResolutionStatus } from "@wardenx/types";
-import { type EvvSideEffect } from "./effects";
+import type { EvvSideEffect } from "./effects";
 import { EvvStateError, require_ } from "./errors";
 
 /** §7.3 — the assigned-clinician self-attest `resolution_reason` floor (M17 D3 EVV self-attest reason floor). */
@@ -105,14 +105,8 @@ export const MISSING_RESOLUTION_GRAPH: Readonly<
 };
 
 /** A human close stamps the resolver + captures the denylisted reason; a system close does neither (§2.4). */
-function closeEffects(
-  status: EvvMissingResolutionStatus,
-  reason: string | null,
-): EvvSideEffect[] {
-  const effects: EvvSideEffect[] = [
-    { kind: "audit" },
-    { kind: "set_resolution_status", status },
-  ];
+function closeEffects(status: EvvMissingResolutionStatus, reason: string | null): EvvSideEffect[] {
+  const effects: EvvSideEffect[] = [{ kind: "audit" }, { kind: "set_resolution_status", status }];
   if (reason !== null) {
     effects.push({ kind: "stamp_resolver" });
     effects.push({ kind: "capture_reason", field: "resolution_reason", value: reason });

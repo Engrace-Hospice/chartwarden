@@ -141,11 +141,13 @@ describe("M33 §2.5 cron evaluator — at-most-once per (schedule_id, scheduled_
 
 // ── (2) runner — render_requested → delivered on the M22 reply ───────────────────────────────────────────────
 
-function makeRunnerPorts(opts: {
-  schedule?: schema.ReportSchedule | null;
-  run?: schema.ReportScheduleRun | null;
-  entitled?: (membershipId: string) => boolean;
-} = {}) {
+function makeRunnerPorts(
+  opts: {
+    schedule?: schema.ReportSchedule | null;
+    run?: schema.ReportScheduleRun | null;
+    entitled?: (membershipId: string) => boolean;
+  } = {},
+) {
   const calls: string[] = [];
   const renderRequests: unknown[] = [];
   const entitled = opts.entitled ?? (() => true);
@@ -154,7 +156,7 @@ function makeRunnerPorts(opts: {
     renderRequests,
     ports: {
       schedules: {
-        findById: async () => opts.schedule === undefined ? makeSchedule() : opts.schedule,
+        findById: async () => (opts.schedule === undefined ? makeSchedule() : opts.schedule),
       },
       runs: {
         findRun: async () => (opts.run === undefined ? makeRun() : opts.run),
@@ -215,7 +217,9 @@ describe("M33 §2.2 / W-R-04 runner — the §1.1 render handshake", () => {
     expect(result).toEqual({ kind: "render_requested", recipientCount: 2 });
     // The run flips `running` BEFORE the render-request, then parks at `rendered_pending`.
     expect(calls.indexOf("settle:running")).toBeLessThan(calls.indexOf("emitRenderRequested"));
-    expect(calls.indexOf("emitRenderRequested")).toBeLessThan(calls.indexOf("settle:rendered_pending"));
+    expect(calls.indexOf("emitRenderRequested")).toBeLessThan(
+      calls.indexOf("settle:rendered_pending"),
+    );
     expect((renderRequests[0] as { idempotencyKey: string }).idempotencyKey).toBe("run_1");
   });
 
@@ -247,7 +251,11 @@ describe("M33 §2.2 / W-R-04 runner — the §1.1 render handshake", () => {
     const delivered: unknown[] = [];
     await applyScheduledDelivery(action, {
       runs: {
-        settleDelivered: async (_id: string, _f: Date, patch: { status: string; documentId?: string | null }) => {
+        settleDelivered: async (
+          _id: string,
+          _f: Date,
+          patch: { status: string; documentId?: string | null },
+        ) => {
           settled.push(patch);
         },
       },

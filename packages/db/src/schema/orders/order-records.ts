@@ -34,10 +34,10 @@ import {
   orderStatus,
   orderTransmissionStatus,
 } from "../../enums";
-import { organizations } from "../organizations";
-import { providerEntities } from "../provider-entities";
 import { locations } from "../locations";
 import { memberships } from "../memberships";
+import { organizations } from "../organizations";
+import { providerEntities } from "../provider-entities";
 import { standingOrders } from "./standing-orders";
 
 export const orderRecords = pgTable(
@@ -90,7 +90,9 @@ export const orderRecords = pgTable(
     cosignStatus: text("cosign_status"), // null when !cosignRequired; 'pending' | 'attached' otherwise
 
     // Lab transmission lifecycle (orthogonal to status; lab orders only — §3.5).
-    transmissionStatus: orderTransmissionStatus("transmission_status").notNull().default("not_required"),
+    transmissionStatus: orderTransmissionStatus("transmission_status")
+      .notNull()
+      .default("not_required"),
     transmissionAckedAt: timestamp("transmission_acked_at", { withTimezone: true }),
     transmissionAckCode: text("transmission_ack_code"), // 'AA' | 'AE' | 'AR' once known
     transmissionFailureReason: text("transmission_failure_reason"),
@@ -109,7 +111,11 @@ export const orderRecords = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.id, t.createdAt] }), // partition key must be in the PK
-    byPatientStatus: index("order_record_patient_status_idx").on(t.organizationId, t.patientId, t.status),
+    byPatientStatus: index("order_record_patient_status_idx").on(
+      t.organizationId,
+      t.patientId,
+      t.status,
+    ),
     byAdmissionStatus: index("order_record_admission_status_idx").on(
       t.organizationId,
       t.admissionId,
@@ -121,12 +127,16 @@ export const orderRecords = pgTable(
       .where(sql`status IN ('pending_signature','verbal_pending')`),
     bySupersedeChain: index("order_record_replaces_idx").on(t.replacesOrderId),
     byStandingParent: index("order_record_standing_parent_idx").on(t.standingOrderId),
-    byTriggeringAssessment: index("order_record_triggering_assessment_idx").on(t.triggeringAssessmentId),
+    byTriggeringAssessment: index("order_record_triggering_assessment_idx").on(
+      t.triggeringAssessmentId,
+    ),
     byTriggeringHope: index("order_record_triggering_hope_idx").on(t.triggeringHopeAssessmentId),
     byCreatedAt: index("order_record_created_idx").on(t.createdAt),
     byResultsStatusAwaiting: index("idx_order_results_status_awaiting")
       .on(t.organizationId, t.resultsStatus, t.signedAt)
-      .where(sql`kind = 'lab' AND results_status IN ('awaiting_results', 'partial_results_received')`),
+      .where(
+        sql`kind = 'lab' AND results_status IN ('awaiting_results', 'partial_results_received')`,
+      ),
     byTransmissionStatus: index("idx_order_transmission_status")
       .on(t.organizationId, t.transmissionStatus, t.signedAt)
       .where(sql`kind = 'lab' AND transmission_status IN ('pending', 'pending_retry')`),

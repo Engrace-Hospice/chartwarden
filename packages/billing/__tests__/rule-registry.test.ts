@@ -1,3 +1,11 @@
+import type { Rule } from "@wardenx/billing";
+import {
+  BillingRuleRegistry,
+  DEFAULT_BILLING_RULES,
+  DEFAULT_RULE_SET_VERSION,
+  createDefaultBillingRegistry,
+  summarizeRuleRun,
+} from "@wardenx/billing";
 // @wardenx/billing — M23 §4.5 the validation RULE REGISTRY pure-domain unit tests (D1). Covers the
 // freeze-at-boot invariant (registration is rejected after `freeze()`, duplicate keys throw), the
 // platform-default registry factory (19 rules, 18 regulatory), `runRules` producing exactly one result per
@@ -7,14 +15,6 @@
 //
 // PURE DOMAIN only — no DB, no Fastify, no clock; no PHI (D13).
 import { describe, expect, it } from "vitest";
-import type { Rule } from "@wardenx/billing";
-import {
-  BillingRuleRegistry,
-  DEFAULT_BILLING_RULES,
-  DEFAULT_RULE_SET_VERSION,
-  createDefaultBillingRegistry,
-  summarizeRuleRun,
-} from "@wardenx/billing";
 import { passingContext } from "./_fixtures";
 
 // A trivial always-passing rule for registry-mechanics tests (no context dependence).
@@ -113,7 +113,10 @@ describe("runRules — one result per rule, in registration order", () => {
 
   it("applies a tenant parameter overlay (eligibility freshness window widened) over the default", () => {
     const reg = createDefaultBillingRegistry();
-    const ctx = { ...passingContext(), eligibility: { ...passingContext().eligibility!, ageDays: 45 } };
+    const ctx = {
+      ...passingContext(),
+      eligibility: { ...passingContext().eligibility!, ageDays: 45 },
+    };
     // default maxAgeDays=30 ⇒ stale ⇒ warn fail; overlay maxAgeDays=60 ⇒ passes.
     const def = reg.runRules(ctx).find((r) => r.ruleKey === "eligibility_check_freshness_30d");
     const overlaid = reg
@@ -145,7 +148,10 @@ describe("summarizeRuleRun — the §2.3 blocking-failure roll-up", () => {
   it("a regulatory error failure contributes to blockingFailures", () => {
     const reg = createDefaultBillingRegistry();
     const ctx = passingContext();
-    const failing = { ...ctx, eligibility: { ...ctx.eligibility!, outcome: "inactive_part_a" as const } };
+    const failing = {
+      ...ctx,
+      eligibility: { ...ctx.eligibility!, outcome: "inactive_part_a" as const },
+    };
     const summary = summarizeRuleRun(reg.runRules(failing), regulatoryKeys());
     expect(summary.failedCount).toBe(1);
     expect(summary.blockingFailures).toBe(1);
@@ -154,7 +160,10 @@ describe("summarizeRuleRun — the §2.3 blocking-failure roll-up", () => {
   it("an OVERRIDDEN regulatory failure leaves the blocking set but is still counted as failed", () => {
     const reg = createDefaultBillingRegistry();
     const ctx = passingContext();
-    const failing = { ...ctx, eligibility: { ...ctx.eligibility!, outcome: "inactive_part_a" as const } };
+    const failing = {
+      ...ctx,
+      eligibility: { ...ctx.eligibility!, outcome: "inactive_part_a" as const },
+    };
     const summary = summarizeRuleRun(
       reg.runRules(failing),
       regulatoryKeys(),

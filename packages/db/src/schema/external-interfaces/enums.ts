@@ -72,7 +72,12 @@ export const hl7InboundMatchLevel = pgEnum("hl7_inbound_match_level", [
 ]);
 
 // ── HL7 outbound (ORM) dispatch ─────────────────────────────────────────────────────────────────────────
-export const hl7OutboundAckStatus = pgEnum("hl7_outbound_ack_status", ["aa", "ae", "ar", "timeout"]);
+export const hl7OutboundAckStatus = pgEnum("hl7_outbound_ack_status", [
+  "aa",
+  "ae",
+  "ar",
+  "timeout",
+]);
 export const hl7OutboundStatus = pgEnum("hl7_outbound_status", [
   "queued",
   "in_flight",

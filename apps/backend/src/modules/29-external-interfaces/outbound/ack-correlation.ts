@@ -86,7 +86,10 @@ export type AckCorrelationResult =
   | {
       readonly kind: "acked";
       readonly statusUpdate: AckStatusUpdate;
-      readonly event: { readonly name: "m29.lab_order.transmitted"; readonly payload: LabOrderTransmittedPayload };
+      readonly event: {
+        readonly name: "m29.lab_order.transmitted";
+        readonly payload: LabOrderTransmittedPayload;
+      };
       readonly audit: OutboundAuditRecord;
     }
   | {
@@ -179,7 +182,8 @@ export function correlateAck(input: AckCorrelationInput): AckCorrelationResult {
           severity: "HIGH",
           channel: "operator-on-call",
           feedId: outbound.feedId,
-          detail: "outbound ORM rejected by the lab (AR) — manual resend required after remediation",
+          detail:
+            "outbound ORM rejected by the lab (AR) — manual resend required after remediation",
         },
         audit: { kind: "hl7.outbound.nacked", ...baseAudit },
       };

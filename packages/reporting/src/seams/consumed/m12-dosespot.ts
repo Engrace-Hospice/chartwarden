@@ -9,5 +9,7 @@ export interface ReportingMedicationOrderConsumer {
     period: { from: string; to: string },
   ): Promise<{ controlled: number; nonControlled: number }>;
   /** M12 `RefillInboxProvider` — pending refill-request count + median age (SLA dashboard). */
-  refillInboxBacklog(organizationId: string): Promise<{ pending: number; medianAgeHours: number | null }>;
+  refillInboxBacklog(
+    organizationId: string,
+  ): Promise<{ pending: number; medianAgeHours: number | null }>;
 }

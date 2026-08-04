@@ -14,10 +14,7 @@
 // outbox, never a `dependsOn` edge or a producer-package import (§4 boundary rule, M22 deps stay `[1, 5]`).
 // This file lives under outbox-consumers/ (not an events-by-m22 catalog) so arch:gaps does not treat the
 // consumed names as M22-produced events.
-import {
-  M22_DOCUMENT_REQUEST_EVENTS,
-  type DocumentRequestEvent,
-} from "./decide-document-request";
+import { type DocumentRequestEvent, M22_DOCUMENT_REQUEST_EVENTS } from "./decide-document-request";
 
 /** A single forward-declared §4.11 binding: the consumed event + the M22 consumer name the dispatcher routes
  * to once the live render worker lands. `consumerName` is the `(eventId, consumerName)` dedup key (§4.11). */

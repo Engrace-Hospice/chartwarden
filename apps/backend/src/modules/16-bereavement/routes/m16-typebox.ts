@@ -771,7 +771,10 @@ const pageOf = <T extends TSchema>(item: T) =>
 /** Route 1 — `CursorPage<BereavementPlanListItem>`. */
 export const BereavementPlanPageResponseSchema = pageOf(BereavementPlanListItemResponseSchema);
 /** Route 19 — `CursorPage<BereavementOutreachRowView>`. */
-export const BereavementOutreachPageResponseSchema = pageOf(BereavementOutreachRowViewResponseSchema);
+export const BereavementOutreachPageResponseSchema = pageOf(
+  BereavementOutreachRowViewResponseSchema,
+);
 /** Route 29 — `CursorPage<BereavementRiskScoreView>`. */
-export const BereavementRiskScorePageResponseSchema = pageOf(BereavementRiskScoreViewResponseSchema);
-
+export const BereavementRiskScorePageResponseSchema = pageOf(
+  BereavementRiskScoreViewResponseSchema,
+);

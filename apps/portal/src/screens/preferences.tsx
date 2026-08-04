@@ -61,11 +61,26 @@ export function PortalNotificationPreferences(): JSX.Element {
         emptyDescription="Notification channels will appear here once your account is fully set up."
       >
         <PortalCard heading="Channels">
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          <ul
+            style={{
+              listStyle: "none",
+              margin: 0,
+              padding: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.6rem",
+            }}
+          >
             {(prefs?.channels ?? []).map((c) => (
-              <li key={c.channel} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <li
+                key={c.channel}
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+              >
                 <span style={{ fontSize: "0.92rem" }}>{label(c.channel)}</span>
-                <StatusPill tone={c.enabled ? "success" : "neutral"} label={c.enabled ? "On" : "Off"} />
+                <StatusPill
+                  tone={c.enabled ? "success" : "neutral"}
+                  label={c.enabled ? "On" : "Off"}
+                />
               </li>
             ))}
           </ul>

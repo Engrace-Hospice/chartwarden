@@ -83,7 +83,11 @@ export function feedBindsInboundListener(kind: ExternalFeedKind): boolean {
 /** One feed's boot outcome. */
 export type FeedBootOutcome =
   | { readonly feedId: string; readonly started: true }
-  | { readonly feedId: string; readonly started: false; readonly reason: BaaGateRefuseReason | "not_inbound" };
+  | {
+      readonly feedId: string;
+      readonly started: false;
+      readonly reason: BaaGateRefuseReason | "not_inbound";
+    };
 
 /** The boot-sequence summary (§4.11.1). */
 export interface SupervisorBootSummary {
@@ -153,7 +157,10 @@ export async function startFeedListener(
 }
 
 /** §4.11.1 step 3 — hot-reload handler for a `m29.external_feed.activated` event (re-runs the BAA gate). */
-export async function handleFeedActivated(deps: SupervisorDeps, feedId: string): Promise<FeedBootOutcome> {
+export async function handleFeedActivated(
+  deps: SupervisorDeps,
+  feedId: string,
+): Promise<FeedBootOutcome> {
   const feed = await deps.loadFeedById(feedId);
   if (feed === null || feed.status !== "active") {
     deps.log("warn", "hl7.listener.activate_skip_not_active", { feedId });

@@ -27,6 +27,16 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { type GateView, errorMessage, listGates, writeHeaders } from "./discipline-api";
 import {
+  FAILING_GATE_STATUSES,
+  GATE_STATUS_TONE,
+  dueLabel,
+  gateKindLabel,
+  humanize,
+  shortDate,
+  shortId,
+  toneOf,
+} from "./discipline-status";
+import {
   FilterRow,
   Modal,
   Notice,
@@ -43,16 +53,6 @@ import {
   tdMono,
   th,
 } from "./discipline-ui";
-import {
-  FAILING_GATE_STATUSES,
-  GATE_STATUS_TONE,
-  dueLabel,
-  gateKindLabel,
-  humanize,
-  shortDate,
-  shortId,
-  toneOf,
-} from "./discipline-status";
 
 /** `volunteer_gate_kind` (enums.ts §3.2) — the seven 418.78 postures. */
 const GATE_KINDS = [
@@ -252,9 +252,9 @@ export function VolunteerComplianceGates(): JSX.Element {
             </Notice>
             {drifted.length > 0 ? (
               <Notice tone="warning">
-                {drifted.length} row{drifted.length === 1 ? "" : "s"} show a status the nightly watcher
-                has not written yet. The status shown here — re-derived from the validity window — is the
-                one the scheduler enforces.
+                {drifted.length} row{drifted.length === 1 ? "" : "s"} show a status the nightly
+                watcher has not written yet. The status shown here — re-derived from the validity
+                window — is the one the scheduler enforces.
               </Notice>
             ) : null}
             <span style={mutedStyle}>
@@ -379,8 +379,8 @@ function GateFormModal({
     >
       {editingExisting ? (
         <span style={mutedStyle}>
-          A correction changes the validity window and the evidence only. The volunteer and gate kind
-          identify the row and cannot be re-pointed — record a new gate instead.
+          A correction changes the validity window and the evidence only. The volunteer and gate
+          kind identify the row and cannot be re-pointed — record a new gate instead.
         </span>
       ) : null}
       <TextField
@@ -401,11 +401,7 @@ function GateFormModal({
         value={validUntil}
         onChange={setValidUntil}
       />
-      <TextField
-        label="Source document id"
-        value={sourceDocumentId}
-        onChange={setSourceDocument}
-      />
+      <TextField label="Source document id" value={sourceDocumentId} onChange={setSourceDocument} />
       <TextAreaField label="Notes" value={notes} onChange={setNotes} rows={2} />
       {error ? <p style={alertStyle}>{error}</p> : null}
     </Modal>

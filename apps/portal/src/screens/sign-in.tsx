@@ -42,8 +42,12 @@ export function PortalSignIn(): JSX.Element {
     <CenteredCardLayout
       brand={
         <div>
-          <div style={{ fontFamily: t.fontDisplay, fontSize: "1.5rem", fontWeight: 600 }}>WardenX Family Portal</div>
-          <div style={{ color: t.onSurfaceVariant, fontSize: "0.85rem" }}>Secure access to your loved one's care</div>
+          <div style={{ fontFamily: t.fontDisplay, fontSize: "1.5rem", fontWeight: 600 }}>
+            WardenX Family Portal
+          </div>
+          <div style={{ color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
+            Secure access to your loved one's care
+          </div>
         </div>
       }
       footer={<a href="/help">Need help signing in?</a>}
@@ -52,14 +56,17 @@ export function PortalSignIn(): JSX.Element {
         <div role="status" aria-live="polite">
           <h1 style={{ margin: "0 0 0.5rem", fontSize: "1.15rem" }}>Check your email</h1>
           <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.9rem" }}>
-            If an account exists for {email || "that address"}, a secure sign-in link is on its way. The link
-            expires shortly for your protection.
+            If an account exists for {email || "that address"}, a secure sign-in link is on its way.
+            The link expires shortly for your protection.
           </p>
         </div>
       ) : (
         <form onSubmit={onSubmit} aria-label="Sign in">
           <h1 style={{ margin: "0 0 0.75rem", fontSize: "1.15rem" }}>Sign in</h1>
-          <label htmlFor="portal-email" style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem" }}>
+          <label
+            htmlFor="portal-email"
+            style={{ display: "block", fontSize: "0.85rem", marginBottom: "0.35rem" }}
+          >
             Email address
           </label>
           <input
@@ -74,8 +81,16 @@ export function PortalSignIn(): JSX.Element {
           <button type="submit" style={button}>
             Email me a sign-in link
           </button>
-          <p style={{ margin: "0.9rem 0 0", fontSize: "0.8rem", color: t.onSurfaceVariant, textAlign: "center" }}>
-            Have a password already? You'll be prompted for it — and a one-time code — after the link.
+          <p
+            style={{
+              margin: "0.9rem 0 0",
+              fontSize: "0.8rem",
+              color: t.onSurfaceVariant,
+              textAlign: "center",
+            }}
+          >
+            Have a password already? You'll be prompted for it — and a one-time code — after the
+            link.
           </p>
         </form>
       )}

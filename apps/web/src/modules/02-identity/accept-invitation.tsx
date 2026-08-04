@@ -168,7 +168,9 @@ export function AcceptInvitation(): JSX.Element {
           You’ve been invited to join <strong>{invite?.organizationName}</strong> on WardenX as{" "}
           <strong>{invite?.email}</strong>.
         </p>
-        <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+        <label
+          style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}
+        >
           Full name
           <input
             type="text"
@@ -179,7 +181,9 @@ export function AcceptInvitation(): JSX.Element {
             style={field}
           />
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+        <label
+          style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}
+        >
           Password
           <input
             type="password"
@@ -190,7 +194,9 @@ export function AcceptInvitation(): JSX.Element {
             style={field}
           />
         </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}>
+        <label
+          style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.85rem" }}
+        >
           Confirm password
           <input
             type="password"

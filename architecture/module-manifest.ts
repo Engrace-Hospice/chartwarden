@@ -647,10 +647,7 @@ export const MODULES: ModuleDef[] = [
   {
     id: 20,
     name: "Field Safety",
-    codePaths: [
-      "apps/backend/src/modules/20-field-safety",
-      "apps/web/src/modules/20-field-safety",
-    ], // +web: Track B in-task screens (ADR-0030), land in M20-T07. NOTE: the spec's §3.1 layout also
+    codePaths: ["apps/backend/src/modules/20-field-safety", "apps/web/src/modules/20-field-safety"], // +web: Track B in-task screens (ADR-0030), land in M20-T07. NOTE: the spec's §3.1 layout also
     // proposes a `packages/safety-client` leaf package (seams / events / alert payloads / policy floor)
     // — NOT adopted. Wave P2-2 acceptance #1 limits this wave's manifest changes to the triage-vendors
     // codePath (ADR-0028, already applied) and the two Track B web codePaths, so M20's leaf CONTRACTS
@@ -1090,7 +1087,11 @@ export const MODULES: ModuleDef[] = [
   {
     id: 37,
     name: "Inpatient Unit (IPU) Management",
-    codePaths: ["apps/backend/src/modules/37-ipu", "packages/inpatient", "apps/web/src/modules/37-ipu"],
+    codePaths: [
+      "apps/backend/src/modules/37-ipu",
+      "packages/inpatient",
+      "apps/web/src/modules/37-ipu",
+    ],
     dependsOn: [1, 2, 3, 4, 5, 6, 8, 9, 11, 12, 13, 14, 15, 17, 18, 21, 22, 23, 26, 27, 36, 38, 40],
     ownedTables: [
       "gip_admission_criteria",

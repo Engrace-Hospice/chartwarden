@@ -34,13 +34,21 @@ export interface MarGridLayoutProps {
   /** Right: Administration / PRN Reassessment / Witness for the selected cell. */
   detail?: ReactNode;
 }
-export function MarGridLayout({ banner, windowControls, grid, detail }: MarGridLayoutProps): JSX.Element {
+export function MarGridLayout({
+  banner,
+  windowControls,
+  grid,
+  detail,
+}: MarGridLayoutProps): JSX.Element {
   return (
     <div className="wx-mar-grid" style={fillColumn}>
       {banner}
       {windowControls}
       <div style={splitRow}>
-        <div className="wx-mar-matrix" style={{ flex: 1, overflow: "auto", padding: "0.5rem 1rem" }}>
+        <div
+          className="wx-mar-matrix"
+          style={{ flex: 1, overflow: "auto", padding: "0.5rem 1rem" }}
+        >
           {grid}
         </div>
         {detail}
@@ -73,7 +81,11 @@ export function SchedulingCalendarLayout({
       {header}
       <div style={splitRow}>
         {roster ? (
-          <nav className="wx-sched-roster" aria-label="Roster & proposals" style={rail("left", "18rem")}>
+          <nav
+            className="wx-sched-roster"
+            aria-label="Roster & proposals"
+            style={rail("left", "18rem")}
+          >
             {roster}
           </nav>
         ) : null}
@@ -111,10 +123,21 @@ export function StatusBoardLayout({
   return (
     <div className="wx-status-board" style={fillColumn}>
       {header}
-      <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: "1.5rem", padding: "1.5rem" }}>
+      <div
+        style={{
+          flex: 1,
+          overflow: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: "1.5rem",
+          padding: "1.5rem",
+        }}
+      >
         <div className="wx-status-services">{services}</div>
         {timeline || integrations ? (
-          <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div
+            style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", alignItems: "flex-start" }}
+          >
             {timeline ? <div style={{ flex: 2, minWidth: "20rem" }}>{timeline}</div> : null}
             {integrations ? <div style={{ flex: 1, minWidth: "16rem" }}>{integrations}</div> : null}
           </div>
@@ -185,10 +208,17 @@ export function AdminSettingsLayout({
     <div className="wx-admin-settings" style={fillColumn}>
       {header}
       <div style={splitRow}>
-        <nav className="wx-settings-sidebar" aria-label="Settings categories" style={rail("left", "16rem")}>
+        <nav
+          className="wx-settings-sidebar"
+          aria-label="Settings categories"
+          style={rail("left", "16rem")}
+        >
           {sidebar}
         </nav>
-        <div className="wx-settings-content" style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>
+        <div
+          className="wx-settings-content"
+          style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}
+        >
           {children}
         </div>
         {help}
@@ -237,7 +267,16 @@ export function PortalDashboardLayout({
         </div>
       </div>
       {safety ? (
-        <div className="wx-portal-safety" style={{ position: "sticky", bottom: 0, borderTop: ghostBorder, background: t.surfaceLowest, padding: "0.75rem 1.5rem" }}>
+        <div
+          className="wx-portal-safety"
+          style={{
+            position: "sticky",
+            bottom: 0,
+            borderTop: ghostBorder,
+            background: t.surfaceLowest,
+            padding: "0.75rem 1.5rem",
+          }}
+        >
           {safety}
         </div>
       ) : null}
@@ -312,11 +351,18 @@ export function DocumentViewerLayout({
         <nav className="wx-doc-list" aria-label="Documents" style={rail("left", "18rem")}>
           {list}
         </nav>
-        <div className="wx-doc-viewer" style={{ flex: 1, overflow: "auto", background: t.surfaceLow }}>
+        <div
+          className="wx-doc-viewer"
+          style={{ flex: 1, overflow: "auto", background: t.surfaceLow }}
+        >
           {viewer}
         </div>
         {actions ? (
-          <aside className="wx-doc-actions" aria-label="Document actions" style={rail("right", "18rem")}>
+          <aside
+            className="wx-doc-actions"
+            aria-label="Document actions"
+            style={rail("right", "18rem")}
+          >
             <div style={{ padding: "1rem" }}>{actions}</div>
           </aside>
         ) : null}

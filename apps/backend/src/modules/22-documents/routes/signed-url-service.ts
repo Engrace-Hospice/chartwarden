@@ -19,9 +19,9 @@ import type {
   SignedUrlDescriptor,
 } from "@wardenx/types";
 import { ForbiddenError, NotFoundError } from "@wardenx/types";
+import { planSignedUrl } from "../lifecycle/storage";
 import { resolveExternalBaaActive } from "../outbox-consumers/baa-gate";
 import type { ExternalRecipientRef } from "../outbox-consumers/decide-document-request";
-import { planSignedUrl } from "../lifecycle/storage";
 
 /** The §4.3 `DocumentStorageProvider` arm the signed-URL service consumes (presign only). */
 export interface SignedUrlStoragePort {

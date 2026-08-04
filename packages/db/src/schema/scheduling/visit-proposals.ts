@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `visit_proposal` (M17 §3.3 / §2.2.4 D5). The scheduler's inbox: a system-generated
 // suggestion to schedule a visit, sourced from M7 frequency (D5), M15 supervisory cadence, M11 order-
 // required, or M14 IDG decision. Carries the typed upstream payload + idempotency key (one proposal per
@@ -7,12 +8,21 @@
 // are DENYLISTED (§3.6 — the payload may carry narrative). Cross-module logical FKs are plain uuid; the
 // tenancy spine carries SQL FKs. Not partitioned (TTL-trimmed via accept/reject, D14). RLS + grants + the M4
 // write-audit trigger land in M17-T02.
-import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { visitProposalSource, visitProposalStatus, visitPurpose } from "../../enums";
+import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
-import { locations } from "../locations";
 
 export const visitProposal = pgTable(
   "visit_proposal",

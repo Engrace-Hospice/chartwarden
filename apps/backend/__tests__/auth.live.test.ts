@@ -759,7 +759,11 @@ describe.skipIf(!DB_URL)(
       });
       const app = buildServer({ db: handle11.db as never, authenticate });
       registerIdentityAuth(app, auth); // mounts /api/auth/* (Better Auth's real HTTP handler)
-      mountIdentityRoutes(app, handle11.db as never, createDbAdminMembershipReader(handle11.db as never));
+      mountIdentityRoutes(
+        app,
+        handle11.db as never,
+        createDbAdminMembershipReader(handle11.db as never),
+      );
       registerPatientRoutes(app, {
         service: createDbPatientRouteService(asTenantRole(handle11.db) as never),
       });

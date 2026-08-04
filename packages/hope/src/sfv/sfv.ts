@@ -14,9 +14,9 @@ import type {
   IsoInstant,
   SymptomFollowUpVisitId,
 } from "@wardenx/types";
+import { require_ } from "../errors";
 import { DEFAULT_SFV_ALERT_CADENCE, type SfvAlertCadence } from "../scheduling/alert-cadence";
 import { addCalendarDays, endOfOrgDayInstant, orgLocalDate } from "../scheduling/time";
-import { require_ } from "../errors";
 
 /** D3 — calendar days from the triggering assessment's `signed_at` within which the SFV is due. CMS
  * regulatory floor; not tenant-configurable (computed from `signed_at`, org-TZ-aware). */
@@ -51,7 +51,10 @@ export interface SfvCreationFacts {
  * inserts exactly one row (the unique index enforces one-per-source).
  */
 export function planSfvCreation(facts: SfvCreationFacts): SfvDescriptor {
-  const dueDate = addCalendarDays(orgLocalDate(facts.signedAt, facts.timeZone), SFV_DUE_CALENDAR_DAYS);
+  const dueDate = addCalendarDays(
+    orgLocalDate(facts.signedAt, facts.timeZone),
+    SFV_DUE_CALENDAR_DAYS,
+  );
   return {
     triggeringAssessmentId: facts.triggeringAssessmentId,
     triggeredAt: facts.signedAt,

@@ -6,7 +6,9 @@ import { MetricsProviderImpl } from "@wardenx/reporting";
 import { describe, expect, it } from "vitest";
 
 /** A fake replica session whose `withSession` hands the body a db returning the seeded metric-catalog row. */
-function replicaWithMetric(row: { metricKey: string; unit: string } | null): ReadReplicaSessionPort {
+function replicaWithMetric(
+  row: { metricKey: string; unit: string } | null,
+): ReadReplicaSessionPort {
   const limit = () => Promise.resolve(row ? [row] : []);
   const db = { select: () => ({ from: () => ({ where: () => ({ limit }) }) }) };
   return { withSession: (_req, fn) => fn(db as never) };

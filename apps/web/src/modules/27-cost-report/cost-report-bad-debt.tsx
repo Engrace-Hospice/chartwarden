@@ -13,8 +13,16 @@ import {
 // documented + supporting docs). Read-only; the server is the only authz point (ADR-0030).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import {
+  ReportPicker,
+  cellStyle,
+  headStyle,
+  numStyle,
+  rowStyle,
+  tableStyle,
+  useReportPicker,
+} from "./cost-report-shared";
 import { humanize, money, shortDate } from "./cost-report-status";
-import { ReportPicker, cellStyle, headStyle, numStyle, rowStyle, tableStyle, useReportPicker } from "./cost-report-shared";
 
 interface BadDebtRow {
   recordId: string;
@@ -28,14 +36,22 @@ interface BadDebtRow {
 
 export function CostReportBadDebt(): JSX.Element {
   const client = useApiClient();
-  const { reports, selectedId, setSelectedId, loading: picking, error: pickErr } = useReportPicker();
+  const {
+    reports,
+    selectedId,
+    setSelectedId,
+    loading: picking,
+    error: pickErr,
+  } = useReportPicker();
   const [rows, setRows] = useState<BadDebtRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!selectedId) return;
     setLoading(true);
-    const res = await client.GET("/api/v1/cost-reports/{id}/bad-debt", { params: { path: { id: selectedId } } });
+    const res = await client.GET("/api/v1/cost-reports/{id}/bad-debt", {
+      params: { path: { id: selectedId } },
+    });
     const d = res.error ? null : (res.data as unknown as { items?: BadDebtRow[] });
     setRows(d?.items ?? (res.error ? [] : (res.data as unknown as BadDebtRow[])) ?? []);
     setLoading(false);
@@ -49,8 +65,12 @@ export function CostReportBadDebt(): JSX.Element {
   const documented = rows.filter((r) => r.collectionEffortsDocumented).length;
 
   if (picking) return <LoadingSpinner />;
-  if (pickErr) return <EmptyState title="Unavailable" description="Cost reports could not be loaded." />;
-  if (!selectedId) return <EmptyState title="No cost reports" description="Create a cost report to log bad debt." />;
+  if (pickErr)
+    return <EmptyState title="Unavailable" description="Cost reports could not be loaded." />;
+  if (!selectedId)
+    return (
+      <EmptyState title="No cost reports" description="Create a cost report to log bad debt." />
+    );
 
   return (
     <WorkQueueLayout
@@ -58,7 +78,9 @@ export function CostReportBadDebt(): JSX.Element {
         <PageHeader
           title="Bad-Debt Log"
           breadcrumb="Revenue Cycle — Medicare bad-debt reimbursement (D7)"
-          actions={<ReportPicker reports={reports} selectedId={selectedId} onChange={setSelectedId} />}
+          actions={
+            <ReportPicker reports={reports} selectedId={selectedId} onChange={setSelectedId} />
+          }
         />
       }
       kpis={
@@ -72,7 +94,10 @@ export function CostReportBadDebt(): JSX.Element {
         loading ? (
           <LoadingSpinner />
         ) : rows.length === 0 ? (
-          <EmptyState title="No bad-debt entries" description="No Medicare bad debt has been logged for this cost report." />
+          <EmptyState
+            title="No bad-debt entries"
+            description="No Medicare bad debt has been logged for this cost report."
+          />
         ) : (
           <table style={tableStyle}>
             <thead>
@@ -92,7 +117,10 @@ export function CostReportBadDebt(): JSX.Element {
                   <td style={cellStyle}>{humanize(r.debtKind)}</td>
                   <td style={numStyle}>{money(r.amountCents)}</td>
                   <td style={cellStyle}>
-                    <StatusPill tone={r.collectionEffortsDocumented ? "success" : "warning"} label={r.collectionEffortsDocumented ? "Documented" : "Missing"} />
+                    <StatusPill
+                      tone={r.collectionEffortsDocumented ? "success" : "warning"}
+                      label={r.collectionEffortsDocumented ? "Documented" : "Missing"}
+                    />
                   </td>
                   <td style={numStyle}>{r.supportingDocumentIds.length}</td>
                   <td style={cellStyle}>{shortDate(r.addedAt)}</td>

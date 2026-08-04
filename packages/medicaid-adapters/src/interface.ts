@@ -34,7 +34,11 @@ export interface AckParsedDto {
 export interface RemittanceParsedDto {
   readonly payerClaimControlNumber: string | null;
   readonly paidAmountCents: number;
-  readonly adjustments: ReadonlyArray<{ groupCode: string; reasonCode: string; amountCents: number }>;
+  readonly adjustments: ReadonlyArray<{
+    groupCode: string;
+    reasonCode: string;
+    amountCents: number;
+  }>;
 }
 
 /** The eligibility round-trip result. The Recipient ID digits are NEVER returned (D12 / §3.6). */
@@ -89,9 +93,19 @@ export interface MedicaidAdapterMetadata {
 }
 
 export type SubmitResult =
-  | { result: "accepted_sync"; vendorTransactionId: string; ack999?: AckParsedDto; ack277ca?: AckParsedDto }
+  | {
+      result: "accepted_sync";
+      vendorTransactionId: string;
+      ack999?: AckParsedDto;
+      ack277ca?: AckParsedDto;
+    }
   | { result: "pending_async"; vendorTransactionId: string; nextPollAt: IsoDateTime }
-  | { result: "rejected_sync"; rejectionCode: string; rejectionReason: string; vendorTransactionId: string | null }
+  | {
+      result: "rejected_sync";
+      rejectionCode: string;
+      rejectionReason: string;
+      vendorTransactionId: string | null;
+    }
   | { result: "transport_failure"; nextRetryAt: IsoDateTime };
 
 export type PollResult =
@@ -122,7 +136,12 @@ export interface MedicaidAdapter {
     claimId: MedicaidClaimId;
     claimSnapshot: MedicaidClaimAssemblySnapshot;
     credentials: TradingPartnerCredentials;
-  }): Promise<{ body: Uint8Array; idempotencyKey: string; channel: MedicaidChannel; mcoId: McoId | null }>;
+  }): Promise<{
+    body: Uint8Array;
+    idempotencyKey: string;
+    channel: MedicaidChannel;
+    mcoId: McoId | null;
+  }>;
 
   submit(args: {
     body: Uint8Array;
@@ -131,9 +150,15 @@ export interface MedicaidAdapter {
     credentials: TradingPartnerCredentials;
   }): Promise<SubmitResult>;
 
-  poll(args: { vendorTransactionId: string; credentials: TradingPartnerCredentials }): Promise<PollResult>;
+  poll(args: {
+    vendorTransactionId: string;
+    credentials: TradingPartnerCredentials;
+  }): Promise<PollResult>;
 
-  parseAcknowledgment(args: { rawPayload: Uint8Array; expectedKind: string }): Promise<AckParsedDto>;
+  parseAcknowledgment(args: {
+    rawPayload: Uint8Array;
+    expectedKind: string;
+  }): Promise<AckParsedDto>;
 
   parseRemittance(args: {
     rawPayload: Uint8Array;
@@ -146,7 +171,11 @@ export interface MedicaidAdapter {
     county: string | null;
   }): Promise<{ rateCents: number; scheduleId: string }>;
 
-  capCalculation?(args: { orgId: OrgId; patientId: PatientId; capYear: number }): Promise<CapResult | null>;
+  capCalculation?(args: {
+    orgId: OrgId;
+    patientId: PatientId;
+    capYear: number;
+  }): Promise<CapResult | null>;
 
   healthy(): Promise<{
     ok: boolean;

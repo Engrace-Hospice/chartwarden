@@ -8,7 +8,7 @@
 // the order's dose/route/frequency + the window + the timezone are passed in, so the math is deterministic
 // and the spec §2.3 DST/edge cases (`atOrderLocalTime` resolves each slot at its own wall instant) hold.
 import type { IsoInstant, LocalDate } from "@wardenx/types";
-import { type ScheduleFrequency, parseFrequencyCode, type MealEvent } from "./frequency";
+import { type MealEvent, type ScheduleFrequency, parseFrequencyCode } from "./frequency";
 import { addCalendarDays, atOrderLocalTime, weekdayKey } from "./time";
 
 /** One materialized scheduled-dose row's structural payload (§2.3 — the parser's output tuple). */
@@ -69,7 +69,9 @@ function timesForDate(
       const start = ah * 60 + am;
       const out: string[] = [];
       for (let mins = start; mins < 24 * 60; mins += freq.everyMinutes) {
-        out.push(`${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`);
+        out.push(
+          `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`,
+        );
       }
       return out;
     }
@@ -91,7 +93,9 @@ export function materializeSchedule(
 ): ScheduledDoseTuple[] {
   if (freq.kind === "prn") return [];
   const mealTimes = opts.mealTimes ?? DEFAULT_MEAL_TIMES;
-  const notBeforeMs = opts.notBeforeInstant ? Date.parse(opts.notBeforeInstant) : -Infinity;
+  const notBeforeMs = opts.notBeforeInstant
+    ? Date.parse(opts.notBeforeInstant)
+    : Number.NEGATIVE_INFINITY;
 
   const byInstant = new Map<string, ScheduledDoseTuple>();
   for (let d = 0; d < opts.windowDays; d += 1) {
@@ -132,7 +136,10 @@ export interface MaterializableOrder {
  */
 export function materializeForOrder(
   order: MaterializableOrder,
-  opts: Omit<MaterializeOptions, "expectedDoseAmount" | "expectedDoseUnit" | "expectedRoute" | "notBeforeInstant"> & {
+  opts: Omit<
+    MaterializeOptions,
+    "expectedDoseAmount" | "expectedDoseUnit" | "expectedRoute" | "notBeforeInstant"
+  > & {
     readonly notBeforeInstant?: IsoInstant;
   },
 ): ScheduledDoseTuple[] {

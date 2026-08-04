@@ -9,10 +9,10 @@ import { describe, expect, it } from "vitest";
 import {
   type AdmissionDischargedPayload,
   type HopeJ2051TriggerPayload,
-  type SignificantChangePayload,
-  type SuggestionFacts,
   M11_OUTBOX_EVENTS,
   M11_OUTBOX_SUBSCRIPTIONS,
+  type SignificantChangePayload,
+  type SuggestionFacts,
   decideAssessmentSuggestion,
   decideDischargeCascade,
   decideHopeSuggestion,
@@ -67,12 +67,16 @@ describe("M11 outbox event contract (§4.4)", () => {
   });
 
   it("`m11.order.recertification_signed` reaches M6 for the CTI handshake (W-RC-01)", () => {
-    const recert = M11_OUTBOX_EVENTS.find((e) => e.eventName === "m11.order.recertification_signed");
+    const recert = M11_OUTBOX_EVENTS.find(
+      (e) => e.eventName === "m11.order.recertification_signed",
+    );
     expect(recert?.declaredConsumers).toEqual(expect.arrayContaining(["m6"]));
   });
 
   it("`m11.order.level_of_care_change_signed` reaches M6 for the LCP transition (W-LCC-01)", () => {
-    const lcc = M11_OUTBOX_EVENTS.find((e) => e.eventName === "m11.order.level_of_care_change_signed");
+    const lcc = M11_OUTBOX_EVENTS.find(
+      (e) => e.eventName === "m11.order.level_of_care_change_signed",
+    );
     expect(lcc?.declaredConsumers).toEqual(expect.arrayContaining(["m6"]));
   });
 
@@ -128,7 +132,10 @@ describe("M11 outbox event contract (§4.4)", () => {
 describe("M11 outbox subscriptions (§4.5)", () => {
   it("binds the three Wave-E producer events to their M11 consumers", () => {
     expect(M11_OUTBOX_SUBSCRIPTIONS).toEqual([
-      { eventName: "m6.admission.discharged", consumerName: "m11.admission-discharged-discontinue" },
+      {
+        eventName: "m6.admission.discharged",
+        consumerName: "m11.admission-discharged-discontinue",
+      },
       { eventName: "m9.assessment.significant_change", consumerName: "m11.assessment-trigger" },
       { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
     ]);
@@ -137,7 +144,9 @@ describe("M11 outbox subscriptions (§4.5)", () => {
 
 // ── discharge-cascade auto-discontinue (§2.6 D13 / W-DC-02) ─────────────────────────────────────────────
 
-function dischargePayload(over: Partial<AdmissionDischargedPayload> = {}): AdmissionDischargedPayload {
+function dischargePayload(
+  over: Partial<AdmissionDischargedPayload> = {},
+): AdmissionDischargedPayload {
   return { admissionId: ADM, organizationId: ORG, dischargeEventId: EVT, ...over };
 }
 
@@ -146,8 +155,18 @@ describe("decideDischargeCascade (M6 discharge consumer, §2.6 / W-DC-02)", () =
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
         { orderId: "o1", status: "active", kind: "lab", supplyFulfillmentInFlight: false },
-        { orderId: "o2", status: "verbal_pending", kind: "comfort_kit", supplyFulfillmentInFlight: false },
-        { orderId: "o3", status: "pending_signature", kind: "dme", supplyFulfillmentInFlight: false },
+        {
+          orderId: "o2",
+          status: "verbal_pending",
+          kind: "comfort_kit",
+          supplyFulfillmentInFlight: false,
+        },
+        {
+          orderId: "o3",
+          status: "pending_signature",
+          kind: "dme",
+          supplyFulfillmentInFlight: false,
+        },
       ],
     });
     expect(action.discontinuations).toHaveLength(3);
@@ -164,7 +183,12 @@ describe("decideDischargeCascade (M6 discharge consumer, §2.6 / W-DC-02)", () =
       ordersOnAdmission: [
         { orderId: "o1", status: "completed", kind: "lab", supplyFulfillmentInFlight: false },
         { orderId: "o2", status: "discontinued", kind: "dme", supplyFulfillmentInFlight: false },
-        { orderId: "o3", status: "expired_unsigned", kind: "comfort_kit", supplyFulfillmentInFlight: false },
+        {
+          orderId: "o3",
+          status: "expired_unsigned",
+          kind: "comfort_kit",
+          supplyFulfillmentInFlight: false,
+        },
         { orderId: "o4", status: "draft", kind: "supply", supplyFulfillmentInFlight: false },
         { orderId: "o5", status: "active", kind: "lab", supplyFulfillmentInFlight: false },
       ],
@@ -227,7 +251,10 @@ describe("decideAssessmentSuggestion (M9 significant-change consumer, §2.7 / W-
   });
 
   it("skips rules below the §2.7 banner threshold", () => {
-    const action = decideAssessmentSuggestion(sigPayload({ ruleId: "esas_symptom_decline" }), FRESH);
+    const action = decideAssessmentSuggestion(
+      sigPayload({ ruleId: "esas_symptom_decline" }),
+      FRESH,
+    );
     expect(action).toEqual({ kind: "skip", reason: "below_threshold" });
   });
 

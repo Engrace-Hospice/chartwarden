@@ -381,7 +381,9 @@ export function createDrizzleBillingEraseStore(
             : (
                 await tx
                   .delete(CSH)
-                  .where(and(eq(CSH.organizationId, organizationId), inArray(CSH.claimId, claimIds)))
+                  .where(
+                    and(eq(CSH.organizationId, organizationId), inArray(CSH.claimId, claimIds)),
+                  )
                   .returning({ id: CSH.id })
               ).length;
 
@@ -392,7 +394,9 @@ export function createDrizzleBillingEraseStore(
             : (
                 await tx
                   .delete(VO)
-                  .where(and(eq(VO.organizationId, organizationId), inArray(VO.resultId, resultIds)))
+                  .where(
+                    and(eq(VO.organizationId, organizationId), inArray(VO.resultId, resultIds)),
+                  )
                   .returning({ id: VO.id })
               ).length;
         const results =
@@ -421,7 +425,9 @@ export function createDrizzleBillingEraseStore(
             : (
                 await tx
                   .delete(SIA)
-                  .where(and(eq(SIA.organizationId, organizationId), inArray(SIA.claimId, claimIds)))
+                  .where(
+                    and(eq(SIA.organizationId, organizationId), inArray(SIA.claimId, claimIds)),
+                  )
                   .returning({ id: SIA.id })
               ).length;
         const hippsCalcs =
@@ -513,10 +519,7 @@ export function createDrizzleBillingEraseStore(
             .returning({ id: MAC.id })
         ).length;
         const sequestrationPolicies = (
-          await tx
-            .delete(SP)
-            .where(eq(SP.organizationId, organizationId))
-            .returning({ id: SP.id })
+          await tx.delete(SP).where(eq(SP.organizationId, organizationId)).returning({ id: SP.id })
         ).length;
         const ruleConfigs = (
           await tx

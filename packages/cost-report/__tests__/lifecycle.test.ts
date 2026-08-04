@@ -1,3 +1,11 @@
+import type { CostReportState } from "@wardenx/cost-report";
+import {
+  COST_REPORT_TRANSITIONS,
+  type CostReportTransitionEvent,
+  applyTransition,
+  canApproveForSubmit,
+  canTransition,
+} from "@wardenx/cost-report";
 // @wardenx/cost-report — M27 lifecycle reducer (§2.2) pure-domain unit tests.
 //
 // The reducer is a flat transition table over (state, event): every legal edge in
@@ -6,14 +14,6 @@
 // must block when unresolved blocking failures > 0 (and fail-closed when the count is absent), and
 // `closed` must be terminal.
 import { describe, expect, it } from "vitest";
-import type { CostReportState } from "@wardenx/cost-report";
-import {
-  applyTransition,
-  canApproveForSubmit,
-  canTransition,
-  COST_REPORT_TRANSITIONS,
-  type CostReportTransitionEvent,
-} from "@wardenx/cost-report";
 
 const ALL_STATES: readonly CostReportState[] = [
   "draft",

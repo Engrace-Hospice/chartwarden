@@ -10,13 +10,9 @@
 // Every fact is injected (the value-set oracle pre-resolved from M38 as of target_date; the sibling
 // timepoint dates; the iQIES envelope identifiers) — the engine imports only `@wardenx/types` and this
 // package's own pure helpers, so there is no cross-module schema edge.
-import type { HopeRfaKind, HopeDischargeReason, IsoInstant } from "@wardenx/types";
+import type { HopeDischargeReason, HopeRfaKind, IsoInstant } from "@wardenx/types";
 import { missingRequiredSections } from "../sections/required-items";
-import {
-  finding,
-  HOPE_VALIDATION_RULES,
-  type HopeValidationFindingDescriptor,
-} from "./findings";
+import { HOPE_VALIDATION_RULES, type HopeValidationFindingDescriptor, finding } from "./findings";
 import type { HopeValueSetOracle } from "./value-set-oracle";
 
 /** Section I (Active Diagnoses) — the validation-relevant projection of `data.I`. */
@@ -205,7 +201,11 @@ export function validateHopeAssessment(
   // 7. Cross-RFA temporal order (§2.3): HUV1 target > Admission target; HUV2 target > HUV1 target.
   if (input.temporal) {
     const { targetDate, admissionTargetDate, huv1TargetDate } = input.temporal;
-    if (input.rfaKind === "02_huv1" && admissionTargetDate != null && !isAfter(targetDate, admissionTargetDate)) {
+    if (
+      input.rfaKind === "02_huv1" &&
+      admissionTargetDate != null &&
+      !isAfter(targetDate, admissionTargetDate)
+    ) {
       findings.push(
         finding(
           HOPE_VALIDATION_RULES.CROSS_RFA_TEMPORAL_ORDER,
@@ -215,7 +215,11 @@ export function validateHopeAssessment(
         ),
       );
     }
-    if (input.rfaKind === "03_huv2" && huv1TargetDate != null && !isAfter(targetDate, huv1TargetDate)) {
+    if (
+      input.rfaKind === "03_huv2" &&
+      huv1TargetDate != null &&
+      !isAfter(targetDate, huv1TargetDate)
+    ) {
       findings.push(
         finding(
           HOPE_VALIDATION_RULES.CROSS_RFA_TEMPORAL_ORDER,

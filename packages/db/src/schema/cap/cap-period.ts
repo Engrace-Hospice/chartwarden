@@ -32,7 +32,9 @@ import { m26Methodology, m26PeriodStatus } from "./enums";
 export const capPeriodPlatformConstant = pgTable("cap_period_platform_constant", {
   capYear: varchar("cap_year", { length: 7 }).primaryKey(), // 'FY2026'
   aggregateCapAmountCents: bigint("aggregate_cap_amount_cents", { mode: "number" }), // nullable: published mid-summer
-  inpatientCapPct: numeric("inpatient_cap_pct", { precision: 5, scale: 4 }).notNull().default("0.2000"),
+  inpatientCapPct: numeric("inpatient_cap_pct", { precision: 5, scale: 4 })
+    .notNull()
+    .default("0.2000"),
   sourceUrl: text("source_url"),
   sourcePublishedAt: timestamp("source_published_at", { withTimezone: true }),
   recordedBy: uuid("recorded_by").notNull(), // M2 platform admin (logical)

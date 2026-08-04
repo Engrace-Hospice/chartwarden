@@ -1,3 +1,10 @@
+import type { CostReportState, ValidationContext } from "@wardenx/cost-report";
+import {
+  applyTransition,
+  canTransition,
+  runValidation,
+  suggestRuleFromRejection,
+} from "@wardenx/cost-report";
 // @wardenx/cost-report — pure-domain contracts the M27 §4.10 outbox CONSUMERS compose on (the inbound half
 // of the module: apps/backend/src/modules/27-cost-report/consumers). These assert the EXACT pure-domain
 // invariants the three consumer handlers depend on, so the handlers' fail-closed branches are grounded in
@@ -13,13 +20,6 @@
 //
 // PURE DOMAIN only — no DB, no Fastify, no network; no PHI (D18). Money is integer cents.
 import { describe, expect, it } from "vitest";
-import type { CostReportState, ValidationContext } from "@wardenx/cost-report";
-import {
-  applyTransition,
-  canTransition,
-  runValidation,
-  suggestRuleFromRejection,
-} from "@wardenx/cost-report";
 
 const ALL_STATES: readonly CostReportState[] = [
   "draft",

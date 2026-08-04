@@ -1,3 +1,4 @@
+import type { schema } from "@wardenx/db";
 // @wardenx/quality — M30 §7.2 (WF-06) CAHPS result-ingest transform + min-cell suppression. Pure, IO-free.
 //
 // A vendor's `parseResultIngest` returns the raw per-period aggregate it found in the upload. Before those
@@ -8,7 +9,6 @@
 // retaining the aggregate counts and the dedup hash so the row is still an auditable "results were
 // ingested" record. No DB, no I/O.
 import { WardenXError } from "@wardenx/types";
-import type { schema } from "@wardenx/db";
 import type { CahpsResultSummaryInput, CahpsVendorAdapterId } from "./adapter";
 
 /**
@@ -48,10 +48,18 @@ const EMPTY_COMPOSITES: schema.CahpsCompositeScores = {};
 /** Validate one raw row's aggregate counts before it is transformed (fail closed on impossible counts). */
 function assertCounts(row: ParsedCahpsResultRow): void {
   if (!Number.isInteger(row.responseCount) || row.responseCount < 0) {
-    throw new WardenXError("VALIDATION_FAILED", "responseCount must be a non-negative integer", 422);
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      "responseCount must be a non-negative integer",
+      422,
+    );
   }
   if (!Number.isInteger(row.attemptedSampleCount) || row.attemptedSampleCount < 0) {
-    throw new WardenXError("VALIDATION_FAILED", "attemptedSampleCount must be a non-negative integer", 422);
+    throw new WardenXError(
+      "VALIDATION_FAILED",
+      "attemptedSampleCount must be a non-negative integer",
+      422,
+    );
   }
   if (row.responseCount > row.attemptedSampleCount) {
     throw new WardenXError(

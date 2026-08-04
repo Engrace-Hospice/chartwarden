@@ -22,7 +22,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.created",
     moduleOwner: "m27",
-    description: "A new cost report was created for a (ProviderEntity, FYE); a compliance window was opened.",
+    description:
+      "A new cost report was created for a (ProviderEntity, FYE); a compliance window was opened.",
     payloadSchema: Type.Object({
       costReportId: id,
       providerEntityId: id,
@@ -37,7 +38,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.populating",
     moduleOwner: "m27",
-    description: "Seam-derived inputs first materialized (trial balance + statistics); the report entered populating.",
+    description:
+      "Seam-derived inputs first materialized (trial balance + statistics); the report entered populating.",
     payloadSchema: Type.Object({ costReportId: id }),
     declaredConsumers: ["m33"],
     isOutboxOnly: true,
@@ -46,14 +48,19 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m27.cost_report.validation_started",
     moduleOwner: "m27",
     description: "A validation run was enqueued against the current cost-report state.",
-    payloadSchema: Type.Object({ costReportId: id, validationId: id, ruleSetVersion: Type.Integer() }),
+    payloadSchema: Type.Object({
+      costReportId: id,
+      validationId: id,
+      ruleSetVersion: Type.Integer(),
+    }),
     declaredConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
     eventName: "m27.cost_report.validation_completed",
     moduleOwner: "m27",
-    description: "A validation run completed; the rolled-up counts + blocking-failure list are attached.",
+    description:
+      "A validation run completed; the rolled-up counts + blocking-failure list are attached.",
     payloadSchema: Type.Object({
       costReportId: id,
       validationId: id,
@@ -70,7 +77,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.validation_failed_to_run",
     moduleOwner: "m27",
-    description: "A validation run failed at the infrastructure layer (seam unbound / stale pull), distinct from rule failure.",
+    description:
+      "A validation run failed at the infrastructure layer (seam unbound / stale pull), distinct from rule failure.",
     payloadSchema: Type.Object({ costReportId: id, validationId: id, reason: id }),
     declaredConsumers: ["m33", "m36"],
     isOutboxOnly: true,
@@ -78,7 +86,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.ready_for_review",
     moduleOwner: "m27",
-    description: "Validation completed with no unresolved blocking failures; the report is ready for review.",
+    description:
+      "Validation completed with no unresolved blocking failures; the report is ready for review.",
     payloadSchema: Type.Object({ costReportId: id, validationId: id }),
     declaredConsumers: ["m33", "m36"],
     isOutboxOnly: true,
@@ -95,14 +104,19 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m27.cost_report.approved_for_submit",
     moduleOwner: "m27",
     description: "The one-way checkpoint: the report was approved for submission (step-up auth).",
-    payloadSchema: Type.Object({ costReportId: id, approvedByMembershipId: id, approvedAt: isoInstant }),
+    payloadSchema: Type.Object({
+      costReportId: id,
+      approvedByMembershipId: id,
+      approvedAt: isoInstant,
+    }),
     declaredConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m27.cost_report.submitted",
     moduleOwner: "m27",
-    description: "The report was submitted: a content-hashed snapshot was built and ECR + PI generation enqueued.",
+    description:
+      "The report was submitted: a content-hashed snapshot was built and ECR + PI generation enqueued.",
     payloadSchema: Type.Object({
       costReportId: id,
       snapshotId: id,
@@ -116,7 +130,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.accepted",
     moduleOwner: "m27",
-    description: "A MAC acknowledgment (acceptance number) was recorded; the settlement period begins.",
+    description:
+      "A MAC acknowledgment (acceptance number) was recorded; the settlement period begins.",
     payloadSchema: Type.Object({
       costReportId: id,
       submissionId: id,
@@ -129,7 +144,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.rejected",
     moduleOwner: "m27",
-    description: "A MAC rejection was recorded; the rejection code is matched against the rule library (auto-suggestion).",
+    description:
+      "A MAC rejection was recorded; the rejection code is matched against the rule library (auto-suggestion).",
     payloadSchema: Type.Object({
       costReportId: id,
       submissionId: id,
@@ -142,7 +158,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.reopened",
     moduleOwner: "m27",
-    description: "A submitted/accepted/rejected report was reopened (severity=warn); the prior snapshot is preserved.",
+    description:
+      "A submitted/accepted/rejected report was reopened (severity=warn); the prior snapshot is preserved.",
     payloadSchema: Type.Object({
       costReportId: id,
       priorSnapshotId: nullableId,
@@ -157,7 +174,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.cost_report.closed",
     moduleOwner: "m27",
-    description: "The report was closed on ProviderEntity offboarding; submission history is retained.",
+    description:
+      "The report was closed on ProviderEntity offboarding; submission history is retained.",
     payloadSchema: Type.Object({ costReportId: id, providerEntityId: id }),
     declaredConsumers: ["m33", "m34"],
     isOutboxOnly: true,
@@ -174,7 +192,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.trial_balance.pulled",
     moduleOwner: "m27",
-    description: "A trial-balance pull completed; account count + debit/credit totals + balanced flag attached.",
+    description:
+      "A trial-balance pull completed; account count + debit/credit totals + balanced flag attached.",
     payloadSchema: Type.Object({
       costReportId: id,
       importId: id,
@@ -189,15 +208,22 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.trial_balance.pull_failed",
     moduleOwner: "m27",
-    description: "A trial-balance pull failed (Xero 5xx / token-refresh / not connected); a reconnect prompt is raised.",
-    payloadSchema: Type.Object({ costReportId: id, source: id, failureReason: id, requiresReconnect: Type.Boolean() }),
+    description:
+      "A trial-balance pull failed (Xero 5xx / token-refresh / not connected); a reconnect prompt is raised.",
+    payloadSchema: Type.Object({
+      costReportId: id,
+      source: id,
+      failureReason: id,
+      requiresReconnect: Type.Boolean(),
+    }),
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m27.wage_data.pull_requested",
     moduleOwner: "m27",
-    description: "A Gusto wage-data pull was requested (worker pickup signal; only when wage_source=gusto).",
+    description:
+      "A Gusto wage-data pull was requested (worker pickup signal; only when wage_source=gusto).",
     payloadSchema: Type.Object({ costReportId: id }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -220,14 +246,19 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m27.wage_data.pull_failed",
     moduleOwner: "m27",
     description: "A wage-data pull failed; a reconnect prompt is raised.",
-    payloadSchema: Type.Object({ costReportId: id, failureReason: id, requiresReconnect: Type.Boolean() }),
+    payloadSchema: Type.Object({
+      costReportId: id,
+      failureReason: id,
+      requiresReconnect: Type.Boolean(),
+    }),
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m27.statistics.refresh_requested",
     moduleOwner: "m27",
-    description: "A statistics re-aggregation from M6/M8/M23 seams was requested (worker pickup signal).",
+    description:
+      "A statistics re-aggregation from M6/M8/M23 seams was requested (worker pickup signal).",
     payloadSchema: Type.Object({ costReportId: id }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -235,7 +266,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.statistics.refreshed",
     moduleOwner: "m27",
-    description: "Statistics re-aggregated; month count + totals + which seams were skipped (deny-stub) attached.",
+    description:
+      "Statistics re-aggregated; month count + totals + which seams were skipped (deny-stub) attached.",
     payloadSchema: Type.Object({
       costReportId: id,
       monthCount: Type.Integer(),
@@ -300,7 +332,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.allocation.recomputed",
     moduleOwner: "m27",
-    description: "The step-down + apportionment + settlement recompute completed for the derived worksheets.",
+    description:
+      "The step-down + apportionment + settlement recompute completed for the derived worksheets.",
     payloadSchema: Type.Object({
       costReportId: id,
       worksheetsRecomputed: Type.Array(id),
@@ -313,7 +346,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.validation.overridden",
     moduleOwner: "m27",
-    description: "A failing validation result was overridden with a reason (severity=warn for audit prominence).",
+    description:
+      "A failing validation result was overridden with a reason (severity=warn for audit prominence).",
     payloadSchema: Type.Object({
       costReportId: id,
       validationResultId: id,
@@ -327,7 +361,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.validation.rule_suggestion_created",
     moduleOwner: "m27",
-    description: "A MAC rejection not covered by any rule produced a draft platform-suggestion (anonymized).",
+    description:
+      "A MAC rejection not covered by any rule produced a draft platform-suggestion (anonymized).",
     payloadSchema: Type.Object({
       draftRuleId: id,
       sourceRejectionCode: id,
@@ -341,11 +376,16 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.artifact.render_requested",
     moduleOwner: "m27",
-    description: "An ECR / PI / supporting-doc artifact render+store was requested (M22 consumes at M22 lock).",
+    description:
+      "An ECR / PI / supporting-doc artifact render+store was requested (M22 consumes at M22 lock).",
     payloadSchema: Type.Object({
       costReportId: id,
       submissionId: id,
-      artifactKind: Type.Union([Type.Literal("ecr"), Type.Literal("pi"), Type.Literal("supporting_doc")]),
+      artifactKind: Type.Union([
+        Type.Literal("ecr"),
+        Type.Literal("pi"),
+        Type.Literal("supporting_doc"),
+      ]),
       payloadRef: id,
       retentionClass: Type.Literal("compliance"),
     }),
@@ -355,7 +395,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.artifact.stored_back_reference",
     moduleOwner: "m27",
-    description: "M22 stored an artifact and returned its document id; M27 records the back-reference (internal).",
+    description:
+      "M22 stored an artifact and returned its document id; M27 records the back-reference (internal).",
     payloadSchema: Type.Object({ submissionId: id, artifactKind: id, documentId: id }),
     declaredConsumers: [],
     isOutboxOnly: true,
@@ -363,16 +404,28 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m27.compliance_window.tier_emitted",
     moduleOwner: "m27",
-    description: "The filing-deadline scan crossed a tier threshold; the tiered alert is dispatched to M36.",
-    payloadSchema: Type.Object({ costReportId: id, tier: id, deadlineDate: isoInstant, daysToDeadline: Type.Integer() }),
+    description:
+      "The filing-deadline scan crossed a tier threshold; the tiered alert is dispatched to M36.",
+    payloadSchema: Type.Object({
+      costReportId: id,
+      tier: id,
+      deadlineDate: isoInstant,
+      daysToDeadline: Type.Integer(),
+    }),
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
     eventName: "m27.snapshot.integrity_failure",
     moduleOwner: "m27",
-    description: "A snapshot's stored content hash did not match its recomputed hash (severity=critical; system-status).",
-    payloadSchema: Type.Object({ costReportId: id, snapshotId: id, storedHash: id, computedHash: id }),
+    description:
+      "A snapshot's stored content hash did not match its recomputed hash (severity=critical; system-status).",
+    payloadSchema: Type.Object({
+      costReportId: id,
+      snapshotId: id,
+      storedHash: id,
+      computedHash: id,
+    }),
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },

@@ -1,3 +1,27 @@
+import {
+  // mortality machine + auto-creator
+  type DischargeDeathEvent,
+  // incident
+  INCIDENT_CORRECTIVE_ACTION_MIN_CHARS,
+  type IncidentEvent,
+  IncidentStateError,
+  MORTALITY_DEFAULT_COMPLETION_DAYS,
+  MortalityReviewStateError,
+  QAPI_PIP_SUSPEND_REASON_MIN_CHARS,
+  // qapi
+  QAPI_PROJECT_ABANDON_REASON_MIN_CHARS,
+  // sra
+  SRA_REOPEN_REASON_MIN_CHARS,
+  SRA_STEP_UP_GATED_EVENTS,
+  assertPipClosureCosign,
+  assertSraClosureCosign,
+  buildMortalityReviewFromDeath,
+  transitionIncident,
+  transitionMortalityReview,
+  transitionQapiPip,
+  transitionQapiProject,
+  transitionSraCycle,
+} from "@wardenx/quality";
 // @wardenx/quality — M30 §2.2 PURE lifecycle-reducer unit tests (§7.3 / §7.4 / §7.5 / §7.6 / §7.13 / §7.15).
 //
 // Proves the four pure state machines + the mortality auto-creator enforce their §2.2 graphs and guards:
@@ -12,30 +36,6 @@
 // test asserts an OBSERVABLE outcome (next state, effect list, or the precise WardenXError `code`/status),
 // never a tautology.
 import { WardenXError } from "@wardenx/types";
-import {
-  // incident
-  INCIDENT_CORRECTIVE_ACTION_MIN_CHARS,
-  type IncidentEvent,
-  IncidentStateError,
-  transitionIncident,
-  // mortality machine + auto-creator
-  type DischargeDeathEvent,
-  MORTALITY_DEFAULT_COMPLETION_DAYS,
-  MortalityReviewStateError,
-  buildMortalityReviewFromDeath,
-  transitionMortalityReview,
-  // qapi
-  QAPI_PROJECT_ABANDON_REASON_MIN_CHARS,
-  QAPI_PIP_SUSPEND_REASON_MIN_CHARS,
-  assertPipClosureCosign,
-  transitionQapiPip,
-  transitionQapiProject,
-  // sra
-  SRA_REOPEN_REASON_MIN_CHARS,
-  SRA_STEP_UP_GATED_EVENTS,
-  assertSraClosureCosign,
-  transitionSraCycle,
-} from "@wardenx/quality";
 import { describe, expect, it } from "vitest";
 
 /** Assert `fn` throws a WardenXError carrying the exact `code` (+ optional HTTP status). */
@@ -75,9 +75,9 @@ describe("incident lifecycle machine (§2.2 / §7.5)", () => {
         assignedToMembershipId: "m-owner",
       }).to,
     ).toBe("triaged");
-    expect(
-      transitionIncident("triaged", { type: "beginInvestigation", kind: "fall" }).to,
-    ).toBe("under_investigation");
+    expect(transitionIncident("triaged", { type: "beginInvestigation", kind: "fall" }).to).toBe(
+      "under_investigation",
+    );
     expect(
       transitionIncident("under_investigation", {
         type: "resolve",
@@ -194,7 +194,12 @@ describe("incident lifecycle machine (§2.2 / §7.5)", () => {
 
   it("triage requires an assignee (INCIDENT_TRIAGE_ASSIGNEE_REQUIRED, 422) and stamps triaged_at", () => {
     expectWardenError(
-      () => transitionIncident("submitted", { type: "triage", kind: "fall", assignedToMembershipId: null }),
+      () =>
+        transitionIncident("submitted", {
+          type: "triage",
+          kind: "fall",
+          assignedToMembershipId: null,
+        }),
       "INCIDENT_TRIAGE_ASSIGNEE_REQUIRED",
       422,
     );
@@ -260,9 +265,9 @@ describe("incident lifecycle machine (§2.2 / §7.5)", () => {
 
 describe("mortality_review lifecycle machine (§2.2 / §7.6)", () => {
   it("walks pending→in_progress→completed and emits the completed outbox event + completed_at", () => {
-    expect(transitionMortalityReview("pending", { type: "start", hasAssignedReviewer: true }).to).toBe(
-      "in_progress",
-    );
+    expect(
+      transitionMortalityReview("pending", { type: "start", hasAssignedReviewer: true }).to,
+    ).toBe("in_progress");
     const done = transitionMortalityReview("in_progress", {
       type: "complete",
       dimensionsComplete: true,
@@ -304,7 +309,8 @@ describe("mortality_review lifecycle machine (§2.2 / §7.6)", () => {
     );
     // W-M30-27: an external-source death blocks completion until the M6 cosign lands.
     expectWardenError(
-      () => transitionMortalityReview("in_progress", { ...base, externalSourceCosignSatisfied: false }),
+      () =>
+        transitionMortalityReview("in_progress", { ...base, externalSourceCosignSatisfied: false }),
       "EXTERNAL_SOURCE_COSIGN_PENDING",
       409,
     );
@@ -456,7 +462,11 @@ describe("QAPI project lifecycle machine (§2.2 / §7.3)", () => {
 
   it("enterCorrectiveAction requires an identified root cause (QAPI_PROJECT_ROOT_CAUSE_REQUIRED, 422)", () => {
     expectWardenError(
-      () => transitionQapiProject("active", { type: "enterCorrectiveAction", rootCauseIdentified: false }),
+      () =>
+        transitionQapiProject("active", {
+          type: "enterCorrectiveAction",
+          rootCauseIdentified: false,
+        }),
       "QAPI_PROJECT_ROOT_CAUSE_REQUIRED",
       422,
     );
@@ -465,13 +475,21 @@ describe("QAPI project lifecycle machine (§2.2 / §7.3)", () => {
   it("complete (V-10) requires a documented outcome that meets target", () => {
     expectWardenError(
       () =>
-        transitionQapiProject("active", { type: "complete", outcomeText: "   ", outcomeMeetsTarget: true }),
+        transitionQapiProject("active", {
+          type: "complete",
+          outcomeText: "   ",
+          outcomeMeetsTarget: true,
+        }),
       "QAPI_PROJECT_OUTCOME_REQUIRED",
       422,
     );
     expectWardenError(
       () =>
-        transitionQapiProject("active", { type: "complete", outcomeText: "missed", outcomeMeetsTarget: false }),
+        transitionQapiProject("active", {
+          type: "complete",
+          outcomeText: "missed",
+          outcomeMeetsTarget: false,
+        }),
       "QAPI_PROJECT_OUTCOME_NOT_MET",
       422,
     );
@@ -502,7 +520,10 @@ describe("QAPI PIP lifecycle machine + V-11 two-person co-sign (§2.2 / §7.3)",
   it("walks chartering→…→measurement→concluded with a valid two-person co-sign", () => {
     expect(transitionQapiPip("chartering", { type: "beginRca" })).toBe("root_cause_analysis");
     expect(
-      transitionQapiPip("root_cause_analysis", { type: "beginIntervention", rootCauseDocumented: true }),
+      transitionQapiPip("root_cause_analysis", {
+        type: "beginIntervention",
+        rootCauseDocumented: true,
+      }),
     ).toBe("intervention_in_progress");
     expect(transitionQapiPip("intervention_in_progress", { type: "beginMeasurement" })).toBe(
       "measurement",
@@ -532,7 +553,12 @@ describe("QAPI PIP lifecycle machine + V-11 two-person co-sign (§2.2 / §7.3)",
 
   it("conclude requires a non-empty conclusion narrative (QAPI_PIP_CONCLUSION_REQUIRED, 422)", () => {
     expectWardenError(
-      () => transitionQapiPip("measurement", { type: "conclude", conclusionText: "  ", cosign: goodCosign }),
+      () =>
+        transitionQapiPip("measurement", {
+          type: "conclude",
+          conclusionText: "  ",
+          cosign: goodCosign,
+        }),
       "QAPI_PIP_CONCLUSION_REQUIRED",
       422,
     );
@@ -637,7 +663,8 @@ describe("SRA cycle lifecycle machine (§2.2 / §7.4 / §7.15)", () => {
 
   it("W-M30-30: close requires a recent step-up auth (SRA_CLOSE_REQUIRES_RECENT_STEP_UP, 403)", () => {
     expectWardenError(
-      () => transitionSraCycle("review", { type: "close", cosign: goodCosign, recentStepUp: false }),
+      () =>
+        transitionSraCycle("review", { type: "close", cosign: goodCosign, recentStepUp: false }),
       "SRA_CLOSE_REQUIRES_RECENT_STEP_UP",
       403,
     );

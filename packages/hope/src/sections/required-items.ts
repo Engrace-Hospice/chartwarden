@@ -12,7 +12,23 @@ import { HOPE_RFA_KINDS, type HopeRfaKind } from "@wardenx/types";
 /** Every HOPE Section letter the engine recognises (the §2.1 A–Z section roster; L/P/R/S/T/U/V/W/Y are
  * not part of the CMS HOPE instrument and are intentionally absent). */
 export const HOPE_SECTION_LETTERS = [
-  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "M", "N", "O", "Q", "X", "Z",
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "M",
+  "N",
+  "O",
+  "Q",
+  "X",
+  "Z",
 ] as const;
 
 /** One HOPE Section letter (§2.1). */
@@ -20,7 +36,23 @@ export type HopeSectionLetter = (typeof HOPE_SECTION_LETTERS)[number];
 
 // The full comprehensive section set the comprehensive (Admission / HUV1 / HUV2) timepoints must carry.
 const COMPREHENSIVE_SECTIONS: readonly HopeSectionLetter[] = [
-  "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "M", "N", "O", "Q", "X", "Z",
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "M",
+  "N",
+  "O",
+  "Q",
+  "X",
+  "Z",
 ];
 
 /**
@@ -32,7 +64,9 @@ const COMPREHENSIVE_SECTIONS: readonly HopeSectionLetter[] = [
  *   - `05_discharge` — the discharge instrument carries A, I, J, X, Z; Section Q is conditional on the
  *     discharge reason (D9) and is enforced by the dedicated cross-field rule, NOT this flat list.
  */
-export const REQUIRED_SECTIONS_BY_RFA: { readonly [K in HopeRfaKind]: readonly HopeSectionLetter[] } = {
+export const REQUIRED_SECTIONS_BY_RFA: {
+  readonly [K in HopeRfaKind]: readonly HopeSectionLetter[];
+} = {
   "01_admission": COMPREHENSIVE_SECTIONS,
   "02_huv1": COMPREHENSIVE_SECTIONS,
   "03_huv2": COMPREHENSIVE_SECTIONS,

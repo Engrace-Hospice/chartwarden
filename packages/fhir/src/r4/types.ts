@@ -141,7 +141,16 @@ export interface Patient extends FhirResourceBase {
 export interface Encounter extends FhirResourceBase {
   resourceType: "Encounter";
   identifier?: FhirIdentifier[];
-  status: "planned" | "arrived" | "triaged" | "in-progress" | "onleave" | "finished" | "cancelled" | "entered-in-error" | "unknown";
+  status:
+    | "planned"
+    | "arrived"
+    | "triaged"
+    | "in-progress"
+    | "onleave"
+    | "finished"
+    | "cancelled"
+    | "entered-in-error"
+    | "unknown";
   class: FhirCoding;
   type?: FhirCodeableConcept[];
   subject: FhirReference;
@@ -165,7 +174,16 @@ export interface Condition extends FhirResourceBase {
 /** `Goal` — us-core-goal (M7 care-plan goals). */
 export interface Goal extends FhirResourceBase {
   resourceType: "Goal";
-  lifecycleStatus: "proposed" | "planned" | "accepted" | "active" | "on-hold" | "completed" | "cancelled" | "entered-in-error" | "rejected";
+  lifecycleStatus:
+    | "proposed"
+    | "planned"
+    | "accepted"
+    | "active"
+    | "on-hold"
+    | "completed"
+    | "cancelled"
+    | "entered-in-error"
+    | "rejected";
   achievementStatus?: FhirCodeableConcept;
   description: FhirCodeableConcept;
   subject: FhirReference;
@@ -197,8 +215,24 @@ export interface FhirDosage {
 /** `MedicationRequest` — us-core-medicationrequest (M12). */
 export interface MedicationRequest extends FhirResourceBase {
   resourceType: "MedicationRequest";
-  status: "active" | "on-hold" | "cancelled" | "completed" | "entered-in-error" | "stopped" | "draft" | "unknown";
-  intent: "proposal" | "plan" | "order" | "original-order" | "reflex-order" | "filler-order" | "instance-order" | "option";
+  status:
+    | "active"
+    | "on-hold"
+    | "cancelled"
+    | "completed"
+    | "entered-in-error"
+    | "stopped"
+    | "draft"
+    | "unknown";
+  intent:
+    | "proposal"
+    | "plan"
+    | "order"
+    | "original-order"
+    | "reflex-order"
+    | "filler-order"
+    | "instance-order"
+    | "option";
   medicationCodeableConcept?: FhirCodeableConcept;
   medicationReference?: FhirReference;
   subject: FhirReference;
@@ -211,7 +245,15 @@ export interface MedicationRequest extends FhirResourceBase {
 /** `MedicationStatement` — the patient-reported / reconciled medication history (M12). */
 export interface MedicationStatement extends FhirResourceBase {
   resourceType: "MedicationStatement";
-  status: "active" | "completed" | "entered-in-error" | "intended" | "stopped" | "on-hold" | "unknown" | "not-taken";
+  status:
+    | "active"
+    | "completed"
+    | "entered-in-error"
+    | "intended"
+    | "stopped"
+    | "on-hold"
+    | "unknown"
+    | "not-taken";
   medicationCodeableConcept?: FhirCodeableConcept;
   medicationReference?: FhirReference;
   subject: FhirReference;
@@ -224,7 +266,15 @@ export interface MedicationStatement extends FhirResourceBase {
 /** `Observation` — us-core-observation (a per-value lab result, §4.11). */
 export interface Observation extends FhirResourceBase {
   resourceType: "Observation";
-  status: "registered" | "preliminary" | "final" | "amended" | "corrected" | "cancelled" | "entered-in-error" | "unknown";
+  status:
+    | "registered"
+    | "preliminary"
+    | "final"
+    | "amended"
+    | "corrected"
+    | "cancelled"
+    | "entered-in-error"
+    | "unknown";
   category?: FhirCodeableConcept[];
   code: FhirCodeableConcept;
   subject?: FhirReference;
@@ -240,7 +290,17 @@ export interface Observation extends FhirResourceBase {
 /** `DiagnosticReport` — us-core-diagnosticreport-lab (§4.11, composed from M11 + M29 + M40). */
 export interface DiagnosticReport extends FhirResourceBase {
   resourceType: "DiagnosticReport";
-  status: "registered" | "partial" | "preliminary" | "final" | "amended" | "corrected" | "appended" | "cancelled" | "entered-in-error" | "unknown";
+  status:
+    | "registered"
+    | "partial"
+    | "preliminary"
+    | "final"
+    | "amended"
+    | "corrected"
+    | "appended"
+    | "cancelled"
+    | "entered-in-error"
+    | "unknown";
   category?: FhirCodeableConcept[];
   code: FhirCodeableConcept;
   subject: FhirReference;

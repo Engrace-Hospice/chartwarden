@@ -95,7 +95,11 @@ export interface MeasureValueSnapshotView {
     readonly thresholdConstants: Readonly<Record<string, unknown>>;
   };
   readonly intermediates: Readonly<Record<string, unknown>> | null;
-  readonly output: { readonly numerator: number; readonly denominator: number; readonly rate: number | null };
+  readonly output: {
+    readonly numerator: number;
+    readonly denominator: number;
+    readonly rate: number | null;
+  };
 }
 
 /** A pending recompute job in the `m30.measure_recompute` queue (R-05). */
@@ -172,7 +176,10 @@ export interface QapiProgramView {
   readonly organizationId: string;
   readonly planYear: number;
   readonly charterAdoptedAt: string;
-  readonly governanceComposition: readonly { readonly role: string; readonly membershipId: string }[];
+  readonly governanceComposition: readonly {
+    readonly role: string;
+    readonly membershipId: string;
+  }[];
   readonly status: "active" | "superseded";
 }
 
@@ -208,7 +215,13 @@ export interface QapiPipView {
   readonly pipId: string;
   readonly organizationId: string;
   readonly projectId: string;
-  readonly phase: "chartering" | "root_cause_analysis" | "intervention_in_progress" | "measurement" | "concluded" | "suspended";
+  readonly phase:
+    | "chartering"
+    | "root_cause_analysis"
+    | "intervention_in_progress"
+    | "measurement"
+    | "concluded"
+    | "suspended";
   readonly charterText: string;
   readonly charteredByMembershipId: string;
   readonly outcome: string | null;
@@ -267,7 +280,11 @@ export interface SraRemediationView {
 
 /** SRA cycle detail — progress + findings + remediations (R-42). */
 export interface SraCycleDetailView extends SraCycleView {
-  readonly progress: { readonly findingsCount: number; readonly openFindingsCount: number; readonly remediationsCount: number };
+  readonly progress: {
+    readonly findingsCount: number;
+    readonly openFindingsCount: number;
+    readonly remediationsCount: number;
+  };
   readonly findings: readonly SraFindingView[];
   readonly remediations: readonly SraRemediationView[];
 }

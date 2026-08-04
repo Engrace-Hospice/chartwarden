@@ -41,7 +41,9 @@ export const siaCalculationCorrect: Rule = {
       defects.push("SIA present but claims zero qualifying visits");
     }
     if (sia.qualifyingVisitCount > backingVisits) {
-      defects.push(`SIA claims ${sia.qualifyingVisitCount} visit(s) but only ${backingVisits} signed RN/MSW visit(s) back it`);
+      defects.push(
+        `SIA claims ${sia.qualifyingVisitCount} visit(s) but only ${backingVisits} signed RN/MSW visit(s) back it`,
+      );
     }
 
     // TODO(CMS-fixture): the per-15-minute SIA payment amount (RHC per-diem hourly rate × qualifying
@@ -49,7 +51,11 @@ export const siaCalculationCorrect: Rule = {
     // we do not yet hold; this rule verifies the qualifying-visit + non-double-count invariants only.
 
     if (defects.length === 0) {
-      return pass(KEY, "error", `SIA reflects ${sia.qualifyingVisitCount} qualifying visit(s), not double-counted.`);
+      return pass(
+        KEY,
+        "error",
+        `SIA reflects ${sia.qualifyingVisitCount} qualifying visit(s), not double-counted.`,
+      );
     }
     return fail(
       KEY,

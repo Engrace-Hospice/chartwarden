@@ -11,7 +11,7 @@ import { registerAdminClientRoutes } from "./admin-clients.routes";
 import { registerAdminConfigRoutes } from "./admin-config.routes";
 import { registerAdminExportRoutes } from "./admin-export.routes";
 import { registerAdminInboundRoutes } from "./admin-inbound.routes";
-import { registerFhirR4Routes, type FhirDisclosureAuditPort } from "./fhir-r4.routes";
+import { type FhirDisclosureAuditPort, registerFhirR4Routes } from "./fhir-r4.routes";
 import type { FhirGatewayStore } from "./store";
 
 export { registerAdminClientRoutes, type AdminClientsRouteDeps } from "./admin-clients.routes";

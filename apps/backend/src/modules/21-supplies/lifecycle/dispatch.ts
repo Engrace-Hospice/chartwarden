@@ -26,6 +26,7 @@ import {
   missingFloorMedications,
 } from "@wardenx/supplies";
 import type {
+  ComfortKitDispatchSource,
   ComfortKitDispatchStatus,
   ComfortKitTemplateMedicationId,
   ControlledSubstanceSchedule,
@@ -33,7 +34,6 @@ import type {
   LocalDate,
   MembershipId,
   PharmacyDispatchMode,
-  ComfortKitDispatchSource,
 } from "@wardenx/types";
 import { type SupplySideEffect, type SupplyTransitionResult, result, withAudit } from "./effects";
 import { SupplyStateError, require_ } from "./errors";
@@ -313,7 +313,12 @@ export function transitionComfortKitDispatch(
       const to: ComfortKitDispatchStatus = event.discrepancyDetected
         ? "reconciled_with_discrepancy"
         : "reconciled";
-      return result(status, event.type, to, withAudit([{ kind: "set_dispatch_status", status: to }]));
+      return result(
+        status,
+        event.type,
+        to,
+        withAudit([{ kind: "set_dispatch_status", status: to }]),
+      );
     }
   }
 }

@@ -20,7 +20,11 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { type EvvWriteOutboxPort, M18_OUTBOX_EVENTS, createDbEvvBackend } from "../src/modules/18-evv/index";
+import {
+  type EvvWriteOutboxPort,
+  M18_OUTBOX_EVENTS,
+  createDbEvvBackend,
+} from "../src/modules/18-evv/index";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -49,7 +53,9 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   }
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -113,7 +119,9 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     let n = 0;
     for (const org of [ORG_A, ORG_B]) {
       const user = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m18w-${n++}@x.test`])
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m18w-${n++}@x.test`,
+        ])
       ).rows[0].id as string;
       const member = (
         await admin.query(
@@ -125,7 +133,12 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
         await admin.query(
           `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
            VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
-          [org, `CCN-M18W-${org.slice(0, 4)}`, `M18W ${org.slice(0, 4)}`, `NPI-M18W-${org.slice(0, 4)}`],
+          [
+            org,
+            `CCN-M18W-${org.slice(0, 4)}`,
+            `M18W ${org.slice(0, 4)}`,
+            `NPI-M18W-${org.slice(0, 4)}`,
+          ],
         )
       ).rows[0].id as string;
       const location = (
@@ -153,7 +166,9 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       seeded[org] = { pe, location, member, device };
     }
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M18_OUTBOX_EVENTS]));
     const outbox: EvvWriteOutboxPort = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m18" }),
@@ -168,7 +183,10 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
 
   it("device self-register → approve; emits device_pending_approval + device_approved", async () => {
     const { member } = seeded[ORG_A];
-    const dev = await svc.selfRegisterDevice(ORG_A, member, { platform: "android", modelDescription: "Pixel 8" });
+    const dev = await svc.selfRegisterDevice(ORG_A, member, {
+      platform: "android",
+      modelDescription: "Pixel 8",
+    });
     expect(dev.status).toBe("pending_approval");
     expect(await eventsFor(dev.id)).toContain("m18.evv.device_pending_approval");
     const approved = await svc.approveDevice(ORG_A, dev.id);
@@ -294,7 +312,9 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
   it("editTenantPolicy tightens (allowed) and refuses to loosen beyond the floor; per-address override persists", async () => {
     const tightened = await svc.editTenantPolicy(ORG_A, { radiusM: 80, maxAccuracyM: 30 });
     expect(tightened.tenant).toEqual({ radiusM: 80, maxAccuracyM: 30 });
-    await expect(svc.editTenantPolicy(ORG_A, { radiusM: 250, maxAccuracyM: 30 })).rejects.toMatchObject({
+    await expect(
+      svc.editTenantPolicy(ORG_A, { radiusM: 250, maxAccuracyM: 30 }),
+    ).rejects.toMatchObject({
       statusCode: 422,
     });
     const withOverride = await svc.createPerAddressOverride(ORG_A, {
@@ -302,7 +322,11 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
       radiusM: 60,
       maxAccuracyM: 20,
     });
-    expect(withOverride.perAddress.some((p) => p.patientAddressId === "77777777-7777-7777-7777-777777777777")).toBe(true);
+    expect(
+      withOverride.perAddress.some(
+        (p) => p.patientAddressId === "77777777-7777-7777-7777-777777777777",
+      ),
+    ).toBe(true);
   });
 
   it("RLS: org B cannot capture against org A's visit (visit invisible → 404)", async () => {

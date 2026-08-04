@@ -41,11 +41,11 @@ import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
+  type DisciplinePlanAbacResolver,
   M15_PERMISSION_KEY_LIST,
+  type VolunteerGateFacts,
   buildDisciplinePlanAbacPredicates,
   mountM15Routes,
-  type DisciplinePlanAbacResolver,
-  type VolunteerGateFacts,
 } from "../src/modules/15-discipline-care-plans/index";
 import { toCursorPage } from "../src/modules/15-discipline-care-plans/routes/index";
 import type {
@@ -64,7 +64,10 @@ import type {
   VolunteerComplianceGateView,
   VolunteerEffectiveStatusView,
 } from "../src/modules/15-discipline-care-plans/routes/read-service";
-import type { M15WriteService, VolunteerHourEntryView } from "../src/modules/15-discipline-care-plans/routes/write-service";
+import type {
+  M15WriteService,
+  VolunteerHourEntryView,
+} from "../src/modules/15-discipline-care-plans/routes/write-service";
 
 // ── the header-auth shim (the M7/M11 precedent), extended with the extra `request.context.attributes`
 // M15's route/actor layer reads: `membershipId` (write attribution + `aide_supervisor_eligible`),
@@ -338,11 +341,17 @@ function createM15Backend(): {
     return {
       ...row,
       goals: [...goals.values()].filter((g) => g.planId === row.planId).map(stripPlan),
-      interventions: [...interventions.values()].filter((i) => i.planId === row.planId).map(stripPlan),
+      interventions: [...interventions.values()]
+        .filter((i) => i.planId === row.planId)
+        .map(stripPlan),
       assessments: [...assessments.values()].filter((a) => a.planId === row.planId).map(stripPlan),
       supervisoryVisits: [...visits.values()].filter((v) => v.planId === row.planId).map(stripPlan),
-      volunteerAssignments: [...assignments.values()].filter((a) => a.planId === row.planId).map(stripPlan),
-      versions: [...versions.values()].filter((v) => v.planId === row.planId).map(toVersionListItem),
+      volunteerAssignments: [...assignments.values()]
+        .filter((a) => a.planId === row.planId)
+        .map(stripPlan),
+      versions: [...versions.values()]
+        .filter((v) => v.planId === row.planId)
+        .map(toVersionListItem),
       supervisoryCadence: null,
       redacted_categories: [],
     };
@@ -366,7 +375,12 @@ function createM15Backend(): {
         status: row.status,
         goals: [...goals.values()]
           .filter((g) => g.planId === planId)
-          .map((g) => ({ goalId: g.goalId, text: g.originalText, status: g.status, targetAt: g.targetAt })),
+          .map((g) => ({
+            goalId: g.goalId,
+            text: g.originalText,
+            status: g.status,
+            targetAt: g.targetAt,
+          })),
         interventions: [...interventions.values()]
           .filter((i) => i.planId === planId)
           .map((i) => ({
@@ -395,10 +409,19 @@ function createM15Backend(): {
     },
     async listVolunteerGates() {
       const rows = [...gates.values()];
-      return toCursorPage(rows, 25, (r) => ({ a: r.validFrom, id: r.gateId }), (r) => r);
+      return toCursorPage(
+        rows,
+        25,
+        (r) => ({ a: r.validFrom, id: r.gateId }),
+        (r) => r,
+      );
     },
     async getVolunteerHourRatio(_actor, query) {
-      return { providerEntityId: query.providerEntityId, fiscalYear: query.fiscalYear, status: "unavailable" };
+      return {
+        providerEntityId: query.providerEntityId,
+        fiscalYear: query.fiscalYear,
+        status: "unavailable",
+      };
     },
     async listRelevantElements() {
       const row = plans.get(PLAN);
@@ -408,14 +431,24 @@ function createM15Backend(): {
         kind: row.kind,
         status: row.status,
         goals: [...goals.values()].filter((g) => g.planId === row.planId).map(stripPlan),
-        interventions: [...interventions.values()].filter((i) => i.planId === row.planId).map(stripPlan),
+        interventions: [...interventions.values()]
+          .filter((i) => i.planId === row.planId)
+          .map(stripPlan),
       };
-      return toCursorPage([view], 50, () => ({ a: "0", id: row.planId }), (r) => r);
+      return toCursorPage(
+        [view],
+        50,
+        () => ({ a: "0", id: row.planId }),
+        (r) => r,
+      );
     },
     async listMswRiskFactors() {
       return { data: [], next_cursor: null, has_more: false };
     },
-    async getVolunteerEffectiveStatus(_actor, volunteerMembershipId): Promise<VolunteerEffectiveStatusView> {
+    async getVolunteerEffectiveStatus(
+      _actor,
+      volunteerMembershipId,
+    ): Promise<VolunteerEffectiveStatusView> {
       return { volunteerMembershipId, isActive: true, failingGates: [] };
     },
     async listSupervisoryCadence() {
@@ -435,7 +468,12 @@ function createM15Backend(): {
         hoursOverdue: 0,
         gateEngaged: false,
       };
-      return toCursorPage([cadenceRow], 50, () => ({ a: "0", id: row.planId }), (r) => r);
+      return toCursorPage(
+        [cadenceRow],
+        50,
+        () => ({ a: "0", id: row.planId }),
+        (r) => r,
+      );
     },
   };
 
@@ -661,7 +699,9 @@ function createM15Backend(): {
         ...row,
         activities: input.activities ?? row.activities,
         endsAt: input.endsAt !== undefined ? input.endsAt : row.endsAt,
-        coordinatorAcknowledgedAt: input.coordinatorAcknowledged ? NOW : row.coordinatorAcknowledgedAt,
+        coordinatorAcknowledgedAt: input.coordinatorAcknowledged
+          ? NOW
+          : row.coordinatorAcknowledgedAt,
         inactivatedAt: input.inactivate ? NOW : row.inactivatedAt,
         inactivationReason: input.inactivate ? input.inactivate.reason : row.inactivationReason,
         version: row.version + 1,
@@ -692,7 +732,8 @@ function createM15Backend(): {
       const updated: GateRow = {
         ...row,
         validUntil: input.validUntil !== undefined ? input.validUntil : row.validUntil,
-        sourceDocumentId: input.sourceDocumentId !== undefined ? input.sourceDocumentId : row.sourceDocumentId,
+        sourceDocumentId:
+          input.sourceDocumentId !== undefined ? input.sourceDocumentId : row.sourceDocumentId,
         version: row.version + 1,
       };
       gates.set(gateId, updated);
@@ -774,8 +815,23 @@ function makeServer() {
   const backend = createM15Backend();
 
   const grantStore = createInMemoryEffectivePermissionStore([
-    { orgId: ORG, userId: "super_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [...M15_PERMISSION_KEY_LIST] }] },
-    { orgId: ORG, userId: "none_1", grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }] },
+    {
+      orgId: ORG,
+      userId: "super_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M15_PERMISSION_KEY_LIST],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
+      userId: "none_1",
+      grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -783,7 +839,9 @@ function makeServer() {
   // built over THIS backend's resolver, plus a permissive `step_up_recent` stub so the sign/amend routes'
   // `requireStepUp` gate has a real PASSING path in this file (see the file banner).
   const reg = createPredicateRegistry();
-  for (const [name, predicate] of Object.entries(buildDisciplinePlanAbacPredicates({ resolver: backend.abacResolver }))) {
+  for (const [name, predicate] of Object.entries(
+    buildDisciplinePlanAbacPredicates({ resolver: backend.abacResolver }),
+  )) {
     reg.register(name, predicate);
   }
   reg.register("step_up_recent", async () => true);
@@ -853,11 +911,41 @@ const IFM = { "if-match": "1" };
 
 const ROUTE_CASES: readonly RouteCase[] = [
   // 1–5 — plan / version reads.
-  { label: "1 GET /discipline-plans", method: "GET", url: "/api/v1/discipline-plans", headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "2 GET /discipline-plans/:planId", method: "GET", url: `/api/v1/discipline-plans/${PLAN}`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "3 GET /discipline-plans/:planId/summary", method: "GET", url: `/api/v1/discipline-plans/${PLAN}/summary`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "4 GET /discipline-plans/:planId/versions", method: "GET", url: `/api/v1/discipline-plans/${PLAN}/versions`, headers: SUPER_HEADERS, expectStatus: 200 },
-  { label: "5 GET /discipline-plans/:planId/versions/:versionId", method: "GET", url: `/api/v1/discipline-plans/${PLAN}/versions/${VERSION}`, headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "1 GET /discipline-plans",
+    method: "GET",
+    url: "/api/v1/discipline-plans",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "2 GET /discipline-plans/:planId",
+    method: "GET",
+    url: `/api/v1/discipline-plans/${PLAN}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "3 GET /discipline-plans/:planId/summary",
+    method: "GET",
+    url: `/api/v1/discipline-plans/${PLAN}/summary`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "4 GET /discipline-plans/:planId/versions",
+    method: "GET",
+    url: `/api/v1/discipline-plans/${PLAN}/versions`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "5 GET /discipline-plans/:planId/versions/:versionId",
+    method: "GET",
+    url: `/api/v1/discipline-plans/${PLAN}/versions/${VERSION}`,
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
 
   // 6–7 — the version finalize / sign ladder.
   {
@@ -873,7 +961,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/discipline-plans/${PLAN}/versions/${VERSION}/sign`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k7"), ...IFM },
-    payload: { signerRole: "rn_case_manager", attestationText: "I attest this plan version as accurate." },
+    payload: {
+      signerRole: "rn_case_manager",
+      attestationText: "I attest this plan version as accurate.",
+    },
     expectStatus: 200,
   },
 
@@ -944,7 +1035,10 @@ const ROUTE_CASES: readonly RouteCase[] = [
     method: "POST",
     url: `/api/v1/discipline-plans/${PLAN}/assessments/${ASSESSMENT_SIGNED}/amend`,
     headers: { ...SUPER_HEADERS, ...IDEMP("k14"), ...IFM },
-    payload: { amendmentReason: "Corrected the psychosocial risk coding", data: { note: "corrected" } },
+    payload: {
+      amendmentReason: "Corrected the psychosocial risk coding",
+      data: { note: "corrected" },
+    },
     expectStatus: 201,
   },
 
@@ -962,7 +1056,8 @@ const ROUTE_CASES: readonly RouteCase[] = [
       attestationMode: "aide_present",
       aidePerformanceSatisfactory: true,
       correctiveActions: null,
-      supervisoryNarrative: "Observed the aide performing personal care tasks satisfactorily today.",
+      supervisoryNarrative:
+        "Observed the aide performing personal care tasks satisfactorily today.",
     },
     expectStatus: 201,
   },
@@ -987,7 +1082,8 @@ const ROUTE_CASES: readonly RouteCase[] = [
       startsAt: NOW,
       // §8.6 documented override — skips the `volunteer_compliance_active` gate (see guards.ts); this
       // file does not separately seed a fully 418.78-compliant gate set to reach the non-override path.
-      overrideReason: "No 418.78 gate rows seeded in this smoke test; documented override per §8.6.",
+      overrideReason:
+        "No 418.78 gate rows seeded in this smoke test; documented override per §8.6.",
     },
     expectStatus: 201,
   },
@@ -1001,13 +1097,24 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 19–22 — the 418.78 compliance-gate worklist.
-  { label: "19 GET /volunteer-compliance-gates", method: "GET", url: "/api/v1/volunteer-compliance-gates", headers: SUPER_HEADERS, expectStatus: 200 },
+  {
+    label: "19 GET /volunteer-compliance-gates",
+    method: "GET",
+    url: "/api/v1/volunteer-compliance-gates",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "20 POST /volunteer-compliance-gates",
     method: "POST",
     url: "/api/v1/volunteer-compliance-gates",
     headers: { ...SUPER_HEADERS, ...IDEMP("k20") },
-    payload: { volunteerMembershipId: VOLUNTEER, gateKind: "background_check", validFrom: NOW, validUntil: null },
+    payload: {
+      volunteerMembershipId: VOLUNTEER,
+      gateKind: "background_check",
+      validFrom: NOW,
+      validUntil: null,
+    },
     expectStatus: 201,
   },
   {
@@ -1052,7 +1159,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
   },
 
   // 25–28 — the `/internal/...` system-principal seam surface.
-  { label: "25 GET /internal/.../relevant-elements", method: "GET", url: "/internal/discipline-plans/relevant-elements", headers: SYSTEM_HEADERS, expectStatus: 200 },
+  {
+    label: "25 GET /internal/.../relevant-elements",
+    method: "GET",
+    url: "/internal/discipline-plans/relevant-elements",
+    headers: SYSTEM_HEADERS,
+    expectStatus: 200,
+  },
   {
     label: "26 GET /internal/.../msw-risk-factors",
     method: "GET",
@@ -1067,13 +1180,24 @@ const ROUTE_CASES: readonly RouteCase[] = [
     headers: SYSTEM_HEADERS,
     expectStatus: 200,
   },
-  { label: "28 GET /internal/.../supervisory-cadence", method: "GET", url: "/internal/discipline-plans/supervisory-cadence", headers: SYSTEM_HEADERS, expectStatus: 200 },
+  {
+    label: "28 GET /internal/.../supervisory-cadence",
+    method: "GET",
+    url: "/internal/discipline-plans/supervisory-cadence",
+    headers: SYSTEM_HEADERS,
+    expectStatus: 200,
+  },
 ];
 
 describe.each(ROUTE_CASES)("M15 route smoke — $label", (c) => {
   it(`reaches its handler and returns ${c.expectStatus}`, async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: c.method, url: c.url, headers: c.headers, payload: c.payload });
+    const res = await app.inject({
+      method: c.method,
+      url: c.url,
+      headers: c.headers,
+      payload: c.payload,
+    });
     expect(res.statusCode).toBe(c.expectStatus);
     await app.close();
   });

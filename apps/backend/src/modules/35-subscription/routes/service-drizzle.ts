@@ -15,7 +15,12 @@
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { ConflictError, NotFoundError, type OrganizationReader, WardenXError } from "@wardenx/types";
+import {
+  ConflictError,
+  NotFoundError,
+  type OrganizationReader,
+  WardenXError,
+} from "@wardenx/types";
 import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
@@ -106,7 +111,8 @@ export interface M35RouteServiceDeps {
 
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
-const dateOnly = (d: Date | null | undefined): string | null => (d ? d.toISOString().slice(0, 10) : null);
+const dateOnly = (d: Date | null | undefined): string | null =>
+  d ? d.toISOString().slice(0, 10) : null;
 
 // ── row → view mappers ──────────────────────────────────────────────────────────────────────────────────
 
@@ -171,7 +177,8 @@ function meterView(m: MeterRow | undefined): MeterAdminView {
 
 /** Narrow a `.returning()` / point-read result, or fail (a write must return exactly one row). */
 function req<T>(row: T | undefined, what = "row"): T {
-  if (row === undefined) throw new WardenXError("PERSIST_FAILED", `expected a ${what} but got none`, 500);
+  if (row === undefined)
+    throw new WardenXError("PERSIST_FAILED", `expected a ${what} but got none`, 500);
   return row;
 }
 
@@ -322,7 +329,9 @@ function pageOf<T extends { readonly id: string }>(
   let start = 0;
   if (cursor) {
     const key = decodeCursor(cursor);
-    start = rows.findIndex((r) => keyOf(r) < key.createdAt || (keyOf(r) === key.createdAt && r.id < key.id));
+    start = rows.findIndex(
+      (r) => keyOf(r) < key.createdAt || (keyOf(r) === key.createdAt && r.id < key.id),
+    );
     if (start === -1) start = rows.length;
   }
   const slice = rows.slice(start, start + size);
@@ -361,7 +370,10 @@ export function buildDrizzleM35RouteService(
   const PMTR = schema.planMeter;
 
   const ctxRead = (a: M35ReadActor) => ({ organizationId: a.organizationId, userId: a.userId });
-  const ctxWrite = (a: M35WriteActor) => ({ organizationId: a.organizationId, userId: a.membershipId });
+  const ctxWrite = (a: M35WriteActor) => ({
+    organizationId: a.organizationId,
+    userId: a.membershipId,
+  });
 
   const emit = async (
     tx: unknown,
@@ -372,12 +384,21 @@ export function buildDrizzleM35RouteService(
     aggregateId: string,
   ): Promise<void> => {
     if (deps.outbox) {
-      await deps.outbox.publish(tx, { eventName, payload, organizationId, aggregateKind, aggregateId });
+      await deps.outbox.publish(tx, {
+        eventName,
+        payload,
+        organizationId,
+        aggregateKind,
+        aggregateId,
+      });
     }
   };
 
   /** Read the OPEN dunning stage for a subscription (`exited_at IS NULL`), defaulting to `none`. */
-  async function openDunningStage(tx: WriteTx, subscriptionId: string): Promise<SubscriptionView["dunningStage"]> {
+  async function openDunningStage(
+    tx: WriteTx,
+    subscriptionId: string,
+  ): Promise<SubscriptionView["dunningStage"]> {
     const [row] = await tx
       .select({ stage: DUN.stage })
       .from(DUN)
@@ -417,7 +438,11 @@ export function buildDrizzleM35RouteService(
   return {
     // ── tenant reads ────────────────────────────────────────────────────────────────────────────────
     async listActivePlans() {
-      const plans = await db.select().from(PL).where(eq(PL.isActive, true)).orderBy(PL.basePriceCents);
+      const plans = await db
+        .select()
+        .from(PL)
+        .where(eq(PL.isActive, true))
+        .orderBy(PL.basePriceCents);
       const out: PlanCatalogView[] = [];
       for (const plan of plans) {
         const meters = await db.select().from(PMTR).where(eq(PMTR.planId, plan.id));
@@ -460,7 +485,11 @@ export function buildDrizzleM35RouteService(
           .where(eq(INV.organizationId, actor.organizationId))
           .orderBy(desc(INV.lastSyncedAt), desc(INV.id));
         const page = pageOf(rows, (r) => isoReq(r.lastSyncedAt), cursor, limit);
-        return { items: page.items.map(invoiceListItemView), nextCursor: page.nextCursor, hasMore: page.hasMore };
+        return {
+          items: page.items.map(invoiceListItemView),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
       });
     },
 
@@ -541,7 +570,11 @@ export function buildDrizzleM35RouteService(
             const inclusive = m.inclusiveQuantity;
             const overage = Math.max(0, total - inclusive);
             const threshold =
-              total >= inclusive ? "breached" : total >= Math.floor(inclusive * 0.8) ? "warning" : "ok";
+              total >= inclusive
+                ? "breached"
+                : total >= Math.floor(inclusive * 0.8)
+                  ? "warning"
+                  : "ok";
             return {
               eventType: m.eventType,
               label: m.eventType,
@@ -633,7 +666,9 @@ export function buildDrizzleM35RouteService(
         const at = now();
         const status = plan.trialPeriodDays > 0 ? "trialing" : "active";
         const trialEndsAt =
-          plan.trialPeriodDays > 0 ? new Date(at.getTime() + plan.trialPeriodDays * 86400000) : null;
+          plan.trialPeriodDays > 0
+            ? new Date(at.getTime() + plan.trialPeriodDays * 86400000)
+            : null;
         const [sub] = await tx
           .insert(S)
           .values({
@@ -658,7 +693,12 @@ export function buildDrizzleM35RouteService(
         await emit(
           tx,
           "m35.subscription.created",
-          { subscriptionId: sub.id, organizationId: actor.organizationId, planSlug: plan.slug, startedAt: isoReq(at) },
+          {
+            subscriptionId: sub.id,
+            organizationId: actor.organizationId,
+            planSlug: plan.slug,
+            startedAt: isoReq(at),
+          },
           actor.organizationId,
           "subscription",
           sub.id,
@@ -713,7 +753,12 @@ export function buildDrizzleM35RouteService(
           sub.id,
         );
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionView({ ...sub, planId: toPlan.id }, toPlan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionView(
+          { ...sub, planId: toPlan.id },
+          toPlan,
+          pm,
+          await openDunningStage(tx, sub.id),
+        );
       });
     },
 
@@ -727,7 +772,10 @@ export function buildDrizzleM35RouteService(
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         const at = now();
-        await tx.update(S).set({ cancelAtPeriodEnd: true, canceledAt: at, updatedAt: at }).where(eq(S.id, sub.id));
+        await tx
+          .update(S)
+          .set({ cancelAtPeriodEnd: true, canceledAt: at, updatedAt: at })
+          .where(eq(S.id, sub.id));
         await emit(
           tx,
           "m35.subscription.canceled",
@@ -744,7 +792,12 @@ export function buildDrizzleM35RouteService(
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionView({ ...sub, cancelAtPeriodEnd: true, canceledAt: at }, plan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionView(
+          { ...sub, cancelAtPeriodEnd: true, canceledAt: at },
+          plan,
+          pm,
+          await openDunningStage(tx, sub.id),
+        );
       });
     },
 
@@ -761,7 +814,13 @@ export function buildDrizzleM35RouteService(
         const toStatus = sub.status === "paused" ? "active" : sub.status;
         await tx
           .update(S)
-          .set({ status: toStatus, cancelAtPeriodEnd: false, pausedAt: null, pausedUntil: null, updatedAt: at })
+          .set({
+            status: toStatus,
+            cancelAtPeriodEnd: false,
+            pausedAt: null,
+            pausedUntil: null,
+            updatedAt: at,
+          })
           .where(eq(S.id, sub.id));
         await emit(
           tx,
@@ -773,7 +832,12 @@ export function buildDrizzleM35RouteService(
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionView({ ...sub, status: toStatus, cancelAtPeriodEnd: false }, plan, pm, await openDunningStage(tx, sub.id));
+        return subscriptionView(
+          { ...sub, status: toStatus, cancelAtPeriodEnd: false },
+          plan,
+          pm,
+          await openDunningStage(tx, sub.id),
+        );
       });
     },
 
@@ -816,7 +880,12 @@ export function buildDrizzleM35RouteService(
           "promo_code_application",
           app.id,
         );
-        return { applicationId: app.id, subscriptionId: sub.id, promoCode: promo.code, applied: true };
+        return {
+          applicationId: app.id,
+          subscriptionId: sub.id,
+          promoCode: promo.code,
+          applied: true,
+        };
       });
     },
 
@@ -848,12 +917,21 @@ export function buildDrizzleM35RouteService(
             .where(eq(S.organizationId, actor.organizationId))
             .orderBy(desc(S.startedAt))
             .limit(1);
-          if (sub) await tx.update(S).set({ defaultPaymentMethodId: pm.id, updatedAt: at }).where(eq(S.id, sub.id));
+          if (sub)
+            await tx
+              .update(S)
+              .set({ defaultPaymentMethodId: pm.id, updatedAt: at })
+              .where(eq(S.id, sub.id));
         }
         await emit(
           tx,
           "m35.payment_method.added",
-          { paymentMethodId: pm.id, organizationId: actor.organizationId, kind: pm.kind, isDefault: pm.isDefault },
+          {
+            paymentMethodId: pm.id,
+            organizationId: actor.organizationId,
+            kind: pm.kind,
+            isDefault: pm.isDefault,
+          },
           actor.organizationId,
           "payment_method",
           pm.id,
@@ -882,7 +960,11 @@ export function buildDrizzleM35RouteService(
           .where(eq(S.organizationId, actor.organizationId))
           .orderBy(desc(S.startedAt))
           .limit(1);
-        if (sub) await tx.update(S).set({ defaultPaymentMethodId: pm.id, updatedAt: at }).where(eq(S.id, sub.id));
+        if (sub)
+          await tx
+            .update(S)
+            .set({ defaultPaymentMethodId: pm.id, updatedAt: at })
+            .where(eq(S.id, sub.id));
         return paymentMethodView({ ...pm, isDefault: true });
       });
     },
@@ -896,11 +978,18 @@ export function buildDrizzleM35RouteService(
           .limit(1);
         if (!pm) throw new NotFoundError("payment method not found");
         const at = now();
-        await tx.update(PM).set({ isActive: false, isDefault: false, deactivatedAt: at }).where(eq(PM.id, pm.id));
+        await tx
+          .update(PM)
+          .set({ isActive: false, isDefault: false, deactivatedAt: at })
+          .where(eq(PM.id, pm.id));
         await emit(
           tx,
           "m35.payment_method.removed",
-          { paymentMethodId: pm.id, organizationId: actor.organizationId, deactivatedAt: isoReq(at) },
+          {
+            paymentMethodId: pm.id,
+            organizationId: actor.organizationId,
+            deactivatedAt: isoReq(at),
+          },
           actor.organizationId,
           "payment_method",
           pm.id,
@@ -1057,7 +1146,13 @@ export function buildDrizzleM35RouteService(
           const plan = await loadPlan(tx, sub.planId);
           const pm = await loadDefaultPm(tx, sub);
           items.push(
-            subscriptionAdminView(sub, plan, pm, await openDunningStage(tx, sub.id), names.get(sub.organizationId) ?? ""),
+            subscriptionAdminView(
+              sub,
+              plan,
+              pm,
+              await openDunningStage(tx, sub.id),
+              names.get(sub.organizationId) ?? "",
+            ),
           );
         }
         return { items, nextCursor: page.nextCursor, hasMore: page.hasMore };
@@ -1070,7 +1165,13 @@ export function buildDrizzleM35RouteService(
         if (!sub) throw new NotFoundError("subscription not found");
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView(sub, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
+        return subscriptionAdminView(
+          sub,
+          plan,
+          pm,
+          await openDunningStage(tx, sub.id),
+          await orgNameOf(sub.organizationId),
+        );
       });
     },
 
@@ -1080,7 +1181,10 @@ export function buildDrizzleM35RouteService(
         if (!sub) throw new NotFoundError("subscription not found");
         const at = now();
         const until = pausedUntil ? new Date(pausedUntil) : null;
-        await tx.update(S).set({ status: "paused", pausedAt: at, pausedUntil: until, updatedAt: at }).where(eq(S.id, sub.id));
+        await tx
+          .update(S)
+          .set({ status: "paused", pausedAt: at, pausedUntil: until, updatedAt: at })
+          .where(eq(S.id, sub.id));
         await tx.insert(SH).values({
           subscriptionId: sub.id,
           organizationId: sub.organizationId,
@@ -1093,14 +1197,25 @@ export function buildDrizzleM35RouteService(
         await emit(
           tx,
           "m35.subscription.paused",
-          { subscriptionId: sub.id, organizationId: sub.organizationId, pausedAt: isoReq(at), pausedUntil: iso(until) },
+          {
+            subscriptionId: sub.id,
+            organizationId: sub.organizationId,
+            pausedAt: isoReq(at),
+            pausedUntil: iso(until),
+          },
           sub.organizationId,
           "subscription",
           sub.id,
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView({ ...sub, status: "paused", pausedAt: at, pausedUntil: until }, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
+        return subscriptionAdminView(
+          { ...sub, status: "paused", pausedAt: at, pausedUntil: until },
+          plan,
+          pm,
+          await openDunningStage(tx, sub.id),
+          await orgNameOf(sub.organizationId),
+        );
       });
     },
 
@@ -1109,7 +1224,10 @@ export function buildDrizzleM35RouteService(
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
         if (!sub) throw new NotFoundError("subscription not found");
         const at = now();
-        await tx.update(S).set({ status: "active", pausedAt: null, pausedUntil: null, updatedAt: at }).where(eq(S.id, sub.id));
+        await tx
+          .update(S)
+          .set({ status: "active", pausedAt: null, pausedUntil: null, updatedAt: at })
+          .where(eq(S.id, sub.id));
         await tx.insert(SH).values({
           subscriptionId: sub.id,
           organizationId: sub.organizationId,
@@ -1129,7 +1247,13 @@ export function buildDrizzleM35RouteService(
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView({ ...sub, status: "active" }, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
+        return subscriptionAdminView(
+          { ...sub, status: "active" },
+          plan,
+          pm,
+          await openDunningStage(tx, sub.id),
+          await orgNameOf(sub.organizationId),
+        );
       });
     },
 
@@ -1138,7 +1262,10 @@ export function buildDrizzleM35RouteService(
         const [sub] = await tx.select().from(S).where(eq(S.id, subscriptionId)).limit(1);
         if (!sub) throw new NotFoundError("subscription not found");
         const at = now();
-        await tx.update(S).set({ status: "canceled", canceledAt: at, cancelAtPeriodEnd: false, updatedAt: at }).where(eq(S.id, sub.id));
+        await tx
+          .update(S)
+          .set({ status: "canceled", canceledAt: at, cancelAtPeriodEnd: false, updatedAt: at })
+          .where(eq(S.id, sub.id));
         await tx.insert(SH).values({
           subscriptionId: sub.id,
           organizationId: sub.organizationId,
@@ -1151,14 +1278,26 @@ export function buildDrizzleM35RouteService(
         await emit(
           tx,
           "m35.subscription.canceled",
-          { subscriptionId: sub.id, organizationId: sub.organizationId, canceledAt: isoReq(at), reasonCode: "platform_ops", atPeriodEnd: false },
+          {
+            subscriptionId: sub.id,
+            organizationId: sub.organizationId,
+            canceledAt: isoReq(at),
+            reasonCode: "platform_ops",
+            atPeriodEnd: false,
+          },
           sub.organizationId,
           "subscription",
           sub.id,
         );
         const plan = await loadPlan(tx, sub.planId);
         const pm = await loadDefaultPm(tx, sub);
-        return subscriptionAdminView({ ...sub, status: "canceled", canceledAt: at }, plan, pm, await openDunningStage(tx, sub.id), await orgNameOf(sub.organizationId));
+        return subscriptionAdminView(
+          { ...sub, status: "canceled", canceledAt: at },
+          plan,
+          pm,
+          await openDunningStage(tx, sub.id),
+          await orgNameOf(sub.organizationId),
+        );
       });
     },
 
@@ -1182,12 +1321,23 @@ export function buildDrizzleM35RouteService(
         await emit(
           tx,
           "m35.promo.applied",
-          { applicationId: app.id, organizationId: sub.organizationId, subscriptionId: sub.id, promoCode: promo.code, appliedByMembershipId: actor.membershipId },
+          {
+            applicationId: app.id,
+            organizationId: sub.organizationId,
+            subscriptionId: sub.id,
+            promoCode: promo.code,
+            appliedByMembershipId: actor.membershipId,
+          },
           sub.organizationId,
           "promo_code_application",
           app.id,
         );
-        return { applicationId: app.id, subscriptionId: sub.id, promoCode: promo.code, applied: true };
+        return {
+          applicationId: app.id,
+          subscriptionId: sub.id,
+          promoCode: promo.code,
+          applied: true,
+        };
       });
     },
 
@@ -1212,7 +1362,11 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const conds = [isNull(DUN.exitedAt)];
         if (filters.stage) conds.push(eq(DUN.stage, filters.stage));
-        const rows = await tx.select().from(DUN).where(and(...conds)).orderBy(desc(DUN.enteredAt), desc(DUN.id));
+        const rows = await tx
+          .select()
+          .from(DUN)
+          .where(and(...conds))
+          .orderBy(desc(DUN.enteredAt), desc(DUN.id));
         const page = pageOf(rows, (r) => isoReq(r.enteredAt), cursor, limit);
         const names = await orgNameMap(page.items.map((d) => d.organizationId));
         const items: DunningListItemView[] = [];
@@ -1224,7 +1378,8 @@ export function buildDrizzleM35RouteService(
             organizationId: d.organizationId,
             organizationName: names.get(d.organizationId) ?? "",
             planName: plan?.name ?? "",
-            subscriptionStatus: (sub?.status ?? "past_due") as DunningListItemView["subscriptionStatus"],
+            subscriptionStatus: (sub?.status ??
+              "past_due") as DunningListItemView["subscriptionStatus"],
             stage: d.stage as DunningListItemView["stage"],
             enteredAt: isoReq(d.enteredAt),
             nextAttemptAt: iso(d.nextAttemptAt),
@@ -1242,7 +1397,12 @@ export function buildDrizzleM35RouteService(
           .where(and(eq(DUN.subscriptionId, subscriptionId), isNull(DUN.exitedAt)))
           .limit(1);
         if (!open) throw new NotFoundError("no open dunning state for subscription");
-        return { subscriptionId, stage: open.stage as DunningView["stage"], enteredAt: isoReq(open.enteredAt), nextAttemptAt: iso(open.nextAttemptAt) };
+        return {
+          subscriptionId,
+          stage: open.stage as DunningView["stage"],
+          enteredAt: isoReq(open.enteredAt),
+          nextAttemptAt: iso(open.nextAttemptAt),
+        };
       });
     },
 
@@ -1288,7 +1448,14 @@ export function buildDrizzleM35RouteService(
         await emit(
           tx,
           "m35.refund.requested",
-          { refundId: ref.id, organizationId: inv.organizationId, invoiceId: inv.id, amountCents: args.amountCents, requestedByMembershipId: actor.membershipId, reasonCode: args.reasonCode },
+          {
+            refundId: ref.id,
+            organizationId: inv.organizationId,
+            invoiceId: inv.id,
+            amountCents: args.amountCents,
+            requestedByMembershipId: actor.membershipId,
+            reasonCode: args.reasonCode,
+          },
           inv.organizationId,
           "refund",
           ref.id,
@@ -1304,7 +1471,11 @@ export function buildDrizzleM35RouteService(
         if (ref.status !== "requested") throw new ConflictError("refund is not in requested state");
         // §4.8 four-eyes: the approver must differ from the requester.
         if (ref.requestedByMembershipId === actor.membershipId) {
-          throw new WardenXError("REFUND_FOUR_EYES", "the approver must differ from the requester", 403);
+          throw new WardenXError(
+            "REFUND_FOUR_EYES",
+            "the approver must differ from the requester",
+            403,
+          );
         }
         const at = now();
         const [updated] = await tx
@@ -1315,7 +1486,12 @@ export function buildDrizzleM35RouteService(
         await emit(
           tx,
           "m35.refund.approved",
-          { refundId: ref.id, organizationId: ref.organizationId, approvedByMembershipId: actor.membershipId, approvedAt: isoReq(at) },
+          {
+            refundId: ref.id,
+            organizationId: ref.organizationId,
+            approvedByMembershipId: actor.membershipId,
+            approvedAt: isoReq(at),
+          },
           ref.organizationId,
           "refund",
           ref.id,
@@ -1332,7 +1508,12 @@ export function buildDrizzleM35RouteService(
         const at = now();
         const [updated] = await tx
           .update(REF)
-          .set({ status: "denied", deniedByMembershipId: actor.membershipId, deniedAt: at, deniedReason: reason })
+          .set({
+            status: "denied",
+            deniedByMembershipId: actor.membershipId,
+            deniedAt: at,
+            deniedReason: reason,
+          })
           .where(eq(REF.id, refundId))
           .returning();
         return refundView(updated, await orgNameOf(ref.organizationId));
@@ -1417,7 +1598,11 @@ export function buildDrizzleM35RouteService(
 
     async adminDeactivatePromo(_actor, promoId) {
       return platform(async (tx) => {
-        const [updated] = await tx.update(PROMO).set({ isActive: false }).where(eq(PROMO.id, promoId)).returning();
+        const [updated] = await tx
+          .update(PROMO)
+          .set({ isActive: false })
+          .where(eq(PROMO.id, promoId))
+          .returning();
         if (!updated) throw new NotFoundError("promo not found");
         return promoView(updated);
       });
@@ -1428,7 +1613,11 @@ export function buildDrizzleM35RouteService(
       return platform(async (tx) => {
         const rows = await tx.select().from(SNAP).orderBy(desc(SNAP.snapshotMonth), desc(SNAP.id));
         const page = pageOf(rows, (r) => r.snapshotMonth, cursor, limit);
-        return { items: page.items.map(snapshotView), nextCursor: page.nextCursor, hasMore: page.hasMore };
+        return {
+          items: page.items.map(snapshotView),
+          nextCursor: page.nextCursor,
+          hasMore: page.hasMore,
+        };
       });
     },
 
@@ -1441,12 +1630,20 @@ export function buildDrizzleM35RouteService(
           if (sub.status === "active" || sub.status === "past_due" || sub.status === "at_risk") {
             const plan = await loadPlan(tx, sub.planId);
             if (plan) {
-              mrr += plan.cadence === "annual" ? Math.round(plan.basePriceCents / 12) : plan.basePriceCents;
+              mrr +=
+                plan.cadence === "annual"
+                  ? Math.round(plan.basePriceCents / 12)
+                  : plan.basePriceCents;
               active++;
             }
           }
         }
-        return { mrrCents: mrr, arrCents: mrr * 12, activeSubscriptions: active, asOf: isoReq(now()) };
+        return {
+          mrrCents: mrr,
+          arrCents: mrr * 12,
+          activeSubscriptions: active,
+          asOf: isoReq(now()),
+        };
       });
     },
 
@@ -1465,7 +1662,10 @@ export function buildDrizzleM35RouteService(
           if (sub.status === "active" || sub.status === "past_due" || sub.status === "at_risk") {
             const plan = await loadPlan(tx, sub.planId);
             if (plan) {
-              mrr += plan.cadence === "annual" ? Math.round(plan.basePriceCents / 12) : plan.basePriceCents;
+              mrr +=
+                plan.cadence === "annual"
+                  ? Math.round(plan.basePriceCents / 12)
+                  : plan.basePriceCents;
               active++;
             }
           }
@@ -1487,7 +1687,14 @@ export function buildDrizzleM35RouteService(
           })
           .onConflictDoUpdate({
             target: SNAP.snapshotMonth,
-            set: { mrrCents: mrr, arrCents: mrr * 12, activeSubscriptions: active, trialingSubscriptions: trialing, pastDueSubscriptions: pastDue, computedAt: at },
+            set: {
+              mrrCents: mrr,
+              arrCents: mrr * 12,
+              activeSubscriptions: active,
+              trialingSubscriptions: trialing,
+              pastDueSubscriptions: pastDue,
+              computedAt: at,
+            },
           })
           .returning();
         return snapshotView(snap);
@@ -1505,7 +1712,12 @@ export function buildDrizzleM35RouteService(
           .limit(1);
         if (!sub) throw new NotFoundError("no subscription for org");
         const meters = await tx.select().from(PMTR).where(eq(PMTR.planId, sub.planId));
-        const [agg] = await tx.select().from(AGG).where(eq(AGG.subscriptionId, sub.id)).orderBy(desc(AGG.periodStart)).limit(1);
+        const [agg] = await tx
+          .select()
+          .from(AGG)
+          .where(eq(AGG.subscriptionId, sub.id))
+          .orderBy(desc(AGG.periodStart))
+          .limit(1);
         const periodStart = agg?.periodStart ?? sub.currentPeriodStart ?? now();
         const periodEnd = agg?.periodEnd ?? sub.currentPeriodEnd ?? now();
         return {
@@ -1522,7 +1734,12 @@ export function buildDrizzleM35RouteService(
               overageQuantity: overage,
               overageUnitPriceCents: m.overageUnitPriceCents,
               projectedOverageCostCents: overage * m.overageUnitPriceCents,
-              thresholdState: total >= m.inclusiveQuantity ? "breached" : total >= Math.floor(m.inclusiveQuantity * 0.8) ? "warning" : "ok",
+              thresholdState:
+                total >= m.inclusiveQuantity
+                  ? "breached"
+                  : total >= Math.floor(m.inclusiveQuantity * 0.8)
+                    ? "warning"
+                    : "ok",
             };
           }),
         };
@@ -1537,7 +1754,11 @@ export function buildDrizzleM35RouteService(
         let start = 0;
         if (cursor) {
           const key = decodeCursor(cursor);
-          start = rows.findIndex((r) => isoReq(r.receivedAt) < key.createdAt || (isoReq(r.receivedAt) === key.createdAt && r.id < key.id));
+          start = rows.findIndex(
+            (r) =>
+              isoReq(r.receivedAt) < key.createdAt ||
+              (isoReq(r.receivedAt) === key.createdAt && r.id < key.id),
+          );
           if (start === -1) start = rows.length;
         }
         const slice = rows.slice(start, start + size);
@@ -1545,7 +1766,10 @@ export function buildDrizzleM35RouteService(
         const last = slice[slice.length - 1];
         return {
           items: slice.map(webhookReceiptView),
-          nextCursor: hasMore && last ? encodeCursor({ createdAt: isoReq(last.receivedAt), id: last.id }) : null,
+          nextCursor:
+            hasMore && last
+              ? encodeCursor({ createdAt: isoReq(last.receivedAt), id: last.id })
+              : null,
           hasMore,
         };
       });
@@ -1553,7 +1777,11 @@ export function buildDrizzleM35RouteService(
 
     async replayWebhook(_actor, stripeEventId): Promise<AckView> {
       return platform(async (tx) => {
-        const [wh] = await tx.select({ id: WH.id }).from(WH).where(eq(WH.id, stripeEventId)).limit(1);
+        const [wh] = await tx
+          .select({ id: WH.id })
+          .from(WH)
+          .where(eq(WH.id, stripeEventId))
+          .limit(1);
         if (!wh) throw new NotFoundError("webhook event not found");
         // §4.2 last-resort replay: re-emit the internal handler signal so the webhook-handler worker
         // re-processes the (already-persisted, already-verified) event. No re-verification; dedup applies.

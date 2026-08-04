@@ -1,3 +1,5 @@
+import type { RecipientResolverFn } from "@wardenx/messaging";
+import { resolveRecipients } from "@wardenx/messaging";
 // apps/backend/__tests__/field-safety-seams.test.ts — M20-T05 (§4.3 the seven published seams, §4.5 the
 // `field_safety_composed` recipient resolver, M20-F06 the emergency-contact row).
 //
@@ -28,8 +30,6 @@ import type {
   SafetyMetricsWindow,
 } from "@wardenx/types";
 import { SAFETY_POLICY_FLOOR } from "@wardenx/types";
-import type { RecipientResolverFn } from "@wardenx/messaging";
-import { resolveRecipients } from "@wardenx/messaging";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   REQUIRED_SEAMS,
@@ -38,12 +38,11 @@ import {
   registerSeam,
   validateSeams,
 } from "../src/bootstrap/seams/registry";
-import type { SafetySubscriptionFacts } from "../src/modules/20-field-safety/lifecycle";
 import {
   type M20AlertResolverPorts,
+  M20_COMPOSED_RECIPIENT_RESOLVER,
   type SafetyComposedGap,
   type SafetySeamSeed,
-  M20_COMPOSED_RECIPIENT_RESOLVER,
   createInMemorySafetySeamStore,
   createSafetyCheckInProvider,
   createSafetyContextReader,
@@ -54,8 +53,8 @@ import {
   createSafetySupervisorProvider,
   deliveryMembershipsFor,
   emergencyContactConsentPresent,
-  percentileOf,
   perHundredVisits,
+  percentileOf,
   pointInPolygon,
   readEmergencyContact,
   registerFieldSafetySeams,
@@ -64,6 +63,7 @@ import {
   supervisorRecipientsFrom,
   visitCheckInBadges,
 } from "../src/modules/20-field-safety/index";
+import type { SafetySubscriptionFacts } from "../src/modules/20-field-safety/lifecycle";
 
 const ORG = "11111111-1111-4111-8111-111111111111" as OrgId;
 const OTHER_ORG = "99999999-9999-4999-8999-999999999999" as OrgId;
@@ -127,7 +127,9 @@ describe("M20-T05 §4.3 — the seven seams are declared and fail CLOSED", () =>
   // forgot to await still cannot proceed on a fabricated value, which is the point.
   it("every deny-stub THROWS — an empty board is a real answer an outage must not be able to give", () => {
     validateSeams();
-    expect(() => getSeam("SafetyDashboardProvider").clinicianStatusForLocation(ORG, LOC_A, NOW)).toThrow();
+    expect(() =>
+      getSeam("SafetyDashboardProvider").clinicianStatusForLocation(ORG, LOC_A, NOW),
+    ).toThrow();
     expect(() =>
       getSeam("SafetySupervisorProvider").supervisorsForClinician(ORG, CLINICIAN, "sos"),
     ).toThrow();
@@ -381,7 +383,11 @@ describe("M20-T05 §4.3 / §7.8 — SafetySupervisorProvider", () => {
       store({
         coverageSubjects: [subject],
         subscriptions: [
-          subscription({ scopeKind: "role", clinicianMembershipId: null, supervisorMembershipId: BACKUP_SUP }),
+          subscription({
+            scopeKind: "role",
+            clinicianMembershipId: null,
+            supervisorMembershipId: BACKUP_SUP,
+          }),
         ],
       }),
       orgOf,
@@ -394,8 +400,18 @@ describe("M20-T05 §4.3 / §7.8 — SafetySupervisorProvider", () => {
 
   it("de-duplicates one supervisor to her MOST SPECIFIC scope, so a coverage review reads the real reason", () => {
     const out = supervisorRecipientsFrom([
-      { supervisorMembershipId: SUPERVISOR, scopeKind: "role", isVacationForwarding: false, vacationForwardToMembershipId: null },
-      { supervisorMembershipId: SUPERVISOR, scopeKind: "explicit", isVacationForwarding: false, vacationForwardToMembershipId: null },
+      {
+        supervisorMembershipId: SUPERVISOR,
+        scopeKind: "role",
+        isVacationForwarding: false,
+        vacationForwardToMembershipId: null,
+      },
+      {
+        supervisorMembershipId: SUPERVISOR,
+        scopeKind: "explicit",
+        isVacationForwarding: false,
+        vacationForwardToMembershipId: null,
+      },
     ]);
     expect(out).toHaveLength(1);
     expect(out[0]?.scopeKind).toBe("explicit");
@@ -473,15 +489,17 @@ describe("M20-T05 §4.3 — SafetyCheckInProvider badge trio", () => {
 
   it("collapses `escalated` into `overdue` — the rung is the supervisor board's business", () => {
     expect(
-      visitCheckInBadges([{ kind: "pre_visit", expectedAt: NOW, windowMinutes: 5, state: "escalated" }])
-        .preVisit,
+      visitCheckInBadges([
+        { kind: "pre_visit", expectedAt: NOW, windowMinutes: 5, state: "escalated" },
+      ]).preVisit,
     ).toBe("overdue");
   });
 
   it("maps `superseded` to `not_required` — a corrected-away obligation is one nobody owes", () => {
     expect(
-      visitCheckInBadges([{ kind: "post_visit", expectedAt: NOW, windowMinutes: 5, state: "superseded" }])
-        .postVisit,
+      visitCheckInBadges([
+        { kind: "post_visit", expectedAt: NOW, windowMinutes: 5, state: "superseded" },
+      ]).postVisit,
     ).toBe("not_required");
   });
 });
@@ -514,8 +532,12 @@ describe("M20-T05 §4.3 — SafetyContextReader", () => {
 
   it("lists the clinician's incidents for a date", async () => {
     const reader = createSafetyContextReader(store({ incidents: [incident] }), orgOf);
-    expect(await reader.activeIncidentsForClinicianToday(ORG, CLINICIAN, "2026-08-04")).toHaveLength(1);
-    expect(await reader.activeIncidentsForClinicianToday(ORG, CLINICIAN, "2026-08-05")).toHaveLength(0);
+    expect(
+      await reader.activeIncidentsForClinicianToday(ORG, CLINICIAN, "2026-08-04"),
+    ).toHaveLength(1);
+    expect(
+      await reader.activeIncidentsForClinicianToday(ORG, CLINICIAN, "2026-08-05"),
+    ).toHaveLength(0);
   });
 });
 
@@ -760,7 +782,9 @@ describe("M20-T05 M20-F06 — the emergency-contact row", () => {
 
   it("treats an EXPIRED consent as no permission to dial", async () => {
     const read = await readEmergencyContact(
-      store({ emergencyContacts: [{ ...contact, expiresAt: "2026-02-01T00:00:00.000Z" as IsoInstant }] }),
+      store({
+        emergencyContacts: [{ ...contact, expiresAt: "2026-02-01T00:00:00.000Z" as IsoInstant }],
+      }),
       { orgId: ORG, clinicianMembershipId: CLINICIAN, atIso: NOW },
     );
     expect(read.kind).toBe("absent");
@@ -830,12 +854,24 @@ describe("M20-T05 §4.5 — the `field_safety_composed` recipient resolver", () 
   });
 
   it("returns USER ids — M36 delivers to users, M20's rows name memberships", async () => {
-    const out = await resolveRecipients(registryWith(ports()), M20_COMPOSED_RECIPIENT_RESOLVER, ORG, {}, PAYLOAD);
+    const out = await resolveRecipients(
+      registryWith(ports()),
+      M20_COMPOSED_RECIPIENT_RESOLVER,
+      ORG,
+      {},
+      PAYLOAD,
+    );
     expect(out).toEqual([`user-${SUPERVISOR}`, "user-patricia"]);
   });
 
   it("orders supervisors BEFORE the on-call parallel set (§4.5's primary/combined split)", async () => {
-    const out = await resolveRecipients(registryWith(ports()), M20_COMPOSED_RECIPIENT_RESOLVER, ORG, {}, PAYLOAD);
+    const out = await resolveRecipients(
+      registryWith(ports()),
+      M20_COMPOSED_RECIPIENT_RESOLVER,
+      ORG,
+      {},
+      PAYLOAD,
+    );
     expect(out[0]).toBe(`user-${SUPERVISOR}`);
   });
 

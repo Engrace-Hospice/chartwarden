@@ -1,3 +1,8 @@
+import type {
+  CahpsDecedentSampleRow,
+  CahpsResultSummaryInput,
+  CahpsVendorAdapter,
+} from "@wardenx/quality";
 // @wardenx/cahps-vendors — SHP adapter (M30 §4.5, the PLATFORM DEFAULT vendor).
 //
 // Strategic Healthcare Programs (SHP) is the default CAHPS-Hospice vendor. This adapter implements the
@@ -6,12 +11,7 @@
 // (constructor arg); with none wired (P2a) `pushExport` fails closed as degraded rather than touching the
 // network. Per CMS protocol the minimum cell size is 30.
 import { WardenXError } from "@wardenx/types";
-import type {
-  CahpsDecedentSampleRow,
-  CahpsResultSummaryInput,
-  CahpsVendorAdapter,
-} from "@wardenx/quality";
-import { type ShpHttpPort, ShpClient } from "./client";
+import { ShpClient, type ShpHttpPort } from "./client";
 import { renderShpDecedentCsv, shpExportFilename } from "./export";
 import { parseShpAggregate } from "./result";
 

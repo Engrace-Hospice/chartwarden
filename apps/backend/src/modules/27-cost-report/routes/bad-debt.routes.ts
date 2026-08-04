@@ -8,9 +8,6 @@
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { EDITOR_FOR_PROVIDER, P } from "./guards";
-import type { M27ReadRouteService } from "./read-service";
-import type { M27WriteRouteService } from "./write-service";
 import {
   AddBadDebtBodySchema,
   BadDebtRecordParamsSchema,
@@ -18,6 +15,9 @@ import {
   UpdateBadDebtBodySchema,
   parse,
 } from "./cost-report-typebox";
+import { EDITOR_FOR_PROVIDER, P } from "./guards";
+import type { M27ReadRouteService } from "./read-service";
+import type { M27WriteRouteService } from "./write-service";
 
 export interface BadDebtRouteDeps {
   readonly readService: M27ReadRouteService;

@@ -3,11 +3,11 @@
 // in-memory seam fallbacks may be recorded. This is the regression gate for the burn-down:
 // a future registrar that quietly reverts to its in-memory default fails here, not in prod.
 import { afterEach, describe, expect, it } from "vitest";
+import { __resetErasersForTest } from "../src/bootstrap/erasers/registry";
 import {
   __resetInMemoryLedgerForTest,
   inMemoryBindingNotes,
 } from "../src/bootstrap/in-memory-ledger";
-import { __resetErasersForTest } from "../src/bootstrap/erasers/registry";
 import { __resetSeamsForTest } from "../src/bootstrap/seams/registry";
 import { wireModuleErasers, wireModuleSeams } from "../src/index";
 

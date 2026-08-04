@@ -19,9 +19,9 @@ import { registerInfectionRoutes } from "./infection.routes";
 import { registerMeasuresRoutes } from "./measures.routes";
 import { registerMortalityRoutes } from "./mortality.routes";
 import { registerQapiRoutes } from "./qapi.routes";
+import type { M30ReadRouteService } from "./read-service";
 import { registerRiskRegisterRoutes } from "./risk-register.routes";
 import { registerSraRoutes } from "./sra.routes";
-import type { M30ReadRouteService } from "./read-service";
 import type { M30WriteRouteService } from "./write-service";
 
 export { registerMeasuresRoutes, type MeasureRouteDeps } from "./measures.routes";
@@ -54,8 +54,8 @@ export {
   writeActorOf,
 } from "./actor";
 
-export { type M30ReadRouteService } from "./read-service";
-export { type M30WriteRouteService } from "./write-service";
+export type { M30ReadRouteService } from "./read-service";
+export type { M30WriteRouteService } from "./write-service";
 export {
   type M30ReadServicePorts,
   buildDrizzleM30ReadService,

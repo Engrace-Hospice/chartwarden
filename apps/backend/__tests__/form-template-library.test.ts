@@ -1,3 +1,13 @@
+import {
+  FORM_TEMPLATE_REGISTRY,
+  TemplateResolutionError,
+  type TenantTemplateOverlay,
+  V1_TEMPLATE_VERSION,
+  findFormTemplate,
+  listPlatformTemplates,
+  resolveTemplate,
+  validateOverlay,
+} from "@wardenx/forms";
 // apps/backend/__tests__/form-template-library.test.ts — M22-T05 §4.5 Form Template Library (D14/D16/D20/D21).
 //
 // Covers: the 31-key platform-floor catalog + versioning (D14); the golden-template-diff overlay validator
@@ -6,16 +16,6 @@
 // and the D20/D21 template-specific floors (lab-results required block; external-source discharge watermark +
 // source-traceability fields the overlay can never drop).
 import { describe, expect, it } from "vitest";
-import {
-  FORM_TEMPLATE_REGISTRY,
-  TemplateResolutionError,
-  V1_TEMPLATE_VERSION,
-  findFormTemplate,
-  listPlatformTemplates,
-  resolveTemplate,
-  validateOverlay,
-  type TenantTemplateOverlay,
-} from "@wardenx/forms";
 
 const ORG = "org-1";
 
@@ -67,7 +67,10 @@ describe("§4.5 / D16 golden-template-diff validator", () => {
     const res = validateOverlay(overlay);
     expect(res.ok).toBe(false);
     if (res.ok) throw new Error("unreachable");
-    expect(res.violations[0]).toMatchObject({ kind: "dropped_required_field", field: "npp_required_wording" });
+    expect(res.violations[0]).toMatchObject({
+      kind: "dropped_required_field",
+      field: "npp_required_wording",
+    });
   });
 
   it("rejects an overlay that REMOVES a platform-required watermark (D16/D22)", () => {
@@ -75,7 +78,9 @@ describe("§4.5 / D16 golden-template-diff validator", () => {
       templateKey: "discharge_summary_v2_external_source",
       organizationId: ORG,
       version: 2,
-      droppedWatermarks: ["DISCHARGE RECORDED FROM EXTERNAL NOTIFICATION — PENDING MEDICAL DIRECTOR REVIEW"],
+      droppedWatermarks: [
+        "DISCHARGE RECORDED FROM EXTERNAL NOTIFICATION — PENDING MEDICAL DIRECTOR REVIEW",
+      ],
     };
     const res = validateOverlay(overlay);
     expect(res.ok).toBe(false);

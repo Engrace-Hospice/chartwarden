@@ -15,7 +15,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient, type DbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PatientId } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -42,7 +42,9 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
 
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- (vector stripped)");
@@ -98,8 +100,14 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
           `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
       );
     await applyMigrations();
-    await admin.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')", [ORG]);
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'u1@x.test'),($2,'u2@x.test')`, [USER_1, USER_2]);
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A')",
+      [ORG],
+    );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'u1@x.test'),($2,'u2@x.test')`, [
+      USER_1,
+      USER_2,
+    ]);
     providerEntity = (
       await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
@@ -124,7 +132,9 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
     await seedVisit(PATIENT, "ended_clean"); // already ended → ref still shredded
 
     await admin.query("ALTER ROLE wardenx_app LOGIN");
-    handle = createDbClient({ connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@") });
+    handle = createDbClient({
+      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+    });
 
     // Run the REAL eraser exactly as registerPortalErasers wires it.
     await erasePortalRecord(ORG, PATIENT, "", buildDrizzlePortalEraseStore(handle.db));
@@ -170,9 +180,10 @@ describe.skipIf(!DB_URL)("M31 portal destruction eraser — LIVE Postgres (§3.7
   });
 
   it("flips the ORPHANED account (no remaining active grant) to revoked with contact ciphers shredded", async () => {
-    const r = await admin.query("SELECT status, display_name_cipher, email_cipher FROM portal_account WHERE id=$1", [
-      acctSingle,
-    ]);
+    const r = await admin.query(
+      "SELECT status, display_name_cipher, email_cipher FROM portal_account WHERE id=$1",
+      [acctSingle],
+    );
     expect(r.rows[0].status).toBe("revoked");
     expect(r.rows[0].display_name_cipher).toBe("");
     expect(r.rows[0].email_cipher).toBe("");

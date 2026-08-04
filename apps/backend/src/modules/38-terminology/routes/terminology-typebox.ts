@@ -190,11 +190,7 @@ export const ExpandResponseSchema = Type.Object({
 /** GET /value-sets/:id/is-member — membership + provenance (§4.5 `MembershipResult`). */
 export const MembershipResponseSchema = Type.Object({
   isMember: Type.Boolean(),
-  source: Type.Union([
-    Type.Literal("platform"),
-    Type.Literal("tenant_extension"),
-    Type.Null(),
-  ]),
+  source: Type.Union([Type.Literal("platform"), Type.Literal("tenant_extension"), Type.Null()]),
 });
 
 /** POST /value-sets/:id/extensions — the created tenant-extension echo (201). */
@@ -227,7 +223,12 @@ type _Expand = Conforms<
 type _Membership = Conforms<Static<typeof MembershipResponseSchema>, ServiceMembershipResult>;
 type _ExtCreated = Conforms<
   Static<typeof ExtensionCreatedResponseSchema>,
-  { readonly extensionId: string; readonly valueSetId: string; readonly system: CodeSystemId; readonly code: string }
+  {
+    readonly extensionId: string;
+    readonly valueSetId: string;
+    readonly system: CodeSystemId;
+    readonly code: string;
+  }
 >;
 
 /**

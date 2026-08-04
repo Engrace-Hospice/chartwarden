@@ -60,7 +60,12 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { aiInvocationHitlOutcome, aiInvocationStatus, aiRoutingDecision, aiRoutingReason } from "../../enums";
+import {
+  aiInvocationHitlOutcome,
+  aiInvocationStatus,
+  aiRoutingDecision,
+  aiRoutingReason,
+} from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";

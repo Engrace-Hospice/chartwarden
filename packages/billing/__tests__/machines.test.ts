@@ -1,3 +1,13 @@
+import type { ClaimState, ClaimTransitionEvent, NoticeState } from "@wardenx/billing";
+import {
+  CLAIM_TERMINAL_STATES,
+  CLAIM_TRANSITIONS,
+  canTransition,
+  isTerminal,
+  noeMachine,
+  notrMachine,
+  reduce,
+} from "@wardenx/billing";
 // @wardenx/billing — M23 §2.2 the three pure lifecycle reducers (claim / noe / notr) pure-domain unit
 // tests. Mirrors the M27 `cost-report/__tests__/lifecycle.test.ts` shape: every legal edge in each flat
 // transition table must apply, every illegal (state, event) pair must fail CLOSED (the reducer returns the
@@ -9,16 +19,6 @@
 // PURE DOMAIN only — no DB, no Fastify, no BullMQ, no clock; no PHI (D13). The reducers are total + side
 // effect-free functions of (state, event[, ctx]).
 import { describe, expect, it } from "vitest";
-import type { ClaimState, ClaimTransitionEvent, NoticeState } from "@wardenx/billing";
-import {
-  CLAIM_TERMINAL_STATES,
-  CLAIM_TRANSITIONS,
-  canTransition,
-  isTerminal,
-  noeMachine,
-  notrMachine,
-  reduce,
-} from "@wardenx/billing";
 
 // ── claim machine ────────────────────────────────────────────────────────────────────────────────────
 
@@ -295,8 +295,12 @@ describe("NOE_TRANSITIONS — every legal edge applies", () => {
 
 describe("NOE cancel guard (pre-submission election reversal)", () => {
   it("cancel is permitted from draft/ready ONLY when the m6 election was reversed", () => {
-    expect(noeMachine.reduce("draft", "cancel", { electionReversed: true }).state).toBe("cancelled");
-    expect(noeMachine.reduce("ready", "cancel", { electionReversed: true }).state).toBe("cancelled");
+    expect(noeMachine.reduce("draft", "cancel", { electionReversed: true }).state).toBe(
+      "cancelled",
+    );
+    expect(noeMachine.reduce("ready", "cancel", { electionReversed: true }).state).toBe(
+      "cancelled",
+    );
   });
 
   it("cancel is blocked (GUARD_FAILED) when the election was not reversed", () => {

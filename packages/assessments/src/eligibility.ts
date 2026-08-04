@@ -35,14 +35,22 @@ export type AssessmentDiscipline = (typeof ASSESSMENT_DISCIPLINES)[number];
 const MD_NP = ["md", "np"] as const satisfies readonly AssessmentDiscipline[];
 const RN_MD_NP_LPN = ["rn", "md", "np", "lpn"] as const satisfies readonly AssessmentDiscipline[];
 const RN_MD_NP = ["rn", "md", "np"] as const satisfies readonly AssessmentDiscipline[];
-const NURSING_BROAD = ["rn", "lpn", "chha", "md", "np"] as const satisfies readonly AssessmentDiscipline[];
+const NURSING_BROAD = [
+  "rn",
+  "lpn",
+  "chha",
+  "md",
+  "np",
+] as const satisfies readonly AssessmentDiscipline[];
 
 /**
  * D8 — the authoritative discipline × scale matrix. Each scale lists the disciplines that may RECORD it.
  * Type-checked across all 14 {@link ScaleType} keys (an off-matrix scale is a compile error). The matrix
  * is the same data the §4.7 `discipline_can_record_scale[:scaleType]` predicate and the service gate read.
  */
-export const SCALE_DISCIPLINE_ELIGIBILITY: { readonly [K in ScaleType]: readonly AssessmentDiscipline[] } = {
+export const SCALE_DISCIPLINE_ELIGIBILITY: {
+  readonly [K in ScaleType]: readonly AssessmentDiscipline[];
+} = {
   // Performance / prognostic — physician-expertise instruments are MD/NP-only.
   pps: RN_MD_NP_LPN, // LPN allowed under §7.4 supervisor cosign
   kps: RN_MD_NP_LPN, // LPN allowed under §7.4 supervisor cosign

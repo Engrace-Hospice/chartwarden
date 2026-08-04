@@ -22,7 +22,7 @@
 // ZONE prefix is the needle. `'medication_order'.startsWith('medication_')` is the match that catches
 // contraband; `'medication_'.startsWith('medication_order')` is false and would sail past it. This file
 // never inverts the arguments and the test asserts it on a real pair.
-import { aiPromptTargetsPrefix, type ActivePromptSummary } from "../prompts/prompt-registry";
+import { type ActivePromptSummary, aiPromptTargetsPrefix } from "../prompts/prompt-registry";
 
 /** One module's declared AI-prohibited zone. */
 export interface AiProhibitedZone {

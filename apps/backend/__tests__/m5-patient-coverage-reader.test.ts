@@ -51,8 +51,9 @@ function selectActive(rows: Coverage[], kind: string, onDate: string): Coverage 
   const inForce = (c: Coverage): boolean =>
     c.effectiveFrom <= onDate && (c.effectiveTo === null || c.effectiveTo >= onDate);
   return (
-    [...rows].filter((c) => c.coverageKind === kind && inForce(c)).sort((a, b) => a.rank - b.rank)[0] ??
-    null
+    [...rows]
+      .filter((c) => c.coverageKind === kind && inForce(c))
+      .sort((a, b) => a.rank - b.rank)[0] ?? null
   );
 }
 
@@ -88,7 +89,9 @@ describe("M5 §3.4 coverage selection", () => {
   });
 
   it("returns null when the patient holds no coverage of that kind", () => {
-    expect(selectActive([cov({ coverageKind: "commercial" })], "medicaid", "2026-07-15")).toBeNull();
+    expect(
+      selectActive([cov({ coverageKind: "commercial" })], "medicaid", "2026-07-15"),
+    ).toBeNull();
     expect(selectActive([], "medicaid", "2026-07-15")).toBeNull();
   });
 });

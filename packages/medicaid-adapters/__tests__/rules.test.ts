@@ -40,19 +40,45 @@ function baseCtx(): MedicaidValidationContext {
         backingEncounterIds: ["e1"],
       },
     ],
-    eligibility: { outcome: "active", checkedAt: "2026-01-01T00:00:00.000Z", asOfDate: "2026-01-01", ageDays: 5, mcoId: null },
+    eligibility: {
+      outcome: "active",
+      checkedAt: "2026-01-01T00:00:00.000Z",
+      asOfDate: "2026-01-01",
+      ageDays: 5,
+      mcoId: null,
+    },
     recipientIdFormatValid: true,
-    mcoRouting: { eligibilityIsMcoAssignment: false, resolvedChannel: null, hasActiveCredentialForChannel: false },
+    mcoRouting: {
+      eligibilityIsMcoAssignment: false,
+      resolvedChannel: null,
+      hasActiveCredentialForChannel: false,
+    },
     nfResidentDays: [{ serviceDate: "2026-01-01", isNfResident: true, locOfDay: "RHC" }],
-    rbArrangement: { arrangementId: "rb1", state: "ACTIVE", effectiveFrom: "2025-12-01", effectiveTo: null },
-    rbDays: [{ serviceDate: "2026-01-01", locOfDay: "RHC", status: "billable", arrangementEffectiveOnDate: true }],
+    rbArrangement: {
+      arrangementId: "rb1",
+      state: "ACTIVE",
+      effectiveFrom: "2025-12-01",
+      effectiveTo: null,
+    },
+    rbDays: [
+      {
+        serviceDate: "2026-01-01",
+        locOfDay: "RHC",
+        status: "billable",
+        arrangementEffectiveOnDate: true,
+      },
+    ],
     rateLookups: [{ serviceDate: "2026-01-01", loc: "NF_RB", rateFound: true, rateCents: 20000 }],
     medicareSecondary: { medicareClaimState: "ack_accepted", eobContextPresent: true },
     evvBrackets: [{ encounterId: "e1", bracketState: "compliant" }],
     capProjection: { patientWithinCap: true },
     modifiersSatisfied: true,
     documentationSatisfied: true,
-    adapterMetadata: { acceptsDocumentedMissingEvv: false, combinesHospiceAndRb: true, supportedTobs: ["811"] },
+    adapterMetadata: {
+      acceptsDocumentedMissingEvv: false,
+      combinesHospiceAndRb: true,
+      supportedTobs: ["811"],
+    },
     seams: {
       eligibilityBound: true,
       rbBound: true,
@@ -172,7 +198,12 @@ describe("applicableStates gating", () => {
       severity: "error",
       regulatoryRequired: true,
       applicableStates: ["WA"],
-      check: () => ({ ruleKey: "wa_only_rule", severity: "error", passed: false, message: "should not run" }),
+      check: () => ({
+        ruleKey: "wa_only_rule",
+        severity: "error",
+        passed: false,
+        message: "should not run",
+      }),
     };
     const summary = runMedicaidRules([waOnly], baseCtx());
     expect(summary.skippedCount).toBe(1);

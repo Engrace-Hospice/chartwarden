@@ -133,7 +133,9 @@ export function MedicaidValidationWorklist(): JSX.Element {
       client.GET("/api/v1/medicaid-rule-config", {}),
     ]);
     if (runRes.error) {
-      setError("The validation history is unavailable — you may lack billing visibility for this claim.");
+      setError(
+        "The validation history is unavailable — you may lack billing visibility for this claim.",
+      );
       setLoading(false);
       return;
     }
@@ -169,7 +171,13 @@ export function MedicaidValidationWorklist(): JSX.Element {
   }, [loadDetail]);
 
   const sorted = useMemo(() => {
-    const order: Record<string, number> = { fail: 0, warn: 1, info: 2, pass: 3, skip_not_applicable: 4 };
+    const order: Record<string, number> = {
+      fail: 0,
+      warn: 1,
+      info: 2,
+      pass: 3,
+      skip_not_applicable: 4,
+    };
     return [...(detail?.results ?? [])].sort(
       (a, b) => (order[a.outcome] ?? 9) - (order[b.outcome] ?? 9),
     );
@@ -213,16 +221,26 @@ export function MedicaidValidationWorklist(): JSX.Element {
             >
               {runs.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.failedResults} failed / {r.warnedResults} warn · registry {r.ruleRegistryVersion} ·{" "}
-                  {r.at.slice(0, 16).replace("T", " ")}
+                  {r.failedResults} failed / {r.warnedResults} warn · registry{" "}
+                  {r.ruleRegistryVersion} · {r.at.slice(0, 16).replace("T", " ")}
                 </option>
               ))}
             </select>
             {active ? (
               <StatusPill
-                label={active.failedResults > 0 ? "Failing" : active.warnedResults > 0 ? "Warnings" : "Clean"}
+                label={
+                  active.failedResults > 0
+                    ? "Failing"
+                    : active.warnedResults > 0
+                      ? "Warnings"
+                      : "Clean"
+                }
                 tone={
-                  active.failedResults > 0 ? "error" : active.warnedResults > 0 ? "warning" : "success"
+                  active.failedResults > 0
+                    ? "error"
+                    : active.warnedResults > 0
+                      ? "warning"
+                      : "success"
                 }
               />
             ) : null}

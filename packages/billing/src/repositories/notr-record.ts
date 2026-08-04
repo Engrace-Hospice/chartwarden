@@ -17,13 +17,13 @@ import { and, desc, eq, isNull, lte, notInArray } from "drizzle-orm";
 import type { NoticeState } from "../contracts";
 import {
   type BillingDb,
-  buildCursorPage,
   type CursorPage,
+  type VersionedUpdateResult,
+  buildCursorPage,
   decodeCursor,
   keysetBefore,
   noticeStateCodec,
   pageSizeOf,
-  type VersionedUpdateResult,
   versionConflict,
   versionOk,
 } from "./db";
@@ -63,7 +63,11 @@ export type NotrTransitionPatch = Partial<
 >;
 
 /** The NOTR states that have left the window in flight (excluded from the watchdog scan + per-event uq). */
-const NOTR_TERMINAL_DB: schema.NotrRecord["state"][] = ["ACK_ACCEPTED", "CANCELLED", "ACK_REJECTED"];
+const NOTR_TERMINAL_DB: schema.NotrRecord["state"][] = [
+  "ACK_ACCEPTED",
+  "CANCELLED",
+  "ACK_REJECTED",
+];
 
 /** Map a DB row to the domain-cased record (the single read-boundary case translation). */
 function toNotrRecord(row: schema.NotrRecord): NotrRecord {
@@ -100,7 +104,9 @@ export class NotrRepository {
     const [row] = await this.db
       .select()
       .from(N)
-      .where(and(eq(N.providerEntityId, providerEntityId), eq(N.notrControlNumber, notrControlNumber)))
+      .where(
+        and(eq(N.providerEntityId, providerEntityId), eq(N.notrControlNumber, notrControlNumber)),
+      )
       .limit(1);
     return row ? toNotrRecord(row) : null;
   }
@@ -110,7 +116,10 @@ export class NotrRepository {
    * slice), keyed by the populated event column for `triggerKind`. At most one row matches. Returns `null`
    * when no in-flight NOTR exists for the event.
    */
-  async findActiveByEvent(triggerKind: NotrTriggerKind, eventId: string): Promise<NotrRecord | null> {
+  async findActiveByEvent(
+    triggerKind: NotrTriggerKind,
+    eventId: string,
+  ): Promise<NotrRecord | null> {
     const eventCol =
       triggerKind === "revocation"
         ? N.revocationEventId

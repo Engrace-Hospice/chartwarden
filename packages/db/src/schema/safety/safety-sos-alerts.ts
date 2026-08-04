@@ -137,10 +137,7 @@ export const safetySosAlert = pgTable(
       "m20_ssa_cancel_window",
       sql`"cancel_window_expired_at" > "posted_at"`,
     ),
-    accuracyNonNegative: check(
-      "m20_ssa_accuracy",
-      sql`"posted_coordinates_accuracy_m" >= 0`,
-    ),
+    accuracyNonNegative: check("m20_ssa_accuracy", sql`"posted_coordinates_accuracy_m" >= 0`),
     // §3.3 vocabularies the spec spells inline on `text` columns.
     biometricVocabulary: check(
       "m20_ssa_biometric_vocab",

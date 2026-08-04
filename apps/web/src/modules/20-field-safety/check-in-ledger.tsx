@@ -34,13 +34,7 @@ import {
   getCheckIn,
   getDashboard,
 } from "./safety-api";
-import {
-  dateTime,
-  durationLabel,
-  humanize,
-  minutesSince,
-  shortId,
-} from "./safety-status";
+import { dateTime, durationLabel, humanize, minutesSince, shortId } from "./safety-status";
 import {
   Card,
   CheckInStatusPill,
@@ -168,11 +162,11 @@ export function CheckInLedgerScreen(): JSX.Element {
       />
 
       <Notice tone="info" live>
-        This page answers <strong>"who is behind right now"</strong>, not "who checked in last Tuesday".
-        M20 publishes no org-wide check-in history route — the four §4.1 check-in rows are post, read-one,
-        amend, and each clinician's own day — so a date-ranged ledger would have to be invented, and a
-        snapshot presented as history is how a reviewer concludes somebody posted nothing when in fact
-        nobody asked. Individual rows are readable by id below.
+        This page answers <strong>"who is behind right now"</strong>, not "who checked in last
+        Tuesday". M20 publishes no org-wide check-in history route — the four §4.1 check-in rows are
+        post, read-one, amend, and each clinician's own day — so a date-ranged ledger would have to
+        be invented, and a snapshot presented as history is how a reviewer concludes somebody posted
+        nothing when in fact nobody asked. Individual rows are readable by id below.
       </Notice>
 
       <Card title="Snapshot">
@@ -197,8 +191,8 @@ export function CheckInLedgerScreen(): JSX.Element {
           ]}
         />
         <span style={mutedStyle}>
-          As of {dateTime(board.fetchedAt)}. The overdue figure is the SERVER's, over the same snapshot as
-          the rows; the other three count the rows shown after the filters below.
+          As of {dateTime(board.fetchedAt)}. The overdue figure is the SERVER's, over the same
+          snapshot as the rows; the other three count the rows shown after the filters below.
         </span>
       </Card>
 
@@ -230,15 +224,17 @@ export function CheckInLedgerScreen(): JSX.Element {
           />
         </FilterRow>
         <span style={mutedStyle}>
-          All three narrow the snapshot in the browser. None of them re-queries, because the board read
-          takes no such parameter — they are honest about being a view over one answer rather than a
-          search.
+          All three narrow the snapshot in the browser. None of them re-queries, because the board
+          read takes no such parameter — they are honest about being a view over one answer rather
+          than a search.
         </span>
       </Card>
 
       <Card title="Clinicians">
         {rows.length === 0 ? (
-          <span style={mutedStyle}>No clinician matches these filters in the current snapshot.</span>
+          <span style={mutedStyle}>
+            No clinician matches these filters in the current snapshot.
+          </span>
         ) : (
           <table style={tableStyle}>
             <thead>
@@ -314,16 +310,19 @@ export function CheckInLedgerScreen(): JSX.Element {
             type="button"
             onClick={() => void lookup()}
             disabled={lookingUp || lookupId.trim().length === 0}
-            style={lookingUp || lookupId.trim().length === 0 ? disabledButtonStyle : primaryButtonStyle}
+            style={
+              lookingUp || lookupId.trim().length === 0 ? disabledButtonStyle : primaryButtonStyle
+            }
           >
             {lookingUp ? "Reading…" : "Read"}
           </button>
         </FilterRow>
         <Notice tone="warning">
-          Reading one check-in writes an <strong>audit entry naming you</strong>, and it can return the
-          clinician's own <code>concernNote</code> — including a §7.2 suppression reason ("patient
-          sleeping; don't disturb"). That text is denylisted from the write-audit trail precisely so it is
-          not copied around; reading it here is the audited path §7.2 describes, not a way around it.
+          Reading one check-in writes an <strong>audit entry naming you</strong>, and it can return
+          the clinician's own <code>concernNote</code> — including a §7.2 suppression reason
+          ("patient sleeping; don't disturb"). That text is denylisted from the write-audit trail
+          precisely so it is not copied around; reading it here is the audited path §7.2 describes,
+          not a way around it.
         </Notice>
         {lookupError ? (
           <Notice tone="error" assertive>
@@ -347,7 +346,10 @@ export function CheckInLedgerScreen(): JSX.Element {
                 label="Coordinate captured"
                 value={found.coordinatesCaptured ? "Yes (not shown here)" : "No"}
               />
-              <Field label="Part of an SOS bracket" value={found.isPartOfSosBracket ? "Yes" : "No"} />
+              <Field
+                label="Part of an SOS bracket"
+                value={found.isPartOfSosBracket ? "Yes" : "No"}
+              />
               <Field
                 label="Amendable until"
                 value={found.amendableUntil ? dateTime(found.amendableUntil) : "Grace has closed"}
@@ -375,9 +377,10 @@ export function CheckInLedgerScreen(): JSX.Element {
             )}
             {found.coordinatesCaptured ? (
               <span style={mutedStyle}>
-                A coordinate was captured with this check-in and is NOT shown: no check-in read on the
-                platform returns one. D11 keeps non-SOS coordinates out of every projection, so the only
-                coordinate surface in M20 is an SOS's own stream, behind its own permission.
+                A coordinate was captured with this check-in and is NOT shown: no check-in read on
+                the platform returns one. D11 keeps non-SOS coordinates out of every projection, so
+                the only coordinate surface in M20 is an SOS's own stream, behind its own
+                permission.
               </span>
             ) : null}
           </>

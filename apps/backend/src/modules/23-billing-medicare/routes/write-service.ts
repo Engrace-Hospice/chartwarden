@@ -65,7 +65,11 @@ export interface JobEnqueuePort {
  * composition root binds; the default deny-stub fails CLOSED (the M27 ProviderEntityPort precedent).
  */
 export interface ProviderCcnPort {
-  ccnForProviderEntity(tx: unknown, organizationId: string, providerEntityId: string): Promise<string>;
+  ccnForProviderEntity(
+    tx: unknown,
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<string>;
 }
 
 /**
@@ -152,7 +156,11 @@ export interface AssembledClaimLineInput {
   readonly revenueCode: string;
   /** Q-code site-of-service (the `m23_claim_line_q_code` alphabet, e.g. `Q5001`). */
   readonly qCode: string;
-  readonly levelOfCare: "routine_home_care" | "continuous_home_care" | "inpatient_respite_care" | "general_inpatient_care";
+  readonly levelOfCare:
+    | "routine_home_care"
+    | "continuous_home_care"
+    | "inpatient_respite_care"
+    | "general_inpatient_care";
   readonly hcpcsCode?: string;
   readonly serviceDateFrom: string;
   readonly serviceDateTo: string;
@@ -299,7 +307,11 @@ export interface M23WriteRouteService {
   deleteDraftClaim(actor: M23WriteActor, claimId: string): Promise<void>;
   validateClaim(actor: M23WriteActor, claimId: string): Promise<ValidationJobAcceptedView>;
   submitClaim(actor: M23WriteActor, claimId: string): Promise<ClaimSubmissionAcceptedView>;
-  replaceClaim(actor: M23WriteActor, claimId: string, args: ReplaceClaimArgs): Promise<ClaimDetailView>;
+  replaceClaim(
+    actor: M23WriteActor,
+    claimId: string,
+    args: ReplaceClaimArgs,
+  ): Promise<ClaimDetailView>;
   voidClaim(actor: M23WriteActor, claimId: string, args: VoidClaimArgs): Promise<ClaimDetailView>;
 
   // ── validation override ──
@@ -316,7 +328,11 @@ export interface M23WriteRouteService {
     ruleConfigId: string,
     args: UpdateRuleConfigArgs,
   ): Promise<RuleConfigView>;
-  deleteRuleConfig(actor: M23WriteActor, ruleConfigId: string, args: DeleteRuleConfigArgs): Promise<void>;
+  deleteRuleConfig(
+    actor: M23WriteActor,
+    ruleConfigId: string,
+    args: DeleteRuleConfigArgs,
+  ): Promise<void>;
 
   // ── NOE / NOTR fast path ──
   submitNoe(actor: M23WriteActor, noeId: string): Promise<NoticeSubmissionAcceptedView>;

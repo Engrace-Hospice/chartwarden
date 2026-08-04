@@ -78,7 +78,9 @@ export function TriageCallHistoryScreen(): JSX.Element {
 
   if (loading) return <LoadingSpinner />;
   if (error || !call) {
-    return <EmptyState title="Unavailable" description={error ?? "This call could not be loaded."} />;
+    return (
+      <EmptyState title="Unavailable" description={error ?? "This call could not be loaded."} />
+    );
   }
 
   const staff = isStaffProjection(call) ? (call as TriageCallDetail) : null;
@@ -99,9 +101,9 @@ export function TriageCallHistoryScreen(): JSX.Element {
       />
 
       <Notice tone="info">
-        Read-only. Nothing on this page writes. The timeline below is reconstructed from the call's OWN
-        rows — the immutable access trail (who read what, refused reads, break-glass) belongs to the M4
-        audit surface and its own permission, and is not mirrored here.
+        Read-only. Nothing on this page writes. The timeline below is reconstructed from the call's
+        OWN rows — the immutable access trail (who read what, refused reads, break-glass) belongs to
+        the M4 audit surface and its own permission, and is not mirrored here.
       </Notice>
 
       {staff ? <RedactionNotice categories={staff.redactedCategories} /> : null}
@@ -127,7 +129,10 @@ export function TriageCallHistoryScreen(): JSX.Element {
           <Field label="Caller kind" value={humanize(call.callerKind)} />
           {staff ? <Field label="Source" value={humanize(staff.source)} /> : null}
           {staff ? (
-            <Field label="Disposition" value={staff.disposition ? dispositionLabel(staff.disposition) : "—"} />
+            <Field
+              label="Disposition"
+              value={staff.disposition ? dispositionLabel(staff.disposition) : "—"}
+            />
           ) : null}
           {staff ? (
             <Field
@@ -160,7 +165,8 @@ export function TriageCallHistoryScreen(): JSX.Element {
       <Card title="State timeline">
         {!staff ? (
           <span style={mutedStyle}>
-            The state narrative is a staff-projection field. The vendor projection does not declare it.
+            The state narrative is a staff-projection field. The vendor projection does not declare
+            it.
           </span>
         ) : staff.stateHistory.length === 0 ? (
           <span style={mutedStyle}>No transition has been recorded.</span>
@@ -169,7 +175,11 @@ export function TriageCallHistoryScreen(): JSX.Element {
             entries={staff.stateHistory.map((h) => ({
               label: `${h.fromState ? `${humanize(h.fromState)} → ` : ""}${humanize(h.toState)}`,
               at: dateTime(h.transitionedAt),
-              by: h.systemActor ? "system" : h.actorMembershipId ? shortId(h.actorMembershipId) : null,
+              by: h.systemActor
+                ? "system"
+                : h.actorMembershipId
+                  ? shortId(h.actorMembershipId)
+                  : null,
             }))}
           />
         )}
@@ -212,7 +222,9 @@ export function TriageCallHistoryScreen(): JSX.Element {
                         ? String(a.valueInt)
                         : (a.valueText ?? "—")}
                   </td>
-                  <td style={td}>{a.redFlagHit ? <StatusPill label="Red flag" tone="error" /> : "—"}</td>
+                  <td style={td}>
+                    {a.redFlagHit ? <StatusPill label="Red flag" tone="error" /> : "—"}
+                  </td>
                   <td style={td}>{dateTime(a.answeredAt)}</td>
                   <td style={td}>{shortId(a.answeredByMembershipId)}</td>
                 </tr>
@@ -221,8 +233,9 @@ export function TriageCallHistoryScreen(): JSX.Element {
           </table>
         )}
         <span style={mutedStyle}>
-          Corrections are ROWS, not edits (§2.2.3). A "no" later corrected to "yes" leaves both rows, which
-          is what a suppression investigation reads — and why the original is never overwritten.
+          Corrections are ROWS, not edits (§2.2.3). A "no" later corrected to "yes" leaves both
+          rows, which is what a suppression investigation reads — and why the original is never
+          overwritten.
         </span>
       </Card>
 
@@ -251,7 +264,10 @@ export function TriageCallHistoryScreen(): JSX.Element {
                   </td>
                   <td style={td}>{humanize(e.triggerKind)}</td>
                   <td style={td}>
-                    <StatusPill label={humanize(e.state)} tone={toneOf(ESCALATION_STATE_TONE, e.state)} />
+                    <StatusPill
+                      label={humanize(e.state)}
+                      tone={toneOf(ESCALATION_STATE_TONE, e.state)}
+                    />
                   </td>
                   <td style={td}>
                     {e.mandatory ? <StatusPill label="Platform floor" tone="critical" /> : "—"}

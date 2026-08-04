@@ -2,19 +2,19 @@
 // Asserts the inverse of `assemble-inputs`: the chain results map to the TypeBox-typed B/C `data` payloads a
 // recompute persists, the tie flags are stamped, and each payload validates against its worksheet schema.
 import { Value } from "@sinclair/typebox/value";
-import { describe, expect, it } from "vitest";
 import {
   type RawAllocationInputs,
+  WorksheetB,
+  WorksheetC,
   allocationResultsToWorksheets,
   assembleAllocationInputs,
   buildPerDiemInput,
   calculatePerDiem,
+  perDiemToWorksheetC,
   stepDownAllocate,
   stepDownToWorksheetB,
-  perDiemToWorksheetC,
-  WorksheetB,
-  WorksheetC,
 } from "@wardenx/cost-report";
+import { describe, expect, it } from "vitest";
 
 function raw(over: Partial<RawAllocationInputs> = {}): RawAllocationInputs {
   return { worksheets: [], monthlyBreakdown: null, ...over };
@@ -27,15 +27,30 @@ describe("stepDownToWorksheetB", () => {
         { code: "AG", name: "A&G", directCostCents: 100_000, isOverhead: true },
         { code: "RHC", name: "Routine Home Care", directCostCents: 300_000, isOverhead: false },
       ],
-      statisticalBases: [{ allocatingCenterCode: "AG", weights: [{ receivingCenterCode: "RHC", statisticValue: 1 }] }],
+      statisticalBases: [
+        {
+          allocatingCenterCode: "AG",
+          weights: [{ receivingCenterCode: "RHC", statisticValue: 1 }],
+        },
+      ],
     });
-    const b = stepDownToWorksheetB(result, [{ generalServiceCostCenterCode: "AG", allocationBasis: "square_feet", statisticalWeights: [] }]);
+    const b = stepDownToWorksheetB(result, [
+      {
+        generalServiceCostCenterCode: "AG",
+        allocationBasis: "square_feet",
+        statisticalWeights: [],
+      },
+    ]);
     expect(Value.Check(WorksheetB, b)).toBe(true);
     expect(b.totalFullyAllocatedCostCents).toBe(400_000);
     expect(b.tiesToWorksheetAGrandTotal).toBe(true);
     expect(b.costCenters.map((c) => c.code)).toEqual(["RHC"]); // overhead folded out
     expect(b.allocationColumns).toEqual([
-      { generalServiceCostCenterCode: "AG", allocationBasis: "square_feet", poolAmountCents: 100_000 },
+      {
+        generalServiceCostCenterCode: "AG",
+        allocationBasis: "square_feet",
+        poolAmountCents: 100_000,
+      },
     ]);
   });
 });
@@ -45,9 +60,21 @@ describe("perDiemToWorksheetC", () => {
     const perDiem = calculatePerDiem({
       levels: [
         { levelOfCare: "chc", totalCostCents: 0, totalDays: 0, medicareDays: 0, medicaidDays: 0 },
-        { levelOfCare: "rhc", totalCostCents: 300_000, totalDays: 100, medicareDays: 60, medicaidDays: 40 },
+        {
+          levelOfCare: "rhc",
+          totalCostCents: 300_000,
+          totalDays: 100,
+          medicareDays: 60,
+          medicaidDays: 40,
+        },
         { levelOfCare: "irc", totalCostCents: 0, totalDays: 0, medicareDays: 0, medicaidDays: 0 },
-        { levelOfCare: "gip", totalCostCents: 100_000, totalDays: 10, medicareDays: 8, medicaidDays: 0 },
+        {
+          levelOfCare: "gip",
+          totalCostCents: 100_000,
+          totalDays: 10,
+          medicareDays: 8,
+          medicaidDays: 0,
+        },
       ],
     });
     const c = perDiemToWorksheetC(perDiem, 400_000);
@@ -73,7 +100,11 @@ describe("allocationResultsToWorksheets — full chain from assembled inputs", (
     );
     const step = stepDownAllocate(inputs.stepDown);
     const perDiem = calculatePerDiem(buildPerDiemInput(step, inputs.locDays));
-    const payloads = allocationResultsToWorksheets({ stepDown: step, perDiem, stepDownColumns: inputs.stepDownColumns });
+    const payloads = allocationResultsToWorksheets({
+      stepDown: step,
+      perDiem,
+      stepDownColumns: inputs.stepDownColumns,
+    });
     expect(Value.Check(WorksheetB, payloads.B)).toBe(true);
     expect(Value.Check(WorksheetC, payloads.C)).toBe(true);
     expect(payloads.B.totalFullyAllocatedCostCents).toBe(500_000);

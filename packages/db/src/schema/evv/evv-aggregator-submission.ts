@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `evv_aggregator_submission` (M18 §3.3 / §2.2.5 D7). The per-state aggregator submission state
 // machine (pending → queued → submitting → submitted → accepted | rejected | timeout | cancelled); resubmit
 // only from rejected/timeout, cancel only from non-terminal states. Idempotency on (state_code, visit_id,
@@ -5,8 +6,16 @@
 // `payload_cipher` / `aggregator_response_cipher` (large, encrypted) and the free-text
 // `aggregator_rejection_reason` / `cancellation_reason` are DENYLISTED from audit (§3.6). RLS + grants + M4
 // write-audit trigger land in the RLS migration (M18-T02 / 0047).
-import { bigint, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
+import {
+  bigint,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { evvAggregatorSubmissionStatus } from "../../enums";
 import { organizations } from "../organizations";
 

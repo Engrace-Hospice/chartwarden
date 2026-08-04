@@ -235,7 +235,9 @@ export function isAiComplianceReader(context: AbacContext): boolean {
 // ── the predicates ───────────────────────────────────────────────────────────────────────────────────
 
 /** Build M32's six §4.7 predicate resolvers over an injected read surface (unit-testable without seams). */
-export function buildAiPlatformAbacPredicates(deps: AiPlatformAbacDeps): Record<
+export function buildAiPlatformAbacPredicates(
+  deps: AiPlatformAbacDeps,
+): Record<
   M32RegisteredAbacPredicate,
   (context: AbacContext, target: AbacTarget) => Promise<boolean>
 > {

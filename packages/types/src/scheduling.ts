@@ -17,11 +17,11 @@
 
 // ── Leaf-safe shared id aliases (single definition site elsewhere; imported for internal use only so the
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
-import type { PatientId, AdmissionId, OrgId } from "./admission";
-import type { IsoInstant, MembershipId, LocationId } from "./care-plan";
+import type { AdmissionId, OrgId, PatientId } from "./admission";
+import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
 // `EvvBracketState` (`evv_present` | `evv_missing_documented`) is owned by `encounter.ts` (M8) and reused as
 // the §1.1 / D3 EVV-bracket flag on a visit — imported for internal use here, not re-exported (TS2308).
-import type { VisitId, EvvBracketState } from "./encounter";
+import type { EvvBracketState, VisitId } from "./encounter";
 
 /** A calendar date in ISO `YYYY-MM-DD` form (org-tz service date). M17-owned alias; no other leaf exports it. */
 export type IsoDate = string;

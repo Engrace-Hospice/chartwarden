@@ -49,7 +49,9 @@ export const mortalityReview = pgTable(
     status: m30MortalityReviewStatus("status").notNull().default("pending"),
     assignedReviewerMembershipId: uuid("assigned_reviewer_membership_id"),
     clinicalDimensionData: jsonb("clinical_dimension_data").$type<ClinicalDimensionData>(), // freeTextNotes DENYLISTED (§3.6)
-    satisfactionDimensionData: jsonb("satisfaction_dimension_data").$type<SatisfactionDimensionData>(), // caregiverQualitativeSummary DENYLISTED (§3.6)
+    satisfactionDimensionData: jsonb(
+      "satisfaction_dimension_data",
+    ).$type<SatisfactionDimensionData>(), // caregiverQualitativeSummary DENYLISTED (§3.6)
     complianceDimensionData: jsonb("compliance_dimension_data").$type<ComplianceDimensionData>(), // notes DENYLISTED (§3.6)
     reviewerSignatureAt: timestamp("reviewer_signature_at", { withTimezone: true }),
     targetCompletionAt: timestamp("target_completion_at", { withTimezone: true }).notNull(),

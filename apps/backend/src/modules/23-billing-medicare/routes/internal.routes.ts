@@ -14,18 +14,18 @@
 // read primitive. The bound provider opens `withOrgContext` over (context org, system userId) so RLS scopes
 // every downstream read.
 import {
+  AcceptedSubmissionsQuery,
   type AcceptedSubmissionsQuery as AcceptedSubmissionsQueryType,
   type AcceptedSubmissionsResponse,
-  AcceptedSubmissionsQuery,
+  ClaimDayProjectionQuery,
   type ClaimDayProjectionQuery as ClaimDayProjectionQueryType,
   type ClaimDayProjectionResponse,
-  ClaimDayProjectionQuery,
 } from "@wardenx/billing";
 import { ForbiddenError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
-import { requireSystemPrincipal } from "./guards";
 import { parse } from "./billing-typebox";
+import { requireSystemPrincipal } from "./guards";
 
 /** The org + acting principal the bound provider scopes its `withOrgContext` reads to. */
 export interface InternalSeamContext {
@@ -51,7 +51,11 @@ export interface M23InternalSeamProvider {
 /** Fail-closed default — every internal seam read 503s until the composition root binds the real provider. */
 export const denyStubInternalSeamProvider: M23InternalSeamProvider = {
   async claimDayProjection() {
-    throw new WardenXError("SEAM_UNBOUND", "the M23 claim-day-projection provider is not bound", 503);
+    throw new WardenXError(
+      "SEAM_UNBOUND",
+      "the M23 claim-day-projection provider is not bound",
+      503,
+    );
   },
   async acceptedSubmissionsInWindow() {
     throw new WardenXError("SEAM_UNBOUND", "the M23 claim-submission reader is not bound", 503);
@@ -64,7 +68,10 @@ export interface InternalSeamRouteDeps {
 }
 
 /** Register the §4.1 internal service-to-service seam routes (#39/#40; system-principal only). */
-export function registerInternalSeamRoutes(app: FastifyInstance, deps: InternalSeamRouteDeps = {}): void {
+export function registerInternalSeamRoutes(
+  app: FastifyInstance,
+  deps: InternalSeamRouteDeps = {},
+): void {
   const provider = deps.internalSeam ?? denyStubInternalSeamProvider;
   const SYSTEM = requireSystemPrincipal();
 
@@ -83,14 +90,21 @@ export function registerInternalSeamRoutes(app: FastifyInstance, deps: InternalS
   );
 
   // GET /internal/billing/submissions — accepted submissions in a window (M25 835 matching). §4.1 #40.
-  app.get("/api/v1/internal/billing/submissions", { preHandler: [SYSTEM], config: { auditRead: { resourceKind: "claim_submission", list: true } } }, async (request) => {
-    const actor = actorOf(request);
-    const query = parse(AcceptedSubmissionsQuery, request.query);
-    return provider.acceptedSubmissionsInWindow(
-      { organizationId: tenantOf(actor, query.organizationId), userId: actor.userId },
-      query,
-    );
-  });
+  app.get(
+    "/api/v1/internal/billing/submissions",
+    {
+      preHandler: [SYSTEM],
+      config: { auditRead: { resourceKind: "claim_submission", list: true } },
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const query = parse(AcceptedSubmissionsQuery, request.query);
+      return provider.acceptedSubmissionsInWindow(
+        { organizationId: tenantOf(actor, query.organizationId), userId: actor.userId },
+        query,
+      );
+    },
+  );
 }
 
 /**

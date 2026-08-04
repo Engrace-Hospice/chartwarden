@@ -37,7 +37,10 @@ export function canTransition(from: RbArrangementState, event: RbArrangementEven
   return RB_ARRANGEMENT_TRANSITIONS.some((t) => t.from === from && t.event === event);
 }
 
-export function reduce(state: RbArrangementState, event: RbArrangementEvent): RbArrangementReduceResult {
+export function reduce(
+  state: RbArrangementState,
+  event: RbArrangementEvent,
+): RbArrangementReduceResult {
   const transition = RB_ARRANGEMENT_TRANSITIONS.find((t) => t.from === state && t.event === event);
   if (!transition) return { state, error: "INVALID_TRANSITION" };
   return { state: transition.to };

@@ -20,16 +20,16 @@ import type {
   PatientId,
   VisitStatus,
 } from "@wardenx/types";
+import type { EvvReasonField, EvvSideEffect } from "./effects";
+import { EvvStateError, require_ } from "./errors";
 import {
+  ACCURACY_HARD_MAX_M,
   type Coordinate,
   type GeofenceEvaluation,
   type GeofenceSettings,
-  ACCURACY_HARD_MAX_M,
   deriveGpsQuality,
   evaluateGeofence,
 } from "./geofence";
-import { type EvvReasonField, type EvvSideEffect } from "./effects";
-import { EvvStateError, require_ } from "./errors";
 
 /** §7.5 — the minimum `geofence_breach_reason` length (chars) on an `outside_geofence` event. */
 export const GEOFENCE_BREACH_REASON_MIN = 30;
@@ -51,7 +51,12 @@ export interface VisitContext {
 /** The device posture the recorder gates on (M18 `evv_device.status` + M2 `device_attestation.status`). */
 export interface DeviceContext {
   /** The M18 `evv_device.status` — must be `approved`. */
-  readonly registrationStatus: "pending_approval" | "approved" | "suspended" | "rejected" | "retired";
+  readonly registrationStatus:
+    | "pending_approval"
+    | "approved"
+    | "suspended"
+    | "rejected"
+    | "retired";
   /** The M2 `device_attestation.status` — must be `attested_clean`. */
   readonly attestationStatus: string;
 }
@@ -110,7 +115,11 @@ function assertCaptureIntegrity(capture: CaptureInput): void {
   );
 }
 
-function assertRecordingGuards(capture: CaptureInput, visit: VisitContext, device: DeviceContext): void {
+function assertRecordingGuards(
+  capture: CaptureInput,
+  visit: VisitContext,
+  device: DeviceContext,
+): void {
   require_(
     capture.patientId === visit.patientId,
     "EVV_PATIENT_MISMATCH",
@@ -177,7 +186,12 @@ export function recordEvent(input: {
 
   // §3.2 — a degraded fix (accuracy beyond the policy max but inside the geofence) is only acceptable once
   // the clinician attested after retakes; otherwise the route prompts a retake (advisory, never blocks care).
-  if (evaluation.decision === "inside" && evaluation.accuracyExceeded && !degradedAttested && !spoofSuspected) {
+  if (
+    evaluation.decision === "inside" &&
+    evaluation.accuracyExceeded &&
+    !degradedAttested &&
+    !spoofSuspected
+  ) {
     throw new EvvStateError(
       "EVV_DEGRADED_ACCURACY_ATTESTATION_REQUIRED",
       "Fix accuracy exceeds the policy threshold; a retake attestation is required.",
@@ -205,12 +219,17 @@ export function recordEvent(input: {
     { kind: "insert_geofence_evaluation", evaluation },
     {
       kind: "outbox",
-      event: capture.kind === "check_in" ? "m18.evv.check_in_recorded" : "m18.evv.check_out_recorded",
+      event:
+        capture.kind === "check_in" ? "m18.evv.check_in_recorded" : "m18.evv.check_out_recorded",
     },
   ];
 
   if (capture.geofenceBreachReason !== undefined && evaluation.decision === "outside_geofence") {
-    effects.push({ kind: "capture_reason", field: "geofence_breach_reason", value: capture.geofenceBreachReason });
+    effects.push({
+      kind: "capture_reason",
+      field: "geofence_breach_reason",
+      value: capture.geofenceBreachReason,
+    });
   }
 
   // §2.4 — geofence-confirmation stream M17 reads when the fix lands inside the patient address.
@@ -225,7 +244,9 @@ export function recordEvent(input: {
     effects.push({
       kind: "open_missing_resolution",
       resolutionKind:
-        capture.kind === "check_in" ? "outside_geofence_at_checkin" : "outside_geofence_at_checkout",
+        capture.kind === "check_in"
+          ? "outside_geofence_at_checkin"
+          : "outside_geofence_at_checkout",
     });
   }
 
@@ -274,7 +295,11 @@ export interface CorrectionResult {
  * fresh `open` missing-resolution so the visit reverts to attestation pending (T04 machine).
  */
 export function correctEvent(input: CorrectionInput): CorrectionResult {
-  require_(input.stepUpVerified, "EVV_CORRECTION_STEP_UP_REQUIRED", "A correction-of-record requires M2 step-up auth.");
+  require_(
+    input.stepUpVerified,
+    "EVV_CORRECTION_STEP_UP_REQUIRED",
+    "A correction-of-record requires M2 step-up auth.",
+  );
   require_(
     input.correctionReason.trim().length >= CORRECTION_REASON_MIN,
     "EVV_CORRECTION_REASON_TOO_SHORT",

@@ -113,7 +113,10 @@ export type CaptureWindowVerdict = "before_open" | "in_window" | "late" | "expir
  * throw (the throwing guard is {@link assertCaptureAllowed} in `timepoint-gate.ts`, so the service can
  * branch on the verdict before raising).
  */
-export function classifyCapture(targetDate: IsoInstant, window: TimepointWindow): CaptureWindowVerdict {
+export function classifyCapture(
+  targetDate: IsoInstant,
+  window: TimepointWindow,
+): CaptureWindowVerdict {
   const t = Date.parse(targetDate);
   if (t < Date.parse(window.windowOpensAt)) return "before_open";
   if (t <= Date.parse(window.windowClosesAt)) return "in_window";

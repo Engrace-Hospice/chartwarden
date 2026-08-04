@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 // @wardenx/db — `stripe_webhook_event` (M35 §3.3). PLATFORM-ONLY (not tenant-scoped) — a single Stripe
 // webhook may carry data spanning multiple tenants. `derived_organization_id` is a best-effort match
 // (nullable) and is NOT the RLS org column (it has no `\borganization_id\b` word boundary, so the tenancy
@@ -5,7 +6,6 @@
 // envelope-encrypted (D15); §3.6 denylists it + `payload_dek_ref` in the generated write-audit trigger
 // (0143). The primary key is the Stripe event id (`evt_...`), a TEXT natural key.
 import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 export const stripeWebhookEvent = pgTable(
   "stripe_webhook_event",

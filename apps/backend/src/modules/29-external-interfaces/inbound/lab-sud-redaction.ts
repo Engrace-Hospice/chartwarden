@@ -57,7 +57,10 @@ export interface LabSudDeps {
 }
 
 /** Decide whether an inbound lab is persisted under SUD redaction (D15). */
-export async function decideLabSudRedaction(input: LabSudInput, deps: LabSudDeps): Promise<LabSudDecision> {
+export async function decideLabSudRedaction(
+  input: LabSudInput,
+  deps: LabSudDeps,
+): Promise<LabSudDecision> {
   // Unmatched — no patient context; the bind-time gate (T08) applies redaction once the patient is known.
   if (!input.patientId) return { sudDetected: false, redact: false };
 

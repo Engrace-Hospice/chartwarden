@@ -16,11 +16,30 @@ export interface ScaleDataNotes {
 }
 
 // ── PPS — Palliative Performance Scale (server computes 0..100 in 10-point steps from the row, §4.3) ──
-export type PpsAmbulation = "full" | "reduced" | "mainly_sit_lie" | "mainly_in_bed" | "totally_bed_bound";
-export type PpsActivity = "normal" | "reduced" | "unable_normal_work" | "unable_hobby_work" | "unable_any_work";
-export type PpsSelfCare = "full" | "occasional_assist" | "considerable_assist" | "mainly_assist" | "total_care";
+export type PpsAmbulation =
+  | "full"
+  | "reduced"
+  | "mainly_sit_lie"
+  | "mainly_in_bed"
+  | "totally_bed_bound";
+export type PpsActivity =
+  | "normal"
+  | "reduced"
+  | "unable_normal_work"
+  | "unable_hobby_work"
+  | "unable_any_work";
+export type PpsSelfCare =
+  | "full"
+  | "occasional_assist"
+  | "considerable_assist"
+  | "mainly_assist"
+  | "total_care";
 export type PpsIntake = "normal" | "reduced" | "minimal_to_sips" | "mouth_care_only";
-export type PpsConsciousness = "full" | "full_or_confusion" | "full_or_drowsy_or_confusion" | "drowsy_or_coma";
+export type PpsConsciousness =
+  | "full"
+  | "full_or_confusion"
+  | "full_or_drowsy_or_confusion"
+  | "drowsy_or_coma";
 
 export interface PpsData extends ScaleDataNotes {
   readonly ambulation: PpsAmbulation;

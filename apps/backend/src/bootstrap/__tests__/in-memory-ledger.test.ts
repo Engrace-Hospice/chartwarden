@@ -3,9 +3,9 @@
 // naming the registrar; a db-less boot stays silent (the in-memory slice is the documented posture).
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  InMemoryBindingError,
   __resetInMemoryLedgerForTest,
   assertNoInMemoryBindingsOnDbBoot,
-  InMemoryBindingError,
   inMemoryBindingNotes,
   noteInMemoryBinding,
   resolveInMemoryAssertMode,

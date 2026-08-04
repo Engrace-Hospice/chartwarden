@@ -2,8 +2,8 @@
 //
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
-import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
+import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
 
 export type { OrderWriteOutboxPort } from "./orders-route-service-db";
@@ -15,7 +15,11 @@ export type { OrderWriteOutboxPort } from "./orders-route-service-db";
  * lifecycle are live over Drizzle+RLS; every mutation emits `m11.order.*` on the bound transactional
  * `outbox`. Replaces the in-memory clinical-core scaffold mount for M11.
  */
-export function mountOrderRoutes(app: FastifyInstance, db: DbClient, outbox?: OrderWriteOutboxPort): void {
+export function mountOrderRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  outbox?: OrderWriteOutboxPort,
+): void {
   const backend = createDbOrderBackend(db, outbox);
   _registerM11Abac({ resolver: backend });
   _registerM11Routes(app, { service: backend });

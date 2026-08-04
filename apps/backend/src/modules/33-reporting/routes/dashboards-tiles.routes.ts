@@ -55,19 +55,18 @@ const TILE_READ_SCOPE = SCOPE("report.tile.read");
  * same authenticate/security/error chain when a DB client is present (the M34 `mountTenantPlatformRoutes`
  * precedent).
  */
-export function registerDashboardTileRoutes(app: FastifyInstance, deps: DashboardTileRouteDeps): void {
+export function registerDashboardTileRoutes(
+  app: FastifyInstance,
+  deps: DashboardTileRouteDeps,
+): void {
   const { service } = deps;
 
   // 1 — list dashboards available in the actor's org scope (cursor-paginated). §4.1.
-  app.get(
-    "/api/v1/reporting/dashboards",
-    { preHandler: [DASH_LIST] },
-    async (request) => {
-      const actor = actorOf(request);
-      const q = parse(DashboardListQuerySchema, request.query);
-      return service.listDashboards(actor, q.cursor, q.limit);
-    },
-  );
+  app.get("/api/v1/reporting/dashboards", { preHandler: [DASH_LIST] }, async (request) => {
+    const actor = actorOf(request);
+    const q = parse(DashboardListQuerySchema, request.query);
+    return service.listDashboards(actor, q.cursor, q.limit);
+  });
 
   // 2 — read one dashboard (share-scope visibility gate). §4.1/§4.7.2.
   app.get(

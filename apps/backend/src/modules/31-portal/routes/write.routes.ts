@@ -10,14 +10,21 @@
 // publisher (bound via `deps.outbox`) emits it. `portal.administration.attest` and `portal.amendment.submit`
 // additionally carry TOTP step-up (M2), composed in `./mount`.
 import type { MedicationOrderProvider } from "@wardenx/types";
-import { getSeam } from "../../../bootstrap/index";
 import type { FastifyInstance } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import { planAmendmentRequest } from "../write-paths/amendment-request";
 import { planCaregiverAttestation } from "../write-paths/caregiver-attestation";
 import { PORTAL_UPLOAD_MIME_ALLOWLIST, planDocumentUpload } from "../write-paths/document-upload";
 import { actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { ABAC_ACCOUNT, ABAC_BEREAVED, ABAC_CAREGIVER_ATTEST, ABAC_GRANT, P, STEP_UP } from "./guards";
+import {
+  ABAC_ACCOUNT,
+  ABAC_BEREAVED,
+  ABAC_CAREGIVER_ATTEST,
+  ABAC_GRANT,
+  P,
+  STEP_UP,
+} from "./guards";
 import type { PortalRouteDeps } from "./index";
 import {
   AmendmentSubmitRequest,
@@ -50,7 +57,10 @@ const arm = <T>(name: string): T => (getSeam as unknown as (n: string) => unknow
  *  silently disable every write; the plan cores are the authority and RLS still scopes the row. */
 async function dischargedReadOnly(orgId: string, patientId: string): Promise<boolean> {
   try {
-    return (await arm<AdmissionArm>("AdmissionStatusReader").isDischargedReadOnly?.(orgId, patientId)) ?? false;
+    return (
+      (await arm<AdmissionArm>("AdmissionStatusReader").isDischargedReadOnly?.(orgId, patientId)) ??
+      false
+    );
   } catch {
     return false;
   }
@@ -82,7 +92,9 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         const { summary } = await arm<MedicationOrderProvider>(
           "MedicationOrderProvider",
         ).getPortalMedicationSummary(actor.organizationId, patientId);
-        orderActive = summary.some((m) => m.medicationOrderId === body.medicationOrderId && !m.isRedacted);
+        orderActive = summary.some(
+          (m) => m.medicationOrderId === body.medicationOrderId && !m.isRedacted,
+        );
       } catch {
         orderActive = false;
       }
@@ -116,7 +128,9 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
   // document upload — init (stage M22 intake; §7.8).
   app.post(
     "/api/v1/portal/documents/upload-init",
-    { preHandler: [P("portal.documents.upload"), ABAC_GRANT("portal.documents.upload"), IDEMPOTENT] },
+    {
+      preHandler: [P("portal.documents.upload"), ABAC_GRANT("portal.documents.upload"), IDEMPOTENT],
+    },
     async (request) => {
       const actor = actorOf(request);
       const patientId = portalPatientIdOf(actor);
@@ -148,7 +162,9 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
   // document upload — complete (confirm M22 intake batch received; emits m31.portal_document.uploaded).
   app.post(
     "/api/v1/portal/documents/upload-complete/:uploadId",
-    { preHandler: [P("portal.documents.upload"), ABAC_GRANT("portal.documents.upload"), IDEMPOTENT] },
+    {
+      preHandler: [P("portal.documents.upload"), ABAC_GRANT("portal.documents.upload"), IDEMPOTENT],
+    },
     async (request) => {
       const actor = actorOf(request);
       portalPatientIdOf(actor);
@@ -229,7 +245,9 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
   // notification preferences (write) — no owned table; acknowledged (M36 reconciles channel availability).
   app.patch(
     "/api/v1/portal/notification-preferences/:id",
-    { preHandler: [P("portal.preferences.write_own"), ABAC_ACCOUNT("portal.preferences.write_own")] },
+    {
+      preHandler: [P("portal.preferences.write_own"), ABAC_ACCOUNT("portal.preferences.write_own")],
+    },
     async (request) => {
       actorOf(request);
       parse(NotificationPreferenceUpdateRequest, request.body);
@@ -240,7 +258,13 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
   // bereavement self opt-out (§7.5 → M16). Window-gated.
   app.post(
     "/api/v1/portal/bereavement/opt-out",
-    { preHandler: [P("portal.bereavement.opt_out_own"), ABAC_BEREAVED("portal.bereavement.opt_out_own"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("portal.bereavement.opt_out_own"),
+        ABAC_BEREAVED("portal.bereavement.opt_out_own"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = actorOf(request);
       portalAccountIdOf(actor);
