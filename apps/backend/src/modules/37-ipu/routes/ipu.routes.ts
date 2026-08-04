@@ -1,10 +1,22 @@
 // apps/backend/src/modules/37-ipu/routes/ipu.routes.ts — M37 §4.1 route handlers (T11b core spine). Reads
-// gate on the `*.read` keys (inOrg base); mutations compose the RBAC key + the §4.7 RN-coverage ABAC gate
-// (except unit-CRUD admin + arranged remote-IPU, exempt per §2.3) + §D14 step-up where the catalog marks it.
-// Org/actor/membership are always server-assembled (actorOf/writeActorOf), never read off the wire.
+// gate on the `*.read` keys (inOrg base); mutations compose the RBAC key + §D14 step-up where the catalog
+// marks it. Org/actor/membership are always server-assembled (actorOf/writeActorOf), never read off the wire.
+//
+// §2.3 D3 RN-coverage note (TASK-050A/TEST-003 finding, fixed): the §4.7 `m37.ipu.rn_coverage_active`
+// predicate used to be composed here via a `RN_COVERAGE` preHandler, but `requireAbac`'s `getTarget` is
+// synchronous and cannot query the materialized `ipu_rn_coverage_window` table — the guard's
+// `getTarget: () => ({})` always saw an empty target and denied every caller unconditionally, on every
+// mutation route that composed it (open admission, request-bed, assign-bed, initiate-transfer, restraint —
+// nobody could reach any of them). Removed; the guard was redundant with (or, for restraint, has been made
+// to match) the service layer's own coverage check, which runs inside the write transaction where an async
+// query is legal: `service-drizzle.ts`'s `openAdmission`/`requestBed`/`initiateTransfer`/`applyRestraint`
+// each independently resolve `ipu_rn_coverage_window` for the admission's unit and throw the real, tested
+// `IPU_RN_COVERAGE_UNAVAILABLE` (412) — `arranged` (remote-IPU) admissions bypass per §2.3, matching the
+// pure `packages/inpatient` machine's own exemption. `assign-bed` never needed the check (the state machine
+// gates coverage one step earlier, at request-bed).
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { P, RN_COVERAGE, STEP_UP } from "./guards";
+import { P, STEP_UP } from "./guards";
 import {
   AdmissionIdParamsSchema,
   AdvanceBodyReleaseBodySchema,
@@ -140,10 +152,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     }),
   );
 
-  // 11. POST /ipu-admissions — open admission (GIP/IRC compose the RN-coverage gate). §4.1.
+  // 11. POST /ipu-admissions — open admission (GIP/IRC enforce RN-coverage service-side; §2.3 D3). §4.1.
   app.post(
     "/api/v1/ipu-admissions",
-    { preHandler: [P("m37.ipu_admission.create"), RN_COVERAGE("m37.ipu_admission.create")] },
+    { preHandler: [P("m37.ipu_admission.create")] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const body = parse(OpenAdmissionBodySchema, request.body);
@@ -165,7 +177,7 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   // 13. POST /ipu-admissions/:id/request-bed — transition to bed_pending. §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/request-bed",
-    { preHandler: [P("m37.bed.assign"), RN_COVERAGE("m37.bed.assign")] },
+    { preHandler: [P("m37.bed.assign")] },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -177,7 +189,7 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   // 14. POST /ipu-admissions/:id/assign-bed — assign a specific bed (bed_assigned). §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/assign-bed",
-    { preHandler: [P("m37.bed.assign"), RN_COVERAGE("m37.bed.assign")] },
+    { preHandler: [P("m37.bed.assign")] },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -220,7 +232,7 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
   // 16. POST /ipu-admissions/:id/initiate-transfer — begin a transfer. §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/initiate-transfer",
-    { preHandler: [P("m37.ipu_admission.transfer"), RN_COVERAGE("m37.ipu_admission.transfer")] },
+    { preHandler: [P("m37.ipu_admission.transfer")] },
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -264,10 +276,10 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     },
   );
 
-  // 22. POST /ipu-admissions/:id/restraint — apply restraint (step-up + RN coverage). §4.1.
+  // 22. POST /ipu-admissions/:id/restraint — apply restraint (step-up; RN coverage enforced service-side). §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/restraint",
-    { preHandler: [P("m37.restraint.apply"), STEP_UP("m37.restraint.apply"), RN_COVERAGE("m37.restraint.apply")] },
+    { preHandler: [P("m37.restraint.apply"), STEP_UP("m37.restraint.apply")] },
     async (request, reply) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);

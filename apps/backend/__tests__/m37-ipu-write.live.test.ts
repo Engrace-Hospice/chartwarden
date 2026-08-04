@@ -167,6 +167,65 @@ describe.skipIf(!DB_URL)("M37 IPU write lifecycle — LIVE Postgres (M37-T11)", 
     expect(reassessed.state).toBe("released");
   });
 
+  // TASK-050A/TEST-001 fix verification (was a universal-deny bug on the route guard; the fix moved
+  // enforcement into applyRestraint itself, mirroring openAdmission/requestBed's existing pattern) —
+  // proves the new check works BOTH ways on a real GIP admission, not just that `arranged` bypasses it
+  // (the case above already covered that).
+  it("applies a restraint on a GIP admission when the unit's RN coverage is active", async () => {
+    const unit = await svc.createUnit(actor, { facilityId: "77777777-7777-4777-8777-777777777771", displayName: "IPU Restraint Coverage", bedCount: 1 });
+    await admin.query(
+      "INSERT INTO ipu_rn_coverage_window (organization_id,unit_id,hour_start_at,is_covered,rn_assignment_ids) VALUES ($1,$2,date_trunc('hour', now()),true,'{}')",
+      [ORG_A, unit.id],
+    );
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: "11111111-2222-4222-8222-222222222222",
+      levelOfCarePeriodId: "22222222-3333-4333-8333-333333333333",
+      providerEntityId: PE,
+      unitId: unit.id,
+      kind: "gip",
+    });
+    const restraint = await svc.applyRestraint(actor, adm.id, {
+      restraintKind: "posey_vest",
+      restraintJustificationText: "x".repeat(120),
+      orderingPhysicianId: PE,
+      orderingOrderId: "33333333-4444-4444-8444-444444444444",
+      category: "medical",
+      reassessmentIntervalMinutes: 120,
+    });
+    expect(restraint.state).toBe("active");
+  });
+
+  it("rejects a restraint on a GIP admission when the unit's RN coverage is inactive (412)", async () => {
+    const unit = await svc.createUnit(actor, { facilityId: "77777777-7777-4777-8777-777777777772", displayName: "IPU Restraint No Coverage", bedCount: 1 });
+    // No ipu_rn_coverage_window row inserted for this unit — an unbuilt coverage grid reads uncovered.
+    // Open as `arranged` (bypasses openAdmission's own coverage gate — already proven separately by
+    // the "blocks a GIP open when the unit is RN-uncovered" case above), then flip it to a GIP admission
+    // on the uncovered unit directly, isolating applyRestraint's own check as the thing under test.
+    const adm = await svc.openAdmission(actor, {
+      patientId: PATIENT,
+      admissionId: "44444444-5555-4555-8555-555555555555",
+      levelOfCarePeriodId: "66666666-7777-4777-8777-777777777777",
+      providerEntityId: PE,
+      remoteFacilityId: "77777777-8888-4888-8888-888888888888",
+      kind: "arranged",
+    });
+    await admin.query("UPDATE ipu_admission SET kind='gip', unit_id=$2, remote_facility_id=NULL WHERE id=$1", [
+      adm.id,
+      unit.id,
+    ]);
+    await expect(
+      svc.applyRestraint(actor, adm.id, {
+        restraintKind: "side_rail_4",
+        restraintJustificationText: "x".repeat(120),
+        orderingPhysicianId: PE,
+        orderingOrderId: "88888888-9999-4999-8999-999999999999",
+        category: "medical",
+        reassessmentIntervalMinutes: 120,
+      }),
+    ).rejects.toMatchObject({ code: "IPU_RN_COVERAGE_UNAVAILABLE", statusCode: 412 });
+  });
+
   it("erases the patient's IPU record under a destruction cert", async () => {
     const before = (await admin.query("SELECT count(*)::int n FROM ipu_admission WHERE patient_id=$1", [PATIENT])).rows[0].n;
     expect(before).toBeGreaterThan(0);

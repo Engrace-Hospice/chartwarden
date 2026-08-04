@@ -9,6 +9,7 @@
 // `m31.*` outbox event the owning module (M13 / M22 / M5 / M36) consumes; the composition root's outbox
 // publisher (bound via `deps.outbox`) emits it. `portal.administration.attest` and `portal.amendment.submit`
 // additionally carry TOTP step-up (M2), composed in `./mount`.
+import type { MedicationOrderProvider } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 import type { FastifyInstance } from "fastify";
 import { planAmendmentRequest } from "../write-paths/amendment-request";
@@ -29,12 +30,6 @@ import {
 
 const IDEMPOTENT = requireIdempotencyKey();
 
-interface MedSummaryArm {
-  getPortalMedicationSummary(
-    orgId: string,
-    patientId: string,
-  ): Promise<{ summary: ReadonlyArray<{ medicationOrderId?: string; redacted?: boolean }> }>;
-}
 interface AdmissionArm {
   isDischargedReadOnly?(orgId: string, patientId: string): Promise<boolean>;
 }
@@ -84,11 +79,10 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
       // caregiver-administered order); the grant kind decides the attesting relationship.
       let orderActive = false;
       try {
-        const { summary } = await arm<MedSummaryArm>("MedicationOrderProvider").getPortalMedicationSummary(
-          actor.organizationId,
-          patientId,
-        );
-        orderActive = summary.some((m) => m.medicationOrderId === body.medicationOrderId && !m.redacted);
+        const { summary } = await arm<MedicationOrderProvider>(
+          "MedicationOrderProvider",
+        ).getPortalMedicationSummary(actor.organizationId, patientId);
+        orderActive = summary.some((m) => m.medicationOrderId === body.medicationOrderId && !m.isRedacted);
       } catch {
         orderActive = false;
       }

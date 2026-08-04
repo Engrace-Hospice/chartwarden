@@ -266,6 +266,23 @@ describe("§7.8 document upload → M22 intake", () => {
     );
   });
 
+  // TASK-050A/TEST-003 finding, fixed: the route layer (upload-init) never has real bytes — it mints a
+  // presigned URL and streams the upload DIRECTLY to M22 (§1.2 (b)) — so it calls this with `magicBytes: []`
+  // meaning "not yet known." The guard used to run unconditionally, so every upload-init call 415'd
+  // regardless of a valid declared MIME/size. An empty `magicBytes` now skips step 4 rather than failing it.
+  it("skips the magic-byte check (does not fail) when magicBytes is empty — the upload-init caller has no bytes yet", () => {
+    const plan = planDocumentUpload({
+      orgId: "org-1",
+      patientId: "pat-1",
+      portalAccountId: "acct-1",
+      byteSize: 1024,
+      declaredMime: "application/pdf",
+      magicBytes: [],
+      patientDischargedReadOnly: false,
+    });
+    expect(plan.mime).toBe("application/pdf");
+  });
+
   it("matches HEIC by its ftyp box within the first 12 bytes", () => {
     const heic = [0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63];
     expect(magicBytesMatch("image/heic", heic)).toBe(true);

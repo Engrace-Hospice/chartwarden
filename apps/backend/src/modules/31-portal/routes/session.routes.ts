@@ -11,7 +11,7 @@ import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { scopeSetContains } from "../lifecycle/scope-set";
 import { actorOf, portalAccountIdOf } from "./actor";
-import { ABAC_ACCOUNT, ABAC_GRANT, P } from "./guards";
+import { ABAC_ACCOUNT, P } from "./guards";
 import type { PortalRouteDeps } from "./index";
 import { SelectPatientRequest, StepUpRequest, parse } from "./portal-typebox";
 
@@ -33,11 +33,18 @@ const PORTAL_CATEGORIES = [
 export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRouteDeps): void {
   const { store } = deps;
 
-  // select-patient — bind the session to (patient, grant) after login (D2). The grant target is the SESSION
-  // account; the predicate additionally proves the backing consent is live.
+  // select-patient — bind the session to (patient, grant) after login (D2). No ABAC_GRANT preHandler here
+  // (TASK-050A/TEST-003 finding, fixed): `ABAC_GRANT`'s `getTarget` reads `patientId` from
+  // `context.attributes.portalPatientId` — the SESSION's already-bound patient — but that is precisely the
+  // fact this route exists to establish; on a fresh session it is always empty, so the guard always denied,
+  // unconditionally, before a session could ever select its first patient. The handler below already
+  // performs the equivalent (and here, correct) check itself: `store.activeGrant(organizationId,
+  // portalAccountId, patientId)` against the REQUEST BODY's patientId — the only legitimate source for an
+  // as-yet-unbound session — and throws the same 403 `ForbiddenError` on no active grant. Composing
+  // `ABAC_GRANT` here was both broken and redundant with that check, not merely broken.
   app.post(
     "/api/v1/portal/sessions/select-patient",
-    { preHandler: [P("portal.session.select_patient"), ABAC_GRANT("portal.session.select_patient")] },
+    { preHandler: [P("portal.session.select_patient")] },
     async (request) => {
       const actor = actorOf(request);
       const portalAccountId = portalAccountIdOf(actor);

@@ -33,34 +33,30 @@
 // than re-deriving M31's write-path guards, so every 2xx case exists to prove the route is MOUNTED, gated on
 // the right §4.6 permission key + §4.7 ABAC predicate, and returns the documented status code.
 //
-// THREE GENUINE FINDINGS surfaced while grounding this file in the real route source (documented here, NOT
-// papered over — see the dedicated "M31 route smoke — findings" describe block below):
+// THREE GENUINE FINDINGS surfaced while grounding this file in the real route source, ALL THREE NOW FIXED
+// at the source (see the dedicated "M31 route smoke — fixed findings" describe block below, which proves
+// each fix rather than just documenting the old bug):
 //
 //   1. `POST /api/v1/portal/sessions/select-patient` — the whole point of this route is to bind the FIRST
-//      patient a portal session is scoped to (§8.1/D2). But its `ABAC_GRANT` guard (routes/guards.ts) reads
-//      its `patientId` target from `context.attributes.portalPatientId` — the SESSION — not from the request
-//      BODY the caller is trying to select. A freshly-minted session (no patient selected yet) therefore
-//      ALWAYS 403s at select-patient, even for a valid active grant, because the ABAC target-mapper demands
-//      the very fact the route exists to establish. The route's own comment ("the grant target is the
-//      SESSION account") suggests only the ACCOUNT id was meant to be session-sourced; `patientId` reads from
-//      the session too. A 2xx is reachable ONLY by pre-seeding the session's `portalPatientId` to the same
-//      value being "selected" — exactly the workaround the ROUTE_CASES table below documents.
+//      patient a portal session is scoped to (§8.1/D2). Its `ABAC_GRANT` guard (routes/guards.ts) read its
+//      `patientId` target from `context.attributes.portalPatientId` — the SESSION — not the request BODY the
+//      caller is trying to select, so a freshly-minted session (no patient selected yet) ALWAYS 403'd, even
+//      for a valid active grant. Fixed by removing `ABAC_GRANT` from this one route (`session.routes.ts`):
+//      the handler already independently re-derives and checks the exact same invariant, correctly, against
+//      the body (`store.activeGrant(org, portalAccountId, patientId)` → `ForbiddenError` on no grant) — the
+//      guard was both broken AND redundant with a check that was already right.
 //   2. `POST /api/v1/portal/administrations/caregiver-attested` — `write.routes.ts`'s local `MedSummaryArm`
-//      structural interface types the medication-summary row as `{ medicationOrderId?: string; redacted?:
-//      boolean }` and gates on `!m.redacted`. The REAL upstream DTO (`PortalMedicationSummary` in
-//      `@wardenx/types`) has NO `redacted` field — it is named `isRedacted`. Because `arm<T>()` is an
-//      unchecked `as T` cast over `getSeam(...)`, this compiles cleanly but `m.redacted` is always
-//      `undefined` at runtime, so `!m.redacted` is always `true` — the "exclude SUD-redacted orders" check is
-//      a permanent no-op. A caregiver can attest a dose against an order M12 marked redacted. Same drift
-//      class as the M16 `ExternalSourceMetadata` field-name bug found in a prior TASK-050A batch.
-//   3. `POST /api/v1/portal/documents/upload-init` — the route comment says magic-byte verification is
-//      deferred to upload-complete ("init validates the declared MIME... magic-byte verification runs on the
-//      real bytes at upload-complete"), but the handler calls `planDocumentUpload({ ..., magicBytes: [] })` —
-//      hardcoded empty — and `planDocumentUpload` unconditionally magic-byte-checks. `magicBytesMatch(mime,
-//      [])` can never match any of the five allowed MIME signatures, so EVERY upload-init call throws
-//      `UPLOAD_MAGIC_BYTE_MISMATCH` (415), regardless of a fully valid declared MIME + size. The route cannot
-//      succeed as currently coded — the ROUTE_CASES table below asserts the REAL current behaviour (415), not
-//      a fabricated 2xx.
+//      structural interface typed the medication-summary row's redaction flag as `redacted?: boolean`; the
+//      real upstream DTO (`PortalMedicationSummary` in `@wardenx/types`) names it `isRedacted`. Fixed by
+//      deleting the local structural type and importing the real `MedicationOrderProvider`/
+//      `PortalMedicationSummary` types instead, so a future rename can't silently drift again the same way.
+//   3. `POST /api/v1/portal/documents/upload-init` — the route's own comment said magic-byte verification is
+//      deferred to upload-complete, but it called `planDocumentUpload({ ..., magicBytes: [] })` and
+//      `planDocumentUpload` unconditionally magic-byte-checked, so `magicBytesMatch(mime, [])` could never
+//      match any allowed MIME signature and every upload-init call 415'd regardless of a valid file. Fixed
+//      in `write-paths/document-upload.ts`: the magic-byte guard now SKIPS (does not fail) when `magicBytes`
+//      is empty, honoring the two-phase design the function's own comment already promised — a caller that
+//      DOES have real bytes still gets a real check.
 import {
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
@@ -553,9 +549,7 @@ const IDEMP = (key: string) => ({ "idempotency-key": key });
 const ROUTE_CASES: readonly RouteCase[] = [
   // 1–4 — the portal session surface.
   {
-    // See finding #1 in the file banner: the ABAC target reads the SESSION's portalPatientId, not the
-    // body, so a 2xx is reachable only by pre-seeding the session with the patient being "selected".
-    label: "1 POST /portal/sessions/select-patient (session-anchor quirk, see finding #1)",
+    label: "1 POST /portal/sessions/select-patient",
     method: "POST",
     url: "/api/v1/portal/sessions/select-patient",
     headers: CAREGIVER,
@@ -618,15 +612,12 @@ const ROUTE_CASES: readonly RouteCase[] = [
     expectStatus: 202,
   },
   {
-    // See finding #3 in the file banner: upload-init hardcodes `magicBytes: []`, so `planDocumentUpload`'s
-    // magic-byte re-check ALWAYS fails for any declared MIME — this is the route's REAL current behaviour,
-    // not a fabricated pass.
-    label: "25 POST /portal/documents/upload-init (BUG: always 415, see finding #3)",
+    label: "25 POST /portal/documents/upload-init",
     method: "POST",
     url: "/api/v1/portal/documents/upload-init",
     headers: { ...CAREGIVER, ...IDEMP("k25") },
     payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 1024 },
-    expectStatus: 415,
+    expectStatus: 200,
   },
   {
     label: "26 POST /portal/documents/upload-complete/:uploadId",
@@ -841,9 +832,10 @@ describe.each(ROUTE_CASES)("M31 route smoke — $label", (c) => {
   });
 });
 
-// ── the three genuine findings from grounding this file in the real route source (see the file banner) ────
-describe("M31 route smoke — findings", () => {
-  it("finding #1: select-patient's ABAC target reads the SESSION, not the body — a fresh session (no patient selected yet) 403s even against a real active grant", async () => {
+// ── the three genuine findings from grounding this file in the real route source, now fixed (see the file
+//    banner) — these prove the FIX, not just document the old bug ─────────────────────────────────────────
+describe("M31 route smoke — fixed findings", () => {
+  it("fix #1: select-patient succeeds on a FRESH session with no patient pre-selected (was: always 403)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -851,11 +843,24 @@ describe("M31 route smoke — findings", () => {
       headers: CAREGIVER_NO_PATIENT_SELECTED,
       payload: { patientId: PATIENT },
     });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().activePatientId).toBe(PATIENT);
+    await app.close();
+  });
+
+  it("fix #1b: select-patient still refuses a patient the account has no active grant for (403, not a rubber stamp)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/sessions/select-patient",
+      headers: CAREGIVER_NO_PATIENT_SELECTED,
+      payload: { patientId: "99999999-9999-4999-8999-999999999999" },
+    });
     expect(res.statusCode).toBe(403);
     await app.close();
   });
 
-  it("finding #2: caregiver-attested-administration's redaction check reads `m.redacted`, but the real DTO field is `isRedacted` — an order M12 marked redacted is still attestable (202)", async () => {
+  it("fix #2: caregiver-attested-administration now refuses (410) an order M12 marked redacted", async () => {
     const { app } = makeServer({ medicationOrderRedacted: true });
     const res = await app.inject({
       method: "POST",
@@ -870,13 +875,13 @@ describe("M31 route smoke — findings", () => {
         caregiverAttestationText: "Given as scheduled; patient tolerated well.",
       },
     });
-    // A field-name-correct check would refuse this (the order is redacted); the route's `!m.redacted`
-    // check is always true instead (the field does not exist on the real DTO), so it accepts.
-    expect(res.statusCode).toBe(202);
+    // Reading the real `isRedacted` field, the order is correctly seen as inactive-for-attestation.
+    expect(res.statusCode).toBe(410);
+    expect(res.json().error?.code ?? res.json().code).toBe("ORDER_INACTIVE");
     await app.close();
   });
 
-  it("finding #3: document upload-init hardcodes empty magicBytes, so a fully valid PDF upload still 415s", async () => {
+  it("fix #3: document upload-init succeeds for a fully valid PDF declaration (was: always 415)", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -884,8 +889,20 @@ describe("M31 route smoke — findings", () => {
       headers: { ...CAREGIVER, ...IDEMP("k-finding-3") },
       payload: { purpose: "other", mimeType: "application/pdf", expectedByteSize: 2048 },
     });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().uploadId).toBeDefined();
+    await app.close();
+  });
+
+  it("fix #3b: upload-init still refuses a MIME outside the allowlist (415, not a rubber stamp)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/portal/documents/upload-init",
+      headers: { ...CAREGIVER, ...IDEMP("k-finding-3b") },
+      payload: { purpose: "other", mimeType: "application/zip", expectedByteSize: 2048 },
+    });
     expect(res.statusCode).toBe(415);
-    expect(res.json().code ?? res.json().error).toBeDefined();
     await app.close();
   });
 });

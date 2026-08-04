@@ -15,6 +15,7 @@ import {
   planCapOverride,
   planReassessmentOutcome,
   planOpenAdmission,
+  requireIpu,
   transitionAdmission,
   transitionBedCleaning,
   transitionBodyRelease,
@@ -866,6 +867,31 @@ export function buildDrizzleIpuRouteService(db: DbClient, deps: IpuRouteServiceD
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
+        // §2.3 D3 — the same RN-coverage gate `openAdmission`/`requestBed`/`initiateTransfer` already
+        // enforce server-side (mirrors their exact query — arranged admissions bypass; an unbuilt coverage
+        // grid reads uncovered, fail-closed). This was previously ONLY gated by the `RN_COVERAGE` route
+        // preHandler, which is unreachable-by-construction (requireAbac's `getTarget` is synchronous and
+        // cannot query the materialized `ipu_rn_coverage_window` table, so it always saw an empty target
+        // and denied every caller unconditionally — TASK-050A/TEST-003 finding). The preHandler is removed
+        // (see routes/guards.ts, routes/ipu-routes.ts); this is now the sole enforcement point.
+        if (adm.kind !== "arranged" && adm.unitId) {
+          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+          const [cov] = await t
+            .select()
+            .from(schema.ipuRnCoverageWindow)
+            .where(
+              and(
+                eq(schema.ipuRnCoverageWindow.unitId, adm.unitId),
+                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
+              ),
+            )
+            .limit(1);
+          requireIpu(
+            cov?.isCovered === true,
+            "IPU_RN_COVERAGE_UNAVAILABLE",
+            "The unit's 24/7 RN coverage is inactive; restraint application is blocked (D3).",
+          );
+        }
         // §2.10 — validate the application (step-up + physician order + ≥100-char justification) and floor
         // the reassessment interval by category. The DB CHECK is the schema backstop.
         validateRestraintApply({

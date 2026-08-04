@@ -17,35 +17,28 @@
 // interface drift; the harness half (header-auth shim, permission/ABAC registry wiring, beforeEach/afterEach
 // reset) clones the `cap-inject.test.ts` precedent exactly.
 //
-// ── GENUINE FINDING — a universal-deny bug, left as-is per the "don't modify any file but this one"
-//    constraint (flagged here and in the task report instead) ──────────────────────────────────────────
+// ── FIXED FINDING — was a universal-deny bug on 5 routes, now fixed at the source ──────────────────────
 //
-// `RN_COVERAGE` (`apps/backend/src/modules/37-ipu/routes/guards.ts`) composes §4.7's
-// `m37.ipu.rn_coverage_active` predicate on five mutation routes (open admission, request-bed, assign-bed,
-// initiate-transfer, apply-restraint) via:
+// This file originally found (and, per its own scope at the time, only documented — TASK-050A/TEST-001)
+// that `RN_COVERAGE` (`routes/guards.ts`) composed §4.7's `m37.ipu.rn_coverage_active` predicate via
+// `requireAbac(key, "m37.ipu.rn_coverage_active", { getTarget: () => ({}) })` — a CONSTANT closure that
+// never read the request, so the predicate always saw an empty target and denied every caller
+// unconditionally on 5 mutation routes (open admission, request-bed, assign-bed, initiate-transfer,
+// apply-restraint) — nobody, including a fully-permissioned actor, could reach any of them. Root cause:
+// `requireAbac`'s `getTarget` is synchronous and cannot query the materialized `ipu_rn_coverage_window`
+// table the coverage fact actually lives in, so no synchronous `getTarget` could ever have implemented
+// this correctly. Fixed by removing the guard (`routes/guards.ts`, `routes/ipu.routes.ts`) and enforcing
+// coverage entirely in `routes/service-drizzle.ts`, where an async query inside the write transaction is
+// legal — `openAdmission`/`requestBed`/`initiateTransfer` already did this independently;
+// `applyRestraint` did not and has been given the same check. `arranged` (remote-IPU) admissions bypass
+// per §2.3, matching the pure `packages/inpatient` machine's exemption; `assign-bed` never needed the
+// check (the state machine gates coverage one step earlier, at request-bed). See the header comments on
+// `routes/guards.ts` and `routes/ipu.routes.ts` for the full note.
 //
-//   requireAbac(key, "m37.ipu.rn_coverage_active", { getTarget: () => ({}), notFoundOnDeny: false })
-//
-// `getTarget` is a CONSTANT closure that returns a fresh empty object literal on every call — it never
-// reads `request.params`/`request.body`/anything request-derived. `requireAbac` (packages/auth/src/abac/
-// require-abac.ts) calls `getTarget(request)` in the preHandler, BEFORE the route handler (and therefore
-// the route service) ever runs, so nothing downstream ever gets a chance to enrich the target. M37's own
-// predicate (`abac/predicates.ts`) reads `target["rnCoverageActive"] === true`; against an always-empty
-// target that is always `false`. With no break-glass grant registered (the ordinary case — see
-// `resetAuthorizationContract` below), `requireAbac`'s deny branch throws `ForbiddenError` unconditionally.
-//
-// The result: ALL FIVE of those routes 403 for EVERY caller, including a fully-permissioned,
-// step-up-satisfied actor — the exact "correct predicate logic, broken wiring, invisible to any
-// pure-function test" class TEST-001 predicted (the M23/M26 precedent in this same effort). It is also
-// unconditional on the request BODY: `m37-ipu-write.live.test.ts` shows the pure domain state machine
-// exempts `kind: "arranged"` admissions from the RN-coverage requirement (§2.3) — but the ROUTE guard runs
-// before the body is even parsed, so an arranged admission is blocked exactly the same as a GIP one. The
-// "auth/schema boundary" + "RN-coverage-gated routes" describe blocks below assert this REAL (403)
-// behavior for these five routes rather than fabricating a 2xx; the remaining 40 routes get genuine 2xx
-// coverage, seeding the admission/restraint fixtures the blocked routes would otherwise have produced by
-// calling the exported `IpuRouteService` methods directly (bypassing HTTP only for the SEEDING step, never
-// for the route under test) — the same fixture-seeding pattern `cap-inject.test.ts`'s `seedFixturesFor`
-// uses for its own upstream-event-sourced rows.
+// This file's hand-rolled in-memory `IpuRouteService` (below) does no RN-coverage enforcement of its own
+// — it is a pure wiring/schema smoke test, and the domain rule is already covered by
+// `m37-ipu-write.live.test.ts` (live Drizzle) and `@wardenx/inpatient`'s own pure-function suite — so
+// every route below gets genuine 2xx coverage now, including the 5 that were previously blocked.
 //
 // No FormatRegistry gap here (unlike M25/M26's *-typebox.ts files): `ipu-typebox.ts`'s `id` alias is a
 // plain `Type.String({ minLength: 1 })`, and the one date-shaped field (`DateParamsSchema.date`) is
@@ -82,7 +75,7 @@ import type {
 
 // ── the M11/M15/M19/M21/M26 header-auth shim, extended with `x-test-membership` (`writeActorOf` in
 //    routes/actor.ts requires a server-assembled `context.attributes.membershipId`) and `x-test-step-up`
-//    (the §D14 step-up flag `requireStepUp`/`RN_COVERAGE`-adjacent routes gate on). ─────────────────────
+//    (the §D14 step-up flag `requireStepUp` gates on). ─────────────────────
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -105,7 +98,8 @@ const MEMBERSHIP = "11111111-1111-4111-8111-111111111111";
 const NOW = "2026-08-04T12:00:00.000Z";
 
 /** A server-assembled write actor for SEEDING fixtures directly through the real service interface (never
- *  through HTTP) — used only to work around the RN_COVERAGE bug above, never to test a route itself. */
+ *  through HTTP) — a convenience for tests that need a pre-existing admission/unit/room/bed, not a
+ *  workaround for anything broken. */
 const SEED_ACTOR: IpuWriteActor = {
   organizationId: ORG,
   userId: "seed_user",
@@ -709,10 +703,11 @@ describe("M37-T11 §4.1 unit + room + bed CRUD (routes 1-8)", () => {
   });
 });
 
-// ── routes 11, 13, 14, 16, 22 — the RN_COVERAGE universal-deny bug (see file header) ────────────────────
+// ── routes 11, 13, 14, 16, 22 — open admission → request-bed → assign-bed → initiate-transfer → restraint
+//    (previously the RN_COVERAGE universal-deny bug — see file header; now genuine 2xx coverage) ────────
 
-describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a genuine bug, documented above — not a fabricated 2xx)", () => {
-  it("POST /ipu-admissions (open admission) 403s a fully-permissioned, step-up-satisfied actor", async () => {
+describe("M37-T11 §4.1 admission open → bed → transfer → restraint (routes 11, 13, 14, 16, 22)", () => {
+  it("POST /ipu-admissions (open admission) succeeds for a fully-permissioned, step-up-satisfied actor", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -726,11 +721,12 @@ describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a g
         kind: "gip",
       },
     });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(201);
+    expect(res.json().state).toBe("pending");
     await app.close();
   });
 
-  it("... including an 'arranged' admission — the §2.3 domain exemption `m37-ipu-write.live.test.ts` proves at the service layer never reaches the route guard, which runs before the body is parsed", async () => {
+  it("... including an 'arranged' admission — the §2.3 domain exemption applies", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "POST",
@@ -745,13 +741,13 @@ describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a g
         kind: "arranged",
       },
     });
-    expect(res.statusCode).toBe(403);
+    expect(res.statusCode).toBe(201);
     await app.close();
   });
 
-  it("POST .../request-bed, .../assign-bed, .../initiate-transfer, .../restraint all 403 the same way", async () => {
+  it("POST .../request-bed, .../assign-bed, .../initiate-transfer, .../restraint all succeed in sequence", async () => {
     const { app, service } = makeServer();
-    // Seed an admission directly through the service (bypassing the broken HTTP guard, only for setup).
+    // Seed an admission directly through the service (a setup convenience, not a workaround).
     const admission = await service.openAdmission(SEED_ACTOR, {
       patientId: randomUUID(),
       admissionId: randomUUID(),
@@ -766,7 +762,8 @@ describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a g
       headers: SUPER,
       payload: { unitId: randomUUID() },
     });
-    expect(requestBed.statusCode).toBe(403);
+    expect(requestBed.statusCode).toBe(200);
+    expect(requestBed.json().state).toBe("bed_pending");
 
     const assignBed = await app.inject({
       method: "POST",
@@ -774,7 +771,8 @@ describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a g
       headers: SUPER,
       payload: { bedId: randomUUID() },
     });
-    expect(assignBed.statusCode).toBe(403);
+    expect(assignBed.statusCode).toBe(200);
+    expect(assignBed.json().state).toBe("bed_assigned");
 
     const initiateTransfer = await app.inject({
       method: "POST",
@@ -782,7 +780,8 @@ describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a g
       headers: SUPER,
       payload: { targetKind: "to_home" },
     });
-    expect(initiateTransfer.statusCode).toBe(403);
+    expect(initiateTransfer.statusCode).toBe(200);
+    expect(initiateTransfer.json().state).toBe("transfer_pending");
 
     const restraint = await app.inject({
       method: "POST",
@@ -797,14 +796,15 @@ describe("M37-T11 RN_COVERAGE-gated routes are UNREACHABLE for every caller (a g
         reassessmentIntervalMinutes: 15,
       },
     });
-    expect(restraint.statusCode).toBe(403);
+    expect(restraint.statusCode).toBe(201);
+    expect(restraint.json().state).toBe("active");
 
     await app.close();
   });
 });
 
 // ── routes 9, 10, 12, 15, 17-21 — admission-adjacent routes, reachable once an admission exists (seeded
-//    directly through the service, since RN_COVERAGE blocks creating one over HTTP — see above) ──────────
+//    directly through the service as a setup convenience) ─────────────────────────────────────────────
 
 describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)", () => {
   it("reads/transitions a directly-seeded admission: list, get, confirm, confirm-transfer, discharge, gip-criteria attest+reassess, irc-cap-override; a seeded bed's cleaning-status also transitions", async () => {
@@ -906,8 +906,8 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
   });
 });
 
-// ── routes 23-24 — restraint reassess/release, using a directly-seeded restraint (apply is one of the
-//    RN_COVERAGE-blocked routes above) ────────────────────────────────────────────────────────────────────
+// ── routes 23-24 — restraint reassess/release, using a directly-seeded restraint (apply is covered in the
+//    admission lifecycle test above) ─────────────────────────────────────────────────────────────────────
 
 describe("M37-T11 §4.1 restraint reassess/release (routes 23-24)", () => {
   it("reassesses then releases a directly-seeded restraint", async () => {

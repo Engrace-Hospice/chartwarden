@@ -96,7 +96,15 @@ export function magicBytesMatch(mime: PortalUploadMime, magic: readonly number[]
  *   1. discharged-read-only → PATIENT_DISCHARGED_READ_ONLY (§7.6)
  *   2. size                 → UPLOAD_TOO_LARGE (413)
  *   3. MIME allowlist       → UPLOAD_MIME_NOT_ALLOWED (415)
- *   4. magic-byte re-check  → UPLOAD_MAGIC_BYTE_MISMATCH (415)
+ *   4. magic-byte re-check  → UPLOAD_MAGIC_BYTE_MISMATCH (415) — SKIPPED when `magicBytes` is empty. The
+ *      route layer (M31-T07) mints a presigned URL and streams the upload DIRECTLY to M22 (§1.2 (b)); it
+ *      never holds the bytes, so at upload-init there is no magic-byte prefix to check yet — exactly the
+ *      two-phase design this function's callers document ("magic-byte verification runs on the real bytes
+ *      at upload-complete; init validates the declared MIME against the allowlist"). Previously this guard
+ *      ran unconditionally, so a caller passing `[]` for "not yet known" (there being no other way to
+ *      represent that) always failed with UPLOAD_MAGIC_BYTE_MISMATCH — a universal-deny bug on the only
+ *      current caller (TASK-050A/TEST-003 finding, fixed). A caller that DOES have real bytes still gets a
+ *      real check: the guard only skips when `magicBytes.length === 0`.
  */
 export function planDocumentUpload(input: PortalUploadInput): PortalUploadPlan {
   requirePortalWrite(
@@ -122,11 +130,13 @@ export function planDocumentUpload(input: PortalUploadInput): PortalUploadPlan {
   );
   const mime = input.declaredMime;
 
-  requirePortalWrite(
-    magicBytesMatch(mime, input.magicBytes),
-    "UPLOAD_MAGIC_BYTE_MISMATCH",
-    "The file contents do not match its type. Please re-upload the original file.",
-  );
+  if (input.magicBytes.length > 0) {
+    requirePortalWrite(
+      magicBytesMatch(mime, input.magicBytes),
+      "UPLOAD_MAGIC_BYTE_MISMATCH",
+      "The file contents do not match its type. Please re-upload the original file.",
+    );
+  }
 
   return {
     orgId: input.orgId,

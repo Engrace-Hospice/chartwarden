@@ -745,13 +745,51 @@
           doesn't reproduce Node's `http.ServerResponse.end(callback)` single-arg overload
           detection, so `.inject()` cannot smoke-test the CSV-export route that relies on it
           (`csvSinkOf(reply).end(resolve)`); asserted the real rejection rather than faking a pass.
-    - **Candidate follow-up tasks**, none started: TASK-051 "fix the 4 universal-deny ABAC-wiring
-      bugs (M23, M33, M37, plus the M31 select-patient deadlock)" — P0 given M37 blocks all
-      admissions and M31 blocks portal onboarding entirely; TASK-052 "sweep every `*-typebox.ts`
-      for missing `FormatRegistry` self-registration"; TASK-053 "audit every `getTarget` on a
-      resource-scoped ABAC predicate for a missing/wrong param mapping" (the M23/M33 class).
-    - TASK-050B (shared in-memory/Drizzle conformance spec), 050C (jsdom smoke-render), 050D
-      (planted-violation self-tests) remain unstarted — separate follow-up work.
+    - **Candidate follow-up tasks**: TASK-051 "fix the universal-deny ABAC-wiring bugs (M23, M33,
+      M37, plus the M31 select-patient deadlock)" — P0 given M37 blocked all admissions and M31
+      blocked portal onboarding entirely; TASK-052 "sweep every `*-typebox.ts` for missing
+      `FormatRegistry` self-registration"; TASK-053 "audit every `getTarget` on a resource-scoped
+      ABAC predicate for a missing/wrong param mapping" (the M23/M33 class).
+      - **TASK-051 status (2026-08-04): M37 + M31 DONE (the 2 most severe findings); M23 + M33
+        NOT started.**
+        - **M37 RN_COVERAGE** (`routes/guards.ts`, `routes/ipu.routes.ts`,
+          `routes/service-drizzle.ts`): removed the broken preHandler entirely — `requireAbac`'s
+          `getTarget` is synchronous and can never query the materialized
+          `ipu_rn_coverage_window` table, so no fix at the guard layer was possible.
+          `openAdmission`/`requestBed`/`initiateTransfer` already independently re-derive and
+          enforce coverage inside the write transaction (an async query is legal there);
+          `applyRestraint` did not, and now does (mirrors the exact same query pattern, `arranged`
+          exempt per §2.3). `assign-bed` never needed the check (the state machine gates coverage
+          one step earlier, at request-bed). Live-verified against a throwaway pg18 cluster: all 7
+          `m37-ipu-write.live.test.ts` cases pass, including 2 new ones added to prove
+          `applyRestraint`'s new check both ways (covered → succeeds; uncovered → 412). Rewrote
+          `ipu-inject.test.ts`'s "RN_COVERAGE-gated routes" describe block (previously asserting
+          403) to assert genuine 2xx.
+        - **M31 select-patient**: removed the redundant, broken `ABAC_GRANT` preHandler from this
+          one route (`session.routes.ts`) — the handler already independently re-derives and
+          checks the identical invariant correctly, against the request body
+          (`store.activeGrant(org, portalAccountId, patientId)` → `ForbiddenError`), which a
+          not-yet-org-bound session's `context.attributes.portalPatientId` could never satisfy.
+        - **M31 SUD-redaction field-name drift**: deleted the local `MedSummaryArm` structural
+          type in `write.routes.ts`; imports and uses the real `MedicationOrderProvider`/
+          `PortalMedicationSummary` types from `@wardenx/types` instead, closing the drift class
+          rather than just renaming the one field.
+        - **M31 upload-init magicBytes**: `write-paths/document-upload.ts`'s magic-byte guard now
+          skips (does not fail) when `magicBytes` is empty, honoring the two-phase design the
+          function's own doc comment already promised (declared-MIME-only check at init; magic
+          bytes checked later, if ever available — M31 never holds the bytes itself, per §1.2 (b)).
+          A caller that does have real bytes still gets a real check (verified: MIME-allowlist
+          rejection at 415 still works).
+        - All 3 M31 fixes live-verified via the full portal test suite (7 files, 179 tests) plus a
+          rewritten `portal-inject.test.ts` "fixed findings" block that proves each fix positively
+          AND proves the surrounding checks still refuse illegitimate input (not a rubber stamp).
+        - Full-suite regression: build clean, `arch:fitness` green, 7518 passing (was 7511).
+        - **M23 (3 unreachable rule-config routes) and M33 (dashboard-read universal-deny) are
+          UNFIXED** — lower severity (M23/M33 deny a subset of routes; M37/M31 blocked core
+          clinical/portal-onboarding workflows entirely) and not yet started.
+    - TASK-050B (shared in-memory/Drizzle conformance spec) is DONE (pilot scope, see above).
+      TASK-050C (jsdom smoke-render), 050D (planted-violation self-tests) remain unstarted —
+      separate follow-up work.
 
 ## Lower-priority (P2/P3) tasks
 
