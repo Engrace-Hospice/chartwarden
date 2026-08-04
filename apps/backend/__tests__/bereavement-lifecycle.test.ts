@@ -13,8 +13,8 @@ import {
   decideCosignReceipt,
   decideEligibilityIntake,
   externalSourceMetadataFor,
+  localDateOf,
   resolveDeathFact,
-  utcDateOf,
 } from "../src/modules/16-bereavement/consumers/index";
 import {
   BereavementStateError,
@@ -893,7 +893,7 @@ describe("§4.3.1 m6.bereavement.eligible intake", () => {
     if (action.kind !== "open_plan") throw new Error("unreachable");
     expect(action.deathDate).toBe(DEATH_DATE);
     // eligibleAt is the day AFTER death here — anchoring on it would shorten the program by a day.
-    expect(action.deathDate).not.toBe(utcDateOf(ELIGIBLE_AT));
+    expect(action.deathDate).not.toBe(localDateOf(ELIGIBLE_AT, "UTC"));
     expect(action.providerEntityId).toBe(PROVIDER_ENTITY);
     expect(action.externalSourceMetadata).toBeNull();
   });
@@ -1028,7 +1028,7 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
       { patientId: PATIENT, admissionId: ADMISSION, deathAt: DEATH_AT, source: "hl7_external", cosignStatus: "pending" },
     ]);
 
-    const fact = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT);
+    const fact = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC");
     expect(fact?.deathDate).toBe(DEATH_DATE);
     expect(fact?.source).toBe("hl7_external");
     expect(fact?.providerEntityId).toBe(PROVIDER_ENTITY);
@@ -1042,7 +1042,7 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
     registerFakes([
       { patientId: "other", admissionId: "other-adm", deathAt: DEATH_AT, source: "internal_clinician_recorded" },
     ]);
-    expect(await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT)).toBeNull();
+    expect(await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC")).toBeNull();
     expectCode(
       () => decideEligibilityIntake(PAYLOAD, facts({ deathFact: null })),
       "DEATH_FACT_UNRESOLVED",
@@ -1055,6 +1055,23 @@ describe("the M6 death-fact resolver (seam-consuming)", () => {
         throw new BereavementStateError("DEATH_FACT_UNRESOLVED", "seam down");
       },
     } as never);
-    await expectRejectCode(resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT), "DEATH_FACT_UNRESOLVED");
+    await expectRejectCode(
+      resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC"),
+      "DEATH_FACT_UNRESOLVED",
+    );
+  });
+
+  it("PARAM-004: death_date is the org's LOCAL calendar date, not a UTC-instant slice", async () => {
+    // DEATH_AT = "2026-03-01T04:20:00.000Z" — 04:20 UTC on March 1 is still Feb 28 in every US
+    // timezone (8:20pm Feb 28 in Los Angeles, 11:20pm Feb 28 in New York). The old utcDateOf() bug
+    // would misdate this death one day LATE for any US-operating org — a real, regulatory-significant
+    // error since D4 anchors the 13-month bereavement clock on this exact date.
+    registerFakes([
+      { patientId: PATIENT, admissionId: ADMISSION, deathAt: DEATH_AT, source: "internal_clinician_recorded" },
+    ]);
+    const inUtc = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "UTC");
+    const inLosAngeles = await resolveDeathFact(ORG, ADMISSION, ELIGIBLE_AT, "America/Los_Angeles");
+    expect(inUtc?.deathDate).toBe("2026-03-01");
+    expect(inLosAngeles?.deathDate).toBe("2026-02-28");
   });
 });

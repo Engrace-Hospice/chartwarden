@@ -10,7 +10,8 @@
 // visit purpose, the service date, the scheduled window, the patient). The publish/reassign/edit paths re-run
 // the D8 gate in the SERVICE layer (the visit machine takes the already-computed `gatePassed` verdict per
 // §2.2.1), so those routes carry the RBAC key alone. The portal route runs under the portal session class.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import { type AbacTarget, type GuardRequest, requireAbac, requirePermission } from "@wardenx/auth";
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -91,8 +92,21 @@ const OPTIMIZE = P("route.optimize_on_demand");
 const ROUTE_METRICS = P("route.read_metrics");
 const PORTAL_READ = P("portal.visit.read_upcoming");
 
+// PARAM-004 follow-up — `requireAbac`'s `getTarget` (packages/auth/src/abac/require-abac.ts) is
+// SYNCHRONOUS, so `createGateTarget` below cannot itself resolve `orgId`'s configured timezone from
+// the DB. Instead an earlier preHandler (`resolveOrgTimezone`) fetches it once and stashes it on
+// `request.context.attributes.orgTimezone`, ordered right after `CREATE` (RBAC) and before every
+// `GATE(...)` predicate on the create route, so `createGateTarget` can read it back synchronously.
+function resolveOrgTimezone(service: SchedulingRouteService): PreHandler {
+  return async (request) => {
+    const ctx = request.context;
+    if (!ctx?.organizationId) return; // no org bound — CREATE's own guard denies before this matters
+    ctx.attributes.orgTimezone = await service.orgTimezone(ctx.organizationId);
+  };
+}
+
 // §4.7 — the create route's pre-schedule gate target (lifted from the body, never params).
-const createGateTarget = (request: { readonly body?: unknown }): AbacTarget => {
+const createGateTarget = (request: GuardRequest): AbacTarget => {
   const body = (request.body ?? {}) as {
     assignedMembershipId?: unknown;
     visitPurpose?: unknown;
@@ -106,7 +120,11 @@ const createGateTarget = (request: { readonly body?: unknown }): AbacTarget => {
   if (typeof body.patientId === "string") target.patientId = body.patientId;
   if (typeof body.scheduledStartedAt === "string") {
     target.scheduledStartedAt = body.scheduledStartedAt;
-    target.serviceDate = body.scheduledStartedAt.slice(0, 10);
+    // The service date the D8 predicates (credentials-active-as-of, PTO overlap) reason about is the
+    // ORG-LOCAL calendar date this visit falls on, not a naive UTC-instant slice (PARAM-004) — resolved
+    // by `resolveOrgTimezone` above; "UTC" only if that preHandler somehow didn't run first.
+    const timezone = (request.context.attributes.orgTimezone as string | undefined) ?? "UTC";
+    target.serviceDate = localDateInTimeZone(new Date(body.scheduledStartedAt), timezone);
   }
   if (typeof body.scheduledEndedAt === "string") target.scheduledEndedAt = body.scheduledEndedAt;
   return target;
@@ -146,7 +164,7 @@ export function registerSchedulingRoutes(app: FastifyInstance, deps: SchedulingR
   // 3 — direct manual create (skips the proposal path); runs the D8 pre-schedule gate (four §4.7 predicates).
   app.post(
     "/api/v1/visits",
-    { preHandler: [CREATE, ABAC_CREDENTIALS, ABAC_DISCIPLINE, ABAC_NOT_ON_PTO, ABAC_POOL] },
+    { preHandler: [CREATE, resolveOrgTimezone(service), ABAC_CREDENTIALS, ABAC_DISCIPLINE, ABAC_NOT_ON_PTO, ABAC_POOL] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const b = parse(CreateVisitRequest, request.body);

@@ -39,7 +39,8 @@
 //   (6) `upsertAvailability` MERGES per (membership, day_of_week) — wardenx_app has no DELETE grant on any M17
 //       table, so a weekday dropped from the new set is not pruned (the append-only posture); `time_zone` has
 //       no column, so the write echoes the request tz while reads report UTC (the T01 read TODO).
-import { type DbClient, schema } from "@wardenx/db";
+import { type DbClient, organizationTimezone, schema } from "@wardenx/db";
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import {
   type SchedulingDiscipline,
   type SchedulingSideEffect,
@@ -87,7 +88,12 @@ const TO = schema.timeOff;
 const MEM = schema.memberships;
 
 const iso = (d: Date | string): string => (typeof d === "string" ? d : d.toISOString());
-const serviceDateOf = (isoStr: string): string => isoStr.slice(0, 10);
+// PARAM-004: was `isoStr.slice(0, 10)` — a UTC-instant slice reads the WRONG calendar day for a
+// large fraction of every US business day (an evening visit's scheduledStartedAt, e.g. 8pm
+// Pacific, is already tomorrow in UTC). `timezone` is the org's `org_timezone` setting, resolved
+// ONCE per method via `organizationTimezone` and reused across every derivation in that call.
+const serviceDateOf = (isoStr: string, timezone: string): string =>
+  localDateInTimeZone(new Date(isoStr), timezone);
 
 // ── row → view projections ──────────────────────────────────────────────────────────────────────────────
 type VisitRow = {
@@ -106,7 +112,7 @@ type VisitRow = {
   rescheduledIntoVisitId: string | null;
 };
 
-const toVisitView = (r: VisitRow): VisitView => {
+const toVisitView = (r: VisitRow, timezone: string): VisitView => {
   const startedAt = iso(r.scheduledStartedAt);
   return {
     id: r.id,
@@ -118,7 +124,7 @@ const toVisitView = (r: VisitRow): VisitView => {
     visitSetting: r.visitSetting as VisitSetting,
     scheduledStartedAt: startedAt,
     scheduledEndedAt: iso(r.scheduledEndedAt),
-    serviceDate: serviceDateOf(startedAt),
+    serviceDate: serviceDateOf(startedAt, timezone),
     status: r.status as VisitStatus,
     patientAddressId: r.patientAddressId,
     externalFacilityId: r.externalFacilityId,
@@ -280,7 +286,8 @@ export function createDbSchedulingBackend(
   ): Promise<VisitView> {
     const { providerEntityId, locationId } = await resolveSiting(tx, input.assignedMembershipId);
     const discipline = disciplineFor(input.visitPurpose);
-    const serviceDate = serviceDateOf(input.scheduledStartedAt);
+    const timezone = await organizationTimezone(tx, orgId);
+    const serviceDate = serviceDateOf(input.scheduledStartedAt, timezone);
 
     const [inserted] = await tx
       .insert(V)
@@ -357,27 +364,37 @@ export function createDbSchedulingBackend(
       parentProposalId: lineage.parentProposalId,
     });
 
-    return toVisitView({
-      id: visitId,
-      organizationId: orgId,
-      patientId: input.patientId,
-      admissionId: input.admissionId,
-      assignedMembershipId: input.assignedMembershipId,
-      visitPurpose: input.visitPurpose,
-      visitSetting: input.visitSetting,
-      scheduledStartedAt: new Date(input.scheduledStartedAt),
-      scheduledEndedAt: new Date(input.scheduledEndedAt),
-      status: published.to,
-      patientAddressId: input.patientAddressId,
-      externalFacilityId: input.externalFacilityId,
-      rescheduledIntoVisitId: null,
-    });
+    return toVisitView(
+      {
+        id: visitId,
+        organizationId: orgId,
+        patientId: input.patientId,
+        admissionId: input.admissionId,
+        assignedMembershipId: input.assignedMembershipId,
+        visitPurpose: input.visitPurpose,
+        visitSetting: input.visitSetting,
+        scheduledStartedAt: new Date(input.scheduledStartedAt),
+        scheduledEndedAt: new Date(input.scheduledEndedAt),
+        status: published.to,
+        patientAddressId: input.patientAddressId,
+        externalFacilityId: input.externalFacilityId,
+        rescheduledIntoVisitId: null,
+      },
+      timezone,
+    );
   }
 
   const backend = {
     // ── outbox drain — the DB backend publishes transactionally; nothing is buffered ─────────────────────
     drainEvents() {
       return [];
+    },
+
+    // PARAM-004 follow-up — lets the route layer resolve `orgId`'s configured timezone BEFORE the D8
+    // pre-schedule ABAC gate runs (`requireAbac`'s `getTarget` is synchronous, so it cannot do this DB
+    // read itself; the route stashes the result on `request.context.attributes` in an earlier preHandler).
+    async orgTimezone(orgId: string): Promise<string> {
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) => organizationTimezone(tx, orgId));
     },
 
     // ── visits (reads) ────────────────────────────────────────────────────────────────────────────────
@@ -397,7 +414,8 @@ export function createDbSchedulingBackend(
           .from(V)
           .where(conds.length ? and(...conds) : undefined)
           .orderBy(V.scheduledStartedAt);
-        return rows.map((r) => toVisitView(r as VisitRow));
+        const timezone = await organizationTimezone(tx, orgId);
+        return rows.map((r) => toVisitView(r as VisitRow, timezone));
       });
     },
 
@@ -405,7 +423,7 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
         if (!row) throw new NotFoundError("visit");
-        return toVisitView(row as VisitRow);
+        return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
       });
     },
 
@@ -428,6 +446,7 @@ export function createDbSchedulingBackend(
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const v = await loadVisit(tx, visitId);
+        const timezone = await organizationTimezone(tx, orgId);
         const reassigned =
           input.assignedMembershipId !== undefined || input.scheduledStartedAt !== undefined;
         const nextMembership = (input.assignedMembershipId ?? v.assignedMembershipId) as string;
@@ -443,7 +462,7 @@ export function createDbSchedulingBackend(
         };
         if (input.scheduledStartedAt) {
           set.scheduledStartedAt = new Date(input.scheduledStartedAt);
-          set.serviceDate = serviceDateOf(input.scheduledStartedAt);
+          set.serviceDate = serviceDateOf(input.scheduledStartedAt, timezone);
         }
         if (input.scheduledEndedAt) set.scheduledEndedAt = new Date(input.scheduledEndedAt);
         if (input.assignedMembershipId) {
@@ -456,7 +475,7 @@ export function createDbSchedulingBackend(
         if (input.visitSetting) set.visitSetting = input.visitSetting;
         await tx.update(V).set(set).where(eq(V.id, visitId));
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return toVisitView(row as VisitRow);
+        return toVisitView(row as VisitRow, timezone);
       });
     },
 
@@ -501,7 +520,7 @@ export function createDbSchedulingBackend(
           evvBracketState: bracket,
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return toVisitView(row as VisitRow);
+        return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
       });
     },
 
@@ -549,7 +568,7 @@ export function createDbSchedulingBackend(
           reasonCode: "operational",
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return toVisitView(row as VisitRow);
+        return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
       });
     },
 
@@ -613,7 +632,7 @@ export function createDbSchedulingBackend(
           reason: input.reason,
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return { original: toVisitView(row as VisitRow), created };
+        return { original: toVisitView(row as VisitRow, await organizationTimezone(tx, orgId)), created };
       });
     },
 
@@ -656,7 +675,7 @@ export function createDbSchedulingBackend(
           reason: reason ?? "",
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return toVisitView(row as VisitRow);
+        return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
       });
     },
 
@@ -693,7 +712,7 @@ export function createDbSchedulingBackend(
           scheduledEndedAt: iso(v.scheduledEndedAt as Date),
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
-        return toVisitView(row as VisitRow);
+        return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
       });
     },
 
@@ -848,7 +867,10 @@ export function createDbSchedulingBackend(
             timeOfDayStart: "09:00",
             timeOfDayEnd: "10:00",
             timeZone: "UTC",
-            startDate: serviceDateOf(new Date().toISOString()),
+            // startDate is derived in the same "UTC" the row's own timeZone field is defaulted to above —
+            // consistent with that placeholder, not the org's configured org_timezone (the real time-of-day
+            // window + tz parse lands with the materializer worker per the §2.2.3 comment above).
+            startDate: serviceDateOf(new Date().toISOString(), "UTC"),
             status: "active",
           })
           .returning({ id: RV.id });

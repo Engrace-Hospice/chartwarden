@@ -28,6 +28,7 @@
 // death fact, so its `DeathDischargeReader` impl currently returns `source='internal_clinician_recorded'`
 // for every decedent. M16 branches on the CONTRACT, so external-source plans start being created — with
 // their D18 cosign gate — the day M6 models HL7-external death intake, with no change here.
+import { localDateInTimeZone } from "@wardenx/shared/dates";
 import type {
   AdmissionId,
   BereavementExternalSourceMetadata,
@@ -63,11 +64,21 @@ export interface ResolvedDeathFact {
   readonly admissionDischargeDate: string | null;
 }
 
-/** The UTC calendar date of an instant (`bereavement_plan.death_date` is a DATE column). */
-export function utcDateOf(iso: IsoInstant): string {
+/**
+ * The calendar date of an instant, in `timezone` (`bereavement_plan.death_date` is a DATE column).
+ *
+ * PARAM-004: was UTC-instant slicing (`new Date(ms).toISOString().slice(0, 10)`) — a death recorded
+ * at, say, 11:45pm Pacific is 06:45 UTC the FOLLOWING day, so the naive slice misdated `death_date`
+ * one day late for a large fraction of every US evening. D4's 13-month bereavement clock anchors on
+ * this exact date, so the off-by-one is regulatory-significant, not cosmetic. `timezone` is the
+ * organization's `org_timezone` setting (packages/db/src/organization-settings) — the caller
+ * resolves it (this file stays a PURE decision core, no DB access, per its own header) via
+ * `todayForOrganization`'s sibling read before calling `resolveDeathFact`.
+ */
+export function localDateOf(iso: IsoInstant, timezone: string): string {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) throw new RangeError(`bereavement: malformed instant '${iso}'`);
-  return new Date(ms).toISOString().slice(0, 10);
+  return localDateInTimeZone(new Date(ms), timezone);
 }
 
 /**
@@ -79,6 +90,9 @@ export async function resolveDeathFact(
   organizationId: string,
   admissionId: AdmissionId,
   eligibleAt: IsoInstant,
+  /** The organization's `org_timezone` setting — resolve via `todayForOrganization`'s sibling read
+   *  (packages/db/src/organization-settings/org-today.ts) before calling; this stays a pure function. */
+  timezone: string,
 ): Promise<ResolvedDeathFact | null> {
   const eligibleMs = Date.parse(eligibleAt);
   if (Number.isNaN(eligibleMs)) {
@@ -100,7 +114,7 @@ export async function resolveDeathFact(
     patientId: match.patientId,
     providerEntityId: summary.providerEntityId,
     deathAt: match.deathAt,
-    deathDate: utcDateOf(match.deathAt),
+    deathDate: localDateOf(match.deathAt, timezone),
     source: match.source,
     cosignStatus: match.cosignStatus,
     admissionDischargeDate: summary.dischargedAt,
