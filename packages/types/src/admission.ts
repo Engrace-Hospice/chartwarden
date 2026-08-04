@@ -119,17 +119,19 @@ export const M6_AUDIT_DENYLIST: { readonly [K in M6TableName]: readonly string[]
     "referring_dx_text",
     "referrer_phone",
   ],
-  admission: [],
+  admission: ["hold_reason"],
   election_period: [],
-  election_statement: ["patient_name_at_signing", "narrative"],
+  // `narrative` was never a real column on this table (§2.2's stated free-text field is the jsonb
+  // `state_addendum`, which the trigger already scrubs) — corrected to match reality (TASK-063/ARCH-020).
+  election_statement: ["patient_name_at_signing", "state_addendum"],
   certification_of_terminal_illness: ["narrative", "late_reason"],
   face_to_face_encounter: ["attestation_narrative", "window_override_reason"],
-  level_of_care_period: [],
+  level_of_care_period: ["reason"],
   revocation_event: ["narrative"],
-  transfer_event: [],
+  transfer_event: ["narrative"],
   discharge_event: ["narrative", "for_cause_reason"],
   notice_of_rights_acknowledgment: [],
-  compliance_window: [],
+  compliance_window: ["close_reason", "override_reason"],
 } as const;
 
 /** The typed payload shape carried on the three external-signal compliance windows (§2.2 note / D15).

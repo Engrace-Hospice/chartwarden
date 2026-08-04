@@ -170,7 +170,8 @@ export const M13_AUDIT_DENYLIST: { readonly [K in M13TableName]: readonly string
     "administrative_override_reason",
     "correction_reason",
     "void_reason",
-    "caregiver_reported_snapshot",
+    // "caregiver_reported_snapshot" was listed here in error (TASK-063/ARCH-020) — that column lives on
+    // medication_reconciliation_decision, not administration_record; moved below.
     "data->>sig_free_text",
     "data->>infusionDilution",
     "data->>titrationReason",
@@ -185,7 +186,7 @@ export const M13_AUDIT_DENYLIST: { readonly [K in M13TableName]: readonly string
   comfort_kit_deployment: [],
   comfort_kit_drawdown: ["notes"],
   medication_reconciliation_worksheet: [],
-  medication_reconciliation_decision: ["decision_notes"],
+  medication_reconciliation_decision: ["decision_notes", "caregiver_reported_snapshot"],
   barcode_scan_event: [],
   administration_offline_queue: ["rejection_reason_detail"],
   administration_policy: [],
