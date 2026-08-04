@@ -1,0 +1,63 @@
+# ops/pgbackrest/pgbackrest.conf.template — production pgBackRest config (TASK-040G, OPS-014).
+#
+# Implements WARDENX_DR_BCP_v0.1.md §4.1.1's 3-repo spec verbatim (this file mirrors that section
+# almost exactly — see the doc for the retention/schedule table in §4.1.2 and the WAL-archiving
+# config in §4.1.3). NOT wired to any real host/credentials — every value below is a placeholder to
+# fill in at deploy time (repo1-cipher-pass etc. sealed in SOPS, per the doc's own convention).
+#
+# THIS FILE IS NOT WHAT `bun run backup:restore-drill` (scripts/db/backup-restore-drill.ts) RUNS —
+# that script generates its own throwaway repo1-only config against a disposable local cluster to
+# prove the backup/restore mechanics; this template is the doc-matching production reference,
+# unexercised until real infra exists. Their divergence is deliberate, not drift:
+#   - repo2 (secondary on-prem backup VM) is commented out below — no such VM exists in any
+#     environment this repo has ever run in (dev laptop, CI runner, or otherwise). Uncomment and
+#     fill in when one is provisioned.
+#   - repo3 (off-site, S3-compatible) points at MinIO — the target chosen when this task asked for
+#     go-ahead on backup infra (TASK-040F already stands up a MinIO container in
+#     docker-compose.yml for local dev). Exercising repo3 live needs pgBackRest's S3 driver to
+#     negotiate TLS; the local dev MinIO container deliberately runs plain http:// (matching the
+#     app's own zero-dep SigV4 adapter — apps/backend/src/modules/22-documents/seams/
+#     s3-object-store.ts), so this repo is documented but not live-exercised by the drill script.
+#     A real deploy either terminates TLS in front of MinIO or points repo3 at a real S3 bucket.
+
+[global]
+repo1-path=/var/lib/pgbackrest
+repo1-retention-full=14
+repo1-retention-diff=7
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass=<sealed in SOPS>
+repo1-bundle=y
+log-level-console=info
+log-level-file=detail
+process-max=4
+compress-type=zstd
+compress-level=3
+start-fast=y
+
+# Secondary repository on backup VM — COMMENTED OUT, see file header (no such VM exists yet).
+# repo2-host=wardenx-backup-01
+# repo2-host-user=pgbackrest
+# repo2-path=/var/lib/pgbackrest
+# repo2-retention-full=30
+# repo2-retention-diff=14
+# repo2-cipher-type=aes-256-cbc
+# repo2-cipher-pass=<different sealed key>
+
+# Off-site repository (S3-compatible — MinIO, see file header for the TLS caveat)
+repo3-type=s3
+repo3-s3-endpoint=<off-site MinIO endpoint — production host, NOT the docker-compose.yml dev container>
+repo3-s3-bucket=wardenx-pg-backup
+repo3-s3-key=<sealed in SOPS>
+repo3-s3-key-secret=<sealed in SOPS>
+repo3-s3-region=us-east-1
+repo3-path=/wardenx
+repo3-cipher-type=aes-256-cbc
+repo3-cipher-pass=<third sealed key>
+repo3-retention-full=90
+repo3-retention-diff=30
+
+[wardenx]
+pg1-path=/var/lib/postgresql/18/main
+pg1-port=5432
+pg1-user=postgres
+recovery-option=recovery_target_action=promote

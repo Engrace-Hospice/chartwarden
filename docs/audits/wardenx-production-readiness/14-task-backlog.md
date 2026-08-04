@@ -525,6 +525,59 @@
 - Complexity: L.
 - **Do not start without the user's explicit go-ahead on target infra** (which backup storage) — same
   reasoning as TASK-040F.
+- **Status (2026-08-04): DONE, not yet committed.** User picked "reuse the MinIO from TASK-040F" for
+  the off-site (repo3) target when asked.
+  - **`scripts/db/backup-restore-drill.ts`** (new — installed `pgbackrest` 2.59.0 via Homebrew to
+    build/verify this for real, following the session's live-verify-everything discipline): spins up
+    a throwaway local PG18 cluster (own `initdb`, unique port/socket dir), generates its OWN
+    repo1-only pgbackrest.conf, seeds 500 deterministic rows into a `drill_probe` table, runs
+    `pgbackrest stanza-create` + `--type=full backup`, stops the source cluster, restores into a
+    SEPARATE fresh data directory via `pgbackrest restore --pg1-path=<restore-dir>`, starts the
+    restored cluster, and asserts row count + an md5 checksum over the ordered rows match the
+    source EXACTLY. Wrapped in try/finally so both instances stop and every temp dir/socket dir is
+    removed even on failure. **Genuinely a new pattern for this repo**: every other `scripts/db/*.ts`
+    only ever talks to Postgres over the wire via the `pg` client; this one has to shell out to real
+    OS binaries (`initdb`/`pg_ctl`/`pgbackrest`) since there is no way to drive backup/restore
+    through a DB connection alone — used `execFileSync` (array-args, no shell) throughout, never
+    string-interpolated into a shell command.
+  - **Two real bugs found and fixed by actually running it** (typecheck alone could never have
+    caught either): (1) pgBackRest's default connecting role is the CURRENT OS USER (libpq's
+    `PQconnectdb` fallback), not `"postgres"` as assumed — `stanza-create` failed with `role
+    "fabrice" does not exist` until `pg1-user=postgres` was added explicitly to the generated
+    config. (2) pgBackRest's default `log-path` (`/var/log/pgbackrest/`) isn't writable/doesn't
+    exist on a dev machine — added an explicit `log-path` under the script's own temp work dir.
+  - **Socket-path-length gotcha reused from TASK-040E's live-migration testing**: the OS tmpdir
+    (`/var/folders/.../T/wardenx-backup-drill-XXXXXX` on macOS) can exceed the ~103-byte Unix-socket
+    path cap, so the socket directory is a short, separate `/tmp/wardenx-drill-sock-<pid>` path,
+    while data/repo directories live under the (longer) proper tmpdir.
+  - **Live-verified TWICE in a row** (proving clean, repeatable teardown — no leftover socket dirs
+    or work dirs after either run): both runs produced identical checksums between source and
+    restored (`a55d9ddcae84cb98cb25bb13aaf70004`), proving the backup+restore round-trip is
+    deterministic and correct, not a fluke.
+  - **`ops/pgbackrest/pgbackrest.conf.template`** (new): the doc-matching PRODUCTION reference config
+    — mirrors `WARDENX_DR_BCP_v0.1.md` §4.1.1's 3-repo example almost verbatim. repo2 (on-prem
+    backup VM) is commented out with an explicit note that no such VM exists in any environment this
+    repo has ever run in. repo3 (S3-compatible off-site) points at MinIO per the user's go-ahead,
+    with an explicit note that pgBackRest's S3 driver needs TLS, which the TASK-040F dev MinIO
+    container deliberately doesn't have (matches the app's own zero-dep SigV4 adapter, which is
+    plain-HTTP-only too) — so repo3 is documented, not live-exercised; only repo1 (local disk) is
+    what the drill script above actually proves. This template is explicitly NOT what the drill
+    script runs against — the drill generates its own throwaway repo1-only config; the divergence is
+    called out in both files' headers so it doesn't read as an oversight.
+  - Fixed `WARDENX_DR_BCP_v0.1.md` §8.2's dead references (`bun test:restore-verify` /
+    `packages/db/test/restore-verify.test.ts` — neither ever existed) to point at the real
+    `ops/pgbackrest/pgbackrest.conf.template` + `bun run backup:restore-drill`, while being explicit
+    that the drill script is NOT a substitute for §8.2's real-schema RLS smoke test (step 5, which
+    still doesn't exist — left as an honestly-marked gap, not silently claimed as closed).
+  - New `package.json` script `backup:restore-drill`.
+  - **Deliberate scope cut, stated explicitly (not silent)**: no CI job for this drill — the
+    acceptance criteria is "runs and passes locally," not CI-gated (unlike TASK-040E's migration
+    gate, which the objective explicitly required in CI). Installing `pgbackrest` + a real archiving
+    Postgres in a GH Actions runner is achievable but adds meaningful CI surface for a P2
+    scaffold-only task; flagging it as a legitimate follow-up rather than doing it silently or
+    pretending it's out of scope by omission.
+  - Gate-verified: typecheck, build, `arch:fitness` (17/17), full 6891-test suite unchanged (this is
+    an operational script exercised manually, not a vitest test file).
 
 ## TASK-050 — Test coverage: per-module HTTP smoke suites + real-auth conformance + jsdom
 

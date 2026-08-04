@@ -748,8 +748,12 @@ After any recovery, before resuming customer traffic:
 
 ```bash
 # 1. Provision sandbox VM (or use dedicated test VM)
-# 2. Restore latest pgBackRest backup to sandbox
-sudo -u postgres pgbackrest --stanza=wardenx --type=default \
+# 2. Restore latest pgBackRest backup to sandbox — ops/pgbackrest/pgbackrest.conf.template is the
+#    real config this points at (TASK-040G); `bun run backup:restore-drill`
+#    (scripts/db/backup-restore-drill.ts) proves the same restore MECHANICS locally/in CI against a
+#    throwaway synthetic cluster, repo1 only — it is not this step (real prod backup, real schema)
+#    and does not substitute for actually running it monthly.
+sudo -u postgres pgbackrest --config=/etc/pgbackrest/pgbackrest.conf --stanza=wardenx --type=default \
   --pg1-path=/var/lib/postgresql-test/data restore
 
 # 3. Start sandbox PostgreSQL
@@ -757,8 +761,10 @@ sudo -u postgres pgbackrest --stanza=wardenx --type=default \
 psql -d wardenx -c "SELECT COUNT(*) FROM organization;"  # Expect: nonzero
 psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - INTERVAL '1 day';"  # Expect: matches production
 
-# 5. Run RLS smoke test from packages/db/test/restore-verify.test.ts
-bun test:restore-verify
+# 5. Run an RLS smoke test against the restored schema — NOT YET IMPLEMENTED (tracked gap; TASK-040G
+#    built the restore-drill mechanics above, not a WardenX-schema-aware RLS smoke test). Until this
+#    exists, step 5 is a manual re-run of a subset of packages/db/migrations/__tests__/
+#    rls-isolation.live.test.ts's assertions against the restored instance.
 
 # 6. Compare data checksums for sample tables
 # 7. Document drill results in docs/dr-drills/<date>.md
