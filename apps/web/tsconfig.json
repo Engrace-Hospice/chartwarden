@@ -4,7 +4,10 @@
     "rootDir": "src",
     "outDir": "dist",
     "jsx": "react-jsx",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"]
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // Vite's ambient types (import.meta.glob, import.meta.env, asset imports) — needed by the
+    // TASK-050C registry-driven screen smoke test's module discovery (screens-smoke.dom.test.tsx).
+    "types": ["vite/client"]
   },
   "include": ["src"],
   "references": [

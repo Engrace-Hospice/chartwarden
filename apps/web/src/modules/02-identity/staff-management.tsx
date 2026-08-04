@@ -81,6 +81,9 @@ export function StaffManagement(): JSX.Element {
       ]);
       if (membersRes.error) {
         setError("Could not load staff. You may not have permission to manage members.");
+        // `members === null` is the "still loading" state (drives the spinner below) — leaving it
+        // null on a load error kept the spinner spinning forever alongside the error message.
+        setMembers([]);
         return;
       }
       setMembers((membersRes.data?.members ?? []) as Member[]);
@@ -99,7 +102,10 @@ export function StaffManagement(): JSX.Element {
       const org = data?.session?.activeOrganizationId ?? null;
       setOrgId(org);
       if (org) void load(org);
-      else setError("No active organization is bound to your session.");
+      else {
+        setError("No active organization is bound to your session.");
+        setMembers([]); // same "don't spin forever on a resolved-but-unusable state" fix as load()
+      }
     });
   }, [load]);
 

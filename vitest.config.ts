@@ -1,3 +1,4 @@
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 /**
@@ -6,11 +7,26 @@ import { defineConfig } from "vitest/config";
  * Phase 0 tests live under scripts/__tests__/ (fitness-gate self-tests that prove
  * each gate goes RED on a planted violation and GREEN on the baseline). Feature
  * modules add *.test.ts beside their source as they land in Phase 1+.
+ *
+ * TASK-050C (TEST-004): `*.dom.test.tsx` files run under jsdom instead of the default node
+ * environment — the one carve-out for component-rendering tests (registry-driven screen smoke
+ * renders for web/portal/admin). Everything else (route inject suites, pure-logic unit tests)
+ * stays on "node", which is faster and was already proven sufficient for ~7500 existing tests.
+ * `@vitejs/plugin-react` is only needed to transform the JSX those dom tests (and the screen
+ * components they render) contain — a no-op for every plain .ts test file.
  */
 export default defineConfig({
+  plugins: [react()],
   test: {
     environment: "node",
-    include: ["scripts/__tests__/**/*.test.ts", "apps/**/*.test.ts", "packages/**/*.test.ts"],
+    environmentMatchGlobs: [["apps/**/*.dom.test.tsx", "jsdom"]],
+    setupFiles: ["./vitest.setup.dom.ts"],
+    include: [
+      "scripts/__tests__/**/*.test.ts",
+      "apps/**/*.test.ts",
+      "apps/**/*.test.tsx",
+      "packages/**/*.test.ts",
+    ],
     exclude: ["**/node_modules/**", "**/dist/**", "scripts/__fixtures__/**"],
     testTimeout: 30_000,
   },

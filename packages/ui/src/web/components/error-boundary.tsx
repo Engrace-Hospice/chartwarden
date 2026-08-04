@@ -35,7 +35,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.props.fallback !== undefined) return this.props.fallback;
 
     return (
-      <div role="alert" style={{ padding: "2rem", maxWidth: "32rem", margin: "0 auto" }}>
+      <div
+        role="alert"
+        data-wardenx-error-boundary=""
+        style={{ padding: "2rem", maxWidth: "32rem", margin: "0 auto" }}
+      >
         <h1
           style={{
             fontFamily: t.fontDisplay,

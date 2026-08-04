@@ -18,6 +18,10 @@ export function SecurityPasskeys(): JSX.Element {
     const { data, error: err } = await authClient.passkey.listUserPasskeys();
     if (err) {
       setError("Could not load your passkeys.");
+      // `passkeys === null` is the "still loading" state (drives the spinner below) — leaving it
+      // null on a load error kept the spinner spinning forever alongside the error message instead
+      // of settling into the empty state.
+      setPasskeys([]);
       return;
     }
     setPasskeys(data ?? []);
