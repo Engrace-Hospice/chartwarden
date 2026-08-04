@@ -239,6 +239,15 @@ function scanEvasions(): Violation[] {
       // are by design, not an ownership evasion. (The original rls-isolation + m34 harnesses only
       // escaped this scan by luck — neither happened to contain a literal that trips `inRawSql`.)
       if (/migrations\/__tests__\/.*\.live\.test\.ts$/.test(file)) continue;
+      // packages/audit/__tests__/*.test.ts asserting on generateAuditTrigger()'s OUTPUT (TASK-063
+      // follow-up): the row-conditional AUDIT_DENYLIST_CATALOG entry (packages/audit/src/triggers/
+      // catalog.ts) names a real example table — lab_observation, M29-owned — as its
+      // conditionalCheck's FROM clause, since the whole point of the generator is to emit DDL that
+      // OTHER modules' migrations call to reference THEIR OWN tables. A test proving the generator's
+      // SHAPE for that one real catalog entry necessarily contains that table name in an asserted
+      // string, same as the live-RLS-harness exemption above: this is test infrastructure exercising
+      // a shared code-generation utility, not a module reaching into another's tables at runtime.
+      if (/^packages\/audit\/__tests__\/.*\.test\.ts$/.test(file)) continue;
       const src = readFileSync(join(REPO_ROOT, file), "utf8");
       const isHelperPath = HELPER_PATHS.some((p) => file.startsWith(p));
 
