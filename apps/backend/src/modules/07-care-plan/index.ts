@@ -115,6 +115,19 @@ export {
   summaryJobId,
 } from "./jobs/index";
 
+// TASK-040D — the LIVE `care-plan.gates` BullMQ Worker/Queue construction (the M25 precedent) + the
+// platform-tenancy registration its active-org fan-out needs.
+export {
+  type ActiveOrgListPort as M7ActiveOrgListPort,
+  type CarePlanOutboxPublishPort,
+  type M7WorkerDeps,
+  buildM7WorkerDeps,
+  registerM7CronWorkers,
+  runCarePlanGatesCron,
+  scheduleM7Jobs,
+} from "./jobs/cron-workers";
+export { M7_PLATFORM_JOB_ID, wireM7Tenancy } from "./wiring";
+
 // M7-T08 — the `apply-idg-decision` decision core (§7.9 / §11 D4): the M14 `idg.decision_recorded`
 // consumer. PURE + tested now; the M14 producer is Wave F so the outbox binding is forward-declared /
 // deferred (M7_IDG_DECISION_CONSUMER{,_DEFERRED}). The worker opens a draft `idg_review` version and

@@ -29,6 +29,7 @@ import {
   redactedSudProblemIds,
 } from "./authoring/index";
 import { CarePlanStateError } from "./lifecycle/errors";
+import { computeNextReviewDueAt } from "./lifecycle/gate-clock";
 import { decideRecordSignature, resolveRequiredSignerSet } from "./lifecycle/required-signer-set";
 import {
   checkGoalReferencesProblem,
@@ -279,11 +280,22 @@ export function createDbCarePlanRouteService(
           .where(and(eq(CP.admissionId, admissionId), ne(CP.status, "discharged")))
           .limit(1);
         if (existing) throw new CarePlanAlreadyExistsError();
-        const initialDueAt = new Date(Date.now() + INITIAL_GATE_DAYS * 86_400_000);
+        // TASK-040D (mig 0161) — `admissionActivatedAt` is the SAME instant `initialDueAt` is already
+        // derived from (the bootstrap route runs at `m6.admission.activated`); stamping it here just
+        // makes that instant queryable/echoable (§7.1 payload) rather than computing initialDueAt twice.
+        const now = new Date();
+        const initialDueAt = new Date(now.getTime() + INITIAL_GATE_DAYS * 86_400_000);
         const plan = firstOrThrow(
           await t
             .insert(CP)
-            .values({ organizationId: org, patientId, admissionId, status: "draft", initialDueAt })
+            .values({
+              organizationId: org,
+              patientId,
+              admissionId,
+              status: "draft",
+              initialDueAt,
+              admissionActivatedAt: now,
+            })
             .returning(),
           "care_plan insert returned no row",
         );
@@ -529,6 +541,12 @@ export function createDbCarePlanRouteService(
         );
         if (decision.quorumMet) {
           // The last required signature activates the plan and pins the active version (§2.2.2).
+          // TASK-040D (mig 0161) — gate-clock.ts's own doc comment says computeNextReviewDueAt is
+          // "called on every version_signed (initial and each IDG review) so the review clock re-arms
+          // from the most recent signature", but nothing ever called it — nextReviewDueAt stayed NULL
+          // forever, silently no-opping the §7.2 review-gate cron scan regardless of whether it runs.
+          // Recomputing it here on EVERY sign (not just review) + resetting the two emission markers is
+          // what makes planReviewGateScan (jobs/index.ts) do anything once TASK-040D's worker is live.
           await t
             .update(CP)
             .set({
@@ -536,6 +554,9 @@ export function createDbCarePlanRouteService(
               activeVersionId: versionId,
               version: sql`${CP.version} + 1`,
               updatedAt: new Date(),
+              nextReviewDueAt: new Date(computeNextReviewDueAt(at)),
+              reviewDueEmitted: false,
+              reviewOverdueEmitted: false,
               ...(v.kind === "initial" ? { initialSignedAt: new Date(at) } : {}),
             })
             .where(eq(CP.id, planId));

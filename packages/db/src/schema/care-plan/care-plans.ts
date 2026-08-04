@@ -7,7 +7,7 @@
 // (no FK — supersession is via the version status enum). RLS + the M4 write-audit trigger land in
 // migration 0029 (M7-T02, §3.4–3.6).
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { carePlanStatus } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -33,6 +33,15 @@ export const carePlans = pgTable(
     initialDueAt: timestamp("initial_due_at", { withTimezone: true }).notNull(),
     initialSignedAt: timestamp("initial_signed_at", { withTimezone: true }),
     nextReviewDueAt: timestamp("next_review_due_at", { withTimezone: true }),
+    // TASK-040D (mig 0161) — the §7.1/§7.2 gate-scan columns `jobs/index.ts`'s pure scan functions read.
+    /** Echoed into `m7.care_plan.initial_overdue` (§7.1); stamped at bootstrap, NULL on pre-migration rows. */
+    admissionActivatedAt: timestamp("admission_activated_at", { withTimezone: true }),
+    /** Fires once per `initialDueAt` deadline (§7.1) — never re-arms (a signed plan never re-warns). */
+    initialWarningEmitted: boolean("initial_warning_emitted").notNull().default(false),
+    /** Fires once per `nextReviewDueAt` deadline (§7.2 T+13); re-arms whenever a sign recomputes the due date. */
+    reviewDueEmitted: boolean("review_due_emitted").notNull().default(false),
+    /** Fires once per `nextReviewDueAt` deadline (§7.2 T+15); re-arms whenever a sign recomputes the due date. */
+    reviewOverdueEmitted: boolean("review_overdue_emitted").notNull().default(false),
     activeVersionId: uuid("active_version_id"), // soft self-ref to care_plan_version (no FK)
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

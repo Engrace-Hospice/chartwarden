@@ -212,6 +212,8 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
 
   it("DLQ: maxAttempts exhausted → 'failed' terminal with lastError; a later tick never touches it", async () => {
     let calls = 0;
+    // TASK-040D (OPS-012) — the DLQ-promotion alert hook fires exactly once, on the SAME transition.
+    const deadLetters: Array<{ eventId: string; eventType: string; organizationId: string; attemptCount: number }> = [];
     await seed({ id: EV_DLQ, eventType: "outbox.test.dlq" });
     const dispatcher = makeDispatcher(
       [
@@ -225,7 +227,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
         },
       ],
       undefined,
-      { maxAttempts: 1 },
+      { maxAttempts: 1, onDeadLetter: (e) => deadLetters.push(e) },
     );
 
     const s1 = await dispatcher.tick();
@@ -234,6 +236,9 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     expect(row.status).toBe("failed");
     expect(row.attempt_count).toBe(1);
     expect(String(row.last_error)).toContain("permanent boom");
+    expect(deadLetters).toEqual([
+      { eventId: EV_DLQ, eventType: "outbox.test.dlq", organizationId: ORG_A, attemptCount: 1, error: expect.stringContaining("permanent boom") },
+    ]);
 
     // Dead letters are terminal: never reclaimed, never redelivered, never purged.
     const s2 = await dispatcher.tick();
@@ -244,6 +249,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     row = await fetchRow(EV_DLQ);
     expect(row.status).toBe("failed");
     expect(row.attempt_count).toBe(1);
+    expect(deadLetters).toHaveLength(1); // never re-fires on a later tick over the same terminal row
   });
 
   it("deferred: a declared-but-not-landed type stays 'pending' with no attempt burn, pushed ~deferredRetryMs out", async () => {
@@ -346,5 +352,8 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
       "SELECT count(*)::int AS n FROM outbox_event WHERE status='failed'",
     );
     expect(failedDepth.rows[0].n).toBe(2); // the DLQ case + the purge-survivor
+
+    // TASK-040B — the readiness probe's outbox-depth source reads the SAME count under RLS.
+    expect(await dispatcher.pendingDepth()).toBe(1);
   });
 });

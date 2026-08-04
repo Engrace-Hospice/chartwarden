@@ -10,6 +10,8 @@ export interface ReadinessChecks {
   readonly db: "ok" | "fail";
   readonly valkey: "ok" | "fail";
   readonly minio: "ok" | "fail";
+  /** TASK-040B — pending-row backlog depth on `outbox_event`; "fail" past a configured ceiling. */
+  readonly outbox: "ok" | "fail";
 }
 
 /** Probes each dependency; the boot default reports all-ok (no infra wired in the slice). */
@@ -19,6 +21,7 @@ export const defaultReadinessProbe: ReadinessProbe = async () => ({
   db: "ok",
   valkey: "ok",
   minio: "ok",
+  outbox: "ok",
 });
 
 export function registerHealthRoutes(app: FastifyInstance, probe: ReadinessProbe): void {

@@ -29,27 +29,34 @@ import type {
 
 // ── §4.8 queue catalog ─────────────────────────────────────────────────────────────────────────────
 
-/** The §4.8 BullMQ queue names (the `hope:` namespace mirrors the spec's §4.8 table). */
+/**
+ * The §4.8 BullMQ queue names (the `hope.` namespace mirrors the spec's §4.8 table). TASK-040D — was
+ * originally declared with a `:` separator (`"hope:windows"`); BullMQ's `Queue`/`Worker` constructors
+ * reject any name containing `:` (it's reserved for BullMQ's own Redis key scheme) — a latent defect
+ * that had never been exercised because nothing constructed a real M10 Worker until TASK-040D's
+ * `jobs/cron-workers.ts`. Found live (typecheck/unit tests can't catch it — only a real `new Worker(...)`
+ * call throws), fixed by switching to `.` (the M7/M9 convention: `"care-plan.gates"`, `"assessment.license"`).
+ */
 export const M10_QUEUES = {
-  scheduling: "hope:scheduling",
-  windows: "hope:windows",
-  sfv: "hope:sfv",
-  alerts: "hope:alerts",
-  validation: "hope:validation",
-  submission: "hope:submission",
-  retention: "hope:retention",
+  scheduling: "hope.scheduling",
+  windows: "hope.windows",
+  sfv: "hope.sfv",
+  alerts: "hope.alerts",
+  validation: "hope.validation",
+  submission: "hope.submission",
+  retention: "hope.retention",
 } as const;
 
 export type M10QueueName = (typeof M10_QUEUES)[keyof typeof M10_QUEUES];
 
 /** The §4.8.1 dead-letter queue names (BullMQ moves jobs here after `attempts` exhausted; OPS-035 alerts off depth). */
 export const M10_DLQ = {
-  scheduling: "hope:scheduling.dlq",
-  windows: "hope:windows.dlq",
-  sfv: "hope:sfv.dlq",
-  alerts: "hope:alerts.dlq",
-  validation: "hope:validation.dlq",
-  submission: "hope:submission.dlq",
+  scheduling: "hope.scheduling.dlq",
+  windows: "hope.windows.dlq",
+  sfv: "hope.sfv.dlq",
+  alerts: "hope.alerts.dlq",
+  validation: "hope.validation.dlq",
+  submission: "hope.submission.dlq",
 } as const;
 
 /** The §4.8 cron cadences (event-driven jobs have none; the scheduler registers these repeatables). */

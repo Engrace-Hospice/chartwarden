@@ -106,6 +106,19 @@ export {
   planHopeWindowWatchdog,
   planSfvWatchdog,
 } from "./jobs/index";
+// TASK-040D — the LIVE `hope-window-watchdog` / `sfv-watchdog` BullMQ Worker/Queue construction (the
+// M25 precedent) + the platform-tenancy registration their active-org fan-out needs.
+export {
+  type ActiveOrgListPort as M10ActiveOrgListPort,
+  type HopeOutboxPublishPort,
+  type M10WorkerDeps,
+  buildM10WorkerDeps,
+  registerM10CronWorkers,
+  runHopeWindowWatchdogCron,
+  runSfvWatchdogCron,
+  scheduleM10Jobs,
+} from "./jobs/cron-workers";
+export { M10_PLATFORM_JOB_ID, wireM10Tenancy } from "./wiring";
 // M10-T07 — the §4.10 iQIES submission worker loop: the pure assemble / submit-readiness / transmit /
 // reconcile / correction-RFA processors over the `hope:submission` queue (the adapter call + MinIO put +
 // SHA-256 are the boot-bound driver's only IO; the @wardenx/iqies-client adapter is the D6 boundary).

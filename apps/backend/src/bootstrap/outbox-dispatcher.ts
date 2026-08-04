@@ -74,6 +74,19 @@ export interface OutboxDispatcherOptions {
   readonly clock?: () => number;
   /** Log sink (default console). */
   readonly log?: (message: string) => void;
+  /**
+   * TASK-040D (OPS-012) — fired exactly once per row on the SAME dead-letter transition the `☠️` log line
+   * already reports (`attemptCount >= maxAttempts`), so a caller can wire real DLQ-promotion alerting
+   * (`bootstrap/dlq-alerts.ts`) without scraping the log string. Optional — the dispatcher's own behavior
+   * (mark `failed`, log, never auto-purge) is unchanged whether or not this is bound.
+   */
+  readonly onDeadLetter?: (event: {
+    readonly eventId: string;
+    readonly eventType: string;
+    readonly organizationId: string;
+    readonly attemptCount: number;
+    readonly error: string;
+  }) => void;
 }
 
 export interface OutboxDispatcherDeps {
@@ -88,6 +101,8 @@ export interface OutboxDispatcherDeps {
 export interface OutboxDispatcher {
   /** One full poll pass over every active org. Exposed for tests/liveness; `start()` loops it. */
   tick(): Promise<OutboxTickSummary>;
+  /** TASK-040B — total `pending`-row backlog across every active org (readiness-probe depth check). */
+  pendingDepth(): Promise<number>;
   start(): void;
   stop(): Promise<void>;
 }
@@ -127,6 +142,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   const orgRefreshMs = opt.orgRefreshMs ?? 60_000;
   const clock = opt.clock ?? Date.now;
   const log = opt.log ?? ((m: string) => console.log(m));
+  const onDeadLetter = opt.onDeadLetter ?? (() => {});
 
   // event type → the live bindings for it (a type may fan out to several consumers).
   const routes = new Map<string, OutboxConsumerBinding[]>();
@@ -277,6 +293,13 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
           log(
             `☠️  outbox-dispatcher: '${row.eventType}' (${row.id}) dead-lettered after ${row.attemptCount} attempts — ${message}`,
           );
+          onDeadLetter({
+            eventId: row.id,
+            eventType: row.eventType,
+            organizationId,
+            attemptCount: row.attemptCount,
+            error: message,
+          });
         } else {
           await finalize({
             status: "pending",
@@ -311,6 +334,27 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
     return summary;
   }
 
+  // TASK-040B — a plain per-org COUNT under the same RLS-scoped org enumeration `tick()` uses. Not
+  // folded into `pollOrg()`: this is a READ for the readiness probe, never claims/mutates rows.
+  async function pendingDepth(): Promise<number> {
+    const orgs = await activeOrgs();
+    let total = 0;
+    for (const org of orgs) {
+      const result = await withOrgContext(
+        deps.db,
+        { organizationId: org.organizationId, userId: DISPATCHER_USER_ID },
+        (tx) =>
+          tx.execute(sql`
+            SELECT count(*)::int AS count FROM outbox_event
+            WHERE organization_id = ${org.organizationId} AND status = 'pending'
+          `),
+      );
+      const row = (result as unknown as { rows?: Array<{ count?: number }> }).rows?.[0];
+      total += row?.count ?? 0;
+    }
+    return total;
+  }
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running = false;
   let inFlight: Promise<unknown> = Promise.resolve();
@@ -342,6 +386,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
 
   return {
     tick,
+    pendingDepth,
     start() {
       if (running) return;
       running = true;

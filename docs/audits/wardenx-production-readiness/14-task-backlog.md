@@ -186,6 +186,223 @@
 - Priority: P1 · Severity: High/Critical · Phase: 8
 - Objective: a dedicated worker entrypoint + Dockerfile + deploy pipeline; a real `readinessProbe` (DB/Redis/outbox depth); OTel or prom-client + BullMQ metrics; SIGTERM graceful shutdown; construct the M7/M9/M10 cron catalogs; DLQ promotion + alerts; a production migration path + gate; pgBackRest (or equivalent) backup + a restore drill.
 - Evidence: OPS-002/003/004/005/006/007/012/013/016. Acceptance: `/ready` flips to 503 on a dead DB; a clean-clone deploy + a restore drill succeed. Complexity: XL.
+- **Status (2026-08-03): broken down into TASK-040A…G below** — a 2026-08-03 survey (report
+  12-devops-observability-and-operations.md, OPS-001…016) found the plumbing more built than the
+  task text implies (TASK-006's outbox dispatcher is fully live, not pending; `/ready`'s 503 logic
+  and `ReadinessProbe` type already exist, just unwired) and some areas need real infra/credentials
+  this repo doesn't have (an actual deploy target, actual backup storage) and so can only be
+  scaffolded, not proven working, in a coding session. Sub-tasks are ordered so the in-repo,
+  fully-testable work (A–E) lands first; the infra-scaffolding work (F–G) is separated so it isn't
+  mistaken for validated infrastructure.
+
+### TASK-040A — Dedicated worker entrypoint + SIGTERM graceful shutdown
+
+- Priority: P0 · Severity: Critical · Phase: 8
+- Objective: extract the BullMQ worker/queue construction block from `apps/backend/src/index.ts`
+  (~line 2347 onward: M34/M33/M30/M27/M23/M25/M26 `register*Workers`/`schedule*Jobs`, plus the
+  outbox dispatcher) into a standalone entrypoint (`apps/backend/src/worker.ts` or similar) with its
+  own `start`/`stop` script, so horizontally-scaled API replicas stop duplicating repeatable-cron
+  registration. Add a top-level `SIGTERM`/`SIGINT` handler (repo-wide grep today finds only a stray
+  comment at `29-external-interfaces/listener/supervisor.ts:3`, no real handler) that calls
+  `app.close()` / the worker-process equivalent so the *already-wired* `onClose` teardown hooks
+  (every module's worker/queue close, the outbox dispatcher's `.stop()`) actually fire on a
+  container `docker stop`/k8s termination instead of the process being hard-killed.
+  N.B. the API process still needs *some* of these (rate-limit Redis store); split carefully so
+  request-path Redis usage isn't accidentally moved into the worker-only process.
+- Evidence: OPS-002 (no worker entrypoint), OPS-003/OPS-013 (no SIGTERM handling).
+- Tests: `bun run src/worker.ts` boots, registers all seven module queues + outbox dispatcher, and
+  a `SIGTERM` triggers every registered `onClose` hook (assert via a spy/log) before exit; API
+  process boots with zero duplicate queue registration when both processes run against the same
+  Redis.
+- Acceptance: `apps/backend/package.json` gains a `worker`/`start:worker` script; sending SIGTERM to
+  either process drains within a bounded timeout and exits 0.
+- Complexity: M.
+- **Status (2026-08-03): DONE, not yet committed.** Rather than a literal file-move, `index.ts`'s
+  ~1200-line boot block became an exported `bootWardenX(role: "all" | "api" | "worker")` (the
+  `import.meta.main` guard now just calls it) — `worker.ts` is a 3-line entrypoint that imports and
+  calls it with `role: "worker"`; the BullMQ worker-runner block and the outbox dispatcher are now
+  ALSO gated on `role !== "api"` alongside their existing guards. Routes stay mounted in every role
+  (cheap, no connections opened) rather than forking the ~1000-line `registerModuleRoutes` closure —
+  a documented, deliberate scope cut, not an oversight. Worker role listens on `WORKER_PORT` (default
+  3001, `/health`+`/ready` only in practice) so local dev can run both processes on one host without
+  a port clash. Verified live against the local demo DB+Valkey (not the RLS-live throwaway cluster —
+  this needed the app's normal boot path, not a schema reset): `start:worker` bound :3001, constructed
+  all 7 module worker sets, served 200s on `/health`+`/ready`, and a `SIGTERM` logged "draining" and
+  exited within 3s; `start` (default `role: "all"`, the historical shape) re-verified regression-free
+  the same way on :3000 including a real `/version` route. Gate green (build/arch:fitness/test).
+
+### TASK-040B — Real `/ready` probe: DB, Redis, outbox depth
+
+- Priority: P0 · Severity: Critical · Phase: 8
+- Objective: replace `defaultReadinessProbe` (`bootstrap/routes/health.ts:18-22`, hard-coded `"ok"`)
+  with a real implementation — DB: a cheap `SELECT 1` against `dbHandle`; Redis: a PING against the
+  parsed `queueConnection`; outbox: a pending-row-count query (reuse the same claim-scoped query
+  shape as `outbox-dispatcher.ts`) with a depth threshold that flips `outbox` unhealthy past a
+  configurable ceiling. Wire it into the `buildServer({...})` call in `index.ts` (~line 1782), which
+  today never passes a `readinessProbe` at all.
+- Evidence: OPS-004; `health.ts:18-33` (503 branch and `ReadinessProbe` type already exist and are
+  correct — this is a probe-implementation + wiring gap, not new plumbing).
+- Tests: kill the DB connection mid-test → `/ready` returns 503 with `db:"down"`; stop Redis →
+  503 with `valkey:"down"`; seed >N pending outbox rows → 503 with `outbox:"degraded"`; healthy state
+  → 200 with all three `"ok"`.
+- Acceptance: the task's own acceptance line ("`/ready` flips to 503 on a dead DB") is met — today
+  it is not, since the default probe is hard-coded.
+- Complexity: S.
+- **Status (2026-08-03): DONE, not yet committed.** `bootstrap/readiness-probe.ts` (new) —
+  `buildReadinessProbe()`, a pure factory over injected DB/Redis/outbox pings with a per-check
+  timeout. `outbox-dispatcher.ts` gained `pendingDepth()`. `index.ts` wires a dedicated long-lived
+  `ioredis` health connection + a `SELECT 1` + an `outboxDispatcherRef` forward-reference (the real
+  dispatcher instance is built after `buildServer()` returns). Threshold via
+  `OUTBOX_READY_DEPTH_THRESHOLD` (default 500). 9 new unit tests + a live-cluster assertion
+  (`pendingDepth()` verified against a throwaway local pg18+pgvector cluster, then torn down). Gate
+  green.
+
+### TASK-040C — prom-client metrics + `/metrics` route (BullMQ + outbox + HTTP)
+
+- Priority: P1 · Severity: High · Phase: 8
+- Objective: add `prom-client`, a `/metrics` route (Prometheus text exposition), default Node
+  process metrics, HTTP request duration/count histograms via a Fastify hook, BullMQ queue-depth
+  gauges (waiting/active/failed/delayed per queue — reuse the `M*_QUEUES` catalogs already declared
+  per module) and outbox dispatcher counters (dispatched/failed/deferred, claim latency). Nothing of
+  this exists today (repo-wide grep for `prom-client`/`opentelemetry`/`/metrics` is empty) —
+  greenfield.
+- Evidence: OPS-005/OPS-006.
+- Tests: `/metrics` returns valid Prometheus exposition format; a BullMQ job processed during the
+  test run moves the corresponding gauge; an outbox dispatch increments the counter.
+- Acceptance: `/metrics` scrapeable, gauges/counters present for every registered queue + the outbox
+  dispatcher.
+- Complexity: M.
+
+### TASK-040D — M7/M9/M10 cron catalog wiring + DLQ alerting
+
+- Priority: P0 · Severity: Critical · Phase: 8
+- Objective: each module already has a complete queue catalog + pure job logic
+  (`modules/07-care-plan/jobs/index.ts` `M7_QUEUES`/`M7_JOB_SCHEDULES`/`M7_QUEUE_PARAMS`;
+  `modules/09-assessments/jobs/index.ts` `M9_QUEUES`/…; `modules/10-hope/jobs/index.ts`
+  `M10_QUEUES`/…) but none is constructed as an actual BullMQ `Worker`/repeatable `Queue` at boot —
+  unlike M27/M23/M25/M26/M30/M33/M34, which follow a `register*Workers`/`schedule*Jobs` +
+  `m*-jobs.ts` infra-binding pattern (see `modules/30-quality/jobs/m30-jobs.ts` as the template).
+  Build the matching `m7-jobs.ts`/`m9-jobs.ts`/`m10-jobs.ts` files and wire them into `index.ts`
+  alongside the existing seven. Separately, add DLQ-promotion alerting: the outbox dispatcher today
+  only `log()`s a `☠️` line on terminal `failed` rows (`outbox-dispatcher.ts`) with no external
+  signal — add a hook point (webhook/log-based alert, whatever the existing ops-alert mechanism is,
+  or a new `onDlqPromotion` callback if none exists) fired for both the outbox DLQ and each new
+  module's `M*_DLQ`.
+- Evidence: OPS-007 (cron catalogs never constructed — HOPE window/SFV watchdogs and care-plan
+  5-/15-day gates currently never fire in production, a live regulatory-clock risk, not just a code
+  gap); OPS-012 (DLQ has no alerting).
+- Tests: boot with `REDIS_URL` set → `M7_QUEUES.gates`/`M9_QUEUES.cadence`/`M10_QUEUES.windows` (etc.)
+  exist as live BullMQ queues with their declared repeatable schedule; a job forced past
+  `maxAttempts` lands in the DLQ and fires the alert hook (assert via spy).
+  This is the same pattern proposed in the report's evidence — see report 12 for the exact list of
+  affected clocks.
+- Acceptance: M7/M9/M10 join the seven modules with live cron; a DLQ promotion (outbox or module)
+  is externally observable, not just a log line.
+- Complexity: L.
+- **Status (2026-08-04): DONE, not yet committed.** Migration 0161 adds 4 columns to `care_plan`
+  (`admissionActivatedAt`, `initialWarningEmitted`, `reviewDueEmitted`, `reviewOverdueEmitted`); the
+  M7 write lifecycle now populates them (bootstrap stamps `admissionActivatedAt`, every `signVersion`
+  quorum-met branch recomputes `nextReviewDueAt` + re-arms the two review markers — `gate-clock.ts`'s
+  own doc comment said this should already happen on every sign; it never did, so the §7.2 review-gate
+  scan would have been permanently a no-op even with a live worker). Each of M7/M9/M10 got a
+  `jobs/cron-store.ts` (new org-wide Drizzle readers/writers — none existed before, only per-request/
+  per-patient ones) + `jobs/cron-workers.ts` (BullMQ Worker/Queue construction, the M25 template) +
+  `wiring.ts` (platform-job allowlist registration), built by 3 parallel agents against a detailed
+  shared spec, then wired into `index.ts`'s worker-runner section by hand. Scope cuts, each documented
+  inline rather than silently dropped: M7 wires only `gates` (not `idg`/`snapshot`, event-driven);
+  M9 wires `license`/`changes`/`cadence` (not `summary`/`eraser`) and `cadence` logs-only (no
+  chart-banner cache seam exists yet); M10 wires only `windows`/`sfv` (not `alerts`/`scheduling`/
+  `validation`/`submission`/`retention` — those need infra that doesn't exist: cadence-dispatch
+  tracking, patient-display-name/CTA-URL resolution, the multi-stage iQIES pipeline).
+  DLQ-promotion alerting: `bootstrap/dlq-alerts.ts` (new) — `attachDlqPromotionAlert` (BullMQ
+  `Worker.on("failed", ...)`, fires once on the final attempt) + `buildDlqPromotionSink` (log-based
+  always-on + optional `OPS_ALERT_WEBHOOK_URL`), applied to EVERY constructed Worker in `index.ts`
+  (the new M7/M9/M10 ones AND the 7 pre-existing modules — M23/M25/M26/M27/M30/M33/M34, none of which
+  had any DLQ observability before), plus a new `onDeadLetter` hook on the outbox dispatcher wired to
+  the same sink. Deliberately NOT routed through M36's `AlertEmitter` (tenant-scoped by type; a DLQ
+  promotion is an ops-level failure, not always attributable to one org).
+  Verified: full gate green (typecheck/build/arch:fitness/6882 unit tests); live-cluster: migration
+  0161 applies cleanly, M7 write-lifecycle + read-service + RLS-isolation suites all pass against a
+  throwaway pg18+pgvector cluster, outbox-dispatcher suite passes including the new `onDeadLetter`
+  assertion.
+  **Docker recovered + full live boot done (2026-08-04).** Restarting Docker Desktop (a hard
+  kill+relaunch was needed — the daemon was wedged, not just slow) and booting `start:worker` against
+  the REAL local `wardenx-postgres`/`wardenx-valkey` containers caught a genuine bug typecheck/unit
+  tests structurally cannot catch: M10's `M10_QUEUES`/`M10_DLQ` used `:` as a namespace separator
+  (`"hope:windows"`), which BullMQ's `Worker`/`Queue` constructors reject outright (`:` is reserved for
+  BullMQ's own Redis key scheme) — a LATENT defect in that catalog that predates this task; nothing had
+  ever constructed a real M10 `Worker` before TASK-040D's `cron-workers.ts` did. Fixed by switching to
+  `.` (the M7/M9 convention). Re-verified: boot log shows the exact expected queue counts — `M7 §4.6
+  BullMQ care-plan.gates cron constructed` (queues:1), `M9 §4.8 BullMQ compliance-scan crons
+  constructed` (queues:3), `M10 §4.8 BullMQ HOPE watchdog crons constructed` (queues:2) — `/health`+
+  `/ready` both 200 (`db`/`valkey`/`outbox` all "ok"), and a live `🚨 DLQ promotion [...]` alert line
+  fired for real (an M33/M23 pre-existing unbound-port failure, not a new-code failure — proves the
+  DLQ-alerting retrofit onto the 7 pre-existing modules works, not just the 3 new ones). SIGTERM drained
+  cleanly. The local demo DB was 18 migrations behind (`_wardenx_migration` last recorded 0143) — spot-
+  checked across the range (0144/0149-153/0154/0155/0156/0158/0159/0160 target objects all already
+  present in the live schema) and baselined the already-applied backlog via `db:migrate:baseline`
+  (0161 held out of the migrations dir during baseline, then run for real afterward) rather than
+  blindly trusting `--baseline` for a migration that hadn't actually run yet.
+
+### TASK-040E — Production migration path + gate
+
+- Priority: P1 · Severity: High · Phase: 8
+- Objective: `scripts/db/migrate.ts` is a solid idempotent runner (checksum tracking, `--baseline`,
+  production guard on `WARDENX_APP_PASSWORD`) but its own header explicitly disclaims production use
+  and it requires a superuser connection with no rollback semantics. Wrap it in an actual production
+  migration path: a non-superuser-scoped invocation (or documented separation of the one-time
+  superuser bootstrap from the per-deploy migrate step), and a CI gate that runs migrations against
+  a disposable DB as a pre-deploy check (fails the pipeline on migration error, not just on drift
+  warning — today checksum drift only warns).
+- Evidence: OPS-016; `scripts/db/migrate.ts` header, `WARDENX_OPS_RUNBOOK_v0.1.md`'s reference to a
+  `bun --filter @wardenx/db drizzle:migrate` script that doesn't exist in `package.json`.
+- Tests: a CI job applies the full migration set to a fresh disposable Postgres and fails the build
+  on any migration error; a deliberately corrupted (checksum-mismatched) already-applied migration
+  file fails the gate, not just warns.
+- Acceptance: the runbook's migration reference resolves to a real script; CI has a migration-gate
+  job.
+- Complexity: M.
+
+### TASK-040F — Dockerfile(s), docker-compose, deploy pipeline skeleton *(infra scaffold, not exercised)*
+
+- Priority: P2 · Severity: Medium (scaffold only — no real deploy target to validate against) · Phase: 8
+- Objective: no `Dockerfile`, `docker-compose.yml`, or deploy job exists anywhere in the repo today
+  (only ad hoc `docker run`/`docker start` in root `package.json`'s `db:up`/`db:down`). Build a
+  multi-stage `Dockerfile` for `apps/backend` (API) and the new worker entrypoint (TASK-040A), a
+  `docker-compose.yml` for local dev/CI (Postgres + Redis + MinIO + the two app processes), and a
+  `.github/workflows` deploy-pipeline skeleton (build → tag → push, gated behind a `workflow_dispatch`
+  or manual approval since there's no real target environment configured in this repo).
+  `WARDENX_OPS_RUNBOOK_v0.1.md`'s blue-green + signed-image + SBOM description is the aspirational
+  spec; treat this task as scaffolding toward it, not a working blue-green deploy — that needs a
+  real cloud target and credentials this session doesn't have.
+- Evidence: OPS-002/OPS-003 (Dockerfile), OPS-013 (deploy pipeline).
+- Tests: `docker compose up` boots API + worker + deps locally and `/health`/`/ready` respond; the
+  CI build job produces an image without pushing anywhere (until a real registry/target is decided).
+- Acceptance: a clean-clone `docker compose up` works end-to-end locally. Explicitly NOT claiming a
+  validated production deploy — that requires a follow-up task once a real target is chosen.
+- Complexity: L.
+- **Do not start without the user's explicit go-ahead on target infra** (which registry/host/cloud) —
+  this task produces unexercised scaffolding otherwise, per [[git-workflow-local-only]] discipline
+  around anything that reaches outside this repo.
+
+### TASK-040G — pgBackRest backup config + restore drill *(infra scaffold, not exercised)*
+
+- Priority: P2 · Severity: Medium (scaffold only — no real backup target to validate against) · Phase: 8
+- Objective: `docs/architecture/WARDENX_DR_BCP_v0.1.md` §4.1/§8.2 already specifies a thorough
+  pgBackRest plan (3-repo config, full/diff/incremental schedule, continuous WAL archiving, monthly
+  restore-to-sandbox drill) but it is pure prose — zero implementation (`pgbackrest`/`pg_dump`/
+  `wal-g`/`barman` all grep to zero outside the doc). Implement the pgBackRest config + backup
+  scripts against the doc's spec, and a restore-drill script that can run against a disposable local
+  Postgres (proving the mechanics) even though the doc's 3-repo/S3-off-site topology needs real
+  infra to fully exercise.
+- Evidence: OPS-014 (per `12-devops-observability-and-operations.md`); `WARDENX_DR_BCP_v0.1.md` §4.1/§8.2.
+- Tests: a scripted backup + restore round-trip against a local disposable Postgres reproduces the
+  same row counts/checksums as the source.
+- Acceptance: the restore-drill script runs and passes locally. Explicitly NOT claiming the full
+  3-repo/off-site topology is deployed — that needs real backup storage and credentials.
+- Complexity: L.
+- **Do not start without the user's explicit go-ahead on target infra** (which backup storage) — same
+  reasoning as TASK-040F.
 
 ## TASK-050 — Test coverage: per-module HTTP smoke suites + real-auth conformance + jsdom
 

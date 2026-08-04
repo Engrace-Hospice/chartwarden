@@ -22,7 +22,8 @@ import { type DbClient, createDbClient } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
-import type { ConnectionOptions } from "bullmq";
+import type { ConnectionOptions, Worker } from "bullmq";
+import Redis, { type RedisOptions } from "ioredis";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
 import {
   assertNoInMemoryBindingsOnDbBoot,
@@ -48,8 +49,11 @@ import {
 } from "./bootstrap/outbox-persister";
 import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
+  type OutboxDispatcher,
   createOutboxDispatcher,
 } from "./bootstrap/outbox-dispatcher";
+import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
+import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
@@ -95,6 +99,7 @@ import {
 } from "./modules/06-admission/index";
 import {
   M7_OUTBOX_EVENTS,
+  M7_PLATFORM_JOB_ID,
   createDbCarePlanAbacResolver,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
@@ -103,6 +108,10 @@ import {
   createDrizzleCarePlanReaderStore,
   mountCarePlanRoutes,
   createDrizzleCarePlanEraseStore,
+  buildM7WorkerDeps,
+  registerM7CronWorkers,
+  scheduleM7Jobs,
+  wireM7Tenancy,
 } from "./modules/07-care-plan/index";
 import {
   M8_OUTBOX_EVENTS,
@@ -116,6 +125,7 @@ import {
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
+  M9_PLATFORM_JOB_ID,
   createDrizzleAssessmentReaderStore,
   registerAssessmentAbacPredicates,
   registerAssessmentErasers,
@@ -123,15 +133,24 @@ import {
   registerAssessmentSeams,
   mountAssessmentRoutes,
   createDrizzleAssessmentEraseStore,
+  buildM9WorkerDeps,
+  registerM9CronWorkers,
+  scheduleM9Jobs,
+  wireM9Tenancy,
 } from "./modules/09-assessments/index";
 import {
   M10_OUTBOX_EVENTS,
+  M10_PLATFORM_JOB_ID,
   registerHopeAbacPredicates,
   registerHopeErasers,
   registerHopeRoutes,
   registerHopeSeams,
   mountHopeRoutes,
   createDrizzleHopeEraseStore,
+  buildM10WorkerDeps,
+  registerM10CronWorkers,
+  scheduleM10Jobs,
+  wireM10Tenancy,
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
@@ -1069,6 +1088,10 @@ export function wireModuleSeams(
   // wireM33Tenancy / wireM34Tenancy precedent.
   wireM30Tenancy();
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
+  // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
+  wireM7Tenancy();
+  wireM9Tenancy();
+  wireM10Tenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -1525,9 +1548,30 @@ export function wireModuleErasers(
   // Phase-1 data-class owners append here as they land.
 }
 
-// Start only when run directly (not when imported by tests/tooling).
-// `import.meta.main` is a Bun runtime flag; cast keeps tsc happy without bun-types.
-if ((import.meta as { main?: boolean }).main) {
+/**
+ * TASK-040A (OPS-002/003) — which slice of the composition root this process runs:
+ *   · "all"    — routes + BullMQ workers/cron + outbox dispatcher, all in one process. The
+ *                historical (and still default) shape — unchanged for `bun src/index.ts` / `dev`.
+ *   · "api"    — routes only. SKIPS constructing BullMQ Workers/repeatable-cron Queues and the
+ *                outbox dispatcher, so horizontally-scaled API replicas stop each independently
+ *                re-registering the same repeatable cron schedules / competing for the same jobs.
+ *   · "worker" — the background half: BullMQ workers/cron + the outbox dispatcher, on its own
+ *                port (`WORKER_PORT`, default 3001) serving only /health + /ready for its own
+ *                liveness/readiness probes. Routes stay mounted too (cheap — pure registration,
+ *                no connections opened) rather than forking `registerModuleRoutes`'s ~1000-line
+ *                closure; trimming that surface for a pure-worker deploy is a follow-up, not a
+ *                correctness requirement here (no job processor calls back through HTTP).
+ */
+type ProcessRole = "all" | "api" | "worker";
+
+/**
+ * The composition root. Exported (not just run inline behind `import.meta.main`) so a SEPARATE
+ * entrypoint (`worker.ts`, TASK-040A) can invoke the exact same boot sequence with `role: "worker"`
+ * — `import.meta.main` is per-entry-file (Bun runtime semantics), so a file that merely imports
+ * this module can never trip that guard itself; calling the exported function directly sidesteps
+ * that instead of duplicating ~1200 lines of composition-root wiring into a second file.
+ */
+export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
   // misconfigured production deploy refuses to boot rather than serving with a weak/absent secret.
@@ -1595,6 +1639,33 @@ if ((import.meta as { main?: boolean }).main) {
   const queueConnection: ConnectionOptions | undefined = parseRedisConnection(
     process.env.REDIS_URL,
   );
+  // TASK-040B (OPS-004) — a dedicated long-lived Redis connection the `/ready` probe PINGs (never
+  // one of the per-queue BullMQ connections constructed below — those come and go with their
+  // Worker/Queue lifecycle, and a health check should not race that). `lazyConnect` defers the
+  // socket until the first PING; the bounded `retryStrategy` keeps it retrying in the background
+  // (so a later ping succeeds once Redis recovers) without hammering a dead endpoint. The `error`
+  // listener is a required no-op, NOT a log: ioredis EMITS `error` on every failed reconnect
+  // attempt while disconnected, and an EventEmitter `error` with no listener throws and crashes the
+  // process — failures already surface per-request via the probe's own timeout/rejection handling.
+  const redisHealthClient = queueConnection
+    ? new Redis({
+        // `queueConnection`'s declared type is bullmq's broad `ConnectionOptions` union (which also
+        // covers an already-live ioredis/Cluster instance passed straight through); the value
+        // `parseRedisConnection` actually returns below is always the plain host/port options shape.
+        ...(queueConnection as RedisOptions),
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2_000,
+        retryStrategy: (times) => Math.min(times * 200, 2_000),
+      })
+    : undefined;
+  redisHealthClient?.on("error", () => {});
+  // TASK-040B — the outbox dispatcher (below, ~worker-runner section) is constructed AFTER
+  // buildServer() returns `app` (it needs `app.addHook`/`app.log`), but the readinessProbe is
+  // built and passed INTO buildServer() before that. This ref lets the probe's outbox-depth check
+  // close over the eventual dispatcher instance rather than needing it to exist yet; undefined
+  // (no DATABASE_PLATFORM_URL / dispatcher disabled) reports "ok" — nothing to be unready about.
+  let outboxDispatcherRef: OutboxDispatcher | undefined;
   // M1-T10 — assemble the FULL transactional-outbox catalog (M1 folded in by the helper + the passed
   // M30/M33/M34 contributions) and build the catalog-validating tx publisher. The publisher is threaded
   // into the M30 + M33 write services below so their §4.10 `m30.*`/`m33.*` emits persist into
@@ -1782,6 +1853,24 @@ if ((import.meta as { main?: boolean }).main) {
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    // TASK-040B (OPS-004) — the real `/ready` probe: DB `SELECT 1`, Redis PING, outbox pending-row
+    // depth. Every check is OMITTED (reports "ok") when its dependency isn't configured, matching
+    // today's boot posture — a slice/test/no-Redis boot still serves. `outboxDepthThreshold` reads
+    // OUTBOX_READY_DEPTH_THRESHOLD so an operator can tune it without a redeploy.
+    readinessProbe: buildReadinessProbe({
+      pingDb: dbHandle
+        ? async () => {
+            await dbHandle.db.execute(sql`SELECT 1`);
+          }
+        : undefined,
+      pingRedis: redisHealthClient
+        ? async () => {
+            await redisHealthClient.ping();
+          }
+        : undefined,
+      outboxPendingDepth: () => outboxDispatcherRef?.pendingDepth() ?? Promise.resolve(0),
+      outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
+    }),
     // Postgres-backed idempotency. The bootstrap default is an in-memory Map, and nothing ever
     // replaced it — so on the production mount an Idempotency-Key was process-local: a retry landing
     // on another replica re-ran the mutation, which for the M23/M26/M30 write surfaces that REQUIRE
@@ -2309,6 +2398,18 @@ if ((import.meta as { main?: boolean }).main) {
         destructionDb: destructionDbHandle?.db,
       }),
   });
+  // TASK-040B — close the readiness-probe's dedicated Redis connection on shutdown (the per-queue
+  // BullMQ connections below close via their own onClose hooks; this one is health-check-only).
+  if (redisHealthClient) app.addHook("onClose", () => redisHealthClient.quit());
+  // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
+  // outbox-dispatcher block below (two SEPARATE top-level `if`s — declared here, outside either, so it's
+  // in scope for both rather than duplicated). Log-based always-on (the task's own explicit "log-based
+  // alert" allowance) plus an optional webhook when OPS_ALERT_WEBHOOK_URL is configured. Cheap to
+  // construct unconditionally — it does nothing until something calls it.
+  const dlqPromotionSink = buildDlqPromotionSink({
+    webhookUrl: process.env.OPS_ALERT_WEBHOOK_URL,
+    log: (m) => app.log.error(m),
+  });
   // TASK-001 (production-readiness audit 2026-08-03) — ALL wiring is done (bootSeams + every route
   // mount ran inside buildServer above): refuse to boot in production, and loudly list in dev, every
   // in-memory binding still standing behind a production contract on a DATABASE_URL boot. The ledger
@@ -2351,16 +2452,27 @@ if ((import.meta as { main?: boolean }).main) {
   // command routes' enqueue ports already fail closed without a connection). The M4 audit workers
   // (registerAuditWorkers/scheduleAuditJobs) stay deferred here until their production AuditJobAdapters have
   // a boot accessor — they are the SAME construction shape and slot in beside the M34 block when bound.
-  if (dbHandle && queueConnection) {
+  // TASK-040A — also gated on `role !== "api"`: an API-only replica must not construct these (it would
+  // re-register the same repeatable cron schedules on every replica and compete for the same jobs);
+  // the "worker" role (or the default "all") does.
+  if (role !== "api" && dbHandle && queueConnection) {
+    // TASK-040D (OPS-012) — apply the shared `dlqPromotionSink` (declared above, before this block) to
+    // EVERY module's constructed Worker set below (existing modules + TASK-040D's new M7/M9/M10 ones),
+    // using BullMQ's own `Worker.name` (the queue name) as the source label — one call site, not one
+    // bespoke wiring per module.
+    const attachDlqAlertsToAll = (workers: readonly Worker[], modulePrefix: string): void => {
+      for (const w of workers) attachDlqPromotionAlert(w, `${modulePrefix}:${w.name}`, dlqPromotionSink);
+    };
     const m34Workers = registerM34Workers(
       buildM34WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
     );
+    attachDlqAlertsToAll(m34Workers, "m34");
     app.addHook("onClose", async () => {
       await Promise.all(m34Workers.map((w) => w.close()));
     });
-    // Register the repeatable cron schedules and their close hook BEFORE app.listen() — awaiting here (the
-    // boot block is top-level, so top-level await is legal) so the `onClose` hook is added while the
-    // instance is still pre-listen. The previous `.then()` ran the addHook on a later microtask, after
+    // Register the repeatable cron schedules and their close hook BEFORE app.listen() — awaiting here (this
+    // is inside `bootWardenX`, an async function, so `await` is ordinary) so the `onClose` hook is added
+    // while the instance is still pre-listen. The previous `.then()` ran the addHook on a later microtask, after
     // listen() had already started, which Fastify rejects (FST_ERR_INSTANCE_ALREADY_LISTENING).
     try {
       const scheduleQueues = await scheduleM34Jobs(queueConnection);
@@ -2383,6 +2495,7 @@ if ((import.meta as { main?: boolean }).main) {
     const m33Workers = registerM33Workers(
       buildM33WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
     );
+    attachDlqAlertsToAll(m33Workers, "m33");
     app.addHook("onClose", async () => {
       await Promise.all(m33Workers.map((w) => w.close()));
     });
@@ -2459,6 +2572,7 @@ if ((import.meta as { main?: boolean }).main) {
       signedEncounters: m30SignedEncounters,
     });
     const m30Workers = [...registerM30Workers(m30WorkerDeps), ...registerM30CronWorkers(m30WorkerDeps)];
+    attachDlqAlertsToAll(m30Workers, "m30");
     app.addHook("onClose", async () => {
       await Promise.all(m30Workers.map((w) => w.close()));
     });
@@ -2503,6 +2617,7 @@ if ((import.meta as { main?: boolean }).main) {
       allocationInputs: buildM27AllocationInputs(),
     });
     const m27Workers = [...registerM27Workers(m27WorkerDeps), ...registerM27CronWorkers(m27WorkerDeps)];
+    attachDlqAlertsToAll(m27Workers, "m27");
     app.addHook("onClose", async () => {
       await Promise.all(m27Workers.map((w) => w.close()));
     });
@@ -2528,6 +2643,7 @@ if ((import.meta as { main?: boolean }).main) {
       db: dbHandle.db,
     });
     const m23Workers = [...registerM23Workers(m23WorkerDeps), ...registerM23CronWorkers(m23WorkerDeps)];
+    attachDlqAlertsToAll(m23Workers, "m23");
     app.addHook("onClose", async () => {
       await Promise.all(m23Workers.map((w) => w.close()));
     });
@@ -2573,6 +2689,7 @@ if ((import.meta as { main?: boolean }).main) {
       alerts: m25Alerts,
     });
     const m25Workers = registerM25CronWorkers(m25WorkerDeps);
+    attachDlqAlertsToAll(m25Workers, "m25");
     app.addHook("onClose", async () => {
       await Promise.all(m25Workers.map((w) => w.close()));
     });
@@ -2591,6 +2708,7 @@ if ((import.meta as { main?: boolean }).main) {
     // alert router stay on their fail-closed/no-op defaults until bound (a cron tick fails closed, never at
     // import — the M25 deferred-bind posture). Idempotent recompute/close via the §2.6 unique constraints.
     const m26Workers = registerM26CronWorkers({ connection: queueConnection, db: dbHandle.db });
+    attachDlqAlertsToAll(m26Workers, "m26");
     app.addHook("onClose", async () => {
       await Promise.all(m26Workers.map((w) => w.close()));
     });
@@ -2603,6 +2721,94 @@ if ((import.meta as { main?: boolean }).main) {
       app.log.error(err, "M26 cron-schedule registration failed");
     }
     app.log.info({ queues: m26Workers.length }, "M26 §4.8 BullMQ cap crons constructed");
+
+    // ── M7 §4.6 `care-plan.gates` cron (TASK-040D — the M25 worker-runner shape) ─────────────────────────
+    // The CoP 418.56 5-/15-day gate scans. Absent this, they never ran in production — this is the fix.
+    const m7ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M7_PLATFORM_JOB_ID,
+      reason: "M7 §4.6 care-plan.gates cron fan-out (active-org enumeration)",
+    });
+    const m7WorkerDeps = buildM7WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m7OutboxPublisher,
+      activeOrgs: m7ActiveOrgs,
+    });
+    const m7Workers = registerM7CronWorkers(m7WorkerDeps);
+    attachDlqAlertsToAll(m7Workers, "m7");
+    app.addHook("onClose", async () => {
+      await Promise.all(m7Workers.map((w) => w.close()));
+    });
+    try {
+      const m7ScheduleQueues = await scheduleM7Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m7ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M7 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m7Workers.length }, "M7 §4.6 BullMQ care-plan.gates cron constructed");
+
+    // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
+    // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
+    const m9ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M9_PLATFORM_JOB_ID,
+      reason: "M9 §4.8 license/change-escalation/cadence cron fan-out (active-org enumeration)",
+    });
+    const m9WorkerDeps = buildM9WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m9OutboxPublisher,
+      activeOrgs: m9ActiveOrgs,
+    });
+    const m9Workers = registerM9CronWorkers(m9WorkerDeps);
+    attachDlqAlertsToAll(m9Workers, "m9");
+    app.addHook("onClose", async () => {
+      await Promise.all(m9Workers.map((w) => w.close()));
+    });
+    try {
+      const m9ScheduleQueues = await scheduleM9Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m9ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M9 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m9Workers.length }, "M9 §4.8 BullMQ compliance-scan crons constructed");
+
+    // ── M10 §4.8 HOPE watchdog crons (TASK-040D — the M25 worker-runner shape) ───────────────────────────
+    // `hope-window-watchdog` + `sfv-watchdog` only (`alerts`/`scheduling`/`validation`/`submission`/
+    // `retention` are out of scope — see jobs/cron-workers.ts's own header for why).
+    const m10ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M10_PLATFORM_JOB_ID,
+      reason: "M10 §4.8 HOPE watchdog cron fan-out (active-org enumeration)",
+    });
+    const m10WorkerDeps = buildM10WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m10OutboxPublisher,
+      activeOrgs: m10ActiveOrgs,
+    });
+    const m10Workers = registerM10CronWorkers(m10WorkerDeps);
+    attachDlqAlertsToAll(m10Workers, "m10");
+    app.addHook("onClose", async () => {
+      await Promise.all(m10Workers.map((w) => w.close()));
+    });
+    try {
+      const m10ScheduleQueues = await scheduleM10Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m10ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M10 cron-schedule registration failed");
+    }
+    app.log.info({ queues: m10Workers.length }, "M10 §4.8 BullMQ HOPE watchdog crons constructed");
   }
 
   // ── TASK-006 (OPS-001) — the transactional-outbox DISPATCHER ────────────────────────────────────
@@ -2614,7 +2820,10 @@ if ((import.meta as { main?: boolean }).main) {
   // dispatched rows past retention. Requires the platform credential for org enumeration — absent,
   // it does NOT run and says so loudly (the M35 platform-runner posture; fail-closed, never a
   // tenant-pool RLS bypass). OUTBOX_DISPATCHER_DISABLED=1 opts out (tests/one-off boots).
-  if (dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
+  // TASK-040A — gated on `role !== "api"` for the same reason as the worker-runner section above: an
+  // API replica polling the SAME outbox rows as every other replica is wasted work, not a correctness
+  // bug (FOR UPDATE SKIP LOCKED makes concurrent pollers safe), but it belongs on the worker role.
+  if (role !== "api" && dbHandle && process.env.OUTBOX_DISPATCHER_DISABLED !== "1") {
     if (platformDbHandle) {
       registerPlatformJob(M1_OUTBOX_DISPATCHER_JOB_ID);
       const outboxDispatcher = createOutboxDispatcher({
@@ -2644,9 +2853,24 @@ if ((import.meta as { main?: boolean }).main) {
           "m29.nppes.provider_synced",
           "m29.nppes.provider_deactivated",
         ],
-        options: { log: (m) => app.log.warn(m) },
+        options: {
+          log: (m) => app.log.warn(m),
+          // TASK-040D (OPS-012) — the same shared sink every BullMQ worker's DLQ promotion reports to.
+          onDeadLetter: (e) =>
+            dlqPromotionSink({
+              source: "outbox",
+              jobId: e.eventId,
+              organizationId: e.organizationId,
+              attempts: e.attemptCount,
+              error: `${e.eventType}: ${e.error}`,
+              occurredAt: new Date().toISOString(),
+            }),
+        },
       });
       outboxDispatcher.start();
+      // TASK-040B — the readiness probe's outbox-depth check closes over this ref (set now that the
+      // real instance exists; the probe itself was built earlier, before buildServer()).
+      outboxDispatcherRef = outboxDispatcher;
       app.addHook("onClose", () => outboxDispatcher.stop());
       app.log.info("TASK-006 outbox dispatcher polling (per-org, RLS-scoped)");
     } else {
@@ -2656,11 +2880,43 @@ if ((import.meta as { main?: boolean }).main) {
     }
   }
 
-  const port = Number(process.env.PORT ?? 3000);
+  // TASK-040A (OPS-003) — graceful shutdown. Every teardown this process needs already exists as an
+  // `onClose` hook (every BullMQ Worker/Queue close, the outbox dispatcher's `.stop()`, every DB
+  // pool's `.close()`, the TASK-040B Redis health client's `.quit()`) — NOTHING previously called
+  // `app.close()` on a termination signal, so a container orchestrator's SIGTERM hard-killed the
+  // process instead of draining it (repo-wide grep found no SIGTERM/SIGINT handler anywhere before
+  // this). `once` (not `on`): a second signal during an already-in-flight shutdown must not
+  // re-enter `app.close()`. Fastify's own default `closeGracefully`/timeout handling still applies
+  // underneath — this is only the missing trigger.
+  const shutdown = (signal: string) => {
+    app.log.info(`${signal} received — draining`);
+    app.close().then(
+      () => process.exit(0),
+      (err) => {
+        app.log.error(err, "graceful shutdown failed");
+        process.exit(1);
+      },
+    );
+  };
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+
+  // TASK-040A — the worker role serves no public traffic; it listens on its own port (WORKER_PORT,
+  // default 3001) so /health + /ready are reachable for its OWN liveness/readiness probes without
+  // colliding with an API process's PORT on the same host (local/dev single-host runs).
+  const port =
+    role === "worker"
+      ? Number(process.env.WORKER_PORT ?? 3001)
+      : Number(process.env.PORT ?? 3000);
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);
   });
+}
+
+if ((import.meta as { main?: boolean }).main) {
+  // Start only when run directly (not when imported by tests/tooling/worker.ts) — see `bootWardenX`.
+  await bootWardenX((process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all");
 }
 
 /**

@@ -102,6 +102,17 @@ export {
   planLicenseStatusScan,
   planReassessmentDueScan,
 } from "./jobs/index";
+// TASK-040D — the LIVE `license`/`changes`/`cadence` BullMQ Worker/Queue construction (the M25/M7
+// precedent) + the platform-tenancy registration their active-org fan-out needs.
+export {
+  type ActiveOrgListPort as M9ActiveOrgListPort,
+  type AssessmentOutboxPublishPort,
+  type M9WorkerDeps,
+  buildM9WorkerDeps,
+  registerM9CronWorkers,
+  scheduleM9Jobs,
+} from "./jobs/cron-workers";
+export { M9_PLATFORM_JOB_ID, wireM9Tenancy } from "./wiring";
 // M9-T07 — the `clinical_assessment` data eraser (§8.4). registerAssessmentErasers stands the REAL eraser
 // over the Phase-0 deny-stub; invoked from the composition root's wireModuleErasers() before validateErasers().
 export {
