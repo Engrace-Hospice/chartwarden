@@ -954,6 +954,40 @@
     M25↔M26 remittance wiring goes live. Full regression: build clean, `arch:fitness` green, full suite
     7809 passing (unchanged count — all touched test files pass unmodified).
 - TASK-062 (P2): join the AI capability catalog three ways + seed path (ARCH-019).
+  - **Status (2026-08-04): DONE, merged to main locally.** Both remediation halves. (1) **Three-way
+    join**: `scripts/check-ai-governance.ts` previously only checked its hardcoded `REQUIRED` id list
+    against the YAML catalog (one direction, one pair) and never read the runtime registry at all.
+    Rewrote it to hand-parse the catalog's `id`/`capability_key` pairs (no new YAML-parser dependency
+    for one flat file) and import `AI_PHASE_1_CAPABILITIES` directly (`packages/ai-platform`), then
+    check: REQUIRED ⇔ catalog ids bidirectionally; every registry row's `governanceCatalogId` resolves
+    to a real catalog id AND that catalog entry's `capability_key` names the SAME registry row back (a
+    broken pairing, not just a missing one); every catalog `capability_key` (when non-null) resolves to
+    a real registry row. A `capability_key: null` catalog entry (e.g. `aggregate-cap-projection`) is
+    treated as an explicit, documented non-registration, not a violation — matching the repo's
+    established "a declared absence beats a silent one" convention. Verified the gate actually catches
+    drift (temporarily corrupted one `capability_key` in the YAML — gate failed with 2 precise
+    violations naming the broken join; reverted). (2) **Seed path**: added
+    `scripts/db/sync-ai-capability-catalog.ts` (`bun run db:sync:ai-capabilities`), idempotent
+    UPSERT into `ai_capability` following the `sync-permission-catalog.ts` precedent (additive,
+    `ON CONFLICT DO UPDATE`, platform-shared table, no PHI). Discovered while building it: the schema's
+    `ai_capability_approved_has_template` CHECK blocks EVERY APPROVED/MONITORING row without a
+    `current_prompt_template_key`, not just non-LLM ones — so `hearthnote_layer2` and
+    `idg_layer2_polish` (both APPROVED, LLM-backed) are equally unseedable right now, since no
+    `ai_prompt_template` row exists anywhere in the repo (T56 not landed) and fabricating a placeholder
+    key would satisfy the CHECK while pointing at nothing. Added a new documented gap
+    (`approved-llm-capability-awaiting-prompt-template`) to `AI_PHASE_1_INVENTORY_GAPS` rather than
+    hand-rolling parallel skip logic in the sync script — the gaps list is already the single source of
+    truth "the seed tasks and a reviewer read the same list" per its own header, so the sync script
+    derives its skip set generically from every gap's `blocks` array and prints each skip with the
+    gap's own `detail` (no silent caps). Bumped `phase-1-inventory.test.ts`'s asserted gap count 5→6
+    and added a test for the new gap. **Dry-ran the sync script against the local dev DB (port 5440)**:
+    9/17 capabilities seeded (the 6 tabular-ML-backend-blocked + the now-3 template-blocked APPROVED
+    rows correctly skipped with reasons), governance defaults correct (high-risk → clinical review
+    required), re-run confirmed idempotent (still 9 rows, no duplicates). Confirmed no collision with
+    the M32 live-RLS test's own `hearthnote_layer2` seed row — that suite runs against a separate
+    throwaway cluster (port 5544), and my sync skips that exact key regardless. Full regression: build
+    clean, `arch:fitness` green (including the rewritten `check-ai-governance` gate), full suite 7810
+    passing (+1 new test).
 - TASK-063 (P2): drive per-table audit denylists from one source (ARCH-020).
 - TASK-064 (P2): extend UI parity/frame gates to portal + admin (UI-011); set `/admin/staff` permission (UI-012).
 - TASK-065 (P2): fix telehealth webhook to 401 on bad signature (API-008); pass through 4xx framework errors (API-009).

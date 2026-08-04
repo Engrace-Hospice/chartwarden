@@ -278,6 +278,12 @@ export const AI_PHASE_1_INVENTORY_GAPS: readonly AiPhase1InventoryGap[] = [
       "§2.1 says `ai_capability.current_prompt_template_key` is 'nullable for non-LLM capabilities', but §3.2.1's `ai_capability_approved_has_template` CHECK forbids NULL for any row at APPROVED or MONITORING. `embeddings_clinical` is both APPROVED and non-LLM, so the row as §2.4 specifies it cannot be INSERTed. Resolvable either by relaxing the CHECK to exempt non-LLM capabilities or by registering a degenerate template row; M32-T02 has to pick one and the choice is a schema decision, not a seed decision.",
   },
   {
+    id: "approved-llm-capability-awaiting-prompt-template",
+    blocks: ["hearthnote_layer2", "idg_layer2_polish"],
+    detail:
+      "Unlike `embeddings_clinical` (a permanent schema contradiction — see the gap above), these two are LLM-backed and WILL get a real `current_prompt_template_key` once T56 seeds `ai_prompt_template`. No template row exists anywhere in this repo yet (no `ai_prompt_template` inventory/seed data has landed), and the column is a soft pointer with no FK — the CHECK only demands non-null, it does not verify the key resolves to a real row. Fabricating a placeholder key would satisfy the CHECK while pointing at nothing, which is exactly the kind of invented value this inventory's own header warns against (a fabricated field 'would sail through review and only surface as a truncated prompt... months later'). So both stay unseedable until T56 lands a real template row to point at, not because of a schema decision like the gap above.",
+  },
+  {
     id: "registry-and-architecture-catalog-are-not-one-to-one",
     blocks: [],
     detail:

@@ -227,13 +227,28 @@ describe("risk-tier-derived governance defaults (§3.2.1)", () => {
 });
 
 describe("the gap list", () => {
-  it("carries five gaps with unique ids and non-empty detail", () => {
-    // Six until `level-of-care-risk-tier-unstated` was closed by the architecture catalog stating
-    // the tier. The count is asserted so a gap cannot be silently dropped OR silently added.
-    expect(AI_PHASE_1_INVENTORY_GAPS).toHaveLength(5);
-    expect(new Set(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).size).toBe(5);
+  it("carries six gaps with unique ids and non-empty detail", () => {
+    // Five until `approved-llm-capability-awaiting-prompt-template` was added: the seed-path work
+    // (TASK-062) needed to know, generically, which capabilities the sync script must skip rather than
+    // INSERT-and-crash on the `ai_capability_approved_has_template` CHECK, and hearthnote_layer2 /
+    // idg_layer2_polish are APPROVED with no real template row anywhere in the repo (T56 not landed).
+    // The count is asserted so a gap cannot be silently dropped OR silently added.
+    expect(AI_PHASE_1_INVENTORY_GAPS).toHaveLength(6);
+    expect(new Set(AI_PHASE_1_INVENTORY_GAPS.map((g) => g.id)).size).toBe(6);
     for (const gap of AI_PHASE_1_INVENTORY_GAPS) {
       expect(gap.detail.length).toBeGreaterThan(80);
+    }
+  });
+
+  it("flags the APPROVED LLM capabilities still waiting on a real T56 prompt template", () => {
+    const gap = AI_PHASE_1_INVENTORY_GAPS.find(
+      (g) => g.id === "approved-llm-capability-awaiting-prompt-template",
+    );
+    expect(gap?.blocks).toEqual(["hearthnote_layer2", "idg_layer2_polish"]);
+    // Distinct from embeddings_clinical's gap: both of these ARE LLM-backed and APPROVED, so they are
+    // seedable in principle — just not until a real ai_prompt_template row exists to point at.
+    for (const key of gap?.blocks ?? []) {
+      expect(AI_PHASE_1_APPROVED_CAPABILITY_KEYS).toContain(key);
     }
   });
 
