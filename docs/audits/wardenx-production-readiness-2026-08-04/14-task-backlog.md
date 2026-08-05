@@ -383,8 +383,9 @@
 
 ## WX-PR-017 - Add cluster security controls and resolve router advisory
 
-- Status: Partially completed (2026-08-05) — shared rate limiting and the audit exception gate are
-  done; explicit application CSRF and the router version bump are NOT done (see completion evidence).
+- Status: Completed (2026-08-05) — shared rate limiting, the audit exception gate, and explicit
+  double-submit CSRF are done; the router version bump is not possible (no fixed release exists
+  upstream yet — documented as a reviewed exception, see completion evidence).
 - Priority: P1
 - Severity addressed: Medium
 - Phase: 2
@@ -422,16 +423,33 @@
     reachable. **No upgrade was possible**: as of 2026-08-05 the latest published `react-router-dom`
     is still 7.18.2 — the fixed 8.3.0+ range does not exist yet upstream. Documented as a reviewed,
     time-bounded exception in `check-audit-exceptions.ts` with the exact condition that obsoletes it.
-  - **CSRF: NOT implemented.** Confirmed no explicit CSRF token exists today (Better Auth's own
-    origin/`trustedOrigins` check is the only current defense). A double-submit cookie token is
-    implementable cleanly — the shared `createApiClient` (`packages/ui/src/core/api/client.ts`)
-    already has a single `Middleware` chokepoint every SPA mutation call goes through (see the
-    existing `idempotencyKey` middleware for the exact pattern), so attaching a CSRF header needs no
-    per-call-site changes. Not attempted in this pass: getting the server-side exemption list right
-    (Better Auth's own endpoints, which must work before any CSRF cookie exists on a fresh session;
-    webhook endpoints authenticated by provider signature, not cookies — e.g. the Stripe/Daily.co/
-    Twilio webhook routes) needs care a rushed pass risks getting subtly wrong for a security control.
-    Left for a focused follow-up rather than shipped partially verified.
+  - **CSRF (done, 2026-08-05)**: double-submit cookie, `apps/backend/src/bootstrap/plugins/csrf.ts`.
+    The backend mints a non-httpOnly `wardenx_csrf` cookie on any request that lacks one (onRequest,
+    every route) and, on a mutating (`POST`/`PUT`/`PATCH`/`DELETE`) request that ALSO carries the
+    Better Auth session cookie — i.e. one riding the browser's ambient credential — requires the same
+    value echoed back in `X-CSRF-Token` (preHandler, timing-safe compare), throwing the new
+    `CsrfValidationError` (403 `CSRF_VALIDATION_FAILED`) otherwise. A request authenticated purely by
+    a header credential (the `x-internal-service-token` machine path) or with no session cookie at
+    all is left untouched — nothing ambient for an attacker to ride. Deliberately **fails closed**
+    (unlike the rate limiter's fail-open): a cookie minted on the same request that is being verified
+    is treated as absent, not waved through, since the client cannot have echoed a value it hasn't
+    seen yet. Exempt by path prefix: `/api/auth/` (Better Auth runs its own `trustedOrigins` check),
+    `/webhooks/`, `/api/v1/webhooks/`, `/api/v1/telehealth/webhooks/` (provider-signature auth, no
+    session cookie), and the health/ready probes. Frontend half: `packages/ui/src/core/api/client.ts`
+    gained a `csrfToken` middleware (same `Middleware` chokepoint as `idempotencyKey`) that reads the
+    `wardenx_csrf` cookie via `document.cookie` and attaches `X-CSRF-Token` on mutating requests —
+    zero per-call-site changes across the 55+ files calling `client.POST/PATCH/DELETE`. One supporting
+    fix: `packages/auth/src/identity/mount.ts` previously did `reply.header("set-cookie", setCookies)`
+    unconditionally, which would silently DROP the CSRF cookie the M1 plugin staged earlier in the
+    same request whenever Better Auth's own response also set a cookie (e.g. sign-in) — changed to
+    merge with any existing `set-cookie` header instead of overwriting it. 12 new unit tests
+    (`csrf.test.ts`) + 4 new frontend tests (`client.test.ts`); full gate green (build, `arch:fitness`,
+    7920 tests). Live-verified against the local dev stack: a raw `fetch` carrying the session cookie
+    but no CSRF header got a real `403 CSRF_VALIDATION_FAILED`; the same call with the cookie's value
+    echoed in `X-CSRF-Token` passed straight through to normal route validation (422/404, no CSRF
+    error); and the actual SPA (M39 consent-capture screen, driven in Chrome) attached the header
+    automatically and reached the same business-logic layer — confirming the frontend middleware
+    works in real usage, not just in unit tests.
 - Risks: Auth callbacks and cross-origin SPAs.
 - Rollback: Revert dependency with formal exception; keep security behavior versioned.
 - Estimated complexity: M

@@ -14,6 +14,7 @@ import type { IdempotencyStore } from "@wardenx/shared";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { wireErasers } from "./erasers/providers";
 import { validateErasers } from "./erasers/registry";
+import { type CsrfOptions, applyCsrfProtection } from "./plugins/csrf";
 import { applyErrorHandler } from "./plugins/error-handler";
 import { applyIdempotency, createInMemoryIdempotencyStore } from "./plugins/idempotency";
 import { buildLoggerOptions } from "./plugins/logger";
@@ -42,6 +43,8 @@ export interface ServerDeps {
   readinessProbe?: ReadinessProbe;
   authenticate?: AuthenticateHook;
   security?: SecurityOptions;
+  /** Double-submit-cookie CSRF protection (WX-PR-017). Defaults to enabled. */
+  csrf?: CsrfOptions;
   /** Request body size cap (SEC-065); default 10 MB. */
   bodyLimit?: number;
   /**
@@ -280,6 +283,11 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
 
   // --- cross-cutting middleware ---
   applyRequestContext(app);
+  // Mints the double-submit CSRF cookie (onRequest) and verifies it on mutating requests
+  // (preHandler). The preHandler phase always runs after every onRequest hook has completed
+  // (Fastify's phase ordering), so this correctly sees the authenticate hook below regardless of
+  // registration order — no session-cookie-authenticated mutation reaches a route handler unchecked.
+  applyCsrfProtection(app, deps.csrf);
   if (deps.authenticate) {
     const authenticate = deps.authenticate;
     app.addHook("onRequest", async (request) => {
@@ -316,6 +324,7 @@ export * from "./erasers/registry";
 export * from "./erasers/providers";
 export * from "./in-memory-ledger";
 export * from "./plugins/request-context";
+export * from "./plugins/csrf";
 export * from "./plugins/error-handler";
 export * from "./plugins/security";
 export * from "./plugins/idempotency";

@@ -1,7 +1,7 @@
 // TASK-020 — the shared client auto-attaches Idempotency-Key on mutating requests so a network-level
 // retry replays instead of double-executing the backend's `requireIdempotencyKey` guard (§4.1.1). Verifies
 // the middleware directly against a captured Request, without a real server or the generated `paths` type.
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiClient } from "../client";
 
 function fetchCapturingRequest(): { fetch: typeof fetch; requests: Request[] } {
@@ -47,6 +47,49 @@ describe("createApiClient — Idempotency-Key middleware (TASK-020)", () => {
       } as never,
     );
     expect(requests[0]?.headers.get("Idempotency-Key")).toBe("caller-chosen-key");
+  });
+});
+
+describe("createApiClient — CSRF token middleware (WX-PR-017)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("attaches X-CSRF-Token from the wardenx_csrf cookie on a mutating request", async () => {
+    vi.stubGlobal("document", { cookie: "other=1; wardenx_csrf=abc123; more=2" });
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.POST(
+      "/api/v1/billing/claims/{id}/submit" as never,
+      { params: { path: { id: "claim-1" } } } as never,
+    );
+    expect(requests[0]?.headers.get("X-CSRF-Token")).toBe("abc123");
+  });
+
+  it("does not attach X-CSRF-Token to a GET", async () => {
+    vi.stubGlobal("document", { cookie: "wardenx_csrf=abc123" });
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.GET("/api/v1/billing/claims" as never, {} as never);
+    expect(requests[0]?.headers.has("X-CSRF-Token")).toBe(false);
+  });
+
+  it("sends no X-CSRF-Token when the cookie is absent (no document / no cookie)", async () => {
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.POST("/api/v1/billing/claims/assemble" as never, {} as never);
+    expect(requests[0]?.headers.has("X-CSRF-Token")).toBe(false);
+  });
+
+  it("never overwrites a caller-supplied X-CSRF-Token", async () => {
+    vi.stubGlobal("document", { cookie: "wardenx_csrf=abc123" });
+    const { fetch, requests } = fetchCapturingRequest();
+    const client = createApiClient({ fetch, baseUrl: "http://localhost" });
+    await client.POST(
+      "/api/v1/billing/claims/assemble" as never,
+      { headers: { "X-CSRF-Token": "caller-chosen" } } as never,
+    );
+    expect(requests[0]?.headers.get("X-CSRF-Token")).toBe("caller-chosen");
   });
 });
 

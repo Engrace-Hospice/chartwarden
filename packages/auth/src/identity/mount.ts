@@ -49,7 +49,16 @@ export function registerIdentityAuth(
     res.headers.forEach((value, key) => {
       if (key.toLowerCase() !== "set-cookie") reply.header(key, value);
     });
-    if (setCookies.length > 0) reply.header("set-cookie", setCookies);
+    if (setCookies.length > 0) {
+      // MERGE rather than overwrite: an earlier onRequest hook (the M1 CSRF plugin mints a
+      // double-submit cookie on every request) may already have staged a set-cookie header on this
+      // reply — a plain `reply.header("set-cookie", setCookies)` would silently drop it, so a login
+      // response would carry the new session cookie but lose the CSRF cookie in the same round trip.
+      const existing = reply.getHeader("set-cookie");
+      const existingList =
+        existing === undefined ? [] : Array.isArray(existing) ? existing.map(String) : [String(existing)];
+      reply.header("set-cookie", [...existingList, ...setCookies]);
+    }
     const body = Buffer.from(await res.arrayBuffer());
     return reply.send(body.length > 0 ? body : null);
   });

@@ -60,6 +60,33 @@ const idempotencyKey: Middleware = {
   },
 };
 
+/** Read a single cookie's value by name (browser only — SSR/tests without `document` read nothing). */
+function readCookie(name: string): string | undefined {
+  if (typeof document === "undefined") return undefined;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+}
+
+const CSRF_COOKIE_NAME = "wardenx_csrf";
+
+/**
+ * Double-submit CSRF defense (WX-PR-017; backend half in
+ * apps/backend/src/bootstrap/plugins/csrf.ts). The backend mints a non-httpOnly `wardenx_csrf`
+ * cookie on every response and, for a mutating request that also carries the ambient Better Auth
+ * session cookie, requires this same value echoed back in `X-CSRF-Token` — a cross-site attacker
+ * page can trigger the request (the session cookie rides along) but cannot read this origin's
+ * cookie jar to forge the header. A caller-supplied header is never overwritten.
+ */
+const csrfToken: Middleware = {
+  onRequest({ request }) {
+    if (MUTATING_METHODS.has(request.method) && !request.headers.has("X-CSRF-Token")) {
+      const token = readCookie(CSRF_COOKIE_NAME);
+      if (token) request.headers.set("X-CSRF-Token", token);
+    }
+    return request;
+  },
+};
+
 /** Build a typed API client with WardenX auth + correlation-id + idempotency-key middleware. */
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const {
@@ -82,6 +109,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   };
   client.use(headers);
   client.use(idempotencyKey);
+  client.use(csrfToken);
   if (onResponseStatus) {
     client.use({
       onResponse({ response }) {

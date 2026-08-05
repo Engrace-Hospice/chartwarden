@@ -41,6 +41,7 @@ export const ERROR_CODES = {
   FORBIDDEN: 403,
   CONFLICT: 409,
   RATE_LIMITED: 429,
+  CSRF_VALIDATION_FAILED: 403,
   IDEMPOTENCY_CONFLICT: 409,
   DEGRADED: 503,
   INTERNAL_ERROR: 500,
@@ -105,6 +106,14 @@ export class RateLimitedError extends WardenXError {
   constructor(message = "Too many requests") {
     super("RATE_LIMITED", message, ERROR_CODES.RATE_LIMITED);
     this.name = "RateLimitedError";
+  }
+}
+
+/** Double-submit CSRF cookie/header mismatch or missing on a cookie-authenticated mutation (WX-PR-017). */
+export class CsrfValidationError extends WardenXError {
+  constructor(message = "CSRF validation failed") {
+    super("CSRF_VALIDATION_FAILED", message, ERROR_CODES.CSRF_VALIDATION_FAILED);
+    this.name = "CsrfValidationError";
   }
 }
 
