@@ -383,6 +383,8 @@
 
 ## WX-PR-017 - Add cluster security controls and resolve router advisory
 
+- Status: Partially completed (2026-08-05) — shared rate limiting and the audit exception gate are
+  done; explicit application CSRF and the router version bump are NOT done (see completion evidence).
 - Priority: P1
 - Severity addressed: Medium
 - Phase: 2
@@ -393,6 +395,43 @@
 - Implementation steps: Bind shared limiter; route tiers; CSRF strategy; upgrade router; document RSC absence.
 - Tests: Multi-instance rate, proxy spoof, cross-origin mutation, router E2E.
 - Acceptance criteria: Cluster-wide limits, forged mutation rejection, clean audit/approved exception.
+- Completion evidence:
+  - **Shared rate limiter (done)**: `applySecurityBaseline`'s SD-055 limiter now reads through an
+    injectable `RateLimitStore` (`rate-limit-store.ts`) instead of always owning a per-process `Map`.
+    `createRedisRateLimitStore` uses an atomic Lua INCR+PEXPIRE (single round trip, no lost-update
+    race) over a dedicated Valkey connection bound at boot when `REDIS_URL` is set — reusing the
+    SAME connection config the M34 BullMQ queues already use, but its OWN client (not shared with
+    the `/ready`-probe health client, which is tuned for a different access pattern). The store call
+    fails OPEN (logs a warning, allows the request) on a Redis error, since a rate limiter is an
+    availability control, not an authorization gate — an unhandled store error previously would have
+    taken down 100% of API traffic on any Redis blip. Verified live against real Valkey: two
+    independent connections (standing in for two replicas) share exactly one counter, 50 concurrent
+    increments across both produce exactly 50 distinct sequential counts (no lost updates), and the
+    fixed window genuinely expires rather than accumulating. `security.ts` previously had ZERO
+    dedicated tests; added 9 covering tiers, IP bucketing, clock-driven window reset, the disable
+    flag, fail-open, the CORS allow-list, and response headers.
+  - **Audit-exception gate (done)**: `bun audit` had no CI check at all — added
+    `check-audit-exceptions.ts` (ratcheted, wired into `arch:fitness`) requiring every advisory `bun
+    audit` reports to be in a reviewed, written allowlist, and flagging an allowlist entry as STALE
+    once the underlying advisory clears (so an accepted exception can't quietly outlive the
+    vulnerability). This IS the "clean audit/approved exception" acceptance criterion.
+  - **Router advisory (documented, not upgraded)**: SEC-003 is GHSA-qwww-vcr4-c8h2 (react-router RSC
+    Mode CSRF Bypass, range `>=7.12.0 <8.3.0`). Verified WardenX has no RSC/framework-mode usage
+    anywhere in the three SPAs' source (grep for `@react-router/dev`, `unstable_RSC*`,
+    `renderToReadableStream` — zero hits outside build artifacts) — the vulnerable code path is not
+    reachable. **No upgrade was possible**: as of 2026-08-05 the latest published `react-router-dom`
+    is still 7.18.2 — the fixed 8.3.0+ range does not exist yet upstream. Documented as a reviewed,
+    time-bounded exception in `check-audit-exceptions.ts` with the exact condition that obsoletes it.
+  - **CSRF: NOT implemented.** Confirmed no explicit CSRF token exists today (Better Auth's own
+    origin/`trustedOrigins` check is the only current defense). A double-submit cookie token is
+    implementable cleanly — the shared `createApiClient` (`packages/ui/src/core/api/client.ts`)
+    already has a single `Middleware` chokepoint every SPA mutation call goes through (see the
+    existing `idempotencyKey` middleware for the exact pattern), so attaching a CSRF header needs no
+    per-call-site changes. Not attempted in this pass: getting the server-side exemption list right
+    (Better Auth's own endpoints, which must work before any CSRF cookie exists on a fresh session;
+    webhook endpoints authenticated by provider signature, not cookies — e.g. the Stripe/Daily.co/
+    Twilio webhook routes) needs care a rushed pass risks getting subtly wrong for a security control.
+    Left for a focused follow-up rather than shipped partially verified.
 - Risks: Auth callbacks and cross-origin SPAs.
 - Rollback: Revert dependency with formal exception; keep security behavior versioned.
 - Estimated complexity: M

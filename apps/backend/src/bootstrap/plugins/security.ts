@@ -7,14 +7,15 @@
 // the SD-055 rate-limit tiers, the explicit CORS allow-list, and (via buildServer) the
 // 10 MB body limit — with NO new npm dependency.
 //
-// FORWARD NOTE (tracked follow-up): the production wiring swaps these hand-rolled hooks for
-// `@fastify/helmet` (CSP/HSTS) and `@fastify/rate-limit` backed by the Valkey store (so the
-// limiter is shared across instances), and adds the CSRF double-submit plugin (token
-// mechanics are M2's, SEC-027). The header set + tier values below are the contract those
-// plugins must preserve. Default rate-limit store is in-memory + a fixed window — correct
-// for a single instance; Valkey replaces it for the cluster.
+// WX-PR-017: the limiter's counter store is now injectable (`rate-limit-store.ts`) — the
+// composition root binds `createRedisRateLimitStore(queueConnection)` over the SAME Valkey
+// connection the M34 BullMQ queues share when `REDIS_URL` is set, so the tier is enforced
+// cluster-wide, not per-replica; `createInMemoryRateLimitStore()` (the default here) stays
+// correct for a single instance, dev, and tests. The header set + tier values are unchanged
+// from the hand-rolled baseline; a future `@fastify/helmet` swap must preserve them.
 import { RateLimitedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { type RateLimitStore, createInMemoryRateLimitStore } from "./rate-limit-store";
 
 /** SD-055 tiers: 30/min unauthenticated, 600/min authenticated. */
 export interface RateLimitTiers {
@@ -35,11 +36,9 @@ export interface SecurityOptions {
   readonly now?: () => number;
   /** Set false to disable the limiter (e.g. a /ready probe storm in tests). */
   readonly rateLimitEnabled?: boolean;
-}
-
-interface WindowCounter {
-  count: number;
-  windowStart: number;
+  /** The counter store the limiter reads through. Defaults to a per-process `Map` — pass
+   *  `createRedisRateLimitStore(queueConnection)` to enforce the tier cluster-wide. */
+  readonly rateLimitStore?: RateLimitStore;
 }
 
 const WINDOW_MS = 60_000;
@@ -62,7 +61,7 @@ export function applySecurityBaseline(app: FastifyInstance, opts: SecurityOption
   const now = opts.now ?? Date.now;
   const allowOrigins = new Set(opts.corsAllowOrigins ?? []);
   const limiterEnabled = opts.rateLimitEnabled ?? true;
-  const counters = new Map<string, WindowCounter>();
+  const store = opts.rateLimitStore ?? createInMemoryRateLimitStore(now);
 
   // Helmet-equivalent headers on every response.
   app.addHook("onSend", async (_request, reply, payload) => {
@@ -97,16 +96,22 @@ export function applySecurityBaseline(app: FastifyInstance, opts: SecurityOption
       const limit = authenticated ? tiers.authenticatedPerMinute : tiers.unauthenticatedPerMinute;
       const bucketKey = authenticated ? `org:${orgId}` : `ip:${request.ip}`;
 
-      const t = now();
-      const existing = counters.get(bucketKey);
-      if (!existing || t - existing.windowStart >= WINDOW_MS) {
-        counters.set(bucketKey, { count: 1, windowStart: t });
+      // Rate limiting is a defense-in-depth AVAILABILITY control, not an authorization gate — unlike
+      // RLS/ABAC, a store outage must fail OPEN. The Redis-backed store is a real network dependency
+      // on the hot path of every request; without this catch, a Valkey blip takes down 100% of API
+      // traffic instead of the far smaller harm of briefly under-enforcing SD-055.
+      let count: number;
+      try {
+        count = await store.increment(bucketKey, WINDOW_MS);
+      } catch (err) {
+        request.log.warn({ err, bucketKey }, "rate-limit store unavailable — failing open");
         return;
       }
-      existing.count += 1;
-      if (existing.count > limit) {
-        const retryAfter = Math.ceil((existing.windowStart + WINDOW_MS - t) / 1000);
-        reply.header("Retry-After", String(Math.max(retryAfter, 1)));
+      if (count > limit) {
+        // The store only tells us "how many," not "when the window started" — a fixed
+        // `WINDOW_MS / 1000` upper-bound retry hint is honest (the true remaining time is always
+        // <= the full window) without the store needing a second call to report window age.
+        reply.header("Retry-After", String(WINDOW_MS / 1000));
         throw new RateLimitedError();
       }
     });

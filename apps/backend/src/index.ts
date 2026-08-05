@@ -65,6 +65,7 @@ import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
 } from "./bootstrap/provider-entity-resolver";
+import { createRedisRateLimitStore } from "./bootstrap/plugins/rate-limit-store";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
@@ -1863,6 +1864,23 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       })
     : undefined;
   redisHealthClient?.on("error", () => {});
+  // WX-PR-017 — the SD-055 rate limiter's cluster-wide counter store. A DEDICATED connection, not a
+  // reuse of `redisHealthClient` above: that one is tuned for a periodic /ready ping (lazyConnect,
+  // 1 retry) and this one sits on the hot path of every single request — mixing the two would make
+  // the limiter's first real request pay the health client's lazy-connect cost, and a change tuned
+  // for one concern would silently retune the other.
+  const rateLimitRedisClient = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        maxRetriesPerRequest: 1,
+        connectTimeout: 2_000,
+        retryStrategy: (times) => Math.min(times * 200, 2_000),
+      })
+    : undefined;
+  rateLimitRedisClient?.on("error", () => {});
+  const rateLimitStore = rateLimitRedisClient
+    ? createRedisRateLimitStore(rateLimitRedisClient)
+    : undefined;
   // TASK-040B — the outbox dispatcher (below, ~worker-runner section) is constructed AFTER
   // buildServer() returns `app` (it needs `app.addHook`/`app.log`), but the readinessProbe is
   // built and passed INTO buildServer() before that. This ref lets the probe's outbox-depth check
@@ -2062,6 +2080,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
+    // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
+    // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
+    ...(rateLimitStore ? { security: { rateLimitStore } } : {}),
     // TASK-040B (OPS-004) — the real `/ready` probe: DB `SELECT 1`, Redis PING, outbox pending-row
     // depth. Every check is OMITTED (reports "ok") when its dependency isn't configured, matching
     // today's boot posture — a slice/test/no-Redis boot still serves. `outboxDepthThreshold` reads
@@ -2653,6 +2675,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // TASK-040B — close the readiness-probe's dedicated Redis connection on shutdown (the per-queue
   // BullMQ connections below close via their own onClose hooks; this one is health-check-only).
   if (redisHealthClient) app.addHook("onClose", () => redisHealthClient.quit());
+  if (rateLimitRedisClient) app.addHook("onClose", () => rateLimitRedisClient.quit());
   // TASK-040C (OPS-005/006) — Prometheus metrics. HTTP + outbox counters/gauges register for EVERY
   // role (they're cheap and role-agnostic — an API-only replica's `wardenx_outbox_pending_depth`
   // correctly reads 0 since no dispatcher runs there); the BullMQ per-queue gauge only registers where
