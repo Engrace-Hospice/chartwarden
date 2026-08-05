@@ -333,8 +333,28 @@ export interface PatientCaregiverReader {
  * `patient_address` already carries `state` + `isPrimary` + `effectiveTo` (M5 §3.3), a straightforward
  * current-primary-row query.
  */
+/** M5 `patient_address.kind` (§3.3) — mirrors the DB enum without a cross-package import (leaf-typed). */
+export type PatientAddressKind = "home" | "facility" | "mailing" | "temporary" | "prior";
+
+export interface PatientResidenceSnapshot {
+  readonly kind: PatientAddressKind;
+  /** M40 Facility id, set only when `kind === "facility"`. */
+  readonly facilityId: string | null;
+}
+
 export interface PatientAddressReader {
   /** The 2-letter state code of the patient's current (effective_to IS NULL) PRIMARY address, or null
    *  (no primary address, or its state is unset — e.g. a non-US address). */
   primaryResidenceState(organizationId: string, patientId: string): Promise<string | null>;
+  /**
+   * The patient's PRIMARY address effective as of `asOfDate` (M24 WX-PR-011 place-of-service follow-up:
+   * was this hospice day delivered at home vs. an ALF/SNF/other facility?) — the address-history row
+   * with `effectiveFrom <= asOfDate` and (`effectiveTo IS NULL` or `effectiveTo >= asOfDate`). Null if no
+   * primary address covers that date.
+   */
+  residenceAt(
+    organizationId: string,
+    patientId: string,
+    asOfDate: string,
+  ): Promise<PatientResidenceSnapshot | null>;
 }

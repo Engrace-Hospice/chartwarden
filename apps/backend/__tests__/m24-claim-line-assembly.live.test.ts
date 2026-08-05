@@ -68,9 +68,18 @@ describe.skipIf(!DB_URL)(
         | "general_inpatient_care";
       effectiveAt: Date;
       endedAt: Date | null;
+      facilityId?: string | null;
+      ipuBedAssignmentId?: string | null;
     };
     function locPeriodReader(periods: readonly LocPeriodRow[]): LevelOfCarePeriodReaderPort {
-      return { periodsForAdmission: async () => periods };
+      return {
+        periodsForAdmission: async () =>
+          periods.map((p) => ({
+            ...p,
+            facilityId: p.facilityId ?? null,
+            ipuBedAssignmentId: p.ipuBedAssignmentId ?? null,
+          })),
+      };
     }
     function noEncounters(): SignedEncounterWindowReaderPort {
       return { encountersInWindow: async () => [] };
@@ -162,8 +171,8 @@ describe.skipIf(!DB_URL)(
         q_code: "Q5001",
         level_of_care: "RHC",
         units: 31,
-        rate_at_assembly_cents: 20000,
-        charges_cents: 31 * 20000,
+        rate_at_assembly_cents: 23083,
+        charges_cents: 31 * 23083,
         is_rb: false,
       });
     });
@@ -211,6 +220,110 @@ describe.skipIf(!DB_URL)(
         { line_number: 1, level_of_care: "RHC", units: 10 },
         { line_number: 2, level_of_care: "GIP", units: 5 },
       ]);
+    });
+
+    it("residence at an ALF resolves the real Q5002 place-of-service code, not the LOC-based Q5001 default", async () => {
+      const admissionId = "dddddddd-1111-2222-3333-444444444444";
+      const facility = await admin.query(
+        `INSERT INTO facility (kind, name) VALUES ('alf', 'Sunny ALF') RETURNING id`,
+      );
+      const facilityId: string = facility.rows[0].id;
+      const facilityKindReader = {
+        async kindsFor(ids: readonly string[]) {
+          const m = new Map<string, string>();
+          if (ids.includes(facilityId)) m.set(facilityId, "alf");
+          return m;
+        },
+      };
+      const residenceReader = {
+        async residenceAt() {
+          return { kind: "facility" as const, facilityId };
+        },
+      };
+      const svc = buildDrizzleM24WriteService(
+        handle.db,
+        NOOP_OUTBOX,
+        OPEN_CIPHER,
+        coverage,
+        ccnReader,
+        locPeriodReader([
+          {
+            id: LOC_1,
+            levelOfCare: "routine_home_care",
+            effectiveAt: new Date("2026-07-01"),
+            endedAt: new Date("2026-07-05"),
+          },
+        ]),
+        noEncounters(),
+        facilityKindReader,
+        residenceReader,
+      );
+      const claim = await svc.assembleClaim(
+        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        {
+          patientId: PATIENT,
+          admissionId,
+          providerEntityId: peId,
+          serviceFrom: "2026-07-01",
+          serviceTo: "2026-07-05",
+          kind: "hospice_only",
+        },
+      );
+      const lines = await admin.query(
+        "SELECT q_code FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
+        [claim.id],
+      );
+      expect(lines.rows).toEqual([{ q_code: "Q5002" }]);
+    });
+
+    it("a confirmed own-IPU bed resolves Q5006 regardless of the LOC period's facility kind", async () => {
+      const admissionId = "dddddddd-5555-6666-7777-888888888888";
+      const facility = await admin.query(
+        `INSERT INTO facility (kind, name) VALUES ('hospital', 'Contracted Hospital') RETURNING id`,
+      );
+      const facilityId: string = facility.rows[0].id;
+      const facilityKindReader = {
+        async kindsFor(ids: readonly string[]) {
+          const m = new Map<string, string>();
+          if (ids.includes(facilityId)) m.set(facilityId, "hospital");
+          return m;
+        },
+      };
+      const svc = buildDrizzleM24WriteService(
+        handle.db,
+        NOOP_OUTBOX,
+        OPEN_CIPHER,
+        coverage,
+        ccnReader,
+        locPeriodReader([
+          {
+            id: LOC_2,
+            levelOfCare: "general_inpatient_care",
+            effectiveAt: new Date("2026-07-10"),
+            endedAt: new Date("2026-07-12"),
+            facilityId,
+            ipuBedAssignmentId: "ipu-bed-1",
+          },
+        ]),
+        noEncounters(),
+        facilityKindReader,
+      );
+      const claim = await svc.assembleClaim(
+        { organizationId: ORG, userId: USER, roles: [], stepUpRecent: false },
+        {
+          patientId: PATIENT,
+          admissionId,
+          providerEntityId: peId,
+          serviceFrom: "2026-07-10",
+          serviceTo: "2026-07-12",
+          kind: "hospice_only",
+        },
+      );
+      const lines = await admin.query(
+        "SELECT q_code FROM medicaid_claim_line WHERE medicaid_claim_id=$1",
+        [claim.id],
+      );
+      expect(lines.rows).toEqual([{ q_code: "Q5006" }]);
     });
 
     it("links a signed encounter within the segment window via medicaid_claim_line_encounter", async () => {

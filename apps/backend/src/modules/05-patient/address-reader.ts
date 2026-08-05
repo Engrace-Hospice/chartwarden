@@ -12,7 +12,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientAddressReader } from "@wardenx/types";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 
 export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
   const ADDRESS = schema.patientAddresses;
@@ -33,6 +33,24 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
           )
           .limit(1);
         return row?.state ?? null;
+      });
+    },
+    async residenceAt(organizationId, patientId, asOfDate) {
+      return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+        const [row] = await tx
+          .select({ kind: ADDRESS.kind, facilityId: ADDRESS.facilityId })
+          .from(ADDRESS)
+          .where(
+            and(
+              eq(ADDRESS.organizationId, organizationId),
+              eq(ADDRESS.patientId, patientId),
+              eq(ADDRESS.isPrimary, true),
+              lte(ADDRESS.effectiveFrom, asOfDate),
+              or(isNull(ADDRESS.effectiveTo), gte(ADDRESS.effectiveTo, asOfDate)),
+            ),
+          )
+          .limit(1);
+        return row ? { kind: row.kind, facilityId: row.facilityId } : null;
       });
     },
   };

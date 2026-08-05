@@ -15,6 +15,8 @@ import {
   DEFAULT_MEDICAID_RULES,
   DEFAULT_MEDICAID_RULE_SET_VERSION,
   type MedicaidValidationContext,
+  type PlaceOfServiceFacilityKind,
+  type PlaceOfServiceResidenceKind,
   buildHospiceLines,
   deriveMedicaidControlNumber,
   medicaidClaimMachine,
@@ -117,7 +119,11 @@ export interface ProviderEntityCcnReader {
 
 /** M6's `level_of_care_period` raw list (per-line assembly follow-up). `level_of_care_period` is M6-owned —
  * same "composition-root escape valve" posture as `ProviderEntityCcnReader` (the read lives outside every
- * module's codePaths in apps/backend/src/index.ts, injected here as a narrow port). */
+ * module's codePaths in apps/backend/src/index.ts, injected here as a narrow port). `facilityId`/
+ * `ipuBedAssignmentId` (place-of-service follow-up) are the same two pre-existing M6 columns, just now
+ * also selected — M6's own write path does not populate them for IRC/GIP yet (a separate, pre-existing
+ * M6-T04 gap — `changeLoc` hardcodes `facilityId: null`), so they read null in practice until that lands;
+ * reading them regardless costs nothing and needs no further M24 change once M6 starts writing them. */
 export interface LevelOfCarePeriodReaderPort {
   periodsForAdmission(
     organizationId: string,
@@ -132,8 +138,31 @@ export interface LevelOfCarePeriodReaderPort {
         | "general_inpatient_care";
       effectiveAt: Date;
       endedAt: Date | null;
+      facilityId: string | null;
+      ipuBedAssignmentId: string | null;
     }>
   >;
+}
+
+/** `facility.kind` (M40) for a batch of facility ids (place-of-service follow-up). `facility` is
+ * NON_ORG_SCOPED/M40-owned — same composition-root escape-valve posture as `LevelOfCarePeriodReaderPort`.
+ * Batched (not per-id) so resolving a claim's LOC periods + residence never issues more than one query. */
+export interface FacilityKindReaderPort {
+  kindsFor(
+    facilityIds: readonly string[],
+  ): Promise<ReadonlyMap<string, PlaceOfServiceFacilityKind>>;
+}
+
+/** M5's LIVE `PatientAddressReader` seam (place-of-service follow-up) — the patient's residence kind/
+ * facility as of a given date, for RHC/CHC's home-vs-facility Q-code disambiguation. Optional: an absent
+ * binding degrades to the LOC-based Q-code default (via `resolvePlaceOfServiceQCode`'s own fallback), not
+ * a hard failure — residence is a refinement, not a required input to assembling the claim. */
+export interface ResidenceReaderPort {
+  residenceAt(
+    organizationId: string,
+    patientId: string,
+    asOfDate: string,
+  ): Promise<{ kind: PlaceOfServiceResidenceKind; facilityId: string | null } | null>;
 }
 
 /** M8's LIVE `SignedEncountersReader` seam, narrowed to what claim assembly needs (backing-encounter
@@ -170,6 +199,8 @@ export function buildDrizzleM24WriteService(
   ccnReader?: ProviderEntityCcnReader,
   locPeriodReader?: LevelOfCarePeriodReaderPort,
   signedEncounters?: SignedEncounterWindowReaderPort,
+  facilityKindReader?: FacilityKindReaderPort,
+  residenceReader?: ResidenceReaderPort,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -401,12 +432,49 @@ export function buildDrizzleM24WriteService(
             actor.organizationId,
             input.admissionId,
           );
-          const locPeriods = rawPeriods.map((p) => ({
-            levelOfCarePeriodId: p.id,
-            levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
-            from: day(p.effectiveAt),
-            to: p.endedAt ? day(p.endedAt) : null,
-          }));
+          // place-of-service (WX-PR-011 follow-up #2): resolve the real facts per period BEFORE calling
+          // the pure buildHospiceLines — one residence lookup + one batched facility-kind lookup, anchored
+          // to each period's own start date (not the claim's), so a mid-claim LOC change resolves against
+          // the address/facility that was actually current when that period began.
+          const facilityIdsToResolve = new Set<string>();
+          for (const p of rawPeriods) if (p.facilityId) facilityIdsToResolve.add(p.facilityId);
+          const residenceByPeriod = new Map<
+            string,
+            { kind: PlaceOfServiceResidenceKind; facilityId: string | null } | null
+          >();
+          if (residenceReader) {
+            for (const p of rawPeriods) {
+              const residence = await residenceReader.residenceAt(
+                actor.organizationId,
+                input.patientId,
+                day(p.effectiveAt),
+              );
+              residenceByPeriod.set(p.id, residence);
+              if (residence?.facilityId) facilityIdsToResolve.add(residence.facilityId);
+            }
+          }
+          const facilityKinds = facilityKindReader
+            ? await facilityKindReader.kindsFor([...facilityIdsToResolve])
+            : new Map<string, PlaceOfServiceFacilityKind>();
+          const locPeriods = rawPeriods.map((p) => {
+            const residence = residenceByPeriod.get(p.id) ?? null;
+            return {
+              levelOfCarePeriodId: p.id,
+              levelOfCare: LOC_BY_M6_ENUM[p.levelOfCare],
+              from: day(p.effectiveAt),
+              to: p.endedAt ? day(p.endedAt) : null,
+              placeOfService: {
+                ownIpuBed: p.ipuBedAssignmentId !== null,
+                locPeriodFacilityKind: p.facilityId
+                  ? (facilityKinds.get(p.facilityId) ?? null)
+                  : null,
+                residenceKind: residence?.kind ?? null,
+                residenceFacilityKind: residence?.facilityId
+                  ? (facilityKinds.get(residence.facilityId) ?? null)
+                  : null,
+              },
+            };
+          });
           const encounters = signedEncounters
             ? await signedEncounters.encountersInWindow(
                 actor.organizationId,

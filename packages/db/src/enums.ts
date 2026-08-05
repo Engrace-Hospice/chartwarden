@@ -472,7 +472,11 @@ export const mdmNppesSyncMode = pgEnum("mdm_nppes_sync_mode", [
 // tenant's record is not `executed`.
 export const mdmBaaStatus = pgEnum("mdm_baa_status", ["executed", "pending", "n_a"]);
 
-// `facility_kind` — the canonical `facility` subtype (§3.3).
+// `facility_kind` — the canonical `facility` subtype (§3.3). `nf`/`ltch`/`psych` (additive, WX-PR-011
+// place-of-service follow-up) were added so the full 9-value CMS hospice Q5001-Q5009 place-of-service
+// space is representable: `snf` (skilled) vs `nf` (non-skilled nursing facility) disambiguates Q5004 vs
+// Q5003, `ltch` is Q5007, `psych` (inpatient psychiatric) is Q5008 — none of the original 6 values could
+// express these, so Q-code derivation could never be more than a coarse approximation.
 export const facilityKind = pgEnum("facility_kind", [
   "hospital",
   "alf",
@@ -480,6 +484,9 @@ export const facilityKind = pgEnum("facility_kind", [
   "ipu",
   "clinic",
   "other",
+  "nf",
+  "ltch",
+  "psych",
 ]);
 
 // `payer_kind` — the canonical `payer` subtype (§3.3).

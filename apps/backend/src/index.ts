@@ -22,7 +22,7 @@ import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
 import { type ConnectionOptions, Queue, type Worker } from "bullmq";
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
@@ -78,6 +78,8 @@ const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 // dependency-cruiser §25.14 requires Oregon's wire format/URL to stay INSIDE @wardenx/medicaid-adapters).
 import {
   MedicaidAdapterRegistry,
+  type PlaceOfServiceFacilityKind,
+  type PlaceOfServiceResidenceKind,
   createM24OregonGateway,
   m24LaunchGatewayConfigFromEnv,
 } from "@wardenx/medicaid-adapters";
@@ -2098,6 +2100,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               levelOfCare: schema.levelOfCarePeriods.levelOfCare,
               effectiveAt: schema.levelOfCarePeriods.effectiveAt,
               endedAt: schema.levelOfCarePeriods.endedAt,
+              facilityId: schema.levelOfCarePeriods.facilityId,
+              ipuBedAssignmentId: schema.levelOfCarePeriods.ipuBedAssignmentId,
             })
             .from(schema.levelOfCarePeriods)
             .where(
@@ -2110,6 +2114,37 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         },
       }
     : undefined;
+  // M24 → M40 (place-of-service follow-up) — `facility` is M40-owned/NON_ORG_SCOPED; same escape-valve
+  // posture as `m24LocPeriodReader`. Batched by id so one claim assembly issues at most one query here.
+  const m24FacilityKindReader = dbHandle
+    ? {
+        async kindsFor(facilityIds: readonly string[]) {
+          const map = new Map<string, PlaceOfServiceFacilityKind>();
+          if (facilityIds.length === 0) return map;
+          const rows = await dbHandle.db
+            .select({ id: schema.facilities.id, kind: schema.facilities.kind })
+            .from(schema.facilities)
+            .where(inArray(schema.facilities.id, [...facilityIds]));
+          for (const r of rows) map.set(r.id, r.kind);
+          return map;
+        },
+      }
+    : undefined;
+  // M24 → M5 (place-of-service follow-up) — the LIVE `PatientAddressReader` seam (registered by M5 at
+  // boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent) so
+  // registration order at boot never matters.
+  const m24ResidenceReader = {
+    async residenceAt(organizationId: string, patientId: string, asOfDate: string) {
+      const reader = getSeam("PatientAddressReader") as {
+        residenceAt(
+          organizationId: string,
+          patientId: string,
+          asOfDate: string,
+        ): Promise<{ kind: PlaceOfServiceResidenceKind; facilityId: string | null } | null>;
+      };
+      return reader.residenceAt(organizationId, patientId, asOfDate);
+    },
+  };
   // M24 → M8 (WX-PR-011 line-assembly follow-up) — the LIVE `SignedEncountersReader` seam (registered by
   // M8 at boot), narrowed to the encounter-window shape claim assembly needs. Resolved lazily per call
   // (the M24 coverage-resolver precedent) so registration order at boot never matters.
@@ -2522,6 +2557,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m24CcnReader,
               m24LocPeriodReader,
               m24SignedEncounters,
+              m24FacilityKindReader,
+              m24ResidenceReader,
             ),
           });
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE

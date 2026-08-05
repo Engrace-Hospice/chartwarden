@@ -242,8 +242,8 @@
 
 ## WX-PR-011 - Bind launch-state Medicaid adapter
 
-- Status: Implementation complete (adapter + worker layer + per-line claim assembly); external OHA sandbox
-  certification pending (2026-08-05)
+- Status: Implementation complete (adapter + worker layer + per-line claim assembly + real place-of-service
+  modeling + real CMS rate data); external OHA sandbox certification pending (2026-08-05)
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -301,10 +301,38 @@
   test forbidding an NF_RB schedule row). Full gate green again (build + `arch:fitness` 20 sub-gates + lint
   + `bun run test` 7963 passing + 28 live tests across 2 files, run sequentially — vitest defaults to
   parallel test files, which races two suites' `DROP SCHEMA`/`CREATE SCHEMA public` on one shared cluster).
-  **Remaining, still out of scope**: real place-of-service modeling (Q-code is currently derived directly
-  from level of care, a documented Phase-1 simplification) and the real OHA-published rate/plan-code data
-  (both seeds carry a `TODO(state-fixture)` marker — round placeholder cents, not authoritative payment
-  rates).
+  **Follow-up #2 (2026-08-05): real place-of-service modeling + real CMS rate data.** The Q-code is no
+  longer derived from level-of-care alone. `resolvePlaceOfServiceQCode` (`packages/medicaid-adapters/src/
+  line-assembly.ts`) resolves the real CMS Q5001-Q5009 space from actual facts, priority order: (1) a
+  confirmed own-IPU bed (`level_of_care_period.ipu_bed_assignment_id` set) → Q5006 unconditionally; (2) the
+  LOC period's own `facility_id` → `facility.kind` (extended with `nf`/`ltch`/`psych`, migration 0183, so
+  all 9 Q-codes are representable — the original 6-value enum could not distinguish skilled/non-skilled
+  nursing or express LTCH/psych at all); (3) the patient's residence (`patient_address.kind`/`facility_id`
+  as of the period's own start date, via a new `PatientAddressReader.residenceAt` method on M5's existing
+  live seam) for RHC/CHC's home-vs-ALF/SNF disambiguation; (4) an honest LOC-based fallback only when no
+  fact resolves anything (GIP→Q5006, IRC→Q5009 NOS — not Q5001 home, which was flatly wrong for inpatient
+  respite, RHC/CHC→Q5001). Researching this surfaced a real, separate, pre-existing M6 bug, deliberately
+  NOT fixed here (flagged as a new follow-up candidate): `changeLoc`
+  (`apps/backend/src/modules/06-admission/admission-route-service-db.ts`) hardcodes `facilityId: null` on
+  every call, so the state machine's `IPU_FACILITY_REQUIRED` guard makes IRC/GIP level-of-care transitions
+  fail unconditionally today — no route ever supplies a facility, and no route ever calls
+  `ipuConfirmBedAssignment` either, so the spec's "assigning → confirmed" round-trip through M37 is
+  unimplemented, not just unpopulated. M24's resolver reads `facility_id`/`ipu_bed_assignment_id` regardless
+  (they cost nothing to select and read `null` today), so it benefits automatically once that M6 gap closes
+  — no further M24 change needed. The state-rate-schedule seed (migration 0182, edited in place — not yet
+  deployed anywhere) now carries the real CMS FY2026 national per-diem base rates (RHC $230.83, CHC
+  $1,674.29/24hr, IRC $532.48, GIP $1,199.86; effective 2025-10-01), sourced from the CMS FY2026 Hospice
+  Wage Index and Payment Rate Update Final Rule and corroborated against Oregon's own OAR 410-142-0300
+  ("no lower than... Medicare") floor rule — still a documented simplification (unadjusted for the CBSA
+  wage index, the same geographic layer M23's own `wage_index_factor` table exists for but has never been
+  seeded with real data either). `medicaid_state_plan_code`'s "OHP-PLUS" plan code stays a placeholder —
+  unlike the rate table, it is blocked on a genuinely different, upstream problem (no per-patient OHP
+  benefit-package tracking exists yet to select among plan codes), not on public data availability. 26 new
+  unit tests (`resolvePlaceOfServiceQCode` across every facility-kind combination + fallback path) plus 2
+  new live-Postgres scenarios (ALF residence → real Q5002; confirmed own-IPU-bed → Q5006 regardless of a
+  contracted-hospital facility kind). Full gate green (build + `arch:fitness` 20 sub-gates + lint +
+  `bun run test` 7981 passing + live-Postgres verification: the line-assembly suite, the M24 RLS suite, and
+  the M40 RLS suite, run sequentially on a throwaway pg18 cluster).
 - Risks: State variance.
 - Rollback: Disable launch-state capability and reconcile in-flight jobs.
 - Estimated complexity: XL
