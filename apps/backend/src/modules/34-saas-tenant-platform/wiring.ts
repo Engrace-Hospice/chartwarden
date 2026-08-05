@@ -15,8 +15,8 @@
 // WHAT IS LIVE vs TYPED-TODO (the honest seam map — see the per-port TODOs):
 //   • LIVE now: the D5 key provider (over `TenantKeyRingRepository` + an injected KEK-unwrap port), the
 //     lifecycle/onboarding/support read providers, the tenant-scoped Drizzle route service (its deps —
-//     org-pooled db + the tenant queue producer + the injected clock — are all available), and the §4.3
-//     queue PRODUCERS (BullMQ `Queue.add`, when a Valkey connection is configured).
+//     org-pooled db + the tenant queue producer + the injected clock — are all available), and §4.3 queue
+//     producer construction. Enqueue remains capability-disabled until every mandatory worker port is live.
 //   • TYPED-TODO (genuinely-missing infra accessors at the composition root — each FAILS CLOSED, never a
 //     silent no-op): the M1 KEK/KMS unwrap adapter, the M4 `platform.bypass_invoked` auditor, the live
 //     transactional-outbox dispatcher, the M1 `FeatureFlagAdmin` seam, the M36 alert router, and the
@@ -33,6 +33,8 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@wardenx/tenancy";
+import { DegradedError } from "@wardenx/types";
+import { getSeam } from "../../bootstrap/index";
 
 import { type M34QueueName, M34_QUEUES } from "./jobs/index";
 import type { M34WorkerDeps } from "./jobs/saas-jobs";
@@ -41,6 +43,7 @@ import type { EnqueuePort as PlatformEnqueuePort } from "./routes/platform/servi
 import {
   type DrizzleTenantPlatformDeps,
   type FeatureFlagAdminPort,
+  type OrganizationProvisionPort,
   type OutboxPublishPort,
   type PlatformTx,
   createDrizzleTenantPlatformBackend,
@@ -66,11 +69,27 @@ import {
 export const M34_PLATFORM_JOB_ID = "m34.platform_ops";
 
 /** Raised by a still-unbound Phase-2D infra port (the fail-closed signal — never a silent no-op). */
-export class M34InfraPortUnbound extends Error {
+export class M34InfraPortUnbound extends DegradedError {
   constructor(port: string, reason: string) {
-    super(`M34 Phase-2D infra port '${port}' is not bound to a real adapter: ${reason}`);
+    super("m34-worker-capability", `Phase-2D infra port '${port}' is not bound: ${reason}`);
     this.name = "M34InfraPortUnbound";
   }
+}
+
+/** No M34 async capability is production-ready while its required adapters remain deny-stubs. */
+const READY_M34_JOB_CAPABILITIES = new Set<M34QueueName>();
+
+/** Enable only capabilities whose complete worker dependency set has been assembled at boot. */
+export function enableM34JobCapability(queue: M34QueueName): void {
+  READY_M34_JOB_CAPABILITIES.add(queue);
+}
+
+export function assertM34JobCapability(queue: M34QueueName | string): void {
+  if (READY_M34_JOB_CAPABILITIES.has(queue as M34QueueName)) return;
+  throw new M34InfraPortUnbound(
+    `job.${queue}`,
+    "the worker's database, object storage, cryptography, audit, and notification ports are not fully bound",
+  );
 }
 
 // ── tenancy allowlist registration (must run before any withPlatformContext entry) ────────────────────
@@ -99,8 +118,9 @@ export function wireM34Tenancy(): void {
 export function registerLiveM34Seams(deps: {
   db: DbClient;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
+  kekUnwrap?: KekUnwrapPort;
 }): void {
-  const kekUnwrap: KekUnwrapPort = {
+  const kekUnwrap: KekUnwrapPort = deps.kekUnwrap ?? {
     async unwrap() {
       throw new M34InfraPortUnbound(
         "kekUnwrap",
@@ -139,6 +159,7 @@ export function buildPlatformEnqueue(connection: ConnectionOptions | undefined):
     return {
       enqueue: {
         async enqueue(queue) {
+          assertM34JobCapability(queue);
           throw new M34InfraPortUnbound(
             "platformEnqueue",
             `no Valkey connection configured — cannot enqueue '${queue}' (set the queue connection at boot)`,
@@ -159,6 +180,10 @@ export function buildPlatformEnqueue(connection: ConnectionOptions | undefined):
   };
   const enqueue: PlatformEnqueuePort = {
     async enqueue(queue, jobKey, payload) {
+      assertM34JobCapability(queue);
+      if (queue === M34_QUEUES.provision) {
+        return { jobId: `outbox:${jobKey}` };
+      }
       const job = await queueFor(queue).add(queue, payload, {
         jobId: `${queue}:${jobKey}`,
         removeOnComplete: { count: 500 },
@@ -183,6 +208,7 @@ export function buildTenantEnqueue(connection: ConnectionOptions | undefined): {
     return {
       enqueue: {
         async enqueue(queue) {
+          assertM34JobCapability(queue);
           throw new M34InfraPortUnbound(
             "tenantEnqueue",
             `no Valkey connection configured — cannot enqueue '${queue}'`,
@@ -203,6 +229,7 @@ export function buildTenantEnqueue(connection: ConnectionOptions | undefined): {
   };
   const enqueue: TenantEnqueuePort = {
     async enqueue(queue, payload) {
+      assertM34JobCapability(queue);
       await queueFor(queue).add(queue, payload, {
         jobId: `${queue}:${payload.jobId}`,
         removeOnComplete: { count: 200 },
@@ -259,11 +286,22 @@ export function buildDrizzlePlatformService(deps: {
       );
     },
   };
+  const organizations: OrganizationProvisionPort = {
+    async ensure(input) {
+      const result = await getSeam("TenantOrgCreationProvider").createOrganizationForTenant(input);
+      if (result.kind === "available") return { organizationId: result.organizationId };
+      throw new M34InfraPortUnbound(
+        "organizations.ensure",
+        `M2 TenantOrgCreationProvider returned '${result.reason}'`,
+      );
+    },
+  };
   const drizzleDeps: DrizzleTenantPlatformDeps = {
     platformDb: deps.platformDb,
     enqueue: deps.enqueue,
     auditBypass: deps.auditBypass,
     outbox,
+    organizations,
     featureFlags,
     supportSessionPorts: {
       audit: {
@@ -336,11 +374,15 @@ export function buildM34WorkerDeps(deps: {
   connection: ConnectionOptions;
   db: DbClient;
   platformDb?: DbClient;
+  provision?: M34WorkerDeps["provision"];
+  keyLifecycle?: M34WorkerDeps["keyLifecycle"];
 }): M34WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     platformDb: deps.platformDb,
+    provision: deps.provision,
+    keyLifecycle: deps.keyLifecycle,
     now: () => new Date(),
   };
 }

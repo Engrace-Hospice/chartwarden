@@ -11,7 +11,7 @@
 // The shred service calls that function via `db.execute(sql\`SELECT m34_destroy_tenant_key_ring(...)\`)`
 // and uses THIS repo only for the metadata reads and the per-phase log inserts around it.
 import { type DbClient, schema } from "@wardenx/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 const KR = schema.tenantKeyRing;
 const LOG = schema.tenantKeyDestructionLog;
@@ -107,19 +107,37 @@ export class TenantKeyRingRepository {
   async appendDestructionLog(
     values: schema.NewTenantKeyDestructionLog,
   ): Promise<schema.TenantKeyDestructionLog> {
-    const [row] = await this.db.insert(LOG).values(values).returning();
-    if (!row) throw new Error("tenant_key_destruction_log insert returned no row");
-    return row;
+    const [row] = await this.db.insert(LOG).values(values).onConflictDoNothing().returning();
+    if (row) return row;
+    const [existing] = await this.db
+      .select()
+      .from(LOG)
+      .where(
+        and(
+          eq(LOG.tenantKeyRingId, values.tenantKeyRingId),
+          eq(LOG.destructionCertificateId, values.destructionCertificateId),
+          eq(LOG.destructionPhase, values.destructionPhase),
+        ),
+      )
+      .limit(1);
+    if (!existing) throw new Error("tenant_key_destruction_log insert returned no row");
+    return existing;
   }
 
   /** The destruction-phase trail for a key ring, newest-first (forensic reconstruction). */
   async listDestructionLog(
     tenantKeyRingId: string,
+    destructionCertificateId: string,
   ): Promise<readonly schema.TenantKeyDestructionLog[]> {
     return this.db
       .select()
       .from(LOG)
-      .where(eq(LOG.tenantKeyRingId, tenantKeyRingId))
+      .where(
+        and(
+          eq(LOG.tenantKeyRingId, tenantKeyRingId),
+          eq(LOG.destructionCertificateId, destructionCertificateId),
+        ),
+      )
       .orderBy(desc(LOG.occurredAt));
   }
 }

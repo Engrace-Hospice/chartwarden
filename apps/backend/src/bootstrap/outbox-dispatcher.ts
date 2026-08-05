@@ -14,22 +14,25 @@
 //   · An event type with LIVE consumers is delivered to every one; all succeed → `dispatched`
 //     (dispatched_at = the success instant). Any failure → attempt_count+1, exponential backoff via
 //     `next_attempt_at`, and after maxAttempts → `failed` (the DLQ terminal; never silently dropped).
-//   · An event type on the DEFERRED list (a consumer is declared but its worker has not landed —
-//     e.g. the M22 render handshake) stays `pending` with a slow re-check clock and NO attempt
-//     count: the backlog is preserved for the worker to drain, and the pending depth metric TELLS
-//     THE TRUTH about the deferral instead of faking consumption.
-//   · Any other event type has no live subscriber: the row IS the durable record (the §4.10/§4.11
-//     posture), so delivery-to-zero-subscribers completes immediately → `dispatched`.
+//   · Landed consumers execute independently and record durable `(event_id, consumer_name)` receipts.
+//     If other catalog-declared modules are not live yet, the source row remains `pending` on a slow
+//     re-check clock without replaying completed bindings. This permits staged deployment without
+//     either losing the unfinished fan-out or making completed clinical effects run repeatedly.
+//   · Only an event whose catalog explicitly has `declaredConsumers: []` is record-only: the row IS
+//     the durable record, so delivery-to-zero-subscribers completes immediately → `dispatched`.
+//   · A legacy/unknown row absent from the boot catalog stays pending; it is never guessed record-only.
 //   · Rows stuck `dispatching` longer than the visibility timeout (a crash mid-delivery) revert to
 //     `pending` on a later tick — the attempt was already counted at claim.
 //   · Retention: `dispatched` rows older than the retention window are purged. `failed` rows are
 //     NEVER purged automatically (a dead letter is evidence), and `pending` rows are never touched.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
+import type { ModuleToken, OutboxEventEntry } from "@wardenx/types";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { ActiveOrgEnumerator } from "./active-org-enumerator";
 
 const OUTBOX = schema.outboxEvents;
+const RECEIPTS = schema.outboxConsumerReceipts;
 
 /** One claimed outbox row as handed to a consumer. */
 export interface DispatchableOutboxEvent {
@@ -47,6 +50,8 @@ export interface DispatchableOutboxEvent {
 export interface OutboxConsumerBinding {
   /** The `(eventId, consumerName)` dedup identity (§4.11). */
   readonly consumerName: string;
+  /** Module named in the catalog's `declaredConsumers` list. */
+  readonly consumerModule: ModuleToken;
   readonly eventTypes: readonly string[];
   handle(event: DispatchableOutboxEvent): Promise<void>;
 }
@@ -100,8 +105,8 @@ export interface OutboxDispatcherDeps {
   readonly db: DbClient;
   readonly orgs: ActiveOrgEnumerator;
   readonly consumers: readonly OutboxConsumerBinding[];
-  /** Event types with a DECLARED-but-not-landed consumer (kept pending on the slow clock). */
-  readonly deferredEventTypes?: readonly string[];
+  /** Full boot catalog. Routing is derived from its declared-consumer contract. */
+  readonly eventCatalog: ReadonlyMap<string, OutboxEventEntry>;
   readonly options?: OutboxDispatcherOptions;
 }
 
@@ -123,6 +128,79 @@ export interface OutboxTickSummary {
   readonly recordOnly: number;
   readonly reclaimed: number;
   readonly purged: number;
+}
+
+export interface OutboxRoutingPlan {
+  readonly live: ReadonlyMap<string, readonly OutboxConsumerBinding[]>;
+  /** Events still missing at least one catalog-declared consumer module. */
+  readonly deferred: ReadonlySet<string>;
+  readonly recordOnly: ReadonlySet<string>;
+}
+
+/**
+ * Build the exhaustive routing plan from the same catalog that validates publishes. Available bindings
+ * are live even when another declared module is not yet wired; durable receipts make that partial fan-out
+ * restart-safe while `deferred` keeps the source row pending. Only an explicit empty consumer list is
+ * record-only. Unknown, undeclared, and duplicate bindings fail boot.
+ */
+export function buildOutboxRoutingPlan(
+  eventCatalog: ReadonlyMap<string, OutboxEventEntry>,
+  consumers: readonly OutboxConsumerBinding[],
+): OutboxRoutingPlan {
+  const bindingsByType = new Map<string, OutboxConsumerBinding[]>();
+  for (const consumer of consumers) {
+    for (const eventType of consumer.eventTypes) {
+      const entry = eventCatalog.get(eventType);
+      if (!entry) {
+        throw new Error(
+          `outbox consumer '${consumer.consumerName}' binds unknown catalog event '${eventType}'`,
+        );
+      }
+      if (entry.declaredConsumers.length === 0) {
+        throw new Error(
+          `outbox event '${eventType}' is catalogued record-only but has live consumer bindings`,
+        );
+      }
+      if (!entry.declaredConsumers.includes(consumer.consumerModule)) {
+        throw new Error(
+          `outbox consumer '${consumer.consumerName}' module '${consumer.consumerModule}' is not declared for '${eventType}'`,
+        );
+      }
+      const bucket = bindingsByType.get(eventType) ?? [];
+      if (bucket.some((binding) => binding.consumerName === consumer.consumerName)) {
+        throw new Error(
+          `outbox consumer '${consumer.consumerName}' is bound more than once for '${eventType}'`,
+        );
+      }
+      bucket.push(consumer);
+      bindingsByType.set(eventType, bucket);
+    }
+  }
+
+  const live = new Map<string, readonly OutboxConsumerBinding[]>();
+  const deferred = new Set<string>();
+  const recordOnly = new Set<string>();
+  for (const [eventType, entry] of eventCatalog) {
+    const bindings = bindingsByType.get(eventType) ?? [];
+    if (entry.declaredConsumers.length === 0) {
+      if (bindings.length > 0) {
+        throw new Error(
+          `outbox event '${eventType}' is catalogued record-only but has live consumer bindings`,
+        );
+      }
+      recordOnly.add(eventType);
+      continue;
+    }
+
+    if (bindings.length > 0) live.set(eventType, bindings);
+    const boundModules = new Set(bindings.map((binding) => binding.consumerModule));
+    const allDeclaredConsumersBound = entry.declaredConsumers.every((module) =>
+      boundModules.has(module),
+    );
+    if (!allDeclaredConsumersBound) deferred.add(eventType);
+  }
+
+  return { live, deferred, recordOnly };
 }
 
 /** Exponential backoff with cap: base·2^(attempt-1), attempt 1-based. Exported for the unit tests. */
@@ -152,23 +230,7 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
   const onDeadLetter = opt.onDeadLetter ?? (() => {});
   const onTick = opt.onTick ?? (() => {});
 
-  // event type → the live bindings for it (a type may fan out to several consumers).
-  const routes = new Map<string, OutboxConsumerBinding[]>();
-  for (const consumer of deps.consumers) {
-    for (const eventType of consumer.eventTypes) {
-      const bucket = routes.get(eventType) ?? [];
-      bucket.push(consumer);
-      routes.set(eventType, bucket);
-    }
-  }
-  const deferred = new Set(deps.deferredEventTypes ?? []);
-  // A type both live-routed AND deferred is a wiring bug — the live consumer wins, loudly.
-  for (const type of deferred) {
-    if (routes.has(type)) {
-      log(`⚠️  outbox-dispatcher: '${type}' is both live-routed and deferred — treating as LIVE`);
-      deferred.delete(type);
-    }
-  }
+  const routing = buildOutboxRoutingPlan(deps.eventCatalog, deps.consumers);
 
   let orgCache: { at: number; orgs: readonly { organizationId: string }[] } | null = null;
   async function activeOrgs(): Promise<readonly { organizationId: string }[]> {
@@ -260,24 +322,36 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
             .where(and(eq(OUTBOX.organizationId, organizationId), eq(OUTBOX.id, row.id))),
         );
 
-      if (deferred.has(row.eventType)) {
-        // Declared consumer not landed: preserve the backlog, no attempt burn (undo the claim's
-        // count — a deferral is not a failed attempt).
+      if (!deps.eventCatalog.has(row.eventType)) {
+        // Unknown legacy event: preserve the backlog, no attempt burn.
         await finalize({
           status: "pending",
           attemptCount: row.attemptCount - 1,
           dispatchedAt: null,
           nextAttemptAt: new Date(now.getTime() + deferredRetryMs),
-          lastError: "deferred: declared consumer not yet live (TASK-006 routing)",
+          lastError: "deferred: event type is absent from the boot catalog",
         });
         summary.deferred += 1;
         continue;
       }
 
-      const bindings = routes.get(row.eventType);
+      const bindings = routing.live.get(row.eventType);
       if (!bindings || bindings.length === 0) {
-        // No live subscriber and not deferred: the row is the durable record — delivery to zero
-        // subscribers is complete.
+        if (routing.deferred.has(row.eventType)) {
+          await finalize({
+            status: "pending",
+            attemptCount: row.attemptCount - 1,
+            dispatchedAt: null,
+            nextAttemptAt: new Date(now.getTime() + deferredRetryMs),
+            lastError: "deferred: one or more declared consumers are not live",
+          });
+          summary.deferred += 1;
+          continue;
+        }
+        if (!routing.recordOnly.has(row.eventType)) {
+          throw new Error(`outbox event '${row.eventType}' has no routing classification`);
+        }
+        // The catalog explicitly declares no consumers: the row itself is the durable record.
         await finalize({
           status: "dispatched",
           dispatchedAt: now,
@@ -289,7 +363,54 @@ export function createOutboxDispatcher(deps: OutboxDispatcherDeps): OutboxDispat
       }
 
       try {
-        for (const binding of bindings) await binding.handle(event);
+        for (const binding of bindings) {
+          const completed = await withOrgContext(
+            deps.db,
+            { organizationId, userId: DISPATCHER_USER_ID },
+            async (tx) => {
+              const [receipt] = await tx
+                .select({ id: RECEIPTS.id })
+                .from(RECEIPTS)
+                .where(
+                  and(
+                    eq(RECEIPTS.organizationId, organizationId),
+                    eq(RECEIPTS.eventId, row.id),
+                    eq(RECEIPTS.consumerName, binding.consumerName),
+                  ),
+                )
+                .limit(1);
+              return receipt !== undefined;
+            },
+          );
+          if (completed) continue;
+
+          await binding.handle(event);
+          await withOrgContext(deps.db, { organizationId, userId: DISPATCHER_USER_ID }, (tx) =>
+            tx
+              .insert(RECEIPTS)
+              .values({
+                organizationId,
+                eventId: row.id,
+                consumerName: binding.consumerName,
+                consumerModule: binding.consumerModule,
+                completedAt: new Date(clock()),
+              })
+              .onConflictDoNothing(),
+          );
+        }
+
+        if (routing.deferred.has(row.eventType)) {
+          await finalize({
+            status: "pending",
+            attemptCount: row.attemptCount - 1,
+            dispatchedAt: null,
+            nextAttemptAt: new Date(now.getTime() + deferredRetryMs),
+            lastError:
+              "deferred: completed live bindings; one or more declared consumers are not live",
+          });
+          summary.deferred += 1;
+          continue;
+        }
         await finalize({
           status: "dispatched",
           dispatchedAt: new Date(clock()),

@@ -164,6 +164,7 @@ export interface ShredDestructivePort {
   destroyTenantKeyRing(input: {
     tenantAccountId: string;
     destructionCertId: string;
+    actorMembershipId: string;
   }): Promise<void>;
 }
 
@@ -241,7 +242,12 @@ export interface ShredWorkerPorts {
   readonly lifecycle: ShredLifecyclePort;
   /** Preflight asserts the certificate is approved + no legal hold references the org (§3.5 excerpt
    *  `assertDestructionCertApproved` / `assertNoLegalHold`). Bound to the M4 cert reader + legal-hold reader. */
-  assertCertApprovedAndNoHold(input: { orgId: string; destructionCertId: string }): Promise<void>;
+  assertCertApprovedAndNoHold(input: {
+    tenantAccountId: string;
+    orgId: string;
+    destructionCertId: string;
+    actorMembershipId: string;
+  }): Promise<void>;
 }
 
 /** The `tenant.shred` job payload (§7.2 step 4 — keyed on `tenant_account_id` for idempotent replay, §2.6).
@@ -316,7 +322,7 @@ export async function runTenantShred(job: ShredJob, ports: ShredWorkerPorts): Pr
   const ring = await ports.keyRing.findByTenantAccountId(job.tenantAccountId);
   if (ring === null) throw new ShredKeyRingMissing(job.tenantAccountId);
 
-  const log = await ports.keyRing.listDestructionLog(ring.id);
+  const log = await ports.keyRing.listDestructionLog(ring.id, job.destructionCertId);
   const done = new Set<string>(log.map((row) => row.destructionPhase));
   const phasesRun: ShredPhaseMarker[] = [];
 
@@ -328,6 +334,7 @@ export async function runTenantShred(job: ShredJob, ports: ShredWorkerPorts): Pr
     await ports.keyRing.appendDestructionLog({
       organizationId: ring.organizationId,
       tenantKeyRingId: ring.id,
+      destructionCertificateId: job.destructionCertId,
       destructionPhase: phase,
       perModuleEraserReceipts: receipts as never,
     });
@@ -349,11 +356,27 @@ export async function runTenantShred(job: ShredJob, ports: ShredWorkerPorts): Pr
     };
   }
 
+  // A fully filed certificate is the terminal idempotency state. The certificate is now `executed` and the
+  // tenant is `destroyed`, so re-running the approval/eligibility preflight would incorrectly reject a valid
+  // delivery replay. Return the durable phase receipts without touching erasers, storage, or key material.
+  if (done.has(SHRED_PHASES.certificateFiled) && done.has(SHRED_PHASES.deksZeroized)) {
+    return {
+      outcome: "destroyed",
+      tenantAccountId: job.tenantAccountId,
+      orgId: job.orgId,
+      eraserReceipts: priorEraserReceipts(log),
+      refusedRowsByModule: [],
+      phasesRun,
+    };
+  }
+
   // Preflight (§3.5 excerpt) — the certificate must be approved and no legal hold may reference the org. Cheap
   // + safe to re-run every attempt (read-only); it never advances a phase.
   await ports.assertCertApprovedAndNoHold({
+    tenantAccountId: job.tenantAccountId,
     orgId: job.orgId,
     destructionCertId: job.destructionCertId,
+    actorMembershipId: job.actorMembershipId,
   });
 
   // ── Phase 1: fire every M4-registered module eraseFn through the destruction-cert callback registry ──────
@@ -436,6 +459,7 @@ export async function runTenantShred(job: ShredJob, ports: ShredWorkerPorts): Pr
     await ports.destructive.destroyTenantKeyRing({
       tenantAccountId: job.tenantAccountId,
       destructionCertId: job.destructionCertId,
+      actorMembershipId: job.actorMembershipId,
     });
     await markPhase(SHRED_PHASES.deksZeroized);
   }

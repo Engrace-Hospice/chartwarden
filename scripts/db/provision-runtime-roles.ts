@@ -62,6 +62,10 @@ const PLATFORM_READ_TABLES = [
   // M1/M2 spine — the enumerators (active orgs; the M36 D9 sole-tenant membership read).
   "organization",
   "membership",
+  "patient",
+  // M4 destruction ceremony facts (certificate approval + active legal holds).
+  "destruction_certificate",
+  "legal_hold",
   // M34 control plane.
   "tenant_account",
   "tenant_account_status_event",
@@ -116,6 +120,24 @@ const PLATFORM_MUTATE_TABLES = [
   "promo_code_application",
 ] as const;
 
+/** Narrow write surface required by the M34 tenant-provisioning saga and invitation acceptance. */
+const PLATFORM_PROVISION_INSERT_TABLES = [
+  "organization",
+  "outbox_event",
+  "tenant_account",
+  "tenant_account_status_event",
+  "tenant_key_destruction_log",
+  "tenant_invitation",
+] as const;
+
+const PLATFORM_PROVISION_UPDATE_TABLES = [
+  "tenant_account",
+  "tenant_key_ring",
+  "destruction_certificate",
+  "tenant_signup_intent",
+  "tenant_invitation",
+] as const;
+
 /** The M34 org-offboarding eraser's DELETE targets (its 8 erase* methods). */
 const PLATFORM_ERASE_TABLES = [
   "onboarding_task",
@@ -155,6 +177,18 @@ async function main(): Promise<void> {
       for (const t of PLATFORM_MUTATE_TABLES) {
         await run(`GRANT INSERT, UPDATE ON "${t}" TO wardenx_platform;`);
       }
+      for (const t of PLATFORM_PROVISION_INSERT_TABLES) {
+        await run(`GRANT INSERT ON "${t}" TO wardenx_platform;`);
+      }
+      for (const t of PLATFORM_PROVISION_UPDATE_TABLES) {
+        await run(`GRANT UPDATE ON "${t}" TO wardenx_platform;`);
+      }
+      await run(
+        "GRANT EXECUTE ON FUNCTION m34_provision_tenant_key_ring(uuid) TO wardenx_platform;",
+      );
+      await run(
+        "GRANT EXECUTE ON FUNCTION m34_destroy_tenant_key_ring(uuid, uuid) TO wardenx_platform;",
+      );
       for (const t of PLATFORM_ERASE_TABLES) {
         await run(`GRANT DELETE ON "${t}" TO wardenx_platform;`);
       }

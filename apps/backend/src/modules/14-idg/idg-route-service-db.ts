@@ -25,8 +25,8 @@
 //   (3) `idg_patient_packet` (PE/location/patient/admission NOT NULL) is built by the §2.4 packet WORKER, not
 //       the route lifecycle — `buildPackets` only drives the meeting state + emits; the decision inclusion
 //       gate reads the packet set (authoritative) OR a patient-scoped agenda item (the Phase-1 signal);
-//   (4) narrative payloads (decision `payload`, amendment `diff`, snapshots) are written `{}` — the DB backend
-//       threads no clinical body; the read views surface stable structural shapes;
+//   (4) decision payloads are persisted exactly as route validation accepted them; amendment diffs and
+//       packet snapshots remain structural until their dedicated authoring flows land;
 //   (5) the per-patient 15-day review-floor is resolved `clear` (the M14-F01 cron owns the breach math; the
 //       gated CANCEL/RESCHEDULE transitions drive the machine with the authorized-override facts).
 import { createHash } from "node:crypto";
@@ -103,8 +103,8 @@ const NOOP_OUTBOX: IdgWriteOutboxPort = { async publish() {} };
 /**
  * Resolve the patient's ACTIVE care plan id through M7's CarePlanReader seam — the
  * `idg_decision.care_plan_id` stamp (mig 0155) for a `care_plan_update` decision. The plan id cannot
- * come off the wire: the §2.6 D4 payload's mutations carry element ids only (and this DB backend
- * writes `payload: {}` — compromise #4). The record-time ACTIVE plan is the semantically correct
+ * come off the wire: the §2.6 D4 payload's mutations carry element ids only. The record-time ACTIVE plan is
+ * the semantically correct
  * link because it is the plan the mutations will land on by construction: M7's apply-idg-decision
  * consumer refuses any plan that is not the patient's active one (`plan_not_active`, §11 D4/D2).
  * BEST-EFFORT by design: under the boot deny-stub or outside a request scope (the reader's Drizzle
@@ -794,7 +794,7 @@ export function createDbIdgBackend(
             carePlanId, // mig 0155 — the active-plan link (NULL for non-care_plan_update / unresolved)
             agendaItemId: args.agendaItemId ?? null,
             decisionKind: args.decisionKind,
-            payload: {},
+            payload: args.payload,
             wasQuorate: plan.wasQuorate,
             quorumSnapshot: plan.quorumSnapshot,
             recordedByMembershipId: userId,
@@ -816,7 +816,7 @@ export function createDbIdgBackend(
         return toDecisionView(row!);
       });
     },
-    async updateDecision(orgId, _userId, id, decisionKind): Promise<DecisionView> {
+    async updateDecision(orgId, _userId, id, payload): Promise<DecisionView> {
       const prior = await withOrg(orgId, async (tx) => {
         const [row] = await tx.select().from(DEC).where(eq(DEC.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_decision");
@@ -827,14 +827,14 @@ export function createDbIdgBackend(
       // leaving it CLEARS the link, so M30's latency measure never scores a decision that no longer
       // updates a plan.
       const carePlanId =
-        decisionKind === "care_plan_update"
+        payload.kind === "care_plan_update"
           ? (prior.carePlanId ??
-            (await resolveCarePlanIdForDecision(prior.patientId, decisionKind)))
+            (await resolveCarePlanIdForDecision(prior.patientId, payload.kind)))
           : null;
       return withOrg(orgId, async (tx) => {
         const [updated] = await tx
           .update(DEC)
-          .set({ decisionKind, carePlanId, updatedAt: new Date() })
+          .set({ decisionKind: payload.kind, payload, carePlanId, updatedAt: new Date() })
           .where(eq(DEC.id, id))
           .returning();
         if (!updated) throw new NotFoundError("idg_decision");
@@ -856,7 +856,7 @@ export function createDbIdgBackend(
             patientId: prior.patientId,
             carePlanId: prior.carePlanId, // the successor supersedes the SAME plan's decision (kind is copied verbatim)
             decisionKind: prior.decisionKind,
-            payload: {},
+            payload: prior.payload,
             wasQuorate: true,
             quorumSnapshot: prior.quorumSnapshot,
             recordedByMembershipId: userId,

@@ -50,6 +50,44 @@ const ACCESS_PURPOSE = [
 ] as const;
 const SOURCE_CHANNEL = ["fax", "email_ingest", "portal_upload", "admin_upload", "api"] as const;
 const DECISION_KIND = ["approve", "approve_with_edit", "reject"] as const;
+const DOCUMENT_AGGREGATE_TYPE = [
+  "election_statement",
+  "cti",
+  "f2f",
+  "nor",
+  "revocation",
+  "discharge_summary",
+  "nomnc",
+  "abn",
+  "hipaa_privacy_notice",
+  "code_status_directive",
+  "encounter",
+  "order_record",
+  "medication_order",
+  "medication_administration_record",
+  "medication_reconciliation_worksheet",
+  "patient_medication_list",
+  "comfort_kit_receipt",
+  "idg_patient_packet",
+  "idg_minutes",
+  "aide_poc",
+  "msw_plan",
+  "spiritual_plan",
+  "volunteer_plan",
+  "bereavement_letter",
+  "visit_confirmation",
+  "evv_verification",
+  "patient_amendment_statement_of_disagreement",
+  "consent_record",
+  "intake_source",
+  "other",
+] as const;
+const VERIFIED_UPLOAD_MIME_TYPE = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/tiff",
+] as const;
 
 // ── Path params (slice ids are uuid-shaped; cross-module ids validated per §4.2) ──────────────────────
 export const DocumentParamsSchema = Type.Object({
@@ -89,6 +127,9 @@ export const OverlayParamsSchema = Type.Object({
 export const FormFillParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
 });
+export const VerifiedUploadParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+});
 
 // ── Bodies ────────────────────────────────────────────────────────────────────────────────────────
 export const UploadDocumentRequest = Type.Object({
@@ -113,6 +154,34 @@ export const UploadDocumentRequest = Type.Object({
 
 export const UploadVersionRequest = Type.Object({
   title: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+});
+
+export const InitiateVerifiedUploadRequest = Type.Object({
+  mode: Type.Union([Type.Literal("new_document"), Type.Literal("new_version")]),
+  targetDocumentId: Type.Optional(Type.String({ format: "uuid" })),
+  patientId: Type.Optional(Type.String({ format: "uuid" })),
+  admissionId: Type.Optional(Type.String({ format: "uuid" })),
+  retentionClass: lit(RETENTION_CLASS),
+  aggregateType: lit(DOCUMENT_AGGREGATE_TYPE),
+  aggregateId: Type.Optional(Type.String({ format: "uuid" })),
+  title: Type.String({ minLength: 1, maxLength: 500 }),
+  patientFacing: Type.Optional(Type.Boolean()),
+  mimeType: lit(VERIFIED_UPLOAD_MIME_TYPE),
+  byteSize: Type.Integer({ minimum: 1, maximum: 25 * 1024 * 1024 }),
+  sha256Hex: Type.String({ pattern: "^[0-9a-f]{64}$" }),
+});
+
+export const CompleteVerifiedUploadRequest = Type.Object({});
+export const InitiateVerifiedUploadResponse = Type.Object({
+  uploadId: Type.String({ format: "uuid" }),
+  uploadUrl: Type.String({ format: "uri" }),
+  requiredHeaders: Type.Record(Type.String(), Type.String()),
+  expiresAt: Type.String({ format: "date-time" }),
+});
+export const CompleteVerifiedUploadResponse = Type.Object({
+  documentId: Type.String({ format: "uuid" }),
+  versionId: Type.String({ format: "uuid" }),
+  versionNumber: Type.Integer({ minimum: 1 }),
 });
 
 export const PatchDocumentRequest = Type.Object({

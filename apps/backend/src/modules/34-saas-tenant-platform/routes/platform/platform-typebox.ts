@@ -105,6 +105,7 @@ export const ProvisionTenantRequest = Type.Object({
   billingContactEmail: Type.String({ format: "email" }),
   breachNotificationContactEmail: Type.String({ format: "email" }),
   firstAdminEmail: Type.String({ format: "email" }),
+  firstAdminFullName: Type.String({ minLength: 1, maxLength: 200 }),
   planLabel: lit(PLAN_LABEL),
 });
 
@@ -167,6 +168,7 @@ export const CloseSessionRequest = Type.Object({
 // §4.1 — signup-intent queue (qualify → enqueues the `tenant.provision` flow; reject records a rationale).
 export const QualifyIntentRequest = Type.Object({
   planLabel: lit(PLAN_LABEL),
+  firstAdminFullName: Type.String({ minLength: 1, maxLength: 200 }),
 });
 export const RejectIntentRequest = Type.Object({
   rejectionReason: Type.String({ minLength: 8, maxLength: 1000 }),

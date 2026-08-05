@@ -371,6 +371,7 @@ describe("M34-saas-tenant-platform-inject — platform-ops tenant lifecycle (ten
         billingContactEmail: "billing@prospect.example.org",
         breachNotificationContactEmail: "breach@prospect.example.org",
         firstAdminEmail: "admin@prospect.example.org",
+        firstAdminFullName: "Prospect Administrator",
         planLabel: "standard",
       },
     });
@@ -572,7 +573,7 @@ describe("M34-saas-tenant-platform-inject — platform-ops signup-intent triage 
       method: "POST",
       url: `/api/v1/platform/signup-intents/${INTENT_QUALIFY_ID}/qualify`,
       headers: PLATFORM_OPS,
-      payload: { planLabel: "standard" },
+      payload: { planLabel: "standard", firstAdminFullName: "Qualified Administrator" },
     });
     expect(qualify.statusCode).toBe(202);
     expect(qualify.json().intentStatus).toBe("qualified");
@@ -899,7 +900,7 @@ describe("M34-saas-tenant-platform-inject — public self-serve signup surface: 
 
     const accept = await app.inject({
       method: "POST",
-      url: "/api/v1/public/tenant-invitations/some-token-hash/accept",
+      url: `/api/v1/public/tenant-invitations/${"a".repeat(43)}/accept`,
       payload: {},
     });
     expect(accept.statusCode).toBe(503);

@@ -10,28 +10,28 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 
 | Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 16/16 ✅ |
+| M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 17/17 ✅ |
 | M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ✅ | — | 4/4 ✅ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ❌ | — | 6/6 ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 4/4 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 14/14 ✅ | ✅ | ✅ | — | 16/16 ✅ |
 | M06 Admission, Election & Certification | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 47/47 ✅ | ✅ | ✅ | — | 12/12 ✅ |
-| M07 Care Plan (IPOC) | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 6/6 ✅ |
+| M07 Care Plan (IPOC) | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M08 Encounters & Visit Notes | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | — | 10/10 ✅ |
 | M09 Clinical Assessments Suite | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 18/18 ✅ | ✅ | ✅ | — | 5/5 ✅ |
 | M10 HOPE Engine | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 20/20 ✅ | ✅ | ✅ | ✅ | 6/6 ✅ |
-| M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 7/7 ✅ |
-| M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 6/6 ✅ |
+| M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 8/8 ✅ |
+| M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 7/7 ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 11/11 ✅ |
-| M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 9/9 ✅ |
+| M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 10/10 ✅ |
 | M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 29/29 ✅ | ✅ | ✅ | ✅ | 7/7 ✅ |
-| M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 6/6 ✅ |
+| M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M19 On-Call Triage | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | ✅ | 10/10 ✅ |
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | — | 13/13 ✅ |
 | M21 Supplies, DME & Comfort Kits | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 37/37 ✅ | ✅ | ✅ | — | 11/11 ✅ |
-| M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ✅ | ✅ | — | 17/17 ✅ |
+| M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | — | 18/18 ✅ |
 | M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 43/43 ✅ | ✅ | ✅ | ✅ | 17/17 ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
 | M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 31/31 ✅ | ✅ | ✅ | ✅ | 11/11 ✅ |

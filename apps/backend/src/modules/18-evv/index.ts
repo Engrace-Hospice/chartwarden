@@ -81,6 +81,10 @@ export {
 // visit-state transitions (D14).** M19/M25 stay inert Phase-2 consumers (`late_check_out_detected` /
 // `aggregator_rejected`).
 export { M18_OUTBOX_EVENTS } from "./events-by-m18";
+export {
+  M18_VISIT_PUBLISHED_CONSUMER,
+  buildM18VisitPublishedConsumer,
+} from "./outbox-consumers/m17-visit-published";
 // M18-T07 — the §4.9 M36 typed alert payloads M18 OWNS (late-checkout / geofence-breach / GPS-spoof / device
 // pending+suspended / aggregator rejected+timeout). Registered onto M36's Foundation alert-payload registry at
 // boot; composition + recipient resolution is M36's (ADR-0024). M18-F16: out-of-band channels carry no PHI.

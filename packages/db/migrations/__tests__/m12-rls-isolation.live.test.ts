@@ -48,6 +48,7 @@ type SeedIds = {
   dosespotWebhookEvent: string;
   dosespotPrescriber: string;
   epcsSigningAttempt: string;
+  medicationOrderIdgApplication: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -60,6 +61,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "dosespot_webhook_event", key: "dosespotWebhookEvent" },
   { table: "dosespot_prescriber", key: "dosespotPrescriber" },
   { table: "epcs_signing_attempt", key: "epcsSigningAttempt" },
+  { table: "medication_order_idg_decision_application", key: "medicationOrderIdgApplication" },
 ];
 
 describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -191,6 +193,15 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
       )
     ).rows[0].id as string;
 
+    const medicationOrderIdgApplication = (
+      await db.query(
+        `INSERT INTO medication_order_idg_decision_application
+           (organization_id, idg_decision_id, medication_order_ids)
+         VALUES ($1,$2,$3::jsonb) RETURNING id`,
+        [org, `8888888${n}-8888-4888-8888-888888888888`, JSON.stringify([medicationOrder])],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -201,6 +212,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
       dosespotWebhookEvent,
       dosespotPrescriber,
       epcsSigningAttempt,
+      medicationOrderIdgApplication,
     };
   }
 
@@ -234,10 +246,12 @@ describe.skipIf(!DB_URL)("M12 DoseSpot — RLS cross-tenant denial — LIVE Post
   });
 
   it("every M12 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0039_dosespot_m12_rls_audit_triggers.sql"),
-      "utf8",
-    );
+    const rls = [
+      "0039_dosespot_m12_rls_audit_triggers.sql",
+      "0168_idg_downstream_consumer_projections.sql",
+    ]
+      .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
+      .join("\n");
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
       (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );

@@ -201,9 +201,10 @@ export type DocumentAccessPurpose =
 
 // ── §3.3 owned-table names + §3.6 audit denylist (the M4 trigger arguments for M22-T03) ───────────────
 
-/** The 17 §3.3 owned tables (the manifest `ownedTables` set). */
+/** The M22 owned tables (the manifest `ownedTables` set). */
 export type M22TableName =
   | "document"
+  | "document_upload"
   | "document_version"
   | "document_tag"
   | "document_access_log"
@@ -227,6 +228,7 @@ export type M22TableName =
  * column). Tables absent from the §3.6 table — `classified_page`, `extraction_job` — denylist nothing. */
 export const M22_AUDIT_DENYLIST: { readonly [K in M22TableName]: readonly string[] } = {
   document: ["title"],
+  document_upload: ["title", "object_key", "expected_sha256_hex"],
   document_version: ["byte_payload_cipher", "minio_object_key"],
   document_tag: ["tag_value"],
   document_access_log: ["purpose", "recipient_class"],

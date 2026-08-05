@@ -3,6 +3,7 @@
 // access-log/legal-hold; form_template → version → overlay/fill; intake_upload_batch →
 // classified_page → extraction_job → candidate/discrepancy/review → decision → provenance.
 export * from "./document";
+export * from "./document-upload";
 export * from "./document-version";
 export * from "./document-tag";
 export * from "./document-access-log";

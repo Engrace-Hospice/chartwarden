@@ -73,9 +73,10 @@ export {
 // M8-T11 — the §4.4 outbox contract (the full `m8.*` taxonomy; check-fitness-gaps.ts scans events-by-m8.ts
 // for naming + ownership + declared consumers). `m8.encounter.signed` is the locked clinical-record trigger.
 export { M8_OUTBOX_EVENTS } from "./events-by-m8";
-// M8-T11 — the M17 visit-scheduling consumer (inert): the pure `decideVisitSeeding` decision core + the
-// forward-declared (deferred) outbox binding M17 dispatches to once it lands (Wave F). No `dependsOn` edge.
+// M8-T11 — the live M17 visit-publication consumer plus its pure `decideVisitSeeding` policy core.
+// The consumer reads the foundation event contract, so no direct M8 → M17 dependency edge is needed.
 export {
+  type VisitPublishedPayload,
   type VisitSeedingAction,
   type VisitSeedingFacts,
   type VisitSeedingSkipReason,
@@ -83,6 +84,10 @@ export {
   decideVisitSeeding,
 } from "./consumers/seed-visit-encounter";
 export {
+  type M8VisitConsumerOutboxPort,
+  buildM8VisitPublishedConsumer,
+  M8_VISIT_PUBLISHED_CONSUMER,
+  M8_VISIT_PUBLISHED_CONSUMER_DEFERRED,
   M8_VISIT_SCHEDULED_CONSUMER,
   M8_VISIT_SCHEDULED_CONSUMER_DEFERRED,
   decideVisitScheduled,

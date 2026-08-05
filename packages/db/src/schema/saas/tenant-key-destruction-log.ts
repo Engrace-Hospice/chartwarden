@@ -10,7 +10,7 @@
 // Tenancy (§3.10 M34-F02 / ADR-0010): ORG-SCOPED — carries its own `organization_id` NOT NULL so the canonical
 // app.org_id RLS predicate applies directly. The intra-module parent `tenant_key_ring` carries a SQL FK and the
 // org spine carries a SQL FK. RLS + grants + the M4 write-audit trigger land in migrations 0052/0053.
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { tenantKeyRing } from "./tenant-key-ring";
 
@@ -25,6 +25,8 @@ export const tenantKeyDestructionLog = pgTable(
     tenantKeyRingId: uuid("tenant_key_ring_id")
       .notNull()
       .references(() => tenantKeyRing.id, { onDelete: "restrict" }),
+    /** One approved destruction ceremony; a later Part 2 retry gets an independent phase trail. */
+    destructionCertificateId: uuid("destruction_certificate_id").notNull(),
     // 'deks_zeroized' | 'module_erasers_complete' | 'minio_scope_destroyed' | 'certificate_filed'
     // | 'dek_destruction_aborted_part_two_retention'
     destructionPhase: text("destruction_phase").notNull(),
@@ -32,8 +34,9 @@ export const tenantKeyDestructionLog = pgTable(
     perModuleEraserReceipts: jsonb("per_module_eraser_receipts").notNull().default([]),
   },
   (t) => ({
-    keyRingPhaseIdx: index("tenant_key_destruction_log_keyring_phase_idx").on(
+    keyRingPhaseIdx: uniqueIndex("tenant_key_destruction_log_keyring_phase_idx").on(
       t.tenantKeyRingId,
+      t.destructionCertificateId,
       t.destructionPhase,
     ),
   }),

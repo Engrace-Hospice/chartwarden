@@ -3,8 +3,8 @@
 // pattern as M6-T10 / M5-T10). T07 ships the two §7.1/§7.2 gate scans that turn the due columns
 // maintained by `../lifecycle/gate-clock` into outbox events; both are pure, deterministic over an
 // injected `now`, and idempotent via per-plan emission markers so duplicate cron fires are no-ops. The
-// `apply-idg-decision` (care-plan.idg) consumer and the `build-summary` (care-plan.snapshot) job are
-// event-driven shells whose bodies land with their M14 / portal consumers (M7-T08 wires IDG inert).
+// `apply-idg-decision` is now handled directly by the live M14 outbox binding. The legacy queue name is
+// retained for contract compatibility; `build-summary` remains a separate event-driven job.
 import type { IsoInstant } from "@wardenx/types";
 import { GATE_WARNING_LEAD_DAYS } from "../lifecycle/gate-clock";
 
@@ -14,7 +14,7 @@ import { GATE_WARNING_LEAD_DAYS } from "../lifecycle/gate-clock";
 export const M7_QUEUES = {
   /** Daily gate scans: `5day-warning` (§7.1) + `15day-overdue` (§7.2); also on-demand after a sign. */
   gates: "care-plan.gates",
-  /** Outbox subscriber: apply `idg.decision_recorded` (M14) into a draft v2 (wired inert in M7-T08). */
+  /** Legacy queue identifier for `idg.decision_recorded`; live delivery uses the M1 dispatcher. */
   idg: "care-plan.idg",
   /** Outbox subscriber + on-demand: rebuild the summary cache on `m7.care_plan.version_signed`. */
   snapshot: "care-plan.snapshot",

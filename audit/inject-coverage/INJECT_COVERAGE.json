@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1214,
-    "coveredRoutes": 1214
+    "routes": 1217,
+    "coveredRoutes": 1217
   },
   "modules": [
     {
@@ -188,7 +188,7 @@
     },
     {
       "module": "22-documents",
-      "routes": 35,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",

@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1221,
-    "enriched": 1214,
+    "routes": 1224,
+    "enriched": 1217,
     "deficit": 7,
-    "mutating": 697,
+    "mutating": 699,
     "mutatingNoBody": 113,
     "gets": 494,
     "getsNoResponse": 80
@@ -211,10 +211,10 @@
     },
     {
       "module": "22-documents",
-      "routes": 35,
-      "enriched": 35,
+      "routes": 38,
+      "enriched": 38,
       "deficit": 0,
-      "mutating": 19,
+      "mutating": 21,
       "mutatingNoBody": 0,
       "gets": 15,
       "getsNoResponse": 0

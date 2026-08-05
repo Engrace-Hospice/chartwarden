@@ -78,6 +78,12 @@ export {
 // M11-T07 — the §4.4 outbox contract (the full `m11.order.*` taxonomy; check-fitness-gaps.ts scans
 // events-by-m11.ts for naming + ownership + declared consumers, incl. the M21/M29 deny-stub consumers).
 export { M11_OUTBOX_EVENTS } from "./events-by-m11";
+export {
+  type M11IdgAdmissionContext,
+  type M11IdgConsumerOutboxPort,
+  M11_IDG_DECISION_CONSUMER,
+  buildM11IdgDecisionConsumer,
+} from "./outbox-consumers/m14-idg-decision-recorded";
 // M11-T07 — the §4.5 outbox subscriptions: the M6 discharge-cascade auto-discontinue (§2.6 D13 / W-DC-02)
 // + the M9 significant-change and M10 J2051 suggestion-banner consumers (§2.7 D7 / W-AS-01). Pure deciders
 // + the event → consumer binding registry; consumed event names are string literals (no dependsOn edge).

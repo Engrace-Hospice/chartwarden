@@ -24,6 +24,8 @@ export interface ReadinessProbeDeps {
   readonly outboxPendingDepth?: () => Promise<number>;
   /** Depth at/above which `outbox` reports "fail" — a growing backlog signals a stuck dispatcher. */
   readonly outboxDepthThreshold?: number;
+  /** Product capabilities intentionally disabled at this deployment tier; contains no secret detail. */
+  readonly capabilities?: Readonly<Record<string, "ready" | "disabled">>;
   /** Per-check timeout; a hung probe (wedged pool, stalled reconnect) reports "fail" rather than hanging `/ready`. */
   readonly timeoutMs?: number;
   /** Log sink for probe failures (default `console.warn`) — so a flapping dependency leaves a trail. */
@@ -102,6 +104,12 @@ export function buildReadinessProbe(deps: ReadinessProbeDeps): ReadinessProbe {
     // MinIO is optional infra (bootstrap/env.ts does not require MINIO_* in production; the M22
     // object store falls back to a REFUSING port, not a silent no-op, when unconfigured) — TASK-040B
     // scopes DB/Redis/outbox only, so this stays the historical "ok" default.
-    return { db, valkey, minio: "ok", outbox };
+    return {
+      db,
+      valkey,
+      minio: "ok",
+      outbox,
+      ...(deps.capabilities ? { capabilities: deps.capabilities } : {}),
+    };
   };
 }

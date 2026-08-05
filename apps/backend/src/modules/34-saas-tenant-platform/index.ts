@@ -114,9 +114,11 @@ export {
 export {
   M34_PLATFORM_JOB_ID,
   M34InfraPortUnbound,
+  assertM34JobCapability,
   buildDrizzlePlatformService,
   buildDrizzleTenantService,
   buildM34WorkerDeps,
+  enableM34JobCapability,
   buildPlatformEnqueue,
   buildTenantEnqueue,
   registerLiveM34Seams,
@@ -129,9 +131,23 @@ export {
 export {
   type M34WorkerDeps,
   M34WorkerPortUnbound,
+  registerM34DekRotateWorker,
   registerM34Workers,
+  registerM34ProvisionWorker,
+  registerM34ShredWorker,
   scheduleM34Jobs,
 } from "./jobs/saas-jobs";
+
+export {
+  buildM34ProvisionQueue,
+  buildM34ProvisionStartedConsumer,
+} from "./outbox-consumers/provision-started";
+
+export {
+  type M34ProvisionGateway,
+  createM34ProvisionGateway,
+  m34ProvisionGatewayConfigFromEnv,
+} from "./provision-gateway";
 
 // §8.4 / D6 — the `saas_tenant_platform_class` data eraser (tenant-offboarding control-plane cleanup).
 // The composition root registers `registerSaasTenantPlatformErasers` over the Phase-0 deny-stub (the same
@@ -256,6 +272,7 @@ export function mountTenantPlatformRoutes(
   services?: {
     platform?: { service: _TenantPlatformRouteService };
     tenant?: { service: _TenantRouteService };
+    public?: { service: _SignupIntentRouteService };
   },
 ): void {
   void db; // the Drizzle services already hold the platform/org-pooled handles (services.* below).
@@ -277,5 +294,7 @@ export function mountTenantPlatformRoutes(
   _registerTenantTenantRoutes(app, { service: tenantService });
 
   // ── public, session-less self-serve signup surface (503-gated by default; D14) ──
-  _registerPublicSignupRoutes(app, { service: SLICE_M34_SIGNUP_SERVICE });
+  _registerPublicSignupRoutes(app, {
+    service: services?.public?.service ?? SLICE_M34_SIGNUP_SERVICE,
+  });
 }

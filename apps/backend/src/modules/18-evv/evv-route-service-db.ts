@@ -77,6 +77,7 @@ const POLICY = schema.evvGeofencePolicy;
 const MR = schema.evvMissingResolution;
 const AGG = schema.evvAggregatorSubmission;
 const VISIT = schema.visit;
+const VISIT_REGISTRATION = schema.evvVisitRegistrations;
 const MEM = schema.memberships;
 
 /** The platform geofence floor (matches the in-memory slice fallback when no tenant row is present). */
@@ -177,19 +178,19 @@ export function createDbEvvBackend(
     });
   }
 
-  /** Load the M17 visit siting (RLS-scoped) the capture needs, or the non-leaking 404. */
+  /** Load the M18-owned publication snapshot the capture needs, or the non-leaking 404. */
   async function resolveVisit(tx: DbClient, visitId: string) {
     const [v] = await tx
       .select({
-        providerEntityId: VISIT.providerEntityId,
-        locationId: VISIT.locationId,
-        patientId: VISIT.patientId,
-        patientAddressId: VISIT.patientAddressId,
-        assignedMembershipId: VISIT.assignedMembershipId,
-        scheduledStartedAt: VISIT.scheduledStartedAt,
+        providerEntityId: VISIT_REGISTRATION.providerEntityId,
+        locationId: VISIT_REGISTRATION.locationId,
+        patientId: VISIT_REGISTRATION.patientId,
+        patientAddressId: VISIT_REGISTRATION.patientAddressId,
+        assignedMembershipId: VISIT_REGISTRATION.assignedMembershipId,
+        scheduledStartedAt: VISIT_REGISTRATION.scheduledStartedAt,
       })
-      .from(VISIT)
-      .where(eq(VISIT.id, visitId))
+      .from(VISIT_REGISTRATION)
+      .where(eq(VISIT_REGISTRATION.visitId, visitId))
       .limit(1);
     if (!v) throw new NotFoundError("visit", visitId);
     return v;

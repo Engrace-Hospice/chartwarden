@@ -3,7 +3,7 @@
 // method, and its state-machine status (`partial_refused` covers the §6 eraser refusing Part 2
 // rows during the patient lifetime — W-M4-09). Org-scoped on organization_id (standard app.org_id
 // RLS lands in M4-T05); not a PHI table (carries counts/ranges/refs only, no PE/location columns).
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { destructionStatus } from "../enums";
 import { organizations } from "./organizations";
 import { users } from "./users";
@@ -23,6 +23,12 @@ export const destructionCertificates = pgTable(
     status: destructionStatus("status").notNull().default("pending"),
     approvedBy: uuid("approved_by").references(() => users.id),
     executedAt: timestamp("executed_at", { withTimezone: true }),
+    /** M34 shred evidence: when the tenant DEK crossed the irreversible destruction boundary. */
+    dekDestroyedAt: timestamp("dek_destroyed_at", { withTimezone: true }),
+    /** Typed refusal evidence for a Part 2 re-defer; null on a completed certificate. */
+    refusalReason: text("refusal_reason"),
+    /** Per-data-class refused row counts captured before the DEK destruction gate. */
+    refusedRowsByModule: jsonb("refused_rows_by_module").notNull().default([]),
     certificatePdfRef: uuid("certificate_pdf_ref"), // MinIO doc id
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

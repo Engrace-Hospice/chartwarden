@@ -5,6 +5,7 @@
 // impls never switch tenants — RLS scopes every read/write by `app.org_id`, §4.3). The OBJECT bytes live
 // behind a separate {@link ObjectStorePort} (the real MinIO client in prod; an in-memory map in tests) —
 // the storage seam never imports the MinIO SDK here. Mirrors the M7/M8 seams/store.ts precedent.
+import { createHash } from "node:crypto";
 import type {
   DocumentAggregateType,
   DocumentId,
@@ -85,6 +86,27 @@ export interface ObjectStorePort {
     readonly objectKey: string;
     readonly bytes: Uint8Array;
   }): Promise<{ readonly sha256Hex: string }>;
+  /** Presign a checksum-enforced direct PUT. The returned headers MUST accompany the client upload. */
+  presignUpload(args: {
+    readonly bucket: string;
+    readonly objectKey: string;
+    readonly mimeType: string;
+    readonly sha256Hex: string;
+    readonly ttlSeconds: number;
+  }): Promise<{
+    readonly url: string;
+    readonly headers: Readonly<Record<string, string>>;
+    readonly expiresAt: IsoInstant;
+  }>;
+  /** Read authoritative object metadata after upload; null means the object is not present. */
+  inspectObject(args: {
+    readonly bucket: string;
+    readonly objectKey: string;
+  }): Promise<{
+    readonly byteSize: number;
+    readonly mimeType: string;
+    readonly sha256Hex: string;
+  } | null>;
   /** Mint a short-TTL presigned GET URL for one object version (the URL itself is never logged). */
   presign(args: {
     readonly descriptor: SignedUrlDescriptor;
@@ -233,22 +255,33 @@ export function createInMemoryObjectStore(): {
 } {
   const objects = new Map<string, Uint8Array>();
   const key = (bucket: string, objectKey: string) => `${bucket}/${objectKey}`;
-  // A deterministic, dependency-free content hash (FNV-1a → hex) — NOT cryptographic; the real adapter
-  // uses the MinIO ETag / a streaming sha256. Sufficient for the slice's immutability assertions.
-  const hash = (bytes: Uint8Array): string => {
-    let h = 0x811c9dc5;
-    for (const b of bytes) {
-      h ^= b;
-      h = Math.imul(h, 0x01000193);
-    }
-    return (h >>> 0).toString(16).padStart(8, "0");
-  };
+  const hash = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
   return {
     objects,
     store: {
       async putObject({ bucket, objectKey, bytes }) {
         objects.set(key(bucket, objectKey), bytes);
         return { sha256Hex: hash(bytes) };
+      },
+      async presignUpload({ bucket, objectKey, mimeType, sha256Hex, ttlSeconds }) {
+        return {
+          url: `memory-upload://${bucket}/${objectKey}`,
+          headers: {
+            "content-type": mimeType,
+            "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
+          },
+          expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+        };
+      },
+      async inspectObject({ bucket, objectKey }) {
+        const bytes = objects.get(key(bucket, objectKey));
+        return bytes
+          ? {
+              byteSize: bytes.byteLength,
+              mimeType: "application/octet-stream",
+              sha256Hex: hash(bytes),
+            }
+          : null;
       },
       async presign({ descriptor }) {
         // PHI-free, deterministic stand-in URL (the real adapter signs against MinIO). The key is opaque

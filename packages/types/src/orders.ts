@@ -127,7 +127,8 @@ export type M11TableName =
   | "standing_order"
   | "standing_order_instance"
   | "order_discontinuation"
-  | "order_verbal_policy";
+  | "order_verbal_policy"
+  | "order_idg_decision_application";
 
 /** Per-table audit denylist (§7.6 / §8.1). Empty array = no free-text PHI on that table. */
 export const M11_AUDIT_DENYLIST: { readonly [K in M11TableName]: readonly string[] } = {
@@ -138,6 +139,7 @@ export const M11_AUDIT_DENYLIST: { readonly [K in M11TableName]: readonly string
   standing_order_instance: ["spawn_context_note"],
   order_discontinuation: ["notes"],
   order_verbal_policy: [],
+  order_idg_decision_application: [],
 } as const;
 
 // ── §4.4 outbox event names (the canonical `m11.*` wire identifiers the dispatcher + arch:gaps validate) ─

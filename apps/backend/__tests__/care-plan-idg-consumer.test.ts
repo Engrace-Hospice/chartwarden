@@ -1,10 +1,10 @@
 // apps/backend/__tests__/care-plan-idg-consumer.test.ts — M7-T08 the `apply-idg-decision` decision core
-// (§7.9 / §11 D4) + the deferred M14 consumer binding. Exercises the pure {@link decideIdgDecision} over
+// (§7.9 / §11 D4) + the live M14 consumer binding. Exercises the pure {@link decideIdgDecision} over
 // the §7.9 IDG-revision flow (open-or-reuse draft v2, translate the meeting's add/update/discontinue
 // mutations), the D4 idempotency no-op, the D2 closed-plan refusal, the malformed-change refusal, and
 // the T4 terminal-problem-discontinue rejection — no DB, the version/element machines stay the only path
 // to mutations. The worker composes M7's own services so there is no M14 schema import; the binding is
-// forward-declared/deferred until M14 lands in Wave F.
+// and checks the canonical live binding metadata.
 import type { IdgDecisionPayload } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
@@ -156,18 +156,18 @@ describe("decideIdgDecision — contract guards", () => {
   });
 });
 
-// ── the deferred M14 binding ──────────────────────────────────────────────────────────────────────────
+// ── the live M14 binding ──────────────────────────────────────────────────────────────────────────────
 
-describe("M14 idg.decision_recorded consumer binding (deferred)", () => {
-  it("is forward-declared (event → consumer) and not yet live-wired", () => {
+describe("M14 idg.decision_recorded consumer binding", () => {
+  it("targets the canonical event and is live-wired", () => {
     expect(M7_IDG_DECISION_CONSUMER).toEqual({
       eventName: "idg.decision_recorded",
       consumerName: "m7.apply-idg-decision",
     });
-    expect(M7_IDG_DECISION_CONSUMER_DEFERRED).toBe(true);
+    expect(M7_IDG_DECISION_CONSUMER_DEFERRED).toBe(false);
   });
 
-  it("re-exports the pure decider verbatim for the Wave-F boot wiring", () => {
+  it("re-exports the pure decider verbatim", () => {
     const p = payload();
     const f = facts();
     expect(decideIdgDecisionRecorded(p, f)).toEqual(decideIdgDecision(p, f));

@@ -17,6 +17,8 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDbDocumentBackend } from "../src/modules/22-documents/documents-route-service-db";
+import { createVerifiedUploadService } from "../src/modules/22-documents/routes/verified-upload";
+import type { ObjectStorePort } from "../src/modules/22-documents/seams/store";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -30,6 +32,12 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbDocumentBackend>["service"];
+  let verifiedUpload: ReturnType<typeof createVerifiedUploadService>;
+  let lastStagedObject: { bucket: string; objectKey: string } | null = null;
+  const objectMetadata = new Map<
+    string,
+    { byteSize: number; mimeType: string; sha256Hex: string }
+  >();
   const tmpl: Record<string, { templateId: string; versionId: string }> = {};
 
   async function resetSchema() {
@@ -87,6 +95,7 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m22w@x.test')`, [MEMBER]);
     // Platform form-template + version (form_template* is platform reference; admin can seed).
     const templateId = (
       await admin.query(
@@ -107,11 +116,37 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     ]);
     tmpl.election = { templateId, versionId };
 
-    await admin.query("ALTER ROLE wardenx_app LOGIN");
+    await admin.query("ALTER ROLE wardenx_app LOGIN PASSWORD 'wardenx_app_test'");
+    const runtimeUrl = new URL(DB_URL as string);
+    runtimeUrl.username = "wardenx_app";
+    runtimeUrl.password = "wardenx_app_test";
     handle = createDbClient({
-      connectionString: (DB_URL as string).replace("://postgres@", "://wardenx_app@"),
+      connectionString: runtimeUrl.toString(),
     });
     svc = createDbDocumentBackend(handle.db).service;
+    const objects: ObjectStorePort = {
+      async putObject() {
+        throw new Error("not used by direct-upload test");
+      },
+      async presignUpload({ bucket, objectKey, mimeType, sha256Hex }) {
+        lastStagedObject = { bucket, objectKey };
+        return {
+          url: `https://object.invalid/${bucket}/${objectKey}`,
+          headers: { "content-type": mimeType, "x-amz-checksum-sha256": sha256Hex },
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        };
+      },
+      async inspectObject({ bucket, objectKey }) {
+        return objectMetadata.get(`${bucket}/${objectKey}`) ?? null;
+      },
+      async presign() {
+        throw new Error("not used by direct-upload test");
+      },
+      async destroyAllVersions({ bucket, objectKey }) {
+        objectMetadata.delete(`${bucket}/${objectKey}`);
+      },
+    };
+    verifiedUpload = createVerifiedUploadService({ db: handle.db, objects });
   }, 180_000);
 
   afterAll(async () => {
@@ -119,26 +154,97 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     if (admin) await admin.end();
   });
 
-  it("uploadDocument creates the doc + v1 and sets the active head; uploadVersion appends v2", async () => {
-    const doc = await svc.uploadDocument(ORG_A, MEMBER, {
-      patientId: PATIENT,
-      admissionId: null,
-      retentionClass: "clinical_record",
-      aggregateType: "other",
-      aggregateId: null,
-      title: "Care plan PDF",
-      patientFacing: false,
+  it("verified direct upload creates v1 only after HEAD verification; completion replay is idempotent", async () => {
+    const sha256Hex = "a".repeat(64);
+    const initiated = await verifiedUpload.initiate({
+      organizationId: ORG_A,
+      userId: MEMBER,
+      membershipId: MEMBER,
+      input: {
+        mode: "new_document",
+        targetDocumentId: null,
+        patientId: PATIENT,
+        admissionId: null,
+        retentionClass: "clinical_record",
+        aggregateType: "other",
+        aggregateId: null,
+        title: "Care plan PDF",
+        patientFacing: false,
+        mimeType: "application/pdf",
+        byteSize: 4096,
+        sha256Hex,
+      },
     });
-    expect(doc.versionsCount).toBe(1);
-    const v2 = await svc.uploadVersion(ORG_A, doc.id);
+    expect(initiated.uploadUrl).toContain(initiated.uploadId);
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM document WHERE title='Care plan PDF'"))
+        .rows[0].n,
+    ).toBe(0);
+    if (!lastStagedObject) throw new Error("presign did not capture staged object");
+    objectMetadata.set(`${lastStagedObject.bucket}/${lastStagedObject.objectKey}`, {
+      byteSize: 4096,
+      mimeType: "application/pdf",
+      sha256Hex,
+    });
+
+    const completed = await verifiedUpload.complete({
+      organizationId: ORG_A,
+      userId: MEMBER,
+      membershipId: MEMBER,
+      uploadId: initiated.uploadId,
+    });
+    expect(completed.versionNumber).toBe(1);
+    await expect(
+      verifiedUpload.complete({
+        organizationId: ORG_A,
+        userId: MEMBER,
+        membershipId: MEMBER,
+        uploadId: initiated.uploadId,
+      }),
+    ).resolves.toEqual(completed);
+
+    const v2Initiated = await verifiedUpload.initiate({
+      organizationId: ORG_A,
+      userId: MEMBER,
+      membershipId: MEMBER,
+      input: {
+        mode: "new_version",
+        targetDocumentId: completed.documentId,
+        patientId: PATIENT,
+        admissionId: null,
+        retentionClass: "clinical_record",
+        aggregateType: "other",
+        aggregateId: null,
+        title: "Care plan PDF corrected",
+        patientFacing: false,
+        mimeType: "application/pdf",
+        byteSize: 8192,
+        sha256Hex,
+      },
+    });
+    if (!lastStagedObject) throw new Error("presign did not capture staged object");
+    objectMetadata.set(`${lastStagedObject.bucket}/${lastStagedObject.objectKey}`, {
+      byteSize: 8192,
+      mimeType: "application/pdf",
+      sha256Hex,
+    });
+    const v2 = await verifiedUpload.complete({
+      organizationId: ORG_A,
+      userId: MEMBER,
+      membershipId: MEMBER,
+      uploadId: v2Initiated.uploadId,
+    });
+    expect(v2.documentId).toBe(completed.documentId);
     expect(v2.versionNumber).toBe(2);
-    // The append-only ledger now has [1,2] and the active head flipped to v2.
-    const versions = await svc.listVersions(ORG_A, doc.id, undefined, 100);
+
+    const doc = await svc.getDocument(ORG_A, completed.documentId);
+    expect(doc.versionsCount).toBe(2);
+    const versions = await svc.listVersions(ORG_A, completed.documentId, undefined, 100);
     expect(versions.items.map((v) => v.versionNumber).sort()).toEqual([1, 2]);
     const { rows } = await admin.query("SELECT active_version_id FROM document WHERE id=$1", [
-      doc.id,
+      completed.documentId,
     ]);
-    expect(rows[0].active_version_id).toBe(v2.id);
+    expect(rows[0].active_version_id).toBe(v2.versionId);
   });
 
   it("patchDocument updates fields; addTag/removeTag round-trip", async () => {

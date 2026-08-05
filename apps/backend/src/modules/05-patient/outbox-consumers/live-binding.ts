@@ -24,6 +24,7 @@ import { type ProposalAcceptedPayload, decideProposalApply } from "./m29-proposa
 /** Structural binding (matches the dispatcher's OutboxConsumerBinding without importing it). */
 export interface M5ProposalApplierBinding {
   readonly consumerName: "m5.proposal-applier";
+  readonly consumerModule: "m5";
   readonly eventTypes: readonly ["m29.hl7_inbound_proposal.accepted"];
   handle(event: { readonly payload: unknown; readonly organizationId: string }): Promise<void>;
 }
@@ -57,6 +58,7 @@ function parsePayload(raw: unknown, organizationId: string): ProposalAcceptedPay
 export function buildM29ProposalApplierConsumer(): M5ProposalApplierBinding {
   return {
     consumerName: "m5.proposal-applier",
+    consumerModule: "m5",
     eventTypes: ["m29.hl7_inbound_proposal.accepted"],
     async handle(event) {
       // Owner sniff BEFORE the strict parse: an m6-owned acceptance carries admission resource

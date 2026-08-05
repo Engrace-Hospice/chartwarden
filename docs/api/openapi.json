@@ -58818,6 +58818,397 @@
         }
       }
     },
+    "/api/v1/document-uploads": {
+      "post": {
+        "operationId": "postApiV1Documentuploads",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Initiate a checksum-enforced direct document upload",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "uploadId",
+                    "uploadUrl",
+                    "requiredHeaders",
+                    "expiresAt"
+                  ],
+                  "properties": {
+                    "uploadId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "uploadUrl": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "requiredHeaders": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "expiresAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "retentionClass",
+                  "aggregateType",
+                  "title",
+                  "mimeType",
+                  "byteSize",
+                  "sha256Hex"
+                ],
+                "properties": {
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "new_document",
+                        "type": "string"
+                      },
+                      {
+                        "const": "new_version",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "targetDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "admissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "retentionClass": {
+                    "anyOf": [
+                      {
+                        "const": "compliance",
+                        "type": "string"
+                      },
+                      {
+                        "const": "clinical_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereavement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "operational",
+                        "type": "string"
+                      },
+                      {
+                        "const": "intake_artifact",
+                        "type": "string"
+                      },
+                      {
+                        "const": "compliance_42cfr_part2",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateType": {
+                    "anyOf": [
+                      {
+                        "const": "election_statement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cti",
+                        "type": "string"
+                      },
+                      {
+                        "const": "f2f",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nor",
+                        "type": "string"
+                      },
+                      {
+                        "const": "revocation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "discharge_summary",
+                        "type": "string"
+                      },
+                      {
+                        "const": "nomnc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "abn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hipaa_privacy_notice",
+                        "type": "string"
+                      },
+                      {
+                        "const": "code_status_directive",
+                        "type": "string"
+                      },
+                      {
+                        "const": "encounter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "order_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_order",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_administration_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medication_reconciliation_worksheet",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_medication_list",
+                        "type": "string"
+                      },
+                      {
+                        "const": "comfort_kit_receipt",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_patient_packet",
+                        "type": "string"
+                      },
+                      {
+                        "const": "idg_minutes",
+                        "type": "string"
+                      },
+                      {
+                        "const": "aide_poc",
+                        "type": "string"
+                      },
+                      {
+                        "const": "msw_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "spiritual_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "volunteer_plan",
+                        "type": "string"
+                      },
+                      {
+                        "const": "bereavement_letter",
+                        "type": "string"
+                      },
+                      {
+                        "const": "visit_confirmation",
+                        "type": "string"
+                      },
+                      {
+                        "const": "evv_verification",
+                        "type": "string"
+                      },
+                      {
+                        "const": "patient_amendment_statement_of_disagreement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "consent_record",
+                        "type": "string"
+                      },
+                      {
+                        "const": "intake_source",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "title": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "patientFacing": {
+                    "type": "boolean"
+                  },
+                  "mimeType": {
+                    "anyOf": [
+                      {
+                        "const": "application/pdf",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/jpeg",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/png",
+                        "type": "string"
+                      },
+                      {
+                        "const": "image/tiff",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "byteSize": {
+                    "minimum": 1,
+                    "maximum": 26214400,
+                    "type": "integer"
+                  },
+                  "sha256Hex": {
+                    "pattern": "^[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/document-uploads/{id}": {
+      "delete": {
+        "operationId": "deleteApiV1DocumentuploadsById",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Abort a pending document upload and destroy its staged object versions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/document-uploads/{id}/complete": {
+      "post": {
+        "operationId": "postApiV1DocumentuploadsByIdComplete",
+        "tags": [
+          "22-documents"
+        ],
+        "summary": "Verify uploaded object metadata and atomically commit its document version",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "documentId",
+                    "versionId",
+                    "versionNumber"
+                  ],
+                  "properties": {
+                    "documentId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "versionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "versionNumber": {
+                      "minimum": 1,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/documents": {
       "get": {
         "operationId": "getApiV1Documents",
@@ -73341,52 +73732,719 @@
                 ],
                 "properties": {
                   "payload": {
-                    "type": "object",
-                    "required": [
-                      "kind"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "anyOf": [
-                          {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "mutations"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "care_plan_update",
                             "type": "string"
                           },
-                          {
+                          "mutations": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "icd10Code",
+                                    "snomedCode",
+                                    "description",
+                                    "problemKind"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "problem_add",
+                                      "type": "string"
+                                    },
+                                    "icd10Code": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "snomedCode": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "description": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "problemKind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "terminal",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "related",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "unrelated",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "problemId",
+                                    "updates"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "problem_update",
+                                      "type": "string"
+                                    },
+                                    "problemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "updates": {
+                                      "type": "object",
+                                      "properties": {
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "active",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "resolved",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "inactive",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "problemId",
+                                    "originalText",
+                                    "revisedText",
+                                    "source",
+                                    "measurableOutcome"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_add",
+                                      "type": "string"
+                                    },
+                                    "problemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "originalText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "revisedText": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "source": {
+                                      "anyOf": [
+                                        {
+                                          "const": "clinical",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "family_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agent_stated",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "measurableOutcome": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "goalId",
+                                    "updates"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_update",
+                                      "type": "string"
+                                    },
+                                    "goalId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "updates": {
+                                      "type": "object",
+                                      "properties": {
+                                        "revisedText": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "in_progress",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "met",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "not_met",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "revised",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "discontinued",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "statusNote": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "problemId",
+                                    "goalRefs",
+                                    "discipline",
+                                    "scopeText",
+                                    "frequencyText",
+                                    "frequencyValue"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_add",
+                                      "type": "string"
+                                    },
+                                    "problemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "goalRefs": {
+                                      "type": "array",
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "discipline": {
+                                      "minLength": 1,
+                                      "maxLength": 64,
+                                      "type": "string"
+                                    },
+                                    "scopeText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "frequencyText": {
+                                      "minLength": 1,
+                                      "maxLength": 1000,
+                                      "type": "string"
+                                    },
+                                    "frequencyValue": {
+                                      "minLength": 1,
+                                      "maxLength": 255,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "interventionId",
+                                    "reason"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_discontinue",
+                                      "type": "string"
+                                    },
+                                    "interventionId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "reason": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "requestedOrders"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "order_request",
                             "type": "string"
                           },
-                          {
+                          "requestedOrders": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kindHint",
+                                "narrative",
+                                "recommendedTimeframe",
+                                "triggeringProblemId"
+                              ],
+                              "properties": {
+                                "kindHint": {
+                                  "anyOf": [
+                                    {
+                                      "const": "lab",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dme",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "level_of_care_change",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "recertification",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "comfort_kit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "supply",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ancillary_service",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_requested",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "narrative": {
+                                  "minLength": 1,
+                                  "maxLength": 4000,
+                                  "type": "string"
+                                },
+                                "recommendedTimeframe": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "triggeringProblemId": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "recommendations"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "medication_recommendation",
                             "type": "string"
                           },
-                          {
+                          "recommendations": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "recommendationKind",
+                                "drugLabel",
+                                "proposedStrength",
+                                "proposedRoute",
+                                "proposedFrequency",
+                                "triggeringProblemId",
+                                "rationaleText"
+                              ],
+                              "properties": {
+                                "recommendationKind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "add",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "discontinue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "change_dose",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "change_route",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "change_frequency",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "drugLabel": {
+                                  "minLength": 1,
+                                  "maxLength": 500,
+                                  "type": "string"
+                                },
+                                "proposedStrength": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "proposedRoute": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "proposedFrequency": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "triggeringProblemId": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "rationaleText": {
+                                  "minLength": 1,
+                                  "maxLength": 4000,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "consideredLevel",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "level_of_care_consideration",
                             "type": "string"
                           },
-                          {
+                          "consideredLevel": {
+                            "anyOf": [
+                              {
+                                "const": "routine",
+                                "type": "string"
+                              },
+                              {
+                                "const": "continuous",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_respite",
+                                "type": "string"
+                              },
+                              {
+                                "const": "general_inpatient",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "periodIndex",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "recertification_consideration",
                             "type": "string"
                           },
-                          {
+                          "periodIndex": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "familyMembers",
+                          "preferredWindow",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "family_meeting_needed",
                             "type": "string"
                           },
-                          {
+                          "familyMembers": {
+                            "type": "array",
+                            "items": {
+                              "minLength": 1,
+                              "maxLength": 255,
+                              "type": "string"
+                            }
+                          },
+                          "preferredWindow": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "startIso",
+                                  "endIso"
+                                ],
+                                "properties": {
+                                  "startIso": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "endIso": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "riskLevel",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "bereavement_risk_flag",
                             "type": "string"
                           },
-                          {
+                          "riskLevel": {
+                            "anyOf": [
+                              {
+                                "const": "low",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medium",
+                                "type": "string"
+                              },
+                              {
+                                "const": "high",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "referralKind",
+                          "referralTargetMdmId",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "referral",
                             "type": "string"
                           },
-                          {
-                            "const": "team_note",
+                          "referralKind": {
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "type": "string"
+                          },
+                          "referralTargetMdmId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
                             "type": "string"
                           }
-                        ]
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "noteText"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "team_note",
+                            "type": "string"
+                          },
+                          "noteText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
                       }
-                    }
+                    ]
                   }
                 }
               }
@@ -74397,52 +75455,719 @@
                     "type": "string"
                   },
                   "payload": {
-                    "type": "object",
-                    "required": [
-                      "kind"
-                    ],
-                    "properties": {
-                      "kind": {
-                        "anyOf": [
-                          {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "mutations"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "care_plan_update",
                             "type": "string"
                           },
-                          {
+                          "mutations": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "icd10Code",
+                                    "snomedCode",
+                                    "description",
+                                    "problemKind"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "problem_add",
+                                      "type": "string"
+                                    },
+                                    "icd10Code": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "snomedCode": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "description": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "problemKind": {
+                                      "anyOf": [
+                                        {
+                                          "const": "terminal",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "related",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "unrelated",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "problemId",
+                                    "updates"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "problem_update",
+                                      "type": "string"
+                                    },
+                                    "problemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "updates": {
+                                      "type": "object",
+                                      "properties": {
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "active",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "resolved",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "inactive",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "description": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "problemId",
+                                    "originalText",
+                                    "revisedText",
+                                    "source",
+                                    "measurableOutcome"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_add",
+                                      "type": "string"
+                                    },
+                                    "problemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "originalText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "revisedText": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "source": {
+                                      "anyOf": [
+                                        {
+                                          "const": "clinical",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "patient_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "family_stated",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "agent_stated",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "measurableOutcome": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "goalId",
+                                    "updates"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "goal_update",
+                                      "type": "string"
+                                    },
+                                    "goalId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "updates": {
+                                      "type": "object",
+                                      "properties": {
+                                        "revisedText": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        },
+                                        "status": {
+                                          "anyOf": [
+                                            {
+                                              "const": "in_progress",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "met",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "not_met",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "revised",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "discontinued",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "statusNote": {
+                                          "minLength": 1,
+                                          "maxLength": 4000,
+                                          "type": "string"
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "problemId",
+                                    "goalRefs",
+                                    "discipline",
+                                    "scopeText",
+                                    "frequencyText",
+                                    "frequencyValue"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_add",
+                                      "type": "string"
+                                    },
+                                    "problemId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "goalRefs": {
+                                      "type": "array",
+                                      "items": {
+                                        "format": "uuid",
+                                        "type": "string"
+                                      }
+                                    },
+                                    "discipline": {
+                                      "minLength": 1,
+                                      "maxLength": 64,
+                                      "type": "string"
+                                    },
+                                    "scopeText": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    },
+                                    "frequencyText": {
+                                      "minLength": 1,
+                                      "maxLength": 1000,
+                                      "type": "string"
+                                    },
+                                    "frequencyValue": {
+                                      "minLength": 1,
+                                      "maxLength": 255,
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "op",
+                                    "interventionId",
+                                    "reason"
+                                  ],
+                                  "properties": {
+                                    "op": {
+                                      "const": "intervention_discontinue",
+                                      "type": "string"
+                                    },
+                                    "interventionId": {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    "reason": {
+                                      "minLength": 1,
+                                      "maxLength": 4000,
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "requestedOrders"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "order_request",
                             "type": "string"
                           },
-                          {
+                          "requestedOrders": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "kindHint",
+                                "narrative",
+                                "recommendedTimeframe",
+                                "triggeringProblemId"
+                              ],
+                              "properties": {
+                                "kindHint": {
+                                  "anyOf": [
+                                    {
+                                      "const": "lab",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dme",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "level_of_care_change",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "recertification",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "comfort_kit",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "supply",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "ancillary_service",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "idg_requested",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "narrative": {
+                                  "minLength": 1,
+                                  "maxLength": 4000,
+                                  "type": "string"
+                                },
+                                "recommendedTimeframe": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "triggeringProblemId": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "recommendations"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "medication_recommendation",
                             "type": "string"
                           },
-                          {
+                          "recommendations": {
+                            "minItems": 1,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "recommendationKind",
+                                "drugLabel",
+                                "proposedStrength",
+                                "proposedRoute",
+                                "proposedFrequency",
+                                "triggeringProblemId",
+                                "rationaleText"
+                              ],
+                              "properties": {
+                                "recommendationKind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "add",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "discontinue",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "change_dose",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "change_route",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "change_frequency",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "drugLabel": {
+                                  "minLength": 1,
+                                  "maxLength": 500,
+                                  "type": "string"
+                                },
+                                "proposedStrength": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "proposedRoute": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "proposedFrequency": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "triggeringProblemId": {
+                                  "anyOf": [
+                                    {
+                                      "format": "uuid",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "rationaleText": {
+                                  "minLength": 1,
+                                  "maxLength": 4000,
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "consideredLevel",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "level_of_care_consideration",
                             "type": "string"
                           },
-                          {
+                          "consideredLevel": {
+                            "anyOf": [
+                              {
+                                "const": "routine",
+                                "type": "string"
+                              },
+                              {
+                                "const": "continuous",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inpatient_respite",
+                                "type": "string"
+                              },
+                              {
+                                "const": "general_inpatient",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "periodIndex",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "recertification_consideration",
                             "type": "string"
                           },
-                          {
+                          "periodIndex": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "familyMembers",
+                          "preferredWindow",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "family_meeting_needed",
                             "type": "string"
                           },
-                          {
+                          "familyMembers": {
+                            "type": "array",
+                            "items": {
+                              "minLength": 1,
+                              "maxLength": 255,
+                              "type": "string"
+                            }
+                          },
+                          "preferredWindow": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "startIso",
+                                  "endIso"
+                                ],
+                                "properties": {
+                                  "startIso": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "endIso": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "riskLevel",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "bereavement_risk_flag",
                             "type": "string"
                           },
-                          {
+                          "riskLevel": {
+                            "anyOf": [
+                              {
+                                "const": "low",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medium",
+                                "type": "string"
+                              },
+                              {
+                                "const": "high",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "referralKind",
+                          "referralTargetMdmId",
+                          "rationaleText"
+                        ],
+                        "properties": {
+                          "kind": {
                             "const": "referral",
                             "type": "string"
                           },
-                          {
-                            "const": "team_note",
+                          "referralKind": {
+                            "minLength": 1,
+                            "maxLength": 255,
+                            "type": "string"
+                          },
+                          "referralTargetMdmId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rationaleText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
                             "type": "string"
                           }
-                        ]
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "required": [
+                          "kind",
+                          "noteText"
+                        ],
+                        "properties": {
+                          "kind": {
+                            "const": "team_note",
+                            "type": "string"
+                          },
+                          "noteText": {
+                            "minLength": 1,
+                            "maxLength": 4000,
+                            "type": "string"
+                          }
+                        }
                       }
-                    }
+                    ]
                   }
                 }
               }
@@ -111946,7 +113671,8 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "planLabel"
+                  "planLabel",
+                  "firstAdminFullName"
                 ],
                 "properties": {
                   "planLabel": {
@@ -111964,6 +113690,11 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "firstAdminFullName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
                   }
                 }
               }
@@ -112989,6 +114720,7 @@
                   "billingContactEmail",
                   "breachNotificationContactEmail",
                   "firstAdminEmail",
+                  "firstAdminFullName",
                   "planLabel"
                 ],
                 "properties": {
@@ -113011,6 +114743,11 @@
                   },
                   "firstAdminEmail": {
                     "format": "email",
+                    "type": "string"
+                  },
+                  "firstAdminFullName": {
+                    "minLength": 1,
+                    "maxLength": 200,
                     "type": "string"
                   },
                   "planLabel": {

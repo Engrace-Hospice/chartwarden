@@ -66,6 +66,11 @@ export type {
 
 // ─── MAC portal clients — launch case + six deny-stubs (from ./mac-portal/*) ─────────────────────
 export { createNgsJ6PortalClient, NgsJ6PortalClient } from "./mac-portal/ngs-j6";
+export type {
+  NgsJ6PortalHttpPort,
+  NgsJ6PortalHttpRequest,
+  NgsJ6PortalHttpResponse,
+} from "./mac-portal/ngs-j6";
 export { createNgsJkPortalClient, NgsJkPortalClient } from "./mac-portal/ngs-jk";
 export { createCgsJ15PortalClient, CgsJ15PortalClient } from "./mac-portal/cgs-j15";
 export { createPalmettoJjPortalClient, PalmettoJjPortalClient } from "./mac-portal/palmetto-jj";

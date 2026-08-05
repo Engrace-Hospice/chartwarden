@@ -25,8 +25,10 @@ import type {
   IdgAgendaItemKind,
   IdgAttendanceStatus,
   IdgDecisionKind,
+  IdgDecisionRecordedPayload,
   IdgDecisionStatus,
   IdgMeetingStatus,
+  QuorumSnapshot,
 } from "@wardenx/types";
 import { NotFoundError } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
@@ -164,6 +166,7 @@ export interface RecordDecisionArgs {
   readonly patientId: string | null;
   readonly agendaItemId?: string;
   readonly decisionKind: IdgDecisionKind;
+  readonly payload: IdgDecisionRecordedPayload;
 }
 export interface CreateActionItemArgs {
   readonly decisionId?: string;
@@ -255,7 +258,7 @@ export interface IdgRouteService {
     orgId: string,
     userId: string,
     id: string,
-    decisionKind: IdgDecisionKind,
+    payload: IdgDecisionRecordedPayload,
   ): Promise<DecisionView>;
   supersedeDecision(orgId: string, userId: string, id: string): Promise<DecisionView>;
   // action items
@@ -340,8 +343,10 @@ interface DecisionRow {
   meetingId: string;
   patientId: string | null;
   decisionKind: IdgDecisionKind;
+  payload: IdgDecisionRecordedPayload;
   status: IdgDecisionStatus;
   wasQuorate: boolean;
+  quorumSnapshot: QuorumSnapshot;
   supersededByDecisionId: string | null;
 }
 interface ActionItemRow {
@@ -551,7 +556,7 @@ export function createInMemoryIdgBackend(
       emit("m14.meeting.started", { meetingId: id, startedAt: now() });
       return toMeetingView(m);
     },
-    async adjournMeeting(orgId, _userId, id, stepUpFresh) {
+    async adjournMeeting(orgId, userId, id, stepUpFresh) {
       const m = meetingOf(orgId, id);
       // `transitionMeeting` raises STEP_UP_REQUIRED (412) when the fresh step-up is absent (§2.2 D13).
       const t = transitionMeeting(m.status, { type: "ADJOURN", stepUpFresh });
@@ -566,6 +571,15 @@ export function createInMemoryIdgBackend(
               decisionId: d.id,
               meetingId: id,
               patientId: d.patientId,
+              organizationId: orgId,
+              decisionKind: d.decisionKind,
+              payload: d.payload,
+              payloadSchemaVersion: "2026-01-v1",
+              recordedByMembershipId: userId,
+              recordedAt: now(),
+              meetingAdjournedAt: m.adjournedAt,
+              wasQuorate: d.wasQuorate,
+              quorumSnapshot: d.quorumSnapshot,
             });
           }
         }
@@ -704,8 +718,10 @@ export function createInMemoryIdgBackend(
         meetingId,
         patientId: args.patientId,
         decisionKind: args.decisionKind,
+        payload: args.payload,
         status: plan.status,
         wasQuorate: plan.wasQuorate,
+        quorumSnapshot: plan.quorumSnapshot,
         supersededByDecisionId: null,
       };
       decisions.set(id, row);
@@ -718,11 +734,12 @@ export function createInMemoryIdgBackend(
       });
       return { ...row };
     },
-    async updateDecision(orgId, _userId, id, decisionKind) {
+    async updateDecision(orgId, _userId, id, payload) {
       const row = decisions.get(id);
       if (!row) throw new NotFoundError("idg_decision");
       meetingOf(orgId, row.meetingId);
-      row.decisionKind = decisionKind;
+      row.decisionKind = payload.kind;
+      row.payload = payload;
       return { ...row };
     },
     async supersedeDecision(orgId, _userId, id) {
@@ -737,8 +754,10 @@ export function createInMemoryIdgBackend(
         meetingId: m.id,
         patientId: prior.patientId,
         decisionKind: prior.decisionKind,
+        payload: prior.payload,
         status: "open",
         wasQuorate: true,
+        quorumSnapshot: prior.quorumSnapshot,
         supersededByDecisionId: null,
       });
       prior.status = "superseded";

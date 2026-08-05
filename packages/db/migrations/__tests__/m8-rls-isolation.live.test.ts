@@ -37,6 +37,7 @@ const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const SESSION = "66666666-6666-6666-6666-666666666666";
 const PROBLEM = "77777777-7777-7777-7777-777777777777";
 const VOCAB = "88888888-8888-8888-8888-888888888888";
+const VISIT = "99999999-9999-4999-8999-999999999999";
 
 type SeedIds = {
   membership: string;
@@ -140,9 +141,9 @@ describe.skipIf(!DB_URL)("M8 Encounters — RLS cross-tenant denial — LIVE Pos
     const encounter = (
       await db.query(
         `INSERT INTO encounter (organization_id, provider_entity_id, location_id, patient_id, admission_id,
-           encounter_type, discipline, authored_by_membership_id, service_date, status)
-         VALUES ($1,$2,$3,$4,$5,'routine_visit','rn',$6, now()::date, 'draft') RETURNING id`,
-        [org, providerEntity, location, PATIENT, ADMISSION, membership],
+           visit_id, encounter_type, discipline, authored_by_membership_id, service_date, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7, now()::date, 'draft') RETURNING id`,
+        [org, providerEntity, location, PATIENT, ADMISSION, VISIT, membership],
       )
     ).rows[0].id as string;
 
@@ -333,6 +334,35 @@ describe.skipIf(!DB_URL)("M8 Encounters — RLS cross-tenant denial — LIVE Pos
     expect(res.rowCount).toBe(0);
     const still = await db.query("SELECT status FROM encounter WHERE id=$1", [a.encounter]);
     expect(still.rows[0].status).toBe("draft");
+  });
+
+  it("allows the same visit id across tenants but rejects a duplicate seed within one tenant", async () => {
+    await expect(
+      withOrg(ORG_A, () =>
+        db.query(
+          `INSERT INTO encounter (organization_id, provider_entity_id, location_id, patient_id,
+             admission_id, visit_id, encounter_type, discipline, authored_by_membership_id,
+             service_date, status)
+           VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,now()::date,'draft')`,
+          [ORG_A, a.providerEntity, a.location, PATIENT, ADMISSION, VISIT, a.membership],
+        ),
+      ),
+    ).rejects.toThrow(/encounter_org_visit_unique/);
+  });
+
+  it("allows a future-dated scheduled draft while route-level ad hoc authoring retains its guard", async () => {
+    const futureVisit = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const inserted = await withOrg(ORG_A, () =>
+      db.query(
+        `INSERT INTO encounter (organization_id, provider_entity_id, location_id, patient_id,
+           admission_id, visit_id, encounter_type, discipline, authored_by_membership_id,
+           service_date, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'routine_visit','rn',$7,current_date + 1,'draft')
+         RETURNING id`,
+        [ORG_A, a.providerEntity, a.location, PATIENT, ADMISSION, futureVisit, a.membership],
+      ),
+    );
+    expect(inserted.rows).toHaveLength(1);
   });
 
   it("the M4 write-audit trigger fired for the encounter writes (§3.8)", async () => {

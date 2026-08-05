@@ -172,7 +172,7 @@ export type BereavementCloseKind = "auto" | "manual" | "cascade";
 
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
-/** The nine §3.3 owned tables (the manifest `ownedTables` set). */
+/** M16's owned tables (the manifest `ownedTables` set). */
 export type M16TableName =
   | "bereavement_plan"
   | "bereaved_contact"
@@ -182,6 +182,7 @@ export type M16TableName =
   | "bereavement_anniversary_reminder"
   | "bereavement_plan_closure"
   | "bereavement_opt_out"
+  | "bereavement_idg_risk_flag"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -208,6 +209,7 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_anniversary_reminder: [],
   bereavement_plan_closure: ["reason_narrative_redacted"],
   bereavement_opt_out: ["reason_redacted"],
+  bereavement_idg_risk_flag: ["rationale_text"],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 

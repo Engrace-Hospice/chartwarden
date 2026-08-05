@@ -1,5 +1,5 @@
 // apps/backend/src/modules/07-care-plan/consumers/apply-idg-decision.ts — the M7 side of the M14 IDG
-// consumer (M7-T08, spec §7.9 / §11 D4). PHASE-1 PURE DECISION CORE.
+// consumer (M7-T08, spec §7.9 / §11 D4). PURE DECISION CORE.
 //
 // The `apply-idg-decision` worker is M7's subscriber to Module 14's `idg.decision_recorded` outbox
 // event. When an IDG meeting records a clinically-actionable decision (add/update/discontinue a
@@ -15,11 +15,10 @@
 // requires the explicit RN + physician co-sign path, not an IDG automation. Idempotency is keyed on
 // `idgDecisionId`: a redelivery whose decision a version already records is a no-op (§11 D4).
 //
-// M14 (IDG) is Wave F — there is no `idg.decision_recorded` PRODUCER yet, so the outbox binding is
-// forward-declared/deferred (see ./../outbox-consumers/m14-idg-decision-recorded.ts). What ships now is
-// the PURE, fully-tested decision core {@link decideIdgDecision}: given the parsed payload + the facts
+// The production binding is ./../outbox-consumers/m14-idg-decision-recorded.ts. This PURE policy core
+// remains independently tested: given the parsed payload + the facts
 // the worker reads (idempotency marker, the care-plan root status, the open draft version if any, the
-// set of terminal problems), it returns the {@link IdgApplyAction} descriptor the live worker executes
+// set of terminal problems), it returns the {@link IdgApplyAction} descriptor the live handler executes
 // through M7's element/version services. The consumed event name is a STRING literal only (no M14
 // schema import): M7 reads M14 solely through the foundation outbox, never via a `dependsOn` edge.
 import type {

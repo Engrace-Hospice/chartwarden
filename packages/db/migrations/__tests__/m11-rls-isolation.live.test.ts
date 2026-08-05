@@ -47,6 +47,7 @@ type SeedIds = {
   standingOrderInstance: string;
   orderDiscontinuation: string;
   orderVerbalPolicy: string;
+  orderIdgApplication: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -59,6 +60,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "standing_order_instance", key: "standingOrderInstance" },
   { table: "order_discontinuation", key: "orderDiscontinuation" },
   { table: "order_verbal_policy", key: "orderVerbalPolicy" },
+  { table: "order_idg_decision_application", key: "orderIdgApplication" },
 ];
 
 describe.skipIf(!DB_URL)("M11 Orders — RLS cross-tenant denial — LIVE Postgres (§3.6)", () => {
@@ -202,6 +204,15 @@ describe.skipIf(!DB_URL)("M11 Orders — RLS cross-tenant denial — LIVE Postgr
       )
     ).rows[0].id as string;
 
+    const orderIdgApplication = (
+      await db.query(
+        `INSERT INTO order_idg_decision_application
+           (organization_id, idg_decision_id, order_ids)
+         VALUES ($1,$2,$3::jsonb) RETURNING id`,
+        [org, `7777777${n}-7777-4777-8777-777777777777`, JSON.stringify([orderRecord])],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -213,6 +224,7 @@ describe.skipIf(!DB_URL)("M11 Orders — RLS cross-tenant denial — LIVE Postgr
       standingOrderInstance,
       orderDiscontinuation,
       orderVerbalPolicy,
+      orderIdgApplication,
     };
   }
 
@@ -246,10 +258,12 @@ describe.skipIf(!DB_URL)("M11 Orders — RLS cross-tenant denial — LIVE Postgr
   });
 
   it("every M11 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0037_orders_m11_rls_audit_triggers.sql"),
-      "utf8",
-    );
+    const rls = [
+      "0037_orders_m11_rls_audit_triggers.sql",
+      "0168_idg_downstream_consumer_projections.sql",
+    ]
+      .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
+      .join("\n");
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
       (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );

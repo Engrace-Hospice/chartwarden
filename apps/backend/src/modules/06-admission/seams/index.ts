@@ -29,7 +29,13 @@ import {
 import { type AdmissionReaderStore, createInMemoryAdmissionReaderStore } from "./store";
 
 export { createDeathDischargeReader } from "./death-discharge-reader";
-export { AdmissionSeamDataGapError, createDrizzleAdmissionReaderStore } from "./drizzle-store";
+export {
+  type ActiveAdmissionDraftContext,
+  AdmissionSeamDataGapError,
+  activeAdmissionDraftContextForPatient,
+  admissionIsActiveForOrg,
+  createDrizzleAdmissionReaderStore,
+} from "./drizzle-store";
 export {
   type AdmissionReaderStore,
   type AdmissionReaderSeed,

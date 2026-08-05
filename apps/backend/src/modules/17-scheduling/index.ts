@@ -1,7 +1,7 @@
 // apps/backend/src/modules/17-scheduling — M17 (Scheduling & Route Optimization) backend module surface.
 //
 // M17-T05 lands the four §4.3 owned seams (VisitReader — the visit read path M8 (encounter-authoring context,
-// which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
+// including the live M8 visit seed) / M18 (EVV geofence target) / M14 (IDG since-meeting)
 // consume — + VisitAssignmentReader — the assignment read path M5 (§4.5 D11 caseload contribution) / M19
 // (on-call) / M20 (field-safety) consume — + PortalVisitReader — the M31 portal upcoming-visit read path
 // (lay-language, scrubbed) — + VisitMetricsProvider — the M30/M33 productivity + quality measures read path)
@@ -19,10 +19,10 @@
 // `scheduling.route_optimization` (OFF; §7.9 OSRM degraded mode is the Phase-1 path).
 //
 // M17-T08 lands the §4.11 outbox-event catalog (the full `m17.*` taxonomy — `events-by-m17.ts`; check-fitness-
-// gaps.ts scans it for naming + ownership + declared consumers). **`m17.visit.published` wires LIVE M8's
-// visit-seeding inert consumer (M8 D9); M18 consumes the bracket events; M5 reads the assigned/unassigned
-// caseload-contribution stream (§4.5 D11).** M19/M31 (and the M15/M16 seam consumers) stay inert deny-stubs
-// until Phase 2. It also lands the §4.9 M36 typed alert payloads (`alerts-by-m17.ts`; registered onto M36's
+// gaps.ts scans it for naming + ownership + declared consumers). `m17.visit.published` wires M8's visit
+// seed live. Its M18/M31/M33 fan-out remains pending until those event handlers bind; M5 reads the separate
+// assigned/unassigned caseload stream (§4.5 D11). It also lands the §4.9 M36 typed alert payloads
+// (`alerts-by-m17.ts`; registered onto M36's
 // Foundation registry at boot, composition + recipient resolution is M36's per ADR-0024) and the Track B §5.1
 // web screens (apps/web/src/modules/17-scheduling, ADR-0030).
 import type { DbClient } from "@wardenx/db";

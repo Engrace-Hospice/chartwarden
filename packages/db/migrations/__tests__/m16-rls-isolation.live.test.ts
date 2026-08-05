@@ -58,6 +58,7 @@ type SeedIds = {
   closure: string;
   optOut: string;
   gateOverride: string;
+  idgRiskFlag: string;
 };
 
 /** The 9 manifest-owned M16 tables, each with the seeded row the isolation case looks for. */
@@ -71,6 +72,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "bereavement_plan_closure", key: "closure" },
   { table: "bereavement_opt_out", key: "optOut" },
   { table: "tenant_bereavement_external_source_gate_override", key: "gateOverride" },
+  { table: "bereavement_idg_risk_flag", key: "idgRiskFlag" },
 ];
 
 describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -218,6 +220,20 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
         [org, MEMBERSHIP],
       )
     ).rows[0].id as string;
+    const idgRiskFlag = (
+      await db.query(
+        `INSERT INTO bereavement_idg_risk_flag (organization_id, idg_decision_id, idg_meeting_id,
+           patient_id, risk_level, rationale_text, recorded_by_membership_id, recorded_at)
+         VALUES ($1,$2,$3,$4,'high','clinical rationale',$5,now()) RETURNING id`,
+        [
+          org,
+          `9999999${n}-9999-4999-8999-999999999999`,
+          `aaaaaaa${n}-aaaa-4aaa-8aaa-aaaaaaaaaaaa`,
+          patient,
+          MEMBERSHIP,
+        ],
+      )
+    ).rows[0].id as string;
     return {
       pe,
       location,
@@ -230,6 +246,7 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
       closure,
       optOut,
       gateOverride,
+      idgRiskFlag,
     };
   }
 
@@ -259,12 +276,16 @@ describe.skipIf(!DB_URL)("M16 Bereavement — RLS cross-tenant denial — LIVE P
   });
 
   it("every M16 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0102_bereavement_m16_rls_audit_triggers.sql"),
-      "utf8",
+    const rls = [
+      "0102_bereavement_m16_rls_audit_triggers.sql",
+      "0168_idg_downstream_consumer_projections.sql",
+    ]
+      .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
+      .join("\n");
+    const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
+      (block) => COVERED.some(({ table }) => block.includes(`"${table}"`)),
     );
-    const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
-    expect(policyBlocks.length).toBe(9);
+    expect(policyBlocks.length).toBe(COVERED.length);
     for (const block of policyBlocks) {
       const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
       expect(new Set(vars)).toEqual(new Set(["app.org_id"]));

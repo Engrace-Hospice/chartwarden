@@ -15,7 +15,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { Type } from "@sinclair/typebox";
 import { createDbClient } from "@wardenx/db";
+import type { OutboxEventEntry } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -39,6 +41,7 @@ const EV_DEFERRED = "aaaaaaaa-0000-4000-8000-000000000004";
 const EV_RECORD_ONLY = "aaaaaaaa-0000-4000-8000-000000000005";
 const EV_PURGE_DISPATCHED = "aaaaaaaa-0000-4000-8000-000000000006";
 const EV_PURGE_FAILED = "aaaaaaaa-0000-4000-8000-000000000007";
+const EV_PARTIAL = "aaaaaaaa-0000-4000-8000-000000000008";
 
 describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () => {
   let admin: Client;
@@ -54,12 +57,48 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     consumers: readonly OutboxConsumerBinding[],
     deferredEventTypes?: readonly string[],
     options?: OutboxDispatcherOptions,
+    declaredByType: Readonly<Record<string, OutboxEventEntry["declaredConsumers"]>> = {},
   ) {
+    const declared = new Map<string, Set<OutboxConsumerBinding["consumerModule"]>>();
+    for (const consumer of consumers) {
+      for (const eventType of consumer.eventTypes) {
+        const modules = declared.get(eventType) ?? new Set();
+        modules.add(consumer.consumerModule);
+        declared.set(eventType, modules);
+      }
+    }
+    for (const eventType of deferredEventTypes ?? []) {
+      const modules = declared.get(eventType) ?? new Set();
+      modules.add("m40");
+      declared.set(eventType, modules);
+    }
+    for (const [eventType, modules] of Object.entries(declaredByType)) {
+      declared.set(eventType, new Set(modules));
+    }
+    const eventCatalog = new Map<string, OutboxEventEntry>();
+    for (const [eventName, modules] of declared) {
+      eventCatalog.set(eventName, {
+        eventName,
+        moduleOwner: "m1",
+        description: eventName,
+        payloadSchema: Type.Object({}, { additionalProperties: true }),
+        declaredConsumers: [...modules],
+        isOutboxOnly: true,
+      });
+    }
+    eventCatalog.set("outbox.test.unrouted", {
+      eventName: "outbox.test.unrouted",
+      moduleOwner: "m1",
+      description: "Explicit record-only live-test event",
+      payloadSchema: Type.Object({}, { additionalProperties: true }),
+      declaredConsumers: [],
+      isOutboxOnly: true,
+    });
     return createOutboxDispatcher({
       db: handle.db,
       orgs,
       consumers,
-      deferredEventTypes,
+      eventCatalog,
       options: { log: () => {}, ...options },
     });
   }
@@ -138,6 +177,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
       [
         {
           consumerName: "test-deliver-consumer",
+          consumerModule: "m1",
           eventTypes: ["outbox.test.deliver"],
           handle: async (event) => {
             received.push(event);
@@ -176,6 +216,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
       [
         {
           consumerName: "flaky-consumer",
+          consumerModule: "m1",
           eventTypes: ["outbox.test.retry"],
           handle: async () => {
             calls += 1;
@@ -235,6 +276,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
       [
         {
           consumerName: "always-failing-consumer",
+          consumerModule: "m1",
           eventTypes: ["outbox.test.dlq"],
           handle: async () => {
             calls += 1;
@@ -306,6 +348,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     const dispatcher = makeDispatcher([
       {
         consumerName: "other-type-consumer",
+        consumerModule: "m1",
         eventTypes: ["outbox.test.some-other-type"],
         handle: async (event) => {
           received.push(event);
@@ -348,6 +391,78 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     const failed = await fetchRow(EV_PURGE_FAILED);
     expect(failed).toBeTruthy();
     expect(failed.status).toBe("failed");
+  });
+
+  it("partial fan-out: durable receipts prevent replay across restart while missing modules keep the source pending", async () => {
+    let m7Calls = 0;
+    let m8Calls = 0;
+    await seed({ id: EV_PARTIAL, eventType: "outbox.test.partial" });
+    const m7: OutboxConsumerBinding = {
+      consumerName: "m7.partial-proof",
+      consumerModule: "m7",
+      eventTypes: ["outbox.test.partial"],
+      handle: async () => {
+        m7Calls += 1;
+      },
+    };
+    const declared = { "outbox.test.partial": ["m7", "m8"] } as const;
+
+    const first = makeDispatcher([m7], undefined, { deferredRetryMs: 60_000 }, declared);
+    expect((await first.tick()).deferred).toBe(1);
+    expect(m7Calls).toBe(1);
+    let row = await fetchRow(EV_PARTIAL);
+    expect(row.status).toBe("pending");
+    expect(row.attempt_count).toBe(0);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_consumer_receipt WHERE event_id=$1",
+          [EV_PARTIAL],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+
+    await admin.query(
+      "UPDATE outbox_event SET next_attempt_at=now() - interval '1 second' WHERE id=$1",
+      [EV_PARTIAL],
+    );
+    const restarted = makeDispatcher([m7], undefined, { deferredRetryMs: 60_000 }, declared);
+    expect((await restarted.tick()).deferred).toBe(1);
+    expect(m7Calls).toBe(1);
+
+    await admin.query(
+      "UPDATE outbox_event SET next_attempt_at=now() - interval '1 second' WHERE id=$1",
+      [EV_PARTIAL],
+    );
+    const completed = makeDispatcher(
+      [
+        m7,
+        {
+          consumerName: "m8.partial-proof",
+          consumerModule: "m8",
+          eventTypes: ["outbox.test.partial"],
+          handle: async () => {
+            m8Calls += 1;
+          },
+        },
+      ],
+      undefined,
+      undefined,
+      declared,
+    );
+    expect((await completed.tick()).delivered).toBe(1);
+    expect(m7Calls).toBe(1);
+    expect(m8Calls).toBe(1);
+    row = await fetchRow(EV_PARTIAL);
+    expect(row.status).toBe("dispatched");
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_consumer_receipt WHERE event_id=$1",
+          [EV_PARTIAL],
+        )
+      ).rows[0].n,
+    ).toBe(2);
   });
 
   it("liveness/pending depth: after the full pass an idle tick is a no-op and only the deferred backlog stays pending", async () => {

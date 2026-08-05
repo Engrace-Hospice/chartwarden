@@ -571,6 +571,7 @@ export function createDrizzleM6ApplierGateway(
 /** Structural binding (matches the dispatcher's OutboxConsumerBinding without importing it). */
 export interface M6AdmissionEventApplierBinding {
   readonly consumerName: "m6.admission-event-applier";
+  readonly consumerModule: "m6";
   readonly eventTypes: readonly ["m29.hl7_inbound_proposal.accepted"];
   handle(event: { readonly payload: unknown; readonly organizationId: string }): Promise<void>;
 }
@@ -652,6 +653,7 @@ export function buildM6ProposalAcceptedConsumer(
     : null;
   return {
     consumerName: "m6.admission-event-applier",
+    consumerModule: "m6",
     eventTypes: ["m29.hl7_inbound_proposal.accepted"],
     async handle(event) {
       // Owner sniff BEFORE the strict parse (the M5 precedent): m5-owned acceptances are M5's

@@ -19,6 +19,7 @@ export {
 export {
   type ActiveOrgListPort,
   type ClaimSubmitJob,
+  type ClaimSubmitRetryJob,
   type ClaimValidationRunnerPort,
   type EligibilityRefreshJob,
   type HetsEligibilityPort,
@@ -39,8 +40,11 @@ export {
   type WorkerOutboxPort,
   type X12ClientPort,
   buildM23WorkerDeps,
+  buildM23SubmissionQueuePort,
   registerM23CronWorkers,
   registerM23Workers,
+  registerM23LaunchWorkers,
   scheduleM23Jobs,
+  scheduleM23LaunchJobs,
   unboundWorkerPort,
 } from "./m23-jobs";

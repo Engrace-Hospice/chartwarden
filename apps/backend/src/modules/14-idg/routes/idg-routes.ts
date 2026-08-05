@@ -324,6 +324,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         patientId: b.patientId,
         agendaItemId: b.agendaItemId,
         decisionKind: b.payload.kind,
+        payload: b.payload,
       });
       return reply.code(201).send(res);
     },
@@ -334,7 +335,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(IdParamsSchema, request.params);
     const b = parse(UpdateDecisionRequest, request.body);
-    return service.updateDecision(organizationId, userId, id, b.payload.kind);
+    return service.updateDecision(organizationId, userId, id, b.payload);
   });
 
   // 20 — supersede a prior decision (a new row in a later meeting; §2.8).

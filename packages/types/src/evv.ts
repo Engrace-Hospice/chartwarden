@@ -88,14 +88,15 @@ export type EvvAggregatorSubmissionStatus =
 
 // ── §3.3 owned-table names + §3.6 audit denylist (the M4 trigger arguments for M18-T02) ───────────────
 
-/** The six §3.3 owned tables (the manifest `ownedTables` set). */
+/** M18's owned tables (the manifest `ownedTables` set). */
 export type M18TableName =
   | "evv_event"
   | "evv_geofence_evaluation"
   | "evv_geofence_policy"
   | "evv_device"
   | "evv_missing_resolution"
-  | "evv_aggregator_submission";
+  | "evv_aggregator_submission"
+  | "evv_visit_registration";
 
 /** Per-table audit denylist (§3.6, M11 D11 / M17 §3.6 pattern). Free-text PHI / encrypted ciphertext / auth
  * secrets that must NOT enter `audit_event.before/after` values — the M4 trigger records a `<changed>`
@@ -112,6 +113,7 @@ export const M18_AUDIT_DENYLIST: { readonly [K in M18TableName]: readonly string
     "aggregator_rejection_reason",
     "cancellation_reason",
   ],
+  evv_visit_registration: [],
 } as const;
 
 /** The M4 destruction-workflow data class for all M18 tables (§3.7). The eraser cryptographic-shreds the

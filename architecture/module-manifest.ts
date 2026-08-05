@@ -169,6 +169,7 @@ export const MODULES: ModuleDef[] = [
       "feature_flag",
       "idempotency_key",
       "outbox_event",
+      "outbox_consumer_receipt",
       // M01-F02: declared in the M1 spec but previously absent here (enforcement hole).
       "feature_flag_evaluation",
       "organization_settings_registry",
@@ -391,6 +392,7 @@ export const MODULES: ModuleDef[] = [
       "problem",
       "goal",
       "intervention",
+      "care_plan_idg_decision_application",
     ],
   }, // M07-F02
   {
@@ -469,6 +471,7 @@ export const MODULES: ModuleDef[] = [
       "standing_order_instance",
       "order_discontinuation",
       "order_verbal_policy",
+      "order_idg_decision_application",
     ],
   },
   {
@@ -486,6 +489,7 @@ export const MODULES: ModuleDef[] = [
       "epcs_signing_attempt",
       "medication_order",
       "medication_order_transmission",
+      "medication_order_idg_decision_application",
       "refill_request",
     ],
   },
@@ -573,6 +577,7 @@ export const MODULES: ModuleDef[] = [
       "bereavement_plan",
       "bereavement_plan_closure",
       "bereavement_risk_score",
+      "bereavement_idg_risk_flag",
       "tenant_bereavement_external_source_gate_override",
     ],
   },
@@ -612,6 +617,7 @@ export const MODULES: ModuleDef[] = [
       "evv_geofence_evaluation",
       "evv_geofence_policy",
       "evv_missing_resolution",
+      "evv_visit_registration",
     ],
   },
   {
@@ -719,6 +725,7 @@ export const MODULES: ModuleDef[] = [
       "document_access_log",
       "document_legal_hold",
       "document_tag",
+      "document_upload",
       "document_version",
       "extraction_candidate",
       "extraction_decision",

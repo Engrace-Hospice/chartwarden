@@ -41,11 +41,14 @@ export interface TenantPlatformRouteDeps {
 function actorOf(request: FastifyRequest): {
   organizationId: string;
   userId: string;
+  membershipId: string;
   roles: readonly string[];
 } {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  const membershipId = ctx.attributes?.membershipId;
+  if (typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: ctx.userId, membershipId, roles: ctx.roles };
 }
 
 const orgSlugOf = (request: FastifyRequest): string =>
@@ -109,14 +112,15 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants",
     { preHandler: [PROVISION, ABAC_PROVISION, STEPUP_PROVISION] },
     async (request, reply) => {
-      const { userId } = actorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(ProvisionTenantRequest, request.body);
-      const res = await service.provisionTenant(userId, {
+      const res = await service.provisionTenant(membershipId, {
         signupIntentId: body.signupIntentId ?? null,
         legalBusinessName: body.legalBusinessName,
         billingContactEmail: body.billingContactEmail,
         breachNotificationContactEmail: body.breachNotificationContactEmail,
         firstAdminEmail: body.firstAdminEmail,
+        firstAdminFullName: body.firstAdminFullName,
         planLabel: body.planLabel,
       });
       return reply.code(202).send(res);
@@ -168,9 +172,9 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/shred",
     { preHandler: [SHRED, ABAC_SHRED, STEPUP_SHRED] },
     async (request, reply) => {
-      const { userId } = actorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(ShredTenantRequest, request.body);
-      const res = await service.requestShred(orgSlugOf(request), userId, {
+      const res = await service.requestShred(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
         destructionCertificateId: body.destructionCertificateId,
       });
@@ -183,9 +187,9 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/dek-rotate",
     { preHandler: [DEK_ROTATE, ABAC_DEK_ROTATE, STEPUP_DEK_ROTATE] },
     async (request, reply) => {
-      const { userId } = actorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(DekRotateRequest, request.body);
-      const res = await service.requestDekRotate(orgSlugOf(request), userId, {
+      const res = await service.requestDekRotate(orgSlugOf(request), membershipId, {
         reason: body.reason,
       });
       return reply.code(202).send(res);

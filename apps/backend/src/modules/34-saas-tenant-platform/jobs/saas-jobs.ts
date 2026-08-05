@@ -1,3 +1,5 @@
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { audit } from "@wardenx/audit";
 import type { DbClient } from "@wardenx/db";
 // apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts — M34 Phase 2D LIVE BullMQ wiring
 // for the §4.3 jobs. The thin, infra-touching adapter that turns the @wardenx/saas-tenant-platform pure
@@ -29,6 +31,7 @@ import {
   TenantAccountRepository,
   TenantExportRepository,
   TenantKeyRingRepository,
+  transitionTenant,
 } from "@wardenx/saas-tenant-platform";
 import type {
   BundleExpirySweepPorts,
@@ -41,9 +44,12 @@ import type {
   ShredWorkerPorts,
   TenantExportWorkerPorts,
 } from "@wardenx/saas-tenant-platform";
+import { type PlatformBypassAuditor, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { sql } from "drizzle-orm";
 import { getSeam } from "../../../bootstrap/index";
+import { createTenantShredEraserCallback } from "../shred-eraser-adapter";
+import { assertM34ShredPreflight } from "../shred-preflight";
 import {
   M34_JOB_SCHEDULES,
   M34_QUEUES,
@@ -82,6 +88,90 @@ export interface M34WorkerDeps {
    * cross-tenant pool the spec mandates — F03/F09). Left optional so a dev boot wires without it.
    */
   readonly platformDb?: DbClient;
+  /** Complete provision capability. Omit any part and `tenant.provision` remains disabled. */
+  readonly provision?: {
+    readonly auditBypass: PlatformBypassAuditor<DbClient>;
+    readonly keyMaterial: {
+      mintAndWrapDek(input: { readonly organizationId: string }): Promise<{
+        readonly wrappedCiphertextB64: string;
+        readonly kekId: string;
+      }>;
+    };
+    readonly storage: {
+      ensureTenantPrefixes(input: {
+        readonly organizationId: string;
+        readonly prefixes: readonly string[];
+      }): Promise<{ readonly prefixesEnsured: readonly string[] }>;
+    };
+    readonly invitation: {
+      send(input: {
+        readonly to: string;
+        readonly inviteeFullName: string;
+        readonly invitationUrl: string;
+        readonly expiresAt: Date;
+      }): Promise<void>;
+      readonly acceptBaseUrl: string;
+    };
+    readonly outbox: {
+      publish(
+        tx: DbClient,
+        input: {
+          readonly eventName: string;
+          readonly organizationId: string;
+          readonly aggregateKind: string;
+          readonly aggregateId: string;
+          readonly payload: Record<string, unknown>;
+        },
+      ): Promise<void>;
+    };
+  };
+  /** Complete key-lifecycle capability. Omit it and rotation/shred remain capability-disabled. */
+  readonly keyLifecycle?: {
+    readonly auditBypass: PlatformBypassAuditor<DbClient>;
+    readonly keyMaterial: NonNullable<M34WorkerDeps["provision"]>["keyMaterial"];
+    readonly storage: {
+      destroyTenantScope(input: {
+        readonly organizationId: string;
+      }): Promise<{ readonly prefix: string; readonly objectsDeleted: number }>;
+    };
+    readonly outbox: NonNullable<M34WorkerDeps["provision"]>["outbox"];
+    destroyTenantKeyRing(input: {
+      readonly tenantAccountId: string;
+      readonly destructionCertId: string;
+      readonly actorMembershipId: string;
+    }): Promise<void>;
+    readonly destructionWorkflow: {
+      authorizationFacts(
+        tx: DbClient,
+        input: {
+          readonly orgId: string;
+          readonly destructionCertId: string;
+          readonly actorMembershipId: string;
+        },
+      ): Promise<{
+        readonly certificate: {
+          readonly organizationId: string;
+          readonly status: string;
+          readonly method: string;
+          readonly approvedBy: string | null;
+        } | null;
+        readonly activeLegalHold: boolean;
+        readonly actorUserId: string | null;
+      }>;
+      recordCertificateRefusal(
+        tx: DbClient,
+        input: Parameters<ShredEraserCallbackPort["recordCertificateRefusal"]>[0],
+      ): Promise<void>;
+      fileCertificate(
+        tx: DbClient,
+        input: Parameters<ShredEraserCallbackPort["fileCertificate"]>[0],
+      ): Promise<void>;
+    };
+    readonly shredSubjects: {
+      patientIds(tx: DbClient, orgId: string): Promise<readonly string[]>;
+      soleTenantUserIds(tx: DbClient, orgId: string): Promise<readonly string[]>;
+    };
+  };
   /** Injected clock (deterministic in tests; the package workers stamp every instant through this). */
   now?: () => Date;
 }
@@ -126,9 +216,40 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   const platformDb = deps.platformDb ?? deps.db;
 
   const keyRingRepo = new TenantKeyRingRepository(platformDb);
-  const accountRepo = new TenantAccountRepository(platformDb);
-  void accountRepo; // bound for the provision/lifecycle ports below (status reads); referenced via TODOs.
   void new TenantExportRepository(db); // bound for the DSAR/export ledger ports (see per-port TODOs).
+
+  const inProvisionPlatform = <T>(reason: string, fn: (tx: DbClient) => Promise<T>): Promise<T> => {
+    if (!deps.provision) {
+      return Promise.reject(
+        new M34WorkerPortUnbound("provision", "the complete provision capability was not supplied"),
+      );
+    }
+    // Provisioning touches only M34 control-plane rows, each resolved from the job's tenant account;
+    // its persisted organization_id = the trusted organization in the provision command. No clinical
+    // or patient table is read through this platform-bypass helper.
+    return withPlatformContext(
+      platformDb,
+      { jobId: "m34.platform_ops", reason, crossTenant: true },
+      deps.provision.auditBypass,
+      fn,
+    );
+  };
+
+  const inProvisionOrg = <T>(
+    organizationId: string,
+    fn: (tx: DbClient) => Promise<T>,
+  ): Promise<T> =>
+    withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as unknown as DbClient));
+
+  const requireKeyLifecycle = (): NonNullable<M34WorkerDeps["keyLifecycle"]> => {
+    if (!deps.keyLifecycle) {
+      return unbound(
+        "keyLifecycle",
+        "audit, KMS, object-storage destruction, and outbox adapters are all required",
+      );
+    }
+    return deps.keyLifecycle;
+  };
 
   // ── tenant.provision ────────────────────────────────────────────────────────────────────────────────
   // The key-ring step IS bindable now (the m34_provision_tenant_key_ring SECURITY DEFINER fn); the M1
@@ -137,31 +258,35 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   const provision: ProvisionWorkerPorts = {
     now,
     currentStatus: (tenantAccountId) =>
-      unbound(
-        "provision.currentStatus",
-        `bind to TenantAccountRepository.findById(${tenantAccountId}).status under withPlatformContext`,
+      inProvisionPlatform(
+        "m34 tenant provision status",
+        async (tx) =>
+          (await new TenantAccountRepository(tx).findById(tenantAccountId))?.status ?? null,
       ),
-    async ensureTenantKeyRing({ tenantAccountId }) {
-      // SELECT-then-CALL the SECURITY DEFINER fn (never insert ciphertext directly — table grants block it).
-      const existing = await keyRingRepo.findByTenantAccountId(tenantAccountId);
-      if (existing !== null) return { tenantKeyRingId: existing.id };
-      const rows = await platformDb.execute<{ m34_provision_tenant_key_ring: string }>(
-        sql`SELECT m34_provision_tenant_key_ring(${tenantAccountId}) AS m34_provision_tenant_key_ring`,
-      );
-      const id = rows.rows[0]?.m34_provision_tenant_key_ring;
-      if (id === undefined) {
-        return unbound(
-          "provision.ensureTenantKeyRing",
-          "m34_provision_tenant_key_ring returned no id (migration not applied?)",
+    async ensureTenantKeyRing({ tenantAccountId, organizationId }) {
+      return inProvisionPlatform("m34 tenant provision key ring", async (tx) => {
+        const repo = new TenantKeyRingRepository(tx);
+        const existing = await repo.findByTenantAccountId(tenantAccountId);
+        if (existing !== null) return { tenantKeyRingId: existing.id };
+        if (!deps.provision) return unbound("provision.keyMaterial", "capability missing");
+        const wrapped = await deps.provision.keyMaterial.mintAndWrapDek({ organizationId });
+        await tx.execute(
+          sql`SELECT set_config('app.dek_kek_wrapped_ciphertext_b64', ${wrapped.wrappedCiphertextB64}, true), set_config('app.dek_kek_id', ${wrapped.kekId}, true)`,
         );
-      }
-      return { tenantKeyRingId: id };
+        const rows = await tx.execute<{ m34_provision_tenant_key_ring: string }>(
+          sql`SELECT m34_provision_tenant_key_ring(${tenantAccountId}) AS m34_provision_tenant_key_ring`,
+        );
+        const id = rows.rows[0]?.m34_provision_tenant_key_ring;
+        if (!id)
+          return unbound("provision.ensureTenantKeyRing", "key-ring function returned no id");
+        return { tenantKeyRingId: id };
+      });
     },
-    ensureTenantStoragePrefixes: () =>
-      unbound(
-        "provision.ensureTenantStoragePrefixes",
-        "bind to the M1 MinIO prefix-ensure helper (getSeam — no ObjectStorageProvider/MinIO seam registered yet)",
-      ),
+    ensureTenantStoragePrefixes: (input) => {
+      if (!deps.provision)
+        return Promise.reject(new M34WorkerPortUnbound("provision.storage", "capability missing"));
+      return deps.provision.storage.ensureTenantPrefixes(input);
+    },
     // M34 §7.1 step 3 — BOUND to M2's TenantOrgCreationProvider seam (M2 registers the real Drizzle-backed
     // provider at init; the registry's deny-stub returns `unavailable` until then). Idempotent confirm in
     // Phase 1 (org pre-created by the route); the create branch backs Phase-3 self-serve. Fails closed
@@ -174,21 +299,90 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
         `M2 TenantOrgCreationProvider resolved '${result.reason}' — M2 has not registered the real provider yet`,
       );
     },
-    materializeOnboardingTasks: () =>
-      unbound(
-        "provision.materializeOnboardingTasks",
-        "bind to OnboardingRepository.listTemplates+createTasks under withOrgContext",
-      ),
-    ensureFirstAdminInvitation: () =>
-      unbound(
-        "provision.ensureFirstAdminInvitation",
-        "bind to TenantAccountRepository.createInvitation + the M36 PHI-sanitized magic-link channel",
-      ),
-    commitProvisionedTransition: () =>
-      unbound(
-        "provision.commitProvisionedTransition",
-        "bind to the lifecycle effect-runner (status-event + m34.tenant.provisioned outbox, one tx) — needs the live outbox dispatcher",
-      ),
+    materializeOnboardingTasks: ({ tenantAccountId, organizationId }) =>
+      inProvisionOrg(organizationId, async (tx) => {
+        const repo = new OnboardingRepository(tx);
+        const [templates, existing] = await Promise.all([
+          repo.listTemplates(),
+          repo.listTasksByTenant(tenantAccountId),
+        ]);
+        const existingKeys = new Set(existing.map((task) => task.templateKey));
+        const rows = templates
+          .filter((template) => !existingKeys.has(template.key))
+          .map((template) => ({
+            organizationId,
+            tenantAccountId,
+            templateKey: template.key,
+            status: "pending" as const,
+            dueAt: new Date(
+              now().getTime() + template.defaultDueDaysAfterProvisioning * 86_400_000,
+            ),
+          }));
+        return { materialized: (await repo.createTasks(rows)).length };
+      }),
+    ensureFirstAdminInvitation: (input) =>
+      inProvisionPlatform("m34 tenant provision first-admin invitation", async (tx) => {
+        if (!deps.provision) return unbound("provision.invitation", "capability missing");
+        const repo = new TenantAccountRepository(tx);
+        const existing = (await repo.listInvitations(input.tenantAccountId)).find(
+          (invite) =>
+            invite.status === "pending" &&
+            invite.expiresAt > now() &&
+            invite.inviteeEmail.toLowerCase() === input.inviteeEmail.toLowerCase(),
+        );
+        if (existing) return { invitationId: existing.id };
+
+        const rawToken = randomBytes(32).toString("base64url");
+        const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+        const invitationUrl = `${deps.provision.invitation.acceptBaseUrl.replace(/\/$/, "")}/${rawToken}`;
+        await deps.provision.invitation.send({
+          to: input.inviteeEmail,
+          inviteeFullName: input.inviteeFullName,
+          invitationUrl,
+          expiresAt: input.expiresAt,
+        });
+        const created = await repo.createInvitation({
+          organizationId: input.organizationId,
+          tenantAccountId: input.tenantAccountId,
+          inviteeEmail: input.inviteeEmail,
+          inviteeFullName: input.inviteeFullName,
+          tokenHash,
+          inviterMembershipId: input.inviterMembershipId,
+          expiresAt: input.expiresAt,
+        });
+        return { invitationId: created.id };
+      }),
+    commitProvisionedTransition: (input) =>
+      inProvisionPlatform("m34 tenant provision commit", async (tx) => {
+        if (!deps.provision) return unbound("provision.outbox", "capability missing");
+        const repo = new TenantAccountRepository(tx);
+        const account = await repo.findById(input.tenantAccountId);
+        if (!account) throw new Error(`tenant_account ${input.tenantAccountId} not found`);
+        if (account.status === "onboarding") return;
+        if (account.status !== "provisioning") {
+          throw new Error(
+            `tenant_account ${input.tenantAccountId} cannot provision from ${account.status}`,
+          );
+        }
+        await repo.updateStatus(account.id, { status: "onboarding", provisionedAt: now() });
+        await repo.appendStatusEvent({
+          tenantAccountId: account.id,
+          organizationId: account.organizationId,
+          fromStatus: "provisioning",
+          toStatus: "onboarding",
+          transitionReason: input.transitionReason,
+          actorMembershipId: input.actorMembershipId,
+          actorKind: "platform_ops",
+          sideEffectsRecorded: { outbox: "m34.tenant.provisioned" },
+        });
+        await deps.provision.outbox.publish(tx, {
+          eventName: "m34.tenant.provisioned",
+          organizationId: account.organizationId,
+          aggregateKind: "tenant_account",
+          aggregateId: account.id,
+          payload: { ...input.provisionedEvent },
+        });
+      }),
   };
 
   // ── tenant.dek_rotate ─────────────────────────────────────────────────────────────────────────────
@@ -198,24 +392,48 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
     now,
     keyRing: keyRingRepo,
     keyMaterial: {
-      mintAndWrapDek: () =>
-        unbound(
-          "dekRotate.keyMaterial.mintAndWrapDek",
-          "bind to the M1 envelope helper (generateDek + wrapUnderActiveKek) — no envelope seam registered yet",
-        ),
+      async mintAndWrapDek(orgId) {
+        const wrapped = await requireKeyLifecycle().keyMaterial.mintAndWrapDek({
+          organizationId: orgId,
+        });
+        return {
+          kekWrappedCiphertext: Buffer.from(wrapped.wrappedCiphertextB64, "base64"),
+          kekId: wrapped.kekId,
+        };
+      },
     },
     outbox: {
-      emitDekRotationCompleted: () =>
-        unbound(
-          "dekRotate.outbox.emitDekRotationCompleted",
-          "bind to the live transactional-outbox dispatcher (m34.tenant.dek_rotation_completed)",
-        ),
+      emitDekRotationCompleted: (payload) =>
+        requireKeyLifecycle().outbox.publish(platformDb, {
+          eventName: "m34.tenant.dek_rotation_completed",
+          organizationId: payload.orgId,
+          aggregateKind: "tenant_account",
+          aggregateId: payload.tenantAccountId,
+          payload: { ...payload },
+        }),
     },
     audit: {
-      recordDekRotated: () =>
-        unbound(
-          "dekRotate.audit.recordDekRotated",
-          "bind to the M4 audit() helper (key-management event)",
+      recordDekRotated: (entry) =>
+        audit(
+          platformDb,
+          {
+            organizationId: entry.orgId,
+            userId: null,
+            actorKind: "system",
+            actorRole: "platform_ops",
+            correlationId: randomUUID(),
+          },
+          {
+            eventType: "tenant.dek_rotated",
+            resourceKind: "tenant_key_ring",
+            outcome: "success",
+            severity: "critical",
+            context: {
+              actorMembershipId: entry.actorMembershipId,
+              fromVersion: entry.fromVersion,
+              toVersion: entry.toVersion,
+            },
+          },
         ),
     },
   };
@@ -226,36 +444,37 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
   // fileCertificate — needs the integrator's M4 registry handle). The MinIO scope-destroy needs the M1
   // helper. We bind the key-ring repo (phase trail) + the DEK-zeroize fn; the rest throw a typed TODO.
   const shredDestructive: ShredDestructivePort = {
-    destroyTenantStorageScope: () =>
-      unbound(
-        "shred.destructive.destroyTenantStorageScope",
-        "bind to the M1 MinIO prefix-destroy helper (getSeam) — no MinIO seam registered yet",
-      ),
-    async destroyTenantKeyRing({ tenantAccountId, destructionCertId }) {
+    async destroyTenantStorageScope({ orgId }) {
+      const receipt = await requireKeyLifecycle().storage.destroyTenantScope({
+        organizationId: orgId,
+      });
+      return { prefix: receipt.prefix, objectsDeleted: receipt.objectsDeleted };
+    },
+    async destroyTenantKeyRing({ tenantAccountId, destructionCertId, actorMembershipId }) {
       // THE IRREVERSIBLE EVENT — the SECURITY DEFINER fn alone may null the ciphertext (table grants block
-      // any other path). A no-op on an already-destroyed ring (the CHECK constraint holds). Under
-      // the platform-context envelope applied by the worker closure.
-      await platformDb.execute(
-        sql`SELECT m34_destroy_tenant_key_ring(${tenantAccountId}, ${destructionCertId})`,
-      );
+      // any other path). Commit this boundary on the base platform pool, independently of the outer
+      // certificate/lifecycle transaction: after Phase 3 succeeds, a later Phase-4 crash must never roll the
+      // DEK back into existence. A replay calls the same-certificate idempotent function and resumes filing.
+      await requireKeyLifecycle().destroyTenantKeyRing({
+        tenantAccountId,
+        destructionCertId,
+        actorMembershipId,
+      });
     },
   };
+  const callback = createTenantShredEraserCallback({
+    subjects: {
+      patientIds: (orgId) => requireKeyLifecycle().shredSubjects.patientIds(platformDb, orgId),
+      soleTenantUserIds: (orgId) =>
+        requireKeyLifecycle().shredSubjects.soleTenantUserIds(platformDb, orgId),
+    },
+  });
   const shredErasers: ShredEraserCallbackPort = {
-    callbackAllEraserFns: () =>
-      unbound(
-        "shred.erasers.callbackAllEraserFns",
-        "bind to the M4 destruction-cert registry runDestruction(...) over the registered DataErasers (NEVER bypass M4)",
-      ),
-    recordCertificateRefusal: () =>
-      unbound(
-        "shred.erasers.recordCertificateRefusal",
-        "bind to the M4 certificate-workflow recordCertificateRefusal",
-      ),
-    fileCertificate: () =>
-      unbound(
-        "shred.erasers.fileCertificate",
-        "bind to the M4 certificate-workflow fileCertificate",
-      ),
+    callbackAllEraserFns: callback.callbackAllEraserFns,
+    recordCertificateRefusal: (input) =>
+      requireKeyLifecycle().destructionWorkflow.recordCertificateRefusal(platformDb, input),
+    fileCertificate: (input) =>
+      requireKeyLifecycle().destructionWorkflow.fileCertificate(platformDb, input),
   };
   const shred: ShredWorkerPorts = {
     now,
@@ -263,34 +482,134 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
     erasers: shredErasers,
     destructive: shredDestructive,
     audit: {
-      recordDestructionCertified: () =>
-        unbound(
-          "shred.audit.recordDestructionCertified",
-          "bind to the M4 audit() helper (critical)",
+      recordDestructionCertified: (entry) =>
+        audit(
+          platformDb,
+          {
+            organizationId: entry.orgId,
+            userId: null,
+            actorKind: "system",
+            actorRole: "platform_ops",
+            correlationId: randomUUID(),
+          },
+          {
+            eventType: "data.destruction_certified",
+            resourceKind: "destruction_certificate",
+            resourceId: entry.destructionCertId,
+            outcome: "success",
+            severity: "critical",
+            context: { actorMembershipId: entry.actorMembershipId },
+          },
         ),
-      recordDestructionDeferred: () =>
-        unbound(
-          "shred.audit.recordDestructionDeferred",
-          "bind to the M4 audit() helper (critical, M34-F08)",
+      recordDestructionDeferred: (entry) =>
+        audit(
+          platformDb,
+          {
+            organizationId: entry.orgId,
+            userId: null,
+            actorKind: "system",
+            actorRole: "platform_ops",
+            correlationId: randomUUID(),
+          },
+          {
+            eventType: "data.destruction_deferred",
+            resourceKind: "destruction_certificate",
+            resourceId: entry.destructionCertId,
+            outcome: "success",
+            severity: "critical",
+            context: {
+              actorMembershipId: entry.actorMembershipId,
+              refusedRowsByModule: [...entry.refusedRowsByModule],
+            },
+          },
         ),
     },
     lifecycle: {
-      commitDestroyed: () =>
-        unbound(
-          "shred.lifecycle.commitDestroyed",
-          "bind to the lifecycle effect-runner (status='destroyed' + m34.tenant.destroyed outbox) — needs the outbox dispatcher",
-        ),
-      commitDeferToRetained: () =>
-        unbound(
-          "shred.lifecycle.commitDeferToRetained",
-          "bind to the lifecycle effect-runner (status='retained' + m34.tenant.retained outbox, M34-F08)",
-        ),
+      async commitDestroyed(input) {
+        const repo = new TenantAccountRepository(platformDb);
+        const account = await repo.findById(input.tenantAccountId);
+        if (!account || account.organizationId !== input.orgId) {
+          throw new Error(`tenant_account ${input.tenantAccountId} not found for shred commit`);
+        }
+        if (account.status === "destroyed") return;
+        const transition = transitionTenant(account.status, {
+          type: "shred",
+          actorKind: "system_automated",
+          transitionReason: input.transitionReason,
+          isShredWorker: true,
+        });
+        await repo.updateStatus(account.id, {
+          status: transition.to,
+          destroyedAt: input.destroyedAt,
+        });
+        await repo.appendStatusEvent({
+          organizationId: input.orgId,
+          tenantAccountId: account.id,
+          fromStatus: account.status,
+          toStatus: transition.to,
+          transitionReason: input.transitionReason,
+          actorMembershipId: input.actorMembershipId,
+          actorKind: "system_automated",
+          sideEffectsRecorded: { outbox: "m34.tenant.destroyed" },
+        });
+        await requireKeyLifecycle().outbox.publish(platformDb, {
+          eventName: "m34.tenant.destroyed",
+          organizationId: input.orgId,
+          aggregateKind: "tenant_account",
+          aggregateId: account.id,
+          payload: {
+            tenantAccountId: account.id,
+            orgId: input.orgId,
+            destructionCertId: input.destructionCertId,
+            destroyedAt: input.destroyedAt.toISOString(),
+          },
+        });
+      },
+      async commitDeferToRetained(input) {
+        const repo = new TenantAccountRepository(platformDb);
+        const account = await repo.findById(input.tenantAccountId);
+        if (!account || account.organizationId !== input.orgId) {
+          throw new Error(`tenant_account ${input.tenantAccountId} not found for shred deferral`);
+        }
+        if (account.status === "retained") return;
+        const transition = transitionTenant(account.status, {
+          type: "deferForPartTwoRetention",
+          actorKind: "system_automated",
+          transitionReason: input.transitionReason,
+          eraserRefusedPartTwo: true,
+        });
+        await repo.updateStatus(account.id, { status: transition.to });
+        await repo.appendStatusEvent({
+          organizationId: input.orgId,
+          tenantAccountId: account.id,
+          fromStatus: account.status,
+          toStatus: transition.to,
+          transitionReason: input.transitionReason,
+          actorMembershipId: input.actorMembershipId,
+          actorKind: "system_automated",
+          sideEffectsRecorded: {
+            eraserRefusedPartTwo: true,
+            destructionCertId: input.destructionCertId,
+            refusedRowsByModule: [...input.refusedRowsByModule],
+          },
+        });
+      },
     },
-    assertCertApprovedAndNoHold: () =>
-      unbound(
-        "shred.assertCertApprovedAndNoHold",
-        "bind to the M4 cert reader + the legal-hold reader (preflight, §3.5)",
-      ),
+    async assertCertApprovedAndNoHold(input) {
+      const authorization = await requireKeyLifecycle().destructionWorkflow.authorizationFacts(
+        platformDb,
+        input,
+      );
+      const account = await new TenantAccountRepository(platformDb).findById(input.tenantAccountId);
+      assertM34ShredPreflight(
+        input.orgId,
+        {
+          ...authorization,
+          tenantAccount: account,
+        },
+        now(),
+      );
+    },
   };
 
   // ── tenant.dsar_export (runs under withOrgContext — the requesting tenant, F09) ──────────────────────
@@ -481,6 +800,69 @@ export function registerM34Workers(deps: M34WorkerDeps): Worker[] {
     ),
     mk(M34_QUEUES.bundleExpirySweep, bundleExpirySweepProcessor(ports.bundleExpirySweep), 1),
   ];
+}
+
+/** Construct only the launch-critical provision worker; unrelated M34 capabilities stay disabled. */
+export function registerM34ProvisionWorker(deps: M34WorkerDeps): Worker {
+  if (!deps.provision) {
+    throw new M34WorkerPortUnbound(
+      "provision",
+      "audit, KMS, storage, invitation delivery, and outbox adapters are all required",
+    );
+  }
+  const ports = buildM34WorkerPorts(deps).provision;
+  return new Worker(M34_QUEUES.provision, async (job) => provisionProcessor(ports)(job.data), {
+    connection: deps.connection,
+    concurrency: 1,
+  });
+}
+
+/** Construct the production DEK-rotation worker inside one audited platform transaction per job. */
+export function registerM34DekRotateWorker(deps: M34WorkerDeps): Worker {
+  if (!deps.platformDb || !deps.keyLifecycle) {
+    throw new M34WorkerPortUnbound(
+      "dekRotate",
+      "the platform DB plus audit, KMS, and outbox adapters are required",
+    );
+  }
+  return new Worker(
+    M34_QUEUES.dekRotate,
+    async (job) =>
+      withPlatformContext(
+        deps.platformDb as DbClient,
+        { jobId: "m34.platform_ops", reason: "m34 tenant DEK rotation", crossTenant: true },
+        deps.keyLifecycle?.auditBypass as PlatformBypassAuditor<DbClient>,
+        async (tx) =>
+          dekRotateProcessor(
+            buildM34WorkerPorts({ ...deps, platformDb: tx as unknown as DbClient }).dekRotate,
+          )(job.data),
+      ),
+    { connection: deps.connection, concurrency: 2 },
+  );
+}
+
+/** Construct the single-concurrency irreversible shred worker under the audited platform credential. */
+export function registerM34ShredWorker(deps: M34WorkerDeps): Worker {
+  if (!deps.platformDb || !deps.keyLifecycle) {
+    throw new M34WorkerPortUnbound(
+      "shred",
+      "the platform DB plus audit, eraser, storage, KMS, and outbox adapters are required",
+    );
+  }
+  return new Worker(
+    M34_QUEUES.shred,
+    async (job) =>
+      withPlatformContext(
+        deps.platformDb as DbClient,
+        { jobId: "m34.platform_ops", reason: "m34 certified tenant shred", crossTenant: true },
+        deps.keyLifecycle?.auditBypass as PlatformBypassAuditor<DbClient>,
+        async (tx) =>
+          shredProcessor(
+            buildM34WorkerPorts({ ...deps, platformDb: tx as unknown as DbClient }).shred,
+          )(job.data),
+      ),
+    { connection: deps.connection, concurrency: 1 },
+  );
 }
 
 /**

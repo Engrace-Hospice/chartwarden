@@ -1,15 +1,14 @@
 // apps/backend/src/modules/08-encounters/consumers/seed-visit-encounter.ts — the M8 side of the M17
-// visit-scheduling consumer (M8-T11, spec §4.7 / line 65). PHASE-1 PURE DECISION CORE.
+// visit-publication consumer (M8-T11, spec §4.7 / line 65). PURE DECISION CORE.
 //
-// M17 (Scheduling) owns the `visit` row and emits `m17.visit.scheduled` when a clinician schedules a
-// visit. M8 subscribes: a scheduled visit SEEDS a draft `encounter` so the clinician opens an already-
+// M17 (Scheduling) owns the `visit` row and emits `m17.visit.published` after the pre-schedule gate.
+// M8 subscribes: a scheduled visit SEEDS a draft `encounter` so the clinician opens an already-
 // prepared note instead of creating one from scratch. The seed opens a draft only — authoring, vitals,
 // finalize, and signing all happen through M8's own §2.3 lifecycle/routes; the consumer mints the draft
 // row through the published `EncounterCreator` seam (§4.7) and never touches the encounter again.
 //
-// M17 is Wave F — there is no `m17.visit.scheduled` PRODUCER yet, so the outbox binding is forward-
-// declared/deferred (see ./../outbox-consumers/m17-visit-scheduled.ts). What ships now is the PURE,
-// fully-tested decision core {@link decideVisitSeeding}: given the parsed payload + the facts the worker
+// The live binding lives in ./../outbox-consumers/m17-visit-scheduled.ts. This PURE decision core remains
+// useful for policy tests: given the parsed payload + the facts the worker
 // reads (idempotency — is a draft already bracketing this visit; is the patient on active service), it
 // returns the {@link VisitSeedingAction} descriptor the live worker executes through `EncounterCreator`.
 // The consumed event name is a STRING literal only (no M17 schema import): M8 reads M17 solely through
@@ -26,12 +25,10 @@ import type {
   VisitId,
 } from "@wardenx/types";
 
-// ── The visit-scheduled payload M8 consumes (M17 owns the canonical wire shape) ───────────────────────
+// ── The visit-published payload M8 consumes (M17 owns the canonical wire shape) ───────────────────────
 
-/** The `m17.visit.scheduled` payload M8 reads to seed a draft. M17 (Wave F) owns the canonical type +
- * the `mN.` wire name; this leaf-typed projection is the subset M8 needs and the single point to
- * reconcile if M17 namespaces it differently. M8 does NOT read M17's schema — only this projection. */
-export interface VisitScheduledPayload {
+/** The `m17.visit.published` payload subset M8 reads. M8 does not import M17 implementation types. */
+export interface VisitPublishedPayload {
   readonly visitId: VisitId;
   readonly patientId: PatientId;
   readonly admissionId: AdmissionId;
@@ -39,12 +36,15 @@ export interface VisitScheduledPayload {
   /** The encounter type the scheduled visit implies (routine_visit, face_to_face, volunteer_visit, …). */
   readonly encounterType: EncounterType;
   /** The discipline of the clinician the visit is assigned to (stamped on the draft). */
-  readonly discipline: EncounterDiscipline;
+  readonly assignedDiscipline: EncounterDiscipline;
   /** The scheduled service date (the draft's `serviceDate`; D11 vocab is pinned later, at sign). */
   readonly serviceDate: LocalDate;
   /** The membership the visit is assigned to — becomes the draft's author. */
   readonly assignedMembershipId: MembershipId;
 }
+
+/** @deprecated Use the canonical visit-publication contract name. */
+export type VisitScheduledPayload = VisitPublishedPayload;
 
 // ── The facts the worker reads before deciding (resolved by the live consumer from M8 + M6 reads) ─────
 
@@ -60,7 +60,7 @@ export interface VisitSeedingFacts {
 
 // ── The effect descriptor the decider returns (executed by the Wave-F consumer) ───────────────────────
 
-/** Why a `m17.visit.scheduled` delivery seeded nothing (audited for reconciliation, never a hard error). */
+/** Why a `m17.visit.published` delivery seeded nothing (audited for reconciliation, never a hard error). */
 export type VisitSeedingSkipReason = "already_seeded" | "patient_not_on_service";
 
 /** The effect the worker resolved for a delivery: either a no-op skip (with reason) or seed a draft. */
@@ -73,14 +73,14 @@ export type VisitSeedingAction =
 // ── The pure decision core (§4.7 / line 65) ───────────────────────────────────────────────────────────
 
 /**
- * Decide the single effect to apply for an `m17.visit.scheduled` delivery (pure). The worker resolves
+ * Decide the single effect to apply for an `m17.visit.published` delivery (pure). The worker resolves
  * {@link VisitSeedingFacts}, then this returns the {@link VisitSeedingAction}. Idempotency is checked
  * first (a draft already bracketing the visit → skip), then the active-service guard (authoring requires
  * an active admission per §0 "the patient-on-service signal that makes encounter authoring possible");
  * the surviving delivery becomes a {@link CreateEncounterInput} seed carrying the visit's `visitId`.
  */
 export function decideVisitSeeding(
-  payload: VisitScheduledPayload,
+  payload: VisitPublishedPayload,
   facts: VisitSeedingFacts,
 ): VisitSeedingAction {
   // Idempotent on visitId: a draft already brackets this visit (a redelivery) — seed nothing.
@@ -95,7 +95,7 @@ export function decideVisitSeeding(
       patientId: payload.patientId,
       admissionId: payload.admissionId,
       encounterType: payload.encounterType,
-      discipline: payload.discipline,
+      discipline: payload.assignedDiscipline,
       serviceDate: payload.serviceDate,
       authorMembershipId: payload.assignedMembershipId,
       visitId: payload.visitId,

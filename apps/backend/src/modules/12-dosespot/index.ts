@@ -91,6 +91,12 @@ export {
 // M12-T08 — the §4.4 outbox contract (the full `m12.*` taxonomy; check-fitness-gaps.ts scans events-by-m12.ts
 // for naming + ownership + declared consumers).
 export { M12_OUTBOX_EVENTS } from "./events-by-m12";
+export {
+  type M12IdgAdmissionContext,
+  type M12IdgConsumerOutboxPort,
+  M12_IDG_DECISION_CONSUMER,
+  buildM12IdgDecisionConsumer,
+} from "./outbox-consumers/m14-idg-decision-recorded";
 // M12-T08 — the §4.5 outbox subscriptions: M5 patient-sync triggers + M6 discharge cascade / MedHx fetch + the
 // M11 verbal-expiry backref. Pure deciders + the event → consumer binding registry; consumed event names are
 // string literals (no dependsOn edge).

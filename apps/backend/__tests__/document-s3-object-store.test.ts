@@ -372,7 +372,7 @@ describe("parseListObjectVersionsXml", () => {
   });
 });
 
-// ── putObject / destroyAllVersions over a mocked fetch ──────────────────────────────────────────
+// ── putObject / verified upload / destroyAllVersions over a mocked fetch ────────────────────────
 
 interface RecordedCall {
   readonly url: string;
@@ -477,6 +477,76 @@ describe("createS3ObjectStore putObject (mocked fetch)", () => {
     expect(err!.message).toContain("403");
     expect(err!.message).not.toContain(AWS_EXAMPLE_SECRET_KEY);
     expect(err!.message).not.toContain("http://");
+  });
+});
+
+describe("createS3ObjectStore verified upload (mocked fetch)", () => {
+  it("presigns a short-lived PUT with the declared MIME type and base64 SHA-256 checksum", async () => {
+    const store = createS3ObjectStore(testConfig, { fetchImpl: neverFetch, now: fixedNow });
+    const sha256Hex = createHash("sha256").update("verified upload").digest("hex");
+    const result = await store.presignUpload({
+      bucket: "tenant-abc",
+      objectKey: "uploads/upload-id/object",
+      mimeType: "application/pdf",
+      sha256Hex,
+      ttlSeconds: 900,
+    });
+
+    expect(result.url).toContain("X-Amz-Expires=900");
+    expect(result.url).toContain("X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-checksum-sha256");
+    expect(result.headers).toEqual({
+      "content-type": "application/pdf",
+      "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
+    });
+    expect(result.expiresAt).toBe("2013-05-24T00:15:00.000Z");
+  });
+
+  it("HEADs with checksum mode and normalizes verified metadata to lowercase hex", async () => {
+    const sha256Hex = createHash("sha256").update("verified upload").digest("hex");
+    const { fetchImpl, calls } = mockFetch(
+      () =>
+        new Response(null, {
+          status: 200,
+          headers: {
+            "content-length": "4096",
+            "content-type": "application/pdf; charset=binary",
+            "x-amz-checksum-sha256": Buffer.from(sha256Hex, "hex").toString("base64"),
+          },
+        }),
+    );
+    const store = createS3ObjectStore(testConfig, { fetchImpl, now: fixedNow });
+
+    await expect(
+      store.inspectObject({ bucket: "tenant-abc", objectKey: "uploads/upload-id/object" }),
+    ).resolves.toEqual({ byteSize: 4096, mimeType: "application/pdf", sha256Hex });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("HEAD");
+    expect(calls[0]?.headers["x-amz-checksum-mode"]).toBe("ENABLED");
+    expect(calls[0]?.headers.authorization).toContain(
+      "SignedHeaders=host;x-amz-checksum-mode;x-amz-content-sha256;x-amz-date",
+    );
+  });
+
+  it("returns null for a missing staged object and rejects incomplete verification metadata", async () => {
+    const missing = mockFetch(() => new Response(null, { status: 404 }));
+    const missingStore = createS3ObjectStore(testConfig, {
+      fetchImpl: missing.fetchImpl,
+      now: fixedNow,
+    });
+    await expect(
+      missingStore.inspectObject({ bucket: "tenant-abc", objectKey: "missing" }),
+    ).resolves.toBeNull();
+
+    const incomplete = mockFetch(
+      () => new Response(null, { status: 200, headers: { "content-length": "10" } }),
+    );
+    const incompleteStore = createS3ObjectStore(testConfig, {
+      fetchImpl: incomplete.fetchImpl,
+      now: fixedNow,
+    });
+    await expect(
+      incompleteStore.inspectObject({ bucket: "tenant-abc", objectKey: "incomplete" }),
+    ).rejects.toThrow(/incomplete verified metadata/);
   });
 });
 
