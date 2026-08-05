@@ -7,7 +7,17 @@
 // M22 document) are plain uuid app-validated, NOT cross-module FKs; actor refs go to M1 `membership`.
 // RLS + grants + the M4 write-audit trigger land in migration 0031 (M8-T03, §3.3/§3.4).
 import { sql } from "drizzle-orm";
-import { bigint, check, date, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  date,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import {
   encounterDiscipline,
   encounterStatus,
@@ -99,10 +109,9 @@ export const encounters = pgTable(
     cosignPendingIdx: index("encounter_cosign_pending_idx")
       .on(t.organizationId, t.signedAt)
       .where(sql`status = 'cosign_pending'`),
-    serviceDateNotFuture: check(
-      "encounter_service_date_not_future",
-      sql`service_date <= current_date`,
-    ),
+    orgVisitUnique: uniqueIndex("encounter_org_visit_unique")
+      .on(t.organizationId, t.visitId)
+      .where(sql`visit_id IS NOT NULL`),
     lateReasonRequired: check(
       "encounter_late_reason_required",
       sql`(late_entry_tier = 'normal') OR (late_entry_reason IS NOT NULL AND char_length(late_entry_reason) >= 40)`,

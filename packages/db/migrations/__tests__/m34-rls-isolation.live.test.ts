@@ -46,6 +46,8 @@ const ROLES = [
 ];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+const ORG_C = "33333333-3333-3333-3333-333333333333";
+const ORG_D = "44444444-4444-4444-4444-444444444444";
 
 /** Ids of org A's seeded row in each covered table — resolved in beforeAll, read at run time. */
 type SeedIds = {
@@ -189,8 +191,9 @@ describe.skipIf(!DB_URL)(
 
       const destructionLog = (
         await db.query(
-          `INSERT INTO tenant_key_destruction_log (organization_id, tenant_key_ring_id, destruction_phase)
-         VALUES ($1,$2,'deks_zeroized') RETURNING id`,
+          `INSERT INTO tenant_key_destruction_log (
+             organization_id, tenant_key_ring_id, destruction_certificate_id, destruction_phase
+           ) VALUES ($1,$2,gen_random_uuid(),'deks_zeroized') RETURNING id`,
           [org, keyRing],
         )
       ).rows[0].id as string;
@@ -321,6 +324,137 @@ describe.skipIf(!DB_URL)(
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].rolbypassrls).toBe(false);
+    });
+
+    it("provisions an organization-scoped key ring through the platform-writer function", async () => {
+      await db.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-c','C','C')",
+        [ORG_C],
+      );
+      const tenantAccountId = (
+        await db.query(
+          `INSERT INTO tenant_account (
+             organization_id, status, legal_business_name, billing_contact_email,
+             breach_notification_email
+           ) VALUES ($1,'provisioning','C LLC','billing@c.test','breach@c.test')
+           RETURNING id`,
+          [ORG_C],
+        )
+      ).rows[0].id as string;
+
+      await db.query("SET ROLE tenant_platform_writer");
+      try {
+        await db.query("SELECT set_config('app.dek_kek_wrapped_ciphertext_b64', 'AA==', false)");
+        await db.query("SELECT set_config('app.dek_kek_id', 'test-kek-v1', false)");
+        const first = await db.query<{ id: string }>(
+          "SELECT m34_provision_tenant_key_ring($1) AS id",
+          [tenantAccountId],
+        );
+        const replay = await db.query<{ id: string }>(
+          "SELECT m34_provision_tenant_key_ring($1) AS id",
+          [tenantAccountId],
+        );
+        expect(first.rows[0]?.id).toBeTruthy();
+        expect(replay.rows[0]?.id).toBe(first.rows[0]?.id);
+      } finally {
+        await db.query("RESET ROLE");
+      }
+
+      const ring = await db.query<{ organization_id: string }>(
+        "SELECT organization_id FROM tenant_key_ring WHERE tenant_account_id = $1",
+        [tenantAccountId],
+      );
+      expect(ring.rows).toEqual([{ organization_id: ORG_C }]);
+    });
+
+    it("cryptographically shreds every wrapped DEK and replays only for the same certificate", async () => {
+      await db.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-d','D','D')",
+        [ORG_D],
+      );
+      const approverUserId = (
+        await db.query(
+          `INSERT INTO "user" (email, email_verified) VALUES ('approver-d@test.invalid', true) RETURNING id`,
+        )
+      ).rows[0].id as string;
+      const actorUserId = (
+        await db.query(
+          `INSERT INTO "user" (email, email_verified) VALUES ('actor-d@test.invalid', true) RETURNING id`,
+        )
+      ).rows[0].id as string;
+      const actorMembershipId = (
+        await db.query(
+          `INSERT INTO membership (user_id, organization_id, status)
+           VALUES ($1,$2,'active') RETURNING id`,
+          [actorUserId, ORG_D],
+        )
+      ).rows[0].id as string;
+      const tenantAccountId = (
+        await db.query(
+          `INSERT INTO tenant_account (
+             organization_id, status, legal_business_name, billing_contact_email,
+             breach_notification_email, retention_ends_at
+           ) VALUES ($1,'destruction_pending','D LLC','billing@d.test','breach@d.test',now() - interval '1 day')
+           RETURNING id`,
+          [ORG_D],
+        )
+      ).rows[0].id as string;
+      const certificateId = (
+        await db.query(
+          `INSERT INTO destruction_certificate (
+             organization_id, data_class, record_count, date_range_start, date_range_end,
+             method, status, approved_by
+           ) VALUES ($1,'saas_tenant_platform_class',2,now() - interval '1 year',now(),
+                     'crypto_erasure','approved',$2)
+           RETURNING id`,
+          [ORG_D, approverUserId],
+        )
+      ).rows[0].id as string;
+      await db.query(
+        `INSERT INTO tenant_key_ring (
+           organization_id, tenant_account_id, current_dek_version,
+           current_dek_kek_wrapped_ciphertext, current_dek_kek_id, prior_dek_versions, dek_created_at
+         ) VALUES ($1,$2,'v2',decode('cafe','hex'),'kek-v2',
+                   '[{"version":"v1","kekWrappedCiphertext":"AA==","kekId":"kek-v1"}]'::jsonb,now())`,
+        [ORG_D, tenantAccountId],
+      );
+
+      await db.query("SET ROLE wardenx_admin");
+      try {
+        await db.query("SELECT set_config('app.destroyed_by_membership_id', $1, false)", [
+          actorMembershipId,
+        ]);
+        const first = await db.query("SELECT m34_destroy_tenant_key_ring($1,$2)", [
+          tenantAccountId,
+          certificateId,
+        ]);
+        const replay = await db.query("SELECT m34_destroy_tenant_key_ring($1,$2)", [
+          tenantAccountId,
+          certificateId,
+        ]);
+        expect(replay.rows).toEqual(first.rows);
+      } finally {
+        await db.query("RESET ROLE");
+      }
+
+      const ring = await db.query(
+        `SELECT current_dek_kek_wrapped_ciphertext, current_dek_kek_id, prior_dek_versions,
+                destroyed_at, destroyed_by_membership_id, destruction_certificate_id
+           FROM tenant_key_ring WHERE tenant_account_id = $1`,
+        [tenantAccountId],
+      );
+      expect(ring.rows[0]).toMatchObject({
+        current_dek_kek_wrapped_ciphertext: null,
+        current_dek_kek_id: null,
+        prior_dek_versions: [],
+        destroyed_by_membership_id: actorMembershipId,
+        destruction_certificate_id: certificateId,
+      });
+      expect(ring.rows[0].destroyed_at).toBeTruthy();
+      const appExecute = await db.query(
+        "SELECT has_function_privilege('wardenx_app','m34_destroy_tenant_key_ring(uuid,uuid)','EXECUTE') AS can",
+      );
+      expect(appExecute.rows[0].can).toBe(false);
     });
 
     it("§3.10 every covered policy keys ONLY on the canonical app.org_id variable", () => {

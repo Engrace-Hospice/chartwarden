@@ -48,8 +48,8 @@ export interface WriteOutboxPort {
 /**
  * The §4.8 BullMQ producer for the M23 worker queues (`claim.submit`, `noe.submit`, `notr.submit`,
  * `validation-run`, `eligibility.refresh`). `enqueue` is idempotency-keyed by `dedupeKey`. The default
- * deny-stub mints a synthetic job id so a dev boot without a queue still returns a well-formed accepted view
- * (the M27 RecomputeEnqueuePort precedent).
+ * Production must bind a worker capability before accepting one of these commands. The default port
+ * refuses with 503 so a request cannot commit a queued submission that no worker can complete.
  */
 export interface JobEnqueuePort {
   enqueue(
@@ -111,7 +111,7 @@ export interface AuditEventPort {
 export interface M23WriteServicePorts {
   /** The §4.10 `m23.*` transactional-outbox emitter (best-effort until the dispatcher binds). */
   readonly outbox?: WriteOutboxPort;
-  /** The §4.8 BullMQ producer for the M23 worker queues (fail-closed synthetic id default). */
+  /** The §4.8 BullMQ producer for the M23 worker queues (fail-closed 503 default). */
   readonly jobs?: JobEnqueuePort;
   /** Resolves a ProviderEntity's CCN for control-number derivation (fail-closed default). */
   readonly providerCcn?: ProviderCcnPort;

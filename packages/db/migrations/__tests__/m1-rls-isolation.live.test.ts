@@ -52,6 +52,7 @@ type SeedIds = {
   featureFlagEvaluation: string;
   idempotencyKey: string;
   outboxEvent: string;
+  outboxConsumerReceipt: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -62,6 +63,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "feature_flag_evaluation", key: "featureFlagEvaluation" },
   { table: "idempotency_key", key: "idempotencyKey" },
   { table: "outbox_event", key: "outboxEvent" },
+  { table: "outbox_consumer_receipt", key: "outboxConsumerReceipt" },
 ];
 
 /** The M1 tenant RLS lives across MORE than one file (unlike a single-module migration): the spine +
@@ -71,6 +73,7 @@ const RLS_FILES = [
   "0001_foundation_rls_roles_partitioning.sql",
   "0002_feature_flag_global_read.sql",
   "0120_foundation_feature_flag_evaluation_rls.sql",
+  "0165_outbox_consumer_receipts.sql",
 ];
 
 describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -175,6 +178,15 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       )
     ).rows[0].id as string;
 
+    const outboxConsumerReceipt = (
+      await db.query(
+        `INSERT INTO outbox_consumer_receipt
+           (organization_id, event_id, consumer_name, consumer_module)
+         VALUES ($1,$2,'m1.live-rls-proof','m1') RETURNING id`,
+        [org, outboxEvent],
+      )
+    ).rows[0].id as string;
+
     return {
       providerEntity,
       location,
@@ -183,6 +195,7 @@ describe.skipIf(!DB_URL)("M1 Foundation — RLS cross-tenant denial — LIVE Pos
       featureFlagEvaluation,
       idempotencyKey,
       outboxEvent,
+      outboxConsumerReceipt,
     };
   }
 

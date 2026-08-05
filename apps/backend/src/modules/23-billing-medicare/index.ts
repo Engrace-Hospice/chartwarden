@@ -107,10 +107,25 @@ export {
   M23_QUEUES,
   type M23WorkerDeps,
   buildM23WorkerDeps,
+  buildM23SubmissionQueuePort,
   registerM23CronWorkers,
   registerM23Workers,
+  registerM23LaunchWorkers,
   scheduleM23Jobs,
+  scheduleM23LaunchJobs,
 } from "./jobs/index";
+
+export {
+  createM23LaunchGateway,
+  m23LaunchGatewayConfigFromEnv,
+} from "./jobs/launch-gateway";
+export type { M23LaunchGatewayConfig } from "./jobs/launch-gateway";
+
+export {
+  buildM23OutboxBackedSubmissionGate,
+  buildM23SubmissionRequestConsumer,
+  M23_SUBMISSION_REQUEST_EVENTS,
+} from "./outbox-consumers/submit-requests";
 
 // §4.4 — the M23→M27 cost-report published seam (PatientDaysProvider): the billed-and-accepted patient-day
 // census the cost-report Worksheet-D reconciliation reads. The composition root registers it into the M1

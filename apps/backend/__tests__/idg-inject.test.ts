@@ -369,7 +369,15 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
       method: "POST",
       url: `/api/v1/idg/meetings/${MEETING_LIVE}/decisions`,
       headers: SUPER,
-      payload: { patientId: PATIENT, payload: { kind: "referral" } },
+      payload: {
+        patientId: PATIENT,
+        payload: {
+          kind: "referral",
+          referralKind: "social_services",
+          referralTargetMdmId: null,
+          rationaleText: "IDG requested a social-services referral.",
+        },
+      },
     });
     expect(decision.statusCode).toBe(201);
     expect(decision.json().wasQuorate).toBe(true);
@@ -527,14 +535,22 @@ describe("M14-idg-inject — known limitation: server-generated sub-resource ids
       method: "POST",
       url: `/api/v1/idg/meetings/${MEETING_KL}/decisions`,
       headers: SUPER,
-      payload: { patientId: PATIENT, payload: { kind: "referral" } },
+      payload: {
+        patientId: PATIENT,
+        payload: {
+          kind: "referral",
+          referralKind: "social_services",
+          referralTargetMdmId: null,
+          rationaleText: "IDG requested a social-services referral.",
+        },
+      },
     });
     const decisionId = decision.json().id as string;
     const decisionPatch = await app.inject({
       method: "PATCH",
       url: `/api/v1/idg/decisions/${decisionId}`,
       headers: SUPER,
-      payload: { payload: { kind: "team_note" } },
+      payload: { payload: { kind: "team_note", noteText: "Updated team note." } },
     });
     expect(decisionPatch.statusCode).toBe(422);
     const decisionSupersede = await app.inject({

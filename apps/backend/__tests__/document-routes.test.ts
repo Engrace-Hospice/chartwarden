@@ -18,12 +18,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import type { DbClient } from "@wardenx/db";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import {
   type DocumentRouteService,
   type SignedUrlObjectResolver,
+  createDbDocumentRouteService,
   createInMemoryDocumentBackend,
   createSignedUrlService,
   registerDocumentAbacPredicates,
@@ -183,6 +185,31 @@ describe("M22-T07 — document routes (§4.1, §4.6 RBAC gating)", () => {
       payload: { retentionClass: "clinical_record", aggregateType: "encounter", title: "x" },
     });
     expect(res.statusCode).toBe(403);
+  });
+
+  it("returns 503 and does not touch the DB when production object storage is unavailable", async () => {
+    const untouchedDb = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("unavailable upload must not touch the database");
+        },
+      },
+    ) as DbClient;
+    const { app } = makeServer(createDbDocumentRouteService(untouchedDb));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: RN,
+      payload: {
+        retentionClass: "clinical_record",
+        aggregateType: "encounter",
+        title: "Visit note",
+        patientId: PATIENT,
+      },
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ error: { code: "DEGRADED" } });
   });
 
   it("a cross-tenant document is a non-leaking 404", async () => {

@@ -6,10 +6,11 @@
 // fills) run as real Drizzle queries over the M22-owned `documents/*` tables inside `withOrgContext`, so
 // RLS scopes every row by `app.org_id` as the unprivileged `wardenx_app` role (`form_template` /
 // `form_template_version` are NON_ORG_SCOPED platform reference — the dual-grant read-all RLS lets any
-// tenant read them). The full WRITE lifecycle is now live: upload/version (the append-only version ledger) /
-// tag / patch (legal-hold-aware, 409), intake batch upload + classify-confirm + the extraction review machine
+// tenant read them). The metadata/review WRITE lifecycle is live: tag / patch (legal-hold-aware, 409),
+// intake batch upload + classify-confirm + the extraction review machine
 // (open / record-decision / bulk-approve / resolve-discrepancy / complete / abandon / discard), tenant overlay
-// publish (§2.5 optimistic concurrency, 412), and render retry. M22 route writes emit NO producer outbox event
+// publish (§2.5 optimistic concurrency, 412), and render retry. Binary upload/version creation returns a typed
+// 503 until object bytes + verified size/hash can commit safely. M22 route writes emit NO producer outbox event
 // (M22's outbox is the CONSUMER-side render-request handshake, elsewhere) — so this backend takes no publisher.
 //
 // Documented compromises: `form_template*` is platform reference (SELECT only for wardenx_app), so
@@ -25,7 +26,7 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { type CursorPage, paginate } from "./routes/concurrency";
@@ -61,10 +62,6 @@ const READ_WINDOW = 1000;
  * `*_by_membership_id` columns are plain uuid (no SQL FK), so a sentinel satisfies NOT NULL; the M4 audit
  * actor is still NULL under `withOrgContext(userId:"")`. */
 const SENTINEL_MEMBERSHIP = "00000000-0000-4000-8000-0000000000c1";
-/** The zero SHA-256 placeholder for a version row whose object bytes are written by the storage adapter
- * (unwired); the real digest lands with the presigner pipeline. */
-const ZERO_SHA256 = "0".repeat(64);
-
 const iso = (v: Date | string): string => (v instanceof Date ? v.toISOString() : String(v));
 
 const withOrg = <T>(
@@ -74,7 +71,8 @@ const withOrg = <T>(
 ): Promise<T> => withOrgContext(db, { organizationId, userId: "" }, (tx) => fn(tx as DbClient));
 
 /**
- * The production, RLS-backed DocumentRouteService. Reads are real; writes fail-closed 501.
+ * The production, RLS-backed DocumentRouteService. Reads and metadata/review writes are real; binary
+ * upload/version creation fails closed with 503 until object storage is bound.
  * Org is bound from the request context by the caller and passed as `organizationId` — never the body.
  */
 export function createDbDocumentRouteService(db: DbClient): DocumentRouteService {
@@ -441,86 +439,17 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
     },
 
     // ── Document writes (append-only version ledger; no producer outbox) ─────────────────────────────
-    async uploadDocument(organizationId, actorUserId, args) {
-      return withOrg(db, organizationId, async (tx) => {
-        const actor = actorUserId || SENTINEL_MEMBERSHIP;
-        const [doc] = await tx
-          .insert(DOC)
-          .values({
-            organizationId,
-            patientId: args.patientId,
-            admissionId: args.admissionId,
-            retentionClass: args.retentionClass as never,
-            sourceKind: "user_upload",
-            aggregateType: args.aggregateType as never,
-            aggregateId: args.aggregateId,
-            title: args.title,
-            patientFacing: args.patientFacing,
-            createdByMembershipId: actor,
-          })
-          .returning({ id: DOC.id });
-        if (!doc) throw new Error("document insert returned no row");
-        const objectKey = `documents/${args.patientId ?? "unbound"}/${args.aggregateType}/${doc.id}/v1.pdf`;
-        const [ver] = await tx
-          .insert(DV)
-          .values({
-            organizationId,
-            documentId: doc.id,
-            versionNumber: "1",
-            minioObjectKey: objectKey,
-            mimeType: "application/pdf",
-            byteSize: "0",
-            sha256Hex: ZERO_SHA256,
-            uploadedByMembershipId: actor,
-            uploadedByKind: "user",
-          })
-          .returning({ id: DV.id });
-        await tx
-          .update(DOC)
-          .set({ activeVersionId: ver?.id, updatedAt: new Date() })
-          .where(eq(DOC.id, doc.id));
-        return loadDocRow(tx, organizationId, doc.id);
-      });
+    async uploadDocument() {
+      throw new DegradedError(
+        "document-storage",
+        "uploads are unavailable until object bytes, verified byte size, and SHA-256 persistence are bound",
+      );
     },
-    async uploadVersion(organizationId, documentId) {
-      return withOrg(db, organizationId, async (tx) => {
-        const doc = await loadDocRow(tx, organizationId, documentId); // 404 for a missing/cross-tenant doc
-        await assertNoHold(tx, documentId);
-        const existing = await tx
-          .select({ id: DV.id })
-          .from(DV)
-          .where(eq(DV.documentId, documentId));
-        const n = existing.length + 1;
-        const objectKey = `documents/${doc.patientId ?? "unbound"}/${doc.aggregateType}/${documentId}/v${n}.pdf`;
-        const [ver] = await tx
-          .insert(DV)
-          .values({
-            organizationId,
-            documentId,
-            versionNumber: String(n),
-            minioObjectKey: objectKey,
-            mimeType: "application/pdf",
-            byteSize: "0",
-            sha256Hex: ZERO_SHA256,
-            uploadedByMembershipId: SENTINEL_MEMBERSHIP,
-            uploadedByKind: "user",
-          })
-          .returning({ id: DV.id, createdAt: DV.createdAt });
-        if (!ver) throw new Error("document_version insert returned no row");
-        await tx
-          .update(DOC)
-          .set({ activeVersionId: ver.id, updatedAt: new Date() })
-          .where(eq(DOC.id, documentId));
-        return {
-          id: ver.id,
-          documentId,
-          versionNumber: n,
-          mimeType: "application/pdf",
-          byteSize: 0,
-          uploadedAt: iso(ver.createdAt),
-          createdAt: iso(ver.createdAt),
-        };
-      });
+    async uploadVersion() {
+      throw new DegradedError(
+        "document-storage",
+        "new versions are unavailable until object bytes, verified byte size, and SHA-256 persistence are bound",
+      );
     },
     async patchDocument(organizationId, documentId, patch) {
       return withOrg(db, organizationId, async (tx) => {

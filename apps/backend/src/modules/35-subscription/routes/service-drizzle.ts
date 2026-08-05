@@ -637,7 +637,7 @@ export function buildDrizzleM35RouteService(
           isBlockedByBilling: sub.status === "suspended",
           dunningStage: stage,
           daysUntilSuspension: null,
-          hasValidPaymentMethod: pm !== null && pm.isActive,
+          hasValidPaymentMethod: pm?.isActive ?? false,
           paymentMethodExpiresAt: dateOnly(pm?.expiresAt),
         };
       });

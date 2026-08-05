@@ -14,14 +14,13 @@
 // `payloadSchema` + declared consumers the dispatcher validates each publish against, so "DB updated but the
 // event never went out" is closed in the same transaction as the mutation (M1 §25.5/§25.6).
 //
-// Phase-1 boundary (§0): events whose declared consumers are future-wave modules (M16 bereavement — Phase 2;
-// M28 FHIR projection; M22 PDF render — also Wave F but lands after M14) are PUBLISHED now by M14 — the
-// producer side ships, the consumer attaches when that module locks. M14 never calls those modules' routes;
-// it only emits the typed outbox event. **`idg.decision_recorded` wires LIVE the M7 `apply-idg-decision` /
-// M11 `idg-decision-intake` / M12 medication-recommendation consumers declared inert in Waves C–E.**
+// M14 publishes every catalogued event without calling consumer routes. `idg.decision_recorded` is the
+// command seam for M7/M11/M12/M16 only. M22 rendering uses the dedicated packet/minutes events, while
+// M28/M30/M33 read M14's published provider seams; listing those readers here would invent outbox work.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
 import type { ModuleEventContribution, ModuleToken } from "@wardenx/types";
+import { IDG_DECISION_PAYLOAD_SCHEMA } from "./decision-payload-schema";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });
@@ -234,7 +233,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       patientId: id,
       organizationId: id,
       decisionKind: id,
-      payload: Type.Unknown(),
+      payload: IDG_DECISION_PAYLOAD_SCHEMA,
       payloadSchemaVersion: Type.Literal("2026-01-v1"),
       recordedByMembershipId: id,
       recordedAt: isoInstant,
@@ -242,7 +241,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       wasQuorate: Type.Boolean(),
       quorumSnapshot: Type.Unknown(),
     }),
-    declaredConsumers: ["m7", "m11", "m12", "m16", "m22", "m28", "m30", "m33"],
+    declaredConsumers: ["m7", "m11", "m12", "m16"],
     isOutboxOnly: true,
   },
   // ── adjournment + cancel/reschedule (§2.2 / §4.4) ───────────────────────────────────────────────────────

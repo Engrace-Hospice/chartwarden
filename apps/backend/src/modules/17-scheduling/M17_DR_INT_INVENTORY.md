@@ -53,7 +53,7 @@ the inbox; already-published visits read normally.
 | consume (seam) | M40 | `Location` / `Facility` + the discipline catalog the pre-schedule `discipline_matches_visit` predicate re-reads | minimal (ids) |
 | consume (seam, deny-stub) | M15 (Phase 2) | `VolunteerComplianceProvider` (pre-schedule volunteer gate) + `SupervisoryCadenceReader` (advisory) — fail-closed deny-stubs until M15 locks (`VOLUNTEER_GATE_UNMET`), per M17-F06 / ADR-0009 | minimal (ids) |
 | consume (external, adapter) | OSRM (`packages/routing-client`) | `RoutingProvider.matrix` / `directions` — **coords-only, no PHI** (D9); circuit-breaker + 24h SHA-256 coord-hash cache; the §25.14 adapter boundary | **no PHI** (coords only) |
-| serve (seam) | M8/M14/M18/M20 | `VisitReader` (the visit read path — **CLOSES M8's visit-seeding inert consumer, M8 D9**; M18 EVV geofence target; M14 IDG since-meeting) registered in the M1 registry (§4.3) | yes (ids) |
+| serve (seam) | M8/M14/M18/M20 | `VisitReader` (the visit read path; M8's `m17.visit.published` seed is live, M18 EVV geofence target, M14 IDG since-meeting) registered in the M1 registry (§4.3) | yes (ids) |
 | serve (seam) | M5/M19/M20 | `VisitAssignmentReader` (the §4.5 D11 caseload contribution M5's `patientCaseloadProvider` reads) | yes (ids) |
 | serve (seam) | M31 (Phase 2) | `PortalVisitReader.upcomingForPatient` — lay-language projection only; `scheduler_internal_notes` excluded | yes (lay) |
 | serve (seam) | M30/M33 | `VisitMetricsProvider` (on-time / no-show / reschedule + route-efficiency measures) | minimal (ids) |

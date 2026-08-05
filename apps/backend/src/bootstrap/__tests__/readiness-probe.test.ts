@@ -58,6 +58,20 @@ describe("buildReadinessProbe", () => {
     await probe();
     expect(log).toHaveBeenCalledWith(expect.stringContaining("valkey"));
   });
+
+  it("reports intentionally disabled product capabilities without failing host readiness", async () => {
+    const app = Fastify();
+    registerHealthRoutes(
+      app,
+      buildReadinessProbe({ capabilities: { m23AsyncWorkers: "disabled" } }),
+    );
+    const res = await app.inject({ method: "GET", url: "/ready" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "ready",
+      checks: { capabilities: { m23AsyncWorkers: "disabled" } },
+    });
+  });
 });
 
 describe("/ready route with the real probe wired in", () => {

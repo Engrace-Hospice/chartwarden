@@ -25,34 +25,46 @@ import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predi
 import { createDbDocumentBackend } from "./documents-route-service-db";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
+import { createVerifiedUploadService } from "./routes/verified-upload";
+import { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
+import {
+  createDocumentStorageProvider,
+  createS3ObjectStore,
+  s3ObjectStoreConfigFromEnv,
+} from "./seams/index";
 
 /**
  * M22L-T01 — mount the M22 document routes over the PRODUCTION Drizzle read backend + ABAC/object
  * resolvers (RLS-scoped under `withOrgContext`). Called from the composition root's db branch. Reads are
  * live (document library + detail, version ledger, intake batch/classification/job/candidate/review,
- * form-template catalog + overlays + fills); writes fail-closed 501 until the M22L-T02+ Drizzle write
- * lifecycle lands. The signed-URL presigner stays the throwing `DegradedError` stub — M22's object-storage
+ * form-template catalog + overlays + fills); metadata/review writes are live, while upload/version creation
+ * and signed-URL presigning stay typed `DegradedError` refusals until M22's object-storage
  * adapter is unwired, and a presign resolving to a URL nothing can serve is a download failure a clinician
  * reads as data loss (a WORKING one would hand out PHI from a store with no BAA gate). Replaces the
  * in-memory clinical-core scaffold mount for M22.
  */
 export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
   const backend = createDbDocumentBackend(db);
+  const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
+  const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
   _registerM22Abac({ resolver: backend.abacResolver });
   _registerM22Routes(app, {
     service: backend.service,
     signedUrl: _createSignedUrlService({
-      storage: {
-        presignDownload: () => {
-          throw new DegradedError(
-            "document-storage",
-            "no object-storage presigner is bound (M22 storage adapter not wired)",
-          );
-        },
-      },
+      storage: objects
+        ? createDocumentStorageProvider({ objects })
+        : {
+            presignDownload: () => {
+              throw new DegradedError(
+                "document-storage",
+                "no object-storage presigner is bound (MINIO_* is not configured)",
+              );
+            },
+          },
       resolver: backend.objectResolver,
     }),
   });
+  registerVerifiedUploadRoutes(app, createVerifiedUploadService({ db, objects }));
 }
 
 export {
@@ -94,6 +106,13 @@ export {
   registerDocumentAbacPredicates,
 } from "./abac-predicates";
 export { type DocumentRouteDeps, registerDocumentRoutes } from "./routes/documents-routes";
+export { registerVerifiedUploadRoutes } from "./routes/verified-upload-routes";
+export {
+  type InitiateVerifiedUploadInput,
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  type VerifiedUploadService,
+  createVerifiedUploadService,
+} from "./routes/verified-upload";
 export {
   type DocumentBackendInspect,
   type DocumentRouteSeed,

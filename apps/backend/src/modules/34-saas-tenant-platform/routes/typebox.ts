@@ -76,7 +76,7 @@ export const DSAR_REQUEST_SOURCE = [
 ] as const;
 export const QUALIFY_DECISION = ["qualified", "rejected"] as const;
 
-// ── Path params (uuid-shaped ids; the signup tokenHash is a 64-hex SHA256) ──────────────────────────────
+// ── Path params ──────────────────────────────────────────────────────────────────────────────────────
 export const OrgIdParamsSchema = Type.Object({
   orgId: Type.String({ minLength: 1, maxLength: 64 }),
 });
@@ -93,9 +93,9 @@ export const TaskIdParamsSchema = Type.Object({
 export const FlagKeyParamsSchema = Type.Object({
   flagKey: Type.String({ minLength: 1, maxLength: 128 }),
 });
-/** The public token-consumption routes key off the SHA256 hex of the issued token. */
+/** Raw single-use credential; the service hashes it before lookup. A stored hash is never a bearer token. */
 export const TokenHashParamsSchema = Type.Object({
-  tokenHash: Type.String({ minLength: 16, maxLength: 128, pattern: "^[0-9a-fA-F]{16,128}$" }),
+  tokenHash: Type.String({ minLength: 32, maxLength: 128, pattern: "^[0-9A-Za-z_-]{32,128}$" }),
 });
 
 // ── Public signup-intent bodies (§3.11 / §7.1 Phase-3; routes/public/signup-intents.ts) ─────────────────

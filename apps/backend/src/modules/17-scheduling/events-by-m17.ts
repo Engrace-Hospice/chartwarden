@@ -12,14 +12,14 @@
 // closed in the same transaction as the mutation (M1 §25.5/§25.6). Idempotency: every emit is keyed on
 // `(visitId, outboxTopic, transitionedAt)` via the M1 outbox helper.
 //
-// Phase-1 boundary (§0): M17 PUBLISHES the full set now — the producer side ships; the consumer attaches when
-// that module locks. **`m17.visit.published` wires LIVE M8's visit-seeding inert consumer (M8 D9)** — an M8
-// encounter authored against a `visit_id` now has its seed. M18 (Wave F) consumes `published`/`started`/
-// `late_check_out_suspected` for the EVV bracket + geofence seed. M5's `patientCaseloadProvider` reads the
+// M17 publishes the full set now. `m17.visit.published` binds M8's encounter seed and M18's EVV visit
+// registration. M31 and M33 consume M17 through PortalVisitReader/VisitMetricsProvider seams, not this
+// command event. M5's
+// `patientCaseloadProvider` reads the
 // `assigned`/`unassigned` caseload-contribution stream (§4.5 D11). The Phase-2 consumers — **M19** on-call
 // triage (`no_show_detected` / `reassignment_needed` / `time_off.approved`), **M31** portal upcoming-visit
 // notifications (`published` / `rescheduled` / `cancelled` / `caregiver_reminder_due`), and the M15/M16
-// discipline-care-plan + bereavement seam consumers — stay inert deny-stubs until those modules land; M17
+// discipline-care-plan + bereavement seam consumers — stay fail-closed until handlers bind; M17
 // never calls their routes, it only emits the typed outbox event. Consumer dedup is keyed on
 // `(eventId, consumerName)` per the M1 outbox-consumer pattern.
 import { Type } from "@sinclair/typebox";
@@ -74,6 +74,12 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       patientId: id,
       admissionId: id,
       assignedMembershipId: id,
+      assignedDiscipline: id,
+      encounterType: id,
+      serviceDate: isoDate,
+      organizationId: id,
+      providerEntityId: nullableId,
+      locationId: nullableId,
       visitPurpose: id,
       visitSetting: id,
       scheduledStartedAt: isoInstant,
@@ -83,7 +89,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       parentRecurringVisitId: nullableId,
       parentProposalId: nullableId,
     }),
-    declaredConsumers: ["m8", "m18", "m31", "m33"],
+    declaredConsumers: ["m8", "m18"],
     isOutboxOnly: true,
   },
   {

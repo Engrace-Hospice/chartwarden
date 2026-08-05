@@ -48,6 +48,7 @@ type SeedIds = {
   evvGeofenceEvaluation: string;
   evvMissingResolution: string;
   evvAggregatorSubmission: string;
+  evvVisitRegistration: string;
 };
 
 // All SIX M18-owned tables are org-scoped (organization_id NOT NULL) and get an app.org_id RLS policy. There are
@@ -60,6 +61,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "evv_device", key: "evvDevice" },
   { table: "evv_missing_resolution", key: "evvMissingResolution" },
   { table: "evv_aggregator_submission", key: "evvAggregatorSubmission" },
+  { table: "evv_visit_registration", key: "evvVisitRegistration" },
 ];
 
 describe.skipIf(!DB_URL)("M18 EVV — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -188,6 +190,26 @@ describe.skipIf(!DB_URL)("M18 EVV — RLS cross-tenant denial — LIVE Postgres 
       )
     ).rows[0].id as string;
 
+    const evvVisitRegistration = (
+      await db.query(
+        `INSERT INTO evv_visit_registration (organization_id, provider_entity_id, location_id,
+           visit_id, patient_id, admission_id, assigned_membership_id, assigned_discipline,
+           service_type_code, scheduled_started_at, scheduled_ended_at, source_outbox_event_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'rn','routine_visit',now(),now() + interval '1 hour',$8)
+         RETURNING id`,
+        [
+          org,
+          providerEntity,
+          location,
+          VISIT,
+          PATIENT,
+          `7777777${n}-7777-4777-8777-777777777777`,
+          membership,
+          `8888888${n}-8888-4888-8888-888888888888`,
+        ],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -198,6 +220,7 @@ describe.skipIf(!DB_URL)("M18 EVV — RLS cross-tenant denial — LIVE Postgres 
       evvGeofenceEvaluation,
       evvMissingResolution,
       evvAggregatorSubmission,
+      evvVisitRegistration,
     };
   }
 
@@ -231,7 +254,9 @@ describe.skipIf(!DB_URL)("M18 EVV — RLS cross-tenant denial — LIVE Postgres 
   });
 
   it("every M18 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(join(MIGRATIONS_DIR, "0047_evv_m18_rls_audit_triggers.sql"), "utf8");
+    const rls = ["0047_evv_m18_rls_audit_triggers.sql", "0169_evv_visit_registration.sql"]
+      .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
+      .join("\n");
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
       (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );

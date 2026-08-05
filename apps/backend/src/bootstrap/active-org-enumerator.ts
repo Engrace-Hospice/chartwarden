@@ -13,7 +13,7 @@
 // are excluded — a cron must not fan out to a not-yet-activated or suspended tenant).
 import { type DbClient, schema } from "@wardenx/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
-import { eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 
 /** One active org the enumeration returns (structurally the M30 `ActiveOrg` / any cron's fan-out unit). */
 export interface ActiveOrgRow {
@@ -34,6 +34,8 @@ export interface ActiveOrgEnumeratorDeps {
   readonly jobId: string;
   /** Recorded in the bypass audit event. */
   readonly reason?: string;
+  /** Defaults to ['active']; the outbox relay also includes created/suspended orgs with pending events. */
+  readonly statuses?: readonly ("created" | "active" | "suspended" | "closed")[];
 }
 
 /**
@@ -56,7 +58,7 @@ export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveO
           tx
             .select({ organizationId: schema.organizations.id })
             .from(schema.organizations)
-            .where(eq(schema.organizations.status, "active")),
+            .where(inArray(schema.organizations.status, [...(deps.statuses ?? ["active"])])),
       ),
   };
 }

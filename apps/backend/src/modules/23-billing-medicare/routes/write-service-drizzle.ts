@@ -272,6 +272,19 @@ const denyAudit: AuditEventPort = {
   },
 };
 
+/** Phase-0 containment: no M23 job may be accepted until its worker's external ports are live. */
+export function buildRefusingM23JobEnqueue(): JobEnqueuePort {
+  return {
+    async enqueue(queueName) {
+      throw new WardenXError(
+        "SEAM_UNBOUND",
+        `billing worker capability '${queueName}' is not available`,
+        503,
+      );
+    },
+  };
+}
+
 /**
  * Build the Drizzle-backed {@link M23WriteRouteService}. `db` is the PRIMARY (RLS-enforced) client; every
  * method opens the actor's own `withOrgContext` transaction so Postgres scopes to `app.org_id`.
@@ -281,7 +294,7 @@ export function buildDrizzleM23WriteService(
   ports: M23WriteServicePorts = {},
 ): M23WriteRouteService {
   const now = ports.now ?? (() => new Date());
-  const jobs: JobEnqueuePort = ports.jobs ?? { enqueue: async () => ({ jobId: randomUUID() }) };
+  const jobs: JobEnqueuePort = ports.jobs ?? buildRefusingM23JobEnqueue();
   const providerCcn = ports.providerCcn ?? denyCcn;
   const secretCipher = ports.secretCipher ?? denyCipher;
   const auditPort = ports.audit ?? denyAudit;

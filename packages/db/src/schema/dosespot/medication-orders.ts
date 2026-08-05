@@ -94,6 +94,7 @@ export const medicationOrders = pgTable(
     replacesMedicationOrderId: uuid("replaces_medication_order_id"), // self-ref correction chain
     derivedFromRefillId: uuid("derived_from_refill_id"), // refill_request mint
     derivedFromHistoryId: uuid("derived_from_history_id"), // medhx reconciliation carry-forward
+    triggeringIdgDecisionId: uuid("triggering_idg_decision_id"), // M14 decision provenance
 
     // Cosign control.
     cosignRequired: boolean("cosign_required").notNull().default(false),
@@ -137,6 +138,9 @@ export const medicationOrders = pgTable(
     byDosespotPrescriptionId: index("medication_order_dosespot_prescription_idx")
       .on(t.dosespotPrescriptionId)
       .where(sql`dosespot_prescription_id IS NOT NULL`),
+    byTriggeringIdgDecision: index("medication_order_triggering_idg_decision_idx")
+      .on(t.organizationId, t.triggeringIdgDecisionId)
+      .where(sql`triggering_idg_decision_id IS NOT NULL`),
     byCreatedAt: index("medication_order_created_idx").on(t.createdAt),
     controlledScheduleConsistency: check(
       "medication_order_controlled_schedule_consistency",

@@ -52,6 +52,7 @@ import { localDateInTimeZone } from "@wardenx/shared/dates";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
   ConflictError,
+  type EncounterType,
   ForbiddenError,
   NotFoundError,
   type TimeOffKind,
@@ -177,6 +178,26 @@ const NOOP_OUTBOX: SchedulingWriteOutboxPort = { async publish() {} };
  * (compromise #2: the real M2 discipline resolver is not threaded into the DB backend). */
 const disciplineFor = (purpose: VisitPurpose): SchedulingDiscipline =>
   VISIT_PURPOSE_DISCIPLINES[purpose][0] as SchedulingDiscipline;
+
+const encounterTypeFor = (purpose: VisitPurpose): EncounterType => {
+  switch (purpose) {
+    case "f2f":
+      return "face_to_face";
+    case "recert":
+      return "recert_visit";
+    case "aide_poc":
+      return "chha_visit";
+    case "msw_assessment":
+    case "msw_followup":
+    case "chaplain_assessment":
+    case "chaplain_visit":
+    case "volunteer_visit":
+    case "admission_visit":
+      return purpose;
+    default:
+      return "routine_visit";
+  }
+};
 
 /**
  * The production, RLS-backed scheduling backend (M17L reads + the write lifecycle). Also implements
@@ -360,6 +381,12 @@ export function createDbSchedulingBackend(
       patientId: input.patientId,
       admissionId: input.admissionId,
       assignedMembershipId: input.assignedMembershipId,
+      assignedDiscipline: discipline,
+      encounterType: encounterTypeFor(input.visitPurpose),
+      serviceDate,
+      organizationId: orgId,
+      providerEntityId,
+      locationId,
       visitPurpose: input.visitPurpose,
       visitSetting: input.visitSetting,
       scheduledStartedAt: input.scheduledStartedAt,

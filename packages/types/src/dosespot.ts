@@ -134,7 +134,8 @@ export type M12TableName =
   | "refill_request"
   | "epcs_signing_attempt"
   | "dosespot_prescriber"
-  | "dosespot_webhook_event";
+  | "dosespot_webhook_event"
+  | "medication_order_idg_decision_application";
 
 /** Per-table audit denylist (§7.6). Empty array = no free-text/PHI column on that table. */
 export const M12_AUDIT_DENYLIST: { readonly [K in M12TableName]: readonly string[] } = {
@@ -144,6 +145,7 @@ export const M12_AUDIT_DENYLIST: { readonly [K in M12TableName]: readonly string
   epcs_signing_attempt: [],
   dosespot_prescriber: [],
   dosespot_webhook_event: ["raw_body_cipher", "raw_body_dek"],
+  medication_order_idg_decision_application: [],
 } as const;
 
 // ── §4.4 outbox event names (the canonical `m12.*` wire identifiers the dispatcher + arch:gaps validate) ─

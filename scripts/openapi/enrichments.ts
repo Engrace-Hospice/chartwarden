@@ -1612,12 +1612,16 @@ import {
   ClassificationListResponseSchema as M22ClassificationListResponseSchema,
   ClassificationQuerySchema as M22ClassificationQuerySchema,
   CompleteReviewRequest as M22CompleteReviewRequest,
+  CompleteVerifiedUploadRequest as M22CompleteVerifiedUploadRequest,
+  CompleteVerifiedUploadResponse as M22CompleteVerifiedUploadResponse,
   ConfirmClassificationRequest as M22ConfirmClassificationRequest,
   DiscardBatchRequest as M22DiscardBatchRequest,
   ExportPhiBundleRequest as M22ExportPhiBundleRequest,
   FormFillResponseSchema as M22FormFillResponseSchema,
   FormTemplateResponseSchema as M22FormTemplateResponseSchema,
   FormTemplateVersionResponseSchema as M22FormTemplateVersionResponseSchema,
+  InitiateVerifiedUploadRequest as M22InitiateVerifiedUploadRequest,
+  InitiateVerifiedUploadResponse as M22InitiateVerifiedUploadResponse,
   IntakeUploadRequest as M22IntakeUploadRequest,
   JobDetailResponseSchema as M22JobDetailResponseSchema,
   JobQuerySchema as M22JobQuerySchema,
@@ -6823,6 +6827,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
 
 // ── M22 Document Management (33 routes) ───────────────────────────────────────────────────────────
 Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/document-uploads": {
+    summary: "Initiate a checksum-enforced direct document upload",
+    body: M22InitiateVerifiedUploadRequest,
+    response: M22InitiateVerifiedUploadResponse,
+  },
+  "POST /api/v1/document-uploads/:id/complete": {
+    summary: "Verify uploaded object metadata and atomically commit its document version",
+    body: M22CompleteVerifiedUploadRequest,
+    response: M22CompleteVerifiedUploadResponse,
+  },
+  "DELETE /api/v1/document-uploads/:id": {
+    summary: "Abort a pending document upload and destroy its staged object versions",
+  },
   "POST /api/v1/documents": {
     summary: "Upload a new document (creates version v1)",
     body: M22UploadDocumentRequest,

@@ -9,7 +9,10 @@ import type { BillingDb } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import type { M23WriteActor } from "../routes/actor";
-import { buildDrizzleM23WriteService } from "../routes/write-service-drizzle";
+import {
+  buildDrizzleM23WriteService,
+  buildRefusingM23JobEnqueue,
+} from "../routes/write-service-drizzle";
 
 /** Throws on any property access — proves a rejected call never touches the database. */
 const UNTOUCHED_DB = new Proxy(
@@ -81,5 +84,13 @@ describe("buildDrizzleM23WriteService — forwardDateSequestrationPolicy forward
     } catch (e) {
       expect(e).toBeInstanceOf(WardenXError);
     }
+  });
+});
+
+describe("M23 production queue containment", () => {
+  it("refuses every job type instead of minting a synthetic accepted id", async () => {
+    await expect(
+      buildRefusingM23JobEnqueue().enqueue("claim.submit", "dedupe", { claimId: "claim-1" }),
+    ).rejects.toMatchObject({ code: "SEAM_UNBOUND", statusCode: 503 });
   });
 });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { audit } from "@wardenx/audit";
 // @wardenx/backend — Fastify host entry + COMPOSITION ROOT (not in any module codePath, so
 // exempt from the module-boundary import rules — it may import every module's init). It builds
@@ -17,12 +17,12 @@ import {
   registerIdentityAuth,
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
-import { type DbClient, createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
-import { registerPlatformJob, withPlatformContext } from "@wardenx/tenancy";
-import { DegradedError } from "@wardenx/types";
+import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
+import { DegradedError, WardenXError } from "@wardenx/types";
 import { type ConnectionOptions, Queue, type Worker } from "bullmq";
-import { sql } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
@@ -36,6 +36,10 @@ import {
   registerEraser,
   registerSeam,
 } from "./bootstrap/index";
+import {
+  m34ActiveMembershipUserId,
+  m34SoleTenantUserIds,
+} from "./bootstrap/m34-identity-shred-subjects";
 import {
   buildMetricsRegistry,
   mountMetricsRoute,
@@ -86,6 +90,7 @@ import {
   mountAuditRoutes,
   registerAuditErasers,
 } from "./modules/04-audit/index";
+import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
   buildM29ProposalApplierConsumer,
@@ -97,8 +102,11 @@ import {
   registerPatientErasers,
   registerPatientSeams,
 } from "./modules/05-patient/index";
+import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 import {
   M6_OUTBOX_EVENTS,
+  activeAdmissionDraftContextForPatient,
+  admissionIsActiveForOrg,
   buildM6ProposalAcceptedConsumer,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
@@ -111,6 +119,7 @@ import {
 import {
   M7_OUTBOX_EVENTS,
   M7_PLATFORM_JOB_ID,
+  buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
@@ -126,6 +135,7 @@ import {
 } from "./modules/07-care-plan/index";
 import {
   M8_OUTBOX_EVENTS,
+  buildM8VisitPublishedConsumer,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   mountEncounterRoutes,
@@ -165,6 +175,7 @@ import {
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
+  buildM11IdgDecisionConsumer,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
   createMedicationOrderSignatureCascade,
@@ -176,6 +187,7 @@ import {
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  buildM12IdgDecisionConsumer,
   createDrizzleDoseSpotSeamStore,
   createDrizzleMedicationOrderEraseStore,
   mountDoseSpotRoutes,
@@ -222,6 +234,7 @@ import {
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
+  buildM16IdgDecisionConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   denyStubBereavementAbacResolver,
@@ -240,6 +253,7 @@ import {
 } from "./modules/17-scheduling/index";
 import {
   M18_OUTBOX_EVENTS,
+  buildM18VisitPublishedConsumer,
   createDrizzleEvvSeamStore,
   mountEvvRoutes,
   registerEvvAbacPredicates,
@@ -286,8 +300,6 @@ import {
   registerSupplyEraser,
 } from "./modules/21-supplies/index";
 import {
-  M22_DOCUMENT_REQUEST_EVENTS,
-  M22_LAB_RESULTS_EVENT,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createRefusingObjectStore,
@@ -305,21 +317,26 @@ import {
 // eraser (registerEraser INJECTED — M23 cannot import the M1 bootstrap registry), and the §4.8 BullMQ workers
 // (claim/NOE/NOTR submit[.retry], 999/277CA ack pulls, eligibility refresh, NOE/NOTR window-watch, eligibility
 // stale-watch, MAC-portal health, the revalidate consumer). Every worker infra/seam/x12/portal port stays
-// fail-closed-unbound at boot (RULE 4); the assembly reader seams + the live MAC/X12 binds are follow-ups.
+// fail-closed-unbound at boot (RULE 4), so Phase-0 containment disables their construction; the assembly
+// reader seams + the live MAC/X12 binds are follow-ups.
 import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildM23BootAssemblyService,
+  buildM23OutboxBackedSubmissionGate,
+  buildM23SubmissionQueuePort,
+  buildM23SubmissionRequestConsumer,
   buildM23WorkerDeps,
   createDrizzleBillingEraseStore,
+  createM23LaunchGateway,
+  m23LaunchGatewayConfigFromEnv,
   mountM23Routes,
   registerBillingErasers,
   registerM23AbacPredicates,
-  registerM23CronWorkers,
+  registerM23LaunchWorkers,
   registerM23PublishedSeams,
-  registerM23Workers,
-  scheduleM23Jobs,
+  scheduleM23LaunchJobs,
 } from "./modules/23-billing-medicare/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -505,20 +522,27 @@ import {
 import {
   type BootstrapModule34Deps,
   M34_OUTBOX_EVENTS,
+  type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
   buildDrizzlePlatformService,
   buildDrizzleTenantService,
+  buildM34ProvisionQueue,
+  buildM34ProvisionStartedConsumer,
   buildM34WorkerDeps,
   buildPlatformEnqueue,
   buildTenantEnqueue,
   createDrizzleSaasTenantPlatformEraseStore,
+  createM34ProvisionGateway,
+  enableM34JobCapability,
+  m34ProvisionGatewayConfigFromEnv,
   mountTenantPlatformRoutes,
   registerLiveM34Seams,
-  registerM34Workers,
+  registerM34DekRotateWorker,
+  registerM34ProvisionWorker,
+  registerM34ShredWorker,
   registerSaasTenantPlatformErasers,
   registerTenantPlatformAbacPredicates,
-  scheduleM34Jobs,
   validateModule34Seams,
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
@@ -610,6 +634,7 @@ export function wireModuleSeams(
   deps: {
     sessionContextStore?: SessionContextStore;
     db?: DbClient;
+    organizationDb?: DbClient;
     /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
      * `m5.patient.updated` emit rides it. Absent on slice/test boots (mutator stays in-memory). */
     outboxPublisher?: OutboxPublishPort;
@@ -617,7 +642,11 @@ export function wireModuleSeams(
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
   // a DB client is present); the slice/tests fall back to M2's in-memory store.
-  registerIdentitySeams({ sessions: deps.sessionContextStore, db: deps.db }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
+  registerIdentitySeams({
+    sessions: deps.sessionContextStore,
+    db: deps.db,
+    organizationDb: deps.organizationDb,
+  }); // M2 — SessionContextResolver + AuditorSessionMinter + TenantOrgCreationProvider (§4.7 / M34 §7.1)
   // M3 — register the live RBAC resolver (DB-backed effective permissions) when a DB client is present,
   // turning `requirePermission` from fail-closed to real resolution. Slice/tests keep the default.
   // TASK-004 — the handle is CAPTURED so the M3 route mount binds the SAME resolver + §2.5
@@ -1221,7 +1250,13 @@ export function wireModuleSeams(
   // key-ring repo + the injected KEK-unwrap port — the KEK adapter itself is the one typed-TODO, fail-closed
   // on call). Without a DB client (tests / no-db boot) the fail-closed slice key provider keeps boot green.
   if (deps.db) {
-    registerLiveM34Seams({ db: deps.db, auditBypass: m34PlatformBypassAuditor });
+    const gatewayConfig = m34ProvisionGatewayConfigFromEnv(process.env);
+    const gateway = gatewayConfig ? createM34ProvisionGateway(gatewayConfig) : null;
+    registerLiveM34Seams({
+      db: deps.db,
+      auditBypass: m34PlatformBypassAuditor,
+      kekUnwrap: gateway?.kekUnwrap,
+    });
   } else {
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
   }
@@ -1581,6 +1616,140 @@ type ProcessRole = "all" | "api" | "worker";
  * this module can never trip that guard itself; calling the exported function directly sidesteps
  * that instead of duplicating ~1200 lines of composition-root wiring into a second file.
  */
+function buildFirstAdminAcceptanceService(deps: {
+  db: DbClient;
+  platformDb: DbClient;
+  auditBypass: PlatformBypassAuditor<DbClient>;
+}): SignupIntentRouteService {
+  const disabled = (): never => {
+    throw new WardenXError("SIGNUP_DISABLED", "self-serve signup is not enabled", 503);
+  };
+  return {
+    async createIntent() {
+      return disabled();
+    },
+    async verifyEmail() {
+      return disabled();
+    },
+    async acceptInvitation(rawToken, args) {
+      const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+      await withPlatformContext(
+        deps.platformDb,
+        {
+          jobId: "m34.platform_ops",
+          reason: "resolve first-admin invitation",
+          crossTenant: true,
+        },
+        deps.auditBypass,
+        async (platformTx) => {
+          const [invitation] = await platformTx
+            .select()
+            .from(schema.tenantInvitation)
+            .where(eq(schema.tenantInvitation.tokenHash, tokenHash))
+            .limit(1)
+            .for("update");
+          if (!invitation) {
+            throw new WardenXError("INVITATION_INVALID", "invitation is invalid", 404);
+          }
+          if (invitation.status !== "pending" || invitation.expiresAt <= new Date()) {
+            throw new WardenXError(
+              "INVITATION_INVALID",
+              "invitation is expired or already used",
+              409,
+            );
+          }
+
+          const userId = await withOrgContext(
+            deps.db,
+            { organizationId: invitation.organizationId, userId: "" },
+            async (tx) => {
+              const email = invitation.inviteeEmail.trim().toLowerCase();
+              await tx
+                .insert(schema.users)
+                .values({
+                  email,
+                  emailVerified: true,
+                  name: args.displayName ?? invitation.inviteeFullName,
+                })
+                .onConflictDoNothing({ target: schema.users.email });
+              const [user] = await tx
+                .select()
+                .from(schema.users)
+                .where(eq(schema.users.email, email))
+                .limit(1);
+              if (!user) throw new Error("first-admin user resolution failed");
+
+              let [membership] = await tx
+                .select()
+                .from(schema.memberships)
+                .where(
+                  and(
+                    eq(schema.memberships.userId, user.id),
+                    eq(schema.memberships.organizationId, invitation.organizationId),
+                    ne(schema.memberships.status, "revoked"),
+                  ),
+                )
+                .limit(1);
+              if (!membership) {
+                [membership] = await tx
+                  .insert(schema.memberships)
+                  .values({
+                    userId: user.id,
+                    organizationId: invitation.organizationId,
+                    status: "active",
+                    acceptedAt: new Date(),
+                  })
+                  .returning();
+              } else if (membership.status !== "active") {
+                [membership] = await tx
+                  .update(schema.memberships)
+                  .set({ status: "active", acceptedAt: new Date() })
+                  .where(eq(schema.memberships.id, membership.id))
+                  .returning();
+              }
+              if (!membership) throw new Error("first-admin membership creation failed");
+
+              const [orgAdmin] = await tx
+                .select()
+                .from(schema.roles)
+                .where(and(isNull(schema.roles.organizationId), eq(schema.roles.key, "org_admin")))
+                .limit(1);
+              if (!orgAdmin) throw new Error("org_admin role template is unavailable");
+              await tx
+                .insert(schema.membershipRoles)
+                .values({
+                  organizationId: invitation.organizationId,
+                  membershipId: membership.id,
+                  roleId: orgAdmin.id,
+                  grantedBy: user.id,
+                })
+                .onConflictDoNothing({
+                  target: [schema.membershipRoles.membershipId, schema.membershipRoles.roleId],
+                });
+              return user.id;
+            },
+          );
+
+          const consumed = await platformTx
+            .update(schema.tenantInvitation)
+            .set({ status: "consumed", consumedAt: new Date(), consumedByUserId: userId })
+            .where(
+              and(
+                eq(schema.tenantInvitation.id, invitation.id),
+                eq(schema.tenantInvitation.status, "pending"),
+              ),
+            )
+            .returning({ id: schema.tenantInvitation.id });
+          if (consumed.length !== 1) {
+            throw new WardenXError("INVITATION_INVALID", "invitation was already used", 409);
+          }
+        },
+      );
+      return { accepted: true };
+    },
+  };
+}
+
 export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // audit #M2 — fail closed if a production secret is missing/weak (BETTER_AUTH_SECRET, TRUSTED_ORIGINS,
   // TWO_FACTOR_ENCRYPTION_KEY, DATABASE_URL, BETTER_AUTH_URL). No-op in dev/test. Runs first so a
@@ -1649,6 +1818,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const queueConnection: ConnectionOptions | undefined = parseRedisConnection(
     process.env.REDIS_URL,
   );
+  const m23LaunchConfig = m23LaunchGatewayConfigFromEnv(process.env);
+  const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
+  const m23SubmissionQueues =
+    queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
+  const m34ProvisionConfig = m34ProvisionGatewayConfigFromEnv(process.env);
+  const m34ProvisionGateway = m34ProvisionConfig
+    ? createM34ProvisionGateway(m34ProvisionConfig)
+    : null;
+  const m34ProvisionQueue =
+    queueConnection && platformDbHandle && m34ProvisionGateway
+      ? buildM34ProvisionQueue(queueConnection)
+      : null;
+  if (m34ProvisionQueue) {
+    enableM34JobCapability("tenant.provision");
+  }
+  if (queueConnection && platformDbHandle && m34ProvisionGateway) {
+    enableM34JobCapability("tenant.dek_rotate");
+    if (destructionDbHandle) enableM34JobCapability("tenant.shred");
+  }
   // TASK-040B (OPS-004) — a dedicated long-lived Redis connection the `/ready` probe PINGs (never
   // one of the per-queue BullMQ connections constructed below — those come and go with their
   // Worker/Queue lifecycle, and a health check should not race that). `lazyConnect` defers the
@@ -1884,6 +2072,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         : undefined,
       outboxPendingDepth,
       outboxDepthThreshold: Number(process.env.OUTBOX_READY_DEPTH_THRESHOLD ?? 500),
+      capabilities: {
+        m22DocumentUpload: s3ObjectStoreConfigFromEnv(process.env) ? "ready" : "disabled",
+        m23AsyncWorkers: m23SubmissionQueues ? "ready" : "disabled",
+        m34AsyncWorkers: m34ProvisionQueue ? "ready" : "disabled",
+      },
     }),
     // Postgres-backed idempotency. The bootstrap default is an in-memory Map, and nothing ever
     // replaced it — so on the production mount an Idempotency-Key was process-local: a retry landing
@@ -1960,13 +2153,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // through the BullMQ producer). The platform queue producer + the tenant queue producer are the
           // SAME Valkey connection the workers run on. The platform service's cross-tenant reads require the
           // M4 bypass auditor (currently fail-closed typed-TODO), so the platform surface 5xxs until that
-          // lands; the tenant surface is fully live (its deps — org-pooled db + tenant queue producer + clock
-          // — are all bound). Both fall back to the in-memory slice when no DB client is present (tests).
+          // lands; tenant reads are live, while async commands refuse until the worker capability set is
+          // complete. Both fall back to the in-memory slice when no DB client is present (tests).
           const m34PlatformEnqueue = buildPlatformEnqueue(queueConnection);
           const m34TenantEnqueue = buildTenantEnqueue(queueConnection);
           mountTenantPlatformRoutes(app, dbHandle.db, {
             platform: buildDrizzlePlatformService({
-              platformDb: dbHandle.db,
+              platformDb: platformDbHandle?.db ?? dbHandle.db,
               enqueue: m34PlatformEnqueue.enqueue,
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,
@@ -1975,6 +2168,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
             }),
+            ...(platformDbHandle
+              ? {
+                  public: {
+                    service: buildFirstAdminAcceptanceService({
+                      db: dbHandle.db,
+                      platformDb: platformDbHandle.db,
+                      auditBypass: m34PlatformBypassAuditor,
+                    }),
+                  },
+                }
+              : {}),
           });
           // M33 (Phase 2C) — mount the Reporting READ + WRITE + EXPORT/DRILLDOWN surfaces over the DRIZZLE
           // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
@@ -2087,6 +2291,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
+              jobs: buildM23OutboxBackedSubmissionGate(m23SubmissionQueues !== null),
+              providerCcn: {
+                async ccnForProviderEntity(tx, organizationId, providerEntityId) {
+                  const [provider] = await (tx as DbClient)
+                    .select({ ccn: schema.providerEntities.ccn })
+                    .from(schema.providerEntities)
+                    .where(
+                      and(
+                        eq(schema.providerEntities.id, providerEntityId),
+                        eq(schema.providerEntities.organizationId, organizationId),
+                      ),
+                    )
+                    .limit(1);
+                  if (!provider)
+                    throw new DegradedError("provider-entity", "provider CCN unavailable");
+                  return provider.ccn;
+                },
+              },
             }),
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
@@ -2401,6 +2623,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           ? createDbSessionContextStore(dbHandle.db, createDbActorEnrichmentReader(dbHandle.db))
           : undefined,
         db: dbHandle?.db,
+        organizationDb: platformDbHandle?.db,
         outboxPublisher: txOutboxPublisher,
       }),
     registerModuleErasers: () =>
@@ -2410,6 +2633,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         destructionDb: destructionDbHandle?.db,
       }),
   });
+  if (m23SubmissionQueues) {
+    app.addHook("onClose", async () => {
+      await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));
+    });
+  }
+  if (m34ProvisionQueue) app.addHook("onClose", () => m34ProvisionQueue.close());
   // TASK-040B — close the readiness-probe's dedicated Redis connection on shutdown (the per-queue
   // BullMQ connections below close via their own onClose hooks; this one is health-check-only).
   if (redisHealthClient) app.addHook("onClose", () => redisHealthClient.quit());
@@ -2499,29 +2728,76 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       for (const w of workers)
         attachDlqPromotionAlert(w, `${modulePrefix}:${w.name}`, dlqPromotionSink);
     };
-    const m34Workers = registerM34Workers(
-      buildM34WorkerDeps({ connection: queueConnection, db: dbHandle.db }),
-    );
-    attachDlqAlertsToAll(m34Workers, "m34");
-    app.addHook("onClose", async () => {
-      await Promise.all(m34Workers.map((w) => w.close()));
-    });
-    // Register the repeatable cron schedules and their close hook BEFORE app.listen() — awaiting here (this
-    // is inside `bootWardenX`, an async function, so `await` is ordinary) so the `onClose` hook is added
-    // while the instance is still pre-listen. The previous `.then()` ran the addHook on a later microtask, after
-    // listen() had already started, which Fastify rejects (FST_ERR_INSTANCE_ALREADY_LISTENING).
-    try {
-      const scheduleQueues = await scheduleM34Jobs(queueConnection);
-      app.addHook("onClose", async () => {
-        await Promise.all(scheduleQueues.map((q) => q.close()));
+    const m34Workers: Worker[] = [];
+    if (m34ProvisionGateway && platformDbHandle) {
+      const workerDeps = buildM34WorkerDeps({
+        connection: queueConnection,
+        db: dbHandle.db,
+        platformDb: platformDbHandle.db,
+        provision: {
+          auditBypass: m34PlatformBypassAuditor,
+          ...m34ProvisionGateway,
+          outbox: m34OutboxPublisher,
+        },
+        keyLifecycle: {
+          auditBypass: m34PlatformBypassAuditor,
+          keyMaterial: m34ProvisionGateway.keyMaterial,
+          storage: m34ProvisionGateway.destructionStorage,
+          outbox: m34OutboxPublisher,
+          async destroyTenantKeyRing(input) {
+            await platformDbHandle.db.transaction(async (tx) => {
+              await tx.execute(
+                sql`SELECT set_config('app.destroyed_by_membership_id', ${input.actorMembershipId}, true)`,
+              );
+              await tx.execute(
+                sql`SELECT m34_destroy_tenant_key_ring(${input.tenantAccountId}, ${input.destructionCertId})`,
+              );
+            });
+          },
+          destructionWorkflow: (() => {
+            const workflow = createM34DestructionWorkflow();
+            return {
+              ...workflow,
+              async authorizationFacts(
+                tx: DbClient,
+                input: {
+                  readonly orgId: string;
+                  readonly destructionCertId: string;
+                  readonly actorMembershipId: string;
+                },
+              ) {
+                return {
+                  ...(await workflow.authorizationFacts(tx, input)),
+                  actorUserId: await m34ActiveMembershipUserId(tx, input.actorMembershipId),
+                };
+              },
+            };
+          })(),
+          shredSubjects: {
+            patientIds: m34TenantPatientIds,
+            soleTenantUserIds: m34SoleTenantUserIds,
+          },
+        },
       });
-    } catch (err) {
-      app.log.error(err, "M34 cron-schedule registration failed");
+      const provisionWorker = registerM34ProvisionWorker(workerDeps);
+      const dekRotateWorker = registerM34DekRotateWorker(workerDeps);
+      m34Workers.push(provisionWorker);
+      m34Workers.push(dekRotateWorker);
+      app.addHook("onClose", () => Promise.all([provisionWorker.close(), dekRotateWorker.close()]));
+      if (destructionDbHandle) {
+        const shredWorker = registerM34ShredWorker(workerDeps);
+        m34Workers.push(shredWorker);
+        app.addHook("onClose", () => shredWorker.close());
+      }
+      attachDlqAlertsToAll(m34Workers, "m34");
+      app.log.info(
+        `M34 key lifecycle workers constructed: provision, dek_rotate${destructionDbHandle ? ", shred" : ""}`,
+      );
+    } else {
+      app.log.warn(
+        "M34 tenant provisioning disabled: platform DB and provision gateway configuration are required",
+      );
     }
-    app.log.info(
-      { queues: m34Workers.length },
-      "M34 §4.3 BullMQ workers constructed (worker ports bind their M1/M4/M22/M36 seams as those accessors land)",
-    );
 
     // ── M33 §4.8 reporting workers + cron schedules (the same worker-runner shape) ──────────────────────
     // Construct the §4.8 BullMQ Workers (mv_refresh / scheduled_run / export_render / drilldown_audit_flush /
@@ -2680,27 +2956,35 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // outbox, x12-837-client generation, MAC-portal HTTP, HETS eligibility, the M2 active-org / MAC-jurisdiction
     // enumerators for the cron fan-out, the validation-runner → claim-validation-service, the M36 alert router)
     // are follow-ups.
-    const m23WorkerDeps = buildM23WorkerDeps({
-      connection: queueConnection,
-      db: dbHandle.db,
-    });
-    const m23Workers = [
-      ...registerM23Workers(m23WorkerDeps),
-      ...registerM23CronWorkers(m23WorkerDeps),
-    ];
-    attachDlqAlertsToAll(m23Workers, "m23");
-    app.addHook("onClose", async () => {
-      await Promise.all(m23Workers.map((w) => w.close()));
-    });
-    try {
-      const m23ScheduleQueues = await scheduleM23Jobs(queueConnection);
-      app.addHook("onClose", async () => {
-        await Promise.all(m23ScheduleQueues.map((q) => q.close()));
+    let m23Workers: Worker[] = [];
+    if (m23LaunchGateway) {
+      const m23WorkerDeps = buildM23WorkerDeps({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m23OutboxPublisher,
+        x12: m23LaunchGateway.x12,
+        macPortal: m23LaunchGateway.macPortal,
+        jurisdictions: { listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }] },
       });
-    } catch (err) {
-      app.log.error(err, "M23 cron-schedule registration failed");
+      m23Workers = registerM23LaunchWorkers(m23WorkerDeps);
+      attachDlqAlertsToAll(m23Workers, "m23");
+      app.addHook("onClose", async () => {
+        await Promise.all(m23Workers.map((worker) => worker.close()));
+      });
+      try {
+        const m23ScheduleQueues = await scheduleM23LaunchJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M23 launch acknowledgment schedule registration failed");
+      }
+      app.log.info({ queues: m23Workers.length }, "M23 launch submission workers constructed");
+    } else {
+      app.log.warn(
+        "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",
+      );
     }
-    app.log.info({ queues: m23Workers.length }, "M23 §4.8 BullMQ billing workers constructed");
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
     // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
@@ -2893,8 +3177,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // Every module's catalog publisher writes `outbox_event` rows; until this relay NOTHING read them.
   // The relay polls per-org under withOrgContext (RLS-clean; the org list comes from the audited
   // platform-context enumerator), delivers to live consumers with retry/backoff/DLQ, keeps
-  // declared-deferred handshakes (the M22 render queue) pending on a slow clock so their backlog
-  // survives, marks subscriber-less events dispatched (the row IS the durable record), and purges
+  // declared-but-incomplete handshakes pending on a slow clock so their backlog survives, marks only
+  // explicit zero-consumer catalog events dispatched (the row IS the durable record), and purges
   // dispatched rows past retention. Requires the platform credential for org enumeration — absent,
   // it does NOT run and says so loudly (the M35 platform-runner posture; fail-closed, never a
   // tenant-pool RLS bypass). OUTBOX_DISPATCHER_DISABLED=1 opts out (tests/one-off boots).
@@ -2911,8 +3195,34 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           auditBypass: m34PlatformBypassAuditor,
           jobId: M1_OUTBOX_DISPATCHER_JOB_ID,
           reason: "outbox relay: active-org poll list",
+          statuses: ["created", "active", "suspended"],
         }),
         consumers: [
+          buildM7IdgDecisionConsumer({ db: dbHandle.db, outbox: m7OutboxPublisher }),
+          buildM11IdgDecisionConsumer({
+            db: dbHandle.db,
+            outbox: m11OutboxPublisher,
+            resolveAdmissionContext: (organizationId, patientId) =>
+              activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
+          }),
+          buildM12IdgDecisionConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+            resolveAdmissionContext: (organizationId, patientId) =>
+              activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
+          }),
+          buildM16IdgDecisionConsumer({ db: dbHandle.db }),
+          buildM8VisitPublishedConsumer({
+            db: dbHandle.db,
+            outbox: m8OutboxPublisher,
+            isAdmissionActive: (organizationId, admissionId) =>
+              admissionIsActiveForOrg(dbHandle.db, organizationId, admissionId),
+          }),
+          buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          ...(m23SubmissionQueues
+            ? [buildM23SubmissionRequestConsumer(m23SubmissionQueues.port)]
+            : []),
+          ...(m34ProvisionQueue ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)] : []),
           // M5 §4.10 — the proposal applier (LIVE end-to-end now that M29's accept path publishes
           // the event; skips everything not m5-owned).
           buildM29ProposalApplierConsumer(),
@@ -2922,15 +3232,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // m6-owned acceptances can never complete off M5's skip.
           buildM6ProposalAcceptedConsumer({ db: dbHandle.db, outbox: m6OutboxPublisher }),
         ],
-        deferredEventTypes: [
-          // M22 §4.11 — the render handshake awaits the live render worker + MinIO adapter; the
-          // backlog stays pending (visible depth), never faked as consumed.
-          ...M22_DOCUMENT_REQUEST_EVENTS,
-          M22_LAB_RESULTS_EVENT,
-          // M40's NPPES overlay appliers are declared-deferred (m29-nppes-consumers.ts).
-          "m29.nppes.provider_synced",
-          "m29.nppes.provider_deactivated",
-        ],
+        eventCatalog: bootOutboxCatalog,
         options: {
           log: (m) => app.log.warn(m),
           // TASK-040D (OPS-012) — the same shared sink every BullMQ worker's DLQ promotion reports to.

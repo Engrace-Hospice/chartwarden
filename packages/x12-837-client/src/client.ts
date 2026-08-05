@@ -66,48 +66,102 @@ export interface X12WorkerClientDeps {
 export class LiveX12WorkerClient implements X12WorkerClient {
   constructor(private readonly deps: X12WorkerClientDeps) {}
 
-  generate837i(_input: Generate837iRequest): Promise<X12WorkerResult<Generated837i>> {
-    // TODO(Phase 3): build the /generate-837i payload and call this.deps.http.request(...).
-    return Promise.resolve(
-      degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
-    );
+  private async post<T>(
+    path: string,
+    body: unknown,
+    isResult: (value: unknown) => value is T,
+  ): Promise<X12WorkerResult<T>> {
+    try {
+      const response = await this.deps.http.request({ method: "POST", path, body });
+      if (response.status < 200 || response.status >= 300) {
+        return degraded<T>("X12_WORKER_HTTP_ERROR", `x12-worker returned HTTP ${response.status}`);
+      }
+      if (!isResult(response.body)) {
+        return degraded<T>("X12_WORKER_INVALID_RESPONSE", "x12-worker response failed validation");
+      }
+      return { ok: true, data: response.body };
+    } catch {
+      return degraded<T>(X12_WORKER_NOT_WIRED, "x12-worker transport unavailable");
+    }
   }
 
-  generate837iNoe(_input: Generate837iNoeRequest): Promise<X12WorkerResult<Generated837i>> {
-    // TODO(Phase 3): build the /generate-noe payload and call this.deps.http.request(...).
-    return Promise.resolve(
-      degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
-    );
+  generate837i(input: Generate837iRequest): Promise<X12WorkerResult<Generated837i>> {
+    return this.post("/generate-837i", input, isGenerated837i);
   }
 
-  generate837iNotr(_input: Generate837iNotrRequest): Promise<X12WorkerResult<Generated837i>> {
-    // TODO(Phase 3): build the /generate-notr payload and call this.deps.http.request(...).
-    return Promise.resolve(
-      degraded<Generated837i>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
-    );
+  generate837iNoe(input: Generate837iNoeRequest): Promise<X12WorkerResult<Generated837i>> {
+    return this.post("/generate-noe", input, isGenerated837i);
   }
 
-  parse999(_input: Parse999Request): Promise<X12WorkerResult<Parsed999>> {
-    // TODO(Phase 3): POST raw 999 to /parse-999 and normalize the response.
-    return Promise.resolve(
-      degraded<Parsed999>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
-    );
+  generate837iNotr(input: Generate837iNotrRequest): Promise<X12WorkerResult<Generated837i>> {
+    return this.post("/generate-notr", input, isGenerated837i);
   }
 
-  parse277ca(_input: Parse277caRequest): Promise<X12WorkerResult<Parsed277ca>> {
-    // TODO(Phase 3): POST raw 277CA to /parse-277ca and normalize the response.
-    return Promise.resolve(
-      degraded<Parsed277ca>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
-    );
+  parse999(input: Parse999Request): Promise<X12WorkerResult<Parsed999>> {
+    return this.post("/parse-999", input, isParsed999);
   }
 
-  eligibility270(_input: Eligibility270Request): Promise<X12WorkerResult<Eligibility271Result>> {
-    // TODO(Phase 3): build the HETS 270 with the transient MBI, POST /eligibility-270, then ensure the
-    // caller secure-zeroes the MBI. The MBI never enters the result, a log, or an audit payload (§8.7).
-    return Promise.resolve(
-      degraded<Eligibility271Result>(X12_WORKER_NOT_WIRED, "x12-worker sidecar not wired"),
-    );
+  parse277ca(input: Parse277caRequest): Promise<X12WorkerResult<Parsed277ca>> {
+    return this.post("/parse-277ca", input, isParsed277ca);
   }
+
+  eligibility270(input: Eligibility270Request): Promise<X12WorkerResult<Eligibility271Result>> {
+    return this.post("/eligibility-270", input, isEligibility271);
+  }
+}
+
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const string = (value: unknown): value is string => typeof value === "string";
+const outcome = (value: unknown): value is "accepted" | "rejected" | "partial" =>
+  value === "accepted" || value === "rejected" || value === "partial";
+
+function isGenerated837i(value: unknown): value is Generated837i {
+  return (
+    record(value) &&
+    string(value.fileContents) &&
+    value.fileContents.length > 0 &&
+    string(value.interchangeControlNumber) &&
+    string(value.transactionSetControlNumber)
+  );
+}
+
+function isAckError(value: unknown): boolean {
+  return record(value) && string(value.segment) && string(value.code) && string(value.description);
+}
+
+function isParsed999(value: unknown): value is Parsed999 {
+  return (
+    record(value) &&
+    outcome(value.outcome) &&
+    string(value.interchangeControlNumber) &&
+    Array.isArray(value.errors) &&
+    value.errors.every(isAckError)
+  );
+}
+
+function isParsed277ca(value: unknown): value is Parsed277ca {
+  return (
+    record(value) &&
+    outcome(value.outcome) &&
+    Array.isArray(value.claimStatuses) &&
+    value.claimStatuses.every(
+      (status) =>
+        record(status) &&
+        string(status.claimControlNumber) &&
+        typeof status.accepted === "boolean" &&
+        string(status.statusCategoryCode) &&
+        string(status.statusCode),
+    )
+  );
+}
+
+function isEligibility271(value: unknown): value is Eligibility271Result {
+  return (
+    record(value) &&
+    (value.outcome === "active" || value.outcome === "inactive" || value.outcome === "unknown") &&
+    string(value.asOfDate)
+  );
 }
 
 /** The published factory seam shape (mirrors `@wardenx/cost-report`'s seam interfaces). */

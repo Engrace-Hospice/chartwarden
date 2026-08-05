@@ -222,6 +222,7 @@ export interface ProvisionTenantArgs {
   readonly billingContactEmail: string;
   readonly breachNotificationContactEmail: string;
   readonly firstAdminEmail: string;
+  readonly firstAdminFullName: string;
   readonly planLabel: string;
 }
 
@@ -240,7 +241,7 @@ export interface TenantPlatformRouteService {
   ): Promise<CursorPage<TenantSummaryView>>;
   getTenantOverview(orgSlug: string): Promise<TenantOverview>;
   provisionTenant(
-    actorUserId: string,
+    actorMembershipId: string,
     args: ProvisionTenantArgs,
   ): Promise<{ tenantAccountId: string; jobId: string }>;
   transitionStatus(
@@ -255,12 +256,12 @@ export interface TenantPlatformRouteService {
   ): Promise<{ tenantAccountId: string; status: string }>;
   requestShred(
     orgSlug: string,
-    actorUserId: string,
+    actorMembershipId: string,
     args: { transitionReason: string; destructionCertificateId: string },
   ): Promise<{ tenantAccountId: string; jobId: string }>;
   requestDekRotate(
     orgSlug: string,
-    actorUserId: string,
+    actorMembershipId: string,
     args: { reason: string },
   ): Promise<{ tenantAccountId: string; jobId: string }>;
   // ── tenant-invitations (§4.1) ──
@@ -313,8 +314,8 @@ export interface TenantPlatformRouteService {
   ): Promise<CursorPage<SignupIntentView>>;
   qualifyIntent(
     intentId: string,
-    actorUserId: string,
-    args: { planLabel: string },
+    actorMembershipId: string,
+    args: { planLabel: string; firstAdminFullName: string },
   ): Promise<{ intentId: string; intentStatus: string; jobId: string }>;
   rejectIntent(
     intentId: string,
@@ -596,19 +597,23 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         activeSessions: r.activeSessions,
       };
     },
-    async provisionTenant(_actorUserId, args) {
+    async provisionTenant(actorMembershipId, args) {
       const tenantAccountId = uuidFromCounter("c", ++created);
+      const organizationId = uuidFromCounter("e", created);
       const { jobId } = await enqueuePort.enqueue("tenant.provision", tenantAccountId, {
-        signupIntentId: args.signupIntentId,
+        tenantAccountId,
+        organizationId,
         legalBusinessName: args.legalBusinessName,
         billingContactEmail: args.billingContactEmail,
         firstAdminEmail: args.firstAdminEmail,
-        planLabel: args.planLabel,
+        firstAdminFullName: args.firstAdminFullName,
+        actorMembershipId,
+        transitionReason: "platform operator requested tenant provisioning",
       });
       const orgSlug = `tenant-${created}`;
       tenants.set(orgSlug, {
         id: tenantAccountId,
-        organizationId: uuidFromCounter("e", created),
+        organizationId,
         orgSlug,
         legalBusinessName: args.legalBusinessName,
         planLabel: args.planLabel,
@@ -661,7 +666,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       };
       return { tenantAccountId: r.id, status: r.status };
     },
-    async requestShred(orgSlug, _actorUserId, args) {
+    async requestShred(orgSlug, actorMembershipId, args) {
       const r = loadTenant(orgSlug);
       if (r.status !== "destruction_pending") {
         throw new WardenXError(
@@ -675,19 +680,21 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
         `${r.id}+${args.destructionCertificateId}`,
         {
           tenantAccountId: r.id,
-          destructionCertificateId: args.destructionCertificateId,
-          reason: args.transitionReason,
+          orgId: r.organizationId,
+          destructionCertId: args.destructionCertificateId,
+          actorMembershipId,
+          transitionReason: args.transitionReason,
         },
       );
       return { tenantAccountId: r.id, jobId };
     },
-    async requestDekRotate(orgSlug, _actorUserId, args) {
+    async requestDekRotate(orgSlug, actorMembershipId, args) {
       const r = loadTenant(orgSlug);
       const targetVersion = `v${(r.keyRing?.priorDekVersionCount ?? 0) + 2}`;
       const { jobId } = await enqueuePort.enqueue("tenant.dek_rotate", `${r.id}+${targetVersion}`, {
-        tenantAccountId: r.id,
-        dekVersionTarget: targetVersion,
-        reason: args.reason,
+        orgId: r.organizationId,
+        actorMembershipId,
+        targetVersion,
       });
       return { tenantAccountId: r.id, jobId };
     },
@@ -864,7 +871,7 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       const page = paginate(rows, cursor, limit);
       return { ...page, items: page.items.map(({ createdAt: _c, ...i }) => i) };
     },
-    async qualifyIntent(intentId, _actorUserId, args) {
+    async qualifyIntent(intentId, actorMembershipId, args) {
       const i = intents.get(intentId);
       if (!i) throw new NotFoundError("signup intent");
       if (i.intentStatus !== "new") {
@@ -876,11 +883,17 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
       }
       intents.set(intentId, { ...i, intentStatus: "qualified", processedAt: now() });
       // §7.1 — a qualified intent triggers the same provisioning flow as the Phase-1 platform-ops path.
-      const { jobId } = await enqueuePort.enqueue("tenant.provision", intentId, {
-        signupIntentId: intentId,
+      const tenantAccountId = intentId;
+      const organizationId = intentId;
+      const { jobId } = await enqueuePort.enqueue("tenant.provision", tenantAccountId, {
+        tenantAccountId,
+        organizationId,
         legalBusinessName: i.legalBusinessName,
+        billingContactEmail: i.contactEmail,
         firstAdminEmail: i.intendedFirstAdminEmail,
-        planLabel: args.planLabel,
+        firstAdminFullName: args.firstAdminFullName,
+        actorMembershipId,
+        transitionReason: "platform operator qualified signup intent",
       });
       return { intentId, intentStatus: "qualified", jobId };
     },

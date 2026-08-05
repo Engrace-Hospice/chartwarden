@@ -30,6 +30,24 @@ const isoInstant = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);
 
 export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
+  {
+    eventName: "m34.tenant.provision_started",
+    moduleOwner: "m34",
+    description:
+      "Durable provisioning command emitted with the tenant spine transaction; M34's queue bridge starts the provision worker.",
+    payloadSchema: Type.Object({
+      tenantAccountId: id,
+      organizationId: id,
+      legalBusinessName: Type.String(),
+      billingContactEmail: Type.String(),
+      firstAdminEmail: Type.String(),
+      firstAdminFullName: Type.String(),
+      actorMembershipId: id,
+      transitionReason: Type.String(),
+    }),
+    declaredConsumers: ["m34"],
+    isOutboxOnly: true,
+  },
   // ── tenant lifecycle alerts (§2 lifecycle machine / §4.8 alert rules) ──────────────────────────────
   {
     eventName: "m34.tenant.provisioned",
@@ -150,16 +168,15 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
-    eventName: "m34.tenant.shred_executed",
+    eventName: "m34.tenant.destroyed",
     moduleOwner: "m34",
     description:
-      "The M4 destruction-cert eraseFn cryptographically shredded the per-tenant DEK and M34 reached `destroyed` (mirror of `m34.tenant.destroyed`); M36 sends the final-notice to platform-ops + tenant compliance officer (info).",
+      "The certified M34 shred erased tenant data, destroyed object versions, zeroized all wrapped DEKs, and committed the terminal `destroyed` lifecycle state.",
     payloadSchema: Type.Object({
       tenantAccountId: id,
       orgId: id,
       destructionCertId: id,
-      dekVersionsDestroyed: Type.Array(Type.String()),
-      executedAt: isoInstant,
+      destroyedAt: isoInstant,
     }),
     declaredConsumers: ["m33", "m36"],
     isOutboxOnly: true,

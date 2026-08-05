@@ -322,7 +322,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   // 9. tenant.shred_executed — m34.tenant.destroyed → platform-ops + compliance officer (final notice, info)
   {
     ruleKey: "tenant.shred_executed",
-    eventType: "m34.tenant.shred_executed",
+    eventType: "m34.tenant.destroyed",
     category: "administrative",
     severityFloor: floorOf("info"),
     specSeverity: "info",
@@ -334,7 +334,7 @@ export const M34_ALERT_RULES: readonly M34AlertRuleSeed[] = [
   },
   {
     ruleKey: "tenant.shred_executed.platform_ops",
-    eventType: "m34.tenant.shred_executed",
+    eventType: "m34.tenant.destroyed",
     category: "administrative",
     severityFloor: floorOf("warn"), // distinct floor for the (org,event,floor) unique index
     specSeverity: "info",

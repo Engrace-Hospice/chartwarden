@@ -81,6 +81,7 @@ function makeRing(overrides: Partial<schema.TenantKeyRing> = {}): schema.TenantK
 interface SeedLogRow {
   readonly destructionPhase: string;
   readonly perModuleEraserReceipts?: unknown;
+  readonly destructionCertificateId?: string;
 }
 
 /** Build the shred ports over an in-memory key-ring repo + recording fakes; returns the recorded call
@@ -99,10 +100,12 @@ function makeShredPorts(
   // The append-only destruction-phase trail; seeded markers simulate a crash/replay resume.
   const log: {
     destructionPhase: string;
+    destructionCertificateId: string;
     perModuleEraserReceipts: unknown;
     occurredAt: Date;
   }[] = (opts.seedLog ?? []).map((r, i) => ({
     destructionPhase: r.destructionPhase,
+    destructionCertificateId: r.destructionCertificateId ?? CERT,
     perModuleEraserReceipts: r.perModuleEraserReceipts ?? [],
     occurredAt: new Date(FIXED_NOW.getTime() - (opts.seedLog!.length - i) * 1000),
   }));
@@ -114,15 +117,18 @@ function makeShredPorts(
         calls.push("keyRing.findByTenantAccountId");
         return ring;
       },
-      listDestructionLog: async () => {
+      listDestructionLog: async (_ringId, destructionCertificateId) => {
         calls.push("keyRing.listDestructionLog");
         // The real repo returns newest-first; the worker only builds a Set, so order is immaterial.
-        return [...log].reverse() as unknown as readonly schema.TenantKeyDestructionLog[];
+        return log
+          .filter((row) => row.destructionCertificateId === destructionCertificateId)
+          .reverse() as unknown as readonly schema.TenantKeyDestructionLog[];
       },
       appendDestructionLog: async (values) => {
         calls.push(`keyRing.appendDestructionLog:${values.destructionPhase}`);
         const row = {
           destructionPhase: values.destructionPhase as string,
+          destructionCertificateId: values.destructionCertificateId,
           perModuleEraserReceipts: values.perModuleEraserReceipts,
           occurredAt: FIXED_NOW,
         };
@@ -253,6 +259,26 @@ describe("M34 §7.2 step 7 — per-phase IDEMPOTENCY (invariant 1)", () => {
     expect(harness.calls).not.toContain(`erasers.fileCertificate:${CERT}`);
     // Across BOTH deliveries the irreversible destroy fired exactly once (invariant 3).
     expect(count(harness.calls, "destructive.destroyTenantKeyRing")).toBe(0);
+  });
+
+  it("does not re-run approval preflight after the certificate is already filed", async () => {
+    const { ports, calls } = makeShredPorts({
+      seedLog: [
+        {
+          destructionPhase: SHRED_PHASES.erasersComplete,
+          perModuleEraserReceipts: ERASED_RECEIPTS,
+        },
+        { destructionPhase: SHRED_PHASES.minioDestroyed },
+        { destructionPhase: SHRED_PHASES.deksZeroized },
+        { destructionPhase: SHRED_PHASES.certificateFiled },
+      ],
+    });
+    ports.assertCertApprovedAndNoHold = async () => {
+      calls.push("preflight");
+      throw new Error("an executed certificate is no longer approved");
+    };
+    await expect(runTenantShred(JOB, ports)).resolves.toMatchObject({ outcome: "destroyed" });
+    expect(calls).not.toContain("preflight");
   });
 
   it("Phase 1 marker present ⇒ the eraser fan-out is NOT re-fired (receipts recovered from the log)", async () => {
@@ -403,6 +429,19 @@ describe("M34-F08 — the 42 CFR Part 2 refusal gate aborts before DEK destructi
     expect(calls).not.toContain("erasers.recordCertificateRefusal:part_two_retention");
     expect(calls).not.toContain("lifecycle.commitDeferToRetained");
     expect(calls).not.toContain("destructive.destroyTenantKeyRing");
+  });
+
+  it("a later certificate gets a fresh phase trail after the Part 2 obligation lapses", async () => {
+    const harness = makeShredPorts({ receipts: REFUSAL_RECEIPTS });
+    await expect(runTenantShred(JOB, harness.ports)).resolves.toMatchObject({
+      outcome: "deferred_part_two_retention",
+    });
+    harness.ports.erasers.callbackAllEraserFns = async () => ERASED_RECEIPTS;
+    const laterJob = { ...JOB, destructionCertId: "cert_2" };
+    await expect(runTenantShred(laterJob, harness.ports)).resolves.toMatchObject({
+      outcome: "destroyed",
+    });
+    expect(count(harness.calls, "destructive.destroyTenantKeyRing")).toBe(1);
   });
 });
 

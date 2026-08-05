@@ -300,6 +300,12 @@ export function createRefusingObjectStore(): ObjectStorePort {
     async putObject() {
       return refuse("putObject");
     },
+    async presignUpload() {
+      return refuse("presignUpload");
+    },
+    async inspectObject() {
+      return refuse("inspectObject");
+    },
     async presign() {
       return refuse("presign");
     },

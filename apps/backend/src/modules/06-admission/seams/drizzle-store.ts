@@ -50,6 +50,90 @@ type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
  *  no acting user (the M4 audit trigger maps the empty-string sentinel to a NULL actor). */
 const ADMISSION_READER_SYSTEM_USER_ID = "";
 
+/** Worker-safe, explicitly tenant-scoped active-service probe for event consumers. */
+export function admissionIsActiveForOrg(
+  db: DbClient,
+  organizationId: string,
+  admissionId: string,
+): Promise<boolean> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({ status: ADM.status })
+        .from(ADM)
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+        .limit(1);
+      return row?.status === "active";
+    },
+  );
+}
+
+/** Minimal M6-owned context required when an event consumer creates an admission-scoped draft. */
+export interface ActiveAdmissionDraftContext {
+  readonly admissionId: string;
+  readonly providerEntityId: string;
+  readonly locationId: string;
+  readonly orderingPhysicianMdmId: string;
+}
+
+/**
+ * Resolve the patient's active admission without exposing M6's table to downstream consumers.
+ * Missing siting/physician data is a hard projection gap: creating an unsited or unattributed
+ * clinical order would make the event look handled while leaving an unusable draft behind.
+ */
+export function activeAdmissionDraftContextForPatient(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<ActiveAdmissionDraftContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          admissionId: ADM.id,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+          attendingPhysicianId: ADM.attendingPhysicianId,
+          admittedByPhysicianId: ADM.admittedByPhysicianId,
+        })
+        .from(ADM)
+        .where(
+          and(
+            eq(ADM.organizationId, organizationId),
+            eq(ADM.patientId, patientId),
+            eq(ADM.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!row) return null;
+      const providerEntityId = row.providerEntityId;
+      const locationId = row.locationId;
+      const orderingPhysicianMdmId = row.attendingPhysicianId ?? row.admittedByPhysicianId;
+      const missing = [
+        providerEntityId === null ? "provider_entity_id" : null,
+        locationId === null ? "location_id" : null,
+        orderingPhysicianMdmId === null ? "attending_physician_id|admitted_by_physician_id" : null,
+      ].filter((value): value is string => value !== null);
+      if (missing.length > 0) {
+        throw new AdmissionSeamDataGapError("admission", row.admissionId, missing);
+      }
+      if (providerEntityId === null || locationId === null || orderingPhysicianMdmId === null) {
+        throw new Error("unreachable admission draft context narrowing failure");
+      }
+      return {
+        admissionId: row.admissionId,
+        providerEntityId,
+        locationId,
+        orderingPhysicianMdmId,
+      };
+    },
+  );
+}
+
 /**
  * Thrown when a row the seam must project is missing a fact its DTO requires non-null (a draft-shaped
  * `admission`, an LOC-less admission behind a dated period, an attested F2F with no encounter date).

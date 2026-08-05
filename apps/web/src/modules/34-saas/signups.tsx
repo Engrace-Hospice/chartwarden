@@ -89,12 +89,15 @@ export function Signups(): JSX.Element {
   }, [load]);
 
   // Qualify enqueues the `tenant.provision` flow (§7.1); reject records the rationale on the intent.
-  async function qualify(intent: SignupIntentView): Promise<void> {
+  async function qualify(
+    intent: SignupIntentView,
+    firstAdminFullName: string,
+    planLabel: "starter" | "standard" | "enterprise",
+  ): Promise<void> {
     setBusy(true);
     const { error: err } = await client.POST("/api/v1/platform/signup-intents/{id}/qualify", {
       params: { path: { id: intent.id } },
-      // TODO(M34 web): this stub screen should collect the assigned plan from an operator control.
-      body: { planLabel: "standard" },
+      body: { planLabel, firstAdminFullName: firstAdminFullName.trim() },
     });
     setBusy(false);
     if (err) {
@@ -164,7 +167,9 @@ export function Signups(): JSX.Element {
             intent={selected}
             busy={busy}
             onClose={() => setSelected(null)}
-            onQualify={() => void qualify(selected)}
+            onQualify={(firstAdminFullName, planLabel) =>
+              void qualify(selected, firstAdminFullName, planLabel)
+            }
             onReject={() => void reject(selected)}
           />
         ) : undefined
@@ -247,10 +252,12 @@ function IntentDetail({
   intent: SignupIntentView;
   busy: boolean;
   onClose: () => void;
-  onQualify: () => void;
+  onQualify: (firstAdminFullName: string, planLabel: "starter" | "standard" | "enterprise") => void;
   onReject: () => void;
 }): JSX.Element {
   const actionable = intent.intentStatus === "new";
+  const [firstAdminFullName, setFirstAdminFullName] = useState("");
+  const [planLabel, setPlanLabel] = useState<"starter" | "standard" | "enterprise">("standard");
   const row = (label: string, value: JSX.Element | string) => (
     <div style={{ marginBottom: "0.5rem" }}>
       <div style={{ fontSize: "0.7rem", color: "var(--color-on-surface-variant)" }}>{label}</div>
@@ -292,19 +299,51 @@ function IntentDetail({
       {actionable ? (
         <div
           style={{
-            display: "flex",
-            gap: "0.5rem",
             marginTop: "1rem",
             borderTop: "1px solid var(--color-outline-variant)",
             paddingTop: "1rem",
           }}
         >
-          <button type="button" onClick={onQualify} disabled={busy}>
-            {busy ? "Working…" : "Qualify"}
-          </button>
-          <button type="button" onClick={onReject} disabled={busy}>
-            Reject
-          </button>
+          <label style={{ display: "grid", gap: "0.25rem", marginBottom: "0.75rem" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+              First admin full name
+            </span>
+            <input
+              type="text"
+              required
+              maxLength={200}
+              autoComplete="name"
+              value={firstAdminFullName}
+              onChange={(event) => setFirstAdminFullName(event.target.value)}
+            />
+          </label>
+          <label style={{ display: "grid", gap: "0.25rem", marginBottom: "0.75rem" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+              Plan
+            </span>
+            <select
+              value={planLabel}
+              onChange={(event) =>
+                setPlanLabel(event.target.value as "starter" | "standard" | "enterprise")
+              }
+            >
+              <option value="starter">Starter</option>
+              <option value="standard">Standard</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={() => onQualify(firstAdminFullName, planLabel)}
+              disabled={busy || firstAdminFullName.trim().length === 0}
+            >
+              {busy ? "Working…" : "Qualify"}
+            </button>
+            <button type="button" onClick={onReject} disabled={busy}>
+              Reject
+            </button>
+          </div>
         </div>
       ) : (
         <div

@@ -30,10 +30,12 @@ export interface SignupIntentRouteDeps {
   service: TenantPlatformRouteService;
 }
 
-function actorOf(request: FastifyRequest): { userId: string } {
+function actorOf(request: FastifyRequest): { userId: string; membershipId: string } {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { userId: ctx.userId };
+  const membershipId = ctx.attributes?.membershipId;
+  if (typeof membershipId !== "string") throw new UnauthorizedError();
+  return { userId: ctx.userId, membershipId };
 }
 
 const intentIdOf = (request: FastifyRequest): string =>
@@ -66,10 +68,11 @@ export function registerSignupIntentRoutes(
     "/api/v1/platform/signup-intents/:id/qualify",
     { preHandler: [QUALIFY, ABAC_QUALIFY] },
     async (request, reply) => {
-      const { userId } = actorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(QualifyIntentRequest, request.body);
-      const res = await service.qualifyIntent(intentIdOf(request), userId, {
+      const res = await service.qualifyIntent(intentIdOf(request), membershipId, {
         planLabel: body.planLabel,
+        firstAdminFullName: body.firstAdminFullName,
       });
       return reply.code(202).send(res);
     },

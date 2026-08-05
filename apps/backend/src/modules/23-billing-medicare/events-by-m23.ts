@@ -46,7 +46,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceFrom: isoInstant,
       serviceTo: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: ["m23", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -91,7 +91,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       claimControlNumber: str,
       attemptIndex: int,
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {
@@ -282,7 +282,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A NOE became READY; the same-transaction outbox emit that drives the noe.submit worker.",
     payloadSchema: Type.Object({ noeId: id, submissionId: id, noeControlNumber: str }),
-    declaredConsumers: [],
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {
@@ -349,7 +349,7 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A NOTR became READY; the same-transaction outbox emit that drives the notr.submit worker.",
     payloadSchema: Type.Object({ notrId: id, submissionId: id, notrControlNumber: str }),
-    declaredConsumers: [],
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {

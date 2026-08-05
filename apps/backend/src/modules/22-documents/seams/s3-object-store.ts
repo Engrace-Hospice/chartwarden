@@ -328,7 +328,7 @@ export function createS3ObjectStore(
 
   /** Sign + send one header-authorized request (never logs the URL, secret, or headers). */
   const signedFetch = async (args: {
-    readonly method: "GET" | "PUT" | "DELETE";
+    readonly method: "GET" | "PUT" | "DELETE" | "HEAD";
     readonly bucket: string;
     readonly objectKey: string | null;
     readonly query: readonly (readonly [string, string])[];
@@ -396,6 +396,78 @@ export function createS3ObjectStore(
       });
       if (!res.ok) throw opError("putObject", res.status, bucket, objectKey);
       return { sha256Hex };
+    },
+
+    async presignUpload({ bucket, objectKey, mimeType, sha256Hex, ttlSeconds: requested }) {
+      const ttlSeconds = Math.min(Math.max(Math.ceil(requested), 30), 900);
+      const at = now();
+      const amzDate = sigV4AmzDate(at);
+      const dateStamp = amzDate.slice(0, 8);
+      const scope = scopeFor(dateStamp);
+      const t = target(bucket, objectKey);
+      const checksum = Buffer.from(sha256Hex, "hex").toString("base64");
+      const signedHeadersValue = "content-type;host;x-amz-checksum-sha256";
+      const query: (readonly [string, string])[] = [
+        ["X-Amz-Algorithm", SIGV4_ALGORITHM],
+        ["X-Amz-Credential", `${config.accessKeyId}/${scope}`],
+        ["X-Amz-Date", amzDate],
+        ["X-Amz-Expires", String(ttlSeconds)],
+        ["X-Amz-SignedHeaders", signedHeadersValue],
+      ];
+      const canonicalQuery = sigV4CanonicalQuery(query);
+      const headers = {
+        host: t.host,
+        "content-type": mimeType,
+        "x-amz-checksum-sha256": checksum,
+      };
+      const { text: canonicalRequest } = sigV4CanonicalRequest({
+        method: "PUT",
+        canonicalUri: t.canonicalUri,
+        canonicalQuery,
+        headers,
+        payloadHash: UNSIGNED_PAYLOAD,
+      });
+      const signingKey = sigV4SigningKey({
+        secretAccessKey: config.secretAccessKey,
+        dateStamp,
+        region,
+        service: S3_SERVICE,
+      });
+      const signature = sigV4Signature(
+        signingKey,
+        sigV4StringToSign({ amzDate, scope, canonicalRequest }),
+      );
+      return {
+        url: `${t.origin}${t.canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`,
+        headers: { "content-type": mimeType, "x-amz-checksum-sha256": checksum },
+        expiresAt: new Date(at.getTime() + ttlSeconds * 1000).toISOString(),
+      };
+    },
+
+    async inspectObject({ bucket, objectKey }) {
+      const res = await signedFetch({
+        method: "HEAD",
+        bucket,
+        objectKey,
+        query: [],
+        payload: null,
+        extraHeaders: { "x-amz-checksum-mode": "ENABLED" },
+      });
+      if (res.status === 404) return null;
+      if (!res.ok) throw opError("inspectObject", res.status, bucket, objectKey);
+      const size = Number(res.headers.get("content-length"));
+      const checksum = res.headers.get("x-amz-checksum-sha256");
+      const mimeType = res.headers.get("content-type")?.split(";", 1)[0]?.trim();
+      if (!Number.isSafeInteger(size) || size < 0 || !checksum || !mimeType) {
+        throw new Error(
+          `m22 s3 object store: incomplete verified metadata for ${bucket}/${objectKey}`,
+        );
+      }
+      return {
+        byteSize: size,
+        mimeType,
+        sha256Hex: Buffer.from(checksum, "base64").toString("hex"),
+      };
     },
 
     async presign({ descriptor }: { descriptor: SignedUrlDescriptor; organizationId: OrgId }) {

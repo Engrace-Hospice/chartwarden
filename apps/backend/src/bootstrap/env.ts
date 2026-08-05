@@ -71,6 +71,34 @@ const REQUIREMENTS: readonly Requirement[] = [
     rule: (v) => (/^rediss?:\/\//.test(v) ? null : "must be a redis:// or rediss:// URL"),
   },
   {
+    key: "M23_X12_GATEWAY_URL",
+    rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+  },
+  {
+    key: "M23_X12_GATEWAY_TOKEN",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
+    key: "M23_MAC_GATEWAY_URL",
+    rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+  },
+  {
+    key: "M23_MAC_GATEWAY_TOKEN",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
+    key: "M34_PROVISION_GATEWAY_URL",
+    rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+  },
+  {
+    key: "M34_PROVISION_GATEWAY_TOKEN",
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
+  },
+  {
+    key: "M34_INVITATION_ACCEPT_URL",
+    rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+  },
+  {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,
     // like DATABASE_URL: format is a connection string, not something to pattern-match here.
     key: "DATABASE_PLATFORM_URL",

@@ -81,8 +81,8 @@ export {
 } from "./routes/service";
 // M14-T06 — the §4.4 outbox contract (the full `m14.*` taxonomy + the canonical `idg.decision_recorded`
 // cross-module decision seam; check-fitness-gaps.ts scans events-by-m14.ts for naming + ownership + declared
-// consumers). **`idg.decision_recorded` wires LIVE the M7/M11/M12 decision consumers declared inert in Waves
-// C–E.**
+// consumers). `idg.decision_recorded` is live for M7; the dispatcher preserves the source row for the
+// other catalog-declared modules until their handlers bind.
 export { M14_OUTBOX_EVENTS } from "./events-by-m14";
 // M14-T06 — the §4.5 outbox subscriptions: the M6 inclusion cache, the M7/M8/M11/M12 D8 action-item
 // auto-close, the M9/M10/M11/M12 "since last IDG" projection cache, and the M22 PDF back-ref. Pure

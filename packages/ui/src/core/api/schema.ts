@@ -6358,6 +6358,57 @@ export interface paths {
         patch: operations["patchApiV1DisciplineplansByPlanIdVolunteerassignmentsByAssignmentId"];
         trace?: never;
     };
+    "/api/v1/document-uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Initiate a checksum-enforced direct document upload */
+        post: operations["postApiV1Documentuploads"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/document-uploads/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Abort a pending document upload and destroy its staged object versions */
+        delete: operations["deleteApiV1DocumentuploadsById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/document-uploads/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify uploaded object metadata and atomically commit its document version */
+        post: operations["postApiV1DocumentuploadsByIdComplete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents": {
         parameters: {
             query?: never;
@@ -34313,6 +34364,115 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1Documentuploads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    mode: "new_document" | "new_version";
+                    /** Format: uuid */
+                    targetDocumentId?: string;
+                    /** Format: uuid */
+                    patientId?: string;
+                    /** Format: uuid */
+                    admissionId?: string;
+                    retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                    /** Format: uuid */
+                    aggregateId?: string;
+                    title: string;
+                    patientFacing?: boolean;
+                    mimeType: "application/pdf" | "image/jpeg" | "image/png" | "image/tiff";
+                    byteSize: number;
+                    sha256Hex: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        uploadId: string;
+                        /** Format: uri */
+                        uploadUrl: string;
+                        requiredHeaders: {
+                            [key: string]: string;
+                        };
+                        /** Format: date-time */
+                        expiresAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    deleteApiV1DocumentuploadsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DocumentuploadsByIdComplete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        documentId: string;
+                        /** Format: uuid */
+                        versionId: string;
+                        versionNumber: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Documents: {
         parameters: {
             query?: {
@@ -38769,7 +38929,117 @@ export interface operations {
             content: {
                 "application/json": {
                     payload: {
-                        kind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        /** @constant */
+                        kind: "care_plan_update";
+                        mutations: ({
+                            /** @constant */
+                            op: "problem_add";
+                            icd10Code: string | null;
+                            snomedCode: string | null;
+                            description: string;
+                            problemKind: "terminal" | "related" | "unrelated";
+                        } | {
+                            /** @constant */
+                            op: "problem_update";
+                            /** Format: uuid */
+                            problemId: string;
+                            updates: {
+                                status?: "active" | "resolved" | "inactive";
+                                description?: string;
+                            };
+                        } | {
+                            /** @constant */
+                            op: "goal_add";
+                            /** Format: uuid */
+                            problemId: string;
+                            originalText: string;
+                            revisedText: string | null;
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+                            measurableOutcome: string;
+                        } | {
+                            /** @constant */
+                            op: "goal_update";
+                            /** Format: uuid */
+                            goalId: string;
+                            updates: {
+                                revisedText?: string;
+                                status?: "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                                statusNote?: string;
+                            };
+                        } | {
+                            /** @constant */
+                            op: "intervention_add";
+                            /** Format: uuid */
+                            problemId: string;
+                            goalRefs: string[];
+                            discipline: string;
+                            scopeText: string;
+                            frequencyText: string;
+                            frequencyValue: string;
+                        } | {
+                            /** @constant */
+                            op: "intervention_discontinue";
+                            /** Format: uuid */
+                            interventionId: string;
+                            reason: string;
+                        })[];
+                    } | {
+                        /** @constant */
+                        kind: "order_request";
+                        requestedOrders: {
+                            kindHint: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            narrative: string;
+                            recommendedTimeframe: string | null;
+                            triggeringProblemId: string | null;
+                        }[];
+                    } | {
+                        /** @constant */
+                        kind: "medication_recommendation";
+                        recommendations: {
+                            recommendationKind: "add" | "discontinue" | "change_dose" | "change_route" | "change_frequency";
+                            drugLabel: string;
+                            proposedStrength: string | null;
+                            proposedRoute: string | null;
+                            proposedFrequency: string | null;
+                            triggeringProblemId: string | null;
+                            rationaleText: string;
+                        }[];
+                    } | {
+                        /** @constant */
+                        kind: "level_of_care_consideration";
+                        consideredLevel: "routine" | "continuous" | "inpatient_respite" | "general_inpatient";
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "recertification_consideration";
+                        periodIndex: number;
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "family_meeting_needed";
+                        familyMembers: string[];
+                        preferredWindow: {
+                            /** Format: date-time */
+                            startIso: string;
+                            /** Format: date-time */
+                            endIso: string;
+                        } | null;
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "bereavement_risk_flag";
+                        riskLevel: "low" | "medium" | "high";
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "referral";
+                        referralKind: string;
+                        referralTargetMdmId: string | null;
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "team_note";
+                        noteText: string;
                     };
                 };
             };
@@ -39084,7 +39354,117 @@ export interface operations {
                     /** Format: uuid */
                     agendaItemId?: string;
                     payload: {
-                        kind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
+                        /** @constant */
+                        kind: "care_plan_update";
+                        mutations: ({
+                            /** @constant */
+                            op: "problem_add";
+                            icd10Code: string | null;
+                            snomedCode: string | null;
+                            description: string;
+                            problemKind: "terminal" | "related" | "unrelated";
+                        } | {
+                            /** @constant */
+                            op: "problem_update";
+                            /** Format: uuid */
+                            problemId: string;
+                            updates: {
+                                status?: "active" | "resolved" | "inactive";
+                                description?: string;
+                            };
+                        } | {
+                            /** @constant */
+                            op: "goal_add";
+                            /** Format: uuid */
+                            problemId: string;
+                            originalText: string;
+                            revisedText: string | null;
+                            source: "clinical" | "patient_stated" | "family_stated" | "agent_stated";
+                            measurableOutcome: string;
+                        } | {
+                            /** @constant */
+                            op: "goal_update";
+                            /** Format: uuid */
+                            goalId: string;
+                            updates: {
+                                revisedText?: string;
+                                status?: "in_progress" | "met" | "not_met" | "revised" | "discontinued";
+                                statusNote?: string;
+                            };
+                        } | {
+                            /** @constant */
+                            op: "intervention_add";
+                            /** Format: uuid */
+                            problemId: string;
+                            goalRefs: string[];
+                            discipline: string;
+                            scopeText: string;
+                            frequencyText: string;
+                            frequencyValue: string;
+                        } | {
+                            /** @constant */
+                            op: "intervention_discontinue";
+                            /** Format: uuid */
+                            interventionId: string;
+                            reason: string;
+                        })[];
+                    } | {
+                        /** @constant */
+                        kind: "order_request";
+                        requestedOrders: {
+                            kindHint: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            narrative: string;
+                            recommendedTimeframe: string | null;
+                            triggeringProblemId: string | null;
+                        }[];
+                    } | {
+                        /** @constant */
+                        kind: "medication_recommendation";
+                        recommendations: {
+                            recommendationKind: "add" | "discontinue" | "change_dose" | "change_route" | "change_frequency";
+                            drugLabel: string;
+                            proposedStrength: string | null;
+                            proposedRoute: string | null;
+                            proposedFrequency: string | null;
+                            triggeringProblemId: string | null;
+                            rationaleText: string;
+                        }[];
+                    } | {
+                        /** @constant */
+                        kind: "level_of_care_consideration";
+                        consideredLevel: "routine" | "continuous" | "inpatient_respite" | "general_inpatient";
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "recertification_consideration";
+                        periodIndex: number;
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "family_meeting_needed";
+                        familyMembers: string[];
+                        preferredWindow: {
+                            /** Format: date-time */
+                            startIso: string;
+                            /** Format: date-time */
+                            endIso: string;
+                        } | null;
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "bereavement_risk_flag";
+                        riskLevel: "low" | "medium" | "high";
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "referral";
+                        referralKind: string;
+                        referralTargetMdmId: string | null;
+                        rationaleText: string;
+                    } | {
+                        /** @constant */
+                        kind: "team_note";
+                        noteText: string;
                     };
                 };
             };
@@ -49289,6 +49669,7 @@ export interface operations {
             content: {
                 "application/json": {
                     planLabel: "starter" | "standard" | "enterprise";
+                    firstAdminFullName: string;
                 };
             };
         };
@@ -49688,6 +50069,7 @@ export interface operations {
                     breachNotificationContactEmail: string;
                     /** Format: email */
                     firstAdminEmail: string;
+                    firstAdminFullName: string;
                     planLabel: "starter" | "standard" | "enterprise";
                 };
             };

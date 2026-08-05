@@ -4,7 +4,7 @@
  * M22's pure suites exercise the forms/intake/extraction state machines but never touch a database, so they
  * cannot catch a wrong RLS predicate, a missing WITH CHECK, or a base-table grant that leaks across tenants.
  * This applies the real migrations to a real Postgres and drives the policies as the unprivileged `wardenx_app`
- * role (no BYPASSRLS), covering all FIFTEEN org-scoped M22 tables.
+ * role (no BYPASSRLS), covering all SIXTEEN org-scoped M22 tables.
  *
  * Two of the fifteen carry the risk that makes this worth more than a checkbox:
  *   • `document` is the record itself — the PHI-bearing aggregate (it carries patient_id). A cross-tenant read
@@ -12,7 +12,7 @@
  *   • `extraction_candidate` holds AI-extracted values from uploaded charts — incl. a `sud_detected` flag and a
  *     `value_cipher` — so a cross-tenant leak exposes another tenant's un-reviewed extracted PHI.
  *
- * Two of the seventeen owned tables are NON_ORG_SCOPED platform catalog and are EXCLUDED (no organization_id
+ * Two of the eighteen owned tables are NON_ORG_SCOPED platform catalog and are EXCLUDED (no organization_id
  * by design — the same template is published to every tenant; §3.3): `form_template` + `form_template_version`.
  * Their RLS is dual-grant (read-all `USING(true)` to wardenx_app, writes via wardenx_admin), a different shape
  * than the org-pivot this suite asserts.
@@ -51,6 +51,7 @@ type SeedIds = {
   providerEntity: string;
   location: string;
   document: string;
+  documentUpload: string;
   documentVersion: string;
   documentTag: string;
   documentAccessLog: string;
@@ -67,10 +68,11 @@ type SeedIds = {
   extractionProvenance: string;
 };
 
-/** The FIFTEEN org-scoped M22 tables. form_template + form_template_version are EXCLUDED: NON_ORG_SCOPED
+/** The SIXTEEN org-scoped M22 tables. form_template + form_template_version are EXCLUDED: NON_ORG_SCOPED
  * platform catalog (no organization_id) with dual-grant read-all RLS, not the org-pivot asserted here. */
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "document", key: "document" },
+  { table: "document_upload", key: "documentUpload" },
   { table: "document_version", key: "documentVersion" },
   { table: "document_tag", key: "documentTag" },
   { table: "document_access_log", key: "documentAccessLog" }, // PARTITIONED (accessed_at)
@@ -161,6 +163,17 @@ describe.skipIf(!DB_URL)(
            source_kind, aggregate_type, title, created_by_membership_id)
          VALUES ($1,$2,$3,$4,'clinical_record','user_upload','other','Chart doc',$5) RETURNING id`,
           [org, PATIENT, providerEntity, location, MEMBERSHIP],
+        )
+      ).rows[0].id as string;
+
+      const documentUpload = (
+        await db.query(
+          `INSERT INTO document_upload (organization_id, created_by_membership_id, patient_id,
+           retention_class, aggregate_type, title, object_key, mime_type, expected_byte_size,
+           expected_sha256_hex, expires_at)
+         VALUES ($1,$2,$3,'clinical_record','other','Staged chart','uploads/m22-${n}',
+           'application/pdf','1024',repeat('a',64),now() + interval '15 minutes') RETURNING id`,
+          [org, MEMBERSHIP, PATIENT],
         )
       ).rows[0].id as string;
 
@@ -295,6 +308,7 @@ describe.skipIf(!DB_URL)(
         providerEntity,
         location,
         document,
+        documentUpload,
         documentVersion,
         documentTag,
         documentAccessLog,
@@ -358,13 +372,12 @@ describe.skipIf(!DB_URL)(
     });
 
     it("every M22 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-      // All fifteen org-scoped tables — incl. the four PARTITIONED parents — carry a direct `_org` WITH CHECK
+      // All sixteen org-scoped tables — incl. the four PARTITIONED parents — carry a direct `_org` WITH CHECK
       // policy, so the covered-policy count equals COVERED.length. The two platform tables' policies are
       // FOR SELECT USING(true) (no WITH CHECK) and name no covered table, so they are filtered out.
-      const rls = readFileSync(
-        join(MIGRATIONS_DIR, "0049_documents_m22_rls_audit_triggers.sql"),
-        "utf8",
-      );
+      const rls = ["0049_documents_m22_rls_audit_triggers.sql", "0170_document_verified_upload.sql"]
+        .map((name) => readFileSync(join(MIGRATIONS_DIR, name), "utf8"))
+        .join("\n");
       const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
         (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
       );

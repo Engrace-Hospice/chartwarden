@@ -1,5 +1,5 @@
 // apps/backend/__tests__/encounter-outbox.test.ts — M8-T11 (§4.4 outbox contract + the M17 visit-
-// scheduling consumer (inert) + the M18 EVV-bracket forward seam deny-stub). Locks the full `m8.*`
+// publication consumer (live) + the M18 EVV-bracket forward seam deny-stub). Locks the full `m8.*`
 // event catalog (naming/ownership/consumers + the locked `m8.encounter.signed` payload — the same
 // invariants arch:gaps enforces) against M8_EVENT_NAMES, exercises the pure `decideVisitSeeding`
 // decision core (idempotent skip, active-service guard, the seed happy path), and asserts the
@@ -131,7 +131,7 @@ describe("M8 outbox event contract (§4.4)", () => {
   });
 });
 
-// ── M17 visit-scheduling consumer (inert) ──────────────────────────────────────────────────────────────
+// ── M17 visit-publication consumer ────────────────────────────────────────────────────────────────────
 
 function visitPayload(over: Partial<VisitScheduledPayload> = {}): VisitScheduledPayload {
   return {
@@ -140,7 +140,7 @@ function visitPayload(over: Partial<VisitScheduledPayload> = {}): VisitScheduled
     admissionId: ADM,
     organizationId: ORG,
     encounterType: "routine_visit",
-    discipline: "rn",
+    assignedDiscipline: "rn",
     serviceDate: "2026-01-02",
     assignedMembershipId: MEMBER,
     ...over,
@@ -189,13 +189,13 @@ describe("decideVisitSeeding (M17 visit-scheduling consumer, §4.7 / line 65)", 
     expect(action).toEqual({ kind: "skip", reason: "already_seeded" });
   });
 
-  it("the outbox binding is forward-declared + deferred (no M17 producer in Phase 1)", () => {
-    expect(M8_VISIT_SCHEDULED_CONSUMER.eventName).toBe("m17.visit.scheduled");
+  it("the outbox binding targets the canonical published event and is live", () => {
+    expect(M8_VISIT_SCHEDULED_CONSUMER.eventName).toBe("m17.visit.published");
     expect(M8_VISIT_SCHEDULED_CONSUMER.consumerName).toBe("m8.seed-visit-encounter");
-    expect(M8_VISIT_SCHEDULED_CONSUMER_DEFERRED).toBe(true);
+    expect(M8_VISIT_SCHEDULED_CONSUMER_DEFERRED).toBe(false);
   });
 
-  it("the deferred binding re-export delegates to the pure decider", () => {
+  it("the compatibility binding re-export delegates to the pure decider", () => {
     const facts: VisitSeedingFacts = { alreadySeeded: false, patientOnService: true };
     expect(decideVisitScheduled(visitPayload(), facts)).toEqual(
       decideVisitSeeding(visitPayload(), facts),

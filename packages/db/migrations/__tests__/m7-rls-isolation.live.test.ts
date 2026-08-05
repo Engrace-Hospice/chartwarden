@@ -39,6 +39,7 @@ type SeedIds = {
   problem: string;
   goal: string;
   intervention: string;
+  idgDecisionApplication: string;
 };
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
@@ -48,6 +49,7 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "problem", key: "problem" },
   { table: "goal", key: "goal" },
   { table: "intervention", key: "intervention" },
+  { table: "care_plan_idg_decision_application", key: "idgDecisionApplication" },
 ];
 
 describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Postgres (§3.5)", () => {
@@ -183,6 +185,16 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
       )
     ).rows[0].id as string;
 
+    const idgDecisionApplication = (
+      await db.query(
+        `INSERT INTO care_plan_idg_decision_application
+           (organization_id, provider_entity_id, location_id, idg_decision_id,
+            source_outbox_event_id, care_plan_id, care_plan_version_id)
+         VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),$4,$5) RETURNING id`,
+        [org, providerEntity, location, carePlan, carePlanVersion],
+      )
+    ).rows[0].id as string;
+
     return {
       membership,
       providerEntity,
@@ -193,6 +205,7 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
       problem,
       goal,
       intervention,
+      idgDecisionApplication,
     };
   }
 
@@ -227,10 +240,12 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
   });
 
   it("every M7 tenant RLS policy keys ONLY on app.org_id (no subqueries / pg_has_role / nullable escape)", async () => {
-    const rls = readFileSync(
-      join(MIGRATIONS_DIR, "0029_care_plan_m7_rls_audit_triggers.sql"),
-      "utf8",
-    );
+    const rls = [
+      "0029_care_plan_m7_rls_audit_triggers.sql",
+      "0166_care_plan_idg_decision_application.sql",
+    ]
+      .map((file) => readFileSync(join(MIGRATIONS_DIR, file), "utf8"))
+      .join("\n");
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
       (b) => COVERED.some((t) => b.includes(`"${t.table}"`)),
     );

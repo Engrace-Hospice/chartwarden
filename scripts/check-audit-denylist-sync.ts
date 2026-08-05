@@ -101,12 +101,18 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M11",
     denylist: M11_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0037_orders_m11_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0037_orders_m11_rls_audit_triggers.sql",
+      "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
+    ],
   },
   {
     mod: "M12",
     denylist: M12_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0039_dosespot_m12_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0039_dosespot_m12_rls_audit_triggers.sql",
+      "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
+    ],
   },
   {
     mod: "M13",
@@ -126,7 +132,10 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M16",
     denylist: M16_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0102_bereavement_m16_rls_audit_triggers.sql",
+      "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
+    ],
   },
   {
     mod: "M17",
@@ -136,7 +145,10 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M18",
     denylist: M18_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0047_evv_m18_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0047_evv_m18_rls_audit_triggers.sql",
+      "packages/db/migrations/0169_evv_visit_registration.sql",
+    ],
   },
   {
     mod: "M19",
@@ -156,7 +168,10 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M22",
     denylist: M22_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0049_documents_m22_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0049_documents_m22_rls_audit_triggers.sql",
+      "packages/db/migrations/0170_document_verified_upload.sql",
+    ],
   },
   {
     mod: "M28",

@@ -43,6 +43,28 @@ export class ClaimSubmissionRepository {
     return existing;
   }
 
+  /** Record the immutable attempt's one terminal outcome transition. Replays return the terminal row. */
+  async terminalize(
+    id: string,
+    patch: Pick<
+      schema.NewClaimSubmission,
+      "outcome" | "outcomeReason" | "generatedFileUri" | "submittedAt" | "workerCorrelationId"
+    >,
+  ): Promise<schema.ClaimSubmission> {
+    const [updated] = await this.db
+      .update(S)
+      .set(patch)
+      .where(and(eq(S.id, id), eq(S.outcome, "queued")))
+      .returning();
+    if (updated) return updated;
+    const existing = await this.findById(id);
+    if (!existing) throw new Error(`claim_submission ${id} not found`);
+    if (existing.outcome === "queued") {
+      throw new Error(`claim_submission ${id} could not be terminalized`);
+    }
+    return existing;
+  }
+
   /** Point read by id, or `null`. */
   async findById(id: string): Promise<schema.ClaimSubmission | null> {
     const [row] = await this.db.select().from(S).where(eq(S.id, id)).limit(1);

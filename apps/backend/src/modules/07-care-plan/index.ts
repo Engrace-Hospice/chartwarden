@@ -96,8 +96,8 @@ export {
 
 // M7-T07 — §2.4 outbox contract (the full `m7.*` taxonomy; check-fitness-gaps.ts scans events-by-m7.ts
 // for naming / ownership / consumers) + §4.6 jobs (the `care-plan.gates` 5-day/15-day scans over the
-// due columns derived by lifecycle/gate-clock). The IDG-apply + snapshot jobs are event-driven shells
-// (M7-T08 wires the M14 IDG consumer inert).
+// due columns derived by lifecycle/gate-clock). The snapshot job remains a shell; M7-T08's M14
+// IDG-decision consumer is live and transactionally idempotent.
 export { M7_OUTBOX_EVENTS } from "./events-by-m7";
 export {
   type CarePlanGateScanPlan,
@@ -128,9 +128,8 @@ export {
 } from "./jobs/cron-workers";
 export { M7_PLATFORM_JOB_ID, wireM7Tenancy } from "./wiring";
 
-// M7-T08 — the `apply-idg-decision` decision core (§7.9 / §11 D4): the M14 `idg.decision_recorded`
-// consumer. PURE + tested now; the M14 producer is Wave F so the outbox binding is forward-declared /
-// deferred (M7_IDG_DECISION_CONSUMER{,_DEFERRED}). The worker opens a draft `idg_review` version and
+// M7-T08 — the `apply-idg-decision` decision core (§7.9 / §11 D4): the live M14
+// `idg.decision_recorded` consumer opens a draft `idg_review` version and
 // applies the meeting's element mutations; it refuses a terminal-problem discontinue (T4) and is
 // idempotent on `idgDecisionId` (D4). The §7.8 encounter-relevance surface M8 consumes is the
 // CarePlanReader seam (registered in M7-T04, served by the /internal/care-plan/relevant-elements +
@@ -143,6 +142,8 @@ export {
   decideIdgDecision,
 } from "./consumers/apply-idg-decision";
 export {
+  type M7IdgConsumerOutboxPort,
+  buildM7IdgDecisionConsumer,
   M7_IDG_DECISION_CONSUMER,
   M7_IDG_DECISION_CONSUMER_DEFERRED,
   decideIdgDecisionRecorded,

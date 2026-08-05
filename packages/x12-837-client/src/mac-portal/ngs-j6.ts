@@ -22,22 +22,93 @@ import {
 export class NgsJ6PortalClient implements MacPortalClient {
   public readonly jurisdiction: MacJurisdiction = "ngs_j6";
 
-  submitFile(_input: MacPortalSubmitRequest): Promise<X12WorkerResult<MacPortalReceipt>> {
-    // TODO(Phase 3): drop the 837I file at the NGS J6 portal and return its receipt.
-    return Promise.resolve(
-      degraded<MacPortalReceipt>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport not wired"),
+  constructor(private readonly http: NgsJ6PortalHttpPort = NO_NGS_J6_PORT) {}
+
+  async submitFile(input: MacPortalSubmitRequest): Promise<X12WorkerResult<MacPortalReceipt>> {
+    return this.request({ method: "POST", path: "/submissions", body: input }, isReceipt);
+  }
+
+  async pollStatus(input: MacPortalStatusRequest): Promise<X12WorkerResult<MacPortalStatus>> {
+    return this.request(
+      {
+        method: "POST",
+        path: "/submission-status",
+        body: input,
+      },
+      isStatus,
     );
   }
 
-  pollStatus(_input: MacPortalStatusRequest): Promise<X12WorkerResult<MacPortalStatus>> {
-    // TODO(Phase 3): poll the NGS J6 portal for the submitted file's status.
-    return Promise.resolve(
-      degraded<MacPortalStatus>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport not wired"),
-    );
+  private async request<T>(
+    request: NgsJ6PortalHttpRequest,
+    guard: (value: unknown) => value is T,
+  ): Promise<X12WorkerResult<T>> {
+    try {
+      const response = await this.http.request(request);
+      if (response.status < 200 || response.status >= 300) {
+        return degraded<T>(
+          "MAC_PORTAL_HTTP_ERROR",
+          `ngs_j6 portal returned HTTP ${response.status}`,
+        );
+      }
+      if (!guard(response.body)) {
+        return degraded<T>(
+          "MAC_PORTAL_INVALID_RESPONSE",
+          "ngs_j6 portal response failed validation",
+        );
+      }
+      return { ok: true, data: response.body };
+    } catch {
+      return degraded<T>(MAC_PORTAL_NOT_WIRED, "ngs_j6 portal transport unavailable");
+    }
   }
 }
 
 /** Construct the NGS J6 portal client. */
-export function createNgsJ6PortalClient(): MacPortalClient {
-  return new NgsJ6PortalClient();
+export function createNgsJ6PortalClient(http?: NgsJ6PortalHttpPort): MacPortalClient {
+  return new NgsJ6PortalClient(http);
+}
+
+export interface NgsJ6PortalHttpRequest {
+  readonly method: "POST";
+  readonly path: "/submissions" | "/submission-status";
+  readonly body: unknown;
+}
+
+export interface NgsJ6PortalHttpResponse {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+/** Auth, TLS, timeouts, and replay-safe request identifiers belong to this injected transport. */
+export interface NgsJ6PortalHttpPort {
+  request(input: NgsJ6PortalHttpRequest): Promise<NgsJ6PortalHttpResponse>;
+}
+
+const NO_NGS_J6_PORT: NgsJ6PortalHttpPort = {
+  request: () => Promise.reject(new Error(MAC_PORTAL_NOT_WIRED)),
+};
+
+const record = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+function isReceipt(value: unknown): value is MacPortalReceipt {
+  return (
+    record(value) &&
+    typeof value.portalSubmissionId === "string" &&
+    value.portalSubmissionId.length > 0 &&
+    typeof value.acceptedAt === "string" &&
+    !Number.isNaN(Date.parse(value.acceptedAt))
+  );
+}
+
+function isStatus(value: unknown): value is MacPortalStatus {
+  return (
+    record(value) &&
+    typeof value.portalSubmissionId === "string" &&
+    (value.state === "received" ||
+      value.state === "in_process" ||
+      value.state === "acknowledged" ||
+      value.state === "rejected")
+  );
 }

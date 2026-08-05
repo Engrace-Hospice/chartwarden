@@ -130,7 +130,7 @@ describe("M11 outbox event contract (§4.4)", () => {
 // ── §4.5 subscription bindings ──────────────────────────────────────────────────────────────────────────
 
 describe("M11 outbox subscriptions (§4.5)", () => {
-  it("binds the three Wave-E producer events to their M11 consumers", () => {
+  it("binds the three Wave-E events and the live M14 IDG intake", () => {
     expect(M11_OUTBOX_SUBSCRIPTIONS).toEqual([
       {
         eventName: "m6.admission.discharged",
@@ -138,6 +138,7 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       },
       { eventName: "m9.assessment.significant_change", consumerName: "m11.assessment-trigger" },
       { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
+      { eventName: "idg.decision_recorded", consumerName: "m11.idg-decision-intake" },
     ]);
   });
 });

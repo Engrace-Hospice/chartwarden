@@ -40,4 +40,5 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m6.admission.discharged", consumerName: "m11.admission-discharged-discontinue" },
   { eventName: "m9.assessment.significant_change", consumerName: "m11.assessment-trigger" },
   { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
+  { eventName: "idg.decision_recorded", consumerName: "m11.idg-decision-intake" },
 ] as const;

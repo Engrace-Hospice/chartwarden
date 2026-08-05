@@ -7,7 +7,7 @@
 // publishes every planned event to the TRANSACTIONAL OUTBOX, and flips the emission markers — all inside
 // the SAME tx, so a thrown outbox validation error rolls back the whole org's tick (retry-the-whole-org-
 // next-tick over half-applying is the correct failure mode here). `idg`/`snapshot` (M7_QUEUES) are OUT OF
-// SCOPE — event-driven consumers wired inert per M7-T08; this file touches only `M7_QUEUES.gates`.
+// SCOPE — event-driven consumers are handled outside BullMQ; this file touches only `M7_QUEUES.gates`.
 //
 // Unlike M25's `alerts`/`activeOrgs` (both lazy fail-closed until bound), `outbox` here is NOT optional —
 // the composition root constructs it unconditionally whenever a DB client exists, so by the time a cron

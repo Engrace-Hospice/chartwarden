@@ -54,11 +54,15 @@ export function createAuditEraser(store: AuditEraserStore, ports: EraserPorts): 
     async erase(scope, subjectId) {
       const rows = await store.rowsForSubject(scope, subjectId);
       let erased = 0;
+      let refusedPartTwo = 0;
+      let refusedLegalHold = 0;
       for (const row of rows) {
         const outcome = await eraseAuditRows(row, ports);
         if (outcome.kind === "erased") erased += outcome.rowsErased;
+        if (outcome.kind === "refused_part_two_retention") refusedPartTwo += 1;
+        if (outcome.kind === "refused_legal_hold") refusedLegalHold += 1;
       }
-      return { erased };
+      return { erased, refusedPartTwo, refusedLegalHold };
     },
   };
 }

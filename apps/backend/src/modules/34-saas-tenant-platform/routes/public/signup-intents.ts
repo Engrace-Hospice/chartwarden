@@ -134,8 +134,8 @@ export function registerPublicSignupRoutes(
   /**
    * D14 deny-default gate. When `m34.self_serve_signup` is OFF (the Phase-1 platform default) we throw
    * `503 SIGNUP_DISABLED` BEFORE the handler runs, so no signup intent is ever created. Defense in depth:
-   * the gate fronts EVERY public route (verify-email + accept too — they are only reachable once a signup
-   * intent exists, which itself required the flag ON).
+   * the gate fronts the self-serve intent and email-verification routes. Platform-issued first-admin
+   * invitations remain acceptable while self-serve acquisition is disabled.
    */
   const requireSignupEnabled: PreHandler = async () => {
     if (!(await signupGate.isEnabled())) throw signupDisabled();
@@ -184,7 +184,7 @@ export function registerPublicSignupRoutes(
   // 3 — accept the platform → first-admin invitation; creates the M2 user + first org_admin membership.
   app.post(
     "/api/v1/public/tenant-invitations/:tokenHash/accept",
-    { preHandler: [requireSignupEnabled, requireUnderRateLimit] },
+    { preHandler: [requireUnderRateLimit] },
     async (request, reply) => {
       const { tokenHash } = parse(TokenHashParamsSchema, request.params);
       const body = parse(AcceptInvitationRequest, request.body);

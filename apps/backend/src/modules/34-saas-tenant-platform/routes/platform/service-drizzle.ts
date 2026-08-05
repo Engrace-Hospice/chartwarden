@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/service-drizzle.ts — M34 Phase 2D.
 //
 // The PRODUCTION `TenantPlatformRouteService` (§4.1 platform-ops surface). It implements the SAME
@@ -103,6 +104,15 @@ export interface OutboxPublishPort {
   ): Promise<void>;
 }
 
+/** M2-owned organization-spine creation. M34 never writes the organization table directly. */
+export interface OrganizationProvisionPort {
+  ensure(input: {
+    readonly organizationId: string;
+    readonly tenantAccountId: string;
+    readonly legalBusinessName: string;
+  }): Promise<{ readonly organizationId: string }>;
+}
+
 /** The structural platform-context transaction handle the repos + outbox/audit write through. */
 export type PlatformTx = DbClient;
 
@@ -116,6 +126,7 @@ export interface DrizzleTenantPlatformDeps {
   readonly auditBypass: PlatformBypassAuditor<PlatformTx>;
   /** Catalog-validated outbox publish, over the same platform tx. */
   readonly outbox: OutboxPublishPort;
+  readonly organizations: OrganizationProvisionPort;
   /** M1's FeatureFlagAdmin seam (§4.7 / D13). */
   readonly featureFlags: FeatureFlagAdminPort;
   /** Support-session side-effect ports (audit/alert/outbox/now) — the per-tx repo is bound here. */
@@ -336,23 +347,82 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     },
 
     // ── tenants: command methods (lifecycle machine + ledger + enqueue + outbox, one tx) ──
-    async provisionTenant(actorUserId, args: ProvisionTenantArgs) {
+    async provisionTenant(actorMembershipId, args: ProvisionTenantArgs) {
       return inPlatformCtx("platform-ops provision tenant", async (tx) => {
-        // §2.5 r1 — a provision request runs `accept` (signup_intent → provisioning) when an intent
-        // exists; otherwise the platform-ops manual path creates the tenant spine then enqueues provision.
-        // The tenant_account spine + org seed are the provision worker's job (it bootstraps under §2.6
-        // idempotency); the route only records the intent + enqueues, returning the queued job id.
-        const { jobId } = await deps.enqueue.enqueue("tenant.provision", args.firstAdminEmail, {
-          signupIntentId: args.signupIntentId,
+        const tenantAccountId = args.signupIntentId ?? randomUUID();
+        const organizationId = tenantAccountId;
+        const accounts = new TenantAccountRepository(tx);
+        const existing = await accounts.findById(tenantAccountId);
+
+        await deps.organizations.ensure({
+          organizationId,
+          tenantAccountId,
+          legalBusinessName: args.legalBusinessName,
+        });
+
+        if (!existing) {
+          await accounts.create({
+            id: tenantAccountId,
+            organizationId,
+            status: "provisioning",
+            planLabel: args.planLabel,
+            legalBusinessName: args.legalBusinessName,
+            billingContactEmail: args.billingContactEmail,
+            breachNotificationEmail: args.breachNotificationContactEmail,
+            createdByMembershipId: actorMembershipId,
+          });
+          await accounts.appendStatusEvent({
+            tenantAccountId,
+            organizationId,
+            fromStatus: "signup_intent",
+            toStatus: "provisioning",
+            transitionReason: "platform operator requested tenant provisioning",
+            actorMembershipId,
+            actorKind: "platform_ops",
+            sideEffectsRecorded: { queue: "tenant.provision" },
+          });
+        } else if (existing.status !== "provisioning") {
+          throw new WardenXError(
+            "ILLEGAL_TENANT_TRANSITION",
+            `tenant cannot provision from '${existing.status}'`,
+            409,
+          );
+        }
+
+        if (args.signupIntentId) {
+          const intentRepo = new SignupIntentRepository(tx);
+          const intent = await intentRepo.findIntentById(args.signupIntentId);
+          if (intent) {
+            await intentRepo.updateIntent(intent.id, {
+              intentStatus: "qualified",
+              processedAt: deps.supportSessionPorts.now(),
+              tenantAccountId,
+            });
+          }
+        }
+
+        const provisionJob = {
+          tenantAccountId,
+          organizationId,
           legalBusinessName: args.legalBusinessName,
           billingContactEmail: args.billingContactEmail,
-          breachNotificationContactEmail: args.breachNotificationContactEmail,
           firstAdminEmail: args.firstAdminEmail,
-          planLabel: args.planLabel,
+          firstAdminFullName: args.firstAdminFullName,
+          actorMembershipId,
+          transitionReason: "platform operator requested tenant provisioning",
+        };
+        const { jobId } = await deps.enqueue.enqueue(
+          "tenant.provision",
+          tenantAccountId,
+          provisionJob,
+        );
+        await deps.outbox.publish(tx, {
+          eventName: "m34.tenant.provision_started",
+          organizationId,
+          aggregateKind: "tenant_account",
+          aggregateId: tenantAccountId,
+          payload: provisionJob,
         });
-        // The provision worker mints the tenant_account row; surface a deterministic id for the route
-        // response by reading back the freshly-created intent-bridge if present, else echo the job id.
-        const tenantAccountId = args.signupIntentId ?? jobId;
         return { tenantAccountId, jobId };
       });
     },
@@ -380,7 +450,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
-    async requestShred(orgSlug, actorUserId, args) {
+    async requestShred(orgSlug, actorMembershipId, args) {
       return inPlatformCtx("platform-ops request tenant shred", async (tx) => {
         const { account } = await loadByOrgSlug(tx, orgSlug);
         if (account.status !== "destruction_pending") {
@@ -397,27 +467,30 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           `${account.id}+${args.destructionCertificateId}`,
           {
             tenantAccountId: account.id,
-            destructionCertificateId: args.destructionCertificateId,
-            reason: args.transitionReason,
+            orgId: account.organizationId,
+            destructionCertId: args.destructionCertificateId,
+            actorMembershipId,
+            transitionReason: args.transitionReason,
           },
         );
-        void actorUserId;
         return { tenantAccountId: account.id, jobId };
       });
     },
 
-    async requestDekRotate(orgSlug, actorUserId, args) {
+    async requestDekRotate(orgSlug, actorMembershipId, args) {
       return inPlatformCtx("platform-ops request DEK rotate", async (tx) => {
         const { account } = await loadByOrgSlug(tx, orgSlug);
         const keyRing = await new TenantKeyRingRepository(tx).findByTenantAccountId(account.id);
-        const priorCount = Array.isArray(keyRing?.priorDekVersions)
-          ? keyRing.priorDekVersions.length
-          : 0;
-        const targetVersion = `v${priorCount + 2}`;
+        if (!keyRing || keyRing.destroyedAt || !keyRing.currentDekKekWrappedCiphertext) {
+          throw new WardenXError("TENANT_KEY_UNAVAILABLE", "tenant key ring is unavailable", 409);
+        }
+        const current = /^v(\d+)$/.exec(keyRing.currentDekVersion)?.[1];
+        if (!current) throw new Error("malformed tenant DEK version");
+        const targetVersion = `v${Number.parseInt(current, 10) + 1}`;
         const { jobId } = await deps.enqueue.enqueue(
           "tenant.dek_rotate",
           `${account.id}+${targetVersion}`,
-          { tenantAccountId: account.id, dekVersionTarget: targetVersion, reason: args.reason },
+          { orgId: account.organizationId, actorMembershipId, targetVersion },
         );
         return { tenantAccountId: account.id, jobId };
       });
@@ -681,7 +754,7 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
-    async qualifyIntent(intentId, actorUserId, args) {
+    async qualifyIntent(intentId, actorMembershipId, args) {
       return inPlatformCtx("platform-ops qualify signup intent", async (tx) => {
         const repo = new SignupIntentRepository(tx);
         const intent = await repo.findIntentById(intentId);
@@ -693,17 +766,56 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
             409,
           );
         }
+        const tenantAccountId = intentId;
+        const organizationId = intentId;
+        await deps.organizations.ensure({
+          organizationId,
+          tenantAccountId,
+          legalBusinessName: intent.legalBusinessName,
+        });
+        await new TenantAccountRepository(tx).create({
+          id: tenantAccountId,
+          organizationId,
+          status: "provisioning",
+          planLabel: args.planLabel,
+          legalBusinessName: intent.legalBusinessName,
+          billingContactEmail: intent.contactEmail,
+          breachNotificationEmail: intent.contactEmail,
+          createdByMembershipId: actorMembershipId,
+        });
+        await new TenantAccountRepository(tx).appendStatusEvent({
+          tenantAccountId,
+          organizationId,
+          fromStatus: "signup_intent",
+          toStatus: "provisioning",
+          transitionReason: "platform operator qualified signup intent",
+          actorMembershipId,
+          actorKind: "platform_ops",
+          sideEffectsRecorded: { queue: "tenant.provision" },
+        });
         await repo.updateIntent(intentId, {
           intentStatus: "qualified",
           processedAt: deps.supportSessionPorts.now(),
+          tenantAccountId,
         });
-        const { jobId } = await deps.enqueue.enqueue("tenant.provision", intentId, {
-          signupIntentId: intentId,
+        const provisionJob = {
+          tenantAccountId,
+          organizationId,
           legalBusinessName: intent.legalBusinessName,
+          billingContactEmail: intent.contactEmail,
           firstAdminEmail: intent.intendedFirstAdminEmail,
-          planLabel: args.planLabel,
+          firstAdminFullName: args.firstAdminFullName,
+          actorMembershipId,
+          transitionReason: "platform operator qualified signup intent",
+        };
+        const { jobId } = await deps.enqueue.enqueue("tenant.provision", intentId, provisionJob);
+        await deps.outbox.publish(tx, {
+          eventName: "m34.tenant.provision_started",
+          organizationId,
+          aggregateKind: "tenant_account",
+          aggregateId: tenantAccountId,
+          payload: provisionJob,
         });
-        void actorUserId;
         return { intentId, intentStatus: "qualified", jobId };
       });
     },

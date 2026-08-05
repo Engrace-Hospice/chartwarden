@@ -9,6 +9,7 @@ import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { ValidationError } from "@wardenx/types";
+import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
   ActionItemView as ServiceActionItemView,
   AgendaItemView as ServiceAgendaItemView,
@@ -149,10 +150,10 @@ export const UpdateAgendaItemRequest = Type.Object({
 export const RecordDecisionRequest = Type.Object({
   patientId: Nullable(Type.String({ format: "uuid" })),
   agendaItemId: Type.Optional(Type.String({ format: "uuid" })),
-  payload: Type.Object({ kind: DECISION_KIND }),
+  payload: IDG_DECISION_PAYLOAD_SCHEMA,
 });
 export const UpdateDecisionRequest = Type.Object({
-  payload: Type.Object({ kind: DECISION_KIND }),
+  payload: IDG_DECISION_PAYLOAD_SCHEMA,
 });
 export const SupersedeDecisionRequest = Type.Object({
   reason: Type.Optional(Type.String({ maxLength: 2000 })),

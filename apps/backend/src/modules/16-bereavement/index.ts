@@ -25,6 +25,10 @@ export * from "./seams/index";
 
 // §4.4 — the M16 outbox-event catalog (the dispatcher validates each `m16.*` publish against it).
 export { M16_OUTBOX_EVENTS } from "./events-by-m16";
+export {
+  M16_IDG_DECISION_CONSUMER,
+  buildM16IdgDecisionConsumer,
+} from "./outbox-consumers/m14-idg-decision-recorded";
 
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {

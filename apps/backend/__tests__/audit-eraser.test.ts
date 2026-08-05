@@ -60,7 +60,7 @@ describe("M4-T08 — the audit_event eraser registers over the deny-stub (right-
     const result = await getEraser("audit_event").erase({ orgId: ORG }, "pt_alive");
 
     // Only the two non-Part-2 rows are erased; the protected SUD row is refused, not counted.
-    expect(result).toEqual({ erased: 2 });
+    expect(result).toEqual({ erased: 2, refusedPartTwo: 1, refusedLegalHold: 0 });
   });
 
   it("makes validateErasers() pass during a real buildServer() boot (no deny-stub left standing)", () => {

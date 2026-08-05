@@ -27,6 +27,7 @@ export * from "./system-status";
 export * from "./feature-flags";
 export * from "./idempotency-keys";
 export * from "./outbox-events";
+export * from "./outbox-consumer-receipts";
 export * from "./organization-settings-registry";
 export * from "./outbox-event-catalog";
 // M2-T02 — Identity & Org tables (M2 spec §3.3–3.7). two_factor + passkey are user-owned
@@ -221,6 +222,7 @@ export * from "./care-plan/care-plan-signatures";
 export * from "./care-plan/problems";
 export * from "./care-plan/goals";
 export * from "./care-plan/interventions";
+export * from "./care-plan/idg-decision-applications";
 
 // ── Module 8 (Encounters & Visit Notes) — the documentation spine (§3.3) ─────────────────────
 // M8 owns 10 tables (M8-T02): the encounter root + encounter_signature (D13 step-up signatures) +
@@ -314,6 +316,7 @@ export * from "./orders/verbal-orders";
 export * from "./orders/standing-order-instances";
 export * from "./orders/order-discontinuations";
 export * from "./orders/order-verbal-policies";
+export * from "./orders/order-idg-decision-applications";
 
 // ---------------------------------------------------------------------------
 // Module 12 — DoseSpot Integration (M12-T02)
@@ -340,6 +343,7 @@ export * from "./dosespot/refill-requests";
 export * from "./dosespot/dosespot-webhook-events";
 export * from "./dosespot/dosespot-prescribers";
 export * from "./dosespot/epcs-signing-attempts";
+export * from "./dosespot/medication-order-idg-decision-applications";
 
 // ---------------------------------------------------------------------------
 // M13 owns 12 tables (M13-T02): the central `administration_record` (one row per recorded medication
@@ -452,6 +456,7 @@ export * from "./evv/evv-geofence-policy";
 export * from "./evv/evv-device";
 export * from "./evv/evv-missing-resolution";
 export * from "./evv/evv-aggregator-submission";
+export * from "./evv/evv-visit-registrations";
 // M22 Document Management (M22-T02, §3.3): 17 tables. `document` + `intake_upload_batch` are PHI-bearing by
 // the three-column rule (they carry patient_id → provider_entity_id + location_id present, nullable as the
 // org-level-entity carve-out); the rest are org-scoped (joining to PHI via document/batch) except

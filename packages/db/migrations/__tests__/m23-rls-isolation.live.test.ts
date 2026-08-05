@@ -360,6 +360,34 @@ describe.skipIf(!DB_URL)(
       ).toEqual([]);
     });
 
+    it("terminalizes a queued claim submission exactly once and rejects deletion", async () => {
+      const updated = await withOrg(ORG_A, () =>
+        db.query(
+          `UPDATE claim_submission
+              SET outcome = 'submitted', generated_file_uri = 's3://claims/submitted.x12',
+                  submitted_at = now(), worker_correlation_id = 'corr-1'
+            WHERE id = $1
+        RETURNING outcome`,
+          [a.submission],
+        ),
+      );
+      expect(updated.rows[0]?.outcome).toBe("submitted");
+
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `UPDATE claim_submission SET outcome = 'failed_portal', outcome_reason = 'late rewrite'
+              WHERE id = $1`,
+            [a.submission],
+          ),
+        ),
+      ).rejects.toThrow(/immutable except for one queued-to-terminal transition/);
+
+      await expect(
+        db.query("DELETE FROM claim_submission WHERE id = $1", [a.submission]),
+      ).rejects.toThrow(/cannot be deleted/);
+    });
+
     it("the CLAIM chain is org-invisible end to end — not just the claim root", async () => {
       // The root being scoped is not enough: a leak through claim_line, a HIPPS/SIA calculation or a
       // validation result would expose the same claim's money and clinical detail by another door.

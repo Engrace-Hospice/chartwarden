@@ -36,8 +36,10 @@ import {
   type EligibilityOutcome,
   type NoticeState,
   canTransition as canClaimTransition,
+  deriveControlNumber,
   noeMachine,
   notrMachine,
+  parseControlNumber,
   reduce as reduceClaim,
   repositories,
 } from "@wardenx/billing";
@@ -94,6 +96,12 @@ export interface ClaimSubmitJob {
   readonly claimId: string;
   readonly submissionId: string;
   readonly claimControlNumber: string;
+  readonly attemptIndex: number;
+}
+export interface ClaimSubmitRetryJob {
+  readonly organizationId: string;
+  readonly claimId: string;
+  readonly submissionId: string;
   readonly attemptIndex: number;
 }
 export interface NoeSubmitJob {
@@ -295,6 +303,52 @@ export interface ActiveOrgListPort {
 /** The MAC-jurisdiction enumerator the per-jurisdiction ack-pull + portal-health crons fan across. */
 export interface MacJurisdictionListPort {
   listJurisdictions(): Promise<readonly { readonly macJurisdiction: string }[]>;
+}
+
+/** BullMQ sink used by the transactional-outbox submission-request consumer. */
+export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
+  readonly port: {
+    enqueue(
+      queueName: "claim.submit" | "claim.submit.retry" | "noe.submit" | "notr.submit",
+      jobId: string,
+      payload: Record<string, unknown>,
+    ): Promise<void>;
+  };
+  readonly queues: readonly Queue[];
+} {
+  const cache = new Map<string, Queue>();
+  const queueFor = (name: string) => {
+    let queue = cache.get(name);
+    if (!queue) {
+      queue = new Queue(name, { connection });
+      cache.set(name, queue);
+    }
+    return queue;
+  };
+  return {
+    port: {
+      async enqueue(queueName, jobId, payload) {
+        const params =
+          queueName === "claim.submit"
+            ? M23_QUEUE_PARAMS.claimSubmit
+            : queueName === "claim.submit.retry"
+              ? M23_QUEUE_PARAMS.claimSubmitRetry
+              : queueName === "noe.submit"
+                ? M23_QUEUE_PARAMS.noeSubmit
+                : M23_QUEUE_PARAMS.notrSubmit;
+        await queueFor(queueName).add(queueName, payload, {
+          jobId: `m23:${queueName}:${jobId}`,
+          attempts: params.attempts,
+          backoff: params.backoff,
+          removeOnComplete: { count: 500 },
+          removeOnFail: false,
+        });
+      },
+    },
+    get queues() {
+      return [...cache.values()];
+    },
+  };
 }
 
 // ── the dep bag the composition root injects ──────────────────────────────────────────────────────────────
@@ -505,46 +559,36 @@ async function runClaimSubmit(
 ): Promise<void> {
   const outbox = outboxOf(deps);
   const claims = new ClaimRepository(tx);
+  const submissions = new ClaimSubmissionRepository(tx);
   const now = (deps.now ?? (() => new Date()))();
 
   const claim = await claims.findById(job.claimId);
   if (!claim) throw new Error(`claim ${job.claimId} not found`);
 
+  let generated: { readonly x12: string; readonly correlationId: string } | null = null;
+  let uploaded: { readonly accepted: boolean; readonly generatedFileUri: string } | null = null;
   try {
-    const generated = await x12Of(deps).generate837i({
+    generated = await x12Of(deps).generate837i({
       organizationId: job.organizationId,
       claimId: job.claimId,
       claimControlNumber: job.claimControlNumber,
     });
-    const uploaded = await macPortalOf(deps).upload({
+    uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       kind: "claim_837i",
       x12: generated.x12,
       controlNumber: job.claimControlNumber,
     });
-    if (!uploaded.accepted) throw new Error("MAC portal rejected the 837I upload");
-
-    const to = nextClaimState(claim.state, "submit");
-    const result = await claims.transitionToState(job.claimId, claim.version, to);
-    if (!result.ok)
-      throw new Error(`claim ${job.claimId} version conflict on submit (${result.currentVersion})`);
-
-    await outbox.publish(tx, {
-      eventName: "m23.claim.submitted",
-      organizationId: job.organizationId,
-      aggregateKind: "claim",
-      aggregateId: job.claimId,
-      payload: {
-        claimId: job.claimId,
-        submissionId: job.submissionId,
-        claimControlNumber: job.claimControlNumber,
-        macJurisdiction: claim.macJurisdiction,
-        submittedAt: now.toISOString(),
-      },
-    });
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    await submissions.terminalize(job.submissionId, {
+      outcome: generated ? "failed_portal" : "failed_worker",
+      outcomeReason: reason,
+      generatedFileUri: null,
+      submittedAt: null,
+      workerCorrelationId: generated?.correlationId ?? null,
+    });
     await outbox.publish(tx, {
       eventName: "m23.claim.submission_failed",
       organizationId: job.organizationId,
@@ -557,8 +601,62 @@ async function runClaimSubmit(
         reason,
       },
     });
-    throw err;
+    return;
   }
+
+  if (!uploaded || !generated) {
+    throw new Error("submission transport returned without a complete result");
+  }
+  if (!uploaded.accepted) {
+    const reason = "MAC portal rejected the 837I upload";
+    await submissions.terminalize(job.submissionId, {
+      outcome: "failed_portal",
+      outcomeReason: reason,
+      generatedFileUri: uploaded.generatedFileUri,
+      submittedAt: null,
+      workerCorrelationId: generated.correlationId,
+    });
+    await outbox.publish(tx, {
+      eventName: "m23.claim.submission_failed",
+      organizationId: job.organizationId,
+      aggregateKind: "claim",
+      aggregateId: job.claimId,
+      payload: {
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        attemptIndex: job.attemptIndex,
+        reason,
+      },
+    });
+    return;
+  }
+
+  await submissions.terminalize(job.submissionId, {
+    outcome: "submitted",
+    outcomeReason: null,
+    generatedFileUri: uploaded.generatedFileUri,
+    submittedAt: now,
+    workerCorrelationId: generated.correlationId,
+  });
+
+  const to = nextClaimState(claim.state, "submit");
+  const result = await claims.transitionToState(job.claimId, claim.version, to);
+  if (!result.ok)
+    throw new Error(`claim ${job.claimId} version conflict on submit (${result.currentVersion})`);
+
+  await outbox.publish(tx, {
+    eventName: "m23.claim.submitted",
+    organizationId: job.organizationId,
+    aggregateKind: "claim",
+    aggregateId: job.claimId,
+    payload: {
+      claimId: job.claimId,
+      submissionId: job.submissionId,
+      claimControlNumber: job.claimControlNumber,
+      macJurisdiction: claim.macJurisdiction,
+      submittedAt: now.toISOString(),
+    },
+  });
 }
 
 /**
@@ -570,7 +668,7 @@ async function runClaimSubmit(
 async function runClaimSubmitRetry(
   tx: BillingDb,
   deps: M23WorkerDeps,
-  job: ClaimSubmitJob,
+  job: ClaimSubmitRetryJob,
 ): Promise<void> {
   const outbox = outboxOf(deps);
   const claims = new ClaimRepository(tx);
@@ -580,6 +678,14 @@ async function runClaimSubmitRetry(
 
   const claim = await claims.findById(job.claimId);
   if (!claim) throw new Error(`claim ${job.claimId} not found`);
+  const priorSubmission = await submissions.findById(job.submissionId);
+  if (
+    !priorSubmission ||
+    priorSubmission.claimId !== job.claimId ||
+    priorSubmission.attemptIndex !== job.attemptIndex
+  ) {
+    throw new Error(`claim submission ${job.submissionId} does not match the retry request`);
+  }
 
   if (attemptIndex >= M23_QUEUE_PARAMS.claimSubmitRetry.attempts) {
     await outbox.publish(tx, {
@@ -603,33 +709,53 @@ async function runClaimSubmitRetry(
     return;
   }
 
-  const generated = await x12Of(deps).generate837i({
-    organizationId: job.organizationId,
-    claimId: job.claimId,
-    claimControlNumber: job.claimControlNumber,
-  });
-  const uploaded = await macPortalOf(deps).upload({
-    organizationId: job.organizationId,
-    providerEntityId: claim.providerEntityId,
-    kind: "claim_837i",
-    x12: generated.x12,
-    controlNumber: job.claimControlNumber,
-  });
-
-  await submissions.append({
-    organizationId: job.organizationId,
-    providerEntityId: claim.providerEntityId,
-    kind: "claim_837i",
-    claimId: job.claimId,
-    claimControlNumber: job.claimControlNumber,
+  const parsedControlNumber = parseControlNumber(priorSubmission.claimControlNumber);
+  if (!parsedControlNumber) {
+    throw new Error(`claim submission ${job.submissionId} has an invalid control number`);
+  }
+  const claimControlNumber = deriveControlNumber({
+    ccn: parsedControlNumber.ccn,
+    serviceFrom: claim.serviceFrom,
+    claimId: claim.id,
     attemptIndex,
-    outcome: uploaded.accepted ? "submitted" : "failed_portal",
-    generatedFileUri: uploaded.generatedFileUri,
-    submittedAt: uploaded.accepted ? now : null,
-    workerCorrelationId: generated.correlationId,
   });
 
-  if (!uploaded.accepted) {
+  let generated: { readonly x12: string; readonly correlationId: string } | null = null;
+  let uploaded: { readonly accepted: boolean; readonly generatedFileUri: string } | null = null;
+  let failureReason: string | null = null;
+  try {
+    generated = await x12Of(deps).generate837i({
+      organizationId: job.organizationId,
+      claimId: job.claimId,
+      claimControlNumber,
+    });
+    uploaded = await macPortalOf(deps).upload({
+      organizationId: job.organizationId,
+      providerEntityId: claim.providerEntityId,
+      kind: "claim_837i",
+      x12: generated.x12,
+      controlNumber: claimControlNumber,
+    });
+    if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
+  } catch (err) {
+    failureReason = err instanceof Error ? err.message : String(err);
+  }
+
+  const submission = await submissions.append({
+    organizationId: job.organizationId,
+    providerEntityId: claim.providerEntityId,
+    kind: "claim_837i",
+    claimId: job.claimId,
+    claimControlNumber,
+    attemptIndex,
+    outcome: failureReason ? (generated ? "failed_portal" : "failed_worker") : "submitted",
+    outcomeReason: failureReason,
+    generatedFileUri: uploaded?.generatedFileUri ?? null,
+    submittedAt: failureReason ? null : now,
+    workerCorrelationId: generated?.correlationId ?? null,
+  });
+
+  if (failureReason) {
     await outbox.publish(tx, {
       eventName: "m23.claim.submission_failed",
       organizationId: job.organizationId,
@@ -637,12 +763,12 @@ async function runClaimSubmitRetry(
       aggregateId: job.claimId,
       payload: {
         claimId: job.claimId,
-        submissionId: job.submissionId,
+        submissionId: submission.id,
         attemptIndex,
-        reason: "portal rejected",
+        reason: failureReason,
       },
     });
-    throw new Error("MAC portal rejected the retry upload");
+    return;
   }
 
   const to = nextClaimState(claim.state, "submit");
@@ -655,8 +781,8 @@ async function runClaimSubmitRetry(
     aggregateId: job.claimId,
     payload: {
       claimId: job.claimId,
-      submissionId: job.submissionId,
-      claimControlNumber: job.claimControlNumber,
+      submissionId: submission.id,
+      claimControlNumber,
       macJurisdiction: claim.macJurisdiction,
       submittedAt: now.toISOString(),
     },
@@ -1262,7 +1388,7 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
       M23_QUEUE_PARAMS.claimSubmit.concurrency,
       runClaimSubmit,
     ),
-    orgScoped<ClaimSubmitJob>(
+    orgScoped<ClaimSubmitRetryJob>(
       M23_QUEUES.claimSubmitRetry,
       M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
       runClaimSubmitRetry,
@@ -1292,6 +1418,47 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
       M23_QUEUE_PARAMS.revalidateConsumer.concurrency,
       runRevalidateConsumer,
     ),
+  ];
+}
+
+/** Launch slice: one claim submission worker plus the 999/277CA reconciliation workers. */
+export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
+  if (!deps.x12 || !deps.macPortal || !deps.outbox || !deps.jurisdictions) {
+    throw new Error(
+      "M23LaunchCapabilityIncomplete: x12, macPortal, outbox, and jurisdictions are required",
+    );
+  }
+  const orgWorker = <D extends { organizationId: string }>(
+    queue: string,
+    concurrency: number,
+    run: (tx: BillingDb, workerDeps: M23WorkerDeps, data: D) => Promise<void>,
+  ) =>
+    new Worker(
+      queue,
+      async (job) => {
+        const data = job.data as D;
+        if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        await withOrgContext(
+          deps.db,
+          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          (tx) => run(tx as unknown as BillingDb, deps, data),
+        );
+      },
+      { connection: deps.connection, concurrency },
+    );
+  const cron = (queue: string, run: () => Promise<void>) =>
+    new Worker(queue, async () => run(), { connection: deps.connection, concurrency: 1 });
+  return [
+    orgWorker(M23_QUEUES.claimSubmit, M23_QUEUE_PARAMS.claimSubmit.concurrency, runClaimSubmit),
+    orgWorker(
+      M23_QUEUES.claimSubmitRetry,
+      M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
+      runClaimSubmitRetry,
+    ),
+    orgWorker(M23_QUEUES.noeSubmit, M23_QUEUE_PARAMS.noeSubmit.concurrency, runNoeSubmit),
+    orgWorker(M23_QUEUES.notrSubmit, M23_QUEUE_PARAMS.notrSubmit.concurrency, runNotrSubmit),
+    cron(M23_CRON_QUEUES.ackPull999, () => runAckPull999(deps)),
+    cron(M23_CRON_QUEUES.ackPull277ca, () => runAckPull277ca(deps)),
   ];
 }
 
@@ -1353,6 +1520,21 @@ export async function scheduleM23Jobs(connection: ConnectionOptions): Promise<Qu
     queues.push(queue);
   }
   return queues;
+}
+
+/** Schedule only the launch acknowledgment reconciliation ticks. */
+export async function scheduleM23LaunchJobs(connection: ConnectionOptions): Promise<Queue[]> {
+  const schedules: readonly [M23CronQueueName, string][] = [
+    [M23_CRON_QUEUES.ackPull999, M23_JOB_SCHEDULES.ackPull999],
+    [M23_CRON_QUEUES.ackPull277ca, M23_JOB_SCHEDULES.ackPull277ca],
+  ];
+  return Promise.all(
+    schedules.map(async ([name, pattern]) => {
+      const queue = new Queue(name, { connection });
+      await queue.add("scheduled", {}, { repeat: { pattern }, removeOnComplete: true });
+      return queue;
+    }),
+  );
 }
 
 /** Build the {@link M23WorkerDeps} from the composition-root primitives (the M27 `buildM27WorkerDeps` shape). */

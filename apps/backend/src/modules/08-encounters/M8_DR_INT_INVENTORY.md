@@ -57,11 +57,11 @@ M8 has **no direct external integration of its own** (HearthNote Layer 2 reaches
 | consume | M36 (Messaging) | `AlertEmitter` seam — cosignature SLA + late-entry-override alerts | minimal (ids) |
 | consume | M38 (Terminology) | HearthNote vocabulary / value-set pins (`@wardenx/narrative-vocab` `VOCAB_VERSION`) | no |
 | consume | M18 (EVV) | `EvvBracketResolver` forward-seam (inert deny-stub; M18 in Wave F) | yes (ids) |
-| consume | M17 (Scheduling) | `visit.scheduled` → `seed-visit-encounter` worker (inert decision core; M17 in Wave F) | minimal (ids) |
+| consume | M17 (Scheduling) | canonical `m17.visit.published` → live `seed-visit-encounter` handler with per-tenant visit idempotency | minimal (ids + scheduling/siting fields) |
 | consume | M32 (AI Platform) | HearthNote Layer-2 enhancement (flag-gated OFF Phase 1; deterministic Layer-1 fallback) | yes (in-perimeter) |
 
 Notes:
-- The M17 visit-seeding and M18 EVV-bracket paths ship as PURE decision cores / inert deny-stubs now
+- The M17 visit-seeding path is live; the M18 EVV-bracket path remains a pure decision core / deny-stub
   (M8-T11/T08); the live bindings wire in Wave F. No `dependsOn` edge is created for either (the
   consumed `m17.*` / `m18.*` strings are not M8-owned events; M8 `dependsOn` stays `[1,6,7,36,38]`).
 - All logs are PHI-free by construction (Pino redaction §8.4): `encounter_id` / `patient_id` /

@@ -180,8 +180,12 @@ export interface ConsentEraserDeps {
 export function createConsentEraser(store: ConsentEraseStore): DataEraser {
   return {
     async erase(scope, subjectId) {
-      const { erased } = await eraseConsentForSubject(scope.orgId, subjectId, store);
-      return { erased };
+      const { erased, retained } = await eraseConsentForSubject(scope.orgId, subjectId, store);
+      return {
+        erased,
+        refusedPartTwo: retained["42_cfr_part_2_release"] ?? 0,
+        refusedLegalHold: retained.consent_held_by_legal_hold ?? 0,
+      };
     },
   };
 }

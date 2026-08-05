@@ -176,6 +176,12 @@ function createRefusingObjectStore(): ObjectStorePort {
     async putObject() {
       return refuse();
     },
+    async presignUpload() {
+      return refuse();
+    },
+    async inspectObject() {
+      return refuse();
+    },
     async presign() {
       return refuse();
     },
@@ -557,8 +563,12 @@ export interface DocumentEraserDeps {
 export function createDocumentEraser(store: DocumentEraseStore): DataEraser {
   return {
     async erase(scope, subjectId) {
-      const { erased } = await eraseDocumentRecord(scope.orgId, subjectId, store);
-      return { erased };
+      const { erased, skips } = await eraseDocumentRecord(scope.orgId, subjectId, store);
+      return {
+        erased,
+        refusedPartTwo: skips.part2DocumentIds.length,
+        refusedLegalHold: skips.legalHoldDocumentIds.length,
+      };
     },
   };
 }

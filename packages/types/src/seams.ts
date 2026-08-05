@@ -980,9 +980,18 @@ export interface RequiredSeam {
  * A registered destruction handler for one retention/data class. Every PHI data class
  * must register one or boot fails (validateErasers()). See M4 destruction-cert workflow.
  */
+export interface DataEraseResult {
+  /** Rows or ciphertext-bearing records actually erased by this invocation. */
+  readonly erased: number;
+  /** Rows retained because 42 CFR Part 2 lifetime/post-death retention has not elapsed. */
+  readonly refusedPartTwo?: number;
+  /** Rows retained because an active legal hold matched them. */
+  readonly refusedLegalHold?: number;
+}
+
 export interface DataEraser {
   /** Erase/redact the rows this data class owns for the given subject. */
-  erase(scope: OrgScope, subjectId: string): Promise<{ erased: number }>;
+  erase(scope: OrgScope, subjectId: string): Promise<DataEraseResult>;
 }
 
 /** Data classes that require a registered eraser before the server may listen. */

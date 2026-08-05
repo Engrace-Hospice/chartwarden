@@ -43,6 +43,8 @@ export interface IdentitySeamDeps {
    *  (M35 admin lists, M35A-T03). Absent in slice/tests → the registry's fail-closed deny-stubs stand
    *  (org creation resolves `unavailable`; the reader resolves no names). */
   db?: DbClient;
+  /** Separate least-privilege platform credential for organization-spine creation/cross-tenant reads. */
+  organizationDb?: DbClient;
 }
 
 /** Register M2's published seams into the M1 registry (M2-T07; call before validateSeams()). */
@@ -53,10 +55,11 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   registerSeam("AuditorSessionMinter", createAuditorSessionMinter(auditorLinks));
   // M34 §7.1 step 3 — the real org-creation provider, only when a DB client is present (the registry's
   // fail-closed deny-stub stands in slice/tests).
-  if (deps.db) {
-    registerSeam("TenantOrgCreationProvider", createTenantOrgCreationProvider(deps.db));
+  const organizationDb = deps.organizationDb ?? deps.db;
+  if (organizationDb) {
+    registerSeam("TenantOrgCreationProvider", createTenantOrgCreationProvider(organizationDb));
     // M35A-T03 — the real org display-metadata reader M35's platform-ops admin lists label rows through
     // (the registry's graceful deny-stub, which resolves no names, stands in slice/tests without a db).
-    registerSeam("OrganizationReader", createOrganizationReader(deps.db));
+    registerSeam("OrganizationReader", createOrganizationReader(organizationDb));
   }
 }
