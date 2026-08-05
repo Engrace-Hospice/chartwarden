@@ -12,8 +12,15 @@ function buildApp(opts: Parameters<typeof applySecurityBaseline>[1] = {}) {
   const app = Fastify();
   applyErrorHandler(app);
   app.addHook("onRequest", async (request) => {
-    (request as { context?: { organizationId?: string; correlationId?: string } }).context = {
+    // A pre-org but signed-in session (mid sign-in → select-organization) has userId set and
+    // organizationId empty — simulated here via a test-only header since app.inject has no other
+    // hook into per-request context.
+    const testUserId = request.headers["x-test-user-id"];
+    (
+      request as { context?: { organizationId?: string; userId?: string; correlationId?: string } }
+    ).context = {
       correlationId: "cid-test",
+      ...(typeof testUserId === "string" ? { userId: testUserId } : {}),
     };
   });
   applySecurityBaseline(app, opts);
@@ -23,7 +30,9 @@ function buildApp(opts: Parameters<typeof applySecurityBaseline>[1] = {}) {
 
 describe("applySecurityBaseline — rate limit tiers (SD-055)", () => {
   it("allows exactly the unauthenticated tier, then 429s with Retry-After", async () => {
-    const app = buildApp({ rateLimitTiers: { unauthenticatedPerMinute: 3, authenticatedPerMinute: 30 } });
+    const app = buildApp({
+      rateLimitTiers: { unauthenticatedPerMinute: 3, authenticatedPerMinute: 30 },
+    });
     for (let i = 0; i < 3; i++) {
       const res = await app.inject({ method: "GET", url: "/ping", remoteAddress: "10.0.0.1" });
       expect(res.statusCode).toBe(200);
@@ -35,7 +44,9 @@ describe("applySecurityBaseline — rate limit tiers (SD-055)", () => {
   });
 
   it("buckets by client ip, so a different caller is unaffected by another's exhausted tier", async () => {
-    const app = buildApp({ rateLimitTiers: { unauthenticatedPerMinute: 1, authenticatedPerMinute: 30 } });
+    const app = buildApp({
+      rateLimitTiers: { unauthenticatedPerMinute: 1, authenticatedPerMinute: 30 },
+    });
     const a1 = await app.inject({ method: "GET", url: "/ping", remoteAddress: "10.0.0.1" });
     const a2 = await app.inject({ method: "GET", url: "/ping", remoteAddress: "10.0.0.1" });
     const b1 = await app.inject({ method: "GET", url: "/ping", remoteAddress: "10.0.0.2" });
@@ -81,6 +92,36 @@ describe("applySecurityBaseline — rate limit tiers (SD-055)", () => {
     });
     const res = await app.inject({ method: "GET", url: "/ping", remoteAddress: "10.0.0.1" });
     expect(res.statusCode).toBe(200);
+  });
+
+  it("WX-PR-018: a signed-in but pre-org session gets the authenticated tier, keyed by user not ip", async () => {
+    const calls: Array<{ key: string }> = [];
+    const app = buildApp({
+      rateLimitTiers: { unauthenticatedPerMinute: 1, authenticatedPerMinute: 100 },
+      rateLimitStore: {
+        async increment(key) {
+          calls.push({ key });
+          return 1;
+        },
+      },
+    });
+    // Two DIFFERENT pre-org users behind the same NAT ip each still get their own bucket, and
+    // neither shares the low unauthenticated tier a truly anonymous caller gets.
+    const a = await app.inject({
+      method: "GET",
+      url: "/ping",
+      remoteAddress: "10.0.0.1",
+      headers: { "x-test-user-id": "user-a" },
+    });
+    const b = await app.inject({
+      method: "GET",
+      url: "/ping",
+      remoteAddress: "10.0.0.1",
+      headers: { "x-test-user-id": "user-b" },
+    });
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    expect(calls).toEqual([{ key: "user:user-a" }, { key: "user:user-b" }]);
   });
 
   it("reads through an injected RateLimitStore instead of the built-in Map", async () => {

@@ -43,7 +43,9 @@
   /* Text & line */
   --color-on-surface: #1c1b1a;
   --color-on-surface-variant: #56524c;
-  --color-muted: #8c877f;
+  /* WX-PR-018: was #8c877f (~3.57:1 on --color-surface-lowest — fails WCAG AA), caught by the E2E
+     suite's axe scan on the nav-group toggle buttons. #726d64 gives ~5.1:1. */
+  --color-muted: #726d64;
   --color-outline: #6e6a62;
   --color-outline-variant: #d7d3cb;
 
@@ -105,7 +107,8 @@
   --color-surface-highest: #3a3a47;
   --color-on-surface: #eceae6;
   --color-on-surface-variant: #b8b4ad;
-  --color-muted: #7e7a72;
+  /* WX-PR-018: was #7e7a72 (~3.96:1 on --color-surface-lowest — fails WCAG AA). #96918a gives ~5.4:1. */
+  --color-muted: #96918a;
   --color-outline: #8a857c;
   --color-outline-variant: #45444e;
   --color-on-emphasis: #15151b;

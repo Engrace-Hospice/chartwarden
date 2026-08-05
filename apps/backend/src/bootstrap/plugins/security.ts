@@ -88,13 +88,29 @@ export function applySecurityBaseline(app: FastifyInstance, opts: SecurityOption
     }
   });
 
-  // Rate-limit (SD-055): keyed by org when authenticated, else by client ip.
+  // Rate-limit (SD-055): keyed by org when org-bound, by user when signed in but pre-org, else by
+  // client ip. WX-PR-018's E2E suite surfaced the bug this replaced: keying "authenticated" purely
+  // on `organizationId` meant a freshly signed-in but not-yet-org-bound session (the sign-in →
+  // select-organization window every login passes through) still read as unauthenticated and shared
+  // the harsh 30/min IP-keyed tier with every anonymous caller behind the same address — a real
+  // clinic's shared-NAT wifi with several staff logging in around the same time would trip this in
+  // production, not just a test harness. `request.context.userId` is set by the authenticate hook as
+  // soon as ANY valid session resolves (packages/auth identity — organizationId is set only after
+  // the org bind), so it is the correct signal for "this caller already proved who they are."
   if (limiterEnabled) {
     app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
       const orgId = request.context?.organizationId;
-      const authenticated = typeof orgId === "string" && orgId.length > 0;
+      const userId = request.context?.userId;
+      const authenticated =
+        (typeof orgId === "string" && orgId.length > 0) ||
+        (typeof userId === "string" && userId.length > 0);
       const limit = authenticated ? tiers.authenticatedPerMinute : tiers.unauthenticatedPerMinute;
-      const bucketKey = authenticated ? `org:${orgId}` : `ip:${request.ip}`;
+      const bucketKey =
+        typeof orgId === "string" && orgId.length > 0
+          ? `org:${orgId}`
+          : typeof userId === "string" && userId.length > 0
+            ? `user:${userId}`
+            : `ip:${request.ip}`;
 
       // Rate limiting is a defense-in-depth AVAILABILITY control, not an authorization gate — unlike
       // RLS/ABAC, a store outage must fail OPEN. The Redis-backed store is a real network dependency

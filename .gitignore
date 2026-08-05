@@ -53,3 +53,8 @@ WARDENX_MODULE_29_TASKS_T29.zip
 
 # Storybook build output
 storybook-static/
+
+# Playwright E2E run artifacts (WX-PR-018) — traces/screenshots/video on failure, HTML report.
+e2e/playwright-report/
+e2e/test-results/
+e2e/blob-report/

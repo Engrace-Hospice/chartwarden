@@ -18,7 +18,10 @@ export const brandColors = {
   // consumed by sharedTailwindConfig
   primary: "#3b45a8", // twilight indigo
   surface: "#ffffff", // card surface (surface-container-lowest)
-  muted: "#8c877f", // warm muted text
+  // WX-PR-018: was #8c877f (~3.57:1 on white — fails WCAG AA 4.5:1 for normal-weight text, caught
+  // by the E2E suite's axe scan on the nav-group toggle buttons). #726d64 keeps the warm-gray hue
+  // while giving ~5.1:1 against --color-surface-lowest.
+  muted: "#726d64", // warm muted text
   border: "#d7d3cb", // warm ghost border (outline-variant)
   // full Lantern palette
   primaryStrong: "#2b338a",

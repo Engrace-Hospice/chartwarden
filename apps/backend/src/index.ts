@@ -27,6 +27,7 @@ import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
 import {
+  DEFAULT_RATE_LIMIT_TIERS,
   assertNoInMemoryBindingsOnDbBoot,
   assertProductionEnv,
   buildServer,
@@ -61,11 +62,11 @@ import {
   wireOutboxCatalog,
 } from "./bootstrap/outbox-persister";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
+import { createRedisRateLimitStore } from "./bootstrap/plugins/rate-limit-store";
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
 } from "./bootstrap/provider-entity-resolver";
-import { createRedisRateLimitStore } from "./bootstrap/plugins/rate-limit-store";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 
@@ -2077,13 +2078,36 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           : undefined,
       })
     : undefined;
+  // WX-PR-018 — an OPTIONAL override for the SD-055 tiers, off by default (undefined → the M1
+  // baseline's own DEFAULT_RATE_LIMIT_TIERS, unchanged production behavior). Local dev / the E2E
+  // suite is the reason this exists: 18 Playwright specs signing in serially from one machine share
+  // ONE `ip:<loopback>` bucket for the pre-org/unauthenticated tier — a realistic shared-NAT login
+  // burst, exactly what SD-055 is supposed to allow the AUTHENTICATED tier to handle, but the
+  // sign-in call itself is inherently pre-auth and has nowhere else to bucket. Raising the ceiling
+  // via env, rather than hand-editing DEFAULT_RATE_LIMIT_TIERS, keeps the shipped default intact for
+  // every other boot.
+  const rateLimitTiers = process.env.RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE
+    ? {
+        unauthenticatedPerMinute: Number(process.env.RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE),
+        authenticatedPerMinute: process.env.RATE_LIMIT_AUTHENTICATED_PER_MINUTE
+          ? Number(process.env.RATE_LIMIT_AUTHENTICATED_PER_MINUTE)
+          : DEFAULT_RATE_LIMIT_TIERS.authenticatedPerMinute,
+      }
+    : undefined;
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
-    ...(rateLimitStore ? { security: { rateLimitStore } } : {}),
+    ...(rateLimitStore || rateLimitTiers
+      ? {
+          security: {
+            ...(rateLimitStore ? { rateLimitStore } : {}),
+            ...(rateLimitTiers ? { rateLimitTiers } : {}),
+          },
+        }
+      : {}),
     // TASK-040B (OPS-004) — the real `/ready` probe: DB `SELECT 1`, Redis PING, outbox pending-row
     // depth. Every check is OMITTED (reports "ok") when its dependency isn't configured, matching
     // today's boot posture — a slice/test/no-Redis boot still serves. `outboxDepthThreshold` reads

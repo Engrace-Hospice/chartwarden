@@ -84,6 +84,16 @@ function absorb(store: Map<string, string>, res: Response): void {
     if (idx > 0) store.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
   }
 }
+/**
+ * The M1 CSRF plugin (WX-PR-017, apps/backend/src/bootstrap/plugins/csrf.ts) mints a `wardenx_csrf`
+ * cookie on every response and requires it echoed back in `X-CSRF-Token` on a mutating request that
+ * also carries the Better Auth session cookie — which every POST below does, having just signed in.
+ * A raw script client gets no free pass; it has to double-submit the same way a real browser does.
+ */
+function csrfHeader(store: Map<string, string>): Record<string, string> {
+  const token = store.get("wardenx_csrf");
+  return token ? { "x-csrf-token": token } : {};
+}
 
 async function main(): Promise<void> {
   const jar = new Map<string, string>();
@@ -110,7 +120,11 @@ async function main(): Promise<void> {
 
   const sel = await fetch(`${API}/api/v1/auth/select-organization`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", cookie: cookieHeader(jar) },
+    headers: {
+      "Content-Type": "application/json",
+      cookie: cookieHeader(jar),
+      ...csrfHeader(jar),
+    },
     body: JSON.stringify({ organizationId: org.organizationId }),
   });
   absorb(jar, sel);
@@ -123,7 +137,11 @@ async function main(): Promise<void> {
   for (const p of PATIENTS) {
     const res = await fetch(`${API}/api/v1/patients`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", cookie: cookieHeader(jar) },
+      headers: {
+        "Content-Type": "application/json",
+        cookie: cookieHeader(jar),
+        ...csrfHeader(jar),
+      },
       body: JSON.stringify({ ...p, bypassMatchReview: true }),
     });
     if (res.status === 201) {
