@@ -379,7 +379,13 @@ describe("M6-T12 §7.6 — discharge workflows (W-DC)", () => {
     );
     expect(filed.requiresMedicalDirectorCosign).toBe(true);
     expect((await svc.getAdmission(ORG, "adm_fc"))?.state).toBe("active"); // not yet discharged (D11)
-    await svc.cosignDischarge(ORG, filed.id, filed.version, "md_1");
+    await svc.cosignDischarge(
+      ORG,
+      filed.id,
+      { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+      filed.version,
+      "md_1",
+    );
     expect((await svc.getAdmission(ORG, "adm_fc"))?.state).toBe("discharged");
     expect(backend.events).toContain("m6.discharge.cosigned");
   });

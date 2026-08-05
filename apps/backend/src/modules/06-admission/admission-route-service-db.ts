@@ -28,6 +28,7 @@ import {
 import { type TransferInInput, planTransferIn } from "./discharge/transfer-in";
 import { computeActivationGate } from "./intake";
 import type {
+  CosignDischargeInput,
   CtiDraftInput,
   DischargeInput,
   DischargeResult,
@@ -2199,7 +2200,14 @@ export function createDbAdmissionRouteService(
         };
       });
     },
-    async cosignDischarge(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+    async cosignDischarge(
+      organizationId,
+      id,
+      input: CosignDischargeInput,
+      ifVersion,
+      actorUserId,
+    ): Promise<MutationResult> {
+      void input; // validated at the route; no `discharge_event` column to land in — see the doc comment.
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const [cur] = await tx
           .select({

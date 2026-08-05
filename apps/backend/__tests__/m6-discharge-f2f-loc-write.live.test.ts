@@ -366,12 +366,24 @@ describe.skipIf(!DB_URL)(
       expect(filed.requiresMedicalDirectorCosign).toBe(true);
       // The admission is NOT discharged yet (D11).
       expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
-      const cosigned = await svc.cosignDischarge(ORG_A, filed.id, filed.version, MD);
+      const cosigned = await svc.cosignDischarge(
+        ORG_A,
+        filed.id,
+        { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+        filed.version,
+        MD,
+      );
       expect(cosigned.state).toBe("completed");
       expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("discharged");
       // A second cosign is a no-op conflict (state is no longer pending_cosign).
       await expect(
-        svc.cosignDischarge(ORG_A, filed.id, cosigned.version, MD),
+        svc.cosignDischarge(
+          ORG_A,
+          filed.id,
+          { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+          cosigned.version,
+          MD,
+        ),
       ).rejects.toMatchObject({ statusCode: 409 });
     });
 

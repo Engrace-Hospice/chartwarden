@@ -496,6 +496,23 @@
   succeeded); a second transfer-out seeded against the same benefit period now rejects 409
   `TRANSFER_LIMIT_EXCEEDED` before any write. Full gate green + all 6 M6 live suites (53 tests) +
   M24 claim-line-assembly (9 tests, downstream consumer of M6 discharge/transfer data).
+- **Follow-up, same day**: fixed the `cosignDischarge` gap noted above. Same root shape as
+  `transferOut`'s pre-fix bug — the service signature had NO input parameter, so
+  `DischargeCosignSchema`'s `cosignerName`/`cosignerNpi` never even arrived at the service, let
+  alone got dropped there. New `CosignDischargeInput` type threads them through
+  `AdmissionRouteService.cosignDischarge` (route handler → both DB and in-memory-fake
+  implementations). Unlike the transfer/revocation fixes, this one does NOT persist the fields
+  anywhere: `discharge_event` has no cosigner name/NPI column (confirmed against the spec's own ER
+  diagram, which never designed one either), matching the already-established
+  `RevocationInput.signingPatientName`/TASK-034 precedent — the M4 write-audit trigger already
+  records the cosigning ACTOR on the write, and the rendered discharge summary (M22) is the durable
+  record of the signed name/NPI, not this table. So the fix is "make the fields reachable and
+  explicitly validated-not-silently-dropped," not "find a place to store them" — there genuinely
+  isn't one, by design, same as the patient-name case. Updated the 3 existing call sites (`tsc -b`
+  doesn't typecheck `__tests__`, so these needed manual fixes) plus the existing HTTP-inject test
+  (`admission-routes.test.ts`) already posted the real payload shape and now exercises the real
+  4-arg service call end to end. Full gate green + all 6 M6 live suites (53 tests) + M24
+  claim-line-assembly (9 tests). No open "no input param" instances remain in this file.
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres

@@ -653,7 +653,13 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const body = parse(DischargeCosignSchema, request.body);
-      return service.cosignDischarge(organizationId, idOf(request), body.ifVersion, userId);
+      return service.cosignDischarge(
+        organizationId,
+        idOf(request),
+        { cosignerName: body.cosignerName, cosignerNpi: body.cosignerNpi },
+        body.ifVersion,
+        userId,
+      );
     },
   );
 

@@ -266,7 +266,13 @@ describe("M6-T09 — slice: discharge cascades (§7.6)", () => {
     expect(events).not.toContain("m6.admission.discharged");
     expect((await service.getAdmission(ORG, ADMISSION))?.state).toBe("active");
 
-    const cosigned = await service.cosignDischarge(ORG, filed.id, filed.version, "md_1");
+    const cosigned = await service.cosignDischarge(
+      ORG,
+      filed.id,
+      { cosignerName: "Dr. Med Director", cosignerNpi: "1234567893" },
+      filed.version,
+      "md_1",
+    );
     expect(cosigned.state).toBe("completed");
     expect(events).toContain("m6.discharge.cosigned");
     expect(events).toContain("m6.admission.discharged");

@@ -235,6 +235,20 @@ export interface DischargeResult extends MutationResult {
   readonly reason: DischargeReason;
 }
 
+/**
+ * §4.2.7 route 40 body (DischargeCosignSchema) — the medical director's identity on a for-cause
+ * cosign. Validated at the route but has no `discharge_event` column to land in today (same posture
+ * as `RevocationInput.signingPatientName` / TASK-034's `NorAcknowledgeInput` fields): the M4
+ * write-audit trigger already records the cosigning ACTOR on this write, and the rendered discharge
+ * summary (M22, via `discharge_event.document_id`) is the durable record of the signed name/NPI, not
+ * this table. Wired through so the fields are at least reachable by the service (previously
+ * `cosignDischarge` had no input parameter at all — they never even arrived here to be dropped).
+ */
+export interface CosignDischargeInput {
+  readonly cosignerName: string;
+  readonly cosignerNpi: string;
+}
+
 /** A cursor-paginated page (§4: `?cursor=&limit=` → `{ items, nextCursor }`). */
 export interface Page<T> {
   readonly items: readonly T[];
@@ -503,6 +517,7 @@ export interface AdmissionRouteService {
   cosignDischarge(
     organizationId: string,
     id: string,
+    input: CosignDischargeInput,
     ifVersion: number,
     actorUserId: string,
   ): Promise<MutationResult>;
@@ -1247,8 +1262,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       }
       return { ...summary(rec), requiresMedicalDirectorCosign, reason: input.reason };
     },
-    async cosignDischarge(organizationId, id, ifVersion, actorUserId) {
+    async cosignDischarge(organizationId, id, input, ifVersion, actorUserId) {
       void actorUserId;
+      void input; // validated at the route; no `discharge_event` column to land in — see the doc comment.
       const rec = get(organizationId, id, "discharge") ?? notFound(id);
       // W-DC-02 — the medical-director cosign completes the discharge AND discharges the admission that
       // was held `active` with the pending flag while awaiting governance sign-off (D11).
