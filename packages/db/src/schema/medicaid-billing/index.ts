@@ -31,3 +31,4 @@ export * from "./validation"; // medicaid_validation_run/_result/_override/_rule
 export * from "./eligibility"; // medicaid_eligibility_check
 export * from "./room-and-board"; // rb_arrangement, rb_day
 export * from "./trading-partner"; // state_medicaid_trading_partner_credential
+export * from "./state-plan-code"; // medicaid_state_plan_code (platform-shared, WX-PR-011)

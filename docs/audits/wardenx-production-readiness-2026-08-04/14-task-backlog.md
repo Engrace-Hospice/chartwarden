@@ -242,6 +242,8 @@
 
 ## WX-PR-011 - Bind launch-state Medicaid adapter
 
+- Status: Implementation complete (adapter + worker layer); external OHA sandbox certification pending;
+  per-line claim assembly (M6/M8 walk) is a separate, still-open follow-up (2026-08-05)
 - Priority: P1
 - Severity addressed: High
 - Phase: 4
@@ -252,6 +254,31 @@
 - Implementation steps: Eligibility, assemble, submit, poll, parse, rate lookup, retries, capability status.
 - Tests: State sandbox/fake, credential rotation, rate limit, duplicate, outage.
 - Acceptance criteria: Launch-state claim completes and unsupported states remain visibly disabled.
+- Completion evidence: Two real, previously-missing pieces are now bound. (1) A hard structural blocker
+  is resolved: `medicaid_state_plan_code` (new platform-shared reference table, migrations 0174-0177,
+  self-owned by M24 rather than routed through M40's physician/facility/payer entity-merge engine — see
+  the schema file's deviation note) unblocks `medicaid_claim.state_plan_code_id`, so `assembleClaim` now
+  creates a real DRAFT claim header (control number, TOB, resolved coverage + service state + state-plan
+  snapshot) instead of always throwing `MEDICAID_STATE_PLAN_CODE_CATALOG_MISSING`. Per-claim-LINE assembly
+  (walking M6 LOC periods + M8 signed encounters) is a separate, comparably-sized undertaking and stays a
+  documented follow-up — a DRAFT claim from this path carries zero lines today. (2) The Oregon adapter's
+  wire I/O (eligibility/assemble/submit/poll/parse-ack/parse-remittance/rate-lookup) is bound to a new
+  launch-gateway (`packages/medicaid-adapters/src/oregon/launch-gateway.ts`), mirroring M23's real+fake
+  HTTP transport pattern exactly, with one deliberate difference: Oregon's OHA MMIS endpoint is
+  PER-PROVIDER-ENTITY (each PE's own `state_medicaid_trading_partner_credential.portalUrl`), not a single
+  platform-wide URL, so the gateway resolves endpoint + auth per call from the credential the caller
+  already holds. A new M24 worker layer (`jobs/submission-jobs.ts` — `runClaimSubmit`/`runClaimPoll`) plus
+  a durable outbox→BullMQ consumer (`outbox-consumers/submission-requests.ts`) drive
+  SUBMITTED → {ACK_PENDING→ACK_ACCEPTED | POLLING→ACK_ACCEPTED/ACK_REJECTED/ACK_TIMEOUT | ACK_REJECTED}
+  through the real §2.2 state machine, write `medicaid_acknowledgment` rows, and publish the exact
+  §4.11 outbox event shapes. Boot-gated behind `M24_LAUNCH_GATEWAY_ENABLED` + `M24_CREDENTIAL_ENCRYPTION_KEY`
+  (both unset in dev/test/CI, matching M23's capability-gate posture) — the composition root logs which
+  capability is disabled and why. 26 new unit tests (launch-gateway fake-transport: accept/reject/pending-
+  async/timeout/malformed/outage/duplicate-idempotency-key/credential-rotation-across-PEs; adapter
+  delegation with/without an injected gateway) plus a live-Postgres RLS proof for the new table (read-all
+  for every tenant, write-denied for `wardenx_app`) extending `m24-rls-isolation.live.test.ts` (19/19
+  passing on a throwaway pg18 cluster, full 0001→0177 migration chain validated). Full gate green (build +
+  `arch:fitness` 20 sub-gates + lint + `bun run test` 7955 passing).
 - Risks: State variance.
 - Rollback: Disable launch-state capability and reconcile in-flight jobs.
 - Estimated complexity: XL

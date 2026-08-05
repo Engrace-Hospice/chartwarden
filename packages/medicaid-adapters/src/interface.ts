@@ -169,6 +169,7 @@ export interface MedicaidAdapter {
     serviceDate: IsoDate;
     loc: MedicaidLevelOfCare;
     county: string | null;
+    credentials: TradingPartnerCredentials;
   }): Promise<{ rateCents: number; scheduleId: string }>;
 
   capCalculation?(args: {

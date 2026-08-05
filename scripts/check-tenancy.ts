@@ -157,6 +157,15 @@ const NON_ORG_SCOPED = new Set<string>([
   // M38 code_system / M34 onboarding_task_template precedent). The other sixteen M23 tables carry
   // organization_id and get standard app.org_id RLS (claim + claim_line additionally carry the three-column rule).
   "wage_index_factor",
+  // M24 Billing — Medicaid (WX-PR-011): medicaid_state_plan_code is PLATFORM-shared per-state Medicaid
+  // program catalog data with NO organization_id BY DESIGN — one row per (state, plan code), loaded by the
+  // platform loader and snapshotted onto medicaid_claim.state_plan_code_id / _snapshot at claim assembly so
+  // historic claims stay reproducible even if a state's plan catalog changes later. Read-all within any
+  // tenant, writes via the platform loader (the M23 wage_index_factor precedent — self-owned by the
+  // consuming billing module rather than routed through M40's entity-merge `MdmEntityProvider`, which is
+  // sized for physician/facility/payer resolution, not a static reference list). The other fourteen M24
+  // tables carry organization_id and get standard app.org_id RLS.
+  "medicaid_state_plan_code",
   // M26 Cap Management (§3.3 / D3): cap_period_platform_constant is PLATFORM-shared CMS-published cap data
   // with NO organization_id BY DESIGN — one row per cap year ('FY2026'), published by the platform admin on
   // the annual CMS Hospice Wage Index Final Rule and snapshotted (immutable copy) into each tenant's

@@ -12,6 +12,7 @@ import {
 import { MedicaidAdapterError } from "./errors";
 import type { MedicaidAdapter } from "./interface";
 import { OregonMedicaidAdapter } from "./oregon";
+import type { OregonGatewayPort } from "./oregon/launch-gateway";
 
 /** One ACTIVE-state row from the M40 `state_medicaid_program` catalog the registry validates against. */
 export interface MedicaidStateProgramConfig {
@@ -25,8 +26,11 @@ export class MedicaidAdapterRegistry {
   private readonly byState = new Map<StateCode, MedicaidAdapter>();
   private readonly byVendor = new Map<string, MedicaidAdapter>();
 
-  constructor(mdmStatePrograms: ReadonlyArray<MedicaidStateProgramConfig> = []) {
-    this.register(new OregonMedicaidAdapter());
+  constructor(
+    mdmStatePrograms: ReadonlyArray<MedicaidStateProgramConfig> = [],
+    oregonGateway: OregonGatewayPort | null = null,
+  ) {
+    this.register(new OregonMedicaidAdapter(oregonGateway));
     this.register(washingtonMedicaidAdapter);
     this.register(idahoMedicaidAdapter);
     this.register(californiaMedicaidAdapter);

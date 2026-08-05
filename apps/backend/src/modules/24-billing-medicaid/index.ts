@@ -87,3 +87,21 @@ export {
   registerM24CronWorkers,
   scheduleM24Jobs,
 } from "./jobs/index";
+
+// §4.9 (WX-PR-011) — the LIVE submit/poll worker wiring over the per-state adapter + trading-partner
+// credentials. Boot-gated on `m24LaunchGatewayConfigFromEnv` (the M23 launch-gateway posture).
+export {
+  type CredentialResolverPort,
+  type M24SubmissionWorkerDeps,
+  buildDrizzleCredentialResolver,
+  buildM24SubmissionQueuePort,
+  buildM24SubmissionWorkerDeps,
+  registerM24LaunchWorkers,
+  runClaimPoll,
+  runClaimSubmit,
+} from "./jobs/submission-jobs";
+export {
+  type M24SubmissionQueuePort,
+  M24_SUBMISSION_REQUEST_EVENTS,
+  buildM24SubmissionRequestConsumer,
+} from "./outbox-consumers/submission-requests";

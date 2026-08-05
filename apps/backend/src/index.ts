@@ -72,6 +72,15 @@ import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolv
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
+// M24 (WX-PR-011) — the per-state adapter registry + the Oregon launch-gateway (real+fake transport). Lives
+// in @wardenx/medicaid-adapters (M24's `dependsOn` PURE-domain leaf), not the backend module barrel — mirrors
+// how the M23 X12/MAC gateway lives inside the backend module instead (the one placement difference is that
+// dependency-cruiser §25.14 requires Oregon's wire format/URL to stay INSIDE @wardenx/medicaid-adapters).
+import {
+  MedicaidAdapterRegistry,
+  createM24OregonGateway,
+  m24LaunchGatewayConfigFromEnv,
+} from "@wardenx/medicaid-adapters";
 // The §4.4 / M10-real HOPE consumer interface the M30 worker deps bind (composed from the three live M10
 // §D10 readers via `getSeam` in the worker-runner block below).
 import type { QualityHopeConsumer } from "@wardenx/quality";
@@ -349,12 +358,18 @@ import {
 // are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
 import {
   M24_OUTBOX_EVENTS,
+  M24_SUBMISSION_REQUEST_EVENTS,
   buildCredentialCipherPort,
+  buildDrizzleCredentialResolver,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
+  buildM24SubmissionQueuePort,
+  buildM24SubmissionRequestConsumer,
+  buildM24SubmissionWorkerDeps,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
   registerM24AbacPredicates,
+  registerM24LaunchWorkers,
   registerM24PublishedSeams,
   registerMedicaidErasers,
 } from "./modules/24-billing-medicaid/index";
@@ -1829,6 +1844,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m23LaunchGateway = m23LaunchConfig ? createM23LaunchGateway(m23LaunchConfig) : null;
   const m23SubmissionQueues =
     queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
+  // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
+  // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
+  // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
+  const m24LaunchConfig = m24LaunchGatewayConfigFromEnv(process.env);
+  const m24OregonGateway = m24LaunchConfig ? createM24OregonGateway(m24LaunchConfig) : null;
+  const m24AdapterRegistry = new MedicaidAdapterRegistry([], m24OregonGateway);
+  const m24SubmissionQueues =
+    queueConnection && m24OregonGateway ? buildM24SubmissionQueuePort(queueConnection) : null;
   const m34ProvisionConfig = m34ProvisionGatewayConfigFromEnv(process.env);
   const m34ProvisionGateway = m34ProvisionConfig
     ? createM34ProvisionGateway(m34ProvisionConfig)
@@ -2021,6 +2044,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m24CredentialCipher = process.env.M24_CREDENTIAL_ENCRYPTION_KEY
     ? buildCredentialCipherPort()
     : undefined;
+  // M24 (WX-PR-011) — the per-PE trading-partner credential resolver the submit/poll workers decrypt
+  // through. Requires BOTH a db handle and the cipher port; absent either, the worker construction below
+  // stays gated off (RULE 4 — never fabricate a credential, never submit without one).
+  const m24CredentialResolver =
+    dbHandle && m24CredentialCipher
+      ? buildDrizzleCredentialResolver(dbHandle.db, m24CredentialCipher)
+      : null;
   // M24 → M5 §3.4 — the coverage read claim assembly + eligibility resolve a billed payer from. Resolved
   // through getSeam at CALL time (not boot), so registration order does not matter and an unregistered
   // reader denies loudly at the deny-stub rather than silently reporting "no coverage".
@@ -2037,6 +2067,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         : null;
     },
   };
+  // M24 → M1 (WX-PR-011) — `provider_entity` is M1-owned, so this read lives HERE (the composition root
+  // sits outside every module's codePaths, unlike write-service-drizzle.ts, which the table-ownership gate
+  // scans) rather than inside the M24 module itself.
+  const m24CcnReader = dbHandle
+    ? {
+        async ccnForProviderEntity(organizationId: string, providerEntityId: string) {
+          const rows = await dbHandle.db
+            .select({ ccn: schema.providerEntities.ccn })
+            .from(schema.providerEntities)
+            .where(
+              and(
+                eq(schema.providerEntities.id, providerEntityId),
+                eq(schema.providerEntities.organizationId, organizationId),
+              ),
+            )
+            .limit(1);
+          return rows[0]?.ccn ?? null;
+        },
+      }
+    : undefined;
   const m30OutboxPublisher = bindCallerModule(txOutboxPublisher, "m30");
   const m33OutboxPublisher = bindCallerModule(txOutboxPublisher, "m33");
   const m34OutboxPublisher = bindCallerModule(txOutboxPublisher, "m34");
@@ -2128,6 +2178,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       capabilities: {
         m22DocumentUpload: s3ObjectStoreConfigFromEnv(process.env) ? "ready" : "disabled",
         m23AsyncWorkers: m23SubmissionQueues ? "ready" : "disabled",
+        m24AsyncWorkers: m24SubmissionQueues ? "ready" : "disabled",
         m34AsyncWorkers: m34ProvisionQueue ? "ready" : "disabled",
       },
     }),
@@ -2423,6 +2474,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m24OutboxPublisher,
               m24CredentialCipher,
               m24CoverageResolver,
+              m24CcnReader,
             ),
           });
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE
@@ -2693,6 +2745,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   if (m23SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(m23SubmissionQueues.queues.map((queue) => queue.close()));
+    });
+  }
+  if (m24SubmissionQueues) {
+    app.addHook("onClose", async () => {
+      await Promise.all(m24SubmissionQueues.queues.map((queue) => queue.close()));
     });
   }
   if (m34ProvisionQueue) app.addHook("onClose", () => m34ProvisionQueue.close());
@@ -3043,6 +3100,30 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",
       );
     }
+    // ── M24 §4.9 Billing-Medicaid workers (WX-PR-011: claim submit + poll over the per-state adapter
+    // registry) — same worker-runner shape as M23. Requires BOTH the Oregon launch-gateway (real HTTP,
+    // env-gated) AND the credential resolver (the §8.7 cipher port) — RULE 4: either absent, no workers
+    // construct, and `submitClaim`'s outbox event sits durably queued until an integrator binds both.
+    let m24Workers: Worker[] = [];
+    if (m24OregonGateway && m24CredentialResolver) {
+      const m24WorkerDeps = buildM24SubmissionWorkerDeps({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m24OutboxPublisher,
+        adapters: m24AdapterRegistry,
+        credentials: m24CredentialResolver,
+      });
+      m24Workers = registerM24LaunchWorkers(m24WorkerDeps);
+      attachDlqAlertsToAll(m24Workers, "m24");
+      app.addHook("onClose", async () => {
+        await Promise.all(m24Workers.map((worker) => worker.close()));
+      });
+      app.log.info({ queues: m24Workers.length }, "M24 launch submission workers constructed");
+    } else {
+      app.log.warn(
+        "M24 launch workers disabled: configure M24_LAUNCH_GATEWAY_ENABLED and M24_CREDENTIAL_ENCRYPTION_KEY",
+      );
+    }
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
     // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
@@ -3279,6 +3360,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
           ...(m23SubmissionQueues
             ? [buildM23SubmissionRequestConsumer(m23SubmissionQueues.port)]
+            : []),
+          ...(m24SubmissionQueues
+            ? [buildM24SubmissionRequestConsumer(m24SubmissionQueues.port)]
             : []),
           ...(m34ProvisionQueue ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)] : []),
           // M5 §4.10 — the proposal applier (LIVE end-to-end now that M29's accept path publishes

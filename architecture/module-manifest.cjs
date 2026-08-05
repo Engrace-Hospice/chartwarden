@@ -733,6 +733,7 @@ exports.MODULES = [
       "rb_arrangement",
       "rb_day",
       "state_medicaid_trading_partner_credential",
+      "medicaid_state_plan_code",
     ],
   },
   {

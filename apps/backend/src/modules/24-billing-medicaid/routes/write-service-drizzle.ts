@@ -25,7 +25,7 @@ import {
 } from "@wardenx/medicaid-adapters";
 import { withOrgContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
@@ -104,11 +104,22 @@ export interface CoverageResolverPort {
   }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
 }
 
+/**
+ * How the write path resolves a provider entity's CMS Certification Number (the control-number namespace,
+ * D4). `provider_entity` is M1-owned — the table-ownership gate forbids this module's own Drizzle schema
+ * from touching it, so the read lives at the composition root (outside every module's codePaths) and is
+ * injected here, mirroring `CoverageResolverPort`'s "degrade with a precise message" posture when absent.
+ */
+export interface ProviderEntityCcnReader {
+  ccnForProviderEntity(organizationId: string, providerEntityId: string): Promise<string | null>;
+}
+
 export function buildDrizzleM24WriteService(
   db: DbClient,
   outbox: WriteOutboxPort = NOOP_OUTBOX,
   cipher: CredentialCipherPort = UNBOUND_CIPHER,
   coverage?: CoverageResolverPort,
+  ccnReader?: ProviderEntityCcnReader,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -120,6 +131,7 @@ export function buildDrizzleM24WriteService(
   const RD = schema.rbDay;
   const TP = schema.stateMedicaidTradingPartnerCredential;
   const SH = schema.medicaidClaimStateHistory;
+  const SPC = schema.medicaidStatePlanCode;
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
   async function loadClaim(tx: Tx, claimId: string) {
@@ -200,16 +212,19 @@ export function buildDrizzleM24WriteService(
 
   return {
     // ── route 1 — assemble. The claim row needs three externally-owned values: `patient_payer_id` (M5),
-    // `service_state` (the state whose Medicaid program is billed) and `state_plan_code_id` (M40). The
-    // first two now RESOLVE — M5's §3.4 PatientCoverageReader gives the coverage, and the service state is
-    // read from the provider entity's own active trading-partner credential (an M24-owned row: you cannot
-    // bill a state you hold no credential for, which makes it the authoritative source, not a guess).
+    // `service_state` (the state whose Medicaid program is billed) and `state_plan_code_id` (WX-PR-011:
+    // resolved from the M24-owned `medicaid_state_plan_code` platform catalog — see the schema file's
+    // deviation note on why this is self-owned rather than routed through M40's entity-merge engine).
+    // M5's §3.4 PatientCoverageReader gives the coverage; the service state is read from the provider
+    // entity's own active trading-partner credential (an M24-owned row: you cannot bill a state you hold
+    // no credential for, which makes it the authoritative source, not a guess).
     //
-    // The THIRD has no owner anywhere in the repo: no module declares a state-plan-code or state-rate-
-    // schedule table (M40 has no such entity kind, M38 no such code system), so `state_plan_code_id` —
-    // NOT NULL on `medicaid_claim` — cannot be populated with a real value by anyone today. Assembly
-    // therefore still stops, but it now stops with the ONE missing input named, after proving the rest
-    // resolves, instead of a blanket "the M5/M6/M40 readers are unbound".
+    // HEADER-ONLY (WX-PR-011 scope cut, documented): this creates a real DRAFT claim row — control number,
+    // TOB, patient payer, service state, and state-plan-code all resolve and persist — but with ZERO
+    // `medicaid_claim_line` rows. Populating lines requires walking M6 LOC periods + M8 signed encounters
+    // into per-day billable lines (the M23 claim-assembly-service scale of effort); that walk is a separate,
+    // still-open follow-up. A DRAFT claim with no lines is a legitimate interim state — it is NOT
+    // submission-ready until lines exist, but it is no longer permanently unassemblable.
     async assembleClaim(actor: M24WriteActor, input: AssembleClaimInput): Promise<ClaimView> {
       if (!coverage) {
         throw new DegradedError(
@@ -228,7 +243,7 @@ export function buildDrizzleM24WriteService(
           "this patient holds no Medicaid coverage in force on the claim's first service date",
         );
       }
-      const serviceState = await withOrgContext(db, actor, async (tx) => {
+      return withOrgContext(db, actor, async (tx) => {
         const creds = await tx
           .select({ serviceState: TP.serviceState, activeTo: TP.activeTo })
           .from(TP)
@@ -239,20 +254,108 @@ export function buildDrizzleM24WriteService(
             ),
           );
         const from = new Date(input.serviceFrom);
-        return creds.find((c) => c.activeTo === null || c.activeTo >= from)?.serviceState ?? null;
-      });
-      if (!serviceState) {
-        throw new ConflictError(
-          "MEDICAID_NO_ACTIVE_TRADING_PARTNER",
-          "this provider entity has no active state trading-partner credential — configure one before assembling a Medicaid claim",
+        const serviceState =
+          creds.find((c) => c.activeTo === null || c.activeTo >= from)?.serviceState ?? null;
+        if (!serviceState) {
+          throw new ConflictError(
+            "MEDICAID_NO_ACTIVE_TRADING_PARTNER",
+            "this provider entity has no active state trading-partner credential — configure one before assembling a Medicaid claim",
+          );
+        }
+        const planRows = await tx
+          .select({ id: SPC.id, planCode: SPC.planCode })
+          .from(SPC)
+          .where(
+            and(
+              eq(SPC.stateCode, serviceState),
+              eq(SPC.isStateDefault, true),
+              lte(SPC.effectiveFrom, from),
+              or(isNull(SPC.effectiveTo), gte(SPC.effectiveTo, from)),
+            ),
+          )
+          .orderBy(desc(SPC.effectiveFrom))
+          .limit(1);
+        const plan = planRows[0];
+        if (!plan) {
+          throw new DegradedError(
+            "MEDICAID_STATE_PLAN_CODE_CATALOG_MISSING",
+            `no active medicaid_state_plan_code default row is loaded for state ${serviceState} as of ${day(input.serviceFrom)} — load the platform catalog before assembling a ${serviceState} claim`,
+          );
+        }
+        if (!ccnReader) {
+          throw new DegradedError(
+            "MEDICAID_CCN_READER_UNBOUND",
+            "claim assembly requires the provider-entity CCN reader (not bound in this environment)",
+          );
+        }
+        const ccn = await ccnReader.ccnForProviderEntity(
+          actor.organizationId,
+          input.providerEntityId,
         );
-      }
-      // Everything M24 and M5 own has resolved (coverage `resolved.id`, `serviceState`). The remaining
-      // blocker is upstream reference data, so name it precisely rather than implying M24 is unwired.
-      throw new DegradedError(
-        "MEDICAID_STATE_PLAN_CODE_CATALOG_MISSING",
-        `medicaid_claim.state_plan_code_id has no source: no module owns a state-plan-code catalog for ${serviceState} (M40 declares no such entity kind). Patient coverage and service state resolved; assembly is blocked only on that catalog.`,
-      );
+        if (!ccn) {
+          throw new ConflictError(
+            "MEDICAID_PROVIDER_ENTITY_NOT_FOUND",
+            "the provider entity on this claim does not exist or carries no CCN",
+          );
+        }
+        const claimId = randomUUID();
+        const controlNumber = deriveMedicaidControlNumber({
+          ccn,
+          serviceState,
+          serviceFrom: day(input.serviceFrom),
+          claimId,
+          attemptIndex: 0,
+        });
+        const inserted = await tx
+          .insert(C)
+          .values({
+            id: claimId,
+            organizationId: actor.organizationId,
+            providerEntityId: input.providerEntityId,
+            patientId: input.patientId,
+            patientPayerId: resolved.id,
+            admissionId: input.admissionId,
+            serviceState,
+            kind: input.kind,
+            tob: "811", // the original-claim TOB (D13 §2.5) — replace/void derive 817/818 from this
+            serviceFrom: new Date(input.serviceFrom),
+            serviceTo: new Date(input.serviceTo),
+            statePlanCodeId: plan.id,
+            statePlanCodeSnapshot: plan.planCode,
+            rbArrangementId: input.rbArrangementId ?? null,
+            medicareClaimId: input.medicareClaimId ?? null,
+            medicaidClaimControlNumber: controlNumber,
+            state: "DRAFT",
+            createdByMembershipId: actor.userId,
+            updatedByMembershipId: actor.userId,
+          })
+          .returning();
+        await recordHistory(
+          tx,
+          actor.organizationId,
+          claimId,
+          null,
+          "DRAFT",
+          actor.userId,
+          "assemble",
+        );
+        await outbox.publish(tx, {
+          eventName: "m24.medicaid_claim.draft_created",
+          payload: {
+            organizationId: actor.organizationId,
+            claimId,
+            providerEntityId: input.providerEntityId,
+            patientId: input.patientId,
+            admissionId: input.admissionId,
+            state: "DRAFT",
+            kind: input.kind,
+            tob: "811",
+            serviceFrom: new Date(input.serviceFrom).toISOString(),
+            serviceTo: new Date(input.serviceTo).toISOString(),
+          },
+        });
+        return toClaimView(inserted[0]!);
+      });
     },
 
     async updateDraftClaim(actor, claimId, input: UpdateDraftClaimInput) {

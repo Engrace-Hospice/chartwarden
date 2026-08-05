@@ -314,5 +314,35 @@ describe.skipIf(!DB_URL)(
         ),
       ).rejects.toThrow();
     });
+
+    // ── WX-PR-011 — `medicaid_state_plan_code` is PLATFORM-SHARED (no organization_id), unlike the 14
+    // tenant-scoped tables above — read-all for every tenant, write-only via `medicaid_platform_loader`
+    // (the wage_index_factor precedent). Proves 0177's seed row is real + readable, and that wardenx_app
+    // truly cannot write it (not just "the app never happens to").
+    it("medicaid_state_plan_code: every org reads the platform seed row (no organization_id)", async () => {
+      const seenByA = await withOrg(ORG_A, () =>
+        db.query(
+          "SELECT count(*)::int AS n FROM medicaid_state_plan_code WHERE state_code='OR' AND plan_code='OHP-PLUS'",
+        ),
+      );
+      expect(seenByA.rows[0].n).toBe(1);
+      const seenByB = await withOrg(ORG_B, () =>
+        db.query(
+          "SELECT count(*)::int AS n FROM medicaid_state_plan_code WHERE state_code='OR' AND plan_code='OHP-PLUS'",
+        ),
+      );
+      expect(seenByB.rows[0].n).toBe(1); // platform-shared — org B reads it too, not just org A
+    });
+
+    it("medicaid_state_plan_code: wardenx_app cannot INSERT (platform-loader-only write)", async () => {
+      await expect(
+        withOrg(ORG_A, () =>
+          db.query(
+            `INSERT INTO medicaid_state_plan_code (state_code, plan_code, plan_name, effective_from, load_source_ref)
+           VALUES ('OR','SNEAK-IN','nope', now(), 'test')`,
+          ),
+        ),
+      ).rejects.toThrow();
+    });
   },
 );
