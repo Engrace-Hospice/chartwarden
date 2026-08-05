@@ -450,6 +450,26 @@
   today), but would become a real gap if the two dates were ever split. A separate, deeper fix; left
   for a dedicated pass rather than folded into a field-persistence fix. OpenAPI + client schema
   regenerated (new required field). Full gate green + all 6 M6 live suites (50 tests).
+- **Follow-up, same day**: wired `planRevocation` into `createRevocation`'s real write path (called
+  purely for its two validation guards — `electionPeriodActive` + R-RV-01's date-order check — NOT
+  for its returned effects cascade, which `dischargeAdmissionTx` already applies via
+  `transitionAdmission`'s own equivalent inline effects; running both would double-apply the
+  UPDATEs and double-publish `m6.revocation.created`). `latestPeriod` widened to also return
+  `status` so the guard has a real fact to check. Wiring this surfaced a genuine, independent,
+  pre-existing bug: **`activateAdmission` fired `m6.election.period_started` claiming period 1 had
+  started, but no write ever set `election_period.status = 'active'`** — it stayed at its `pending`
+  default until the admission was eventually discharged, jumping `pending → completed` and skipping
+  `active` entirely. This wasn't a wired-planRevocation edge case, it broke the FIRST ("happy path")
+  revocation test outright once the guard started checking a real fact, because that fact had never
+  actually been true. Root cause: `runEffects` has no `SideEffect` kind for "start a period" (mirrors
+  `set_timestamp`/`set_flag`'s existing "folded into the caller" posture, but this one was never
+  folded in anywhere), and the recert path's period-activation (`signCtiHospiceMd`) explicitly
+  excludes period 1 with an attending co-sign. Fixed by folding a direct `election_period` UPDATE
+  into `activateAdmission` itself, gated on `facts.periodId` (period 1's id, already loaded for the
+  activation gate). Added a live test proving the guard fires 409 `ILLEGAL_TRANSITION` before any
+  write when the target period isn't active (superuser-forced to `completed`, simulating what a
+  second revocation attempt would hit). No cross-module reader of `election_period.status` exists
+  yet, so this was safely containable to M6. Full gate green + all 6 M6 live suites (51 tests).
 
   4 new unit tests (state-machine coverage already existed), 4 new HTTP-inject tests (`admission-routes.test.ts` —
   proving the real route, not just the service method, including the short-code fix), 2 new live-Postgres

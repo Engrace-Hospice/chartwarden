@@ -55,6 +55,7 @@ import {
   type AdmissionState,
   transitionAdmission,
 } from "./state-machines/admission";
+import { planRevocation } from "./state-machines/commands";
 import type { SideEffect } from "./state-machines/effects";
 import { AdmissionStateError } from "./state-machines/errors";
 import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
@@ -453,14 +454,14 @@ export function createDbAdmissionRouteService(
   async function latestPeriod(
     tx: DbClient,
     admissionId: string,
-  ): Promise<{ id: string; sequence: number } | null> {
+  ): Promise<{ id: string; sequence: number; status: string } | null> {
     const [p] = await tx
-      .select({ id: EP.id, seq: EP.sequenceNumber })
+      .select({ id: EP.id, seq: EP.sequenceNumber, status: EP.status })
       .from(EP)
       .where(eq(EP.admissionId, admissionId))
       .orderBy(desc(EP.sequenceNumber))
       .limit(1);
-    return p ? { id: p.id, sequence: Number(p.seq) } : null;
+    return p ? { id: p.id, sequence: Number(p.seq), status: p.status } : null;
   }
 
   /**
@@ -1176,6 +1177,18 @@ export function createDbAdmissionRouteService(
             }),
           "row not found",
         );
+        // Bug found wiring planRevocation (§2.3.6): `m6.election.period_started` fired here claiming
+        // period 1 started, but NO write ever set `election_period.status = 'active'` — it stayed at
+        // its `pending` default until the admission was eventually discharged (jumping pending →
+        // completed, skipping active entirely). `runEffects` doesn't handle this (no `SideEffect` kind
+        // exists for it, same "folded into the caller" posture as `set_timestamp`/`set_flag`), so fold
+        // it in here directly, mirroring the recert path's `signCtiHospiceMd` period activation.
+        if (facts.periodId) {
+          await tx
+            .update(EP)
+            .set({ status: "active", version: sql`${EP.version} + 1` })
+            .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
+        }
         await runEffects(
           tx,
           { organizationId, aggregateKind: "admission", aggregateId: id, admissionId: id },
@@ -1892,9 +1905,21 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const period = await latestPeriod(tx, admissionId);
         if (!period) throw new ResourceNotFoundError(admissionId);
-        // R-RV-01 (effective >= signed) is trivially satisfied: the route contract carries one date, so
-        // both columns are set from it (mirrors the spec's own §4.2.7 request shape — it never split
-        // signed-vs-effective either). `signingPatientName` has no column — see RevocationInput's doc.
+        // §2.3.6 R-RV-01 — the pure command guard: the election period being revoked must actually be
+        // ACTIVE (latestPeriod alone doesn't check status — a completed/pending period would otherwise
+        // slip through and hit the `revocation_period_idx` unique constraint with a confusing 500) and
+        // the effective date may not precede the signed date. Both dates are `input.revocationDate` (the
+        // route contract carries one date, mirroring the spec's own §4.2.7 shape), which trivially
+        // satisfies the second guard by construction — the ACTIVE check is the one this actually gates.
+        // Only used for validation here: the cascade this returns (end period/LOC, audit, outbox) is
+        // already applied by `dischargeAdmissionTx` below via `transitionAdmission`'s own equivalent
+        // effects — running both would double-apply the UPDATEs and double-publish the outbox event.
+        planRevocation({
+          electionPeriodActive: period.status === "active",
+          signedAt: input.revocationDate,
+          effectiveAt: input.revocationDate,
+        });
+        // `signingPatientName` has no column — see RevocationInput's doc.
         const rev = firstOrThrow(
           await tx
             .insert(RE)

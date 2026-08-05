@@ -389,6 +389,38 @@ describe.skipIf(!DB_URL)(
       expect(row.rows[0].narrative).toMatch(/pursue curative treatment/);
     });
 
+    it("revocation is rejected when the latest election period is not active (planRevocation's R-RV-01 guard)", async () => {
+      const { admissionId, periodId } = await activeAdmission(randomUUID());
+      // Superuser-bypass the period straight to `completed` — simulates the state a second revocation
+      // attempt would find (latestPeriod alone would have let this through pre-fix and hit the
+      // `revocation_period_idx` unique constraint, or worse, silently completed an already-completed
+      // period a second time).
+      await admin.query("UPDATE election_period SET status = 'completed' WHERE id = $1", [
+        periodId,
+      ]);
+      await expect(
+        svc.createRevocation(
+          ORG_A,
+          admissionId,
+          {
+            revocationDate: "2026-06-10",
+            narrative: "patient elected to revoke hospice care",
+            signingPatientName: "Pat Test",
+            signingRole: "patient",
+            revocationReason: "other",
+          },
+          USER,
+        ),
+      ).rejects.toMatchObject({ code: "ILLEGAL_TRANSITION", statusCode: 409 });
+      // No revocation_event row was created, and the admission stayed active — the guard fired BEFORE
+      // any write, not after a failed insert.
+      const revs = await admin.query("SELECT id FROM revocation_event WHERE admission_id=$1", [
+        admissionId,
+      ]);
+      expect(revs.rows).toHaveLength(0);
+      expect((await svc.getAdmission(ORG_A, admissionId))!.state).toBe("active");
+    });
+
     it("transfer-out → admission discharged, with the counterparty hospice + narrative persisted", async () => {
       const { admissionId } = await activeAdmission(randomUUID());
       const xfer = await svc.transferOut(
