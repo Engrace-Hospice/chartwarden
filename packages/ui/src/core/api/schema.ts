@@ -3489,7 +3489,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** AR-aging dashboard — aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37) */
+        /** AR-aging dashboard - aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37) */
         get: operations["getApiV1BillingArdashboard"];
         put?: never;
         post?: never;
@@ -3506,7 +3506,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List claims — cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2) */
+        /** List claims - cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2) */
         get: operations["getApiV1BillingClaims"];
         put?: never;
         post?: never;
@@ -3523,7 +3523,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Single-claim detail — lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3) */
+        /** Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3) */
         get: operations["getApiV1BillingClaimsById"];
         put?: never;
         post?: never;
@@ -3746,7 +3746,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List per-ProviderEntity MAC credentials — secrets masked, cursor-paginated (§4.1 #34) */
+        /** List per-ProviderEntity MAC credentials - secrets masked, cursor-paginated (§4.1 #34) */
         get: operations["getApiV1BillingMaccredentials"];
         put?: never;
         /** Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35) */
@@ -3798,7 +3798,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List validation-rule overlay rows — platform snapshot + tenant overlays (cursor-paginated, §4.1 #18) */
+        /** List validation-rule overlay rows - platform snapshot + tenant overlays (cursor-paginated, §4.1 #18) */
         get: operations["getApiV1BillingRuleconfigs"];
         put?: never;
         post?: never;
@@ -3851,7 +3851,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Per-ProviderEntity sequestration-percentage timeline — effective-dated rows (D11, §4.1 #32) */
+        /** Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32) */
         get: operations["getApiV1BillingSequestrationpolicies"];
         put?: never;
         /** Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33) */
@@ -4637,7 +4637,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Single validation run — per-rule results + override status (§4.1 #15) */
+        /** Single validation run - per-rule results + override status (§4.1 #15) */
         get: operations["getApiV1ClaimsByIdValidationrunsByRunId"];
         put?: never;
         post?: never;
@@ -10851,7 +10851,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List NOE records — timely-filing worklist, cursor-paginated (§4.1 #24) */
+        /** List NOE records - timely-filing worklist, cursor-paginated (§4.1 #24) */
         get: operations["getApiV1Noerecords"];
         put?: never;
         post?: never;
@@ -10988,7 +10988,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List NOTR records — timely-filing worklist, cursor-paginated (§4.1 #28) */
+        /** List NOTR records - timely-filing worklist, cursor-paginated (§4.1 #28) */
         get: operations["getApiV1Notrrecords"];
         put?: never;
         post?: never;
@@ -13443,7 +13443,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Close an incident (resolved → closed, follow-up complete) */
+        /** Close a resolved incident (resolved to closed_followup_complete; no body fields consumed) (Sec 4.1 R-59) */
         post: operations["postApiV1QualityIncidentsByIncidentIdClose"];
         delete?: never;
         options?: never;
@@ -13528,7 +13528,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Submit an incident (draft → submitted) */
+        /** Submit a draft incident for triage (draft to submitted; reporter-owned, no body fields consumed) (Sec 4.1 R-54) */
         post: operations["postApiV1QualityIncidentsByIncidentIdSubmit"];
         delete?: never;
         options?: never;
@@ -18421,7 +18421,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -18452,7 +18456,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -18493,7 +18501,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            kind: "adt_inbound" | "lab_inbound" | "orm_outbound";
+                            displayName: string;
+                            status: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
+                            protocol: "mllp_tls" | "mllp_plain";
+                            host: string | null;
+                            port: number;
+                            baaContractRef: string | null;
+                            baaExpiresOn: string | null;
+                            activeFrom: string | null;
+                            createdAt: string;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18551,7 +18577,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        feed: {
+                            /** Format: uuid */
+                            id: string;
+                            kind: "adt_inbound" | "lab_inbound" | "orm_outbound";
+                            displayName: string;
+                            status: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
+                            protocol: "mllp_tls" | "mllp_plain";
+                            host: string | null;
+                            port: number;
+                            baaContractRef: string | null;
+                            baaExpiresOn: string | null;
+                            activeFrom: string | null;
+                            createdAt: string;
+                            channelCertPin: string | null;
+                            sendingFacilityAllowlist: string[];
+                            rateLimitMsgPerSec: number;
+                            proposedByMembershipId: string;
+                            approvedByOpId: string | null;
+                            approvedByComplId: string | null;
+                            approvedAt: string | null;
+                            revokedAt: string | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18608,7 +18659,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        feed: {
+                            /** Format: uuid */
+                            id: string;
+                            kind: "adt_inbound" | "lab_inbound" | "orm_outbound";
+                            displayName: string;
+                            status: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
+                            protocol: "mllp_tls" | "mllp_plain";
+                            host: string | null;
+                            port: number;
+                            baaContractRef: string | null;
+                            baaExpiresOn: string | null;
+                            activeFrom: string | null;
+                            createdAt: string;
+                            channelCertPin: string | null;
+                            sendingFacilityAllowlist: string[];
+                            rateLimitMsgPerSec: number;
+                            proposedByMembershipId: string;
+                            approvedByOpId: string | null;
+                            approvedByComplId: string | null;
+                            approvedAt: string | null;
+                            revokedAt: string | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18630,7 +18706,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        credentials: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            feedId: string;
+                            kind: "mllp_client_cert" | "mllp_channel_password";
+                            fingerprint: string;
+                            status: "active" | "retired";
+                            rotatedAt: string;
+                            createdAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18681,7 +18771,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        health: {
+                            /** Format: uuid */
+                            feedId: string;
+                            hourBucket: string;
+                            listenerUpSeconds: number;
+                            listenerDownSeconds: number;
+                            inboundMessageCount: number;
+                            outboundMessageCount: number;
+                            ackAaCount: number;
+                            ackAeCount: number;
+                            ackArCount: number;
+                            ackTimeoutCount: number;
+                            parseErrorCount: number;
+                            senderRejectedCount: number;
+                            lastMessageAt: string | null;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18759,7 +18868,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        health: {
+                            feedCount: number;
+                            activeFeedCount: number;
+                            listenersUp: number;
+                            listenersDown: number;
+                            inboundMessageCount: number;
+                            outboundMessageCount: number;
+                            parseErrorCount: number;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18786,7 +18907,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            sourceMessageId: string;
+                            resourceKind: string;
+                            matchOutcome: string;
+                            matchedPatientId: string | null;
+                            ownerModule: "m5" | "m6";
+                            proposalStatus: "pending" | "accepted" | "rejected" | "expired";
+                            proposedAt: string;
+                            expiresAt: string;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18808,7 +18946,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        proposal: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            sourceMessageId: string;
+                            resourceKind: string;
+                            matchOutcome: string;
+                            matchedPatientId: string | null;
+                            ownerModule: "m5" | "m6";
+                            proposalStatus: "pending" | "accepted" | "rejected" | "expired";
+                            proposedAt: string;
+                            expiresAt: string;
+                            matchConfidence: number | null;
+                            matchCandidateIds: string[];
+                            decidedByMembershipId: string | null;
+                            decidedAt: string | null;
+                            decisionRationale: string | null;
+                            acceptedAggregateId: string | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18921,7 +19081,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            feedId: string;
+                            messageType: string;
+                            messageControlId: string;
+                            payloadSha256: string;
+                            parseStatus: "in_progress" | "parsed" | "parse_error" | "rejected";
+                            sendingFacilityRawId: string;
+                            matchedPatientId: string | null;
+                            receivedAt: string;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -18943,7 +19120,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        message: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            feedId: string;
+                            messageType: string;
+                            messageControlId: string;
+                            payloadSha256: string;
+                            parseStatus: "in_progress" | "parsed" | "parse_error" | "rejected";
+                            sendingFacilityRawId: string;
+                            matchedPatientId: string | null;
+                            receivedAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19013,7 +19206,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            feedId: string;
+                            messageType: string;
+                            messageControlId: string;
+                            payloadSha256: string;
+                            status: "queued" | "in_flight" | "acked" | "naked" | "failed" | "dlq";
+                            /** Format: uuid */
+                            sourceAggregateId: string;
+                            ackStatus: string | null;
+                            retryCount: number;
+                            queuedAt: string;
+                            transmittedAt: string | null;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19035,7 +19248,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        message: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            feedId: string;
+                            messageType: string;
+                            messageControlId: string;
+                            payloadSha256: string;
+                            status: "queued" | "in_flight" | "acked" | "naked" | "failed" | "dlq";
+                            /** Format: uuid */
+                            sourceAggregateId: string;
+                            ackStatus: string | null;
+                            retryCount: number;
+                            queuedAt: string;
+                            transmittedAt: string | null;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19077,7 +19309,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        listeners: {
+                            /** Format: uuid */
+                            feedId: string;
+                            displayName: string;
+                            status: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
+                            listenerUp: boolean;
+                            lastMessageAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19099,7 +19342,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        provider: {
+                            npi: string;
+                            enumerationType: string;
+                            status: string;
+                            basic: unknown;
+                            addresses: unknown;
+                            taxonomies: unknown;
+                            deactivationDate: string | null;
+                            lastUpdatedInNppes: string | null;
+                            fetchedAt: string;
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19122,7 +19379,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            kind: string;
+                            triggeredBy: string;
+                            status: string;
+                            startedAt: string;
+                            completedAt: string | null;
+                            providersFetchedCount: number;
+                            providersUpdatedCount: number;
+                            providersDeactivatedCount: number;
+                            errorsCount: number;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -19369,7 +19643,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -19416,7 +19694,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -19914,7 +20196,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20257,7 +20543,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20358,7 +20648,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -20551,7 +20845,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            orderId: string | null;
+                            loincCode: string;
+                            loincDisplayText: string;
+                            observationDate: string;
+                            resultStatus: string;
+                            abnormalSummary: "any_critical" | "any_abnormal" | "all_normal" | "no_flags";
+                            attachedDocumentId: string | null;
+                            receivedAt: string;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20573,7 +20885,35 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        observation: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            orderId: string | null;
+                            loincCode: string;
+                            loincDisplayText: string;
+                            observationDate: string;
+                            resultStatus: string;
+                            abnormalSummary: "any_critical" | "any_abnormal" | "all_normal" | "no_flags";
+                            attachedDocumentId: string | null;
+                            receivedAt: string;
+                            values: {
+                                obxSetId: number;
+                                loincCode: string;
+                                loincDisplayText: string;
+                                valueType: string;
+                                numericValue: number | null;
+                                stringValue: string | null;
+                                units: string | null;
+                                referenceRange: string | null;
+                                abnormalFlag: ("H" | "L" | "HH" | "LL" | "A" | "N") | null;
+                            }[];
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -20679,7 +21019,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            observationId: string;
+                            /** Format: uuid */
+                            sourceMessageId: string;
+                            obrPlacerOrderNumber: string | null;
+                            matchMethod: string;
+                            candidatePatientId: string | null;
+                            candidateMatchLevel: string | null;
+                            createdAt: string;
+                        }[];
+                        nextCursor?: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -21570,7 +21927,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -23224,7 +23585,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        capabilities: {
+                            /** Format: uuid */
+                            id: string;
+                            capabilityKey: string;
+                            displayName: string;
+                            riskTier: "high" | "medium" | "low";
+                            lifecycleState: "PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED";
+                            defaultBackendKey: string;
+                            allowedBackendKeys: string[];
+                            tenantOptInRequired: boolean;
+                            clinicianOptOutSupported: boolean;
+                            currentPromptTemplateKey: string | null;
+                            firstApprovedAt: string | null;
+                            lastReapprovedAt: string | null;
+                            nextReapprovalDueAt: string | null;
+                        }[];
+                        hotPhase1FilterApplied: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23289,7 +23670,79 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        capability: {
+                            /** Format: uuid */
+                            id: string;
+                            capabilityKey: string;
+                            displayName: string;
+                            riskTier: "high" | "medium" | "low";
+                            lifecycleState: "PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED";
+                            defaultBackendKey: string;
+                            allowedBackendKeys: string[];
+                            tenantOptInRequired: boolean;
+                            clinicianOptOutSupported: boolean;
+                            currentPromptTemplateKey: string | null;
+                            firstApprovedAt: string | null;
+                            lastReapprovedAt: string | null;
+                            nextReapprovalDueAt: string | null;
+                        };
+                        posture: {
+                            /** @constant */
+                            kind: "unavailable";
+                            reason: "phase_1_capability_shell" | "lifecycle_state_below_approved" | "lifecycle_state_retired" | "not_enrolled_as_pilot_tenant" | "tenant_not_opted_in" | "clinician_opted_out" | "kill_switch_active" | "token_hard_cap_reached" | "phi_minimization_failure" | "backend_unhealthy" | "provider_unregistered" | "output_validation_failed_after_retry";
+                        } | {
+                            /** @constant */
+                            kind: "pilot_tenants_only";
+                        } | {
+                            /** @constant */
+                            kind: "generally_available";
+                        } | {
+                            /** @constant */
+                            kind: "existing_opt_ins_only";
+                        };
+                        lifecycleEvents: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            fromState: ("PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED") | null;
+                            toState: "PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED";
+                            /** Format: uuid */
+                            actorMembershipId: string;
+                            actorRole: "ai_safety_owner" | "clinical_reviewer" | "ai_engineer" | "privacy_officer";
+                            approvalKind: "stage_1_proposal" | "stage_2_design_review" | "stage_3_evaluation" | "stage_4_pilot" | "stage_5_ga" | "reapproval" | "deprecation" | "retirement" | "incident_demotion";
+                            reason: string;
+                            rationaleText: string;
+                            linkedEvaluationRunId: string | null;
+                            stageArtifacts: {
+                                [key: string]: unknown;
+                            };
+                            /** Format: date-time */
+                            transitionedAt: string;
+                        }[];
+                        calibrations: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            backendKey: string;
+                            thresholds: unknown;
+                            baselineMetrics: unknown;
+                            /** Format: date-time */
+                            baselineSetAt: string;
+                            baselineEvaluationRunId: string;
+                            isCurrent: boolean;
+                            supersededReason: string | null;
+                            supersededById: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            supersededAt: string | null;
+                        }[];
+                        permittedNextStates: ("PROPOSED" | "DESIGN_REVIEW" | "EVALUATION" | "PILOT" | "APPROVED" | "MONITORING" | "DEPRECATED" | "RETIRED")[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23349,7 +23802,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        calibrations: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            backendKey: string;
+                            thresholds: unknown;
+                            baselineMetrics: unknown;
+                            /** Format: date-time */
+                            baselineSetAt: string;
+                            baselineEvaluationRunId: string;
+                            isCurrent: boolean;
+                            supersededReason: string | null;
+                            supersededById: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            supersededAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23466,7 +23940,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        optOuts: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            membershipId: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            optedOut: boolean;
+                            reason: string | null;
+                            /** Format: date-time */
+                            optedOutAt: string;
+                            revertedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23538,7 +24030,37 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        source: string;
+                        withinHours: number;
+                        findings: {
+                            run: {
+                                /** Format: uuid */
+                                id: string;
+                                /** Format: uuid */
+                                capabilityId: string;
+                                /** Format: uuid */
+                                backendId: string;
+                                stage: "stage_3_evaluation" | "stage_4_pilot" | "reapproval" | "drift_response" | "post_incident";
+                                status: "pending" | "in_progress" | "passed" | "failed" | "aborted";
+                                decision: "approve_for_pilot" | "approve_for_ga" | "reject" | "recalibrate_thresholds" | "no_decision";
+                                startedAt: string | null;
+                                completedAt: string | null;
+                                datasetVersionRef: string;
+                                mlflowRunId: string;
+                                summaryMetrics: {
+                                    [key: string]: unknown;
+                                };
+                                /** Format: uuid */
+                                initiatedByMembershipId: string;
+                                /** Format: date-time */
+                                createdAt: string;
+                            };
+                            capabilityKey: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23561,7 +24083,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        runs: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            /** Format: uuid */
+                            backendId: string;
+                            stage: "stage_3_evaluation" | "stage_4_pilot" | "reapproval" | "drift_response" | "post_incident";
+                            status: "pending" | "in_progress" | "passed" | "failed" | "aborted";
+                            decision: "approve_for_pilot" | "approve_for_ga" | "reject" | "recalibrate_thresholds" | "no_decision";
+                            startedAt: string | null;
+                            completedAt: string | null;
+                            datasetVersionRef: string;
+                            mlflowRunId: string;
+                            summaryMetrics: {
+                                [key: string]: unknown;
+                            };
+                            /** Format: uuid */
+                            initiatedByMembershipId: string;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23618,7 +24165,30 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        capabilityId: string;
+                        /** Format: uuid */
+                        backendId: string;
+                        stage: "stage_3_evaluation" | "stage_4_pilot" | "reapproval" | "drift_response" | "post_incident";
+                        status: "pending" | "in_progress" | "passed" | "failed" | "aborted";
+                        decision: "approve_for_pilot" | "approve_for_ga" | "reject" | "recalibrate_thresholds" | "no_decision";
+                        startedAt: string | null;
+                        completedAt: string | null;
+                        datasetVersionRef: string;
+                        mlflowRunId: string;
+                        summaryMetrics: {
+                            [key: string]: unknown;
+                        };
+                        /** Format: uuid */
+                        initiatedByMembershipId: string;
+                        /** Format: date-time */
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23641,7 +24211,35 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        reports: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            locationId: string | null;
+                            invocationId: string | null;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            /** Format: uuid */
+                            reporterMembershipId: string;
+                            reporterRole: string;
+                            severity: "critical" | "high" | "medium" | "low";
+                            hallucinationKind: "fabricated_medication" | "misattributed_symptom" | "fake_diagnosis" | "fabricated_quote" | "misquoted_patient" | "wrong_dose" | "fake_clinical_recommendation" | "other";
+                            triageStatus: "open" | "investigating" | "root_cause_identified" | "mitigated" | "closed" | "escalated_to_clinical_safety";
+                            triageOwnerMembershipId: string | null;
+                            triageDisposition: ("prompt_iteration_required" | "model_rollback_required" | "edge_case_acknowledged" | "false_alarm") | null;
+                            mitigationActionRef: string | null;
+                            /** Format: date-time */
+                            reportedAt: string;
+                            triagedAt: string | null;
+                            closedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23725,7 +24323,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        status: "ok" | "degraded";
+                        /** Format: date-time */
+                        checkedAt: string;
+                        backends: {
+                            /** Format: uuid */
+                            backendId: string;
+                            backendKey: string;
+                            kind: string;
+                            isActive: boolean;
+                            lastHealthStatus: string;
+                            zdrStatus: string;
+                            modelVersionPin: string;
+                        }[];
+                        capabilityShellMode: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23755,7 +24370,49 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        rows: {
+                            /** Format: uuid */
+                            invocationId: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            locationId: string | null;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            capabilityKey: string;
+                            /** Format: uuid */
+                            backendId: string;
+                            backendKey: string;
+                            modelVersionPin: string;
+                            promptTemplateVersion: string | null;
+                            /** Format: uuid */
+                            actorMembershipId: string;
+                            actorRole: string;
+                            patientId: string | null;
+                            touchedPatientChart: boolean;
+                            consumerCorrelationId: string | null;
+                            routingDecision: "primary" | "fallback_1" | "fallback_2";
+                            routingReason: string;
+                            inputTokenCount: number;
+                            outputTokenCount: number;
+                            durationMs: number;
+                            status: "completed" | "failed" | "timed_out" | "killed" | "capability_unavailable";
+                            errorClass: string | null;
+                            errorMessage: string | null;
+                            hitlOutcome: "accepted" | "edited" | "rejected" | "pending" | "not_applicable";
+                            zdrConfirmed: boolean;
+                            /** Format: date-time */
+                            invokedAt: string;
+                            completedAt: string | null;
+                            disclosedToVendor: boolean;
+                        }[];
+                        nextInvokedAtBefore: string | null;
+                        phiMasked: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23777,7 +24434,46 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        invocationId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        locationId: string | null;
+                        /** Format: uuid */
+                        capabilityId: string;
+                        capabilityKey: string;
+                        /** Format: uuid */
+                        backendId: string;
+                        backendKey: string;
+                        modelVersionPin: string;
+                        promptTemplateVersion: string | null;
+                        /** Format: uuid */
+                        actorMembershipId: string;
+                        actorRole: string;
+                        patientId: string | null;
+                        touchedPatientChart: boolean;
+                        consumerCorrelationId: string | null;
+                        routingDecision: "primary" | "fallback_1" | "fallback_2";
+                        routingReason: string;
+                        inputTokenCount: number;
+                        outputTokenCount: number;
+                        durationMs: number;
+                        status: "completed" | "failed" | "timed_out" | "killed" | "capability_unavailable";
+                        errorClass: string | null;
+                        errorMessage: string | null;
+                        hitlOutcome: "accepted" | "edited" | "rejected" | "pending" | "not_applicable";
+                        zdrConfirmed: boolean;
+                        /** Format: date-time */
+                        invokedAt: string;
+                        completedAt: string | null;
+                        disclosedToVendor: boolean;
+                        phiMasked: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23797,7 +24493,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        killSwitches: {
+                            /** Format: uuid */
+                            id: string;
+                            organizationId: string | null;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            active: boolean;
+                            reason: ("sev1_hallucination" | "sev2_hallucination" | "cost_cap_reached" | "vendor_outage_exceeded_sla" | "prompt_injection_detected" | "manual_safety_pause" | "misuse_detected" | "bias_drift_severe" | "lifecycle_demotion") | null;
+                            activationActorKind: ("ai_safety_owner" | "incident_commander" | "automated_cost_watch" | "automated_drift_monitor" | "automated_vendor_health_monitor" | "automated_lifecycle_demotion") | null;
+                            activationActorMembershipId: string | null;
+                            activationMessage: string | null;
+                            activatedAt: string | null;
+                            deactivationActorKind: ("ai_safety_owner" | "incident_commander" | "automated_cost_watch" | "automated_drift_monitor" | "automated_vendor_health_monitor" | "automated_lifecycle_demotion") | null;
+                            deactivationActorMembershipId: string | null;
+                            deactivationMessage: string | null;
+                            deactivatedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23858,7 +24574,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        capabilityKey: string;
+                        templateKey: string;
+                        version: number;
+                        contentHash: string;
+                        outputEntityTargetPrefix: string;
+                        outputTypePrefix: string;
+                        gitArtifactPath: string;
+                        approvedAt: string | null;
+                        inputSchemaRef: string;
+                        outputSchemaRef: string;
+                        compatibleBackendKeys: string[];
+                        clinicalReviewerAttestation: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23878,7 +24609,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        overrides: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            backendKeyPreference: string;
+                            overrideReason: "tenant_sovereignty" | "tenant_cost" | "tenant_pilot" | "fallback_after_outage";
+                            /** Format: uuid */
+                            setByMembershipId: string;
+                            /** Format: date-time */
+                            effectiveAt: string;
+                            expiresAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -23952,7 +24701,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        optIns: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            status: "active" | "paused" | "opted_out";
+                            /** Format: uuid */
+                            orgAdminMembershipId: string;
+                            routingPreferenceSnapshot: "prefer_cloud" | "prefer_local" | "cloud_only" | "local_only";
+                            pilotEnrollment: boolean;
+                            optedInAt: string | null;
+                            pausedAt: string | null;
+                            pausedReason: string | null;
+                            optedOutAt: string | null;
+                            optedOutReason: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24041,7 +24811,25 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        forecasts: {
+                            /** Format: uuid */
+                            capabilityId: string;
+                            capabilityKey: string;
+                            /** Format: date-time */
+                            windowStart: string;
+                            /** Format: date-time */
+                            windowEnd: string;
+                            spentTokens: number;
+                            softCap: number | null;
+                            hardCap: number | null;
+                            burnRatePerHour: number;
+                            projectedWindowTotal: number;
+                            projectedBreach: boolean | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24066,7 +24854,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        entries: {
+                            /** Format: uuid */
+                            ledgerId: string;
+                            /** Format: uuid */
+                            capabilityId: string;
+                            /** Format: uuid */
+                            backendId: string;
+                            inputTokens: number;
+                            outputTokens: number;
+                            cloudCostUsd: string | null;
+                            localComputeAttribution: string | null;
+                            /** Format: date-time */
+                            accruedAt: string;
+                        }[];
+                        windowInputTokens: number;
+                        windowOutputTokens: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -24339,7 +25146,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -26928,7 +27739,14 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        bucket0to30Cents: number;
+                        bucket31to60Cents: number;
+                        bucket61to90Cents: number;
+                        bucket90PlusCents: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26954,7 +27772,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            claimId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            tob: "811" | "812" | "813" | "814" | "817" | "818";
+                            state: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_partial" | "ack_rejected" | "paid" | "partial_paid" | "denied" | "replaced" | "voided";
+                            serviceFrom: string;
+                            serviceTo: string;
+                            claimControlNumber: string;
+                            payerClaimControlNumber: string | null;
+                            macJurisdiction: string;
+                            totalChargeCents: number;
+                            totalExpectedPaymentCents: number;
+                            version: number;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -26976,7 +27816,70 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        tob: "811" | "812" | "813" | "814" | "817" | "818";
+                        state: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_partial" | "ack_rejected" | "paid" | "partial_paid" | "denied" | "replaced" | "voided";
+                        serviceFrom: string;
+                        serviceTo: string;
+                        claimControlNumber: string;
+                        payerClaimControlNumber: string | null;
+                        macJurisdiction: string;
+                        totalChargeCents: number;
+                        totalExpectedPaymentCents: number;
+                        version: number;
+                        electionPeriodIdFrom: string;
+                        electionPeriodIdTo: string;
+                        patientPayerId: string;
+                        sequestrationAppliedPct: string;
+                        sequestrationPolicyId: string;
+                        replacesClaimId: string | null;
+                        replacedByClaimId: string | null;
+                        replacementReason: string | null;
+                        latestValidationRunId: string | null;
+                        latestSubmissionId: string | null;
+                        acknowledgmentDocumentId: string | null;
+                        latestValidation: {
+                            validationRunId: string;
+                            claimId: string;
+                            trigger: "initial_assembly" | "pre_submission" | "re_validation_after_correction" | "re_validation_after_override" | "manual_re_run";
+                            outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                            rulesExecuted: number;
+                            rulesPassed: number;
+                            rulesFailed: number;
+                            rulesWarn: number;
+                            rulesInfo: number;
+                            startedAt: string;
+                            completedAt: string;
+                            durationMs: number;
+                            initiatedByMembershipId: string | null;
+                        } | null;
+                        pricing: {
+                            hipps: {
+                                hippsCode: string;
+                                hippsRateCents: number;
+                                wageIndexCcn: string;
+                                wageIndexFiscalYear: number;
+                                wageIndexFactor: string;
+                                segments: unknown;
+                                calculatedAt: string;
+                            } | null;
+                            sia: {
+                                windowStart: string;
+                                totalQualifyingMinutes: number;
+                                siaAddOnCents: number;
+                                calculatedAt: string;
+                            } | null;
+                        };
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27076,7 +27979,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        acknowledgmentId: string;
+                        submissionId: string;
+                        claimId: string | null;
+                        kind: "ack_999" | "ack_277ca" | "ack_835";
+                        macJurisdiction: string;
+                        ackReceivedAt: string;
+                        parsedAt: string;
+                        outcomeStatus: string;
+                        parsedPayload: {
+                            [key: string]: unknown;
+                        };
+                        createdAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27098,7 +28016,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        claimLineId: string;
+                        claimId: string;
+                        lineNumber: number;
+                        revenueCode: string;
+                        qCode: string;
+                        levelOfCare: "routine_home_care" | "continuous_home_care" | "inpatient_respite_care" | "general_inpatient_care";
+                        hcpcsCode: string | null;
+                        serviceDateFrom: string;
+                        serviceDateTo: string;
+                        unitCount: number;
+                        unitRateCents: number;
+                        lineChargeCents: number;
+                        levelOfCarePeriodId: string;
+                        modifiers: string[];
+                        icdPointerPositions: number[];
+                        backingEncounterIds: string[];
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27154,7 +28091,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            historyId: string;
+                            claimId: string;
+                            fromState: ("draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_partial" | "ack_rejected" | "paid" | "partial_paid" | "denied" | "replaced" | "voided") | null;
+                            toState: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_partial" | "ack_rejected" | "paid" | "partial_paid" | "denied" | "replaced" | "voided";
+                            at: string;
+                            actorMembershipId: string | null;
+                            actorKind: string;
+                            reason: string | null;
+                            validationRunId: string | null;
+                            submissionId: string | null;
+                            acknowledgmentId: string | null;
+                            remittanceAdviceId: string | null;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27176,7 +28132,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        providerEntityId: string;
+                        kind: "claim_837i" | "noe" | "notr";
+                        claimId: string | null;
+                        noeId: string | null;
+                        notrId: string | null;
+                        claimControlNumber: string;
+                        attemptIndex: number;
+                        outcome: "queued" | "generated" | "submitted" | "failed_worker" | "failed_portal";
+                        outcomeReason: string | null;
+                        generatedFileUri: string | null;
+                        submittedAt: string | null;
+                        createdAt: string;
+                    }[];
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27345,7 +28317,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            checkId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            asOfServiceDate: string;
+                            outcome: "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+                            parsedPayload: {
+                                [key: string]: unknown;
+                            };
+                            checkedAt: string;
+                            staleAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27398,7 +28385,20 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        checkId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        asOfServiceDate: string;
+                        outcome: "active_part_a" | "inactive_part_a" | "indeterminate" | "error";
+                        parsedPayload: {
+                            [key: string]: unknown;
+                        };
+                        checkedAt: string;
+                        staleAt: string;
+                    } | null;
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27421,7 +28421,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            credentialId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            macJurisdiction: string;
+                            submitterId: string;
+                            tradingPartnerId: string;
+                            clientId: string;
+                            hasSecret: boolean;
+                            baaRecordRef: string | null;
+                            credentialExpiresAt: string | null;
+                            lastSandboxTestAt: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27478,7 +28499,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    } | null;
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27500,7 +28538,15 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        buckets: {
+                            key: string;
+                            count: number;
+                            amountCents: number;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27525,7 +28571,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            ruleConfigId: string;
+                            organizationId: string;
+                            ruleKey: string;
+                            ruleVersion: number;
+                            isCustom: boolean;
+                            enabled: boolean;
+                            severity: "error" | "warn" | "info";
+                            overrideRoleRequired: ("billing_manager" | "compliance_officer" | "medical_director" | "org_admin") | null;
+                            parameters: {
+                                [key: string]: unknown;
+                            };
+                            regulatoryRequiredSnapshot: boolean;
+                            predicateDsl: unknown;
+                            setByMembershipId: string;
+                            setReason: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27547,7 +28618,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        ruleConfigId: string;
+                        organizationId: string;
+                        ruleKey: string;
+                        ruleVersion: number;
+                        isCustom: boolean;
+                        enabled: boolean;
+                        severity: "error" | "warn" | "info";
+                        overrideRoleRequired: ("billing_manager" | "compliance_officer" | "medical_director" | "org_admin") | null;
+                        parameters: {
+                            [key: string]: unknown;
+                        };
+                        regulatoryRequiredSnapshot: boolean;
+                        predicateDsl: unknown;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27678,7 +28770,21 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        policies: {
+                            policyId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            percentage: string;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            setByMembershipId: string;
+                            setReason: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -27731,7 +28837,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        createdAt: string;
+                    } | null;
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -29451,7 +30569,26 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        runs: {
+                            validationRunId: string;
+                            claimId: string;
+                            trigger: "initial_assembly" | "pre_submission" | "re_validation_after_correction" | "re_validation_after_override" | "manual_re_run";
+                            outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                            rulesExecuted: number;
+                            rulesPassed: number;
+                            rulesFailed: number;
+                            rulesWarn: number;
+                            rulesInfo: number;
+                            startedAt: string;
+                            completedAt: string;
+                            durationMs: number;
+                            initiatedByMembershipId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -29474,7 +30611,44 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        validationRunId: string;
+                        claimId: string;
+                        trigger: "initial_assembly" | "pre_submission" | "re_validation_after_correction" | "re_validation_after_override" | "manual_re_run";
+                        outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                        rulesExecuted: number;
+                        rulesPassed: number;
+                        rulesFailed: number;
+                        rulesWarn: number;
+                        rulesInfo: number;
+                        startedAt: string;
+                        completedAt: string;
+                        durationMs: number;
+                        initiatedByMembershipId: string | null;
+                        results: {
+                            resultId: string;
+                            validationRunId: string;
+                            ruleKey: string;
+                            ruleVersion: number;
+                            severity: "error" | "warn" | "info";
+                            outcome: "pass" | "fail" | "warn" | "info";
+                            remediation: {
+                                [key: string]: unknown;
+                            };
+                            overridden: boolean;
+                            override: {
+                                overrideId: string;
+                                resultId: string;
+                                overrideMembershipId: string;
+                                overrideRoleApplied: "billing_manager" | "compliance_officer" | "medical_director" | "org_admin";
+                                reason: string;
+                                appliedAt: string;
+                            } | null;
+                            recordedAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -33233,7 +34407,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -33397,7 +34575,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -37545,7 +38727,24 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        jobs: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            clientId: string;
+                            requestKind: "system" | "group" | "patient";
+                            resourceTypes: string[];
+                            status: string;
+                            initiatedByMembershipId: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                            completedAt: string | null;
+                            expiresAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -37622,7 +38821,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        clients: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            type: "smart_backend_services" | "api_key";
+                            tier: "tier-1" | "tier-2" | "tier-3";
+                            status: "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
+                            baaContractReference: string;
+                            approvedAt: string | null;
+                            /** Format: date-time */
+                            createdAt: string;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -37756,7 +38970,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        sessions: {
+                            /** Format: uuid */
+                            jti: string;
+                            /** Format: uuid */
+                            clientId: string;
+                            scopesGranted: string[];
+                            /** Format: date-time */
+                            issuedAt: string;
+                            /** Format: date-time */
+                            expiresAt: string;
+                            revokedAt: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -37827,7 +39056,19 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        config: {
+                            /** Format: uuid */
+                            organizationId: string;
+                            tenantFhirHost: string;
+                            identifierUriBase: string;
+                            inboundReviewSlaHours: number;
+                            exportDedupWindowMinutes: number;
+                            cursorKeyFingerprint: string;
+                        } | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -37899,7 +39140,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        proposals: {
+                            /** Format: uuid */
+                            id: string;
+                            resourceType: string;
+                            /** Format: uuid */
+                            sourceClientId: string;
+                            sourceFhirId: string | null;
+                            ownerModule: "m5" | "m12";
+                            proposalStatus: "pending" | "accepted" | "rejected" | "expired";
+                            payloadSha256: string;
+                            /** Format: date-time */
+                            proposedAt: string;
+                            decidedByMembershipId: string | null;
+                            decidedAt: string | null;
+                            decisionRationale: string | null;
+                            acceptedAggregateId: string | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45512,7 +46773,32 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            noeId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            electionPeriodId: string;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            electionEffectiveDate: string;
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            noeControlNumber: string;
+                            payerNoeControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestAcknowledgmentId: string | null;
+                            confirmationDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45534,7 +46820,28 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        noeId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        electionPeriodId: string;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        electionEffectiveDate: string;
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        noeControlNumber: string;
+                        payerNoeControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestAcknowledgmentId: string | null;
+                        confirmationDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45789,7 +47096,35 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        items: {
+                            notrId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            admissionId: string;
+                            triggerKind: "revocation" | "transfer_out" | "discharge";
+                            revocationEventId: string | null;
+                            transferEventId: string | null;
+                            dischargeEventId: string | null;
+                            effectiveEndDate: string;
+                            windowTargetAt: string;
+                            windowBreachedAt: string | null;
+                            state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                            notrControlNumber: string;
+                            payerNotrControlNumber: string | null;
+                            latestSubmissionId: string | null;
+                            latestAcknowledgmentId: string | null;
+                            confirmationDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                        nextCursor: string | null;
+                        hasMore: boolean;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -45811,7 +47146,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        notrId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        admissionId: string;
+                        triggerKind: "revocation" | "transfer_out" | "discharge";
+                        revocationEventId: string | null;
+                        transferEventId: string | null;
+                        dischargeEventId: string | null;
+                        effectiveEndDate: string;
+                        windowTargetAt: string;
+                        windowBreachedAt: string | null;
+                        state: "draft" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "cancelled";
+                        notrControlNumber: string;
+                        payerNotrControlNumber: string | null;
+                        latestSubmissionId: string | null;
+                        latestAcknowledgmentId: string | null;
+                        confirmationDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -49154,7 +50513,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -49909,7 +51272,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -50780,7 +52147,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -51077,7 +52448,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -51231,7 +52606,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -52112,7 +53491,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -52254,7 +53637,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -59603,7 +60990,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -59642,7 +61033,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -62204,7 +63599,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -62237,7 +63636,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -62735,7 +64138,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -62897,7 +64304,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -66898,7 +68309,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        token_endpoint: string;
+                        token_endpoint_auth_methods_supported: string[];
+                        token_endpoint_auth_signing_alg_values_supported: string[];
+                        grant_types_supported: string[];
+                        scopes_supported: string[];
+                        capabilities: string[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -66955,7 +68375,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "Bundle";
+                        /** @constant */
+                        type: "searchset";
+                        total: number;
+                        entry: unknown[];
+                        link?: unknown[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -66970,7 +68400,16 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    resourceType: string;
+                    id?: string;
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -67000,7 +68439,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "OperationOutcome";
+                        issue: {
+                            severity: "fatal" | "error" | "warning" | "information";
+                            code: "not-found" | "not-supported" | "forbidden" | "security" | "invalid" | "processing" | "throttled" | "login" | "unknown";
+                            diagnostics: string;
+                            details?: {
+                                coding: {
+                                    system: string;
+                                    code: string;
+                                }[];
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67046,7 +68501,16 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        transactionTime: string | null;
+                        request: string;
+                        requiresAccessToken: boolean;
+                        output: unknown[];
+                    } | {
+                        status: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67090,7 +68554,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "OperationOutcome";
+                        issue: {
+                            severity: "fatal" | "error" | "warning" | "information";
+                            code: "not-found" | "not-supported" | "forbidden" | "security" | "invalid" | "processing" | "throttled" | "login" | "unknown";
+                            diagnostics: string;
+                            details?: {
+                                coding: {
+                                    system: string;
+                                    code: string;
+                                }[];
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67169,7 +68649,41 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "CapabilityStatement";
+                        /** @constant */
+                        status: "active";
+                        date: string;
+                        /** @constant */
+                        kind: "instance";
+                        fhirVersion: string;
+                        format: string[];
+                        implementation: {
+                            description: string;
+                            url: string;
+                        };
+                        rest: {
+                            /** @constant */
+                            mode: "server";
+                            resource: {
+                                type: string;
+                                interaction: {
+                                    code: string;
+                                }[];
+                                searchParam?: {
+                                    name: string;
+                                    type: string;
+                                }[];
+                            }[];
+                            operation: {
+                                name: string;
+                                definition: string;
+                            }[];
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67191,7 +68705,17 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "Bundle";
+                        /** @constant */
+                        type: "searchset";
+                        total: number;
+                        entry: unknown[];
+                        link?: unknown[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67237,7 +68761,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "OperationOutcome";
+                        issue: {
+                            severity: "fatal" | "error" | "warning" | "information";
+                            code: "not-found" | "not-supported" | "forbidden" | "security" | "invalid" | "processing" | "throttled" | "login" | "unknown";
+                            diagnostics: string;
+                            details?: {
+                                coding: {
+                                    system: string;
+                                    code: string;
+                                }[];
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67259,7 +68799,18 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "ValueSet";
+                        /** @constant */
+                        status: "active";
+                        expansion: {
+                            total: number;
+                            contains: unknown[];
+                        };
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67279,7 +68830,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "OperationOutcome";
+                        issue: {
+                            severity: "fatal" | "error" | "warning" | "information";
+                            code: "not-found" | "not-supported" | "forbidden" | "security" | "invalid" | "processing" | "throttled" | "login" | "unknown";
+                            diagnostics: string;
+                            details?: {
+                                coding: {
+                                    system: string;
+                                    code: string;
+                                }[];
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -67299,7 +68866,23 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        resourceType: "OperationOutcome";
+                        issue: {
+                            severity: "fatal" | "error" | "warning" | "information";
+                            code: "not-found" | "not-supported" | "forbidden" | "security" | "invalid" | "processing" | "throttled" | "login" | "unknown";
+                            diagnostics: string;
+                            details?: {
+                                coding: {
+                                    system: string;
+                                    code: string;
+                                }[];
+                            };
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

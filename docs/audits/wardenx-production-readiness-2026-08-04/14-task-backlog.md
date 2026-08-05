@@ -306,6 +306,8 @@
 
 ## WX-PR-015 - Close OpenAPI body and response gaps
 
+- Status: Completed for the M23-M35 priority scope (2026-08-05); 87 mutating/8 GET gaps remain
+  outside that scope (bodyless action routes + modules not in this task's priority list).
 - Priority: P1
 - Severity addressed: High/Medium
 - Phase: 1
@@ -316,6 +318,25 @@
 - Implementation steps: Prioritize M23-M35; share runtime schemas; define success/error responses; regenerate; remove casts.
 - Tests: Contract parity and generated client compile fixtures.
 - Acceptance criteria: Zero launch-route missing bodies/responses and no client double casts for those routes.
+- Completion evidence: Mapped the exact route-level gap (not just the aggregate count) across the 12
+  M23-M35 modules and classified each as a real "handler validates a body the enrichment doesn't
+  declare" gap vs. a cosmetic "route genuinely takes no body" case the metric can never zero out (the
+  M39/WX-PR-009 precedent for those). Used a Workflow (12 parallel research agents, one per module,
+  each reusing the SAME exported TypeBox schema the handler actually validates/returns, never
+  inventing fields) to author the enrichment code, then integrated and verified it centrally rather
+  than trusting agent claims: resolved every relative import against the real filesystem and confirmed
+  the named export exists, checked for symbol collisions (none) both across the 12 modules and against
+  the existing 10,000+-line enrichments.ts, and diffed every pre-existing route entry's response/summary
+  before and after to confirm no silent regressions. GET-response gaps in the M23-M35 scope: 72 → 8.
+  Mutating-body gaps in scope: dropped substantially (the remainder — mac-credentials, sequestration
+  policies, and a handful of others — turned out on inspection to be additional bodyless-action or
+  already-covered false positives from the initial gap scan, correctly skipped by the research agents
+  rather than fabricated). Regenerated `openapi.json` + the typed client; fixed the resulting 8
+  `body: {}` compile errors this created in SPA call sites that previously omitted a body Fastify never
+  validated. Re-tightened the coverage ratchet baseline. Did not attempt a repo-wide `as never` cast
+  sweep — that's a much larger, separate undertaking touching 55+ files, most for routes outside this
+  pass's scope; flagged as a follow-up, not attempted here. Full gate (build, `arch:fitness`,
+  `bun run test`) green.
 - Risks: Consumer-breaking types expose existing behavior drift.
 - Rollback: Per-module compatible commits or explicit versioning.
 - Estimated complexity: L

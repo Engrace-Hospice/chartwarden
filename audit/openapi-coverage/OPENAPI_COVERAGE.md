@@ -5,7 +5,7 @@
 
 `openapi:check` proves openapi.json was regenerated and that no enrichment targets a dead route. It does NOT prove a route carries a request contract — an unenriched route is still emitted, with no `requestBody` and a bare `200: OK`, and the generated client then types its body as `never`. This report is the coverage half.
 
-**Totals:** 1217/1224 routes enriched (99%) · **112/699 mutating routes carry no request-body schema** · 80/494 GETs carry no response schema
+**Totals:** 1217/1224 routes enriched (99%) · **87/699 mutating routes carry no request-body schema** · 8/494 GETs carry no response schema
 
 `Deficit` = routes with no enrichment entry; it is the ratcheted number (see `baseline.json`). `Mut. no body` is the sharpest signal — a POST that validates a TypeBox body in its handler but publishes none is a contract that lies by omission.
 
@@ -32,19 +32,19 @@
 | 20-field-safety | 30 | 30 (100%) | 0 | 17 | 0 | 12 | 0 |
 | 21-supplies | 37 | 37 (100%) | 0 | 24 | 0 | 12 | 0 |
 | 22-documents | 38 | 38 (100%) | 0 | 21 | 0 | 15 | 0 |
-| 23-billing-medicare | 43 | 43 (100%) | 0 | 17 | 4 | 24 | 22 |
+| 23-billing-medicare | 43 | 43 (100%) | 0 | 17 | 4 | 24 | 0 |
 | 24-billing-medicaid | 39 | 39 (100%) | 0 | 20 | 4 | 17 | 0 |
-| 25-remittance | 31 | 31 (100%) | 0 | 18 | 5 | 13 | 0 |
+| 25-remittance | 31 | 31 (100%) | 0 | 18 | 2 | 13 | 0 |
 | 26-cap | 27 | 27 (100%) | 0 | 12 | 3 | 15 | 0 |
 | 27-cost-report | 45 | 45 (100%) | 0 | 28 | 9 | 16 | 0 |
-| 28-fhir | 35 | 35 (100%) | 0 | 18 | 8 | 16 | 16 |
-| 29-external-interfaces | 33 | 33 (100%) | 0 | 16 | 5 | 17 | 17 |
-| 30-quality | 60 | 60 (100%) | 0 | 36 | 3 | 24 | 0 |
-| 31-portal | 53 | 53 (100%) | 0 | 25 | 13 | 28 | 0 |
-| 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 17 |
+| 28-fhir | 35 | 35 (100%) | 0 | 18 | 7 | 16 | 0 |
+| 29-external-interfaces | 33 | 33 (100%) | 0 | 16 | 5 | 17 | 0 |
+| 30-quality | 60 | 60 (100%) | 0 | 36 | 1 | 24 | 0 |
+| 31-portal | 53 | 53 (100%) | 0 | 25 | 7 | 28 | 0 |
+| 32-ai-platform | 32 | 32 (100%) | 0 | 11 | 0 | 17 | 0 |
 | 33-reporting | 42 | 42 (100%) | 0 | 22 | 10 | 20 | 0 |
-| 34-saas-tenant-platform | 48 | 48 (100%) | 0 | 30 | 4 | 17 | 0 |
-| 35-subscription | 54 | 54 (100%) | 0 | 30 | 15 | 23 | 0 |
+| 34-saas-tenant-platform | 48 | 48 (100%) | 0 | 30 | 1 | 17 | 0 |
+| 35-subscription | 54 | 54 (100%) | 0 | 30 | 5 | 23 | 0 |
 | 36-messaging | 22 | 22 (100%) | 0 | 13 | 3 | 6 | 0 |
 | 37-ipu | 45 | 45 (100%) | 0 | 33 | 4 | 10 | 0 |
 | 38-terminology | 8 | 8 (100%) | 0 | 1 | 0 | 6 | 0 |

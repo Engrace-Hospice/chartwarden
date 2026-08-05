@@ -10241,3 +10241,1864 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Read the IPU census snapshot for a date (§4.1)",
   },
 });
+
+// ── WX-PR-015 body/response gap-fill — 35-subscription ─────────────────────────────────────────
+// M35 Subscription Billing — WX-PR-015 body-schema fill-in for 10 admin/tenant action routes whose
+// handlers accept a body but never `parse()` it (dunning reset/skip-stage, plan activate/deprecate,
+// refund approve, subscription cancel/resume admin+tenant, setup_intent). Since the handlers read
+// nothing off `request.body`, the honest contract is "no body fields" — a locally-authored empty-object
+// schema (matches the same `Type.Object({}, { additionalProperties: false })` shape M02/M19 use for their
+// genuinely-empty action bodies) rather than inventing fields the service layer never consumes.
+const M35EmptyActionBody = Type.Object({}, { additionalProperties: false });
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/admin/dunning/:subscriptionId/reset": {
+    body: M35EmptyActionBody,
+    response: M35DunningDto,
+    summary: "Reset dunning",
+  },
+  "POST /api/admin/dunning/:subscriptionId/skip_stage": {
+    body: M35EmptyActionBody,
+    response: M35DunningDto,
+    summary: "Skip dunning stage",
+  },
+  "POST /api/admin/plans/:id/activate": {
+    body: M35EmptyActionBody,
+    response: M35PlanAdminDto,
+    summary: "Activate plan",
+  },
+  "POST /api/admin/plans/:id/deprecate": {
+    body: M35EmptyActionBody,
+    response: M35PlanAdminDto,
+    summary: "Deprecate plan",
+  },
+  "POST /api/admin/refunds/:id/approve": {
+    body: M35EmptyActionBody,
+    response: M35RefundDto,
+    summary: "Approve refund",
+  },
+  "POST /api/admin/subscriptions/:id/cancel": {
+    body: M35EmptyActionBody,
+    response: M35SubscriptionAdminResponseDto,
+    summary: "Cancel immediately",
+  },
+  "POST /api/admin/subscriptions/:id/resume": {
+    body: M35EmptyActionBody,
+    response: M35SubscriptionAdminResponseDto,
+    summary: "Resume subscription (admin)",
+  },
+  "POST /api/v1/payment_methods/setup_intent": {
+    body: M35EmptyActionBody,
+    response: M35SetupIntentResponseDto,
+    summary: "Create Stripe SetupIntent",
+  },
+  "POST /api/v1/subscription/cancel": {
+    body: M35EmptyActionBody,
+    response: M35SubscriptionResponseDto,
+    summary: "Cancel at period end",
+  },
+  "POST /api/v1/subscription/resume": {
+    body: M35EmptyActionBody,
+    response: M35SubscriptionResponseDto,
+    summary: "Resume subscription",
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 25-remittance ─────────────────────────────────────────
+// M25 Remittance & Denials — body-schema gap-fill for 3 routes whose handlers parse no request body
+// (ack / start / close are pure state-transition PATCH/POST routes gated by the If-Match header only,
+// not by any request.body field — see appeals.routes.ts / denials.routes.ts). No new imports are needed:
+// `Type` (from "@sinclair/typebox") and `M25VersionedResultSchema` (from
+// "../../apps/backend/src/modules/25-remittance/routes/m25-typebox") are already imported earlier in
+// this file. This Object.assign re-states each route's existing `summary`/`response` verbatim (Object.assign
+// replaces the whole entry per key, so omitting them would regress the routes already enriched at
+// "PATCH /api/v1/denials/:id/start", "POST /api/v1/denials/:id/close", and "PATCH /api/v1/appeals/:id/ack")
+// and adds an explicit empty-object `body` schema — honest to what the handler actually accepts (nothing).
+
+const M25RemittanceEmptyBodySchema = Type.Object(
+  {},
+  { additionalProperties: false, description: "No body fields are read by this route; If-Match header carries the concurrency token." },
+);
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "PATCH /api/v1/appeals/:id/ack": {
+    summary: "Record the payer's receipt acknowledgement of an appeal (§4.1)",
+    body: M25RemittanceEmptyBodySchema,
+    response: M25VersionedResultSchema,
+  },
+  "POST /api/v1/denials/:id/close": {
+    summary: "Close a resolved denial case (§4.1)",
+    body: M25RemittanceEmptyBodySchema,
+    response: M25VersionedResultSchema,
+  },
+  "PATCH /api/v1/denials/:id/start": {
+    summary: "Start work on a denial case (→ in_progress, §4.1)",
+    body: M25RemittanceEmptyBodySchema,
+    response: M25VersionedResultSchema,
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 31-portal ─────────────────────────────────────────
+// M31 Portal/Telehealth (WX-PR-015) — body-schema gap fill. None of these 6 handlers actually parse a
+// request body (verified in apps/backend/src/modules/31-portal/routes/{admin,write,session,telehealth}.routes.ts
+// — no `parse(...)`/`request.body` read on any of them), so the accurate contract is an empty object body,
+// not an invented shape. `summary`/`response` below are copied verbatim from the existing entries for these
+// same keys earlier in this file so this Object.assign only ADDS `body` and does not regress them.
+const M31EmptyBody = Type.Object({}, { additionalProperties: false });
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/admin/portal-invitations/:id/revoke": {
+    summary: "Revoke a portal invite before acceptance",
+    body: M31EmptyBody,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/documents/upload-complete/:uploadId": {
+    summary: "Confirm the M22 intake batch received",
+    body: M31EmptyBody,
+    response: M31UploadCompleteResponse,
+  },
+  "POST /api/v1/portal/sessions/logout": {
+    summary: "Server-side portal session close",
+    body: M31EmptyBody,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/portal/telehealth/visits/:visitId/leave": {
+    summary: "Portal-side telehealth leave (idempotent)",
+    body: M31EmptyBody,
+    response: M31AckResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/join": {
+    summary: "Clinician-side telehealth join — mints a participant token",
+    body: M31EmptyBody,
+    response: M31TelehealthJoinResponse,
+  },
+  "POST /api/v1/telehealth/visits/:visitId/leave": {
+    summary: "Clinician-side telehealth leave",
+    body: M31EmptyBody,
+    response: M31AckResponse,
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 34-saas-tenant-platform ─────────────────────────────────────────
+import {
+  ElevateSessionRequest as M34ElevateSessionRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/platform-typebox";
+import {
+  DsarFulfillRequest as M34DsarFulfillRequest,
+  OnboardingStartRequest as M34OnboardingStartRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/platform/support-sessions/:id/elevate": {
+    summary: "Elevate for the PHI write window (fresh passkey-2min; Part 2-heightened → 403)",
+    body: M34ElevateSessionRequest,
+    response: M34ElevateSessionAckSchema,
+  },
+  "POST /api/v1/tenant/dsar-export-jobs/:id/fulfill": {
+    summary: "Flip a DSAR job to fulfilled + trigger presigned-URL email (step-up)",
+    body: M34DsarFulfillRequest,
+    response: M34DsarExportJobViewSchema,
+  },
+  "POST /api/v1/tenant/onboarding/:taskId/start": {
+    summary: "Advance an onboarding task pending → in_progress",
+    body: M34OnboardingStartRequest,
+    response: M34OnboardingTaskViewSchema,
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 30-quality ─────────────────────────────────────────
+const M30EmptyIncidentActionBody = Type.Object({});
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/quality/incidents/:incidentId/submit": {
+    body: M30EmptyIncidentActionBody,
+    summary: "Submit a draft incident for triage (draft to submitted; reporter-owned, no body fields consumed) (Sec 4.1 R-54)",
+  },
+  "POST /api/v1/quality/incidents/:incidentId/close": {
+    body: M30EmptyIncidentActionBody,
+    summary: "Close a resolved incident (resolved to closed_followup_complete; no body fields consumed) (Sec 4.1 R-59)",
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 23-billing-medicare ─────────────────────────────────────────
+// M23 Billing — Medicare: response schemas newly authored to mirror the REAL DTOs the route handlers
+// return (apps/backend/src/modules/23-billing-medicare/routes/read-service.ts + read-service-drizzle.ts),
+// NOT the packages/billing/src/schemas/*.ts contracts - those are marked TODO(P2) SKELETON shapes in
+// packages/billing/src/contracts.ts and have drifted from the live Drizzle-backed projections (e.g. the
+// package ClaimSummaryView omits organizationId/macJurisdiction/payerClaimControlNumber/
+// totalExpectedPaymentCents that the live DTO carries, and the package PageOf() envelope omits hasMore
+// that every live CursorPage carries). Reusing the drifted package schemas here would silently add/drop
+// fields relative to what the handler actually returns, which is exactly what this enrichment pass must
+// not do - so these are freshly authored, field-for-field, off the read-service.ts interfaces instead.
+// The route-level QUERY schemas referenced below (ClaimListQuerySchema, NoeListQuerySchema, etc.) are
+// already imported earlier in this file from billing-typebox and are reused as-is (module top-level scope).
+
+const M23ClaimState = Type.Union([
+  Type.Literal("draft"),
+  Type.Literal("validating"),
+  Type.Literal("ready"),
+  Type.Literal("submitted"),
+  Type.Literal("ack_pending"),
+  Type.Literal("ack_accepted"),
+  Type.Literal("ack_partial"),
+  Type.Literal("ack_rejected"),
+  Type.Literal("paid"),
+  Type.Literal("partial_paid"),
+  Type.Literal("denied"),
+  Type.Literal("replaced"),
+  Type.Literal("voided"),
+]);
+const M23TypeOfBill = Type.Union([
+  Type.Literal("811"),
+  Type.Literal("812"),
+  Type.Literal("813"),
+  Type.Literal("814"),
+  Type.Literal("817"),
+  Type.Literal("818"),
+]);
+const M23LevelOfCare = Type.Union([
+  Type.Literal("routine_home_care"),
+  Type.Literal("continuous_home_care"),
+  Type.Literal("inpatient_respite_care"),
+  Type.Literal("general_inpatient_care"),
+]);
+const M23NoticeState = Type.Union([
+  Type.Literal("draft"),
+  Type.Literal("ready"),
+  Type.Literal("submitted"),
+  Type.Literal("ack_pending"),
+  Type.Literal("ack_accepted"),
+  Type.Literal("ack_rejected"),
+  Type.Literal("cancelled"),
+]);
+const M23EligibilityOutcome = Type.Union([
+  Type.Literal("active_part_a"),
+  Type.Literal("inactive_part_a"),
+  Type.Literal("indeterminate"),
+  Type.Literal("error"),
+]);
+const M23ValidationSeverity = Type.Union([
+  Type.Literal("error"),
+  Type.Literal("warn"),
+  Type.Literal("info"),
+]);
+const M23OverrideRole = Type.Union([
+  Type.Literal("billing_manager"),
+  Type.Literal("compliance_officer"),
+  Type.Literal("medical_director"),
+  Type.Literal("org_admin"),
+]);
+const M23ValidationRunTrigger = Type.Union([
+  Type.Literal("initial_assembly"),
+  Type.Literal("pre_submission"),
+  Type.Literal("re_validation_after_correction"),
+  Type.Literal("re_validation_after_override"),
+  Type.Literal("manual_re_run"),
+]);
+const M23ValidationRunOutcome = Type.Union([
+  Type.Literal("all_pass"),
+  Type.Literal("failures_present"),
+  Type.Literal("overrides_required"),
+  Type.Literal("ready_for_submission"),
+]);
+const M23ValidationResultOutcome = Type.Union([
+  Type.Literal("pass"),
+  Type.Literal("fail"),
+  Type.Literal("warn"),
+  Type.Literal("info"),
+]);
+const M23ClaimSubmissionKind = Type.Union([
+  Type.Literal("claim_837i"),
+  Type.Literal("noe"),
+  Type.Literal("notr"),
+]);
+const M23ClaimSubmissionOutcome = Type.Union([
+  Type.Literal("queued"),
+  Type.Literal("generated"),
+  Type.Literal("submitted"),
+  Type.Literal("failed_worker"),
+  Type.Literal("failed_portal"),
+]);
+const M23ClaimAcknowledgmentKind = Type.Union([
+  Type.Literal("ack_999"),
+  Type.Literal("ack_277ca"),
+  Type.Literal("ack_835"),
+]);
+const M23NotrTriggerKind = Type.Union([
+  Type.Literal("revocation"),
+  Type.Literal("transfer_out"),
+  Type.Literal("discharge"),
+]);
+
+const M23ClaimSummaryView = Type.Object({
+  claimId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  tob: M23TypeOfBill,
+  state: M23ClaimState,
+  serviceFrom: Type.String(),
+  serviceTo: Type.String(),
+  claimControlNumber: Type.String(),
+  payerClaimControlNumber: Type.Union([Type.String(), Type.Null()]),
+  macJurisdiction: Type.String(),
+  totalChargeCents: Type.Integer(),
+  totalExpectedPaymentCents: Type.Integer(),
+  version: Type.Integer(),
+});
+const M23ClaimListResponse = Type.Object({
+  items: Type.Array(M23ClaimSummaryView),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
+const M23ValidationRunView = Type.Object({
+  validationRunId: Type.String(),
+  claimId: Type.String(),
+  trigger: M23ValidationRunTrigger,
+  outcome: M23ValidationRunOutcome,
+  rulesExecuted: Type.Integer(),
+  rulesPassed: Type.Integer(),
+  rulesFailed: Type.Integer(),
+  rulesWarn: Type.Integer(),
+  rulesInfo: Type.Integer(),
+  startedAt: Type.String(),
+  completedAt: Type.String(),
+  durationMs: Type.Integer(),
+  initiatedByMembershipId: Type.Union([Type.String(), Type.Null()]),
+});
+const M23ClaimPricingView = Type.Object({
+  hipps: Type.Union([
+    Type.Object({
+      hippsCode: Type.String(),
+      hippsRateCents: Type.Integer(),
+      wageIndexCcn: Type.String(),
+      wageIndexFiscalYear: Type.Integer(),
+      wageIndexFactor: Type.String(),
+      segments: Type.Unknown(),
+      calculatedAt: Type.String(),
+    }),
+    Type.Null(),
+  ]),
+  sia: Type.Union([
+    Type.Object({
+      windowStart: Type.String(),
+      totalQualifyingMinutes: Type.Integer(),
+      siaAddOnCents: Type.Integer(),
+      calculatedAt: Type.String(),
+    }),
+    Type.Null(),
+  ]),
+});
+const M23ClaimDetailResponse = Type.Composite([
+  M23ClaimSummaryView,
+  Type.Object({
+    electionPeriodIdFrom: Type.String(),
+    electionPeriodIdTo: Type.String(),
+    patientPayerId: Type.String(),
+    sequestrationAppliedPct: Type.String(),
+    sequestrationPolicyId: Type.String(),
+    replacesClaimId: Type.Union([Type.String(), Type.Null()]),
+    replacedByClaimId: Type.Union([Type.String(), Type.Null()]),
+    replacementReason: Type.Union([Type.String(), Type.Null()]),
+    latestValidationRunId: Type.Union([Type.String(), Type.Null()]),
+    latestSubmissionId: Type.Union([Type.String(), Type.Null()]),
+    acknowledgmentDocumentId: Type.Union([Type.String(), Type.Null()]),
+    latestValidation: Type.Union([M23ValidationRunView, Type.Null()]),
+    pricing: M23ClaimPricingView,
+    createdAt: Type.String(),
+    updatedAt: Type.String(),
+  }),
+]);
+const M23ClaimLineView = Type.Object({
+  claimLineId: Type.String(),
+  claimId: Type.String(),
+  lineNumber: Type.Integer(),
+  revenueCode: Type.String(),
+  qCode: Type.String(),
+  levelOfCare: M23LevelOfCare,
+  hcpcsCode: Type.Union([Type.String(), Type.Null()]),
+  serviceDateFrom: Type.String(),
+  serviceDateTo: Type.String(),
+  unitCount: Type.Number(),
+  unitRateCents: Type.Integer(),
+  lineChargeCents: Type.Integer(),
+  levelOfCarePeriodId: Type.String(),
+  modifiers: Type.Array(Type.String()),
+  icdPointerPositions: Type.Array(Type.Integer()),
+  backingEncounterIds: Type.Array(Type.String()),
+});
+const M23ClaimLinesResponse = Type.Array(M23ClaimLineView);
+const M23ClaimStateHistoryView = Type.Object({
+  historyId: Type.String(),
+  claimId: Type.String(),
+  fromState: Type.Union([M23ClaimState, Type.Null()]),
+  toState: M23ClaimState,
+  at: Type.String(),
+  actorMembershipId: Type.Union([Type.String(), Type.Null()]),
+  actorKind: Type.String(),
+  reason: Type.Union([Type.String(), Type.Null()]),
+  validationRunId: Type.Union([Type.String(), Type.Null()]),
+  submissionId: Type.Union([Type.String(), Type.Null()]),
+  acknowledgmentId: Type.Union([Type.String(), Type.Null()]),
+  remittanceAdviceId: Type.Union([Type.String(), Type.Null()]),
+});
+const M23ClaimStateHistoryResponse = Type.Object({
+  items: Type.Array(M23ClaimStateHistoryView),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
+const M23ClaimSubmissionView = Type.Object({
+  submissionId: Type.String(),
+  providerEntityId: Type.String(),
+  kind: M23ClaimSubmissionKind,
+  claimId: Type.Union([Type.String(), Type.Null()]),
+  noeId: Type.Union([Type.String(), Type.Null()]),
+  notrId: Type.Union([Type.String(), Type.Null()]),
+  claimControlNumber: Type.String(),
+  attemptIndex: Type.Integer(),
+  outcome: M23ClaimSubmissionOutcome,
+  outcomeReason: Type.Union([Type.String(), Type.Null()]),
+  generatedFileUri: Type.Union([Type.String(), Type.Null()]),
+  submittedAt: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const M23ClaimSubmissionsResponse = Type.Array(M23ClaimSubmissionView);
+const M23ClaimAcknowledgmentView = Type.Object({
+  acknowledgmentId: Type.String(),
+  submissionId: Type.String(),
+  claimId: Type.Union([Type.String(), Type.Null()]),
+  kind: M23ClaimAcknowledgmentKind,
+  macJurisdiction: Type.String(),
+  ackReceivedAt: Type.String(),
+  parsedAt: Type.String(),
+  outcomeStatus: Type.String(),
+  parsedPayload: Type.Record(Type.String(), Type.Unknown()),
+  createdAt: Type.String(),
+});
+const M23ClaimAcknowledgmentsResponse = Type.Array(M23ClaimAcknowledgmentView);
+
+const M23ValidationResultView = Type.Object({
+  resultId: Type.String(),
+  validationRunId: Type.String(),
+  ruleKey: Type.String(),
+  ruleVersion: Type.Integer(),
+  severity: M23ValidationSeverity,
+  outcome: M23ValidationResultOutcome,
+  remediation: Type.Record(Type.String(), Type.Unknown()),
+  overridden: Type.Boolean(),
+  override: Type.Union([
+    Type.Object({
+      overrideId: Type.String(),
+      resultId: Type.String(),
+      overrideMembershipId: Type.String(),
+      overrideRoleApplied: M23OverrideRole,
+      reason: Type.String(),
+      appliedAt: Type.String(),
+    }),
+    Type.Null(),
+  ]),
+  recordedAt: Type.String(),
+});
+const M23ValidationRunDetailView = Type.Composite([
+  M23ValidationRunView,
+  Type.Object({ results: Type.Array(M23ValidationResultView) }),
+]);
+const M23ClaimValidationRunsResponse = Type.Object({
+  claimId: Type.String(),
+  runs: Type.Array(M23ValidationRunView),
+});
+
+const M23NoeView = Type.Object({
+  noeId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  electionPeriodId: Type.String(),
+  state: M23NoticeState,
+  electionEffectiveDate: Type.String(),
+  windowTargetAt: Type.String(),
+  windowBreachedAt: Type.Union([Type.String(), Type.Null()]),
+  noeControlNumber: Type.String(),
+  payerNoeControlNumber: Type.Union([Type.String(), Type.Null()]),
+  latestSubmissionId: Type.Union([Type.String(), Type.Null()]),
+  latestAcknowledgmentId: Type.Union([Type.String(), Type.Null()]),
+  confirmationDocumentId: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+const M23NoeListResponse = Type.Object({
+  items: Type.Array(M23NoeView),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
+const M23NotrView = Type.Object({
+  notrId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  patientId: Type.String(),
+  admissionId: Type.String(),
+  triggerKind: M23NotrTriggerKind,
+  revocationEventId: Type.Union([Type.String(), Type.Null()]),
+  transferEventId: Type.Union([Type.String(), Type.Null()]),
+  dischargeEventId: Type.Union([Type.String(), Type.Null()]),
+  effectiveEndDate: Type.String(),
+  windowTargetAt: Type.String(),
+  windowBreachedAt: Type.Union([Type.String(), Type.Null()]),
+  state: M23NoticeState,
+  notrControlNumber: Type.String(),
+  payerNotrControlNumber: Type.Union([Type.String(), Type.Null()]),
+  latestSubmissionId: Type.Union([Type.String(), Type.Null()]),
+  latestAcknowledgmentId: Type.Union([Type.String(), Type.Null()]),
+  confirmationDocumentId: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+const M23NotrListResponse = Type.Object({
+  items: Type.Array(M23NotrView),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
+
+const M23EligibilityCheckView = Type.Object({
+  checkId: Type.String(),
+  providerEntityId: Type.String(),
+  patientId: Type.String(),
+  asOfServiceDate: Type.String(),
+  outcome: M23EligibilityOutcome,
+  parsedPayload: Type.Record(Type.String(), Type.Unknown()),
+  checkedAt: Type.String(),
+  staleAt: Type.String(),
+});
+const M23EligibilityListResponse = Type.Object({ items: Type.Array(M23EligibilityCheckView) });
+const M23EligibilityLatestResponse = Type.Union([M23EligibilityCheckView, Type.Null()]);
+
+const M23RuleConfigView = Type.Object({
+  ruleConfigId: Type.String(),
+  organizationId: Type.String(),
+  ruleKey: Type.String(),
+  ruleVersion: Type.Integer(),
+  isCustom: Type.Boolean(),
+  enabled: Type.Boolean(),
+  severity: M23ValidationSeverity,
+  overrideRoleRequired: Type.Union([M23OverrideRole, Type.Null()]),
+  parameters: Type.Record(Type.String(), Type.Unknown()),
+  regulatoryRequiredSnapshot: Type.Boolean(),
+  predicateDsl: Type.Unknown(),
+  setByMembershipId: Type.String(),
+  setReason: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+const M23RuleConfigListResponse = Type.Object({
+  items: Type.Array(M23RuleConfigView),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
+
+const M23SequestrationPolicyView = Type.Object({
+  policyId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  percentage: Type.String(),
+  effectiveFrom: Type.String(),
+  effectiveTo: Type.Union([Type.String(), Type.Null()]),
+  setByMembershipId: Type.String(),
+  setReason: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const M23SequestrationPolicyListResponse = Type.Object({
+  policies: Type.Array(M23SequestrationPolicyView),
+});
+const M23SequestrationPolicyActiveResponse = Type.Union([M23SequestrationPolicyView, Type.Null()]);
+
+const M23MacCredentialView = Type.Object({
+  credentialId: Type.String(),
+  organizationId: Type.String(),
+  providerEntityId: Type.String(),
+  macJurisdiction: Type.String(),
+  submitterId: Type.String(),
+  tradingPartnerId: Type.String(),
+  clientId: Type.String(),
+  hasSecret: Type.Boolean(),
+  baaRecordRef: Type.Union([Type.String(), Type.Null()]),
+  credentialExpiresAt: Type.Union([Type.String(), Type.Null()]),
+  lastSandboxTestAt: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+  createdAt: Type.String(),
+  updatedAt: Type.String(),
+});
+const M23MacCredentialListResponse = Type.Object({
+  items: Type.Array(M23MacCredentialView),
+  nextCursor: Type.Union([Type.String(), Type.Null()]),
+  hasMore: Type.Boolean(),
+});
+const M23MacCredentialByProviderResponse = Type.Union([M23MacCredentialView, Type.Null()]);
+
+const M23ArAgingDto = Type.Object({
+  bucket0to30Cents: Type.Integer(),
+  bucket31to60Cents: Type.Integer(),
+  bucket61to90Cents: Type.Integer(),
+  bucket90PlusCents: Type.Integer(),
+});
+const M23MetricsBucket = Type.Object({
+  key: Type.String(),
+  count: Type.Integer(),
+  amountCents: Type.Integer(),
+});
+const M23MetricsResponse = Type.Object({ buckets: Type.Array(M23MetricsBucket) });
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/billing/ar-dashboard": {
+    summary: "AR-aging dashboard - aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
+    query: BillingMetricsQuerySchema,
+    response: M23ArAgingDto,
+  },
+  "GET /api/v1/billing/claims": {
+    summary: "List claims - cursor-paginated; filter by state / patient / ProviderEntity (§4.1 #2)",
+    query: ClaimListQuerySchema,
+    response: M23ClaimListResponse,
+  },
+  "GET /api/v1/billing/claims/:id": {
+    summary: "Single-claim detail - lines + HIPPS + SIA + latest run + submissions + acks (§4.1 #3)",
+    response: M23ClaimDetailResponse,
+  },
+  "GET /api/v1/billing/claims/:id/acknowledgments": {
+    summary: "All 999 / 277CA / 835 acknowledgments for a claim (§4.1 #13)",
+    response: M23ClaimAcknowledgmentsResponse,
+  },
+  "GET /api/v1/billing/claims/:id/lines": {
+    summary: "The claim_line projection for a claim (§4.1 #10)",
+    response: M23ClaimLinesResponse,
+  },
+  "GET /api/v1/billing/claims/:id/state-history": {
+    summary: "Per-claim transition timeline (cursor-paginated, §4.1 #11)",
+    response: M23ClaimStateHistoryResponse,
+  },
+  "GET /api/v1/billing/claims/:id/submissions": {
+    summary: "All dispatch attempts for a claim (§4.1 #12)",
+    response: M23ClaimSubmissionsResponse,
+  },
+  "GET /api/v1/billing/eligibility": {
+    summary: "Per-patient eligibility-check history (§4.1 #23)",
+    query: BillingPatientQuerySchema,
+    response: M23EligibilityListResponse,
+  },
+  "GET /api/v1/billing/eligibility/latest": {
+    summary: "The latest eligibility check for a patient (auto-refresh-on-stale read, §4.1)",
+    query: BillingPatientQuerySchema,
+    response: M23EligibilityLatestResponse,
+  },
+  "GET /api/v1/billing/mac-credentials": {
+    summary: "List per-ProviderEntity MAC credentials - secrets masked, cursor-paginated (§4.1 #34)",
+    query: MacCredentialListQuerySchema,
+    response: M23MacCredentialListResponse,
+  },
+  "GET /api/v1/billing/mac-credentials/:providerEntityId": {
+    summary: "The MAC credential for one ProviderEntity, or null (§4.1)",
+    response: M23MacCredentialByProviderResponse,
+  },
+  "GET /api/v1/billing/metrics": {
+    summary: "Per-window claim metric buckets (the M33 reporting consumer; org-wide or per-PE, §4.1 #38)",
+    query: BillingMetricsQuerySchema,
+    response: M23MetricsResponse,
+  },
+  "GET /api/v1/billing/rule-configs": {
+    summary: "List validation-rule overlay rows - platform snapshot + tenant overlays (cursor-paginated, §4.1 #18)",
+    query: RuleConfigListQuerySchema,
+    response: M23RuleConfigListResponse,
+  },
+  "GET /api/v1/billing/rule-configs/:id": {
+    summary: "Read a single validation-rule overlay row (§4.1)",
+    response: M23RuleConfigView,
+  },
+  "GET /api/v1/billing/sequestration-policies": {
+    summary: "Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32)",
+    query: RequiredProviderEntityQuerySchema,
+    response: M23SequestrationPolicyListResponse,
+  },
+  "GET /api/v1/billing/sequestration-policies/active": {
+    summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
+    query: RequiredProviderEntityQuerySchema,
+    response: M23SequestrationPolicyActiveResponse,
+  },
+  "GET /api/v1/claims/:id/validation-runs": {
+    summary: "List a claim's validation runs, most recent first (§4.1 #14)",
+    response: M23ClaimValidationRunsResponse,
+  },
+  "GET /api/v1/claims/:id/validation-runs/:runId": {
+    summary: "Single validation run - per-rule results + override status (§4.1 #15)",
+    response: M23ValidationRunDetailView,
+  },
+  "GET /api/v1/noe-records": {
+    summary: "List NOE records - timely-filing worklist, cursor-paginated (§4.1 #24)",
+    query: NoeListQuerySchema,
+    response: M23NoeListResponse,
+  },
+  "GET /api/v1/noe-records/:id": {
+    summary: "NOE detail (§4.1 #25)",
+    response: M23NoeView,
+  },
+  "GET /api/v1/notr-records": {
+    summary: "List NOTR records - timely-filing worklist, cursor-paginated (§4.1 #28)",
+    query: NotrListQuerySchema,
+    response: M23NotrListResponse,
+  },
+  "GET /api/v1/notr-records/:id": {
+    summary: "NOTR detail (§4.1 #29)",
+    response: M23NotrView,
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 28-fhir ─────────────────────────────────────────
+// M28 FHIR Gateway — response-contract backfill (WX-PR-015). Reuses the existing M28 import block's
+// bindings (M28ClientListQuery, M28BulkExportListQuery, M28InboundListQuery, M28ResourceSearchQuery) —
+// only NEW symbols are imported here.
+import {
+  FhirClientStatusSchema as M28FhirClientStatusSchema,
+  FhirClientTierSchema as M28FhirClientTierSchema,
+  FhirClientTypeSchema as M28FhirClientTypeSchema,
+  FhirInboundOwnerModuleSchema as M28FhirInboundOwnerModuleSchema,
+  FhirInboundStatusSchema as M28FhirInboundStatusSchema,
+  InboundResourceBody as M28InboundResourceBody,
+} from "../../apps/backend/src/modules/28-fhir/routes/m28-typebox";
+
+// ── newly authored response schemas (mirror store.ts DTOs / route handler return shapes) ──────────────
+
+const M28FhirClientSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  name: Type.String(),
+  type: M28FhirClientTypeSchema,
+  tier: M28FhirClientTierSchema,
+  status: M28FhirClientStatusSchema,
+  baaContractReference: Type.String(),
+  approvedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  createdAt: Type.String({ format: "date-time" }),
+});
+
+const M28ClientListResponse = Type.Object({
+  clients: Type.Array(M28FhirClientSummarySchema),
+});
+
+const M28FhirSessionSummarySchema = Type.Object({
+  jti: Type.String({ format: "uuid" }),
+  clientId: Type.String({ format: "uuid" }),
+  scopesGranted: Type.Array(Type.String()),
+  issuedAt: Type.String({ format: "date-time" }),
+  expiresAt: Type.String({ format: "date-time" }),
+  revokedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+
+const M28ClientSessionsResponse = Type.Object({
+  sessions: Type.Array(M28FhirSessionSummarySchema),
+});
+
+const M28FhirBulkExportJobViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  clientId: Type.String({ format: "uuid" }),
+  requestKind: Type.Union([
+    Type.Literal("system"),
+    Type.Literal("group"),
+    Type.Literal("patient"),
+  ]),
+  resourceTypes: Type.Array(Type.String()),
+  status: Type.String(),
+  initiatedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  createdAt: Type.String({ format: "date-time" }),
+  completedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  expiresAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+});
+
+const M28BulkExportListResponse = Type.Object({
+  jobs: Type.Array(M28FhirBulkExportJobViewSchema),
+});
+
+const M28FhirInboundProposalViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  resourceType: Type.String(),
+  sourceClientId: Type.String({ format: "uuid" }),
+  sourceFhirId: Type.Union([Type.String(), Type.Null()]),
+  ownerModule: M28FhirInboundOwnerModuleSchema,
+  proposalStatus: M28FhirInboundStatusSchema,
+  payloadSha256: Type.String(),
+  proposedAt: Type.String({ format: "date-time" }),
+  decidedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  decidedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+  decisionRationale: Type.Union([Type.String(), Type.Null()]),
+  acceptedAggregateId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+});
+
+const M28InboundProposalsResponse = Type.Object({
+  proposals: Type.Array(M28FhirInboundProposalViewSchema),
+});
+
+const M28FhirTenantConfigViewSchema = Type.Object({
+  organizationId: Type.String({ format: "uuid" }),
+  tenantFhirHost: Type.String(),
+  identifierUriBase: Type.String(),
+  inboundReviewSlaHours: Type.Integer(),
+  exportDedupWindowMinutes: Type.Integer(),
+  cursorKeyFingerprint: Type.String(),
+});
+
+const M28ConfigResponse = Type.Object({
+  config: Type.Union([M28FhirTenantConfigViewSchema, Type.Null()]),
+});
+
+// ── FHIR-spec surface response shapes (Phase-1: read-only US Core R4; operation-outcome.ts DTO) ────────
+
+const M28FhirOperationOutcomeResponse = Type.Object({
+  resourceType: Type.Literal("OperationOutcome"),
+  issue: Type.Array(
+    Type.Object({
+      severity: Type.Union([
+        Type.Literal("fatal"),
+        Type.Literal("error"),
+        Type.Literal("warning"),
+        Type.Literal("information"),
+      ]),
+      code: Type.Union([
+        Type.Literal("not-found"),
+        Type.Literal("not-supported"),
+        Type.Literal("forbidden"),
+        Type.Literal("security"),
+        Type.Literal("invalid"),
+        Type.Literal("processing"),
+        Type.Literal("throttled"),
+        Type.Literal("login"),
+        Type.Literal("unknown"),
+      ]),
+      diagnostics: Type.String(),
+      details: Type.Optional(
+        Type.Object({
+          coding: Type.Array(Type.Object({ system: Type.String(), code: Type.String() })),
+        }),
+      ),
+    }),
+  ),
+});
+
+const M28SmartConfigurationResponse = Type.Object({
+  token_endpoint: Type.String(),
+  token_endpoint_auth_methods_supported: Type.Array(Type.String()),
+  token_endpoint_auth_signing_alg_values_supported: Type.Array(Type.String()),
+  grant_types_supported: Type.Array(Type.String()),
+  scopes_supported: Type.Array(Type.String()),
+  capabilities: Type.Array(Type.String()),
+});
+
+const M28CapabilityStatementResponse = Type.Object({
+  resourceType: Type.Literal("CapabilityStatement"),
+  status: Type.Literal("active"),
+  date: Type.String(),
+  kind: Type.Literal("instance"),
+  fhirVersion: Type.String(),
+  format: Type.Array(Type.String()),
+  implementation: Type.Object({ description: Type.String(), url: Type.String() }),
+  rest: Type.Array(
+    Type.Object({
+      mode: Type.Literal("server"),
+      resource: Type.Array(
+        Type.Object({
+          type: Type.String(),
+          interaction: Type.Array(Type.Object({ code: Type.String() })),
+          searchParam: Type.Optional(
+            Type.Array(Type.Object({ name: Type.String(), type: Type.String() })),
+          ),
+        }),
+      ),
+      operation: Type.Array(Type.Object({ name: Type.String(), definition: Type.String() })),
+    }),
+  ),
+});
+
+const M28SearchsetBundleResponse = Type.Object({
+  resourceType: Type.Literal("Bundle"),
+  type: Type.Literal("searchset"),
+  total: Type.Integer(),
+  entry: Type.Array(Type.Unknown()),
+  link: Type.Optional(Type.Array(Type.Unknown())),
+});
+
+const M28ExportPollStatusResponse = Type.Union([
+  Type.Object({
+    transactionTime: Type.Union([Type.String(), Type.Null()]),
+    request: Type.String(),
+    requiresAccessToken: Type.Boolean(),
+    output: Type.Array(Type.Unknown()),
+  }),
+  Type.Object({ status: Type.String() }),
+]);
+
+const M28ValueSetExpandResponse = Type.Object({
+  resourceType: Type.Literal("ValueSet"),
+  status: Type.Literal("active"),
+  expansion: Type.Object({ total: Type.Integer(), contains: Type.Array(Type.Unknown()) }),
+});
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /fhir/r4/metadata": {
+    summary:
+      "The deterministic US Core R4 CapabilityStatement (R1). Anonymous per FHIR convention, rate-limited per-IP; the signed checksum is the survey-defense artifact (D11)",
+    response: M28CapabilityStatementResponse,
+  },
+  "GET /fhir/.well-known/smart-configuration": {
+    summary:
+      "SMART Backend Services well-known config (R2). Anonymous; advertises the client-credentials + private_key_jwt token endpoint and the system/*.read scope model",
+    response: M28SmartConfigurationResponse,
+  },
+  "GET /fhir/r4/:resourceType/:id": {
+    summary:
+      "Single-resource read (R4). Bearer scope `system/{ResourceType}.read` required; the disclosure is D15-audited. Phase 1 returns a well-formed not-found OperationOutcome — the projection reader seams are fail-closed deny-stubs this wave",
+    response: M28FhirOperationOutcomeResponse,
+  },
+  "GET /fhir/r4/:resourceType": {
+    summary:
+      "Type-level search (R5). `patient` is the W-FHIR-14 US Core parameter. Returns a well-formed empty searchset Bundle in Phase 1; the scope check + disclosure audit are real",
+    query: M28ResourceSearchQuery,
+    response: M28SearchsetBundleResponse,
+  },
+  "GET /fhir/r4/Patient/:id/$everything": {
+    summary:
+      "Patient $everything (R6, D5). Requires read scope for every linked resource type; D15-audited. Returns a well-formed empty Bundle in Phase 1",
+    response: M28SearchsetBundleResponse,
+  },
+  "GET /fhir/r4/$export-poll-status/:jobId": {
+    summary:
+      "Poll a bulk-export job (R10). 202 In-Progress | 200 Completed (with the output manifest) | 410 Expired once the 24h NDJSON TTL has passed",
+    response: M28ExportPollStatusResponse,
+  },
+  "GET /fhir/r4/CodeSystem/:system": {
+    summary:
+      "CodeSystem read (R12). Requires `system/CodeSystem.read`. Not served in Phase 1 (a warning OperationOutcome), which the terminology seam fills when M38 binds live",
+    response: M28FhirOperationOutcomeResponse,
+  },
+  "POST /fhir/r4/:resourceType": {
+    summary:
+      "Inbound staging (R16, D8). Requires `system/{ResourceType}.write`. M28 NEVER writes a native record — it stages the resource as a PROPOSAL the owner module (m5/m12) reviews; an unsupported resource type is a 501",
+    body: M28InboundResourceBody,
+  },
+  "GET /fhir/r4/ValueSet/:vs": {
+    summary: "ValueSet read (R14). Requires `system/ValueSet.read`; not served in Phase 1",
+    response: M28FhirOperationOutcomeResponse,
+  },
+  "GET /fhir/r4/ValueSet/:vs/$expand": {
+    summary:
+      "ValueSet $expand (R15). Requires `system/ValueSet.read`; returns a well-formed empty expansion in Phase 1",
+    response: M28ValueSetExpandResponse,
+  },
+  "GET /fhir/r5/*": {
+    summary:
+      "FHIR R5 is not supported (R17, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
+    response: M28FhirOperationOutcomeResponse,
+  },
+  "GET /fhir/r6/*": {
+    summary:
+      "FHIR R6 is not supported (R18, D1/D7) — 415 Unsupported Media Type + OperationOutcome",
+    response: M28FhirOperationOutcomeResponse,
+  },
+  "GET /api/v1/fhir/clients": {
+    summary: "List the org's registered FHIR clients (R23)",
+    query: M28ClientListQuery,
+    response: M28ClientListResponse,
+  },
+  "GET /api/v1/fhir/clients/:id/sessions": {
+    summary: "List a client's active bearer sessions (R29)",
+    response: M28ClientSessionsResponse,
+  },
+  "GET /api/v1/fhir/bulk-export-jobs": {
+    summary: "List the org's bulk-export jobs (R31)",
+    query: M28BulkExportListQuery,
+    response: M28BulkExportListResponse,
+  },
+  "GET /api/v1/fhir/inbound-proposals": {
+    summary: "The operator review queue of staged inbound proposals (R34)",
+    query: M28InboundListQuery,
+    response: M28InboundProposalsResponse,
+  },
+  "GET /api/v1/fhir/config": {
+    summary: "Read the tenant's FHIR config (R37)",
+    response: M28ConfigResponse,
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 29-external-interfaces ─────────────────────────────────────────
+// ── M29 External Interfaces — response DTOs (WX-PR-015) ─────────────────────────────────────────────────
+// Mirrors the route-facing DTOs `apps/backend/src/modules/29-external-interfaces/routes/store.ts` declares
+// (FeedSummary/FeedDetail/CredentialSummary/FeedHealthView/ProposalSummary/ProposalDetail/
+// InboundMessageView/OutboundMessageView/NppesProviderView/SyncRunView/FeedHealthAggregate/
+// ListenerStatusView/LabObservationSummary/LabObservationDetail/UnmatchedLabView/Page<T>) field-for-field —
+// the SAME vocabulary unions the request-side `m29-typebox.ts` schemas already publish, so list/detail
+// responses cannot drift from what the handlers actually return.
+import {
+  AbnormalFlagSchema as M29AbnormalFlagSchema,
+  CredentialKindSchema as M29CredentialKindSchema,
+  FeedKindSchema as M29FeedKindSchema,
+  FeedProtocolSchema as M29FeedProtocolSchema,
+  FeedStatusSchema as M29FeedStatusSchema,
+  OutboundStatusSchema as M29OutboundStatusSchema,
+  ParseStatusSchema as M29ParseStatusSchema,
+  ProposalOwnerModuleSchema as M29ProposalOwnerModuleSchema,
+  ProposalStatusSchema as M29ProposalStatusSchema,
+} from "../../apps/backend/src/modules/29-external-interfaces/routes/m29-typebox";
+
+const M29PageOf = <T extends TSchema>(item: T) =>
+  Type.Object({
+    items: Type.Array(item),
+    nextCursor: Type.Optional(Type.String()),
+  });
+
+const M29FeedSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  kind: M29FeedKindSchema,
+  displayName: Type.String(),
+  status: M29FeedStatusSchema,
+  protocol: M29FeedProtocolSchema,
+  host: Type.Union([Type.String(), Type.Null()]),
+  port: Type.Integer(),
+  baaContractRef: Type.Union([Type.String(), Type.Null()]),
+  baaExpiresOn: Type.Union([Type.String(), Type.Null()]),
+  activeFrom: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+
+const M29FeedDetailSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  kind: M29FeedKindSchema,
+  displayName: Type.String(),
+  status: M29FeedStatusSchema,
+  protocol: M29FeedProtocolSchema,
+  host: Type.Union([Type.String(), Type.Null()]),
+  port: Type.Integer(),
+  baaContractRef: Type.Union([Type.String(), Type.Null()]),
+  baaExpiresOn: Type.Union([Type.String(), Type.Null()]),
+  activeFrom: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+  channelCertPin: Type.Union([Type.String(), Type.Null()]),
+  sendingFacilityAllowlist: Type.Array(Type.String()),
+  rateLimitMsgPerSec: Type.Integer(),
+  proposedByMembershipId: Type.String(),
+  approvedByOpId: Type.Union([Type.String(), Type.Null()]),
+  approvedByComplId: Type.Union([Type.String(), Type.Null()]),
+  approvedAt: Type.Union([Type.String(), Type.Null()]),
+  revokedAt: Type.Union([Type.String(), Type.Null()]),
+});
+
+const M29FeedListResponse = M29PageOf(M29FeedSummarySchema);
+const M29FeedDetailResponse = Type.Object({ feed: M29FeedDetailSchema });
+
+const M29CredentialSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  feedId: Type.String({ format: "uuid" }),
+  kind: M29CredentialKindSchema,
+  fingerprint: Type.String(),
+  status: Type.Union([Type.Literal("active"), Type.Literal("retired")]),
+  rotatedAt: Type.String(),
+  createdAt: Type.String(),
+});
+const M29CredentialListResponse = Type.Object({
+  credentials: Type.Array(M29CredentialSummarySchema),
+});
+
+const M29FeedHealthViewSchema = Type.Object({
+  feedId: Type.String({ format: "uuid" }),
+  hourBucket: Type.String(),
+  listenerUpSeconds: Type.Integer(),
+  listenerDownSeconds: Type.Integer(),
+  inboundMessageCount: Type.Integer(),
+  outboundMessageCount: Type.Integer(),
+  ackAaCount: Type.Integer(),
+  ackAeCount: Type.Integer(),
+  ackArCount: Type.Integer(),
+  ackTimeoutCount: Type.Integer(),
+  parseErrorCount: Type.Integer(),
+  senderRejectedCount: Type.Integer(),
+  lastMessageAt: Type.Union([Type.String(), Type.Null()]),
+});
+const M29FeedHealthResponse = Type.Object({
+  health: Type.Union([M29FeedHealthViewSchema, Type.Null()]),
+});
+
+const M29FeedHealthAggregateSchema = Type.Object({
+  feedCount: Type.Integer(),
+  activeFeedCount: Type.Integer(),
+  listenersUp: Type.Integer(),
+  listenersDown: Type.Integer(),
+  inboundMessageCount: Type.Integer(),
+  outboundMessageCount: Type.Integer(),
+  parseErrorCount: Type.Integer(),
+});
+const M29HealthAggregateResponse = Type.Object({ health: M29FeedHealthAggregateSchema });
+
+const M29ListenerStatusViewSchema = Type.Object({
+  feedId: Type.String({ format: "uuid" }),
+  displayName: Type.String(),
+  status: M29FeedStatusSchema,
+  listenerUp: Type.Boolean(),
+  lastMessageAt: Type.Union([Type.String(), Type.Null()]),
+});
+const M29ListenerStatusResponse = Type.Object({
+  listeners: Type.Array(M29ListenerStatusViewSchema),
+});
+
+const M29ProposalSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  sourceMessageId: Type.String({ format: "uuid" }),
+  resourceKind: Type.String(),
+  matchOutcome: Type.String(),
+  matchedPatientId: Type.Union([Type.String(), Type.Null()]),
+  ownerModule: M29ProposalOwnerModuleSchema,
+  proposalStatus: M29ProposalStatusSchema,
+  proposedAt: Type.String(),
+  expiresAt: Type.String(),
+});
+const M29ProposalDetailSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  sourceMessageId: Type.String({ format: "uuid" }),
+  resourceKind: Type.String(),
+  matchOutcome: Type.String(),
+  matchedPatientId: Type.Union([Type.String(), Type.Null()]),
+  ownerModule: M29ProposalOwnerModuleSchema,
+  proposalStatus: M29ProposalStatusSchema,
+  proposedAt: Type.String(),
+  expiresAt: Type.String(),
+  matchConfidence: Type.Union([Type.Number(), Type.Null()]),
+  matchCandidateIds: Type.Array(Type.String()),
+  decidedByMembershipId: Type.Union([Type.String(), Type.Null()]),
+  decidedAt: Type.Union([Type.String(), Type.Null()]),
+  decisionRationale: Type.Union([Type.String(), Type.Null()]),
+  acceptedAggregateId: Type.Union([Type.String(), Type.Null()]),
+});
+const M29ProposalListResponse = M29PageOf(M29ProposalSummarySchema);
+const M29ProposalDetailResponse = Type.Object({ proposal: M29ProposalDetailSchema });
+
+const M29InboundMessageViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  feedId: Type.String({ format: "uuid" }),
+  messageType: Type.String(),
+  messageControlId: Type.String(),
+  payloadSha256: Type.String(),
+  parseStatus: M29ParseStatusSchema,
+  sendingFacilityRawId: Type.String(),
+  matchedPatientId: Type.Union([Type.String(), Type.Null()]),
+  receivedAt: Type.String(),
+});
+const M29InboundMessageListResponse = M29PageOf(M29InboundMessageViewSchema);
+const M29InboundMessageResponse = Type.Object({ message: M29InboundMessageViewSchema });
+
+const M29OutboundMessageViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  feedId: Type.String({ format: "uuid" }),
+  messageType: Type.String(),
+  messageControlId: Type.String(),
+  payloadSha256: Type.String(),
+  status: M29OutboundStatusSchema,
+  sourceAggregateId: Type.String({ format: "uuid" }),
+  ackStatus: Type.Union([Type.String(), Type.Null()]),
+  retryCount: Type.Integer(),
+  queuedAt: Type.String(),
+  transmittedAt: Type.Union([Type.String(), Type.Null()]),
+});
+const M29OutboundMessageListResponse = M29PageOf(M29OutboundMessageViewSchema);
+const M29OutboundMessageResponse = Type.Object({ message: M29OutboundMessageViewSchema });
+
+const M29NppesProviderViewSchema = Type.Object({
+  npi: Type.String(),
+  enumerationType: Type.String(),
+  status: Type.String(),
+  basic: Type.Unknown(),
+  addresses: Type.Unknown(),
+  taxonomies: Type.Unknown(),
+  deactivationDate: Type.Union([Type.String(), Type.Null()]),
+  lastUpdatedInNppes: Type.Union([Type.String(), Type.Null()]),
+  fetchedAt: Type.String(),
+});
+const M29NppesProviderResponse = Type.Object({ provider: M29NppesProviderViewSchema });
+
+const M29SyncRunViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  kind: Type.String(),
+  triggeredBy: Type.String(),
+  status: Type.String(),
+  startedAt: Type.String(),
+  completedAt: Type.Union([Type.String(), Type.Null()]),
+  providersFetchedCount: Type.Integer(),
+  providersUpdatedCount: Type.Integer(),
+  providersDeactivatedCount: Type.Integer(),
+  errorsCount: Type.Integer(),
+});
+const M29SyncRunListResponse = M29PageOf(M29SyncRunViewSchema);
+
+const M29LabAbnormalSummarySchema = Type.Union([
+  Type.Literal("any_critical"),
+  Type.Literal("any_abnormal"),
+  Type.Literal("all_normal"),
+  Type.Literal("no_flags"),
+]);
+
+const M29LabObservationSummarySchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  orderId: Type.Union([Type.String(), Type.Null()]),
+  loincCode: Type.String(),
+  loincDisplayText: Type.String(),
+  observationDate: Type.String(),
+  resultStatus: Type.String(),
+  abnormalSummary: M29LabAbnormalSummarySchema,
+  attachedDocumentId: Type.Union([Type.String(), Type.Null()]),
+  receivedAt: Type.String(),
+});
+const M29LabObservationValueViewSchema = Type.Object({
+  obxSetId: Type.Integer(),
+  loincCode: Type.String(),
+  loincDisplayText: Type.String(),
+  valueType: Type.String(),
+  numericValue: Type.Union([Type.Number(), Type.Null()]),
+  stringValue: Type.Union([Type.String(), Type.Null()]),
+  units: Type.Union([Type.String(), Type.Null()]),
+  referenceRange: Type.Union([Type.String(), Type.Null()]),
+  abnormalFlag: Type.Union([M29AbnormalFlagSchema, Type.Null()]),
+});
+const M29LabObservationDetailSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  patientId: Type.String({ format: "uuid" }),
+  orderId: Type.Union([Type.String(), Type.Null()]),
+  loincCode: Type.String(),
+  loincDisplayText: Type.String(),
+  observationDate: Type.String(),
+  resultStatus: Type.String(),
+  abnormalSummary: M29LabAbnormalSummarySchema,
+  attachedDocumentId: Type.Union([Type.String(), Type.Null()]),
+  receivedAt: Type.String(),
+  values: Type.Array(M29LabObservationValueViewSchema),
+});
+const M29ObservationListResponse = M29PageOf(M29LabObservationSummarySchema);
+const M29ObservationDetailResponse = Type.Object({ observation: M29LabObservationDetailSchema });
+
+const M29UnmatchedLabViewSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  observationId: Type.String({ format: "uuid" }),
+  sourceMessageId: Type.String({ format: "uuid" }),
+  obrPlacerOrderNumber: Type.Union([Type.String(), Type.Null()]),
+  matchMethod: Type.String(),
+  candidatePatientId: Type.Union([Type.String(), Type.Null()]),
+  candidateMatchLevel: Type.Union([Type.String(), Type.Null()]),
+  createdAt: Type.String(),
+});
+const M29UnmatchedObservationListResponse = M29PageOf(M29UnmatchedLabViewSchema);
+
+// NOTE on `POST /api/admin/external-interfaces/feeds/:feedId/activate`: the handler
+// (`routes/feed.routes.ts`) never calls `parse()`/`parseQuery()` on `request.body` — the route reads only
+// the `:feedId` param and the actor, so there is no request-body contract to publish (no `body` key below,
+// per the "never invent a shape the handler doesn't validate" rule). It DOES have a real response gap
+// (`{ feed: FeedDetail }`), which is what's filled in here. The other 17 keys below restate each route's
+// pre-existing `summary`/`body`/`query` verbatim (a later `Object.assign` replaces the whole per-key value,
+// not a deep merge) and add only the previously-missing `response`.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/admin/external-interfaces/feeds": {
+    summary: "List the org's HL7/NPPES feeds, filterable by kind/status (§4.1.1)",
+    query: M29FeedListQuery,
+    response: M29FeedListResponse,
+  },
+  "GET /api/admin/external-interfaces/feeds/:feedId": {
+    summary: "Single feed detail incl. redacted credential metadata — NEVER ciphertext (§4.1.1)",
+    response: M29FeedDetailResponse,
+  },
+  "POST /api/admin/external-interfaces/feeds/:feedId/activate": {
+    summary:
+      "Activate a feed: pending_approval → active. Requires a compliance co-approver DISTINCT from the operator (D18) AND the M40 BAA gate (`external_feed_baa_satisfied`, D16) (§4.1.1)",
+    response: M29FeedDetailResponse,
+  },
+  "GET /api/admin/external-interfaces/feeds/:feedId/credentials": {
+    summary: "List credential metadata (fingerprint + status only, NEVER ciphertext) (§4.1.1)",
+    response: M29CredentialListResponse,
+  },
+  "GET /api/admin/external-interfaces/feeds/:feedId/health": {
+    summary: "Current rolling per-hour health snapshot for a feed (§4.1.1)",
+    response: M29FeedHealthResponse,
+  },
+  "GET /api/admin/external-interfaces/health/aggregate": {
+    summary:
+      "Tenant feed-health overview — listener up/down, message + parse-error counts (§4.1.5)",
+    response: M29HealthAggregateResponse,
+  },
+  "GET /api/admin/external-interfaces/inbound-proposals": {
+    summary:
+      "List the propose-then-review ADT queue, filterable by status/owner_module/feed (§4.1.2)",
+    query: M29ProposalListQuery,
+    response: M29ProposalListResponse,
+  },
+  "GET /api/admin/external-interfaces/inbound-proposals/:proposalId": {
+    summary: "Single ADT proposal detail (owner-module-scoped, D5) (§4.1.2)",
+    response: M29ProposalDetailResponse,
+  },
+  "GET /api/admin/external-interfaces/messages/inbound": {
+    summary: "Search inbound HL7 messages (metadata only, no plaintext) (§4.1.3)",
+    query: M29InboundMessageListQuery,
+    response: M29InboundMessageListResponse,
+  },
+  "GET /api/admin/external-interfaces/messages/inbound/:messageId": {
+    summary:
+      "Single inbound message — metadata only; plaintext is the dedicated decrypt route (§4.1.3)",
+    response: M29InboundMessageResponse,
+  },
+  "GET /api/admin/external-interfaces/messages/outbound": {
+    summary: "Search outbound HL7 messages, filterable by placer order / dispatch status (§4.1.3)",
+    query: M29OutboundMessageListQuery,
+    response: M29OutboundMessageListResponse,
+  },
+  "GET /api/admin/external-interfaces/messages/outbound/:messageId": {
+    summary: "Single outbound message incl. the ACK/NACK chain (§4.1.3)",
+    response: M29OutboundMessageResponse,
+  },
+  "GET /api/admin/external-interfaces/metrics/listener-status": {
+    summary: "Per-feed listener socket status (up/down + last message time) (§4.1.5)",
+    response: M29ListenerStatusResponse,
+  },
+  "GET /api/admin/external-interfaces/nppes/providers/:npi": {
+    summary: "Read one cached platform-shared NPPES provider (public directory, no PHI) (§4.1.4)",
+    response: M29NppesProviderResponse,
+  },
+  "GET /api/admin/external-interfaces/nppes/sync-runs": {
+    summary: "List NPPES sync-run history (§4.1.4)",
+    query: M29NppesSyncRunListQuery,
+    response: M29SyncRunListResponse,
+  },
+  "GET /api/clinical/labs/observations": {
+    summary: "List caseload lab observations, filterable by patient/loinc/abnormal-flag (§4.2)",
+    query: M29ObservationListQuery,
+    response: M29ObservationListResponse,
+  },
+  "GET /api/clinical/labs/observations/unmatched": {
+    summary:
+      "The unmatched-lab review queue (failed patient-match cascade, D6; review-unmatched role) (§4.2)",
+    query: M29ObservationListQuery,
+    response: M29UnmatchedObservationListResponse,
+  },
+  "GET /api/clinical/labs/observations/:observationId": {
+    summary:
+      "Single observation with its value rows (`lab_observation_patient_caseload_or_scope`, D20) (§4.2)",
+    response: M29ObservationDetailResponse,
+  },
+});
+
+
+// ── WX-PR-015 body/response gap-fill — 32-ai-platform ─────────────────────────────────────────
+// M32 AI Platform — WX-PR-015 response contracts for the 17 GET routes whose OpenAPI entries (added
+// earlier, see the "GET /api/v1/ai/capabilities" etc. block above) carry a summary/query but no
+// `response`. Every shape below mirrors a real TS interface field-for-field: `AiCapabilityGovernanceRow`
+// + `AiLifecycleEventRow` + `AiCalibrationRow` (governance/store.ts), `AiClinicianOptOutRow` /
+// `AiTenantOptInRow` (governance/store.ts), `AiEvaluationRunRowProjection` / `AiHallucinationReportRowProjection`
+// / `AiKillSwitchRowProjection` (safety/store.ts), `AiInvocationLedgerView` / `AiTokenLedgerEntryView` /
+// `AiTokenForecastView` / `AiHealthView` (read-service.ts), `AiRoutingOverrideRowProjection`
+// (invocation/store.ts) and the R29 hand-projected prompt-metadata literal in safety-ops.routes.ts.
+// None of these row shapes has a TypeBox mirror anywhere in the module (M32-T07's m32-typebox.ts only
+// ever needed request bodies/queries — §4.1's own routes prove it by hand-projecting every read), so
+// they are authored fresh here rather than imported, per the enrichment-agent instructions. The
+// STRING-LITERAL VOCAB is reused from `m32-typebox.ts` wherever it already exists there, and authored
+// fresh only for the handful of unions that file never needed (hitl outcome, routing decision, eval
+// decision, kill-switch actor kind, tenant opt-in status, capability consumer posture).
+//
+// Each entry below is merged onto its EXISTING `ROUTE_ENRICHMENTS[key]` (spread-preserved, not
+// overwritten) because the M32-T07 batch already populated `summary`/`query` for every one of these
+// fifteen GET routes earlier in this file — a bare `Object.assign` here would silently drop that work.
+import {
+  CapabilityLifecycleState as M32VocabLifecycleState,
+  CapabilityOwningRole as M32VocabOwningRole,
+  CapabilityRiskTier as M32VocabRiskTier,
+  EvaluationRunStage as M32VocabEvalStage,
+  EvaluationRunStatus as M32VocabEvalStatus,
+  HallucinationKind as M32VocabHallucinationKind,
+  HallucinationSeverity as M32VocabHallucinationSeverity,
+  HallucinationTriageDisposition as M32VocabTriageDisposition,
+  HallucinationTriageStatus as M32VocabTriageStatus,
+  InvocationStatus as M32VocabInvocationStatus,
+  KillSwitchReason as M32VocabKillSwitchReason,
+  LifecycleApprovalKind as M32VocabApprovalKind,
+  RoutingOverrideReason as M32VocabRoutingOverrideReason,
+  RoutingPreference as M32VocabRoutingPreference,
+} from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+
+const M32RespUuid = Type.String({ format: "uuid" });
+const M32RespInstant = Type.String({ format: "date-time" });
+const M32RespInstantOrNull = Type.Union([Type.String({ format: "date-time" }), Type.Null()]);
+const M32RespStrOrNull = Type.Union([Type.String(), Type.Null()]);
+
+// ── vocab this file's routes need but `m32-typebox.ts` never did (response-only unions) ───────────────
+
+const M32VocabHitlOutcome = Type.Union([
+  Type.Literal("accepted"),
+  Type.Literal("edited"),
+  Type.Literal("rejected"),
+  Type.Literal("pending"),
+  Type.Literal("not_applicable"),
+]);
+
+const M32VocabRoutingDecision = Type.Union([
+  Type.Literal("primary"),
+  Type.Literal("fallback_1"),
+  Type.Literal("fallback_2"),
+]);
+
+const M32VocabEvalDecision = Type.Union([
+  Type.Literal("approve_for_pilot"),
+  Type.Literal("approve_for_ga"),
+  Type.Literal("reject"),
+  Type.Literal("recalibrate_thresholds"),
+  Type.Literal("no_decision"),
+]);
+
+const M32VocabKillSwitchActorKind = Type.Union([
+  Type.Literal("ai_safety_owner"),
+  Type.Literal("incident_commander"),
+  Type.Literal("automated_cost_watch"),
+  Type.Literal("automated_drift_monitor"),
+  Type.Literal("automated_vendor_health_monitor"),
+  Type.Literal("automated_lifecycle_demotion"),
+]);
+
+const M32VocabTenantOptInStatus = Type.Union([
+  Type.Literal("active"),
+  Type.Literal("paused"),
+  Type.Literal("opted_out"),
+]);
+
+const M32VocabUnavailableReason = Type.Union([
+  Type.Literal("phase_1_capability_shell"),
+  Type.Literal("lifecycle_state_below_approved"),
+  Type.Literal("lifecycle_state_retired"),
+  Type.Literal("not_enrolled_as_pilot_tenant"),
+  Type.Literal("tenant_not_opted_in"),
+  Type.Literal("clinician_opted_out"),
+  Type.Literal("kill_switch_active"),
+  Type.Literal("token_hard_cap_reached"),
+  Type.Literal("phi_minimization_failure"),
+  Type.Literal("backend_unhealthy"),
+  Type.Literal("provider_unregistered"),
+  Type.Literal("output_validation_failed_after_retry"),
+]);
+
+/** `AiCapabilityConsumerPosture` (packages/types/src/ai-platform.ts) — the §2.2 posture R3 publishes. */
+const M32VocabConsumerPosture = Type.Union([
+  Type.Object({ kind: Type.Literal("unavailable"), reason: M32VocabUnavailableReason }),
+  Type.Object({ kind: Type.Literal("pilot_tenants_only") }),
+  Type.Object({ kind: Type.Literal("generally_available") }),
+  Type.Object({ kind: Type.Literal("existing_opt_ins_only") }),
+]);
+
+// ── row schemas ─────────────────────────────────────────────────────────────────────────────────────
+
+/** `AiCapabilityGovernanceRow` (governance/store.ts). */
+const M32CapabilityGovernanceRowSchema = Type.Object({
+  id: M32RespUuid,
+  capabilityKey: Type.String(),
+  displayName: Type.String(),
+  riskTier: M32VocabRiskTier,
+  lifecycleState: M32VocabLifecycleState,
+  defaultBackendKey: Type.String(),
+  allowedBackendKeys: Type.Array(Type.String()),
+  tenantOptInRequired: Type.Boolean(),
+  clinicianOptOutSupported: Type.Boolean(),
+  currentPromptTemplateKey: M32RespStrOrNull,
+  firstApprovedAt: M32RespInstantOrNull,
+  lastReapprovedAt: M32RespInstantOrNull,
+  nextReapprovalDueAt: M32RespInstantOrNull,
+});
+
+/** `AiLifecycleEventRow` (governance/store.ts) — one §2.2 ledger entry. */
+const M32LifecycleEventRowSchema = Type.Object({
+  id: M32RespUuid,
+  capabilityId: M32RespUuid,
+  fromState: Type.Union([M32VocabLifecycleState, Type.Null()]),
+  toState: M32VocabLifecycleState,
+  actorMembershipId: M32RespUuid,
+  actorRole: M32VocabOwningRole,
+  approvalKind: M32VocabApprovalKind,
+  reason: Type.String(),
+  rationaleText: Type.String(),
+  linkedEvaluationRunId: M32RespStrOrNull,
+  stageArtifacts: Type.Record(Type.String(), Type.Unknown()),
+  transitionedAt: M32RespInstant,
+});
+
+/** `AiCalibrationRow` (governance/store.ts) — one §3.2.3 calibration publication. */
+const M32CalibrationRowSchema = Type.Object({
+  id: M32RespUuid,
+  capabilityId: M32RespUuid,
+  backendKey: Type.String(),
+  thresholds: Type.Unknown(),
+  baselineMetrics: Type.Unknown(),
+  baselineSetAt: M32RespInstant,
+  baselineEvaluationRunId: Type.String(),
+  isCurrent: Type.Boolean(),
+  supersededReason: M32RespStrOrNull,
+  supersededById: M32RespStrOrNull,
+  createdAt: M32RespInstant,
+  supersededAt: M32RespInstantOrNull,
+});
+
+/** `AiClinicianOptOutRow` (governance/store.ts). */
+const M32ClinicianOptOutRowSchema = Type.Object({
+  id: M32RespUuid,
+  organizationId: M32RespUuid,
+  membershipId: M32RespUuid,
+  capabilityId: M32RespUuid,
+  optedOut: Type.Boolean(),
+  reason: M32RespStrOrNull,
+  optedOutAt: M32RespInstant,
+  revertedAt: M32RespInstantOrNull,
+});
+
+/** `AiTenantOptInRow` (governance/store.ts). */
+const M32TenantOptInRowSchema = Type.Object({
+  id: M32RespUuid,
+  organizationId: M32RespUuid,
+  capabilityId: M32RespUuid,
+  status: M32VocabTenantOptInStatus,
+  orgAdminMembershipId: M32RespUuid,
+  routingPreferenceSnapshot: M32VocabRoutingPreference,
+  pilotEnrollment: Type.Boolean(),
+  optedInAt: M32RespInstantOrNull,
+  pausedAt: M32RespInstantOrNull,
+  pausedReason: M32RespStrOrNull,
+  optedOutAt: M32RespInstantOrNull,
+  optedOutReason: M32RespStrOrNull,
+});
+
+/** `AiEvaluationRunRowProjection` (safety/store.ts, extends `AiEvaluationRunSnapshot`). */
+const M32EvaluationRunRowSchema = Type.Object({
+  id: M32RespUuid,
+  capabilityId: M32RespUuid,
+  backendId: M32RespUuid,
+  stage: M32VocabEvalStage,
+  status: M32VocabEvalStatus,
+  decision: M32VocabEvalDecision,
+  startedAt: M32RespInstantOrNull,
+  completedAt: M32RespInstantOrNull,
+  datasetVersionRef: Type.String(),
+  mlflowRunId: Type.String(),
+  summaryMetrics: Type.Record(Type.String(), Type.Unknown()),
+  initiatedByMembershipId: M32RespUuid,
+  createdAt: M32RespInstant,
+});
+
+/** `AiHallucinationReportRowProjection` (safety/store.ts) — the §5.1.5 triage-queue row (no cipher). */
+const M32HallucinationReportRowSchema = Type.Object({
+  id: M32RespUuid,
+  organizationId: M32RespUuid,
+  providerEntityId: M32RespUuid,
+  locationId: M32RespStrOrNull,
+  invocationId: M32RespStrOrNull,
+  capabilityId: M32RespUuid,
+  reporterMembershipId: M32RespUuid,
+  reporterRole: Type.String(),
+  severity: M32VocabHallucinationSeverity,
+  hallucinationKind: M32VocabHallucinationKind,
+  triageStatus: M32VocabTriageStatus,
+  triageOwnerMembershipId: M32RespStrOrNull,
+  triageDisposition: Type.Union([M32VocabTriageDisposition, Type.Null()]),
+  mitigationActionRef: M32RespStrOrNull,
+  reportedAt: M32RespInstant,
+  triagedAt: M32RespInstantOrNull,
+  closedAt: M32RespInstantOrNull,
+});
+
+/** `AiKillSwitchRowProjection` (safety/store.ts, extends `AiKillSwitchRowSnapshot`). */
+const M32KillSwitchRowSchema = Type.Object({
+  id: M32RespUuid,
+  organizationId: M32RespStrOrNull,
+  capabilityId: M32RespUuid,
+  active: Type.Boolean(),
+  reason: Type.Union([M32VocabKillSwitchReason, Type.Null()]),
+  activationActorKind: Type.Union([M32VocabKillSwitchActorKind, Type.Null()]),
+  activationActorMembershipId: M32RespStrOrNull,
+  activationMessage: M32RespStrOrNull,
+  activatedAt: M32RespInstantOrNull,
+  deactivationActorKind: Type.Union([M32VocabKillSwitchActorKind, Type.Null()]),
+  deactivationActorMembershipId: M32RespStrOrNull,
+  deactivationMessage: M32RespStrOrNull,
+  deactivatedAt: M32RespInstantOrNull,
+});
+
+/** `AiRoutingOverrideRowProjection` (invocation/store.ts). */
+const M32RoutingOverrideRowSchema = Type.Object({
+  id: M32RespUuid,
+  organizationId: M32RespUuid,
+  capabilityId: M32RespUuid,
+  backendKeyPreference: Type.String(),
+  overrideReason: M32VocabRoutingOverrideReason,
+  setByMembershipId: M32RespUuid,
+  effectiveAt: M32RespInstant,
+  expiresAt: M32RespInstantOrNull,
+});
+
+/** `AiInvocationLedgerView` (read-service.ts) — the §164.528 disclosure-ledger row, masking-ready. */
+const M32InvocationLedgerViewSchema = Type.Object({
+  invocationId: M32RespUuid,
+  organizationId: M32RespUuid,
+  providerEntityId: M32RespUuid,
+  locationId: M32RespStrOrNull,
+  capabilityId: M32RespUuid,
+  capabilityKey: Type.String(),
+  backendId: M32RespUuid,
+  backendKey: Type.String(),
+  modelVersionPin: Type.String(),
+  promptTemplateVersion: M32RespStrOrNull,
+  actorMembershipId: M32RespUuid,
+  actorRole: Type.String(),
+  patientId: M32RespStrOrNull,
+  touchedPatientChart: Type.Boolean(),
+  consumerCorrelationId: M32RespStrOrNull,
+  routingDecision: M32VocabRoutingDecision,
+  routingReason: Type.String(),
+  inputTokenCount: Type.Integer(),
+  outputTokenCount: Type.Integer(),
+  durationMs: Type.Integer(),
+  status: M32VocabInvocationStatus,
+  errorClass: M32RespStrOrNull,
+  errorMessage: M32RespStrOrNull,
+  hitlOutcome: M32VocabHitlOutcome,
+  zdrConfirmed: Type.Boolean(),
+  invokedAt: M32RespInstant,
+  completedAt: M32RespInstantOrNull,
+  disclosedToVendor: Type.Boolean(),
+});
+
+/** `AiTokenLedgerEntryView` (read-service.ts). */
+const M32TokenLedgerEntryViewSchema = Type.Object({
+  ledgerId: M32RespUuid,
+  capabilityId: M32RespUuid,
+  backendId: M32RespUuid,
+  inputTokens: Type.Integer(),
+  outputTokens: Type.Integer(),
+  cloudCostUsd: M32RespStrOrNull,
+  localComputeAttribution: M32RespStrOrNull,
+  accruedAt: M32RespInstant,
+});
+
+/** `AiTokenForecastView` (read-service.ts) — spend vs. caps; `null` caps mean "unconfigured". */
+const M32TokenForecastViewSchema = Type.Object({
+  capabilityId: M32RespUuid,
+  capabilityKey: Type.String(),
+  windowStart: M32RespInstant,
+  windowEnd: M32RespInstant,
+  spentTokens: Type.Integer(),
+  softCap: Type.Union([Type.Integer(), Type.Null()]),
+  hardCap: Type.Union([Type.Integer(), Type.Null()]),
+  burnRatePerHour: Type.Number(),
+  projectedWindowTotal: Type.Number(),
+  projectedBreach: Type.Union([Type.Boolean(), Type.Null()]),
+});
+
+/** `AiBackendHealthView` (read-service.ts). */
+const M32BackendHealthViewSchema = Type.Object({
+  backendId: M32RespUuid,
+  backendKey: Type.String(),
+  kind: Type.String(),
+  isActive: Type.Boolean(),
+  lastHealthStatus: Type.String(),
+  zdrStatus: Type.String(),
+  modelVersionPin: Type.String(),
+});
+
+/** `AiHealthView` (read-service.ts) — R32's envelope. */
+const M32HealthViewSchema = Type.Object({
+  status: Type.Union([Type.Literal("ok"), Type.Literal("degraded")]),
+  checkedAt: M32RespInstant,
+  backends: Type.Array(M32BackendHealthViewSchema),
+  capabilityShellMode: Type.Boolean(),
+});
+
+// ── response envelopes, one per route ──────────────────────────────────────────────────────────────
+
+/** R2 — GET /api/v1/ai/capabilities. */
+const M32CapabilityListResponse = Type.Object({
+  capabilities: Type.Array(M32CapabilityGovernanceRowSchema),
+  hotPhase1FilterApplied: Type.Boolean(),
+});
+
+/** R3 — GET /api/v1/ai/capabilities/:capabilityId (`AiCapabilityGovernanceDetail`, governance/service.ts). */
+const M32CapabilityDetailResponse = Type.Object({
+  capability: M32CapabilityGovernanceRowSchema,
+  posture: M32VocabConsumerPosture,
+  lifecycleEvents: Type.Array(M32LifecycleEventRowSchema),
+  calibrations: Type.Array(M32CalibrationRowSchema),
+  permittedNextStates: Type.Array(M32VocabLifecycleState),
+});
+
+/** R6 — GET /api/v1/ai/capabilities/:capabilityId/calibration/history. */
+const M32CalibrationHistoryResponse = Type.Object({
+  calibrations: Type.Array(M32CalibrationRowSchema),
+});
+
+/** R15 — GET /api/v1/ai/clinician-opt-out. */
+const M32ClinicianOptOutListResponse = Type.Object({
+  optOuts: Type.Array(M32ClinicianOptOutRowSchema),
+});
+
+/** R31 — GET /api/v1/ai/drift/recent (`AiDriftFindingView[]`, read-service.ts). */
+const M32DriftRecentResponse = Type.Object({
+  source: Type.String(),
+  withinHours: Type.Integer(),
+  findings: Type.Array(
+    Type.Object({ run: M32EvaluationRunRowSchema, capabilityKey: Type.String() }),
+  ),
+});
+
+/** R27 — GET /api/v1/ai/evaluations. */
+const M32EvaluationListResponse = Type.Object({
+  runs: Type.Array(M32EvaluationRunRowSchema),
+});
+
+/** R18 — GET /api/v1/ai/hallucination-reports. */
+const M32HallucinationListResponse = Type.Object({
+  reports: Type.Array(M32HallucinationReportRowSchema),
+});
+
+/** R32 — GET /api/v1/ai/health. */
+const M32HealthResponse = M32HealthViewSchema;
+
+/** R16 — GET /api/v1/ai/invocations (`AiInvocationLedgerPage` + the route's `phiMasked`). */
+const M32InvocationSearchResponse = Type.Object({
+  rows: Type.Array(M32InvocationLedgerViewSchema),
+  nextInvokedAtBefore: M32RespStrOrNull,
+  phiMasked: Type.Boolean(),
+});
+
+/** R17 — GET /api/v1/ai/invocations/:invocationId (the ledger row + the route's `phiMasked`). */
+const M32InvocationDetailResponse = Type.Object({
+  ...M32InvocationLedgerViewSchema.properties,
+  phiMasked: Type.Boolean(),
+});
+
+/** R9 — GET /api/v1/ai/kill-switches. */
+const M32KillSwitchListResponse = Type.Object({
+  killSwitches: Type.Array(M32KillSwitchRowSchema),
+});
+
+/** R29 — GET /api/v1/ai/prompts/:capabilityKey/active. The route hand-projects `ActivePromptDetail`
+ *  (packages/ai-platform/src/prompts/prompt-registry.ts) field by field to keep `promptBody` off the
+ *  wire (see the handler's own comment); this mirrors exactly that projection. */
+const M32PromptActiveResponse = Type.Object({
+  capabilityKey: Type.String(),
+  templateKey: Type.String(),
+  version: Type.Integer(),
+  contentHash: Type.String(),
+  outputEntityTargetPrefix: Type.String(),
+  outputTypePrefix: Type.String(),
+  gitArtifactPath: Type.String(),
+  approvedAt: M32RespInstantOrNull,
+  inputSchemaRef: Type.String(),
+  outputSchemaRef: Type.String(),
+  compatibleBackendKeys: Type.Array(Type.String()),
+  clinicalReviewerAttestation: M32RespStrOrNull,
+});
+
+/** R25 — GET /api/v1/ai/routing-overrides. */
+const M32RoutingOverrideListResponse = Type.Object({
+  overrides: Type.Array(M32RoutingOverrideRowSchema),
+});
+
+/** R12 — GET /api/v1/ai/tenant-opt-in. */
+const M32TenantOptInListResponse = Type.Object({
+  optIns: Type.Array(M32TenantOptInRowSchema),
+});
+
+/** R22 — GET /api/v1/ai/tokens/forecast. */
+const M32TokenForecastResponse = Type.Object({
+  forecasts: Type.Array(M32TokenForecastViewSchema),
+});
+
+/** R21 — GET /api/v1/ai/tokens/ledger (`AiTokenLedgerPage`, read-service.ts). */
+const M32TokenLedgerResponse = Type.Object({
+  entries: Type.Array(M32TokenLedgerEntryViewSchema),
+  windowInputTokens: Type.Integer(),
+  windowOutputTokens: Type.Integer(),
+});
+
+/** R28 — GET /api/v1/ai/evaluations/:runId (bare row; `readAiEvaluationRun` returns it unwrapped). */
+const M32EvaluationDetailResponse = M32EvaluationRunRowSchema;
+
+// Every one of these 17 keys already has an entry earlier in this file (M32-T07's summary/query batch)
+// — spread-preserve it and add ONLY `response`, so this pass cannot clobber that work.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/ai/capabilities": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/capabilities"],
+    response: M32CapabilityListResponse,
+  },
+  "GET /api/v1/ai/capabilities/:capabilityId": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/capabilities/:capabilityId"],
+    response: M32CapabilityDetailResponse,
+  },
+  "GET /api/v1/ai/capabilities/:capabilityId/calibration/history": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/capabilities/:capabilityId/calibration/history"],
+    response: M32CalibrationHistoryResponse,
+  },
+  "GET /api/v1/ai/clinician-opt-out": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/clinician-opt-out"],
+    response: M32ClinicianOptOutListResponse,
+  },
+  "GET /api/v1/ai/drift/recent": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/drift/recent"],
+    response: M32DriftRecentResponse,
+  },
+  "GET /api/v1/ai/evaluations": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/evaluations"],
+    response: M32EvaluationListResponse,
+  },
+  "GET /api/v1/ai/evaluations/:runId": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/evaluations/:runId"],
+    response: M32EvaluationDetailResponse,
+  },
+  "GET /api/v1/ai/hallucination-reports": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/hallucination-reports"],
+    response: M32HallucinationListResponse,
+  },
+  "GET /api/v1/ai/health": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/health"],
+    response: M32HealthResponse,
+  },
+  "GET /api/v1/ai/invocations": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/invocations"],
+    response: M32InvocationSearchResponse,
+  },
+  "GET /api/v1/ai/invocations/:invocationId": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/invocations/:invocationId"],
+    response: M32InvocationDetailResponse,
+  },
+  "GET /api/v1/ai/kill-switches": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/kill-switches"],
+    response: M32KillSwitchListResponse,
+  },
+  "GET /api/v1/ai/prompts/:capabilityKey/active": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/prompts/:capabilityKey/active"],
+    response: M32PromptActiveResponse,
+  },
+  "GET /api/v1/ai/routing-overrides": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/routing-overrides"],
+    response: M32RoutingOverrideListResponse,
+  },
+  "GET /api/v1/ai/tenant-opt-in": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/tenant-opt-in"],
+    response: M32TenantOptInListResponse,
+  },
+  "GET /api/v1/ai/tokens/forecast": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/tokens/forecast"],
+    response: M32TokenForecastResponse,
+  },
+  "GET /api/v1/ai/tokens/ledger": {
+    ...ROUTE_ENRICHMENTS["GET /api/v1/ai/tokens/ledger"],
+    response: M32TokenLedgerResponse,
+  },
+});

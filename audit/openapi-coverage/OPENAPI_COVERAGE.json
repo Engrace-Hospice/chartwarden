@@ -4,9 +4,9 @@
     "enriched": 1217,
     "deficit": 7,
     "mutating": 699,
-    "mutatingNoBody": 112,
+    "mutatingNoBody": 87,
     "gets": 494,
-    "getsNoResponse": 80
+    "getsNoResponse": 8
   },
   "modules": [
     {
@@ -227,7 +227,7 @@
       "mutating": 17,
       "mutatingNoBody": 4,
       "gets": 24,
-      "getsNoResponse": 22
+      "getsNoResponse": 0
     },
     {
       "module": "24-billing-medicaid",
@@ -245,7 +245,7 @@
       "enriched": 31,
       "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 5,
+      "mutatingNoBody": 2,
       "gets": 13,
       "getsNoResponse": 0
     },
@@ -275,9 +275,9 @@
       "enriched": 35,
       "deficit": 0,
       "mutating": 18,
-      "mutatingNoBody": 8,
+      "mutatingNoBody": 7,
       "gets": 16,
-      "getsNoResponse": 16
+      "getsNoResponse": 0
     },
     {
       "module": "29-external-interfaces",
@@ -287,7 +287,7 @@
       "mutating": 16,
       "mutatingNoBody": 5,
       "gets": 17,
-      "getsNoResponse": 17
+      "getsNoResponse": 0
     },
     {
       "module": "30-quality",
@@ -295,7 +295,7 @@
       "enriched": 60,
       "deficit": 0,
       "mutating": 36,
-      "mutatingNoBody": 3,
+      "mutatingNoBody": 1,
       "gets": 24,
       "getsNoResponse": 0
     },
@@ -305,7 +305,7 @@
       "enriched": 53,
       "deficit": 0,
       "mutating": 25,
-      "mutatingNoBody": 13,
+      "mutatingNoBody": 7,
       "gets": 28,
       "getsNoResponse": 0
     },
@@ -317,7 +317,7 @@
       "mutating": 11,
       "mutatingNoBody": 0,
       "gets": 17,
-      "getsNoResponse": 17
+      "getsNoResponse": 0
     },
     {
       "module": "33-reporting",
@@ -335,7 +335,7 @@
       "enriched": 48,
       "deficit": 0,
       "mutating": 30,
-      "mutatingNoBody": 4,
+      "mutatingNoBody": 1,
       "gets": 17,
       "getsNoResponse": 0
     },
@@ -345,7 +345,7 @@
       "enriched": 54,
       "deficit": 0,
       "mutating": 30,
-      "mutatingNoBody": 15,
+      "mutatingNoBody": 5,
       "gets": 23,
       "getsNoResponse": 0
     },

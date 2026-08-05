@@ -111,6 +111,7 @@ export function PlanEdit(): JSX.Element {
         client.POST("/api/admin/plans/{id}/activate", {
           params: { path: { id } },
           headers: { "Idempotency-Key": idempotencyKey() },
+          body: {},
         }),
       "Plan activated — queued for Stripe sync (product/price).",
       "Could not activate (check step-up).",
@@ -124,6 +125,7 @@ export function PlanEdit(): JSX.Element {
         client.POST("/api/admin/plans/{id}/deprecate", {
           params: { path: { id } },
           headers: { "Idempotency-Key": idempotencyKey() },
+          body: {},
         }),
       "Plan deprecated.",
       "Could not deprecate (check step-up).",

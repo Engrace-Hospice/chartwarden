@@ -79,6 +79,7 @@ export function Onboarding(): JSX.Element {
       if (verb === "start") {
         await client.POST("/api/v1/tenant/onboarding/{taskId}/start", {
           params: { path: { taskId } },
+          body: {},
         });
       } else {
         await client.POST("/api/v1/tenant/onboarding/{taskId}/complete", {

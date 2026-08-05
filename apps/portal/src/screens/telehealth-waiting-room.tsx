@@ -58,6 +58,7 @@ export function TelehealthWaitingRoom(): JSX.Element {
     if (!visitId) return;
     await client.POST("/api/v1/portal/telehealth/visits/{visitId}/leave", {
       params: { path: { visitId } },
+      body: {},
     });
     setTicket(null);
   }
